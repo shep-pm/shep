@@ -1,8 +1,12 @@
 //! The shepherd channel: newline-JSON wire on fd 3 between the shepherd and
 //! each spawned child. [`ChildMessage`] flows child -> shepherd;
 //! [`ShepherdMessage`] flows shepherd -> child. Framing is wired by
-//! shep-daemon; lives in shep-core because `BusEvent::Channel` carries a
-//! `ChildMessage` verbatim to every bus subscriber.
+//! shep-daemon.
+//!
+//! These types live here, in shep-channel, because this is the crate an app
+//! links to speak the channel. shep-core re-exports them: `BusEvent::Channel`
+//! carries a `ChildMessage` verbatim to every bus subscriber, so the message a
+//! bus event holds has to be the same type an app writing on fd 3 constructs.
 //!
 //! Both enums are exhaustive, unlike everything else under `protocol`: fd 3
 //! has no handshake, so a new variant means telling every app out of band,
