@@ -305,11 +305,11 @@ re-running that suite in isolation with the mutation still applied.
 
 ## Architecture
 
-Six crates plus `examples` in the workspace, one distributed binary
-(`shep`): shep-core, shep-daemon, shep-client, shep-macros (the `DogConfig`
-derive, reached through shep-client's re-export), shep-cli (published as
-`shep`), and shep-cli-redirect, a placeholder holding the `shep-cli` name on
-crates.io. This line said "five" for the whole time shep-macros existed.
+Seven published workspace members, one distributed binary (`shep`):
+shep-core, shep-daemon, shep-client, shep-macros (the `DogConfig` derive,
+reached through shep-client's re-export), shep-cli (published as `shep`),
+shep-channel (the client an app links to speak the shepherd channel), and
+shep-cli-redirect, a placeholder holding the `shep-cli` name on crates.io.
 Each crate's Cargo.toml `description` states its role.
 
 **The docs site is `web/`** -- an Astro site, published, and part of the
