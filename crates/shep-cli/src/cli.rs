@@ -2407,8 +2407,8 @@ mod tests {
         assert!(flagged.read_only);
     }
 
-    /// `--allow-control` is gone; clap's unknown-argument refusal is the
-    /// signal that it was renamed rather than merely dropped.
+    /// fails if `--allow-control` starts parsing again: lookout takes no
+    /// such flag.
     #[test]
     fn allow_control_no_longer_parses() {
         use clap::Parser;

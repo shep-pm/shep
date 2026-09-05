@@ -496,22 +496,15 @@ pub enum ListRow {
     New,
 }
 
-/// The list sub-screen: one array field's elements, and an editor over them.
+/// The list sub-screen: one array field's elements, and an editor over
+/// them.
 ///
-/// Unlike [`EnvPane`] this screen renders what it holds. `args` and
-/// `ignore_watch` arrive with the config, so withholding them would leave
-/// the screen unable to say which element the cursor is on while still
-/// letting an operator overwrite it.
-///
-/// `Debug` is redacted (IR-41), like [`ConfigPane`]'s and for its reason:
-/// `args` is where a token reaches a process, `--token hunter2`. The screen
-/// shows an element because an operator is editing their own config; a log
-/// line, a panic or an error chain is read by whoever has the file.
-/// Exact-string-tested below (`a_list_panes_debug_names_no_element`).
-///
-/// Elements are held as text, not as [`Value`]: an editor types text, and
-/// [`ListItem`] is what turns the whole array back into JSON on the way
-/// out.
+/// Values are drawn, unlike [`EnvPane`]: an array arrives with the
+/// config, so hiding an element would leave the cursor unable to say
+/// which one it holds. `Debug` is manual and redacted (IR-41),
+/// exact-string-tested below, for the same reason as [`ConfigPane`]'s:
+/// `args` can carry a token an operator typed. Elements are held as
+/// text; [`ListItem`] turns the array back to JSON on write.
 #[derive(Clone, PartialEq, Eq)]
 pub struct ListPane {
     key: String,
@@ -861,23 +854,14 @@ impl ConfigPane {
 
     /// A pane over one dog's `[<name>]` section.
     ///
-    /// `schema` is the dog's own answer to the schema flag, probed at open
-    /// rather than read from anywhere, because nothing records one: `shep
-    /// adopt` uses it for the vet and writes down only the path. `section`
-    /// is the table as `Request::DogConfig` rendered it, empty when
-    /// `dogs.toml` has no such table.
+    /// `schema` is the dog's own answer to the schema flag, probed at
+    /// open rather than read from anywhere; `section` is the table as
+    /// `Request::DogConfig` rendered it, empty when `dogs.toml` has none.
     ///
-    /// Flat, in schema order, with no group headers: a dog's
-    /// schema carries no `init.group`, and inventing sections for one would
-    /// be shep deciding how somebody else's config reads.
-    ///
-    /// A [`FieldKind::Map`] or [`FieldKind::List`] row is marked not
-    /// editable, so it draws [`Lock::NoWidget`] and refuses with that
-    /// lock's own sentence. Both sub-screens write a sheep: env goes out
-    /// as `Request::SetSheepEnv` over [`Self::env_keys`], and a list as
-    /// `Request::SetSheepField`, while a dog's write replaces its whole
-    /// section through [`Self::edited_section`], which has no rendering
-    /// for an array.
+    /// Flat, in schema order, with no group headers: a dog's schema
+    /// carries no `init.group`. A [`FieldKind::Map`] or
+    /// [`FieldKind::List`] row is marked not editable and draws
+    /// [`Lock::NoWidget`].
     #[must_use]
     pub fn dog(
         name: String,

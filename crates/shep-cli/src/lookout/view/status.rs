@@ -276,29 +276,12 @@ fn pane_editor(pane: &ConfigPane) -> Option<(String, &str)> {
 
 /// The config pane's own key hint.
 ///
-/// Five forms, not one: a hint that needs a footnote to be true is an
-/// asterisk. `space cycle` and `e edit` are named only under
-/// [`Control::Allowed`], since under [`Control::ReadOnly`] both refuse.
-/// `Enter` still does what `e` does, but the hint has room for only one
-/// of the two, so it names the key that also opened the pane.
-///
-/// Each sub-screen gets its own since `esc` means something else
-/// there: it backs out to the field list rather than closing the pane.
-/// The list sub-screen names `d` and `K`/`J` too, bound nowhere else in
-/// lookout.
-///
-/// `g`/`G` and `r` are named on all three, since they are bound on all
-/// three in both control states. `h` is a no-op on a sub-screen's own
-/// rows, same as the flag legend below, so both are field-list only.
-///
-/// `* yours` and `! parked` repeat the field list's own flag glyphs
-/// ([`super::pane::field_line`]) so an operator does not have to learn
-/// what they mean from a different screen. The flock table's own `CFG`
-/// column carries the same two glyphs with no legend of its own: this is
-/// the one place a legend was added, chosen over the table because the
-/// pane and the dashboard are never on screen at once, so one hint
-/// covers whichever of the two glyphs an operator is actually looking
-/// at.
+/// Five forms: `space cycle`/`e edit` show only under [`Control::Allowed`]
+/// (`Enter` also opens the pane, sharing `e`'s slot). Each sub-screen gets its
+/// own, since `esc` backs out rather than closing there, and the list also
+/// names `d`/`K`/`J`. `* yours`/`! parked` repeat the field list's glyphs
+/// ([`super::pane::field_line`]); the flock table's `CFG` column carries the
+/// same two with no legend of its own.
 const fn pane_hint(control: Control, screen: PaneScreen) -> &'static str {
     match (control, screen) {
         (Control::ReadOnly, PaneScreen::Fields) => {

@@ -6835,8 +6835,6 @@ mod tests {
         assert!(app.config_pane().is_none());
     }
 
-    /// The env sub-screen, the pane and the menu are three levels, and
-    /// `Escape` takes one at a time.
     #[test]
     fn escape_walks_out_of_the_sub_screen_then_the_menu_then_the_pane() {
         let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
