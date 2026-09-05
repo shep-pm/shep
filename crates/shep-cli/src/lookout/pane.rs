@@ -797,7 +797,7 @@ impl ConfigPane {
         let current = armed_here.or_else(|| self.values.get(&field.key));
         let next = match &field.kind {
             FieldKind::Bool => Value::Bool(!current.and_then(Value::as_bool).unwrap_or(false)),
-            FieldKind::Choice(names) if !names.is_empty() => {
+            FieldKind::Choice(names) | FieldKind::Suggested(names) if !names.is_empty() => {
                 let current = current.and_then(Value::as_str);
                 let next = current
                     .and_then(|value| names.iter().position(|name| name == value))
@@ -805,6 +805,7 @@ impl ConfigPane {
                 Value::String(names[next].clone())
             }
             FieldKind::Choice(_)
+            | FieldKind::Suggested(_)
             | FieldKind::Text
             | FieldKind::Integer
             | FieldKind::Map
@@ -836,7 +837,10 @@ impl ConfigPane {
             return;
         };
         if self.lock(&field.key).is_some()
-            || !matches!(field.kind, FieldKind::Text | FieldKind::Integer)
+            || !matches!(
+                field.kind,
+                FieldKind::Text | FieldKind::Integer | FieldKind::Suggested(_)
+            )
         {
             return;
         }
@@ -1391,6 +1395,20 @@ mod tests {
         assert_eq!(key, "autorestart");
         assert_eq!(value.as_value(), &serde_json::json!(false));
         assert!(text.contains("autorestart"), "{text}");
+    }
+
+    #[test]
+    fn space_cycles_a_suggested_field_and_e_still_opens_the_editor() {
+        let mut pane = ConfigPane::sheep(web());
+        pane.move_to_key("kill_signal");
+        pane.cycle(Instant::now());
+        assert!(pane.pending_edit().is_some(), "space arms a suggestion");
+        pane.cancel();
+        pane.begin_typing();
+        assert!(
+            matches!(pane.pending_edit(), Some(PanePending::Typing { .. })),
+            "e still opens a free-text editor"
+        );
     }
 
     /// `apply_group` is a fact about the field; a write's fate is a fact

@@ -187,7 +187,8 @@ pub struct AppConfig {
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "SIGTERM",
         "group": "shutdown",
-        "blurb": "Which signal shep sends first when stopping this app"
+        "blurb": "Which signal shep sends first when stopping this app",
+        "suggest": ["SIGTERM", "SIGINT", "SIGQUIT", "SIGUSR2"]
     })))]
     pub kill_signal: Option<String>,
     /// Grace period between stop signal and SIGKILL
@@ -266,7 +267,8 @@ pub struct AppConfig {
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "* * * * *",
         "group": "cron",
-        "blurb": "Restart on a schedule, written as a cron pattern"
+        "blurb": "Restart on a schedule, written as a cron pattern",
+        "suggest": ["*/5 * * * *", "0 * * * *", "0 0 * * *", "0 0 * * 0"]
     })))]
     pub cron_restart: Option<String>,
     /// Fold (group) this sheep belongs to

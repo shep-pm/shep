@@ -91,7 +91,13 @@
           "init": {
             "blurb": "Restart on a schedule, written as a cron pattern",
             "example": "* * * * *",
-            "group": "cron"
+            "group": "cron",
+            "suggest": [
+              "*/5 * * * *",
+              "0 * * * *",
+              "0 0 * * *",
+              "0 0 * * 0"
+            ]
           }
         },
         "cron_timezone": {
@@ -244,7 +250,13 @@
           "init": {
             "blurb": "Which signal shep sends first when stopping this app",
             "example": "SIGTERM",
-            "group": "shutdown"
+            "group": "shutdown",
+            "suggest": [
+              "SIGTERM",
+              "SIGINT",
+              "SIGQUIT",
+              "SIGUSR2"
+            ]
           }
         },
         "kill_timeout": {

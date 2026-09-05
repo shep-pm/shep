@@ -20,6 +20,10 @@ pub enum FieldKind {
     Text,
     /// A closed set: `enum`, or `oneOf` of `const`s. Cycles.
     Choice(Vec<String>),
+    /// `init.suggest` on a `Text` field. Cycles like a choice and types
+    /// like text: the values are offered, not enforced, because the
+    /// grammar stays open.
+    Suggested(Vec<String>),
     /// `type: object` with `additionalProperties`. Opens a sub-screen.
     Map,
     /// Anything else, including a nested object. Read-only, shown as JSON.
@@ -289,6 +293,17 @@ fn render_default(value: Option<&Value>) -> Option<String> {
     }
 }
 
+/// The `init.suggest` values, when every entry is a string.
+fn suggestions(init: Option<&Value>) -> Option<Vec<String>> {
+    let values = init?.get("suggest")?.as_array()?;
+    let names: Vec<String> = values
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect();
+    (names.len() == values.len()).then_some(names)
+}
+
 fn field_from(key: &str, schema: &Value, defs: &Map<String, Value>) -> Field {
     let init = schema.get("init");
     let help = init
@@ -301,10 +316,14 @@ fn field_from(key: &str, schema: &Value, defs: &Map<String, Value>) -> Field {
         .and_then(Value::as_str)
         .map(str::to_owned);
     let kind = kind_of(schema, defs);
-    let editable = kind != FieldKind::Opaque;
     let value_kind = (kind == FieldKind::Text)
         .then(|| value_kind_of(schema))
         .flatten();
+    let kind = match (kind, suggestions(init)) {
+        (FieldKind::Text, Some(names)) if !names.is_empty() => FieldKind::Suggested(names),
+        (kind, _) => kind,
+    };
+    let editable = kind != FieldKind::Opaque;
     Field {
         key: key.to_owned(),
         help,
@@ -614,5 +633,32 @@ mod tests {
             );
         }
         assert_eq!(set.by_key("cwd").unwrap().value_kind, None);
+    }
+
+    #[test]
+    fn a_field_with_init_suggest_cycles_and_still_types() {
+        let schema = json!({
+            "type": ["string", "null"],
+            "init": { "suggest": ["SIGTERM", "SIGINT"] }
+        });
+        let field = field_from("kill_signal", &schema, &Map::new());
+        assert_eq!(
+            field.kind,
+            FieldKind::Suggested(vec!["SIGTERM".into(), "SIGINT".into()])
+        );
+        assert!(field.editable, "a suggestion is not a constraint");
+    }
+
+    #[test]
+    fn kill_signal_and_cron_restart_both_carry_suggestions() {
+        let set = real_field_set();
+        for key in ["kill_signal", "cron_restart"] {
+            let field = set.by_key(key).unwrap_or_else(|| panic!("no {key}"));
+            assert!(
+                matches!(field.kind, FieldKind::Suggested(ref names) if !names.is_empty()),
+                "{key}: {:?}",
+                field.kind
+            );
+        }
     }
 }
