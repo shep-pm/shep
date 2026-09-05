@@ -19,7 +19,9 @@ use ratatui::text::{Line, Span};
 use shep_core::config::ApplyGroup;
 
 use super::super::app::App;
-use super::super::pane::{ConfigPane, EnvPane, EnvRow, Lock, PanePending, PaneRow, PaneTarget};
+use super::super::pane::{
+    ConfigPane, EnvPane, EnvRow, ListPane, ListRow, Lock, PanePending, PaneRow, PaneTarget,
+};
 use super::super::theme::Palette;
 use super::flock::{fit, mark};
 use super::scroll::Attempt;
@@ -42,6 +44,11 @@ const KEY_MIN: u16 = 8;
 /// The floor VALUE shrinks to. Below this the pane drops COST, and below
 /// that it draws KEY alone.
 const VALUE_MIN: u16 = 8;
+
+/// The position cell on the list sub-screen. Three columns holds an index
+/// into an array longer than any Flockfile has, and no more: an element is
+/// what the row is about.
+const POSITION_W: u16 = 3;
 
 /// The COST cell. Ten columns, which is exactly `next start`, the longest
 /// word [`cost_label`] prints.
@@ -373,6 +380,154 @@ fn env_body_from(
     }
 }
 
+/// The list sub-screen: one array field's elements, and a row to add one on.
+///
+/// Values are drawn, unlike [`env_lines`]: an array arrives with the
+/// config, so hiding it would leave the screen unable to say which element
+/// the cursor is on.
+///
+/// Laid out through [`super::scroll::to_cursor`], the same walk the field
+/// list uses, so the cursor is drawn at every height this pane claims to
+/// support.
+fn list_lines(
+    pane: &ConfigPane,
+    list: &ListPane,
+    palette: Palette,
+    width: u16,
+    budget: usize,
+) -> Vec<Line<'static>> {
+    let mut lines = vec![Line::from(Span::styled(
+        format!(
+            "  {}",
+            fit(
+                &format!("{}  {} (list)", pane.target().name(), list.key()),
+                body_width(width)
+            )
+        ),
+        palette.muted(),
+    ))];
+    let mut body_budget = budget - 1;
+    // The same echo the field list draws under its own title, counted the
+    // same way. It is the whole array rather than the one element, which
+    // is what the write carries.
+    if let Some(text) = confirm_text(pane)
+        && body_budget > 0
+    {
+        lines.push(Line::from(Span::styled(
+            format!("  {}", fit(text, body_width(width))),
+            palette.attention(),
+        )));
+        body_budget -= 1;
+    }
+    if body_budget == 0 {
+        return lines;
+    }
+    let rows = list.rows();
+    let cursor_row = list.view().cursor().min(rows.len().saturating_sub(1));
+    lines.extend(super::scroll::to_cursor(
+        cursor_row,
+        list.view().offset(),
+        |offset| list_body_from(list, palette, width, body_budget, offset),
+        || vec![list_line(list, cursor_row, true, width, palette)],
+    ));
+    lines
+}
+
+/// One row of the list sub-screen: the selection mark, the element's
+/// position, and the element.
+///
+/// The position is drawn because `K` and `J` move an element by one, so a
+/// row that did not say where it was would leave an operator counting.
+fn list_line(
+    list: &ListPane,
+    index: usize,
+    selected: bool,
+    width: u16,
+    palette: Palette,
+) -> Line<'static> {
+    let body = body_width(width);
+    let position_w = POSITION_W.min(body);
+    let value_w = body.saturating_sub(position_w + 2);
+    let typed = selected
+        .then(|| list.typing())
+        .flatten()
+        .map(|(_, buffer)| buffer);
+    let (position, value) = match list.rows().get(index).copied() {
+        Some(ListRow::Item(item)) => (
+            format!("{item}"),
+            typed.map_or_else(
+                || {
+                    list.elements()
+                        .get(item)
+                        .cloned()
+                        .unwrap_or_else(|| "(unset)".to_owned())
+                },
+                |buffer| format!("{buffer}\u{258f}"),
+            ),
+        ),
+        Some(ListRow::New) => match typed {
+            Some(buffer) => (String::new(), format!("{buffer}\u{258f}")),
+            None => (String::new(), "+ new".to_owned()),
+        },
+        None => return Line::default(),
+    };
+    let mut text = format!("{} ", mark(selected));
+    text.push_str(&fit(&position, position_w));
+    if value_w > 0 {
+        text.push_str("  ");
+        text.push_str(&fit(&value, value_w));
+    }
+    if matches!(list.rows().get(index), Some(ListRow::New)) {
+        return Line::from(Span::styled(text, palette.muted()));
+    }
+    Line::from(Span::raw(text))
+}
+
+/// Lays the sub-screen's body out from row `offset`, spending at most
+/// `budget` lines. Both markers are reserved before a row is admitted, the
+/// same rule [`body_from`] follows.
+fn list_body_from(
+    list: &ListPane,
+    palette: Palette,
+    width: u16,
+    budget: usize,
+    offset: usize,
+) -> Attempt {
+    let rows = list.rows();
+    let total = rows.len();
+    let cursor_row = list.view().cursor().min(total.saturating_sub(1));
+    let above = usize::from(offset > 0);
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    let mut drawn = 0usize;
+    for index in offset..total {
+        if lines.len() + 1 + above + usize::from(index + 1 < total) > budget {
+            break;
+        }
+        lines.push(list_line(list, index, index == cursor_row, width, palette));
+        drawn += 1;
+    }
+    let hidden_below = total.saturating_sub(offset + drawn);
+    if hidden_below > 0 {
+        lines.push(Line::from(Span::styled(
+            format!("  ... {hidden_below} below"),
+            palette.muted(),
+        )));
+    }
+    if offset > 0 {
+        lines.insert(
+            0,
+            Line::from(Span::styled(
+                format!("  ... {offset} above"),
+                palette.muted(),
+            )),
+        );
+    }
+    Attempt {
+        cursor_drawn: drawn > 0 && (offset..offset + drawn).contains(&cursor_row),
+        lines,
+    }
+}
+
 /// Every line of the pane, top to bottom, laid out for a terminal `height`
 /// rows tall.
 ///
@@ -394,6 +549,9 @@ pub fn pane_lines(
     };
     if budget == 0 {
         return Vec::new();
+    }
+    if let Some(list) = pane.list() {
+        return list_lines(pane, list, palette, width, budget);
     }
     if let Some(env) = pane.env() {
         return env_lines(pane, env, palette, width, budget);
@@ -697,17 +855,17 @@ mod tests {
             "a refused row is muted"
         );
 
-        let args = lines
+        let probe = lines
             .iter()
-            .find(|line| text_of(core::slice::from_ref(line))[0].contains("~ args"))
+            .find(|line| text_of(core::slice::from_ref(line))[0].contains("~ liveness_probe"))
             .expect("a field with no widget is drawn too");
-        let rendered = text_of(core::slice::from_ref(args))[0].clone();
+        let rendered = text_of(core::slice::from_ref(probe))[0].clone();
         assert!(
-            rendered.contains("respawn") && !rendered.contains("read-only"),
-            "shep writes `args`, so its cost is a real cost: {rendered:?}"
+            rendered.contains("now") && !rendered.contains("read-only"),
+            "shep writes `liveness_probe`, so its cost is a real cost: {rendered:?}"
         );
         assert_eq!(
-            args.spans[0].style,
+            probe.spans[0].style,
             fixtures::coloured().muted(),
             "muting says `not from here`, which is true of both kinds"
         );
@@ -757,7 +915,7 @@ mod tests {
     }
 
     /// `=` is shep refusing the write outright; `~` is only this pane
-    /// having no widget for the shape. Six fields shep writes happily
+    /// having no widget for the shape. The two probes shep writes happily
     /// carry `~`, so their cost cell must say `respawn` or `now`, never
     /// `read-only`.
     #[test]
@@ -771,18 +929,8 @@ mod tests {
                 .collect()
         };
         assert_eq!(glyphed('='), ["instances", "name"]);
-        assert_eq!(
-            glyphed('~'),
-            [
-                "args",
-                "stop_exit_codes",
-                "liveness_probe",
-                "readiness_probe",
-                "ignore_watch",
-                "watch_options"
-            ]
-        );
-        assert_eq!(glyphed(' ').len(), 39 - 2 - 6);
+        assert_eq!(glyphed('~'), ["liveness_probe", "readiness_probe"]);
+        assert_eq!(glyphed(' ').len(), 39 - 2 - 2);
     }
 
     /// `kill_timeout` and `exp_backoff_restart_delay` default to 1600ms
@@ -832,7 +980,7 @@ mod tests {
         );
         let glyph = |key: &str| rows.iter().find(|(_, _, _, k)| k == key).map(|r| r.1);
         assert_eq!(glyph("instances"), Some('='));
-        assert_eq!(glyph("args"), Some('~'));
+        assert_eq!(glyph("liveness_probe"), Some('~'));
         assert_eq!(glyph("watch"), Some(' '));
     }
 
@@ -1263,5 +1411,126 @@ mod tests {
         assert!(text[0].contains("web"), "{:?}", text[0]);
         assert!(text[0].contains("(sheep config)"), "{:?}", text[0]);
         assert!(!text[0].contains("read-only"), "{:?}", text[0]);
+    }
+
+    /// A sheep whose `args` are `args`, for the list sub-screen's own
+    /// tests.
+    fn web_with_args(args: &[&str]) -> shep_core::protocol::SheepConfigView {
+        let config = shep_core::config::AppConfig {
+            name: "web".to_string(),
+            args: args.iter().map(|arg| (*arg).to_string()).collect(),
+            ..Default::default()
+        };
+        shep_core::protocol::SheepConfigView::new(config, Vec::new(), Vec::new())
+    }
+
+    /// The list sub-screen over `args`, as an operator reaches it: cursor
+    /// onto the row, then open.
+    fn rendered_list(pane: &ConfigPane, width: u16, height: u16) -> Vec<String> {
+        let mut pane = pane.clone();
+        pane.move_to_key("args");
+        pane.open_list();
+        text_of(&pane_lines(&pane, fixtures::plain(), width, height))
+    }
+
+    /// Env is write-only because the shepherd sends no value; an array
+    /// arrives with the config, so a screen that hid it could not say
+    /// which element the cursor is on.
+    #[test]
+    fn the_list_screen_shows_its_values_unlike_env() {
+        let pane = ConfigPane::sheep(web_with_args(&["--port"]));
+        let lines = rendered_list(&pane, 120, 20);
+        assert!(lines.iter().any(|l| l.contains("--port")), "{lines:?}");
+        assert!(
+            !lines.iter().any(|l| l.contains(r#"["--port"]"#)),
+            "the element is a row of its own, not the field list's JSON cell: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn the_list_sub_screen_at_a_comfortable_width() {
+        let lines = rendered_list(&web_pane(), 120, 0);
+        insta::assert_snapshot!("list_sub_screen", lines.join("\n"));
+    }
+
+    /// The chrome this screen draws is counted like every other line: a
+    /// title, and the confirm echo under it when something is armed.
+    #[test]
+    fn the_list_sub_screen_never_outgrows_the_height_or_the_width_it_was_given() {
+        let mut pane = ConfigPane::sheep(web_with_args(&[
+            "--port",
+            "8080",
+            "--host",
+            "0.0.0.0",
+            "--verbose",
+            "--log",
+            "debug",
+        ]));
+        pane.move_to_key("args");
+        pane.open_list();
+        pane.arm_list_removal(Instant::now());
+        for height in 1..=20u16 {
+            pane.list_mut().unwrap().move_to_first();
+            let total = pane.list().unwrap().rows().len();
+            pane.list_mut()
+                .unwrap()
+                .set_rows(usize::from(height.saturating_sub(1)));
+            for step in 0..=total {
+                let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
+                assert!(
+                    text.len() <= usize::from(height),
+                    "height {height}, step {step}: {text:?}"
+                );
+                pane.list_mut().unwrap().move_by(1);
+            }
+        }
+        for width in super::super::MIN_TERM_WIDTH..=200 {
+            for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
+                assert!(
+                    visible_width(&line) <= usize::from(width),
+                    "width {width} drew {}: {line:?}",
+                    visible_width(&line)
+                );
+            }
+        }
+    }
+
+    /// The invariant `view::scroll` exists to hold, at the shortest height
+    /// the pane claims to draw: one row is marked at every step of a walk.
+    #[test]
+    fn the_list_cursor_survives_every_step_at_the_minimum_height() {
+        let mut pane = ConfigPane::sheep(web_with_args(&[
+            "--port",
+            "8080",
+            "--host",
+            "0.0.0.0",
+            "--verbose",
+            "--log",
+            "debug",
+            "--quiet",
+        ]));
+        pane.move_to_key("args");
+        pane.open_list();
+        let total = pane.list().unwrap().rows().len();
+        for height in [super::super::flock::MIN_HEIGHT, 7, 8, 12] {
+            pane.list_mut().unwrap().move_to_first();
+            pane.list_mut()
+                .unwrap()
+                .set_rows(usize::from(height.saturating_sub(1)));
+            for step in 0..=total {
+                let text = text_of(&pane_lines(
+                    &pane,
+                    fixtures::plain(),
+                    super::super::MIN_TERM_WIDTH,
+                    height,
+                ));
+                assert_eq!(
+                    text.iter().filter(|line| line.starts_with('>')).count(),
+                    1,
+                    "height {height}, step {step}: {text:?}"
+                );
+                pane.list_mut().unwrap().move_by(1);
+            }
+        }
     }
 }

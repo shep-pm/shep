@@ -15,7 +15,7 @@ use shep_core::config::{ApplyGroup, GROUP_ORDER, apply_group, flockfile_schema_j
 use shep_core::protocol::{EnvValue, SheepConfigView};
 use shep_core::values::{MemSize, UpDuration};
 
-use super::field::{FieldKind, FieldSet, ValueKind};
+use super::field::{FieldKind, FieldSet, ListItem, ValueKind};
 use super::viewport::Viewport;
 
 /// Which thing the pane is editing.
@@ -484,6 +484,250 @@ impl EnvPane {
     }
 }
 
+/// One row of the list sub-screen.
+///
+/// `Debug` is derived (IR-41): an index, or a marker for the row that adds
+/// an element.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListRow {
+    /// Index into [`ListPane::elements`].
+    Item(usize),
+    /// The `+ new` row.
+    New,
+}
+
+/// The list sub-screen: one array field's elements, and an editor over them.
+///
+/// Unlike [`EnvPane`] this screen renders what it holds. `args` and
+/// `ignore_watch` arrive with the config, so withholding them would leave
+/// the screen unable to say which element the cursor is on while still
+/// letting an operator overwrite it.
+///
+/// `Debug` is derived for the same reason. The elements are the values
+/// themselves, so this is the one type in this file whose `{:?}` prints a
+/// config value; [`ConfigPane`]'s own `Debug` does not print this field.
+/// Exact-string-tested below (`a_list_panes_debug_names_its_elements`).
+///
+/// Elements are held as text, not as [`Value`]: an editor types text, and
+/// [`ListItem`] is what turns the whole array back into JSON on the way
+/// out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListPane {
+    key: String,
+    item: ListItem,
+    elements: Vec<String>,
+    view: Viewport,
+    /// `Some((Some(index), buffer))` on an element, `Some((None, buffer))`
+    /// on the `+ new` row.
+    typing: Option<(Option<usize>, String)>,
+}
+
+impl ListPane {
+    /// A sub-screen over one array field, cursor at the top and nothing
+    /// being typed.
+    #[must_use]
+    pub fn new(key: String, item: ListItem, elements: Vec<String>) -> Self {
+        Self {
+            key,
+            item,
+            elements,
+            view: Viewport::new(),
+            typing: None,
+        }
+    }
+
+    /// The field this array belongs to, which is also the key a write
+    /// carries.
+    #[must_use]
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    /// What the elements are, for the editor that parses one back.
+    #[must_use]
+    pub fn item(&self) -> ListItem {
+        self.item
+    }
+
+    /// The elements, in the order the array holds them.
+    #[must_use]
+    pub fn elements(&self) -> &[String] {
+        &self.elements
+    }
+
+    /// One row per element, then the `+ new` row.
+    #[must_use]
+    pub fn rows(&self) -> Vec<ListRow> {
+        let mut rows: Vec<ListRow> = (0..self.elements.len()).map(ListRow::Item).collect();
+        rows.push(ListRow::New);
+        rows
+    }
+
+    /// The row under the cursor. Never [`None`]: [`Self::rows`] always ends
+    /// with [`ListRow::New`], so there is always at least one row.
+    #[must_use]
+    pub fn cursor(&self) -> Option<ListRow> {
+        self.rows().get(self.view.cursor()).copied()
+    }
+
+    /// The cursor and offset.
+    #[must_use]
+    pub fn view(&self) -> &Viewport {
+        &self.view
+    }
+
+    /// What is being typed: which element it is for ([`None`] on the `+
+    /// new` row) and the buffer. [`None`] while no editor is open.
+    #[must_use]
+    pub fn typing(&self) -> Option<(Option<usize>, &str)> {
+        self.typing
+            .as_ref()
+            .map(|(index, buffer)| (*index, buffer.as_str()))
+    }
+
+    /// Records the terminal's height, in rows of data.
+    pub fn set_rows(&mut self, rows: usize) {
+        let len = self.rows().len();
+        self.view.set_rows(rows, len);
+    }
+
+    pub(super) fn move_by(&mut self, delta: isize) {
+        let len = self.rows().len();
+        self.view.move_by(delta, len);
+    }
+
+    pub(super) fn move_to(&mut self, index: usize) {
+        let len = self.rows().len();
+        self.view.move_to(index, len);
+    }
+
+    pub(super) fn move_to_first(&mut self) {
+        self.move_to(0);
+    }
+
+    pub(super) fn move_to_last(&mut self) {
+        let len = self.rows().len();
+        self.move_to(len.saturating_sub(1));
+    }
+
+    /// Adopts a previous sub-screen's cursor and offset, clamped to this
+    /// one's own row count.
+    ///
+    /// By index rather than by name, unlike [`EnvPane::adopt_view`]: an
+    /// element has no name, and its position is the only thing that
+    /// identifies it. A cursor past the end lands on the `+ new` row,
+    /// which is the one row where `Enter` destroys nothing.
+    pub(super) fn adopt_view(&mut self, view: Viewport) {
+        self.view = view;
+        let len = self.rows().len();
+        self.view.clamp(len);
+    }
+
+    /// Opens the editor on the row under the cursor, seeded with the
+    /// element it is on and empty on `+ new`.
+    pub fn begin_typing(&mut self) {
+        self.typing = match self.cursor() {
+            Some(ListRow::Item(index)) => self
+                .elements
+                .get(index)
+                .map(|element| (Some(index), element.clone())),
+            Some(ListRow::New) => Some((None, String::new())),
+            None => None,
+        };
+    }
+
+    /// Appends one typed character.
+    pub fn type_char(&mut self, typed: char) {
+        if let Some((_, buffer)) = self.typing.as_mut() {
+            buffer.push(typed);
+        }
+    }
+
+    /// Removes the last typed character.
+    pub fn type_backspace(&mut self) {
+        if let Some((_, buffer)) = self.typing.as_mut() {
+            buffer.pop();
+        }
+    }
+
+    /// Drops the editor, leaving the sub-screen open.
+    pub fn abandon_typing(&mut self) {
+        self.typing = None;
+    }
+
+    /// Closes the editor and reads what it holds.
+    ///
+    /// [`None`] three ways, and only one of them closes the editor: an
+    /// empty buffer is nothing to write and leaves the array alone, since
+    /// `d` is the key that removes an element. An integer element whose
+    /// buffer does not parse keeps the editor open, the same rule
+    /// [`ConfigPane::apply_typing`] follows, because the operator is
+    /// mid-word rather than wrong.
+    pub fn apply_typing(&mut self) -> Option<String> {
+        let (_, buffer) = self.typing.as_ref()?;
+        if self.item == ListItem::Integer && buffer.parse::<i64>().is_err() && !buffer.is_empty() {
+            return None;
+        }
+        let (_, buffer) = self.typing.take()?;
+        (!buffer.is_empty()).then_some(buffer)
+    }
+
+    /// The elements with `text` written at the cursor, appended on the `+
+    /// new` row. [`None`] when the cursor names no element.
+    pub(super) fn with_element(&self, text: String) -> Option<Vec<String>> {
+        let mut elements = self.elements.clone();
+        match self.cursor()? {
+            ListRow::Item(index) => *elements.get_mut(index)? = text,
+            ListRow::New => elements.push(text),
+        }
+        Some(elements)
+    }
+
+    /// The elements without the one under the cursor. [`None`] on the `+
+    /// new` row, which holds no element to remove.
+    pub(super) fn without_element(&self) -> Option<Vec<String>> {
+        let ListRow::Item(index) = self.cursor()? else {
+            return None;
+        };
+        let mut elements = self.elements.clone();
+        (index < elements.len()).then(|| {
+            elements.remove(index);
+            elements
+        })
+    }
+
+    /// The elements with the one under the cursor moved `delta` places.
+    /// [`None`] on the `+ new` row and at either end.
+    pub(super) fn reordered(&self, delta: isize) -> Option<Vec<String>> {
+        let ListRow::Item(index) = self.cursor()? else {
+            return None;
+        };
+        let target = usize::try_from(isize::try_from(index).ok()? + delta).ok()?;
+        if target >= self.elements.len() {
+            return None;
+        }
+        let mut elements = self.elements.clone();
+        elements.swap(index, target);
+        Some(elements)
+    }
+}
+
+/// The whole array as JSON, ready for `Request::SetSheepField`.
+///
+/// An integer element that does not parse travels as the string it is, so
+/// the daemon refuses it by name instead of this guessing a number. Only
+/// reachable for an element the config itself carried, since
+/// [`ListPane::apply_typing`] refuses to arm one an operator typed.
+fn list_value(item: ListItem, elements: &[String]) -> Value {
+    let element = |text: &String| match item {
+        ListItem::Text => Value::String(text.clone()),
+        ListItem::Integer => text
+            .parse::<i64>()
+            .map_or_else(|_| Value::String(text.clone()), Value::from),
+    };
+    Value::Array(elements.iter().map(element).collect())
+}
+
 /// The state of an open pane.
 ///
 /// `Debug` is manual and redacted (IR-41): `values` is a sheep's config with
@@ -507,6 +751,10 @@ pub struct ConfigPane {
     view: Viewport,
     pending_edit: Option<PanePending>,
     env: Option<EnvPane>,
+    /// The open list sub-screen. Never open at the same time as
+    /// [`Self::env`]: each opens on a field of its own kind, and `Escape`
+    /// closes whichever is up before the pane.
+    list: Option<ListPane>,
     /// Whether `h` is showing the selected field's own help text.
     help_open: bool,
     /// The dog's `[<name>]` table as TOML text, and [`None`] for a sheep.
@@ -587,6 +835,7 @@ impl ConfigPane {
             view: Viewport::new(),
             pending_edit: None,
             env: None,
+            list: None,
             help_open: false,
             section: None,
         }
@@ -604,11 +853,13 @@ impl ConfigPane {
     /// schema carries no `init.group`, and inventing sections for one would
     /// be shep deciding how somebody else's config reads.
     ///
-    /// A [`FieldKind::Map`] row is marked not editable, so it draws
-    /// [`Lock::NoWidget`] and refuses with that lock's own sentence. The
-    /// env sub-screen is the only map editor this pane has and it is a
-    /// sheep's env: it writes through `Request::SetSheepEnv` and renders
-    /// [`Self::env_keys`], neither of which means anything for a dog.
+    /// A [`FieldKind::Map`] or [`FieldKind::List`] row is marked not
+    /// editable, so it draws [`Lock::NoWidget`] and refuses with that
+    /// lock's own sentence. Both sub-screens write a sheep: env goes out
+    /// as `Request::SetSheepEnv` over [`Self::env_keys`], and a list as
+    /// `Request::SetSheepField`, while a dog's write replaces its whole
+    /// section through [`Self::edited_section`], which has no rendering
+    /// for an array.
     #[must_use]
     pub fn dog(
         name: String,
@@ -632,7 +883,7 @@ impl ConfigPane {
                 .iter()
                 .cloned()
                 .map(|mut field| {
-                    if field.kind == FieldKind::Map {
+                    if matches!(field.kind, FieldKind::Map | FieldKind::List(_)) {
                         field.editable = false;
                     }
                     field
@@ -656,6 +907,7 @@ impl ConfigPane {
             view: Viewport::new(),
             pending_edit: None,
             env: None,
+            list: None,
             help_open: false,
             section: Some(section),
         }
@@ -722,6 +974,100 @@ impl ConfigPane {
     /// Closes it, leaving the field list up.
     pub(super) fn close_env(&mut self) {
         self.env = None;
+    }
+
+    /// The open list sub-screen, or [`None`] when the field list is what is
+    /// on screen.
+    #[must_use]
+    pub fn list(&self) -> Option<&ListPane> {
+        self.list.as_ref()
+    }
+
+    pub(super) fn list_mut(&mut self) -> Option<&mut ListPane> {
+        self.list.as_mut()
+    }
+
+    /// Opens the list sub-screen over the array field under the cursor.
+    /// Does nothing on any other row.
+    pub(super) fn open_list(&mut self) {
+        let Some(PaneRow::Field(index)) = self.cursor() else {
+            return;
+        };
+        let Some(field) = self.fields.fields().get(index) else {
+            return;
+        };
+        let FieldKind::List(item) = field.kind else {
+            return;
+        };
+        let key = field.key.clone();
+        let elements = self.elements_of(&key);
+        self.list = Some(ListPane::new(key, item, elements));
+    }
+
+    /// Closes it, leaving the field list up.
+    pub(super) fn close_list(&mut self) {
+        self.list = None;
+    }
+
+    /// `key`'s array as one string per element, empty when the field holds
+    /// no array. A non-scalar element renders as compact JSON, which is
+    /// what an editor would have to type back.
+    fn elements_of(&self, key: &str) -> Vec<String> {
+        let Some(Value::Array(values)) = self.values.get(key) else {
+            return Vec::new();
+        };
+        values
+            .iter()
+            .map(|value| match value {
+                Value::String(text) => text.clone(),
+                other => other.to_string(),
+            })
+            .collect()
+    }
+
+    /// Arms the whole array with `text` written at the sub-screen's cursor,
+    /// appended when the cursor is on `+ new`.
+    ///
+    /// The whole array travels as one value: `Request::SetSheepField`
+    /// carries one field, so an element is not a thing the wire can name.
+    pub(super) fn arm_list_element(&mut self, text: String, now: Instant) {
+        let Some(elements) = self.list.as_ref().and_then(|list| list.with_element(text)) else {
+            return;
+        };
+        self.arm_list(elements, now);
+    }
+
+    /// Arms the whole array without the element under the cursor.
+    pub(super) fn arm_list_removal(&mut self, now: Instant) {
+        let Some(elements) = self.list.as_ref().and_then(ListPane::without_element) else {
+            return;
+        };
+        self.arm_list(elements, now);
+    }
+
+    /// Arms the whole array with the element under the cursor moved `delta`
+    /// places. Does nothing at either end, where there is nowhere to move.
+    pub(super) fn arm_list_reorder(&mut self, delta: isize, now: Instant) {
+        let Some(elements) = self.list.as_ref().and_then(|list| list.reordered(delta)) else {
+            return;
+        };
+        self.arm_list(elements, now);
+    }
+
+    fn arm_list(&mut self, elements: Vec<String>, now: Instant) {
+        let Some(list) = self.list.as_ref() else {
+            return;
+        };
+        let edit = PaneEdit::Set {
+            key: list.key().to_owned(),
+            value: list_value(list.item(), &elements).into(),
+        };
+        let text = self.confirm_text(&edit);
+        self.pending_edit = Some(PanePending::Armed {
+            edit,
+            text,
+            at: now,
+        });
     }
 
     /// Whether `h` is showing the selected field's own help text.
@@ -809,6 +1155,7 @@ impl ConfigPane {
             | FieldKind::Text
             | FieldKind::Integer
             | FieldKind::Map
+            | FieldKind::List(_)
             | FieldKind::Opaque => return,
         };
         let edit = PaneEdit::Set {
@@ -1254,6 +1601,22 @@ impl ConfigPane {
         self.env = Some(env);
     }
 
+    /// Re-opens the list sub-screen on the refreshed array, at the cursor
+    /// and offset it had. Setting an element re-reads the whole config,
+    /// and without this the sub-screen would slam shut on the operator's
+    /// own keystroke.
+    pub(super) fn adopt_list_view(&mut self, key: &str, view: Viewport) {
+        let Some(item) = self.fields.by_key(key).and_then(|field| match field.kind {
+            FieldKind::List(item) => Some(item),
+            _ => None,
+        }) else {
+            return;
+        };
+        let mut list = ListPane::new(key.to_owned(), item, self.elements_of(key));
+        list.adopt_view(view);
+        self.list = Some(list);
+    }
+
     #[cfg(test)]
     pub(crate) fn move_to_key(&mut self, key: &str) {
         if let Some(index) = self
@@ -1284,6 +1647,16 @@ mod tests {
             .env
             .insert("DB_HOST".into(), "{{shared:DB_HOST}}".into());
         SheepConfigView::new(config, vec!["max_restarts".into()], vec!["env".into()])
+    }
+
+    fn web_with_args(args: &[&str]) -> SheepConfigView {
+        let config = AppConfig {
+            name: "web".into(),
+            args: args.iter().map(|arg| (*arg).to_string()).collect(),
+            stop_exit_codes: vec![0, 143],
+            ..AppConfig::default()
+        };
+        SheepConfigView::new(config, Vec::new(), Vec::new())
     }
 
     #[test]
@@ -1964,5 +2337,121 @@ mod tests {
             format!("{pane:?}"),
             r#"ConfigPane { target: Sheep { name: "web" }, fields: 39, env_keys: 1, cursor: 0 }"#
         );
+    }
+
+    /// The array is one value, so an element is not a thing the wire can
+    /// name.
+    #[test]
+    fn editing_one_element_sends_the_whole_array() {
+        let mut pane = ConfigPane::sheep(web_with_args(&["--port", "8080"]));
+        pane.move_to_key("args");
+        pane.open_list();
+        pane.list_mut().expect("open").move_to(1);
+        pane.arm_list_element("9090".into(), Instant::now());
+        let Some(PaneEdit::Set { key, value }) = pane.take_armed(1) else {
+            panic!("expected a set");
+        };
+        assert_eq!(key, "args");
+        assert_eq!(value.as_value(), &serde_json::json!(["--port", "9090"]));
+    }
+
+    /// Derived, unlike every other type in this file that touches a value.
+    /// The screen renders its elements, so a `{:?}` that hid them would
+    /// withhold what the operator is already reading. `ConfigPane`'s own
+    /// `Debug` still names no element (`the_panes_debug_names_no_value_it_holds`).
+    #[test]
+    fn a_list_panes_debug_names_its_elements() {
+        let list = ListPane::new(
+            "args".into(),
+            ListItem::Text,
+            vec!["--port".into(), "8080".into()],
+        );
+        assert_eq!(
+            format!("{list:?}"),
+            r#"ListPane { key: "args", item: Text, elements: ["--port", "8080"], view: Viewport { cursor: 0, offset: 0, rows: 0 }, typing: None }"#
+        );
+    }
+
+    /// The operator is mid-word, not wrong, so the editor stays open and
+    /// nothing arms. The same rule `ConfigPane::apply_typing` follows for
+    /// an integer field.
+    #[test]
+    fn an_integer_element_that_does_not_parse_keeps_the_editor_open() {
+        let mut pane = ConfigPane::sheep(web_with_args(&[]));
+        pane.move_to_key("stop_exit_codes");
+        pane.open_list();
+        let list = pane.list_mut().expect("open");
+        list.move_to_last();
+        list.begin_typing();
+        list.type_char('-');
+        assert_eq!(list.apply_typing(), None);
+        assert!(list.typing().is_some(), "the editor is still open");
+        list.type_char('1');
+        assert_eq!(list.apply_typing().as_deref(), Some("-1"));
+    }
+
+    /// The whole array goes out, so a removal and a reorder are the same
+    /// kind of write an element edit is.
+    #[test]
+    fn removing_and_reordering_arm_the_whole_array_too() {
+        let mut pane = ConfigPane::sheep(web_with_args(&["a", "b", "c"]));
+        pane.move_to_key("args");
+        pane.open_list();
+        pane.list_mut().expect("open").move_to(1);
+        pane.arm_list_removal(Instant::now());
+        let Some(PaneEdit::Set { value, .. }) = pane.take_armed(1) else {
+            panic!("expected a set");
+        };
+        assert_eq!(value.as_value(), &serde_json::json!(["a", "c"]));
+
+        pane.arm_list_reorder(-1, Instant::now());
+        let Some(PaneEdit::Set { value, .. }) = pane.take_armed(2) else {
+            panic!("expected a set");
+        };
+        assert_eq!(value.as_value(), &serde_json::json!(["b", "a", "c"]));
+    }
+
+    /// The `+ new` row holds no element, and neither end has anywhere to
+    /// move to, so neither keystroke arms anything at all.
+    #[test]
+    fn a_removal_or_a_move_with_nothing_to_act_on_arms_nothing() {
+        let mut pane = ConfigPane::sheep(web_with_args(&["a", "b"]));
+        pane.move_to_key("args");
+        pane.open_list();
+        pane.list_mut().expect("open").move_to_last();
+        pane.arm_list_removal(Instant::now());
+        assert!(!pane.is_armed(), "the `+ new` row holds no element");
+        pane.list_mut().expect("open").move_to_first();
+        pane.arm_list_reorder(-1, Instant::now());
+        assert!(!pane.is_armed(), "the first element cannot move up");
+    }
+
+    /// An integer array's elements render as digits and travel back as
+    /// numbers, which is what tells `stop_exit_codes` apart from `args`.
+    #[test]
+    fn an_integer_array_travels_as_numbers() {
+        let mut pane = ConfigPane::sheep(web_with_args(&[]));
+        pane.move_to_key("stop_exit_codes");
+        pane.open_list();
+        assert_eq!(pane.list().expect("open").elements(), ["0", "143"]);
+        pane.list_mut().expect("open").move_to(0);
+        pane.arm_list_element("2".into(), Instant::now());
+        let Some(PaneEdit::Set { key, value }) = pane.take_armed(1) else {
+            panic!("expected a set");
+        };
+        assert_eq!(key, "stop_exit_codes");
+        assert_eq!(value.as_value(), &serde_json::json!([2, 143]));
+    }
+
+    /// A dog's write replaces its whole section, and `edited_section` has
+    /// no rendering for an array, so the pane offers no editor for one.
+    #[test]
+    fn a_dogs_array_field_has_no_widget_here() {
+        let schema = serde_json::json!({
+            "properties": { "sinks": { "type": "array", "items": { "type": "string" } } }
+        });
+        let pane = ConfigPane::dog("bark".into(), None, schema, String::new());
+        assert!(!pane.fields().by_key("sinks").expect("declared").editable);
+        assert_eq!(pane.lock("sinks"), Some(Lock::NoWidget));
     }
 }

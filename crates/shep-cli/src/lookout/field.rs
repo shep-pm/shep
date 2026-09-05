@@ -26,8 +26,20 @@ pub enum FieldKind {
     Suggested(Vec<String>),
     /// `type: object` with `additionalProperties`. Opens a sub-screen.
     Map,
+    /// `type: array` of a shape the editor can parse back. Opens a list
+    /// sub-screen.
+    List(ListItem),
     /// Anything else, including a nested object. Read-only, shown as JSON.
     Opaque,
+}
+
+/// What an array's elements are, so the editor can parse one back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListItem {
+    /// `items: {type: string}`. Each element is typed as written.
+    Text,
+    /// `items: {type: integer}`. Each element is parsed back to a number.
+    Integer,
 }
 
 /// Which of shep-core's own string grammars a [`FieldKind::Text`] field
@@ -236,6 +248,11 @@ fn strip_nullable<'a>(schema: &'a Value, defs: &'a Map<String, Value>) -> &'a Va
     }
 }
 
+/// An array's `items` schema, or `Value::Null` when it declares none.
+fn items(schema: &Value) -> &Value {
+    schema.get("items").unwrap_or(&Value::Null)
+}
+
 /// The `type` keyword, which may be a string or a `[T, "null"]` list.
 fn type_of(schema: &Value) -> Option<&str> {
     match schema.get("type")? {
@@ -271,6 +288,13 @@ fn kind_of(schema: &Value, defs: &Map<String, Value>) -> FieldKind {
         Some("boolean") => FieldKind::Bool,
         Some("integer") => FieldKind::Integer,
         Some("string") => FieldKind::Text,
+        // An array of anything else stays `Opaque`, which is what keeps an
+        // array of nested objects read-only rather than half-editable.
+        Some("array") => match type_of(strip_nullable(resolve(items(schema), defs), defs)) {
+            Some("string") => FieldKind::List(ListItem::Text),
+            Some("integer") => FieldKind::List(ListItem::Integer),
+            _ => FieldKind::Opaque,
+        },
         Some("object")
             if schema.get("additionalProperties").is_some()
                 && schema.get("properties").is_none() =>
@@ -660,5 +684,22 @@ mod tests {
                 field.kind
             );
         }
+    }
+
+    #[test]
+    fn an_array_of_strings_is_a_list_and_an_array_of_integers_knows_its_item() {
+        let set = real_field_set();
+        assert_eq!(
+            set.by_key("args").map(|f| f.kind.clone()),
+            Some(FieldKind::List(ListItem::Text))
+        );
+        assert_eq!(
+            set.by_key("stop_exit_codes").map(|f| f.kind.clone()),
+            Some(FieldKind::List(ListItem::Integer))
+        );
+        assert!(
+            set.by_key("args").is_some_and(|f| f.editable),
+            "an array is editable now"
+        );
     }
 }

@@ -56,6 +56,9 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char('e') => Some(KeyPress::Edit),
         KeyCode::Char('h') => Some(KeyPress::Help),
         KeyCode::Char(' ') => Some(KeyPress::Cycle),
+        KeyCode::Char('d') => Some(KeyPress::ListRemove),
+        KeyCode::Char('K') => Some(KeyPress::ListMoveUp),
+        KeyCode::Char('J') => Some(KeyPress::ListMoveDown),
         KeyCode::Enter => Some(KeyPress::Confirm),
         _ => None,
     }
@@ -140,6 +143,18 @@ mod tests {
         assert_eq!(
             map_key(&key(KeyCode::Char('h')), InputMode::Normal),
             Some(KeyPress::Help)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('d')), InputMode::Normal),
+            Some(KeyPress::ListRemove)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('K')), InputMode::Normal),
+            Some(KeyPress::ListMoveUp)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('J')), InputMode::Normal),
+            Some(KeyPress::ListMoveDown)
         );
         assert_eq!(map_key(&key(KeyCode::Char('z')), InputMode::Normal), None);
     }

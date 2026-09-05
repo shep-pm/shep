@@ -102,6 +102,15 @@ pub enum KeyPress {
     /// `h`: shows the selected field's own help text, in the config pane.
     /// Pressing it again, or `Escape`, dismisses it. Bound nowhere else.
     Help,
+    /// `d`: arms the removal of the element under the cursor, on the config
+    /// pane's list sub-screen. Bound nowhere else, and named for that
+    /// screen so every other screen's own keymap reads as the no-op it is.
+    ListRemove,
+    /// `K`: arms the element under the cursor moving up one place, on the
+    /// same sub-screen.
+    ListMoveUp,
+    /// `J`: the same, moving down.
+    ListMoveDown,
 }
 
 /// Everything that can change the dashboard.
@@ -1766,6 +1775,14 @@ impl App {
                     .as_ref()
                     .and_then(ConfigPane::env)
                     .map(|env| (env.view().clone(), env.cursor_key().map(str::to_owned)));
+                // The list sub-screen rides across for the same reason,
+                // and by index rather than by name: an element has no
+                // name. See `ListPane::adopt_view`.
+                let carried_list = self
+                    .config_pane
+                    .as_ref()
+                    .and_then(ConfigPane::list)
+                    .map(|list| (list.key().to_owned(), list.view().clone()));
                 // A question the operator has not answered, or a write
                 // still out, survives the rebuild. Only `Typing` is
                 // dropped. See `ConfigPane::adopt_pending_edit`.
@@ -1783,6 +1800,9 @@ impl App {
                 }
                 if let Some((carried, cursor_key)) = carried_env {
                     pane.adopt_env_view(carried, cursor_key.as_deref());
+                }
+                if let Some((key, carried)) = carried_list {
+                    pane.adopt_list_view(&key, carried);
                 }
                 pane.set_help_open(carried_help);
                 self.config_pane = Some(pane);
@@ -2186,7 +2206,10 @@ impl App {
             KeyPress::TextChar(_)
             | KeyPress::TextBackspace
             | KeyPress::TextApply
-            | KeyPress::TextAbandon => Effect::None,
+            | KeyPress::TextAbandon
+            | KeyPress::ListRemove
+            | KeyPress::ListMoveUp
+            | KeyPress::ListMoveDown => Effect::None,
             // The read, not the open: the screen opens only once
             // `Msg::Settings` lands.
             KeyPress::Settings => Effect::LoadSettings,
@@ -2276,7 +2299,10 @@ impl App {
             | KeyPress::TextBackspace
             | KeyPress::TextApply
             | KeyPress::TextAbandon
-            | KeyPress::Help => {}
+            | KeyPress::Help
+            | KeyPress::ListRemove
+            | KeyPress::ListMoveUp
+            | KeyPress::ListMoveDown => {}
         }
         Effect::None
     }
@@ -2382,6 +2408,13 @@ impl App {
         if self
             .config_pane
             .as_ref()
+            .is_some_and(|pane| pane.list().is_some())
+        {
+            return self.on_list_key(key);
+        }
+        if self
+            .config_pane
+            .as_ref()
             .is_some_and(|pane| pane.env().is_some())
         {
             return self.on_env_key(key);
@@ -2451,7 +2484,10 @@ impl App {
             | KeyPress::TextChar(_)
             | KeyPress::TextBackspace
             | KeyPress::TextApply
-            | KeyPress::TextAbandon => {}
+            | KeyPress::TextAbandon
+            | KeyPress::ListRemove
+            | KeyPress::ListMoveUp
+            | KeyPress::ListMoveDown => {}
         }
         Effect::None
     }
@@ -2635,6 +2671,7 @@ impl App {
     ///
     /// - Something is armed: sends it and marks it sent.
     /// - The cursor is on `env`: opens the env sub-screen.
+    /// - The cursor is on an array field: opens the list sub-screen.
     /// - The cursor is on a typed field: opens the editor and switches
     ///   [`InputMode::Text`] on.
     ///
@@ -2655,7 +2692,11 @@ impl App {
         let locked = pane.cursor_lock().map(|(key, lock)| (key.to_owned(), lock));
         let opens = matches!(
             kind,
-            FieldKind::Map | FieldKind::Text | FieldKind::Integer | FieldKind::Suggested(_)
+            FieldKind::Map
+                | FieldKind::List(_)
+                | FieldKind::Text
+                | FieldKind::Integer
+                | FieldKind::Suggested(_)
         );
         // A row `Enter` was never going to open raises nothing at all: a
         // refusal about a key that was never going to act trains an
@@ -2682,9 +2723,101 @@ impl App {
         };
         if kind == FieldKind::Map {
             pane.open_env();
+        } else if matches!(kind, FieldKind::List(_)) {
+            pane.open_list();
         } else {
             pane.begin_typing();
             self.mode = InputMode::Text;
+        }
+        Effect::None
+    }
+
+    /// The list sub-screen's own keymap, in force for as long as the pane
+    /// holds one.
+    ///
+    /// `Escape` closes the sub-screen, not the pane, the same
+    /// innermost-first rule the env screen follows. `Enter` or `e` opens
+    /// the editor on the element under the cursor, or adds one on `+ new`,
+    /// or sends whatever is armed. `d` removes, and `K`/`J` move the
+    /// element one place.
+    ///
+    /// A removal and a move arm rather than act: the write carries the
+    /// whole array, so a keystroke nobody confirmed would replace the
+    /// array an operator can see with one they have not read.
+    fn on_list_key(&mut self, key: KeyPress) -> Effect {
+        if key == KeyPress::Quit {
+            return Effect::Quit;
+        }
+        if self.config_pane.as_ref().is_some_and(ConfigPane::is_armed)
+            && !matches!(key, KeyPress::Confirm | KeyPress::Edit)
+        {
+            if let Some(pane) = self.config_pane.as_mut() {
+                pane.cancel();
+            }
+            return Effect::None;
+        }
+        let now = self.now;
+        match key {
+            KeyPress::Quit => return Effect::Quit,
+            KeyPress::Escape => {
+                if let Some(pane) = self.config_pane.as_mut() {
+                    pane.close_list();
+                }
+                self.release_text_mode_if_unowned();
+            }
+            KeyPress::SelectUp
+            | KeyPress::SelectDown
+            | KeyPress::SelectFirst
+            | KeyPress::SelectLast => {
+                if let Some(list) = self.config_pane.as_mut().and_then(ConfigPane::list_mut) {
+                    match key {
+                        KeyPress::SelectUp => list.move_by(-1),
+                        KeyPress::SelectDown => list.move_by(1),
+                        KeyPress::SelectFirst => list.move_to_first(),
+                        KeyPress::SelectLast => list.move_to_last(),
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            KeyPress::Refresh => return self.reread_pane(),
+            KeyPress::Confirm | KeyPress::Edit => {
+                if self.config_pane.as_ref().is_some_and(ConfigPane::is_armed) {
+                    return self.send_armed();
+                }
+                if self.authorize_write().is_none() {
+                    return Effect::None;
+                }
+                if let Some(list) = self.config_pane.as_mut().and_then(ConfigPane::list_mut) {
+                    list.begin_typing();
+                    self.mode = InputMode::Text;
+                }
+            }
+            KeyPress::ListRemove => {
+                if self.authorize_write().is_none() {
+                    return Effect::None;
+                }
+                if let Some(pane) = self.config_pane.as_mut() {
+                    pane.arm_list_removal(now);
+                }
+            }
+            KeyPress::ListMoveUp | KeyPress::ListMoveDown => {
+                if self.authorize_write().is_none() {
+                    return Effect::None;
+                }
+                let delta = if key == KeyPress::ListMoveUp { -1 } else { 1 };
+                if let Some(pane) = self.config_pane.as_mut() {
+                    pane.arm_list_reorder(delta, now);
+                }
+            }
+            KeyPress::Action(_)
+            | KeyPress::Cycle
+            | KeyPress::Settings
+            | KeyPress::FilterStart
+            | KeyPress::TextChar(_)
+            | KeyPress::TextBackspace
+            | KeyPress::TextApply
+            | KeyPress::TextAbandon
+            | KeyPress::Help => {}
         }
         Effect::None
     }
@@ -2761,7 +2894,10 @@ impl App {
             | KeyPress::TextBackspace
             | KeyPress::TextApply
             | KeyPress::TextAbandon
-            | KeyPress::Help => {}
+            | KeyPress::Help
+            | KeyPress::ListRemove
+            | KeyPress::ListMoveUp
+            | KeyPress::ListMoveDown => {}
         }
         Effect::None
     }
@@ -2778,6 +2914,13 @@ impl App {
     fn on_pane_text_key(&mut self, key: KeyPress) -> Effect {
         if key == KeyPress::Quit {
             return Effect::Quit;
+        }
+        if self
+            .config_pane
+            .as_ref()
+            .is_some_and(|pane| pane.list().is_some())
+        {
+            return self.on_list_text_key(key);
         }
         if self
             .config_pane
@@ -2804,6 +2947,41 @@ impl App {
             }
             KeyPress::TextAbandon => {
                 pane.abandon_typing();
+                self.mode = InputMode::Normal;
+            }
+            _ => {}
+        }
+        Effect::None
+    }
+
+    /// The list sub-screen's own text keymap.
+    ///
+    /// `TextApply` arms the whole array, so the operator's next `Enter`
+    /// sends it. An integer element whose buffer does not parse keeps the
+    /// editor open, which is why the mode follows what the sub-screen did
+    /// rather than what the key asked for.
+    fn on_list_text_key(&mut self, key: KeyPress) -> Effect {
+        let now = self.now;
+        let Some(pane) = self.config_pane.as_mut() else {
+            return Effect::None;
+        };
+        let Some(list) = pane.list_mut() else {
+            return Effect::None;
+        };
+        match key {
+            KeyPress::TextChar(typed) => list.type_char(typed),
+            KeyPress::TextBackspace => list.type_backspace(),
+            KeyPress::TextApply => {
+                let applied = list.apply_typing();
+                if list.typing().is_none() {
+                    self.mode = InputMode::Normal;
+                }
+                if let Some(text) = applied {
+                    pane.arm_list_element(text, now);
+                }
+            }
+            KeyPress::TextAbandon => {
+                list.abandon_typing();
                 self.mode = InputMode::Normal;
             }
             _ => {}
@@ -3665,6 +3843,9 @@ impl App {
                 // it pays the same one line and no more.
                 env.set_rows(body);
             }
+            if let Some(list) = pane.list_mut() {
+                list.set_rows(body);
+            }
         }
     }
 
@@ -3738,6 +3919,7 @@ mod tests {
     use std::path::Path;
 
     use super::*;
+    use crate::lookout::pane::ListRow;
     use shep_core::protocol::{ProcessEventKind, RpcError, RpcErrorCode};
 
     use super::super::view::fixtures;
@@ -6797,9 +6979,9 @@ mod tests {
     }
 
     /// `instances` is `Lock::Refused`, since shep takes no config write for
-    /// it at all. `args` is `Lock::NoWidget`, since this pane simply has no
-    /// editor for the shape. `Lock` exists so one sentence never covers
-    /// both.
+    /// it at all. `liveness_probe` is `Lock::NoWidget`, since this pane
+    /// simply has no editor for a nested object. `Lock` exists so one
+    /// sentence never covers both.
     #[test]
     fn a_refused_field_and_one_with_no_widget_refuse_for_different_reasons() {
         let mut app = fixtures::app_in_sheep_pane_with_control();
@@ -6813,11 +6995,11 @@ mod tests {
             "a field shep refuses is not a field this pane merely lacks a widget for: {refused}"
         );
 
-        pane_to(&mut app, "args");
+        pane_to(&mut app, "liveness_probe");
         assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
         assert!(app.config_pane().unwrap().pending_edit().is_none());
         let no_widget = app.notice().expect("a refusal is raised").to_string();
-        assert!(no_widget.contains("args"), "{no_widget}");
+        assert!(no_widget.contains("liveness_probe"), "{no_widget}");
         assert!(
             no_widget.contains("Flockfile"),
             "a shape with no widget is still one a Flockfile writes: {no_widget}"
@@ -6839,7 +7021,7 @@ mod tests {
     #[test]
     fn space_and_enter_refuse_a_locked_row_with_the_same_sentence() {
         for control in [Control::ReadOnly, Control::Allowed] {
-            for key in ["instances", "args"] {
+            for key in ["instances", "liveness_probe"] {
                 let mut app = fixtures::app_in_sheep_pane();
                 app.set_control_for_tests(control);
                 pane_to(&mut app, key);
@@ -7437,5 +7619,113 @@ mod tests {
         );
         let notice = app.notice().expect("a locked row answers").to_string();
         assert!(notice.contains("no editor in this pane"), "{notice}");
+    }
+
+    /// Through `Msg::Key`, not `ConfigPane::open_list`: `confirm_field`
+    /// has its own gate listing which kinds `Enter` opens, and a test that
+    /// called the pane method would pass over it.
+    #[test]
+    fn enter_on_an_array_row_opens_the_list_sub_screen() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        pane_to(&mut app, "args");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let list = app
+            .config_pane()
+            .expect("the pane is open")
+            .list()
+            .expect("enter on an array row opens the sub-screen");
+        assert_eq!(list.key(), "args");
+        assert_eq!(list.elements(), ["--port", "8080"]);
+    }
+
+    /// Every key the sub-screen's own hint names, driven the way an
+    /// operator drives them, and the array that lands on the wire at the
+    /// end of it.
+    #[test]
+    fn the_list_sub_screen_edits_removes_and_reorders_one_array() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        pane_to(&mut app, "args");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let _ = app.update(Msg::Key(KeyPress::Edit));
+        assert_eq!(app.mode(), InputMode::Text, "e opens the element editor");
+        for _ in 0..4 {
+            let _ = app.update(Msg::Key(KeyPress::TextBackspace));
+        }
+        for typed in "9090".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        assert_eq!(
+            app.update(Msg::Key(KeyPress::TextApply)),
+            Effect::None,
+            "applying the editor arms; it does not send"
+        );
+        let request = wire(app.update(Msg::Key(KeyPress::Confirm)));
+        let Request::SetSheepField { key, value, .. } = request else {
+            panic!("expected SetSheepField, got {request:?}");
+        };
+        assert_eq!(key, "args");
+        assert_eq!(value, serde_json::json!(["--port", "9090"]));
+
+        let _ = app.update(Msg::Key(KeyPress::ListMoveUp));
+        assert_eq!(
+            armed_value(&app),
+            serde_json::json!(["8080", "--port"]),
+            "K moves the element under the cursor up one place"
+        );
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        let _ = app.update(Msg::Key(KeyPress::ListRemove));
+        assert_eq!(
+            armed_value(&app),
+            serde_json::json!(["--port"]),
+            "d drops the element under the cursor"
+        );
+    }
+
+    /// The candidate an armed edit holds.
+    fn armed_value(app: &App) -> serde_json::Value {
+        match app.config_pane().and_then(ConfigPane::pending_edit) {
+            Some(PanePending::Armed {
+                edit: PaneEdit::Set { value, .. },
+                ..
+            }) => value.as_value().clone(),
+            other => panic!("expected an armed set, got {other:?}"),
+        }
+    }
+
+    /// `Escape` backs out of the sub-screen and leaves the pane up, the
+    /// same one-level-at-a-time rule the env screen follows.
+    #[test]
+    fn escape_leaves_the_list_sub_screen_before_it_closes_the_pane() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        pane_to(&mut app, "args");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.config_pane().unwrap().list().is_none());
+        assert!(app.config_pane().is_some(), "the pane is still open");
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.config_pane().is_none());
+    }
+
+    /// A write re-reads the whole config, so without the carry the
+    /// sub-screen would shut on the operator's own keystroke.
+    #[test]
+    fn the_list_sub_screen_survives_the_refresh_a_write_triggers() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        pane_to(&mut app, "args");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        refresh_config(&mut app, &[]);
+        let list = app
+            .config_pane()
+            .expect("the pane is open")
+            .list()
+            .expect("the sub-screen rides across the refresh");
+        assert_eq!(list.key(), "args");
+        assert_eq!(
+            list.cursor(),
+            Some(ListRow::New),
+            "a cursor past the end lands on the row where enter destroys nothing"
+        );
     }
 }
