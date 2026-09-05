@@ -506,12 +506,16 @@ pub enum ListRow {
 /// `Debug` is derived for the same reason. The elements are the values
 /// themselves, so this is the one type in this file whose `{:?}` prints a
 /// config value; [`ConfigPane`]'s own `Debug` does not print this field.
-/// Exact-string-tested below (`a_list_panes_debug_names_its_elements`).
+/// `Debug` is redacted (IR-41), like [`ConfigPane`]'s and for its reason:
+/// `args` is where a token reaches a process, `--token hunter2`. The screen
+/// shows an element because an operator is editing their own config; a log
+/// line, a panic or an error chain is read by whoever has the file.
+/// Exact-string-tested below (`a_list_panes_debug_names_no_element`).
 ///
 /// Elements are held as text, not as [`Value`]: an editor types text, and
 /// [`ListItem`] is what turns the whole array back into JSON on the way
 /// out.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ListPane {
     key: String,
     item: ListItem,
@@ -766,6 +770,23 @@ pub struct ConfigPane {
     /// throw away every comment the operator wrote. See
     /// [`Self::edited_section`].
     section: Option<String>,
+}
+
+impl core::fmt::Debug for ListPane {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "ListPane {{ key: {:?}, item: {:?}, elements: {}, typing: {} }}",
+            self.key,
+            self.item,
+            self.elements.len(),
+            if self.typing.is_some() {
+                "some"
+            } else {
+                "none"
+            }
+        )
+    }
 }
 
 impl core::fmt::Debug for ConfigPane {
@@ -2360,15 +2381,15 @@ mod tests {
     /// withhold what the operator is already reading. `ConfigPane`'s own
     /// `Debug` still names no element (`the_panes_debug_names_no_value_it_holds`).
     #[test]
-    fn a_list_panes_debug_names_its_elements() {
+    fn a_list_panes_debug_names_no_element() {
         let list = ListPane::new(
             "args".into(),
             ListItem::Text,
-            vec!["--port".into(), "8080".into()],
+            vec!["--token".into(), "hunter2".into()],
         );
         assert_eq!(
             format!("{list:?}"),
-            r#"ListPane { key: "args", item: Text, elements: ["--port", "8080"], view: Viewport { cursor: 0, offset: 0, rows: 0 }, typing: None }"#
+            r#"ListPane { key: "args", item: Text, elements: 2, typing: none }"#
         );
     }
 
