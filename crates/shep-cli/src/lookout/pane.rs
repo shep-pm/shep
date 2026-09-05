@@ -503,9 +503,6 @@ pub enum ListRow {
 /// the screen unable to say which element the cursor is on while still
 /// letting an operator overwrite it.
 ///
-/// `Debug` is derived for the same reason. The elements are the values
-/// themselves, so this is the one type in this file whose `{:?}` prints a
-/// config value; [`ConfigPane`]'s own `Debug` does not print this field.
 /// `Debug` is redacted (IR-41), like [`ConfigPane`]'s and for its reason:
 /// `args` is where a token reaches a process, `--token hunter2`. The screen
 /// shows an element because an operator is editing their own config; a log

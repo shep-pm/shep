@@ -3345,11 +3345,6 @@ impl App {
         }
     }
 
-    /// Arms a confirm, or refuses and says why.
-    ///
-    /// Every refusal happens here rather than at confirm time, so an operator
-    /// never answers a question that was never going to be honoured. The ladder
-    /// is gate, link, nothing selected, one already in flight.
     /// Why the shepherd cannot be sent to right now, if it cannot.
     ///
     /// Shared by the dashboard's action keys and the pane's apply menu: a
@@ -3367,6 +3362,11 @@ impl App {
         }
     }
 
+    /// Arms a confirm, or refuses and says why.
+    ///
+    /// Every refusal happens here rather than at confirm time, so an operator
+    /// never answers a question that was never going to be honoured. The ladder
+    /// is gate, link, nothing selected, one already in flight.
     fn arm(&mut self, verb: ActionVerb) -> Effect {
         let refusal = if self.control == Control::ReadOnly {
             Some(READ_ONLY_REFUSAL.to_string())

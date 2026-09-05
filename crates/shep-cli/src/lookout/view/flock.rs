@@ -228,17 +228,6 @@ const NO_MEM: &[Column] = &[
 const NO_CPU: &[Column] = &[Column::Id, Column::Name, Column::Status, Column::Uptime];
 const FLOOR: &[Column] = &[Column::Id, Column::Name, Column::Status];
 
-/// Width thresholds, widest first. Each entry is the narrowest terminal that
-/// still gets that column set.
-///
-/// The drop order is least-diagnostic first: FOLD is grouping metadata,
-/// RESTARTS and PID answer follow-up questions, CPU and MEM explain why a
-/// running sheep is behaving badly, and EXIT renders `-` for every running
-/// sheep, the common case. `ID NAME STATUS` is the floor.
-///
-/// CFG has its own drop tier, one tier before SMIT's, keeping `NO_CFG`'s
-/// threshold at 116 so a 120-column terminal, the gallery's fixture width,
-/// still shows SMIT.
 /// The narrowest terminal that still draws the `CFG` column.
 ///
 /// Read by the status bar's own test: the legend explaining `*` and `!`
@@ -253,6 +242,17 @@ pub(super) fn cfg_tier_width() -> u16 {
         .expect("a tier draws CFG")
 }
 
+/// Width thresholds, widest first. Each entry is the narrowest terminal that
+/// still gets that column set.
+///
+/// The drop order is least-diagnostic first: FOLD is grouping metadata,
+/// RESTARTS and PID answer follow-up questions, CPU and MEM explain why a
+/// running sheep is behaving badly, and EXIT renders `-` for every running
+/// sheep, the common case. `ID NAME STATUS` is the floor.
+///
+/// CFG has its own drop tier, one tier before SMIT's, keeping `NO_CFG`'s
+/// threshold at 116 so a 120-column terminal, the gallery's fixture width,
+/// still shows SMIT.
 const TIERS: &[(u16, &[Column])] = &[
     (122, ALL),
     (116, NO_CFG),
