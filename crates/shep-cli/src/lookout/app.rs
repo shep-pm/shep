@@ -2653,7 +2653,10 @@ impl App {
             return Effect::None;
         };
         let locked = pane.cursor_lock().map(|(key, lock)| (key.to_owned(), lock));
-        let opens = matches!(kind, FieldKind::Map | FieldKind::Text | FieldKind::Integer);
+        let opens = matches!(
+            kind,
+            FieldKind::Map | FieldKind::Text | FieldKind::Integer | FieldKind::Suggested(_)
+        );
         // A row `Enter` was never going to open raises nothing at all: a
         // refusal about a key that was never going to act trains an
         // operator to ignore the status bar. A bool and a choice are
@@ -7075,6 +7078,23 @@ mod tests {
             app.config_pane().unwrap().pending_edit().cloned(),
             sent,
             "the in-flight line survives the landed write's own re-read"
+        );
+    }
+
+    /// The pane-level test reaches `begin_typing` directly, so it passes
+    /// over a dead key path. This one presses the key.
+    #[test]
+    fn e_opens_the_editor_on_a_suggested_field() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        pane_to(&mut app, "kill_signal");
+        let _ = app.update(Msg::Key(KeyPress::Edit));
+        assert!(
+            matches!(
+                app.config_pane().and_then(ConfigPane::pending_edit),
+                Some(PanePending::Typing { .. })
+            ),
+            "{:?}",
+            app.config_pane().and_then(ConfigPane::pending_edit)
         );
     }
 
