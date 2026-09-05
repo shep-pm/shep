@@ -103,7 +103,7 @@ out  connection pool: 14/50 in use
 read-only: actions need --allow-control                                                                        read-only`;
 
 const startCmds = `$ shep lookout
-$ shep lookout --allow-control`;
+$ shep lookout --read-only`;
 
 const feedExcerpt = `bleats  api  … 525 earlier lines not shown, and 3.8M before them never read
 bleats  api  out then err  from the log files, re-read with each listing
@@ -279,8 +279,8 @@ esc/s close   j/k select   g/G fir… read-only`;
     <h2>Start it</h2>
     <CodeBlock>{startCmds}</CodeBlock>
     <p class="fine">
-      <code>--allow-control</code> opens the action gate, covered below. It's
-      off by default.
+      <code>--read-only</code> closes the action gate, covered below. It's
+      on by default.
     </p>
 
     <h2>The flock table</h2>
@@ -426,8 +426,8 @@ esc/s close   j/k select   g/G fir… read-only`;
 
     <h2>Actions</h2>
     <p>
-      <code>--allow-control</code> (or <code>shep set lookout.allow_control
-      true</code>) opens the gate; it's closed by default, and closed means
+      <code>--read-only</code> (or <code>shep set lookout.allow_control
+      false</code>) closes the gate; it's open by default, and closed means
       every action key refuses with a plain sentence rather than silently
       doing nothing:
     </p>
@@ -473,9 +473,8 @@ esc/s close   j/k select   g/G fir… read-only`;
       or <code>Esc</code> closes it again, back to the flock table.
     </p>
     <p>
-      Reading this screen needs nothing. It opens under a plain
-      <code>shep lookout</code>, with no <code>--allow-control</code>, the
-      same as everything else on the dashboard. Changing a value is a
+      Reading this screen needs nothing, gate open or closed, the same as
+      everything else on the dashboard. Changing a value is a
       different story: every edit and the dog toggle need the same gate the
       action keys do, and refuse the same way if it's closed.
     </p>
@@ -573,8 +572,9 @@ esc/s close   j/k select   g/G fir… read-only`;
     <p>
       <code>e</code> on a selected sheep opens its config over the dashboard:
       every Flockfile field, the value in force, and what changing it would
-      cost. It writes as well, behind <code>--allow-control</code>. Without
-      the flag the edit keys refuse the same way <code>x</code> does. A row
+      cost. It writes as well, behind the same gate. Under
+      <code>--read-only</code> the edit keys refuse the same way
+      <code>x</code> does. A row
       marked <code>=</code> or <code>~</code> gives its own reason instead,
       in both states, because the flag would not have helped it.
     </p>

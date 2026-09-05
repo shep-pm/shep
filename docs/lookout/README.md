@@ -42,8 +42,8 @@ cargo test -p shep --lib --all-features -- --ignored write_the_gallery
   ordinary `daemon_unreachable` refusal every other verb gives, not eight
   seconds of a full-screen dashboard cycling "reconnecting" for a shepherd
   that was never there.
-- **Actions are gated off by default, and it says so.** `--allow-control`
-  (or `lookout.allow_control = "true"` in the KV store) has to be set before
+- **Actions are on by default, and it says so.** `--read-only` (or
+  `lookout.allow_control = "false"` in the KV store) closes the gate before
   any action key does anything. Three action keys exist — `x` (stop), `R`
   (restart) and `L` (reload) — and none of them acts on the keypress that
   pressed it: an action key arms a confirm, Enter confirms it, any other key
