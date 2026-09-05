@@ -1283,7 +1283,7 @@ mod tests {
     }
 
     #[test]
-    fn a_sheep_pane_has_thirty_nine_fields_in_four_groups() {
+    fn a_sheep_pane_has_thirty_nine_fields_in_eight_groups() {
         let pane = ConfigPane::sheep(web());
         assert_eq!(pane.fields().len(), 39);
         assert!(!pane.fields().is_empty());
@@ -1294,7 +1294,19 @@ mod tests {
                 groups.push(group);
             }
         }
-        assert_eq!(groups, ["process", "inputs", "control", "cron"]);
+        assert_eq!(
+            groups,
+            [
+                "process",
+                "logging",
+                "inputs",
+                "restart",
+                "readiness",
+                "shutdown",
+                "watch",
+                "cron"
+            ]
+        );
     }
 
     #[test]

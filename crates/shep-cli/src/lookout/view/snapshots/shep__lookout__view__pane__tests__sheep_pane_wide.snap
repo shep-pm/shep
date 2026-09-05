@@ -5,18 +5,19 @@ expression: "text_of(&lines).join(\"\\n\")"
   web  (sheep config)                                                                                                   
   process
 >  cwd                        (unset)                                                                         respawn   
-   err_file                   (unset)                                                                         respawn   
    fold                       (unset)                                                                         now       
    group                      (unset)                                                                         respawn   
  = instances                  3                                                                               read-only 
    interpreter                (unset)                                                                         respawn   
-  !kill_signal                (unset)                                                                         next start
-   merge_logs                 false                                                                           respawn   
  = name                       web                                                                             read-only 
-   out_file                   (unset)                                                                         respawn   
   *reuse_port                 false                                                                           now       
    script                     ./srv                                                                           respawn   
    user                       (unset)                                                                         respawn   
+
+  logging
+   err_file                   (unset)                                                                         respawn   
+   merge_logs                 false                                                                           respawn   
+   out_file                   (unset)                                                                         respawn   
 
   inputs
  ~ args                       ["--port","8080"]                                                               respawn   
@@ -24,24 +25,31 @@ expression: "text_of(&lines).join(\"\\n\")"
    env                        2 keys                                                                          respawn   
    stdin                      false                                                                           respawn   
 
-  control
-   action_timeout             3s                                                                              now       
+  restart
    autorestart                true                                                                            now       
    autostart                  true                                                                            next start
    exp_backoff_restart_delay  100ms                                                                           now       
-   graceful_timeout           8s                                                                              now       
- ~ ignore_watch               []                                                                              now       
-   kill_timeout               1600ms                                                                          now       
-   listen_timeout             3s                                                                              next start
- ~ liveness_probe             (unset)                                                                         now       
    max_memory                 (unset)                                                                         now       
   *max_restarts               32                                                                              now       
    min_uptime                 1s                                                                              now       
- ~ readiness_probe            (unset)                                                                         next start
    restart_delay              (unset)                                                                         now       
-   shutdown_with_message      false                                                                           respawn   
  ~ stop_exit_codes            []                                                                              now       
+
+  readiness
+   listen_timeout             3s                                                                              next start
+ ~ liveness_probe             (unset)                                                                         now       
+ ~ readiness_probe            (unset)                                                                         next start
    wait_ready                 false                                                                           respawn   
+
+  shutdown
+   action_timeout             3s                                                                              now       
+   graceful_timeout           8s                                                                              now       
+  !kill_signal                (unset)                                                                         next start
+   kill_timeout               1600ms                                                                          now       
+   shutdown_with_message      false                                                                           respawn   
+
+  watch
+ ~ ignore_watch               []                                                                              now       
    watch                      false                                                                           now       
    watch_delay                (unset)                                                                         now       
  ~ watch_options              []                                                                              now       

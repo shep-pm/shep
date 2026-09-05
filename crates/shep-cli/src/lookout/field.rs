@@ -322,11 +322,21 @@ fn field_from(key: &str, schema: &Value, defs: &Map<String, Value>) -> Field {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
     use serde_json::json;
 
     fn props(v: serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
         v.as_object().unwrap().clone()
+    }
+
+    /// The real Flockfile schema's fields, in the order a pane would build them.
+    fn real_field_set() -> FieldSet {
+        let schema = shep_core::config::flockfile_schema_json().to_value();
+        let defs = schema["$defs"].as_object().unwrap();
+        let props = defs["AppConfig"]["properties"].as_object().unwrap();
+        FieldSet::from_properties(props, defs, shep_core::config::GROUP_ORDER)
     }
 
     /// The groups the set's fields carry, in the order they first appear.
@@ -540,13 +550,22 @@ mod tests {
     }
 
     #[test]
-    fn the_real_flockfile_schema_yields_thirty_nine_fields_in_four_groups() {
-        let schema = shep_core::config::flockfile_schema_json().to_value();
-        let defs = schema["$defs"].as_object().unwrap();
-        let props = defs["AppConfig"]["properties"].as_object().unwrap();
-        let set = FieldSet::from_properties(props, defs, shep_core::config::GROUP_ORDER);
+    fn the_real_flockfile_schema_yields_thirty_nine_fields_in_eight_groups() {
+        let set = real_field_set();
         assert_eq!(set.len(), 39);
-        assert_eq!(groups_of(&set), ["process", "inputs", "control", "cron"]);
+        assert_eq!(
+            groups_of(&set),
+            [
+                "process",
+                "logging",
+                "inputs",
+                "restart",
+                "readiness",
+                "shutdown",
+                "watch",
+                "cron"
+            ]
+        );
         assert!(
             set.fields().iter().all(|f| f.group.is_some()),
             "every field carries a group"
@@ -556,11 +575,24 @@ mod tests {
     }
 
     #[test]
+    fn no_group_holds_more_than_a_third_of_the_fields() {
+        let set = real_field_set();
+        let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+        for field in set.fields() {
+            *counts
+                .entry(field.group.as_deref().unwrap_or(""))
+                .or_default() += 1;
+        }
+        let (worst, count) = counts
+            .iter()
+            .max_by_key(|(_, n)| **n)
+            .expect("fields exist");
+        assert!(*count <= 13, "{worst} holds {count} of {}", set.len());
+    }
+
+    #[test]
     fn the_real_flockfile_schema_marks_every_mem_size_and_up_duration_field() {
-        let schema = shep_core::config::flockfile_schema_json().to_value();
-        let defs = schema["$defs"].as_object().unwrap();
-        let props = defs["AppConfig"]["properties"].as_object().unwrap();
-        let set = FieldSet::from_properties(props, defs, shep_core::config::GROUP_ORDER);
+        let set = real_field_set();
         assert_eq!(
             set.by_key("max_memory").unwrap().value_kind,
             Some(ValueKind::MemSize)

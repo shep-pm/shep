@@ -121,38 +121,38 @@ pub struct AppConfig {
     pub instances: u32,
     /// Restart on unexpected exit
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "group": "control",
+        "group": "restart",
         "blurb": "Restarts the process automatically when it exits unexpectedly"
     })))]
     pub autorestart: bool,
     /// Start when the daemon starts / on `shep muster`
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "group": "control",
+        "group": "restart",
         "blurb": "Start this app when the daemon starts, and on shep muster"
     })))]
     pub autostart: bool,
     /// Exit codes treated as clean stop (no restart)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "group": "control",
+        "group": "restart",
         "blurb": "Exit codes that mean a clean stop, so shep will not restart"
     })))]
     pub stop_exit_codes: Vec<i32>,
     /// Uptime below this marks an exit as unstable
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "group": "control",
+        "group": "restart",
         "blurb": "An exit sooner than this counts as unstable"
     })))]
     pub min_uptime: UpDuration,
     /// Consecutive unstable exits before `errored`
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "group": "control",
+        "group": "restart",
         "blurb": "How many unstable exits in a row before shep gives up"
     })))]
     pub max_restarts: u32,
     /// Fixed delay before every restart (alternative to backoff)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "3s",
-        "group": "control",
+        "group": "restart",
         "blurb": "A fixed wait before every restart, instead of growing backoff"
     })))]
     pub restart_delay: Option<UpDuration>,
@@ -173,7 +173,7 @@ pub struct AppConfig {
     /// nonzero `restart_delay` is also configured.
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "5s",
-        "group": "control",
+        "group": "restart",
         "blurb": "Starting delay between restarts, growing each time it fails again"
     })))]
     pub exp_backoff_restart_delay: Option<UpDuration>,
@@ -186,31 +186,31 @@ pub struct AppConfig {
     /// `cron_restart` and the watch globs already use.
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "SIGTERM",
-        "group": "process",
+        "group": "shutdown",
         "blurb": "Which signal shep sends first when stopping this app"
     })))]
     pub kill_signal: Option<String>,
     /// Grace period between stop signal and SIGKILL
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "group": "control",
+        "group": "shutdown",
         "blurb": "How long shep waits after the stop signal before SIGKILL"
     })))]
     pub kill_timeout: UpDuration,
     /// Send `{"kind":"shutdown"}` on the shepherd channel instead of a signal
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "group": "control",
+        "group": "shutdown",
         "blurb": "Ask the app to stop over the channel instead of signalling it"
     })))]
     pub shutdown_with_message: bool,
     /// Readiness fallback window when no ready signal/probe configured
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "group": "control",
+        "group": "readiness",
         "blurb": "How long to wait for readiness when nothing else reports it"
     })))]
     pub listen_timeout: UpDuration,
     /// Drain window for the old instance during reload
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "group": "control",
+        "group": "shutdown",
         "blurb": "How long the old instance gets to drain during a reload"
     })))]
     pub graceful_timeout: UpDuration,
@@ -232,33 +232,33 @@ pub struct AppConfig {
     /// choice to widen its own deadline, not a config error this crate can
     /// see.
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "group": "control",
+        "group": "shutdown",
         "blurb": "How long a triggered action has to answer before shep gives up"
     })))]
     pub action_timeout: UpDuration,
     /// Memory ceiling — polling enforcer restarts above this
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "512M",
-        "group": "control",
+        "group": "restart",
         "blurb": "Restart the app if it climbs above this much memory"
     })))]
     pub max_memory: Option<MemSize>,
     /// Watch files and restart on change
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "group": "control",
+        "group": "watch",
         "blurb": "Restart when a file changes"
     })))]
     pub watch: bool,
     /// Watch ignore globs (defaults added daemon-side: dot-entries, node_modules)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "group": "control",
+        "group": "watch",
         "blurb": "Paths watch should skip, on top of dotfiles and node_modules"
     })))]
     pub ignore_watch: Vec<String>,
     /// Watch debounce window (default 500ms, applied daemon-side)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "500",
-        "group": "control",
+        "group": "watch",
         "blurb": "How long to wait after a change before restarting"
     })))]
     pub watch_delay: Option<UpDuration>,
@@ -293,20 +293,20 @@ pub struct AppConfig {
     /// Stdout log file (default: `$SHEP_HOME/logs/<name>-<instance>-out.log`; `merge_logs` collapses to `<name>-out.log`)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "/var/log/my-first-sheep/out.log",
-        "group": "process",
+        "group": "logging",
         "blurb": "Where stdout goes. Defaults to a file under $SHEP_HOME/logs"
     })))]
     pub out_file: Option<String>,
     /// Stderr log file (default: `$SHEP_HOME/logs/<name>-<instance>-err.log`; `merge_logs` collapses to `<name>-err.log`)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "/var/log/my-first-sheep/err.log",
-        "group": "process",
+        "group": "logging",
         "blurb": "Where stderr goes. Defaults to a file under $SHEP_HOME/logs"
     })))]
     pub err_file: Option<String>,
     /// Merge instance logs into one file pair
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "group": "process",
+        "group": "logging",
         "blurb": "Put every instance's output in one pair of files"
     })))]
     pub merge_logs: bool,
@@ -353,7 +353,7 @@ pub struct AppConfig {
     pub stdin: bool,
     /// Expect `{"kind":"ready"}` on the shepherd channel
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "group": "control",
+        "group": "readiness",
         "blurb": "Wait for the app to say it is ready on the channel"
     })))]
     pub wait_ready: bool,
@@ -400,20 +400,20 @@ pub struct AppConfig {
     /// Readiness probe — gates reload's AwaitReady (spec §7)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": { "kind": "http", "target": "http://127.0.0.1:8080/ready" },
-        "group": "control",
+        "group": "readiness",
         "blurb": "A health check shep waits on before it treats a reload as finished"
     })))]
     pub readiness_probe: Option<ProbeConfig>,
     /// Liveness probe — failures feed the restart policy (spec §7)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": { "kind": "http", "target": "http://127.0.0.1:8080/healthz" },
-        "group": "control",
+        "group": "readiness",
         "blurb": "A health check that triggers a restart when it keeps failing"
     })))]
     pub liveness_probe: Option<ProbeConfig>,
     /// Watch include globs (empty = watch cwd)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "group": "control",
+        "group": "watch",
         "blurb": "Which paths to watch. Empty means the working directory"
     })))]
     pub watch_options: Vec<String>,

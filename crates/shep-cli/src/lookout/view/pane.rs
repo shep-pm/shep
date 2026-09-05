@@ -6,11 +6,11 @@
 //! between the title and the status bar, both have more rows than a
 //! terminal has lines, and both pay for chrome the viewport cannot see.
 //! The scroll walk is shared ([`super::scroll::to_cursor`]); the layout
-//! below is this pane's own, since a field list under four headers and a
+//! below is this pane's own, since a field list under eight headers and a
 //! settings screen with a dogs table share almost no lines.
 //!
-//! A sheep pane is 39 rows plus a title, four headers and three blank
-//! separators: eight lines of chrome before a marker is paid for.
+//! A sheep pane is 39 rows plus a title, eight headers and seven blank
+//! separators: sixteen lines of chrome before a marker is paid for.
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -775,10 +775,10 @@ mod tests {
             glyphed('~'),
             [
                 "args",
-                "ignore_watch",
+                "stop_exit_codes",
                 "liveness_probe",
                 "readiness_probe",
-                "stop_exit_codes",
+                "ignore_watch",
                 "watch_options"
             ]
         );
@@ -1017,13 +1017,19 @@ mod tests {
                 120,
                 0,
             ));
+            // A group header line is bare, just its name; a field row always
+            // carries a value and a cost cell after the key, so the header
+            // never matches once a second token is required. `key` can equal
+            // its own group's name (the `watch` field, the `watch` group).
             let row = text
                 .iter()
                 .find(|line| {
-                    line.split_whitespace().next() == Some(key)
-                        || line
-                            .get(3..)
-                            .is_some_and(|rest| rest.split_whitespace().next() == Some(key))
+                    let mut words = line.split_whitespace();
+                    let mut rest = line.get(3..).map(str::split_whitespace);
+                    (words.next() == Some(key) && words.next().is_some())
+                        || rest
+                            .as_mut()
+                            .is_some_and(|w| w.next() == Some(key) && w.next().is_some())
                 })
                 .unwrap_or_else(|| panic!("{key} is drawn at 120 columns: {text:?}"));
             assert!(row.contains(column), "{key}: {row:?}");
