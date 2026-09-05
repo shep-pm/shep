@@ -451,13 +451,14 @@ fn list_lines(
     if body_budget == 0 {
         return lines;
     }
+    let secret = pane.fields().by_key(list.key()).is_some_and(|f| f.secret);
     let rows = list.rows();
     let cursor_row = list.view().cursor().min(rows.len().saturating_sub(1));
     lines.extend(super::scroll::to_cursor(
         cursor_row,
         list.view().offset(),
-        |offset| list_body_from(list, palette, width, body_budget, offset),
-        || vec![list_line(list, cursor_row, true, width, palette)],
+        |offset| list_body_from(list, palette, width, body_budget, offset, secret),
+        || vec![list_line(list, cursor_row, true, width, palette, secret)],
     ));
     lines
 }
@@ -467,12 +468,16 @@ fn list_lines(
 ///
 /// The position is drawn because `K` and `J` move an element by one, so a
 /// row that did not say where it was would leave an operator counting.
+/// `secret` masks an unset element the same way [`field_line`] masks a
+/// `x-shep-secret` field; nothing in today's schemas sets it on an array,
+/// but a future one could.
 fn list_line(
     list: &ListPane,
     index: usize,
     selected: bool,
     width: u16,
     palette: Palette,
+    secret: bool,
 ) -> Line<'static> {
     let body = body_width(width);
     let position_w = POSITION_W.min(body);
@@ -486,10 +491,16 @@ fn list_line(
             format!("{item}"),
             typed.map_or_else(
                 || {
-                    list.elements()
+                    let raw = list
+                        .elements()
                         .get(item)
                         .cloned()
-                        .unwrap_or_else(|| "(unset)".to_owned())
+                        .unwrap_or_else(|| "(unset)".to_owned());
+                    if secret && raw != "(unset)" {
+                        "<set>".to_owned()
+                    } else {
+                        raw
+                    }
                 },
                 |buffer| format!("{buffer}\u{258f}"),
             ),
@@ -521,6 +532,7 @@ fn list_body_from(
     width: u16,
     budget: usize,
     offset: usize,
+    secret: bool,
 ) -> Attempt {
     let rows = list.rows();
     let total = rows.len();
@@ -532,7 +544,14 @@ fn list_body_from(
         if lines.len() + 1 + above + usize::from(index + 1 < total) > budget {
             break;
         }
-        lines.push(list_line(list, index, index == cursor_row, width, palette));
+        lines.push(list_line(
+            list,
+            index,
+            index == cursor_row,
+            width,
+            palette,
+            secret,
+        ));
         drawn += 1;
     }
     let hidden_below = total.saturating_sub(offset + drawn);
@@ -1580,6 +1599,53 @@ mod tests {
         assert!(
             !lines.iter().any(|l| l.contains(r#"["--port"]"#)),
             "the element is a row of its own, not the field list's JSON cell: {lines:?}"
+        );
+    }
+
+    /// A dog pane with one array field marked `x-shep-secret`, two elements
+    /// already set, cursor opened onto the list sub-screen.
+    fn secret_list_dog_pane() -> ConfigPane {
+        let schema = serde_json::json!({
+            "properties": {
+                "tokens": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "x-shep-secret": true,
+                }
+            }
+        });
+        let mut pane = ConfigPane::dog(
+            "watch".into(),
+            None,
+            schema,
+            "tokens = [\"ab12cd34\", \"ef56gh78\"]\n".into(),
+        );
+        pane.move_to_key("tokens");
+        pane.open_list();
+        pane
+    }
+
+    /// No Flockfile field is secret today, but a dog's schema can mark one,
+    /// and the list sub-screen has to mask it the same way the field list
+    /// and the confirm sentence already do.
+    #[test]
+    fn the_list_screen_masks_a_secret_arrays_elements() {
+        let text = text_of(&pane_lines(
+            &secret_list_dog_pane(),
+            None,
+            fixtures::plain(),
+            120,
+            0,
+        ));
+        assert!(
+            !text
+                .iter()
+                .any(|line| line.contains("ab12cd34") || line.contains("ef56gh78")),
+            "a secret element is never rendered: {text:?}"
+        );
+        assert!(
+            text.iter().filter(|line| line.contains("<set>")).count() == 2,
+            "both elements mask to <set>: {text:?}"
         );
     }
 
