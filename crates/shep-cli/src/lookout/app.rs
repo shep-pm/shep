@@ -4289,6 +4289,25 @@ mod tests {
     }
 
     #[test]
+    fn moving_up_steps_over_a_section_header() {
+        let mut app = fixtures::app_with_a_dog();
+        app.select_at(app.visible_rows().len() - 1, -1);
+        let before = app.selected();
+        // Walk the whole list; a header must never become the selection.
+        for _ in 0..app.visible_rows().len() + 2 {
+            let _ = app.update(Msg::Key(KeyPress::SelectUp));
+            assert!(
+                !matches!(app.selected(), Some(RowKey::Section(_))),
+                "landed on a header from {before:?}"
+            );
+        }
+        // The walk has to actually cross the `Dogs` header going up, not
+        // just avoid landing on it: it should reach the first row, `api`
+        // sorting ahead of `web`.
+        assert_eq!(app.selected(), Some(RowKey::Sheep(2)), "{before:?}");
+    }
+
+    #[test]
     fn an_action_on_a_group_row_targets_the_whole_app_by_name() {
         let mut app = allowed_with_instances();
         app.select(RowKey::Group("web".to_string()));

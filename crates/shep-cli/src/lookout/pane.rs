@@ -2540,6 +2540,21 @@ mod tests {
         assert_eq!(value.as_value(), &serde_json::json!(["b", "a", "c"]));
     }
 
+    /// `J`'s direction. Only `-1` is exercised above, and the two share
+    /// one arm in `arm_list_reorder`.
+    #[test]
+    fn moving_an_element_down_arms_the_whole_array() {
+        let mut pane = ConfigPane::sheep(web_with_args(&["a", "b", "c"]));
+        pane.move_to_key("args");
+        pane.open_list();
+        pane.list_mut().expect("open").move_to(0);
+        pane.arm_list_reorder(1, Instant::now());
+        let Some(PaneEdit::Set { value, .. }) = pane.take_armed(1) else {
+            panic!("expected a set");
+        };
+        assert_eq!(value.as_value(), &serde_json::json!(["b", "a", "c"]));
+    }
+
     /// The `+ new` row holds no element, and neither end has anywhere to
     /// move to, so neither keystroke arms anything at all.
     #[test]

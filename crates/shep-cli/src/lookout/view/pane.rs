@@ -1588,6 +1588,34 @@ mod tests {
         text_of(&pane_lines(&pane, None, fixtures::plain(), width, height))
     }
 
+    /// The dashboard with `web` selected and its list sub-screen open on
+    /// `args`, reached the way an operator reaches it: `e`, the shepherd's
+    /// reply, walk to the row, `Enter`.
+    fn app_on_the_list_screen(args: &[&str]) -> crate::lookout::app::App {
+        let mut app = fixtures::with_selection(
+            shep_core::protocol::ProcessInfo::builder(
+                9,
+                "web",
+                shep_core::status::ProcStatus::Online,
+            )
+            .pid(Some(48_000))
+            .build(),
+        );
+        app.set_control_for_tests(crate::lookout::app::Control::Allowed);
+        app.update(Msg::Key(KeyPress::Edit));
+        app.update(Msg::Replied {
+            sent: crate::lookout::app::Sent::SheepConfig {
+                name: "web".to_string(),
+            },
+            result: Ok(shep_core::protocol::Response::SheepConfig(Box::new(
+                web_with_args(args),
+            ))),
+        });
+        pane_to(&mut app, "args");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        app
+    }
+
     /// Env is write-only because the shepherd sends no value; an array
     /// arrives with the config, so a screen that hid it could not say
     /// which element the cursor is on.
@@ -1699,9 +1727,14 @@ mod tests {
 
     /// The invariant `view::scroll` exists to hold, at the shortest height
     /// the pane claims to draw: one row is marked at every step of a walk.
+    ///
+    /// Reached through `screen_at`, the way the field list's own twin
+    /// (`the_cursor_survives_every_step_of_a_walk_down_and_back_up`) reaches
+    /// it, so the budget is the real `body_rows`: four rows at
+    /// `MIN_HEIGHT`, not `MIN_HEIGHT` itself.
     #[test]
     fn the_list_cursor_survives_every_step_at_the_minimum_height() {
-        let mut pane = ConfigPane::sheep(web_with_args(&[
+        let args = [
             "--port",
             "8080",
             "--host",
@@ -1710,29 +1743,14 @@ mod tests {
             "--log",
             "debug",
             "--quiet",
-        ]));
-        pane.move_to_key("args");
-        pane.open_list();
-        let total = pane.list().unwrap().rows().len();
+        ];
         for height in [super::super::flock::MIN_HEIGHT, 7, 8, 12] {
-            pane.list_mut().unwrap().move_to_first();
-            pane.list_mut()
-                .unwrap()
-                .set_rows(usize::from(height.saturating_sub(1)));
+            let mut app = app_on_the_list_screen(&args);
+            let total = app.config_pane().unwrap().list().unwrap().rows().len();
             for step in 0..=total {
-                let text = text_of(&pane_lines(
-                    &pane,
-                    None,
-                    fixtures::plain(),
-                    super::super::MIN_TERM_WIDTH,
-                    height,
-                ));
-                assert_eq!(
-                    text.iter().filter(|line| line.starts_with('>')).count(),
-                    1,
-                    "height {height}, step {step}: {text:?}"
-                );
-                pane.list_mut().unwrap().move_by(1);
+                let text = screen_at(&mut app, height);
+                assert_eq!(marked(&text), 1, "height {height}, step {step}:\n{text}");
+                app.update(Msg::Key(KeyPress::SelectDown));
             }
         }
     }
