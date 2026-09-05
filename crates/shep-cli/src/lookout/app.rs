@@ -2256,8 +2256,10 @@ impl App {
                 self.mode = InputMode::Text;
                 Effect::None
             }
-            // `map_key` produces these only in text mode, which the branch at
-            // the top of this function has already taken.
+            // `TextChar`/`TextBackspace`/`TextApply`/`TextAbandon` reach here
+            // only from text mode, already branched above. `map_key` also
+            // sends `ListRemove`/`ListMoveUp`/`ListMoveDown` from Normal mode
+            // (`d`/`K`/`J`), so those land here too, just inert.
             KeyPress::TextChar(_)
             | KeyPress::TextBackspace
             | KeyPress::TextApply
