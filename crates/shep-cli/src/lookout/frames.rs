@@ -1860,8 +1860,8 @@ mod tests {
         });
         assert_eq!(
             app.visible_rows().len(),
-            6,
-            "four sheep and two group headers"
+            7,
+            "the flock header, four sheep and two group headers"
         );
 
         // `web`'s second slot: the last visible row, and the one a

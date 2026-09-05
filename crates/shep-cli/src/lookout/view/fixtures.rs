@@ -65,6 +65,26 @@ pub fn flock_of(count: u32, with_readings: u32) -> Vec<ProcessInfo> {
         .collect()
 }
 
+/// Two sheep and one dog, for the flock table's section-header tests: a
+/// [`RowKey::Section`] splits the two kinds.
+pub fn app_with_a_dog() -> App {
+    let flock = vec![
+        ProcessInfo::builder(1, "web", ProcStatus::Online)
+            .pid(Some(48_001))
+            .uptime_ms(4_512_000)
+            .build(),
+        ProcessInfo::builder(2, "api", ProcStatus::Online)
+            .pid(Some(48_002))
+            .uptime_ms(4_512_000)
+            .build(),
+        ProcessInfo::builder(90, "otel", ProcStatus::Online)
+            .pid(Some(90_000))
+            .dog(Some(DogSource::BuiltIn))
+            .build(),
+    ];
+    app_with(flock, plain())
+}
+
 /// One plausible host reading: the same numbers the gallery's scenes use, so
 /// a failure here and a frame under review name the same figures.
 pub fn sample() -> HostSample {

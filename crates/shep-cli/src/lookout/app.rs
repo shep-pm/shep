@@ -521,6 +521,7 @@ impl Sent {
                 let selector = match target {
                     RowKey::Sheep(id) => SelectorSpec::Id(*id),
                     RowKey::Group(name) => SelectorSpec::Name(name.clone()),
+                    RowKey::Section(_) => unreachable!("a header is never an action target"),
                 };
                 match verb {
                     ActionVerb::Stop => Request::Stop { selector },
@@ -613,6 +614,9 @@ pub enum RowKey {
     Group(String),
     /// One sheep, by id.
     Sheep(u32),
+    /// A header, never selectable. `&'static str` because the only two are
+    /// written here.
+    Section(&'static str),
 }
 
 /// What one lamb fetch came back with. The pane says a different sentence for
@@ -2167,8 +2171,8 @@ impl App {
             }
             KeyPress::SelectUp => self.select_by(-1),
             KeyPress::SelectDown => self.select_by(1),
-            KeyPress::SelectFirst => self.select_at(0),
-            KeyPress::SelectLast => self.select_at(self.visible_len().saturating_sub(1)),
+            KeyPress::SelectFirst => self.select_at(0, 1),
+            KeyPress::SelectLast => self.select_at(self.visible_len().saturating_sub(1), -1),
             KeyPress::Action(verb) => self.arm(verb),
             // Enter means nothing outside an armed confirm, including while one
             // is in flight: the routing rule above fires only on `Stage::Armed`.
@@ -3020,6 +3024,7 @@ impl App {
                     .count();
                 (RowKey::Group(group_name.clone()), group_name.clone(), count)
             }
+            RowKey::Section(_) => unreachable!("a header is never selectable"),
         };
         self.action = Some(Action {
             verb,
@@ -3068,6 +3073,7 @@ impl App {
         match target {
             RowKey::Sheep(id) => self.flock.contains_key(id),
             RowKey::Group(name) => self.flock.values().any(|row| &row.info.name == name),
+            RowKey::Section(_) => unreachable!("a header is never an action target"),
         }
     }
 
@@ -3200,42 +3206,75 @@ impl App {
     }
 
     /// The rows the table draws, in `(name, instance, id)` order: the whole
-    /// flock, or whatever the filter leaves of it.
+    /// flock, or whatever the filter leaves of it, split into a "Flock"
+    /// section and a "Dogs" section.
     ///
     /// A [`RowKey::Group`] header comes immediately before its own
     /// [`RowKey::Sheep`] entries, on [`Self::is_grouped`]'s rule. The sort key
     /// is total on purpose: the table repolls every two seconds, and a partial
-    /// one would let two instances swap places under the cursor.
+    /// one would let two instances swap places under the cursor. A
+    /// [`RowKey::Section`] header is emitted only when its side has a row to
+    /// introduce.
     ///
     /// Every cursor move reads this sequence and nothing else, so `j` and `k`
     /// cannot step onto a filtered-out row.
     #[must_use]
     pub fn visible_rows(&self) -> Vec<RowKey> {
         let needle = self.filter.to_lowercase();
-        let mut visible: Vec<(&str, Option<u32>, u32)> = self
+        let mut visible: Vec<(&str, Option<u32>, u32, bool)> = self
             .flock
             .iter()
             .filter(|(_, row)| needle.is_empty() || row.info.name.to_lowercase().contains(&needle))
-            .map(|(id, row)| (row.info.name.as_str(), row.info.instance, *id))
+            .map(|(id, row)| {
+                (
+                    row.info.name.as_str(),
+                    row.info.instance,
+                    *id,
+                    row.info.dog.is_some(),
+                )
+            })
             .collect();
         visible.sort_unstable_by(|a, b| a.0.cmp(b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+        let (dogs, sheep): (Vec<_>, Vec<_>) = visible.into_iter().partition(|entry| entry.3);
 
-        let mut out = Vec::with_capacity(visible.len());
+        let mut out = Vec::new();
+        if !sheep.is_empty() {
+            out.push(RowKey::Section("Flock"));
+            self.push_grouped_rows(&sheep, &mut out);
+        }
+        if !dogs.is_empty() {
+            out.push(RowKey::Section("Dogs"));
+            self.push_grouped_rows(&dogs, &mut out);
+        }
+        out
+    }
+
+    /// Appends `entries`' rows to `out`, splicing a [`RowKey::Group`] header
+    /// before a grouped app's instances.
+    fn push_grouped_rows(&self, entries: &[(&str, Option<u32>, u32, bool)], out: &mut Vec<RowKey>) {
         let mut at = 0;
-        while at < visible.len() {
-            let name = visible[at].0;
-            let end = visible[at..]
+        while at < entries.len() {
+            let name = entries[at].0;
+            let end = entries[at..]
                 .iter()
                 .position(|entry| entry.0 != name)
-                .map_or(visible.len(), |offset| at + offset);
-            let group = &visible[at..end];
+                .map_or(entries.len(), |offset| at + offset);
+            let group = &entries[at..end];
             if self.is_grouped(name) {
                 out.push(RowKey::Group(name.to_string()));
             }
             out.extend(group.iter().map(|entry| RowKey::Sheep(entry.2)));
             at = end;
         }
-        out
+    }
+
+    /// Whether `row` names a dog. A header and a group row are neither.
+    #[cfg(test)]
+    fn is_dog_row(&self, row: &RowKey) -> bool {
+        match row {
+            RowKey::Sheep(id) => self.flock.get(id).is_some_and(|r| r.info.dog.is_some()),
+            RowKey::Group(_) | RowKey::Section(_) => false,
+        }
     }
 
     fn visible_len(&self) -> usize {
@@ -3258,13 +3297,11 @@ impl App {
             return false;
         }
         let before = self.selected.clone();
-        let visible = self.visible_rows();
-        if visible.is_empty() {
+        if self.visible_rows().is_empty() {
             self.selected = None;
             return before != self.selected;
         }
-        let index = previous_index.unwrap_or(0).min(visible.len() - 1);
-        self.selected = Some(visible[index].clone());
+        self.select_at(previous_index.unwrap_or(0), 1);
         before != self.selected
     }
 
@@ -3275,21 +3312,35 @@ impl App {
             return Effect::None;
         };
         let next = index.saturating_add_signed(delta);
-        self.select_at(next)
+        let direction = if delta < 0 { -1 } else { 1 };
+        self.select_at(next, direction)
     }
 
     /// Selects the row at `index`, clamped to the flock, and reports whether
     /// that changed anything.
     ///
+    /// `direction` says which way to search when `index` lands on a
+    /// [`RowKey::Section`] header: forward for a positive delta, backward
+    /// for a negative one. A header at row 0 has nowhere to search backward,
+    /// so that case searches forward instead.
+    ///
     /// `Effect::None` when it did not: [`Effect::RefreshSelected`] reads two
     /// files and asks the shepherd for lambs, and a held `k` at the top of the
     /// flock must not do that once per keypress.
-    fn select_at(&mut self, index: usize) -> Effect {
+    fn select_at(&mut self, index: usize, direction: isize) -> Effect {
         let visible = self.visible_rows();
         if visible.is_empty() {
             return Effect::None;
         }
-        let next = visible[index.min(visible.len() - 1)].clone();
+        let mut index = index.min(visible.len() - 1);
+        if matches!(visible[index], RowKey::Section(_)) {
+            index = if direction < 0 && index > 0 {
+                index - 1
+            } else {
+                index + 1
+            };
+        }
+        let next = visible[index].clone();
         if Some(&next) == self.selected.as_ref() {
             return Effect::None;
         }
@@ -3403,6 +3454,7 @@ impl App {
         match &self.selected {
             Some(RowKey::Group(name)) => Some(name.clone()),
             Some(RowKey::Sheep(id)) => self.flock.get(id).map(|row| row.info.name.clone()),
+            Some(RowKey::Section(_)) => unreachable!("a header is never selectable"),
             None => None,
         }
     }
@@ -3665,6 +3717,7 @@ fn target_prefix(verb: ActionVerb, target: &RowKey, name: &str) -> String {
     match target {
         RowKey::Sheep(id) => format!("{} {name} (id {id})", verb.label()),
         RowKey::Group(_) => format!("{} all instances of {name}", verb.label()),
+        RowKey::Section(_) => unreachable!("a header is never an action target"),
     }
 }
 
@@ -3783,10 +3836,53 @@ mod tests {
         let app = allowed_with_instances();
         assert_eq!(
             app.visible_rows().len(),
-            4,
-            "three slots and the group row above them"
+            5,
+            "the flock header, three slots and the group row above them"
         );
-        assert!(matches!(app.visible_rows()[0], RowKey::Group(ref n) if n == "web"));
+        assert_eq!(app.visible_rows()[0], RowKey::Section("Flock"));
+        assert!(matches!(app.visible_rows()[1], RowKey::Group(ref n) if n == "web"));
+    }
+
+    #[test]
+    fn a_flock_with_a_dog_draws_a_section_header_before_each_kind() {
+        let app = fixtures::app_with_a_dog();
+        let rows = app.visible_rows();
+        assert_eq!(rows.first(), Some(&RowKey::Section("Flock")), "{rows:?}");
+        let dogs = rows
+            .iter()
+            .position(|row| *row == RowKey::Section("Dogs"))
+            .unwrap_or_else(|| panic!("no dogs header: {rows:?}"));
+        // Every sheep sorts above the header and every dog below it.
+        assert!(
+            rows[..dogs].iter().all(|row| !app.is_dog_row(row)),
+            "{rows:?}"
+        );
+        assert!(
+            rows[dogs + 1..].iter().all(|row| app.is_dog_row(row)),
+            "{rows:?}"
+        );
+    }
+
+    #[test]
+    fn a_flock_with_no_dog_draws_no_dogs_header() {
+        let app = started().0;
+        let rows = app.visible_rows();
+        assert!(!rows.contains(&RowKey::Section("Dogs")), "{rows:?}");
+    }
+
+    #[test]
+    fn moving_down_steps_over_a_section_header() {
+        let mut app = fixtures::app_with_a_dog();
+        app.select_at(1, 1);
+        let before = app.selected();
+        // Walk the whole list; a header must never become the selection.
+        for _ in 0..app.visible_rows().len() + 2 {
+            let _ = app.update(Msg::Key(KeyPress::SelectDown));
+            assert!(
+                !matches!(app.selected(), Some(RowKey::Section(_))),
+                "landed on a header from {before:?}"
+            );
+        }
     }
 
     #[test]
@@ -4118,7 +4214,7 @@ mod tests {
     fn a_snapshot_that_shrinks_the_flock_pulls_the_selection_back() {
         let (mut app, t0) = started();
         app.update(Msg::Key(KeyPress::SelectLast));
-        assert_eq!(app.selected_index(), Some(2));
+        assert_eq!(app.selected_index(), Some(3), "past the flock header");
 
         app.update(Msg::Snapshot {
             rows: vec![sheep(1, "web", ProcStatus::Online)],
@@ -4126,8 +4222,8 @@ mod tests {
         });
         assert_eq!(
             app.selected_index(),
-            Some(0),
-            "the selection came back with the flock"
+            Some(1),
+            "the selection came back with the flock, past the header"
         );
 
         app.update(Msg::Snapshot {
@@ -4158,7 +4254,11 @@ mod tests {
             at: t0,
         });
         assert_eq!(app.selected(), Some(RowKey::Sheep(3)), "still worker");
-        assert_eq!(app.selected_index(), Some(1), "which is now row 1");
+        assert_eq!(
+            app.selected_index(),
+            Some(2),
+            "which is now row 2, past the header"
+        );
     }
 
     #[test]
@@ -4547,21 +4647,21 @@ mod tests {
         }
         assert_eq!(
             app.selected_index(),
-            Some(0),
-            "up past the first row stays on it"
+            Some(1),
+            "up past the first row stays on it, below the header"
         );
         for _ in 0..10 {
             app.update(Msg::Key(KeyPress::SelectDown));
         }
         assert_eq!(
             app.selected_index(),
-            Some(2),
+            Some(3),
             "down past the last row stays on it"
         );
         app.update(Msg::Key(KeyPress::SelectFirst));
-        assert_eq!(app.selected_index(), Some(0));
+        assert_eq!(app.selected_index(), Some(1));
         app.update(Msg::Key(KeyPress::SelectLast));
-        assert_eq!(app.selected_index(), Some(2));
+        assert_eq!(app.selected_index(), Some(3));
     }
 
     #[test]

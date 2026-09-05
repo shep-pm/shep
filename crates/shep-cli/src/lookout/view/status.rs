@@ -214,6 +214,7 @@ fn confirm_prompt(action: &ActionState<'_>) -> String {
                 action.verb.label()
             )
         }
+        RowKey::Section(_) => unreachable!("a header is never an action target"),
     }
 }
 
@@ -231,6 +232,7 @@ fn in_flight_text(action: &ActionState<'_>) -> String {
             action.verb.label(),
             action.count
         ),
+        RowKey::Section(_) => unreachable!("a header is never an action target"),
     }
 }
 
