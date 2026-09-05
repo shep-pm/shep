@@ -313,11 +313,10 @@ const fn pane_hint(control: Control, env_open: bool) -> &'static str {
 /// dashboard form is handed out only where those keys really do arm a
 /// confirm.
 ///
-/// `s settings` and `e edit` are appended, never inserted: read-only's
-/// first 40 characters must stay byte-identical for the truncation and
-/// gallery tests, and the control form holds at 84 characters to render
-/// whole on a 100-column terminal. Settings forms follow suit: read-only
-/// is a prefix of control.
+/// `s settings`, `e edit` and the `* yours   ! parked` legend are all
+/// appended, never inserted: read-only's first 40 characters must stay
+/// byte-identical for the truncation and gallery tests. Settings forms
+/// follow suit: read-only is a prefix of control.
 fn hint_for(control: Control, settings_open: bool) -> String {
     if settings_open {
         // `esc/s close` names both keys that close the screen: on this
@@ -332,12 +331,12 @@ fn hint_for(control: Control, settings_open: bool) -> String {
     }
     match control {
         Control::ReadOnly => {
-            "q quit   j/k select   g/G first/last   r refresh   / filter   s settings   e edit"
+            "q quit   j/k select   g/G first/last   r refresh   / filter   s settings   e edit   * yours   ! parked"
         }
         // `g/G` and `r` drop out to make room. They are the two an operator
         // rediscovers by pressing them; an action key is not.
         Control::Allowed => {
-            "q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit"
+            "q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! parked"
         }
     }
     .to_string()
@@ -532,6 +531,15 @@ mod tests {
         let app = filtered_app("");
         let hint = rendered(&status_line(&app, 200));
         assert!(hint.contains("/ filter"), "got {hint:?}");
+    }
+
+    #[test]
+    fn the_dashboard_hint_says_what_the_cfg_glyphs_mean() {
+        for control in [Control::ReadOnly, Control::Allowed] {
+            let hint = hint_for(control, false);
+            assert!(hint.contains("* yours"), "{hint}");
+            assert!(hint.contains("! parked"), "{hint}");
+        }
     }
 
     #[test]
