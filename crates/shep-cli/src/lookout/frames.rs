@@ -1603,7 +1603,7 @@ mod tests {
 
         // Refused: `x` with actions gated off.
         let refused = render_text(&scene(Scene::Refused).1);
-        assert!(refused.contains("--allow-control"));
+        assert!(refused.contains("--read-only"), "{refused}");
         assert!(
             refused.contains("bleats  api"),
             "a refusal does not blank the screen"

@@ -1159,7 +1159,7 @@ pub const CONFIRM_EXPIRY: Duration = Duration::from_secs(10);
 const LINK_GONE: &str = "the shepherd is gone — nothing left to ask";
 
 /// The sentence every closed-gate refusal gives, dashboard and settings alike.
-const READ_ONLY_REFUSAL: &str = "read-only: actions need --allow-control";
+const READ_ONLY_REFUSAL: &str = "read-only: from --read-only or lookout.allow_control";
 
 /// The whole dashboard's state.
 #[derive(Debug)]
@@ -4128,7 +4128,7 @@ mod tests {
         assert!(app.action().is_none());
         assert_eq!(
             app.notice().map(ToString::to_string).as_deref(),
-            Some("read-only: actions need --allow-control")
+            Some("read-only: from --read-only or lookout.allow_control")
         );
     }
 
@@ -4699,7 +4699,7 @@ mod tests {
             );
             assert_eq!(
                 app.notice().map(ToString::to_string).as_deref(),
-                Some("read-only: actions need --allow-control"),
+                Some("read-only: from --read-only or lookout.allow_control"),
                 "{verb:?}"
             );
         }

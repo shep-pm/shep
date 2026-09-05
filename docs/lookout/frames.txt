@@ -296,7 +296,7 @@ out  GET /v1/orders 200 44ms
 out  POST /v1/orders 201 88ms                                                                                           
 out  GET /v1/orders/8821 200 9ms                                                                                        
 out  connection pool: 14/50 in use                                                                                      
-read-only: actions need --allow-control                                                                        read-only
+read-only: from --read-only or lookout.allow_control                                                           read-only
 
 === filter_editing  (100x14) ===
 Mid-type at 100x14. The table has already narrowed to the two sheep whose names contain the query, the title counts the narrowed set and the whole flock, and the status bar carries the query, a cursor, and the three keys that mean anything while the box is open.
