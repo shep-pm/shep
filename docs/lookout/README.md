@@ -49,8 +49,11 @@ cargo test -p shep --lib --all-features -- --ignored write_the_gallery
   pressed it: an action key arms a confirm, Enter confirms it, any other key
   cancels it, `q` and Ctrl-C still quit even with a prompt up, and an armed
   prompt nobody answers expires after ten seconds. Read-only refuses
-  outright, with a literal sentence (`read-only: actions need
-  --allow-control`). The status bar always says which state is in force.
+  outright, with a literal sentence (`read-only: from --read-only or
+  lookout.allow_control`). The status bar always says which state is in
+  force. The apply menu a parked pane offers on close is the one exception
+  to the arm-then-confirm rule: it names its keys on screen, so `L` and `R`
+  send on the press, and it expires on the same ten seconds.
   This is a fat-finger catch, not a security boundary: lookout runs as the
   operator's own process, under the operator's own uid, so the shepherd has
   no way to refuse a keypress it cannot tell apart from `shep stop`.

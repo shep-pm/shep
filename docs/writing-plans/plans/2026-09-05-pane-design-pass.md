@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Land the eight decisions of the lookout pane design pass: dogs in their own dashboard section, `e` on a dog row, a `CFG` legend, seven field groups, an array list sub-screen, schema-declared suggestions, `--allow-control` inverted, and a menu on close when config is parked.
+**Goal:** Land the eight decisions of the lookout pane design pass: dogs in their own dashboard section, `e` on a dog row, a `CFG` legend, eight field groups, an array list sub-screen, schema-declared suggestions, `--allow-control` inverted, and a menu on close when config is parked.
 
 **Architecture:** Everything lives in `crates/shep-cli/src/lookout/` except the field regrouping, which is schema annotations in `crates/shep-core/src/config/app.rs` plus one const in `scaffold.rs`. Nothing changes on the wire: the one decision that looked like it needed a field reads data `ProcessInfo::dog` already carries, and an array value travels through `SetSheepField`'s existing `serde_json::Value`.
 

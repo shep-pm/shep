@@ -1,6 +1,6 @@
 # The lookout pane design pass
 
-Seven changes to `shep lookout`, from using the config panes on a real
+Eight changes to `shep lookout`, from using the config panes on a real
 flock. Four of the original twelve pieces of feedback shipped in the pane
 polish branch already, and one needed no work; this covers what was left.
 
@@ -9,7 +9,7 @@ spec. Separating dogs on the dashboard dissolves the dog-editing complaint.
 A menu on close reuses the `esc` semantics the polish branch just settled.
 Splitting the field groups moves what `shep init` writes.
 
-Status: approved, not implemented.
+Status: implemented on `feat/pane-design-pass`.
 
 ## Decision 1: dogs get their own section of the dashboard table
 
@@ -82,7 +82,7 @@ inside ten seconds, against friction on every single invocation.
 is read by `resolve_control` and is real, but nothing in the settings screen
 writes it: `SettingField::AllowControl` is the *whistle* server's
 `[whistle] allow_control` in `shep.toml`, a different flag entirely. So an
-operator's only way to set it once is `shep kv set`.
+operator's only way to set it once is `shep set`.
 
 The KV key stays and keeps its meaning, now as the way to ask for read-only
 everywhere. What changes is the default when neither the flag nor the key
