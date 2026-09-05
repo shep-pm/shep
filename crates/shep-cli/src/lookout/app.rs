@@ -2628,6 +2628,10 @@ impl App {
     /// so [`Self::on_action_reply`] answers it unchanged. The menu is the
     /// confirm, so there is no second one.
     fn apply_parked(&mut self, verb: ActionVerb) -> Effect {
+        if let Some(text) = self.link_refusal() {
+            self.notice = Some(Notice { text, grave: true });
+            return Effect::None;
+        }
         if self.action.is_some() {
             self.notice = Some(Notice {
                 text: "one action is already in flight".to_string(),
@@ -3321,18 +3325,28 @@ impl App {
     /// Every refusal happens here rather than at confirm time, so an operator
     /// never answers a question that was never going to be honoured. The ladder
     /// is gate, link, nothing selected, one already in flight.
+    /// Why the shepherd cannot be sent to right now, if it cannot.
+    ///
+    /// Shared by the dashboard's action keys and the pane's apply menu: a
+    /// dead link refuses the same way whichever door an operator used.
+    fn link_refusal(&self) -> Option<String> {
+        match self.link {
+            // Not `LINK_GONE`, which says the shepherd is gone: this is the
+            // status bar's own sentence for a redial (`view/status.rs`).
+            Link::Retrying { attempt } => Some(format!(
+                "the shepherd stopped answering \u{2014} reconnecting (attempt {attempt})"
+            )),
+            // The ladder is exhausted, so the shepherd really is gone.
+            Link::Lost { .. } => Some(LINK_GONE.to_string()),
+            _ => None,
+        }
+    }
+
     fn arm(&mut self, verb: ActionVerb) -> Effect {
         let refusal = if self.control == Control::ReadOnly {
             Some(READ_ONLY_REFUSAL.to_string())
-        } else if let Link::Retrying { attempt } = self.link {
-            // Not `LINK_GONE`, which says the shepherd is gone: this is the
-            // status bar's own sentence for a redial (`view/status.rs`).
-            Some(format!(
-                "the shepherd stopped answering — reconnecting (attempt {attempt})"
-            ))
-        } else if matches!(self.link, Link::Lost { .. }) {
-            // The ladder is exhausted, so the shepherd really is gone.
-            Some(LINK_GONE.to_string())
+        } else if let Some(text) = self.link_refusal() {
+            Some(text)
         } else if self.selected.is_none() {
             Some("no sheep is selected".to_string())
         } else if self.action.is_some() {
@@ -7540,6 +7554,21 @@ mod tests {
 
     /// The pane-level test reaches `begin_typing` directly, so it passes
     /// over a dead key path. This one presses the key.
+    #[test]
+    fn the_apply_menu_refuses_on_a_dead_link_like_every_other_action() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        let _ = app.update(Msg::Retrying { attempt: 3 });
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload)));
+        assert_eq!(
+            effect,
+            Effect::None,
+            "nothing goes to a shepherd that is gone"
+        );
+        let said = app.notice().map(ToString::to_string).unwrap_or_default();
+        assert!(said.contains("attempt 3"), "{said}");
+    }
+
     #[test]
     fn e_opens_the_editor_on_a_suggested_field() {
         let mut app = fixtures::app_in_sheep_pane_with_control();
