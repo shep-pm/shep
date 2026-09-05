@@ -85,6 +85,35 @@ pub fn app_with_a_dog() -> App {
     app_with(flock, plain())
 }
 
+/// A dashboard with `otel` adopted from `/opt/otel`, selected, and the
+/// control gate open.
+pub fn app_with_a_dog_selected_and_control() -> App {
+    let decoy = ProcessInfo::builder(0, "!decoy", ProcStatus::Online).build();
+    let dog = ProcessInfo::builder(90, "otel", ProcStatus::Online)
+        .pid(Some(90_000))
+        .dog(Some(DogSource::Adopted {
+            path: "/opt/otel".to_string(),
+        }))
+        .build();
+    let mut app = app_with(vec![decoy, dog], plain());
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::SelectDown));
+    app
+}
+
+/// The same, with `otel` built in rather than adopted, so it carries no path.
+pub fn app_with_a_built_in_dog_selected_and_control() -> App {
+    let decoy = ProcessInfo::builder(0, "!decoy", ProcStatus::Online).build();
+    let dog = ProcessInfo::builder(90, "otel", ProcStatus::Online)
+        .pid(Some(90_000))
+        .dog(Some(DogSource::BuiltIn))
+        .build();
+    let mut app = app_with(vec![decoy, dog], plain());
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::SelectDown));
+    app
+}
+
 /// One plausible host reading: the same numbers the gallery's scenes use, so
 /// a failure here and a frame under review name the same figures.
 pub fn sample() -> HostSample {

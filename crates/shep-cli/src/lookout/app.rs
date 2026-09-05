@@ -2307,25 +2307,23 @@ impl App {
         }
     }
 
-    /// `e`'s own handler: refuse a dog here, else ask the shepherd.
-    ///
-    /// The daemon's refusal for a dog names where its config comes from,
-    /// not which screen edits it, so this reducer checks locally and
-    /// answers that question instead: `s` then `e` on the dog's own row.
+    /// `e`'s own handler: open a dog's pane directly, else ask the shepherd.
     ///
     /// [`Self::selected_row`] rather than [`Self::selected_name`]: a dog
     /// runs one process and is never a group row, but a group row must
     /// still work with `e`.
     fn ask_for_config(&mut self) -> Effect {
         if let Some(row) = self.selected_row()
-            && row.info.dog.is_some()
+            && let Some(source) = row.info.dog.as_ref()
         {
-            let name = row.info.name.clone();
-            self.notice = Some(Notice {
-                text: format!("{name} is a dog; press `s` for settings, then `e` on its row"),
-                grave: true,
-            });
-            return Effect::None;
+            let adopted_path = match source {
+                DogSource::Adopted { path } => Some(PathBuf::from(path)),
+                _ => None,
+            };
+            return Effect::LoadDogPane {
+                name: row.info.name.clone(),
+                adopted_path,
+            };
         }
         match self.selected_name() {
             Some(name) => {
@@ -3734,6 +3732,8 @@ const fn outcome(verb: ActionVerb) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
     use shep_core::protocol::{ProcessEventKind, RpcError, RpcErrorCode};
 
@@ -7078,42 +7078,29 @@ mod tests {
         );
     }
 
-    /// The shepherd's own refusal for a dog already names it. Asking
-    /// anyway would double the name: `log-rotate: log-rotate is a dog,
-    /// and ...`.
     #[test]
-    fn e_on_a_dog_row_refuses_locally_and_names_the_dog_once() {
-        let mut app = fixtures::with_selection(
-            ProcessInfo::builder(9, "log-rotate", ProcStatus::Online)
-                .dog(Some(shep_core::protocol::DogSource::BuiltIn))
-                .build(),
-        );
-        assert_eq!(
-            app.update(Msg::Key(KeyPress::Edit)),
-            Effect::None,
-            "nothing goes to the shepherd"
-        );
-        let said = app.notice().map(ToString::to_string).unwrap_or_default();
-        assert_eq!(
-            said.matches("log-rotate").count(),
-            1,
-            "the name is said once: {said:?}"
-        );
-        assert!(said.contains("is a dog"), "got {said:?}");
-        assert!(app.config_pane().is_none());
+    fn e_on_a_dog_row_opens_its_pane_instead_of_refusing() {
+        let mut app = fixtures::app_with_a_dog_selected_and_control();
+        let effect = app.update(Msg::Key(KeyPress::Edit));
+        let Effect::LoadDogPane { name, adopted_path } = effect else {
+            panic!("expected a dog pane, got {effect:?}");
+        };
+        assert_eq!(name, "otel");
+        // The path comes off the row, not the settings screen.
+        assert_eq!(adopted_path.as_deref(), Some(Path::new("/opt/otel")));
+        assert!(app.notice().is_none(), "{:?}", app.notice());
     }
 
     #[test]
-    fn e_on_a_dog_row_names_the_screen_that_does_edit_a_dog() {
-        let mut app = fixtures::with_selection(
-            ProcessInfo::builder(9, "log-rotate", ProcStatus::Online)
-                .dog(Some(shep_core::protocol::DogSource::BuiltIn))
-                .build(),
-        );
-        let _ = app.update(Msg::Key(KeyPress::Edit));
-        let said = app.notice().map(ToString::to_string).unwrap_or_default();
-        assert!(said.contains("`s`"), "{said}");
-        assert!(!said.contains("the config pane is for a sheep"), "{said}");
+    fn e_on_a_built_in_dog_opens_a_pane_with_no_path() {
+        let mut app = fixtures::app_with_a_built_in_dog_selected_and_control();
+        let effect = app.update(Msg::Key(KeyPress::Edit));
+        let Effect::LoadDogPane { adopted_path, .. } = effect else {
+            panic!("expected a dog pane, got {effect:?}");
+        };
+        // A built-in dog is the shep binary's own argv branch, so there is no
+        // adopted path to probe and the pane asks the running binary instead.
+        assert_eq!(adopted_path, None);
     }
 
     /// `EngineStopped` is the one of this request's three refusals with no
