@@ -7,7 +7,7 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi is the same thirty-two frames with colour; read it with `less -R`.
+frames.ansi is the same thirty-three frames with colour; read it with `less -R`.
 
 All four panes are here: the flock table (the spine), the host-usage strip,
 the sheep detail pane and the bleats feed. `>` marks the selected sheep, and
@@ -133,6 +133,41 @@ app web ×3  [0m[38;5;29monline[0m   restarts 3   uptime 15m   cpu 9.4%   mem
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
+                                                                                                                        [0m
+[0m[38;5;245mq quit   j/k select   g/G first/last   r refresh   / filter   s settings   e edit   * yours   ! parked         read-only[0m
+
+
+=== with_dogs  (120x30) ===
+Three sheep under a Flock header and two dogs under a Dogs header: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it.
+
+shep lookout   /home/ada/.shep                                                                           [0m[38;5;245m 5 in the flock[0m
+[0m[38;5;245mhost  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 10.6%   flock mem 431.0M   up 6d 3h           [0m
+  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  1     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 26m    edge        -            [0m
+  2     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 28m    -           -            [0m
+  0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
+  [0m[38;5;245mDogs ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  90    bark        [0m[38;5;29monline         [0m  90090    0         -          -       -         10m       -           -            [0m
+> 91    log-rotate  [0m[38;5;221msilent         [0m  90091    0         -          -       -         10m       -           -            [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+sheep 91  log-rotate   [0m[38;5;221msilent[0m   pid 90091   restarts 0   uptime 10m   cpu -   mem -   fold -   dog adopted /usr/local/b…[0m
+[0m[38;5;245mlambs  not read yet                                                                                                     [0m
+[0m[38;5;245mout  this shepherd did not report a path                                                                                [0m
+[0m[38;5;245merr  this shepherd did not report a path                                                                                [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245mbleats  log-rotate  out then err  from the log files, re-read with each listing                                         [0m
+[0m[38;5;245mout  [0mrotated /var/log/api/access.log -> access.log.1                                                                    [0m
+[0m[38;5;245mout  [0mcompressed access.log.1 (4.2M -> 380K)                                                                             [0m
+[0m[38;5;245mout  [0mpruned 2 archives older than 14 days                                                                               [0m
+[0m[38;5;245mout  [0mnext rotation in 6h                                                                                                [0m
                                                                                                                         [0m
 [0m[38;5;245mq quit   j/k select   g/G first/last   r refresh   / filter   s settings   e edit   * yours   ! parked         read-only[0m
 

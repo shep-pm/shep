@@ -7,7 +7,7 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi is the same thirty-two frames with colour; read it with `less -R`.
+frames.ansi is the same thirty-three frames with colour; read it with `less -R`.
 
 All four panes are here: the flock table (the spine), the host-usage strip,
 the sheep detail pane and the bleats feed. `>` marks the selected sheep, and
@@ -131,6 +131,40 @@ bleats  web  follows one instance; select one to see its log
                                                                                                                         
                                                                                                                         
                                                                                                                         
+                                                                                                                        
+q quit   j/k select   g/G first/last   r refresh   / filter   s settings   e edit   * yours   ! parked         read-only
+
+=== with_dogs  (120x30) ===
+Three sheep under a Flock header and two dogs under a Dogs header: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it.
+
+shep lookout   /home/ada/.shep                                                                            5 in the flock
+host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 10.6%   flock mem 431.0M   up 6d 3h           
+  ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  1     api         online           48219    1         -          7.1%    241.0M    1h 26m    edge        -            
+  2     cron        online           48233    0         -          0.1%    8.0M      1h 28m    -           -            
+  0     web         online           48211    0         -          3.4%    182.0M    1h 25m    edge        -            
+  Dogs ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  90    bark        online           90090    0         -          -       -         10m       -           -            
+> 91    log-rotate  silent           90091    0         -          -       -         10m       -           -            
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+sheep 91  log-rotate   silent   pid 90091   restarts 0   uptime 10m   cpu -   mem -   fold -   dog adopted /usr/local/b…
+lambs  not read yet                                                                                                     
+out  this shepherd did not report a path                                                                                
+err  this shepherd did not report a path                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+bleats  log-rotate  out then err  from the log files, re-read with each listing                                         
+out  rotated /var/log/api/access.log -> access.log.1                                                                    
+out  compressed access.log.1 (4.2M -> 380K)                                                                             
+out  pruned 2 archives older than 14 days                                                                               
+out  next rotation in 6h                                                                                                
                                                                                                                         
 q quit   j/k select   g/G first/last   r refresh   / filter   s settings   e edit   * yours   ! parked         read-only
 
