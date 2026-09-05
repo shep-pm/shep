@@ -239,6 +239,20 @@ const FLOOR: &[Column] = &[Column::Id, Column::Name, Column::Status];
 /// CFG has its own drop tier, one tier before SMIT's, keeping `NO_CFG`'s
 /// threshold at 116 so a 120-column terminal, the gallery's fixture width,
 /// still shows SMIT.
+/// The narrowest terminal that still draws the `CFG` column.
+///
+/// Read by the status bar's own test: the legend explaining `*` and `!`
+/// only has to fit where the glyphs it explains are drawn.
+#[cfg(test)]
+pub(super) fn cfg_tier_width() -> u16 {
+    TIERS
+        .iter()
+        .filter(|(_, columns)| columns.contains(&Column::Cfg))
+        .map(|(threshold, _)| *threshold)
+        .min()
+        .expect("a tier draws CFG")
+}
+
 const TIERS: &[(u16, &[Column])] = &[
     (122, ALL),
     (116, NO_CFG),

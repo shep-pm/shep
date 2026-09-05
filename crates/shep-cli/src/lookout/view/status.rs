@@ -372,6 +372,27 @@ mod tests {
     /// Pinned at 49 columns: the default hint is 59 characters and the
     /// label 9, the width where the hint truncates but the label still
     /// fits.
+    /// The legend sits at the tail, and the hint truncates from the tail, so
+    /// it survives only while the hint fits. The lowest tier that still draws
+    /// `CFG` is what it has to fit inside.
+    #[test]
+    fn the_legend_fits_wherever_the_cfg_column_is_drawn() {
+        let widest = [
+            hint_for(Control::ReadOnly, false),
+            hint_for(Control::Allowed, false),
+        ]
+        .into_iter()
+        .map(|hint| hint.chars().count())
+        .max()
+        .expect("two hints");
+        let cfg_tier = usize::from(super::super::flock::cfg_tier_width());
+        assert!(
+            widest <= cfg_tier,
+            "the hint is {widest} wide and CFG draws from {cfg_tier}, so the \
+             legend truncates where the glyph still shows"
+        );
+    }
+
     #[test]
     fn a_truncated_hint_still_leaves_a_gap_before_the_control_label() {
         let palette = Palette::detect(None, Some(OsStr::new("xterm-256color")), None);
