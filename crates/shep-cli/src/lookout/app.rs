@@ -1145,13 +1145,22 @@ struct Action {
 pub struct PaneMenu {
     parked: usize,
     reload: ReloadKind,
+    at: Instant,
 }
 
 impl PaneMenu {
     /// One, over `parked` fields and the reload `reload`.
     #[must_use]
-    pub(super) const fn new(parked: usize, reload: ReloadKind) -> Self {
-        Self { parked, reload }
+    pub(super) const fn new(parked: usize, reload: ReloadKind, at: Instant) -> Self {
+        Self { parked, reload, at }
+    }
+
+    /// When it opened. A menu that outlives `CONFIRM_EXPIRY` is dropped by
+    /// the tick, so a later keypress cannot answer a question nobody is
+    /// still looking at.
+    #[must_use]
+    pub const fn at(self) -> Instant {
+        self.at
     }
 
     /// How many fields the running sheep has not taken yet.
@@ -1367,6 +1376,12 @@ impl App {
                     });
                     if expired {
                         self.action = None;
+                    }
+                    let stale = self.pane_menu.as_ref().is_some_and(|menu| {
+                        now.saturating_duration_since(menu.at()) >= CONFIRM_EXPIRY
+                    });
+                    if stale {
+                        self.pane_menu = None;
                     }
                 }
                 // Against the tick's own `now`, not `self.now`, which stops on
@@ -2580,7 +2595,7 @@ impl App {
         }
         let pane = self.config_pane.as_ref()?;
         let parked = pane.parked_count();
-        (parked > 0).then(|| PaneMenu::new(parked, pane.reload_kind()))
+        (parked > 0).then(|| PaneMenu::new(parked, pane.reload_kind(), self.now))
     }
 
     /// The menu's own keymap: `L` reloads, `R` restarts, and anything else
@@ -2628,6 +2643,16 @@ impl App {
     /// so [`Self::on_action_reply`] answers it unchanged. The menu is the
     /// confirm, so there is no second one.
     fn apply_parked(&mut self, verb: ActionVerb) -> Effect {
+        // Read rather than left to `apply_offer`: the gate is one write to
+        // `pane_menu` away from not covering this, and a send is not the
+        // place to find that out.
+        if self.control == Control::ReadOnly {
+            self.notice = Some(Notice {
+                text: READ_ONLY_REFUSAL.to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
         if let Some(text) = self.link_refusal() {
             self.notice = Some(Notice { text, grave: true });
             return Effect::None;
@@ -7552,8 +7577,22 @@ mod tests {
         );
     }
 
-    /// The pane-level test reaches `begin_typing` directly, so it passes
-    /// over a dead key path. This one presses the key.
+    /// A menu nobody answered is a question nobody is still looking at, and
+    /// `L` an hour later must not reload a sheep.
+    #[test]
+    fn the_apply_menu_expires_like_every_other_armed_thing() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.pane_menu().is_some(), "the menu opened");
+
+        let later = Instant::now() + CONFIRM_EXPIRY;
+        let _ = app.update(Msg::Tick { now: later });
+        assert!(app.pane_menu().is_none(), "it did not expire");
+
+        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload)));
+        assert_eq!(effect, Effect::None, "a stale L reloads nothing");
+    }
+
     #[test]
     fn the_apply_menu_refuses_on_a_dead_link_like_every_other_action() {
         let mut app = fixtures::app_in_sheep_pane_with_control();
@@ -7569,6 +7608,8 @@ mod tests {
         assert!(said.contains("attempt 3"), "{said}");
     }
 
+    /// The pane-level test reaches `begin_typing` directly, so it passes
+    /// over a dead key path. This one presses the key.
     #[test]
     fn e_opens_the_editor_on_a_suggested_field() {
         let mut app = fixtures::app_in_sheep_pane_with_control();

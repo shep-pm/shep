@@ -1258,7 +1258,7 @@ mod tests {
 
     #[test]
     fn a_sheep_pane_with_the_apply_menu_open() {
-        let menu = PaneMenu::new(2, ReloadKind::Serial);
+        let menu = PaneMenu::new(2, ReloadKind::Serial, Instant::now());
         let lines = pane_lines(&web_pane(), Some(&menu), fixtures::plain(), 120, 0);
         insta::assert_snapshot!("sheep_pane_apply_menu", text_of(&lines).join("\n"));
     }
