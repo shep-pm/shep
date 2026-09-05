@@ -3210,14 +3210,11 @@ impl App {
     /// section and a "Dogs" section.
     ///
     /// A [`RowKey::Group`] header comes immediately before its own
-    /// [`RowKey::Sheep`] entries, on [`Self::is_grouped`]'s rule. The sort key
-    /// is total on purpose: the table repolls every two seconds, and a partial
-    /// one would let two instances swap places under the cursor. A
-    /// [`RowKey::Section`] header is emitted only when its side has a row to
-    /// introduce.
-    ///
-    /// Every cursor move reads this sequence and nothing else, so `j` and `k`
-    /// cannot step onto a filtered-out row.
+    /// [`RowKey::Sheep`] entries, and a [`RowKey::Section`] header only when
+    /// its side has a row to introduce. The sort key is total on purpose: the
+    /// table repolls every two seconds, and a partial one would let two
+    /// instances swap places under the cursor. Every cursor move reads this
+    /// sequence and nothing else.
     #[must_use]
     pub fn visible_rows(&self) -> Vec<RowKey> {
         let needle = self.filter.to_lowercase();
@@ -3319,14 +3316,12 @@ impl App {
     /// Selects the row at `index`, clamped to the flock, and reports whether
     /// that changed anything.
     ///
-    /// `direction` says which way to search when `index` lands on a
-    /// [`RowKey::Section`] header: forward for a positive delta, backward
-    /// for a negative one. A header at row 0 has nowhere to search backward,
-    /// so that case searches forward instead.
+    /// `direction` is which way to search past a [`RowKey::Section`] header,
+    /// and a header at row 0 searches forward whatever it says.
     ///
-    /// `Effect::None` when it did not: [`Effect::RefreshSelected`] reads two
-    /// files and asks the shepherd for lambs, and a held `k` at the top of the
-    /// flock must not do that once per keypress.
+    /// `Effect::None` when nothing changed: [`Effect::RefreshSelected`] reads
+    /// two files and asks the shepherd for lambs, and a held `k` at the top
+    /// must not do that once per keypress.
     fn select_at(&mut self, index: usize, direction: isize) -> Effect {
         let visible = self.visible_rows();
         if visible.is_empty() {
@@ -3868,6 +3863,24 @@ mod tests {
         let app = started().0;
         let rows = app.visible_rows();
         assert!(!rows.contains(&RowKey::Section("Dogs")), "{rows:?}");
+    }
+
+    #[test]
+    fn a_dog_only_flock_draws_no_flock_header_and_selects_past_the_dogs_one() {
+        let mut app = fixtures::app_with_a_dog();
+        // A filter that leaves only the dog, so the sheep side is empty.
+        app.set_filter("otel".to_string());
+        let rows = app.visible_rows();
+        assert!(!rows.contains(&RowKey::Section("Flock")), "{rows:?}");
+        assert_eq!(rows.first(), Some(&RowKey::Section("Dogs")), "{rows:?}");
+
+        // The only header is row 0, which has nowhere to search backward.
+        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
+        assert!(
+            !matches!(app.selected(), Some(RowKey::Section(_))),
+            "{:?}",
+            app.selected()
+        );
     }
 
     #[test]
