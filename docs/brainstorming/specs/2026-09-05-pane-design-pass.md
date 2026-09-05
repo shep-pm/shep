@@ -97,7 +97,7 @@ the release notes name it.
 The pane's hint gained `* yours` and `! parked`; the dashboard gets the same
 two, subject to its own width budget.
 
-## Decision 5: the field groups go from four to seven
+## Decision 5: the field groups go from four to eight
 
 | group | fields |
 | --- | --- |

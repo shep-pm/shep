@@ -287,7 +287,7 @@ git commit -m "docs(lookout): the dashboard hint names the CFG glyphs"
 
 ---
 
-## Task 4: the field groups go from four to seven
+## Task 4: the field groups go from four to eight
 
 **Files:**
 - Modify: `crates/shep-core/src/config/app.rs` (the `schemars(extend("init" = ...))` attribute on each field)
