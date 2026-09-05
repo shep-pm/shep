@@ -23,7 +23,7 @@ use shep_core::protocol::{
 use shep_core::status::ProcStatus;
 
 use super::field::{FieldKind, FieldSet};
-use super::pane::{ConfigPane, FieldValue, Lock, PaneEdit, PanePending, PaneTarget};
+use super::pane::{ConfigPane, FieldValue, Lock, PaneEdit, PanePending, PaneTarget, ReloadKind};
 use super::theme::Palette;
 use super::viewport::Viewport;
 use crate::commands::settings::{SettingEdit, SettingField, SettingsSnapshot, settings_field_set};
@@ -1134,6 +1134,39 @@ struct Action {
     stage: Stage,
 }
 
+/// The offer a pane makes on its way out when the running sheep has not
+/// taken every field yet.
+///
+/// Nothing is at risk while it is up: a pane edit reaches the override
+/// store on the keystroke that makes it, so leaving costs nothing and the
+/// menu says so. What it buys is the operator not walking away from parked
+/// config without knowing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PaneMenu {
+    parked: usize,
+    reload: ReloadKind,
+}
+
+impl PaneMenu {
+    /// One, over `parked` fields and the reload `reload`.
+    #[must_use]
+    pub(super) const fn new(parked: usize, reload: ReloadKind) -> Self {
+        Self { parked, reload }
+    }
+
+    /// How many fields the running sheep has not taken yet.
+    #[must_use]
+    pub const fn parked(self) -> usize {
+        self.parked
+    }
+
+    /// Which reload this sheep would get, so `L` can name its cost.
+    #[must_use]
+    pub const fn reload(self) -> ReloadKind {
+        self.reload
+    }
+}
+
 /// What the status bar needs to know about the action in progress.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ActionState<'a> {
@@ -1235,6 +1268,12 @@ pub struct App {
     /// other. `on_key` checks this one first, so a pane opened over the
     /// dashboard owns the keyboard for as long as it is up.
     config_pane: Option<ConfigPane>,
+    /// The apply offer over the open pane, or `None`.
+    ///
+    /// Opened by `Escape` on a pane with parked fields and the gate open,
+    /// and it owns the keyboard while it is up. Cleared with the pane, so
+    /// no menu can outlive the fields it counted.
+    pane_menu: Option<PaneMenu>,
     /// The resolved style level and which layer chose it. Defaulted here and
     /// overridden through [`Self::set_style`], so the STYLE LEVEL row reads the
     /// same answer the rest of the CLI does.
@@ -1266,6 +1305,7 @@ impl App {
             config_target: None,
             dog_target: None,
             config_pane: None,
+            pane_menu: None,
             style: (StyleLevel::Full, StyleSource::Default),
         }
     }
@@ -2405,6 +2445,9 @@ impl App {
     /// reach its own next value or its own send.
     fn on_pane_key(&mut self, key: KeyPress) -> Effect {
         self.notice = None;
+        if self.pane_menu.is_some() {
+            return self.on_pane_menu_key(key);
+        }
         if self
             .config_pane
             .as_ref()
@@ -2446,6 +2489,8 @@ impl App {
                     if let Some(pane) = self.config_pane.as_mut() {
                         pane.close_help();
                     }
+                } else if let Some(menu) = self.apply_offer() {
+                    self.pane_menu = Some(menu);
                 } else {
                     self.close_pane();
                 }
@@ -2518,9 +2563,122 @@ impl App {
     /// operator's back `config_target` exists to prevent.
     fn close_pane(&mut self) {
         self.config_pane = None;
+        self.pane_menu = None;
         self.config_target = None;
         self.dog_target = None;
         self.release_text_mode_if_unowned();
+    }
+
+    /// The offer this pane's `Escape` makes, or [`None`] when it just leaves.
+    ///
+    /// Silent with nothing parked, so reading a pane never costs a
+    /// keystroke, and silent behind a closed gate, where the two keys it
+    /// offers would be refused anyway.
+    fn apply_offer(&self) -> Option<PaneMenu> {
+        if self.control == Control::ReadOnly {
+            return None;
+        }
+        let pane = self.config_pane.as_ref()?;
+        let parked = pane.parked_count();
+        (parked > 0).then(|| PaneMenu::new(parked, pane.reload_kind()))
+    }
+
+    /// The menu's own keymap: `L` reloads, `R` restarts, and anything else
+    /// that backs out leaves the fields parked.
+    ///
+    /// `Escape` closes the pane rather than only the menu: it is the second
+    /// press of the two the operator meant as "leave", and a menu that ate
+    /// it would need a third.
+    fn on_pane_menu_key(&mut self, key: KeyPress) -> Effect {
+        match key {
+            KeyPress::Quit => Effect::Quit,
+            KeyPress::Action(verb @ (ActionVerb::Reload | ActionVerb::Restart)) => {
+                self.apply_parked(verb)
+            }
+            KeyPress::Escape => {
+                self.close_pane();
+                Effect::None
+            }
+            KeyPress::Action(ActionVerb::Stop)
+            | KeyPress::SelectUp
+            | KeyPress::SelectDown
+            | KeyPress::SelectFirst
+            | KeyPress::SelectLast
+            | KeyPress::Refresh
+            | KeyPress::Confirm
+            | KeyPress::Edit
+            | KeyPress::Cycle
+            | KeyPress::Help
+            | KeyPress::Settings
+            | KeyPress::FilterStart
+            | KeyPress::TextChar(_)
+            | KeyPress::TextBackspace
+            | KeyPress::TextApply
+            | KeyPress::TextAbandon
+            | KeyPress::ListRemove
+            | KeyPress::ListMoveUp
+            | KeyPress::ListMoveDown => Effect::None,
+        }
+    }
+
+    /// Sends the menu's chosen verb against the pane's own sheep and closes
+    /// the pane behind it.
+    ///
+    /// The same [`Sent::Action`] the dashboard's `arm` and `confirm` build,
+    /// so [`Self::on_action_reply`] answers it unchanged. The menu is the
+    /// confirm, so there is no second one.
+    fn apply_parked(&mut self, verb: ActionVerb) -> Effect {
+        if self.action.is_some() {
+            self.notice = Some(Notice {
+                text: "one action is already in flight".to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
+        let Some(name) = self
+            .config_pane
+            .as_ref()
+            .map(|pane| pane.target().name().to_owned())
+        else {
+            return Effect::None;
+        };
+        let Some((target, count)) = self.flock_target(&name) else {
+            self.notice = Some(Notice {
+                text: format!("{name}: it is no longer in the flock"),
+                grave: true,
+            });
+            self.close_pane();
+            return Effect::None;
+        };
+        self.action = Some(Action {
+            verb,
+            target: target.clone(),
+            name: name.clone(),
+            count,
+            at: self.now,
+            stage: Stage::Sent,
+        });
+        self.close_pane();
+        Effect::Send(Sent::Action { verb, target, name })
+    }
+
+    /// The row key `name` reaches, and how many processes that is.
+    ///
+    /// A name rather than [`Self::selected`]: a pane is opened per name and
+    /// survives the table underneath it changing. [`None`] when the flock
+    /// has no such sheep left.
+    fn flock_target(&self, name: &str) -> Option<(RowKey, usize)> {
+        let ids: Vec<u32> = self
+            .flock
+            .values()
+            .filter(|row| row.info.name == name)
+            .map(|row| row.info.id)
+            .collect();
+        match ids.as_slice() {
+            [] => None,
+            [id] => Some((RowKey::Sheep(*id), 1)),
+            _ => Some((RowKey::Group(name.to_owned()), ids.len())),
+        }
     }
 
     /// The refusal a locked row gets, in that row's own words.
@@ -3853,6 +4011,12 @@ impl App {
     #[must_use]
     pub fn config_pane(&self) -> Option<&ConfigPane> {
         self.config_pane.as_ref()
+    }
+
+    /// The apply offer over the open pane, or `None`.
+    #[must_use]
+    pub fn pane_menu(&self) -> Option<PaneMenu> {
+        self.pane_menu
     }
 
     /// The resolved style level and which layer chose it, which the STYLE LEVEL
@@ -6511,7 +6675,7 @@ mod tests {
     /// level before; `view::status`'s own test only pinned the hint text.
     #[test]
     fn escape_backs_out_of_the_env_sub_screen_one_level_at_a_time() {
-        let mut app = fixtures::app_in_sheep_pane_with_control();
+        let mut app = fixtures::app_in_sheep_pane_with_nothing_parked();
         pane_to(&mut app, "env");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         assert!(app.config_pane().unwrap().env().is_some());
@@ -6526,6 +6690,117 @@ mod tests {
             app.config_pane().is_none(),
             "the second escape closes the pane"
         );
+    }
+
+    #[test]
+    fn escape_closes_a_pane_with_nothing_parked() {
+        let mut app = fixtures::app_in_sheep_pane_with_nothing_parked();
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(
+            app.config_pane().is_none(),
+            "no menu when nothing is parked"
+        );
+        assert!(app.pane_menu().is_none());
+    }
+
+    #[test]
+    fn escape_on_a_parked_pane_offers_the_menu_and_escape_again_leaves() {
+        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(
+            app.config_pane().is_some(),
+            "the pane stays up behind the menu"
+        );
+        assert!(app.pane_menu().is_some(), "the menu is open");
+
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.config_pane().is_none(), "escape twice leaves");
+        assert!(app.pane_menu().is_none());
+    }
+
+    #[test]
+    fn the_menu_counts_the_parked_fields_once() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_parked_fields();
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert_eq!(app.pane_menu().expect("the menu is open").parked(), 2);
+        assert_eq!(
+            app.config_pane().expect("a pane").parked_count(),
+            2,
+            "the pane and the menu agree"
+        );
+    }
+
+    #[test]
+    fn the_menu_reads_which_reload_this_sheep_would_get() {
+        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert_eq!(
+            app.pane_menu().expect("the menu is open").reload(),
+            ReloadKind::Overlap,
+            "the fixture sets no readiness probe"
+        );
+    }
+
+    #[test]
+    fn the_menu_never_opens_while_the_gate_is_closed() {
+        let mut app = fixtures::app_in_sheep_pane();
+        assert!(app.config_pane().expect("a pane").parked_count() > 0);
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.pane_menu().is_none(), "read-only can apply nothing");
+        assert!(app.config_pane().is_none());
+    }
+
+    #[test]
+    fn l_from_the_menu_reloads_the_sheep_and_leaves() {
+        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        let request = wire(app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload))));
+        assert!(
+            matches!(request, Request::Reload { .. }),
+            "expected Reload, got {request:?}"
+        );
+        assert!(app.config_pane().is_none());
+        assert!(app.pane_menu().is_none());
+    }
+
+    #[test]
+    fn r_from_the_menu_restarts_the_sheep_and_leaves() {
+        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        let request = wire(app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart))));
+        assert!(
+            matches!(request, Request::Restart { .. }),
+            "expected Restart, got {request:?}"
+        );
+        assert!(app.config_pane().is_none());
+    }
+
+    /// The env sub-screen, the pane and the menu are three levels, and
+    /// `Escape` takes one at a time.
+    #[test]
+    fn escape_walks_out_of_the_sub_screen_then_the_menu_then_the_pane() {
+        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
+        pane_to(&mut app, "env");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(app.config_pane().unwrap().env().is_some());
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.config_pane().unwrap().env().is_none());
+        assert!(app.pane_menu().is_none(), "the sub-screen went first");
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.pane_menu().is_some());
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.config_pane().is_none());
+    }
+
+    /// Help is dismissed before the menu is offered, so `h` then `esc`
+    /// still puts the operator back on the field list.
+    #[test]
+    fn escape_dismisses_help_before_it_offers_the_menu() {
+        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(!app.config_pane().unwrap().help_open());
+        assert!(app.pane_menu().is_none());
     }
 
     #[test]
@@ -7697,7 +7972,7 @@ mod tests {
     /// same one-level-at-a-time rule the env screen follows.
     #[test]
     fn escape_leaves_the_list_sub_screen_before_it_closes_the_pane() {
-        let mut app = fixtures::app_in_sheep_pane_with_control();
+        let mut app = fixtures::app_in_sheep_pane_with_nothing_parked();
         pane_to(&mut app, "args");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         let _ = app.update(Msg::Key(KeyPress::Escape));

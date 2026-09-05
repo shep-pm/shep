@@ -1547,6 +1547,34 @@ impl ConfigPane {
         self.pending.iter().any(|name| name == key)
     }
 
+    /// How many fields wait for a reload or a restart.
+    ///
+    /// Every one of them is already written to the override store, so this
+    /// counts what the running process has not taken yet, never what an
+    /// operator could lose.
+    #[must_use]
+    pub fn parked_count(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// Whether a reload of this sheep overlaps its replacement or runs
+    /// serially. Always [`ReloadKind::Overlap`] for a dog, which has no
+    /// such fields to read.
+    #[must_use]
+    pub fn reload_kind(&self) -> ReloadKind {
+        let flag = |key: &str| {
+            self.values
+                .get(key)
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+        };
+        let has_probe = self
+            .values
+            .get("readiness_probe")
+            .is_some_and(|probe| !probe.is_null());
+        reload_mode(flag("wait_ready"), has_probe, flag("reuse_port"))
+    }
+
     /// The cursor and offset.
     #[must_use]
     pub fn view(&self) -> &Viewport {
@@ -1652,9 +1680,43 @@ impl ConfigPane {
     }
 }
 
+/// Which of the daemon's two reloads an app takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReloadKind {
+    /// The replacement is spawned alongside the instance it replaces.
+    Overlap,
+    /// The instance being replaced is drained first, so the app is down for
+    /// the length of the drain.
+    Serial,
+}
+
+impl ReloadKind {
+    /// The word the pane's own menu prints for it.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Overlap => "overlapping",
+            Self::Serial => "serial",
+        }
+    }
+}
+
+/// Whether a reload of this app overlaps or runs serially.
+///
+/// The daemon decides through `ReadinessSource::of`, which answers for
+/// `wait_ready` before it reads `readiness_probe`, so an app with both
+/// overlaps.
+const fn reload_mode(wait_ready: bool, has_probe: bool, reuse_port: bool) -> ReloadKind {
+    if !wait_ready && has_probe && !reuse_port {
+        ReloadKind::Serial
+    } else {
+        ReloadKind::Overlap
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use shep_core::config::AppConfig;
+    use shep_core::config::{AppConfig, ProbeConfig, ProbeKind};
 
     use super::*;
 
@@ -1732,6 +1794,55 @@ mod tests {
             assert!(!pane.fields().by_key(key).unwrap().editable, "{key}");
         }
         assert!(pane.fields().by_key("max_restarts").unwrap().editable);
+    }
+
+    #[test]
+    fn the_menu_counts_the_parked_fields_once() {
+        let mut config = AppConfig {
+            name: "web".into(),
+            ..AppConfig::default()
+        };
+        config.env.insert("DB_HOST".into(), "db.internal".into());
+        let view =
+            SheepConfigView::new(config, Vec::new(), vec!["env".into(), "kill_signal".into()]);
+        assert_eq!(ConfigPane::sheep(view).parked_count(), 2);
+        assert_eq!(ConfigPane::sheep(web_with_args(&[])).parked_count(), 0);
+    }
+
+    #[test]
+    fn a_probe_without_reuse_port_is_the_only_serial_reload() {
+        assert_eq!(reload_mode(false, true, false), ReloadKind::Serial);
+        assert_eq!(reload_mode(true, true, false), ReloadKind::Overlap);
+        assert_eq!(reload_mode(false, true, true), ReloadKind::Overlap);
+        assert_eq!(reload_mode(false, false, false), ReloadKind::Overlap);
+    }
+
+    #[test]
+    fn a_pane_reads_its_reload_kind_off_the_three_fields_it_turns_on() {
+        let probed = |wait_ready, reuse_port| {
+            let config = AppConfig {
+                name: "web".into(),
+                wait_ready,
+                reuse_port,
+                readiness_probe: Some(ProbeConfig {
+                    kind: ProbeKind::Tcp,
+                    target: "127.0.0.1:8080".into(),
+                    interval: UpDuration::from_millis(10_000),
+                    timeout: UpDuration::from_millis(5_000),
+                    failure_threshold: 3,
+                }),
+                ..AppConfig::default()
+            };
+            ConfigPane::sheep(SheepConfigView::new(config, Vec::new(), Vec::new())).reload_kind()
+        };
+        assert_eq!(probed(false, false), ReloadKind::Serial);
+        assert_eq!(probed(true, false), ReloadKind::Overlap);
+        assert_eq!(probed(false, true), ReloadKind::Overlap);
+        assert_eq!(
+            ConfigPane::sheep(web()).reload_kind(),
+            ReloadKind::Overlap,
+            "no probe, so nothing an outgoing instance could answer"
+        );
     }
 
     #[test]

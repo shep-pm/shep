@@ -18,7 +18,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use shep_core::config::ApplyGroup;
 
-use super::super::app::App;
+use super::super::app::{App, PaneMenu};
 use super::super::pane::{
     ConfigPane, EnvPane, EnvRow, ListPane, ListRow, Lock, PanePending, PaneRow, PaneTarget,
 };
@@ -220,14 +220,43 @@ fn confirm_text(pane: &ConfigPane) -> Option<&str> {
     }
 }
 
-/// The one line the field list reserves under its title: an armed or
-/// in-flight question when there is one, else the selected field's own
-/// help text while `h` has it open. [`None`] when neither applies.
+/// The apply menu's own sentence.
+///
+/// Says "saved" in its first three words on purpose. Every one of these
+/// fields is already in the override store, so this is not a save prompt
+/// and must not read as one: leaving costs nothing, and the last clause
+/// says that too.
+fn menu_text(menu: PaneMenu) -> String {
+    let reload = menu.reload().label();
+    match menu.parked() {
+        1 => format!(
+            "1 saved field waits on the running sheep: L reload ({reload}), R restart, esc leave it parked"
+        ),
+        parked => format!(
+            "{parked} saved fields wait on the running sheep: L reload ({reload}), R restart, esc leave them parked"
+        ),
+    }
+}
+
+/// The one line the field list reserves under its title: the apply menu
+/// while it is up, else an armed or in-flight question, else the selected
+/// field's own help text while `h` has it open. [`None`] when none applies.
 ///
 /// A question outranks help: it is what the operator's next keystroke
 /// answers, and help is dismissed by a keystroke of the operator's own
-/// choosing, so it can wait for the slot back.
-fn top_line(pane: &ConfigPane, palette: Palette) -> Option<(String, Style)> {
+/// choosing, so it can wait for the slot back. The menu outranks both, for
+/// the same reason and because it is on its way off the screen.
+///
+/// One line, and one already counted, so a menu costs the field list
+/// nothing: [`super::scroll`]'s walk sees the same budget either way.
+fn top_line(
+    pane: &ConfigPane,
+    menu: Option<&PaneMenu>,
+    palette: Palette,
+) -> Option<(String, Style)> {
+    if let Some(menu) = menu {
+        return Some((menu_text(*menu), palette.attention()));
+    }
     if let Some(text) = confirm_text(pane) {
         return Some((text.to_owned(), palette.attention()));
     }
@@ -535,9 +564,13 @@ fn list_body_from(
 /// unlimited, which is what a test with no terminal behind it gets. See
 /// [`super::scroll`] for why the viewport's offset is a starting point
 /// here, not an answer.
+///
+/// `menu` is the apply offer, which takes the one line under the title
+/// rather than a line of its own.
 #[must_use]
 pub fn pane_lines(
     pane: &ConfigPane,
+    menu: Option<&PaneMenu>,
     palette: Palette,
     width: u16,
     height: u16,
@@ -567,7 +600,7 @@ pub fn pane_lines(
     // and both read `ConfigPane::pending_edit`. Subtracted from the
     // budget rather than appended, per `body_from`'s own doc on markers.
     // `h`'s help text shares the slot: see `top_line`.
-    if let Some((text, style)) = top_line(pane, palette)
+    if let Some((text, style)) = top_line(pane, menu, palette)
         && body_budget > 0
     {
         lines.push(Line::from(Span::styled(
@@ -753,11 +786,14 @@ pub fn draw_pane(app: &App, pane: &ConfigPane, area: Rect, buffer: &mut Buffer) 
     if area.width == 0 || area.height == 0 {
         return;
     }
-    for (offset, line) in pane_lines(pane, app.palette(), area.width, area.height)
-        .iter()
-        .enumerate()
-        .take(usize::from(area.height))
-    {
+    let lines = pane_lines(
+        pane,
+        app.pane_menu().as_ref(),
+        app.palette(),
+        area.width,
+        area.height,
+    );
+    for (offset, line) in lines.iter().enumerate().take(usize::from(area.height)) {
         let offset = u16::try_from(offset).unwrap_or(0);
         buffer.set_line(area.x, area.y + offset, line, area.width);
     }
@@ -774,6 +810,7 @@ mod tests {
     use super::*;
     use crate::lookout::app::{Effect, KeyPress, Msg};
     use crate::lookout::frames::render_text;
+    use crate::lookout::pane::ReloadKind;
     use crate::output::width::visible_width;
 
     /// The pane the rest of this module renders: `web`, with two overridden
@@ -800,7 +837,7 @@ mod tests {
     /// 39 rows, the two flags and the cost cell beside each one.
     #[test]
     fn a_sheep_pane_at_a_comfortable_width() {
-        let lines = pane_lines(&web_pane(), fixtures::plain(), 120, 0);
+        let lines = pane_lines(&web_pane(), None, fixtures::plain(), 120, 0);
         insta::assert_snapshot!("sheep_pane_wide", text_of(&lines).join("\n"));
     }
 
@@ -809,7 +846,7 @@ mod tests {
         let mut pane = web_pane();
         pane.set_rows(8);
         pane.move_to_last();
-        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 9));
+        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 9));
         assert!(text.len() <= 9, "{text:?}");
         assert!(text.iter().any(|line| line.contains("above")), "{text:?}");
         assert!(
@@ -825,7 +862,7 @@ mod tests {
     fn every_pane_line_fits_the_width_it_was_drawn_for() {
         let pane = web_pane();
         for width in super::super::MIN_TERM_WIDTH..=200 {
-            for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
+            for line in text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0)) {
                 assert!(
                     visible_width(&line) <= usize::from(width),
                     "width {width} drew {}: {line:?}",
@@ -840,7 +877,7 @@ mod tests {
     #[test]
     fn a_structural_field_renders_muted_and_the_cost_column_says_why() {
         let pane = web_pane();
-        let lines = pane_lines(&pane, fixtures::coloured(), 120, 0);
+        let lines = pane_lines(&pane, None, fixtures::coloured(), 120, 0);
         let instances = lines
             .iter()
             .find(|line| text_of(core::slice::from_ref(line))[0].contains("instances"))
@@ -901,7 +938,7 @@ mod tests {
 
     #[test]
     fn the_flags_mark_exactly_the_overridden_and_pending_fields() {
-        let text = text_of(&pane_lines(&web_pane(), fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&web_pane(), None, fixtures::plain(), 120, 0));
         let flagged = |wanted: char| -> Vec<String> {
             rows_of(&text)
                 .into_iter()
@@ -920,7 +957,7 @@ mod tests {
     /// `read-only`.
     #[test]
     fn a_refused_field_and_one_the_pane_has_no_widget_for_get_different_glyphs() {
-        let text = text_of(&pane_lines(&web_pane(), fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&web_pane(), None, fixtures::plain(), 120, 0));
         let glyphed = |wanted: char| -> Vec<String> {
             rows_of(&text)
                 .into_iter()
@@ -939,7 +976,7 @@ mod tests {
     /// with one.
     #[test]
     fn a_bare_duration_or_mem_size_shows_its_resolved_unit_in_the_row() {
-        let text = text_of(&pane_lines(&web_pane(), fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&web_pane(), None, fixtures::plain(), 120, 0));
         let row = |key: &str| {
             text.iter()
                 .find(|line| line.contains(key))
@@ -970,7 +1007,7 @@ mod tests {
         let mut pane = web_pane();
         pane.move_to_last();
         let width = super::super::MIN_TERM_WIDTH;
-        let text = text_of(&pane_lines(&pane, fixtures::plain(), width, 0));
+        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0));
         let rows = rows_of(&text);
         assert!(
             !text[1..]
@@ -1034,7 +1071,7 @@ mod tests {
             for cursor in [0usize, 7, 20, 38] {
                 pane.move_to_first();
                 pane.move_by(isize::try_from(cursor).unwrap());
-                let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
+                let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, height));
                 assert!(
                     text.len() <= usize::from(height),
                     "height {height}, cursor {cursor}: {text:?}"
@@ -1050,11 +1087,11 @@ mod tests {
         let mut pane = web_pane();
         pane.move_to_key("autorestart");
         pane.cycle(Instant::now());
-        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
         assert!(text[1].contains("set autorestart = false"), "{:?}", text[1]);
 
         pane.take_armed(0);
-        let sent = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
+        let sent = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
         assert_eq!(
             sent[1], text[1],
             "the wording must not change between the question and its answer"
@@ -1068,7 +1105,7 @@ mod tests {
         let mut pane = web_pane();
         pane.move_to_key("max_memory");
         pane.toggle_help();
-        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
         assert!(
             text.iter()
                 .any(|line| line.contains("Restart the app if it climbs above this much memory")),
@@ -1082,7 +1119,7 @@ mod tests {
         pane.move_to_key("max_memory");
         pane.toggle_help();
         pane.toggle_help();
-        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
         assert!(
             !text.iter().any(|line| line.contains("Restart the app")),
             "{text:?}"
@@ -1098,7 +1135,7 @@ mod tests {
         pane.move_to_key("autorestart");
         pane.toggle_help();
         pane.cycle(Instant::now());
-        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
         assert!(text[1].contains("set autorestart"), "{:?}", text[1]);
     }
 
@@ -1112,7 +1149,7 @@ mod tests {
         pane.move_to_key("max_memory");
         pane.toggle_help();
         for width in super::super::MIN_TERM_WIDTH..=200 {
-            for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
+            for line in text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0)) {
                 assert!(
                     visible_width(&line) <= usize::from(width),
                     "width {width}: {line:?}"
@@ -1120,12 +1157,110 @@ mod tests {
             }
         }
         for height in 1..=30u16 {
-            let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
+            let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, height));
             assert!(
                 text.len() <= usize::from(height),
                 "height {height}: {text:?}"
             );
         }
+    }
+
+    /// The menu, opened the way an operator opens it: `esc` on a pane the
+    /// running sheep has not caught up with.
+    fn app_at_the_menu() -> crate::lookout::app::App {
+        let mut app = fixtures::app_in_sheep_pane_with_two_parked_fields();
+        app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.pane_menu().is_some(), "esc offered the menu");
+        app
+    }
+
+    #[test]
+    fn the_menu_takes_the_line_under_the_title_and_names_all_three_keys() {
+        let mut app = app_at_the_menu();
+        let text = screen_at(&mut app, 30);
+        let line = text
+            .lines()
+            .find(|line| line.contains("saved fields"))
+            .expect("the menu is drawn");
+        assert!(line.contains("2 saved fields wait"), "{line:?}");
+        for clause in [
+            "L reload (overlapping)",
+            "R restart",
+            "esc leave them parked",
+        ] {
+            assert!(line.contains(clause), "{clause} missing from {line:?}");
+        }
+    }
+
+    #[test]
+    fn one_parked_field_reads_in_the_singular() {
+        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
+        app.update(Msg::Key(KeyPress::Escape));
+        let text = screen_at(&mut app, 30);
+        assert!(text.contains("1 saved field waits"), "{text}");
+        assert!(text.contains("esc leave it parked"), "{text}");
+    }
+
+    /// The menu must not read as a save prompt: every field it counts is
+    /// already in the override store.
+    #[test]
+    fn the_menu_never_says_anything_is_at_risk() {
+        let mut app = app_at_the_menu();
+        let screen = screen_at(&mut app, 30);
+        let line = screen
+            .lines()
+            .find(|line| line.contains("saved fields"))
+            .expect("the menu is drawn")
+            .to_lowercase();
+        for word in ["discard", "unsaved", "are you sure", "lose"] {
+            assert!(!line.contains(word), "{word} has no business in {line:?}");
+        }
+    }
+
+    /// The menu shares the slot the confirm and the help text already
+    /// share, so the field list is laid out against the same budget with
+    /// it open as without.
+    #[test]
+    fn the_menu_costs_the_field_list_no_line() {
+        let mut open = fixtures::app_in_sheep_pane_with_two_parked_fields();
+        let mut closed = fixtures::app_in_sheep_pane_with_two_parked_fields();
+        open.update(Msg::Key(KeyPress::Escape));
+        for height in [super::super::flock::MIN_HEIGHT, 7, 8, 12, 20, 30] {
+            let with = screen_at(&mut open, height);
+            let without = screen_at(&mut closed, height);
+            assert_eq!(
+                with.lines().count(),
+                without.lines().count(),
+                "height {height}"
+            );
+            assert_eq!(marked(&with), 1, "height {height}:\n{with}");
+        }
+    }
+
+    #[test]
+    fn the_menu_line_fits_every_width_the_pane_claims_to_support() {
+        let mut app = app_at_the_menu();
+        for width in super::super::MIN_TERM_WIDTH..=200 {
+            let area = Rect::new(0, 0, width, 30);
+            app.note_body_rows(super::super::body_rows(area));
+            let mut terminal = Terminal::new(TestBackend::new(width, 30)).unwrap();
+            terminal
+                .draw(|frame| super::super::draw(&app, frame))
+                .unwrap();
+            for line in render_text(terminal.backend().buffer()).lines() {
+                assert!(
+                    visible_width(line) <= usize::from(width),
+                    "width {width}: {line:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_sheep_pane_with_the_apply_menu_open() {
+        let menu = PaneMenu::new(2, ReloadKind::Serial);
+        let lines = pane_lines(&web_pane(), Some(&menu), fixtures::plain(), 120, 0);
+        insta::assert_snapshot!("sheep_pane_apply_menu", text_of(&lines).join("\n"));
     }
 
     /// The pane's cursor, walked onto `key` the way an operator walks it.
@@ -1161,6 +1296,7 @@ mod tests {
 
             let text = text_of(&pane_lines(
                 app.config_pane().unwrap(),
+                None,
                 fixtures::plain(),
                 120,
                 0,
@@ -1209,7 +1345,7 @@ mod tests {
         for typed in "/srv".chars() {
             pane.type_char(typed);
         }
-        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
         let row = text
             .iter()
             .find(|line| line.contains(" cwd"))
@@ -1243,7 +1379,7 @@ mod tests {
     /// contract exists to prevent.
     #[test]
     fn a_dog_pane_at_a_comfortable_width() {
-        let text = text_of(&pane_lines(&bark_pane(), fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&bark_pane(), None, fixtures::plain(), 120, 0));
         assert!(
             !text.iter().any(|line| line.contains("hooks.example")),
             "a secret is never rendered: {text:?}"
@@ -1265,7 +1401,7 @@ mod tests {
             for cursor in [0usize, 2, 4] {
                 pane.move_to_first();
                 pane.move_by(isize::try_from(cursor).unwrap());
-                let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
+                let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, height));
                 assert!(
                     text.len() <= usize::from(height),
                     "height {height}, cursor {cursor}: {text:?}"
@@ -1280,7 +1416,7 @@ mod tests {
     fn every_dog_pane_line_fits_the_width_it_was_drawn_for() {
         let pane = bark_pane();
         for width in super::super::MIN_TERM_WIDTH..=200 {
-            for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
+            for line in text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0)) {
                 assert!(
                     visible_width(&line) <= usize::from(width),
                     "width {width} drew {}: {line:?}",
@@ -1297,7 +1433,7 @@ mod tests {
     fn the_env_sub_screen_at_a_comfortable_width() {
         let mut pane = web_pane();
         pane.open_env();
-        let lines = pane_lines(&pane, fixtures::plain(), 120, 0);
+        let lines = pane_lines(&pane, None, fixtures::plain(), 120, 0);
         insta::assert_snapshot!("env_sub_screen", text_of(&lines).join("\n"));
     }
 
@@ -1311,7 +1447,7 @@ mod tests {
         }
         let (key, value) = pane.env_mut().unwrap().apply_typing().unwrap();
         pane.arm_env(key, value.map(Into::into), Instant::now());
-        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
         assert!(text[1].contains("set env DB_HOST"), "{:?}", text[1]);
         assert!(!text.join("\n").contains("hunter2"), "{text:?}");
     }
@@ -1331,7 +1467,7 @@ mod tests {
             shep_core::protocol::SheepConfigView::new(config, Vec::new(), Vec::new())
         });
         pane.open_env();
-        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0)).join("\n");
+        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0)).join("\n");
         assert!(text.contains("DB_PASSWORD"), "{text}");
         assert!(!text.contains("hunter2"), "{text}");
         assert!(text.contains("<set>"), "{text}");
@@ -1358,7 +1494,7 @@ mod tests {
             pane.env_mut().unwrap().set_rows(body);
             let total = pane.env().unwrap().rows().len();
             for step in 0..=total {
-                let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
+                let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, height));
                 assert!(
                     text.len() <= usize::from(height),
                     "height {height}, step {step}: {text:?}"
@@ -1373,7 +1509,7 @@ mod tests {
                 pane.env_mut().unwrap().move_by(1);
             }
             for step in 0..=total {
-                let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
+                let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, height));
                 if height > 1 {
                     assert_eq!(
                         text.iter().filter(|line| line.starts_with('>')).count(),
@@ -1395,7 +1531,7 @@ mod tests {
             pane.env_mut().unwrap().type_char(typed);
         }
         for width in super::super::MIN_TERM_WIDTH..=200 {
-            for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
+            for line in text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0)) {
                 assert!(
                     visible_width(&line) <= usize::from(width),
                     "width {width} drew {}: {line:?}",
@@ -1407,7 +1543,7 @@ mod tests {
 
     #[test]
     fn the_title_names_the_target_and_no_longer_calls_it_read_only() {
-        let text = text_of(&pane_lines(&web_pane(), fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&web_pane(), None, fixtures::plain(), 120, 0));
         assert!(text[0].contains("web"), "{:?}", text[0]);
         assert!(text[0].contains("(sheep config)"), "{:?}", text[0]);
         assert!(!text[0].contains("read-only"), "{:?}", text[0]);
@@ -1430,7 +1566,7 @@ mod tests {
         let mut pane = pane.clone();
         pane.move_to_key("args");
         pane.open_list();
-        text_of(&pane_lines(&pane, fixtures::plain(), width, height))
+        text_of(&pane_lines(&pane, None, fixtures::plain(), width, height))
     }
 
     /// Env is write-only because the shepherd sends no value; an array
@@ -1476,7 +1612,7 @@ mod tests {
                 .unwrap()
                 .set_rows(usize::from(height.saturating_sub(1)));
             for step in 0..=total {
-                let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
+                let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, height));
                 assert!(
                     text.len() <= usize::from(height),
                     "height {height}, step {step}: {text:?}"
@@ -1485,7 +1621,7 @@ mod tests {
             }
         }
         for width in super::super::MIN_TERM_WIDTH..=200 {
-            for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
+            for line in text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0)) {
                 assert!(
                     visible_width(&line) <= usize::from(width),
                     "width {width} drew {}: {line:?}",
@@ -1520,6 +1656,7 @@ mod tests {
             for step in 0..=total {
                 let text = text_of(&pane_lines(
                     &pane,
+                    None,
                     fixtures::plain(),
                     super::super::MIN_TERM_WIDTH,
                     height,
