@@ -424,7 +424,8 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
         // later, and a fold deep enough outlives the request budget and is
         // abandoned by `with_deadline` with its last stages unreloaded.
         // `staged_start_deadline` is how `shep start` buys the room for the
-        // same walk; `shep reload` still sends the client's default.
+        // same walk; `shep reload` sends `RELOAD_DEADLINE`, which is this
+        // module's own 60s ceiling and so the most it can buy.
         Request::Reload { selector } => reload_request(id, selector, ctx).await,
         Request::Reopen { selector } => {
             selector_call(

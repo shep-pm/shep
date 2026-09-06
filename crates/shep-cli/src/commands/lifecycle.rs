@@ -1315,9 +1315,9 @@ const STAGED_START_SLACK: Duration = Duration::from_secs(5);
 /// bounds the reply, not the actor's work. A client that gave up at the same
 /// moment would race that answer and print a local timeout instead of the
 /// daemon's own, and the operator reconciles with `shep flock` either way.
-/// Seventeen apps at the default 3s `listen_timeout` sum to 51s, which with
-/// the slack is past the ceiling, so this is an ordinary large batch rather
-/// than a pathological one.
+/// The slack is spent per app as well, so at the default 3s
+/// `listen_timeout` each app costs 8s and the ceiling is crossed at eight of
+/// them, which is an ordinary flock rather than a pathological one.
 pub(crate) fn staged_start_deadline(apps: &[AppConfig]) -> Duration {
     let stages: Duration = apps
         .iter()
@@ -1443,7 +1443,10 @@ pub async fn restart_within(
 /// Reloads the sheep matching `args.selector`, replacing each instance with
 /// a fresh one so the app has a window in which it can hand over
 ///
-/// The rows printed are the flock as it stood at acceptance.
+/// The rows printed are acceptances. One sheep is the flock as it stood when
+/// its reload was accepted; a selector matching several is walked in stages
+/// daemon-side, so the table is stitched from one acceptance per stage and
+/// the earlier stages' swaps have already happened by the time it prints.
 ///
 /// Sent with [`RELOAD_DEADLINE`], for `restart`'s reason and then some. A
 /// reload matching several sheep no longer answers at acceptance: the staged
