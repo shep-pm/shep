@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-06
+
+### Fixed
+
+- Saturate the deadline grace instead of overflowing ([#146](https://github.com/shep-pm/shep/pull/146))
+
+
 ## [0.4.0] - 2026-09-06
 
 
