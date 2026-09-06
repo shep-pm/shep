@@ -1,6 +1,5 @@
 ---
 source: crates/shep-core/src/protocol/request.rs
-assertion_line: 2661
 expression: replies
 ---
 [
