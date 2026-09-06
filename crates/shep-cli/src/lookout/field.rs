@@ -593,9 +593,9 @@ mod tests {
     }
 
     #[test]
-    fn the_real_flockfile_schema_yields_thirty_nine_fields_in_eight_groups() {
+    fn the_real_flockfile_schema_yields_forty_fields_in_eight_groups() {
         let set = real_field_set();
-        assert_eq!(set.len(), 39);
+        assert_eq!(set.len(), 40);
         assert_eq!(
             groups_of(&set),
             [
