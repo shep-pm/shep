@@ -765,10 +765,17 @@ mod tests {
         // concurrently, so which of `api` and `worker` reaches the bus first
         // is not something this walk decides. What it does decide is that
         // both of them stop before `db` does.
+        //
+        // The later stage's members ignore signals and `db` does not, so
+        // they have a kill ladder to burn and it does not. That is what
+        // makes the assertion read stage boundaries rather than poll order:
+        // with every stop flattened into one `join_all`, `db` answers first
+        // and the bus carries `Stop db` at the front. Scripts are handed out
+        // in spawn order, which is the order `apps` lists them.
         let h = harness(vec![
             ProcScript::never_exits(),
-            ProcScript::never_exits(),
-            ProcScript::never_exits(),
+            ProcScript::ignores_signals(),
+            ProcScript::ignores_signals(),
         ]);
         let db = AppConfig::minimal("db", "./sleep");
         let mut api = AppConfig::minimal("api", "./sleep");
@@ -806,8 +813,15 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_shutdown_stops_dependents_before_their_dependencies() {
         // fails if the teardown claims every online sheep at once, which
-        // gives a worker and its database the same SIGTERM millisecond
-        let h = harness(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
+        // gives a worker and its database the same SIGTERM millisecond.
+        // `worker` ignores signals and `db` does not, so the later stage has
+        // a kill ladder to burn: flatten the walk and `db` answers first,
+        // which is the only thing that makes this assertion about stages
+        // rather than about poll order.
+        let h = harness(vec![
+            ProcScript::never_exits(),
+            ProcScript::ignores_signals(),
+        ]);
         let apps = db_then_worker();
         h.ctx.registry.record(&apps);
         let plan = plan(&nodes_for(&apps, &[]));
