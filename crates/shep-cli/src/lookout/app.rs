@@ -37,9 +37,12 @@ use crate::vocabulary::Reported;
 /// run `shep stop`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Control {
-    /// Actions refuse. The default.
+    /// Actions refuse. Asked for by `--read-only`, or by
+    /// `lookout.allow_control` being `false`.
     ReadOnly,
-    /// Actions are permitted: `x`, `R` and `L` arm a confirm, Enter sends it.
+    /// Actions are permitted, and the default: `x`, `R` and `L` arm a
+    /// confirm, Enter sends it. The apply menu is the one door that sends on
+    /// the press, since it names its keys on screen.
     Allowed,
 }
 
