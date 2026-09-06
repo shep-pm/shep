@@ -1272,11 +1272,21 @@ async fn load_one(
     )
 }
 
-/// Slack over the summed readiness deadlines of a staged start.
+/// Slack the client allows PER APP over the summed readiness deadlines of a
+/// staged start.
 ///
-/// Covers the daemon's own per-stage slack (`boot_order::STAGE_SLACK`) plus
-/// the round trip, so a client gives up only after the daemon has.
-const STAGED_START_SLACK: Duration = Duration::from_secs(10);
+/// Mirrors the daemon's own `boot_order::STAGE_SLACK`, which is 5s and is
+/// spent per stage, not per start: the daemon's worst case over N stages is
+/// the summed `listen_timeout`s plus N times that. A flat 10s therefore made
+/// the client give up BEFORE the daemon from three stages on, which is the
+/// opposite of what it was for. [`staged_start_deadline`] already sums the
+/// timeouts under the worst case of one app per stage, so multiplying the
+/// slack the same way keeps the two halves reading the same graph.
+///
+/// The round trip needs nothing here: `Client::request_with_deadline` waits
+/// the deadline it asked for plus `DEADLINE_GRACE` before calling it a
+/// timeout of its own.
+const STAGED_START_SLACK: Duration = Duration::from_secs(5);
 
 /// The deadline a staged start needs.
 ///
@@ -1313,7 +1323,8 @@ pub(crate) fn staged_start_deadline(apps: &[AppConfig]) -> Duration {
         .iter()
         .map(|app| app.listen_timeout.as_duration())
         .sum();
-    (stages + STAGED_START_SLACK).max(START_DEADLINE)
+    let slack = STAGED_START_SLACK * u32::try_from(apps.len()).unwrap_or(u32::MAX);
+    (stages + slack).max(START_DEADLINE)
 }
 
 /// Stops the sheep matching `args.selector`.
@@ -3168,6 +3179,29 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_staged_start_allows_the_daemon_its_slack_on_every_stage() {
+        // fails if the client's slack is flat: the daemon spends
+        // `boot_order::STAGE_SLACK` (5s) per stage, so over three stages its
+        // worst case is 60s of timeouts plus 15s of slack, and a single 10s
+        // made the client abandon at 70s a start the shepherd would still be
+        // running at 75s
+        let apps: Vec<AppConfig> = ["db", "api", "web"]
+            .iter()
+            .map(|name| {
+                let mut app = AppConfig::minimal(name, "/bin/sleep");
+                app.listen_timeout = shep_core::values::UpDuration::from_millis(20_000);
+                app
+            })
+            .collect();
+
+        assert_eq!(
+            staged_start_deadline(&apps),
+            Duration::from_secs(75),
+            "three 20s stages plus 5s of slack each"
+        );
     }
 
     #[tokio::test]
