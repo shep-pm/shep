@@ -248,6 +248,25 @@ fn resolve_secret<'a>(
     }
 }
 
+/// Whether `value` carries a `{{secret:...}}` this grammar would resolve.
+///
+/// `pub(crate)`: `normalize` asks it of the two log-path fields, which may
+/// not hold a secret. Walks the same tokenizer [`render`] resolves against,
+/// so a reference this misses is one `render` would not have substituted
+/// either.
+pub(crate) fn holds_secret(value: &str) -> bool {
+    let mut found = false;
+    let _ = walk::<Infallible>(value, |segment| {
+        if let Segment::Token(token) = segment
+            && secret_reference(token).is_some()
+        {
+            found = true;
+        }
+        Ok(())
+    });
+    found
+}
+
 /// Checks that every `{{...}}` in `value` names a token this grammar defines.
 ///
 /// `pub(crate)`: only `normalize` asks this, at config time. [`render`] stays

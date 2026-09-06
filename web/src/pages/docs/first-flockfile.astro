@@ -408,7 +408,7 @@ unknown field \`max_memory_restart\`, expected one of \`name\`, \`script\`, \`ar
       <code>env</code> values, <code>args</code>, <code>out_file</code> and{" "}
       <code>err_file</code> all accept doubled-brace tokens. Two are
       positional, filled in at spawn time with the app's own name and the
-      instance's own slot:
+      instance's own slot, and every one of the four takes them:
     </p>
     <CodeBlock label="Flockfile.toml">{`[[app]]
 name = "z-worker"
@@ -423,7 +423,11 @@ Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
       The third reads a value rather than the app's own identity:{" "}
       <code>{'{{secret:NAME}}'}</code> looks up <code>NAME</code> in the{" "}
       <a href="/docs/secrets">secrets store</a> instead of putting a live
-      value in the Flockfile at all:
+      value in the Flockfile at all. This one is for <code>env</code> values
+      and <code>args</code> only: <code>out_file</code> and{" "}
+      <code>err_file</code> refuse it, because a resolved log path becomes a
+      filename on disk and is reported by <code>shep flock</code> and{" "}
+      <code>shep describe</code>.
     </p>
     <CodeBlock label="Flockfile.toml">{`[app.env]
 DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>

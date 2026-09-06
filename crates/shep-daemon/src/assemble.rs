@@ -180,8 +180,9 @@ impl core::error::Error for AssembleError {
 /// directly; `Some(path)` runs `path` with `[script, ...args]`.
 ///
 /// Explicit `out_file`/`err_file` win over the default log path and render
-/// through the same grammar as `env` and `args`; normalize already refused a
-/// path that collides across instances unless `merge_logs` asked for it.
+/// `{{instance}}` and `{{name}}` the way `env` and `args` do; normalize
+/// refuses a `{{secret:...}}` in either, and a path that collides across
+/// instances unless `merge_logs` asked for it.
 /// `SpawnSpec::stdin` carries `config.stdin` straight through: unlike
 /// `channel`, nothing else turns it on.
 ///
@@ -191,9 +192,10 @@ impl core::error::Error for AssembleError {
 ///
 /// # Errors
 ///
-/// - [`AssembleError::Template`]: an `env` value, an arg or an explicit log
-///   path names a secret this view cannot resolve.
-///   [`AssembleError::is_retriable`] says whether waiting would help.
+/// - [`AssembleError::Template`]: an `env` value or an arg names a secret
+///   this view cannot resolve. [`AssembleError::is_retriable`] says whether
+///   waiting would help. A log path cannot reach here: normalize refuses a
+///   secret in one.
 pub fn assemble(
     app: &ResolvedApp,
     instance: u32,
@@ -833,12 +835,13 @@ mod tests {
         assert!(err.is_retriable());
     }
 
+    /// Args carry the same grammar `env` does. A log path does not, and
+    /// `normalize` is what refuses one there; see
+    /// `a_secret_in_a_log_path_is_refused` in shep-core.
     #[test]
-    fn a_secret_resolves_in_args_and_in_an_explicit_log_path() {
+    fn a_secret_resolves_in_args() {
         let mut config = AppConfig::minimal("web", "./srv");
         config.args = vec!["--token={{secret:K}}".into()];
-        config.out_file = Some("/tmp/{{secret:K}}.log".into());
-        config.merge_logs = true;
         let app = normalize(config).unwrap();
         let spec = assemble(
             &app,
@@ -849,7 +852,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(spec.args, vec!["--token=v".to_string()]);
-        assert!(spec.out_file.to_string_lossy().contains("/tmp/v.log"));
     }
 
     #[test]

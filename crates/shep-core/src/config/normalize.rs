@@ -203,6 +203,7 @@ fn expand_paths(app: &mut AppConfig, home: Option<&Path>) -> Result<(), Normaliz
 /// - [`NormalizeError::ZeroWatchDelay`]: `watch_delay` is `0`.
 /// - [`NormalizeError::InvalidWatchGlob`]: a `watch_options` or `ignore_watch` pattern globset will not compile.
 /// - [`NormalizeError::BadTemplate`]: an `env`/`args`/log-path value carries an undefined or unclosed `{{...}}` token.
+/// - [`NormalizeError::SecretInLogPath`]: `out_file` or `err_file` carries a `{{secret:...}}`.
 /// - [`NormalizeError::SharedLogPath`]: `out_file` or `err_file` renders to the same path for two instances.
 /// - [`NormalizeError::TildeUser`]: a path field names another user's `~user` home.
 /// - [`NormalizeError::NoHomeForTilde`]: a path field expands `~/` but no home directory could be found.
@@ -261,6 +262,12 @@ pub fn normalize_with_home(
     for (field, value) in [("out_file", &app.out_file), ("err_file", &app.err_file)] {
         if let Some(value) = value {
             validate_template(&app.name, field, value)?;
+            if crate::config::template::holds_secret(value) {
+                return Err(NormalizeError::SecretInLogPath {
+                    name: app.name.clone(),
+                    field,
+                });
+            }
         }
     }
     if app.script.is_empty() {
@@ -634,6 +641,19 @@ pub enum NormalizeError {
         /// variant does not have to restate the grammar's own copy
         reason: String,
     },
+    /// An explicit `out_file` or `err_file` carries a `{{secret:...}}`.
+    ///
+    /// A resolved log path is not contained the way a resolved `env` value
+    /// is: it reaches `ProcessInfo`, every bus event carrying one,
+    /// `shep flock`, `shep describe`, `shep lookout`, and a filename on disk
+    /// under `$SHEP_HOME/logs`. `{{instance}}` and `{{name}}` still render
+    /// there; only a secret is refused.
+    SecretInLogPath {
+        /// The sheep name
+        name: String,
+        /// `out_file` or `err_file`
+        field: &'static str,
+    },
     /// An explicit log path renders to the same string for two different
     /// slots, the app runs more than one instance, and `merge_logs` is off,
     /// so every instance would write to one file without having asked to.
@@ -742,6 +762,10 @@ impl fmt::Display for NormalizeError {
                 field,
                 reason,
             } => write!(f, "sheep `{name}`, {field}: {reason}"),
+            Self::SecretInLogPath { name, field } => write!(
+                f,
+                "sheep `{name}` puts a `{{{{secret:...}}}}` in `{field}`: a log path may not hold a secret, since it becomes a filename on disk and is reported by `shep flock` and `shep describe`"
+            ),
             Self::SharedLogPath { name, field } => write!(
                 f,
                 "sheep `{name}` runs several instances and sets `{field}` to one path: put `{{{{instance}}}}` in it, or set `merge_logs = true` to share it on purpose"
@@ -1600,6 +1624,56 @@ target = "http://127.0.0.1:8080/healthz"
         app.instances = 3;
         app.out_file = Some("/var/log/{{name}}.log".to_string());
         assert!(normalize(app).is_err());
+    }
+
+    /// A resolved `env` value reaches the child and nothing else. A
+    /// resolved log path reaches `ProcessInfo`, every bus event carrying
+    /// one, `shep flock`, `shep describe`, `shep lookout` and a filename
+    /// under `$SHEP_HOME/logs`, which is four more places than the design
+    /// says a plaintext secret ever lives.
+    #[test]
+    fn a_secret_in_a_log_path_is_refused() {
+        for field in ["out_file", "err_file"] {
+            let mut app = AppConfig::minimal("web", "./srv");
+            let path = Some("/var/log/{{secret:TOKEN}}.log".to_string());
+            if field == "out_file" {
+                app.out_file = path;
+            } else {
+                app.err_file = path;
+            }
+            match normalize(app).unwrap_err() {
+                NormalizeError::SecretInLogPath { name, field: got } => {
+                    assert_eq!(name, "web");
+                    assert_eq!(got, field);
+                }
+                other => panic!("expected SecretInLogPath for {field}, got {other:?}"),
+            }
+        }
+    }
+
+    /// The refusal is the `secret:` prefix alone: a multi-instance app
+    /// needs `{{instance}}` in its log paths, and `{{name}}` is how the
+    /// other two path fields are written.
+    #[test]
+    fn the_positional_tokens_still_render_in_a_log_path() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.instances = 2;
+        app.out_file = Some("/var/log/{{name}}-{{instance}}.out".to_string());
+        app.err_file = Some("/var/log/{{name}}-{{instance}}.err".to_string());
+        assert!(normalize(app).is_ok());
+    }
+
+    /// A namespaced reference is the same refusal: `SecretRef::parse` reads
+    /// both shapes, and only one of them being refused would be a hole
+    /// nobody could guess at.
+    #[test]
+    fn a_namespaced_secret_in_a_log_path_is_refused_too() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.err_file = Some("/var/log/{{secret:vercel/TOKEN}}.log".to_string());
+        assert!(matches!(
+            normalize(app).unwrap_err(),
+            NormalizeError::SecretInLogPath { .. }
+        ));
     }
 
     #[test]
