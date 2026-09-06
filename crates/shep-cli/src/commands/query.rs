@@ -859,7 +859,8 @@ mod tests {
             "{rendered}"
         );
         assert!(
-            rendered.contains("vercel/API_KEY (production): provider not ready"),
+            rendered
+                .contains("vercel/API_KEY (production): not cached; a provider may still have it"),
             "{rendered}"
         );
         assert!(!rendered.contains("hunter2"), "never a value: {rendered}");
@@ -885,7 +886,7 @@ mod tests {
         assert!(
             entries
                 .iter()
-                .any(|e| e["reference"] == "vercel/API_KEY" && e["status"] == "provider_not_ready"),
+                .any(|e| e["reference"] == "vercel/API_KEY" && e["status"] == "uncached"),
             "{entries:?}"
         );
         assert!(!out_contains(&json, "hunter2"), "never a value");

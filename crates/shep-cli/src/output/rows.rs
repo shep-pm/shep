@@ -2183,7 +2183,8 @@ impl Render for SecretValueRow {
 }
 
 /// The verdict [`DescribedSecret::status`] carries: whether a reference
-/// currently resolves, and if not, which of the two reasons it does not.
+/// currently resolves, and if not, whether that is a known absence or
+/// simply invisible to this command from here.
 ///
 /// Serializes `snake_case`, matching this crate's other JSON enums (a dog's
 /// `kind`, for one). [`Self::as_table_word`] is the separate, human-prose
@@ -2199,9 +2200,11 @@ pub enum SecretStatus {
     /// The store or namespace exists but holds nothing for this key in
     /// this environment.
     Missing,
-    /// No provider dog has ever pushed to this namespace, as far as the
-    /// local cache on disk shows.
-    ProviderNotReady,
+    /// This namespace is not in the local cache file this command reads.
+    /// A provider dog that pushed it with `persist = false` never reaches
+    /// that cache, so this is not proof the running shepherd lacks the
+    /// namespace too, only that this command cannot see it from here.
+    Uncached,
 }
 
 impl SecretStatus {
@@ -2213,7 +2216,7 @@ impl SecretStatus {
         match resolution {
             shep_core::secrets::Resolution::Found(_) => Self::Resolved,
             shep_core::secrets::Resolution::MissingKey => Self::Missing,
-            shep_core::secrets::Resolution::MissingNamespace => Self::ProviderNotReady,
+            shep_core::secrets::Resolution::MissingNamespace => Self::Uncached,
         }
     }
 
@@ -2223,7 +2226,7 @@ impl SecretStatus {
         match self {
             Self::Resolved => "resolved",
             Self::Missing => "missing",
-            Self::ProviderNotReady => "provider not ready",
+            Self::Uncached => "not cached; a provider may still have it",
         }
     }
 }
