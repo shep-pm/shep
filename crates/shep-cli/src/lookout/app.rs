@@ -1201,7 +1201,7 @@ pub struct ActionState<'a> {
 pub const CONFIRM_EXPIRY: Duration = Duration::from_secs(10);
 
 /// The sentence `r` and the action keys both give when the link is gone.
-const LINK_GONE: &str = "the shepherd is gone — nothing left to ask";
+const LINK_GONE: &str = "the shepherd is gone: nothing left to ask";
 
 /// The sentence every closed-gate refusal gives, dashboard and settings alike.
 const READ_ONLY_REFUSAL: &str = "read-only: from --read-only or lookout.allow_control";
@@ -3359,7 +3359,7 @@ impl App {
             // Not `LINK_GONE`, which says the shepherd is gone: this is the
             // status bar's own sentence for a redial (`view/status.rs`).
             Link::Retrying { attempt } => Some(format!(
-                "the shepherd stopped answering \u{2014} reconnecting (attempt {attempt})"
+                "the shepherd stopped answering: reconnecting (attempt {attempt})"
             )),
             // The ladder is exhausted, so the shepherd really is gone.
             Link::Lost { .. } => Some(LINK_GONE.to_string()),

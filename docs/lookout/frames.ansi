@@ -241,7 +241,7 @@ need 33x6                   [0m
 The shepherd stopped answering. Five attempts over about eight seconds before this becomes the next frame. Every pane below the table keeps describing the selected sheep from the last listing.
 
 shep lookout   /home/ada/.shep                                                                           [0m[38;5;245m 6 in the flock[0m
-[0m[38;5;221mthe shepherd stopped answering — reconnecting (attempt 3)[0m                                                               [0m
+[0m[38;5;221mthe shepherd stopped answering: reconnecting (attempt 3)[0m                                                                [0m
 [0m[38;5;245mhost  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           [0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
@@ -276,7 +276,7 @@ sheep 2  api   [0m[38;5;29monline[0m   pid 48219   restarts 1   uptime 1h 28m
 The ladder ran out. Last known values stay, the uptime clock has stopped, and so has the host strip — one line ticking over on a frozen screen is a contradiction on the same frame.
 
 shep lookout   /home/ada/.shep                                                                           [0m[38;5;245m 6 in the flock[0m
-[0m[38;5;166mthe shepherd has died — these values are frozen as of 2026-08-14 14:32:07[0m                                               [0m
+[0m[38;5;166mthe shepherd has died: these values are frozen as of 2026-08-14 14:32:07[0m                                                [0m
 [0m[38;5;245mhost  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 6.7%   flock mem 371.0M   up 6d 3h            [0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
@@ -727,7 +727,7 @@ shep lookout   /home/ada/.shep                                                  
 An action key pressed while the link is coming back. The refusal names the same reconnect attempt the banner above it does, rather than the exhausted-ladder sentence — Phase 16 review Minor #8 caught the two disagreeing on one frame.
 
 shep lookout   /home/ada/.shep                                                       [0m[38;5;245m 6 in the flock[0m
-[0m[38;5;221mthe shepherd stopped answering — reconnecting (attempt 3)[0m                                           [0m
+[0m[38;5;221mthe shepherd stopped answering: reconnecting (attempt 3)[0m                                            [0m
 [0m[38;5;245mhost  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …[0m
   [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
@@ -739,7 +739,7 @@ shep lookout   /home/ada/.shep                                                  
   0     web                [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m  [0m
   1     web                [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m  [0m
                                                                                                     [0m
-[0m[38;5;166mthe shepherd stopped answering — reconnecting (attempt 3)                           [0m[38;5;245m control enabled[0m
+[0m[38;5;166mthe shepherd stopped answering: reconnecting (attempt 3)                            [0m[38;5;245m control enabled[0m
 
 
 === settings_fresh  (120x30) ===

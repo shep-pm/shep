@@ -234,7 +234,7 @@ need 33x6
 The shepherd stopped answering. Five attempts over about eight seconds before this becomes the next frame. Every pane below the table keeps describing the selected sheep from the last listing.
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
-the shepherd stopped answering — reconnecting (attempt 3)                                                               
+the shepherd stopped answering: reconnecting (attempt 3)                                                                
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -268,7 +268,7 @@ q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e 
 The ladder ran out. Last known values stay, the uptime clock has stopped, and so has the host strip — one line ticking over on a frozen screen is a contradiction on the same frame.
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
-the shepherd has died — these values are frozen as of 2026-08-14 14:32:07                                               
+the shepherd has died: these values are frozen as of 2026-08-14 14:32:07                                                
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 6.7%   flock mem 371.0M   up 6d 3h            
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -702,7 +702,7 @@ restart api (id 2): the shepherd restarted it                                   
 An action key pressed while the link is coming back. The refusal names the same reconnect attempt the banner above it does, rather than the exhausted-ladder sentence — Phase 16 review Minor #8 caught the two disagreeing on one frame.
 
 shep lookout   /home/ada/.shep                                                        6 in the flock
-the shepherd stopped answering — reconnecting (attempt 3)                                           
+the shepherd stopped answering: reconnecting (attempt 3)                                            
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -714,7 +714,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
   0     web                online           48211    0         -          3.4%    182.0M    1h 25m  
   1     web                online           48212    0         -          2.9%    178.0M    1h 26m  
                                                                                                     
-the shepherd stopped answering — reconnecting (attempt 3)                            control enabled
+the shepherd stopped answering: reconnecting (attempt 3)                             control enabled
 
 === settings_fresh  (120x30) ===
 The settings screen on a fresh $SHEP_HOME: shep.toml holds only [interpreters], so every scalar's SOURCE column reads `the default` and its VALUE is the compiled fallback. The state most operators open this screen in.

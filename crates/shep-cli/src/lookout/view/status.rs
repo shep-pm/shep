@@ -49,11 +49,11 @@ pub fn banner_line(app: &App) -> Option<Line<'static>> {
     match app.link() {
         Link::Live => None,
         Link::Retrying { attempt } => Some(Line::from(Span::styled(
-            format!("the shepherd stopped answering — reconnecting (attempt {attempt})"),
+            format!("the shepherd stopped answering: reconnecting (attempt {attempt})"),
             palette.attention(),
         ))),
         Link::Lost { at_local } => Some(Line::from(Span::styled(
-            format!("the shepherd has died — these values are frozen as of {at_local}"),
+            format!("the shepherd has died: these values are frozen as of {at_local}"),
             palette.alarm(),
         ))),
     }
