@@ -13,6 +13,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-06
+
+### Added
+
+- Dogs get their own section of the flock table
+- E opens a dog's pane from the dashboard
+- A field can offer suggestions without closing its grammar
+- An array field opens a list sub-screen
+- Control is on by default, and --read-only opts out **(BREAKING)**
+- Closing a pane with parked config offers to apply it
+
+### Changed
+
+- Eight field groups, so no group holds half the form
+
+### Fixed
+
+- Enter opens the editor on a suggested field
+- Redact the list pane's Debug, like every pane beside it
+- The read-only refusal names a flag that still exists
+- The apply menu refuses a dead link, like every action key
+- The apply menu expires, and reads the gate itself
+- Reattach four doc comments to the item they describe
+- Correct the comment on the text-only KeyPress arm
+- Mask a secret array field in the list sub-screen
+- Flip the lookout gallery's control mapping to match the new default
+
+
 ## [0.3.0] - 2026-09-05
 
 
