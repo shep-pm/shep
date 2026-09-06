@@ -458,16 +458,32 @@ fn validate_probe(
 ///
 /// Everything [`normalize`] returns, plus
 /// [`NormalizeError::DuplicateName`]: two apps share a `name`.
+/// [`NormalizeError::DependencyCycle`]: two apps in the document depend on each other.
 pub fn normalize_all(apps: Vec<AppConfig>) -> Result<Vec<ResolvedApp>, NormalizeError> {
     let mut seen = BTreeSet::new();
-    apps.into_iter()
+    let resolved: Vec<ResolvedApp> = apps
+        .into_iter()
         .map(|app| {
             if !seen.insert(app.name.clone()) {
                 return Err(NormalizeError::DuplicateName(app.name));
             }
             normalize(app)
         })
-        .collect()
+        .collect::<Result<_, _>>()?;
+    // Document-local only: a name this document does not hold is left to the
+    // daemon, which is the only place that knows the whole flock.
+    let nodes: Vec<crate::config::graph::BootNode> = resolved
+        .iter()
+        .map(|app| crate::config::graph::BootNode {
+            name: app.config().name.clone(),
+            depends_on: app.config().depends_on.clone(),
+            kind: crate::config::graph::NodeKind::Sheep,
+        })
+        .collect();
+    if let Some(cycle) = crate::config::graph::plan(&nodes).cycles.into_iter().next() {
+        return Err(NormalizeError::DependencyCycle(cycle));
+    }
+    Ok(resolved)
 }
 
 /// Error type returned from [`normalize`] and [`normalize_all`]
@@ -521,6 +537,10 @@ pub enum NormalizeError {
     },
     /// Two apps in one flock share this name
     DuplicateName(String),
+    /// Two or more apps in one document depend on each other. Carries the
+    /// cycle as a path, so the refusal names it rather than only reporting
+    /// that one exists.
+    DependencyCycle(Vec<String>),
     /// A `readiness_probe` or `liveness_probe` target is malformed. Carries
     /// which probe and the rendered reason.
     InvalidProbe {
@@ -685,6 +705,11 @@ impl fmt::Display for NormalizeError {
                 write!(f, "`{name}` is not a recognized IANA timezone")
             }
             Self::DuplicateName(n) => write!(f, "duplicate sheep name `{n}`"),
+            Self::DependencyCycle(cycle) => write!(
+                f,
+                "dependency cycle: {}",
+                crate::config::graph::render_cycle(cycle)
+            ),
             Self::InvalidProbe { probe, reason } => write!(f, "{probe}: {reason}"),
             Self::ZeroFailureThreshold { probe } => {
                 write!(f, "{probe}.failure_threshold must be at least 1")
@@ -1089,6 +1114,36 @@ mod tests {
             normalize_all(apps).unwrap_err(),
             NormalizeError::DuplicateName("web".to_string())
         );
+    }
+
+    #[test]
+    fn a_cycle_inside_one_document_is_refused_and_named() {
+        // fails if normalize_all accepts a cycle, or reports it without a path
+        let mut a = AppConfig::minimal("a", "./a");
+        a.depends_on = vec!["b".to_string()];
+        let mut b = AppConfig::minimal("b", "./b");
+        b.depends_on = vec!["a".to_string()];
+        match normalize_all(vec![a, b]) {
+            Err(NormalizeError::DependencyCycle(cycle)) => {
+                let rendered = NormalizeError::DependencyCycle(cycle).to_string();
+                assert!(rendered.contains("a"), "{rendered}");
+                assert!(rendered.contains("b"), "{rendered}");
+                assert!(
+                    rendered.contains(" -> "),
+                    "the path must be shown: {rendered}"
+                );
+            }
+            other => panic!("expected DependencyCycle, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_dependency_on_an_app_outside_the_document_is_accepted() {
+        // fails if the document-local check refuses a cross-repository
+        // dependency, which would make depends_on unusable across Flockfiles
+        let mut api = AppConfig::minimal("api", "./api");
+        api.depends_on = vec!["db-in-another-repo".to_string()];
+        normalize_all(vec![api]).expect("an unresolved name is not a document error");
     }
 
     fn probe_config(target: &str) -> crate::config::ProbeConfig {

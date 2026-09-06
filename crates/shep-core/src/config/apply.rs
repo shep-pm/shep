@@ -208,6 +208,15 @@ mod tests {
         );
     }
 
+    #[test]
+    fn depends_on_applies_at_the_next_spawn() {
+        // fails if the field is classified Live, which would claim an edit
+        // reaches a running flock's order, or Structural, which would route it
+        // through handle_scale
+        assert_eq!(apply_group("depends_on"), ApplyGroup::NextSpawn);
+        assert!(is_classified("depends_on"));
+    }
+
     /// fails if the split drifts from what the spec recorded.
     #[test]
     fn the_split_is_nineteen_five_fourteen_three() {
