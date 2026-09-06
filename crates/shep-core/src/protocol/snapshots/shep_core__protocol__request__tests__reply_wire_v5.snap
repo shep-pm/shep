@@ -1,5 +1,6 @@
 ---
 source: crates/shep-core/src/protocol/request.rs
+assertion_line: 2661
 expression: replies
 ---
 [
@@ -696,6 +697,7 @@ expression: replies
             "watch_delay": null,
             "cron_restart": null,
             "fold": null,
+            "depends_on": [],
             "user": null,
             "group": null,
             "out_file": null,

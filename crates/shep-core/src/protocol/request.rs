@@ -59,7 +59,7 @@ pub enum SelectorSpec {
     Regex(String),
     /// By fold name
     Fold(String),
-    // Both field names are wire contract, pinned by `request_wire_v4`.
+    // Both field names are wire contract, pinned by `request_wire_v5`.
     /// By app name and instance slot
     ///
     /// On the wire: `{"kind":"instance","value":{"name":"web","slot":2}}`.
@@ -2299,7 +2299,7 @@ mod tests {
                 },
             },
         ];
-        insta::assert_json_snapshot!("request_wire_v4", requests);
+        insta::assert_json_snapshot!("request_wire_v5", requests);
     }
 
     #[test]
@@ -2658,7 +2658,7 @@ mod tests {
                 }),
             },
         ];
-        insta::assert_json_snapshot!("reply_wire_v4", replies);
+        insta::assert_json_snapshot!("reply_wire_v5", replies);
     }
 
     /// Asserts on the JSON, not the struct: a `Vec<String>` cannot say which
@@ -2785,7 +2785,7 @@ mod tests {
             dog_name: None,
         };
         let json = serde_json::to_string(&hello).unwrap();
-        assert_eq!(json, r#"{"client_version":"0.1.0","protocol":4}"#);
+        assert_eq!(json, r#"{"client_version":"0.1.0","protocol":5}"#);
     }
 
     #[test]
@@ -2798,7 +2798,7 @@ mod tests {
         let json = serde_json::to_string(&dog).unwrap();
         assert_eq!(
             json,
-            r#"{"client_version":"0.1.0","protocol":4,"dog_name":"metrics"}"#
+            r#"{"client_version":"0.1.0","protocol":5,"dog_name":"metrics"}"#
         );
         assert_eq!(serde_json::from_str::<Hello>(&json).unwrap(), dog);
     }
