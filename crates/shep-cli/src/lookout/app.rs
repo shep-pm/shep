@@ -1222,6 +1222,15 @@ const READ_ONLY_REFUSAL: &str = "read-only: from --read-only or lookout.allow_co
 /// operator has just opened.
 const HISTORY: usize = 140;
 
+/// The lowest ceiling [`App::cpu_ceiling`] will report, in percent of one
+/// core.
+///
+/// Without it, a flock idling at a tenth of a percent would have its own
+/// jitter scaled to full height, so the busiest thing on screen would be
+/// noise. Two percent is low enough that any real work clears it and high
+/// enough that nothing else does.
+const CPU_CEILING_FLOOR: f32 = 2.0;
+
 /// The whole dashboard's state.
 #[derive(Debug)]
 pub struct App {
@@ -3533,6 +3542,26 @@ impl App {
     /// last, same depth as [`Self::cpu_history`].
     pub fn flock_cpu_history(&self) -> &[f32] {
         self.flock_cpu.as_slices().0
+    }
+
+    /// The ceiling every row's CPU sparkline scales against: the busiest
+    /// sample any sheep has recorded in the retained window.
+    ///
+    /// One ceiling shared by every row is what makes the column comparable
+    /// down the table. Per-row peaks make an idle sheep and a busy one both
+    /// fill their own cells; a fixed 100% of a core makes an ordinary flock,
+    /// where nothing is above two percent, draw a screen of flat lines.
+    ///
+    /// Floored at [`CPU_CEILING_FLOOR`] so a flock that is genuinely doing
+    /// nothing stays flat instead of having its rounding noise stretched
+    /// into a shape. Below that floor there is nothing to see and saying so
+    /// is the honest answer.
+    #[must_use]
+    pub fn cpu_ceiling(&self) -> f32 {
+        self.cpu_history
+            .values()
+            .flat_map(|series| series.iter().copied())
+            .fold(CPU_CEILING_FLOOR, f32::max)
     }
 
     /// Takes an armed prompt off the screen once its target is gone, rather

@@ -35,6 +35,20 @@ pub const MIN_HEIGHT: u16 = 6;
 /// leave.
 pub const NAME_MIN: u16 = 8;
 
+/// The ceiling on the NAME column.
+///
+/// NAME takes the remainder, which is right up to a point and absurd past
+/// it: on a 224-column terminal the remainder is 86 cells for names that
+/// are rarely longer than twenty, so the table becomes a field of
+/// whitespace with the numbers pushed to the far right, where they are
+/// harder to read against each other than they were before. Past this
+/// width the table simply ends and the rest of the row stays empty, which
+/// is what the design's own frames did with their right margin.
+///
+/// 32 rather than the frames' 24: it clears the longest name in this
+/// repository's own example Flockfile, `http-server-gated-by-sentinel`.
+pub const NAME_MAX: u16 = 32;
+
 /// The columns the selection marker takes, to the left of the table.
 ///
 /// One for the marker, one for the gap. The table itself is rendered into
@@ -360,7 +374,7 @@ pub fn name_width(width: u16, columns: &[Column]) -> u16 {
     width
         .saturating_sub(fixed)
         .saturating_sub(gaps)
-        .max(NAME_MIN)
+        .clamp(NAME_MIN, NAME_MAX)
 }
 
 /// `text` in exactly `width` display columns: padded on the right, or
@@ -685,7 +699,7 @@ fn cell(app: &App, row: &Row, column: Column, grouped: bool) -> String {
 /// The `CPU 20s` cell: [`App::cpu_history`], rendered into ten cells by
 /// [`cell::sparkline`].
 fn cpu_spark_cell(app: &App, info: &ProcessInfo) -> String {
-    cell::sparkline(app.cpu_history(info.id), 10)
+    cell::sparkline(app.cpu_history(info.id), 10, app.cpu_ceiling())
 }
 
 /// The `MEM/CEIL` cell: [`ProcessInfo::memory_bytes`] against
@@ -1336,7 +1350,16 @@ mod tests {
         ]
         .join("  ");
 
-        assert_eq!(rendered, expected, "got {rendered:?}");
+        // Trailing pad compared separately: since NAME gained a ceiling
+        // ([`NAME_MAX`]), the columns no longer fill a wide terminal and the
+        // row is padded out to it. Both facts are worth pinning, but the
+        // cells are the ones this test is about.
+        assert_eq!(rendered.trim_end(), expected.trim_end(), "got {rendered:?}");
+        assert_eq!(
+            crate::output::width::visible_width(&rendered),
+            200,
+            "the row is padded to the table's width, so its ground reaches the edge"
+        );
     }
 
     /// A slot row drawn like a standalone sheep repeats FOLD and SMIT down
@@ -1391,7 +1414,11 @@ mod tests {
         ]
         .join("  ");
 
-        assert_eq!(rendered, expected, "got {rendered:?}");
+        // Same as the group-row test: NAME has a ceiling now, so a wide
+
+        // terminal leaves the row padded past its last cell.
+
+        assert_eq!(rendered.trim_end(), expected.trim_end(), "got {rendered:?}");
     }
 
     /// The guard on the test above: an app with one instance never gets a

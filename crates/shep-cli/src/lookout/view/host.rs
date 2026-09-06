@@ -242,7 +242,13 @@ fn runs(app: &App) -> Vec<Run> {
     );
     out.push(sep());
     out.push(Run {
-        text: format!("{cpu_text} {}", cell::sparkline(app.flock_cpu_history(), 8)),
+        text: format!(
+            "{cpu_text} {}",
+            // The flock series is a SUM across sheep, so it does not share
+            // the per-row ceiling: its own window peak is the only honest
+            // denominator for a line whose scale is the whole flock.
+            cell::sparkline(app.flock_cpu_history(), 8, flock_cpu_ceiling(app)),
+        ),
         ink: Ink::Muted,
     });
     out.push(sep());
@@ -263,6 +269,16 @@ fn runs(app: &App) -> Vec<Run> {
         });
     }
     out
+}
+
+/// The ceiling the flock-wide CPU sparkline scales against.
+///
+/// Its own window's peak, floored the same way [`App::cpu_ceiling`] floors
+/// the per-row one. The flock line plots a sum rather than one sheep, so it
+/// has no reason to share the table's ceiling and every reason not to: a
+/// single busy sheep would flatten the whole-flock line against it.
+fn flock_cpu_ceiling(app: &App) -> f32 {
+    app.flock_cpu_history().iter().copied().fold(2.0, f32::max)
 }
 
 #[cfg(test)]
