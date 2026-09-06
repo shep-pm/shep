@@ -1,6 +1,7 @@
 # Design: boot ordering with dependency trees
 
-Status: designed 2026-09-06, not yet implemented.
+Status: implemented on feat/boot-ordering, 2026-09-06. Two decisions carry dated
+corrections below where what shipped differs from what was designed.
 
 Four questions from the maintainer, and this spec answers each of them by
 name:
