@@ -245,10 +245,10 @@ pub(crate) fn connect(endpoint: &Endpoint) -> Result<(ReadHalf, Transport), Chan
                 return Err(ChannelError::AlreadyTaken);
             }
             use std::os::fd::FromRawFd as _;
-            // SAFETY: the shepherd names this process's one channel descriptor
-            // in `SHEP_CHANNEL_FD`. `CHANNEL_TAKEN`, swapped above, makes this
-            // arm reachable once per process. `discover` refused anything below
-            // 3, so a wrong value only fails `EBADF`.
+            // SAFETY: soundness rests on the shepherd naming a descriptor it
+            // handed this process. `from_raw_fd` validates nothing, and the
+            // floor of 3 only keeps stdio out of reach. `CHANNEL_TAKEN` above
+            // makes this arm reachable once per process.
             #[allow(unsafe_code)]
             unsafe {
                 Transport::from_raw_fd(*fd)

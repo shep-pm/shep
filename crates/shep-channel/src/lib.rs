@@ -1,7 +1,7 @@
 //! Speak the shep shepherd channel: signal readiness, emit a metric,
 //! answer an action. `docs/shepherd-channel.md` has the contract.
 //!
-//! Without a channel, every call on the handle below is a no-op.
+//! When no channel was opened, every call on the handle below is a no-op.
 //!
 //! ```
 //! let shepherd = shep_channel::serve();

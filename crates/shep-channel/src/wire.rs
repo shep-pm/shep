@@ -1,6 +1,7 @@
-//! The shepherd channel: newline-JSON wire on fd 3 between the shepherd
-//! and each spawned child. [`ChildMessage`] flows child to shepherd;
-//! [`ShepherdMessage`] flows shepherd to child.
+//! The shepherd channel: newline-JSON wire between the shepherd and each
+//! spawned child. Unix carries it on fd 3, Windows on a named pipe.
+//! [`ChildMessage`] flows child to shepherd; [`ShepherdMessage`] flows
+//! shepherd to child.
 //!
 //! Both enums are exhaustive on purpose. The channel has no handshake, so
 //! a new variant has to be announced out of band. An exhaustive match
