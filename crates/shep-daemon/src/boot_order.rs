@@ -19,6 +19,7 @@ use shep_core::status::ProcStatus;
 use tokio::sync::broadcast::{self, error::RecvError};
 
 use crate::bus::{Bus, SharedEvent};
+use crate::snapshot::FlockRegistry;
 use crate::supervisor::{BatchPolicy, SupervisorHandle};
 
 /// How much longer than the stage's own longest `listen_timeout` the driver
@@ -47,6 +48,26 @@ pub(crate) fn nodes_for(apps: &[ResolvedApp], dogs: &[String]) -> Vec<BootNode> 
 #[must_use]
 pub(crate) fn plan_for(apps: &[ResolvedApp], dogs: &[String], boot_first: &[String]) -> BootPlan {
     shep_core::config::graph::plan(&nodes_for_with_dogs(apps, dogs, boot_first))
+}
+
+/// The plan for a flock given as names and the names each one waits for.
+///
+/// The teardown's entry point, beside [`plan_for`], which needs
+/// [`ResolvedApp`]s and so only suits a caller that has just normalized one.
+/// A shutdown has the registry's own names and edges, and nothing there may
+/// fail: every node is a [`NodeKind::Sheep`], so no dog can reach the stages
+/// through this door.
+#[must_use]
+pub(crate) fn plan_for_names(edges: &BTreeMap<String, Vec<String>>) -> BootPlan {
+    let nodes: Vec<BootNode> = edges
+        .iter()
+        .map(|(name, depends_on)| BootNode {
+            name: name.clone(),
+            depends_on: depends_on.clone(),
+            kind: NodeKind::Sheep,
+        })
+        .collect();
+    shep_core::config::graph::plan(&nodes)
 }
 
 /// Graph nodes for a flock plus its dogs.
@@ -289,9 +310,6 @@ async fn drop_settled(supervisor: &SupervisorHandle, waiting: &mut BTreeSet<Stri
 /// would kill the bark dog before the flock it reports on. So a plan handed
 /// here is the sheep-only one; a dog named in it would be stopped here
 /// instead.
-// The ordered shutdown is its own task and lands after this one; until it
-// does, only this module's tests call in.
-#[cfg_attr(not(test), expect(dead_code))]
 pub(crate) async fn stop_in_reverse(plan: &BootPlan, supervisor: &SupervisorHandle) {
     for stage in plan.stages.iter().rev() {
         for name in stage {
@@ -306,13 +324,38 @@ pub(crate) async fn stop_in_reverse(plan: &BootPlan, supervisor: &SupervisorHand
     }
 }
 
+/// Stops every sheep the registry holds, last stage first, leaving the dogs
+/// running.
+///
+/// `dogs` names every dog this shepherd holds, and each one is dropped from
+/// the plan before it is built. [`stop_in_reverse`] stops whatever it is
+/// handed, so this is the only place the dogs rule can be enforced: they are
+/// stopped afterwards by `SupervisorHandle::shutdown`, because monitoring
+/// should outlive what it monitors. The registry holds sheep alone, so the
+/// filter usually removes nothing; it is what keeps a dog that reached the
+/// registry by some other door out of the stages.
+///
+/// A sheep sharing a dog's name is dropped with it, and killed in that same
+/// `shutdown`, which is where every sheep this walk misses is killed anyway.
+pub(crate) async fn stop_registered_in_reverse(
+    registry: &FlockRegistry,
+    dogs: &[String],
+    supervisor: &SupervisorHandle,
+) {
+    let mut edges = registry.depends_on_by_name();
+    for dog in dogs {
+        edges.remove(dog);
+    }
+    stop_in_reverse(&plan_for_names(&edges), supervisor).await;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     use shep_core::config::graph::plan;
     use shep_core::config::{AppConfig, normalize_all};
-    use shep_core::protocol::ProcessEventKind;
+    use shep_core::protocol::{DogSource, ProcessEventKind};
     use shep_core::values::UpDuration;
 
     use crate::fake::ProcScript;
@@ -362,6 +405,18 @@ mod tests {
         let mut api = AppConfig::minimal("api", "./sleep");
         api.depends_on = vec!["db".to_string()];
         normalize_all(vec![db, api]).expect("two apps, one edge, no cycle")
+    }
+
+    /// `db`, plus a `worker` that waits for it.
+    ///
+    /// Named so that the stop order (`worker`, then `db`) is not the order
+    /// the names sort in: a walk that lost the stages and stopped the whole
+    /// registry in one pass would still pass an `api`/`db` assertion.
+    fn db_then_worker() -> Vec<ResolvedApp> {
+        let db = AppConfig::minimal("db", "./sleep");
+        let mut worker = AppConfig::minimal("worker", "./sleep");
+        worker.depends_on = vec!["db".to_string()];
+        normalize_all(vec![db, worker]).expect("two apps, one edge, no cycle")
     }
 
     /// fails if a dog sharing a sheep's name becomes a second node. The
@@ -469,6 +524,71 @@ mod tests {
         stop_in_reverse(&plan, &h.ctx.supervisor).await;
 
         assert_eq!(drain(&mut rx), vec!["Stop api", "Stop db"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_shutdown_stops_dependents_before_their_dependencies() {
+        // fails if the teardown claims every online sheep at once, which
+        // gives a worker and its database the same SIGTERM millisecond
+        let h = harness(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
+        let apps = db_then_worker();
+        h.ctx.registry.record(&apps);
+        let plan = plan(&nodes_for(&apps, &[]));
+        start_in_stages(
+            &plan,
+            &apps,
+            &h.ctx.supervisor,
+            &h.ctx.events,
+            BatchPolicy::PerApp,
+        )
+        .await;
+
+        let mut rx = h.ctx.events.subscribe();
+        stop_registered_in_reverse(&h.ctx.registry, &h.ctx.dog_names, &h.ctx.supervisor).await;
+
+        assert_eq!(drain(&mut rx), vec!["Stop worker", "Stop db"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_dog_stops_after_every_sheep() {
+        // fails if dogs join the reverse stages, which would kill the bark
+        // dog before the flock it reports on
+        let h = harness(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
+        let apps = normalize_all(vec![AppConfig::minimal("web", "./sleep")]).expect("one app");
+        h.ctx.registry.record(&apps);
+        h.ctx
+            .supervisor
+            .start(apps)
+            .await
+            .expect("a scripted app that never exits starts");
+        // Recorded as if it were a sheep, on purpose: the registry holds
+        // sheep only, so a dog absent from it would pass this test whether
+        // the dogs list is consulted or not.
+        let dog = normalize_all(vec![AppConfig::minimal("metrics", "./sleep")])
+            .expect("one dog app")
+            .remove(0);
+        h.ctx.registry.record(std::slice::from_ref(&dog));
+        h.ctx
+            .supervisor
+            .start_dog(dog, DogSource::BuiltIn)
+            .await
+            .expect("a scripted dog that never exits starts");
+
+        let mut rx = h.ctx.events.subscribe();
+        stop_registered_in_reverse(&h.ctx.registry, &["metrics".to_string()], &h.ctx.supervisor)
+            .await;
+        assert_eq!(
+            drain(&mut rx),
+            vec!["Stop web"],
+            "the staged walk must leave the dog running"
+        );
+
+        h.ctx.supervisor.shutdown().await;
+        assert_eq!(
+            drain(&mut rx),
+            vec!["Stop metrics"],
+            "the backstop is what stops a dog"
+        );
     }
 
     #[tokio::test(start_paused = true)]

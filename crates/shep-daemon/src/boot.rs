@@ -1118,10 +1118,11 @@ impl RunningDaemon {
     ///
     /// Every teardown step runs unconditionally: stop the snapshot writer and
     /// both dog watches, write the final muster roll, broadcast
-    /// [`BusEvent::DaemonShutdown`] before subscribers' sockets close, run
+    /// [`BusEvent::DaemonShutdown`] before subscribers' sockets close, stop
+    /// the flock in reverse dependency order, run
     /// [`SupervisorHandle::shutdown`]'s kill ladder, then unlink the socket and
-    /// the pidfile best-effort. The roll goes before the ladder, and the writer
-    /// is stopped before the roll, or the ladder's `Exit`/`Stop` events leave a
+    /// the pidfile best-effort. The roll goes before every stop, and the writer
+    /// is stopped before the roll, or their `Exit`/`Stop` events leave a
     /// roll of stopped sheep for `shep muster` to restore nothing from.
     ///
     /// # Errors
@@ -1170,10 +1171,24 @@ impl RunningDaemon {
         // 3. Tell subscribers before their sockets close underneath them.
         let _ = ctx.events.send(SharedEvent::new(BusEvent::DaemonShutdown));
 
-        // 4. Kill ladder on every online sheep.
+        // 4. Stop the flock in reverse dependency order, so a worker drains
+        //    against a database that is still answering. Every sheep is
+        //    bounded by its own kill ladder, and step 5 is the backstop: a
+        //    sheep this walk misses is still killed there, so a bug here
+        //    cannot leave a child alive.
+        crate::boot_order::stop_registered_in_reverse(
+            &ctx.registry,
+            &ctx.dog_names,
+            &ctx.supervisor,
+        )
+        .await;
+
+        // 5. Kill ladder on whatever is still online, dogs included: they are
+        //    deliberately not in the reverse stages above, because monitoring
+        //    should outlive what it monitors.
         ctx.supervisor.shutdown().await;
 
-        // 5. Both are attempted regardless and the first failure wins, so a
+        // 6. Both are attempted regardless and the first failure wins, so a
         // socket-unlink error cannot hide a pidfile nothing tried to remove.
         // Unix only: `remove_file` on a `\.\pipe\...` name fails with
         // `ERROR_INVALID_PARAMETER` and would fail every Windows shutdown.

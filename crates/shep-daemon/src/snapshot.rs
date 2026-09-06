@@ -136,6 +136,20 @@ impl FlockRegistry {
         self.dirty.notify_one();
     }
 
+    /// Every registered sheep's name, with the names it says it waits for.
+    ///
+    /// Infallible, one lock and no normalize: the teardown builds its stop
+    /// plan from this, and a fallible step on the one path that always runs
+    /// would silently skip the staged stop instead of failing loudly.
+    pub(crate) fn depends_on_by_name(&self) -> BTreeMap<String, Vec<String>> {
+        self.apps
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .map(|(name, app)| (name.clone(), app.depends_on.clone()))
+            .collect()
+    }
+
     /// Builds the roll from the live listing, pruning names the flock no
     /// longer has (a deleted sheep must not resurrect).
     #[must_use]
