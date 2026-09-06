@@ -797,7 +797,7 @@ impl ConfigPane {
     ///
     /// The schema is the field list: it already carries every property's
     /// type, default and group, so the pane reads the same document `shep
-    /// init` scaffolds from rather than keeping a second list of 39 names
+    /// init` scaffolds from rather than keeping a second list of 40 names
     /// in step with it.
     #[must_use]
     pub fn sheep(view: SheepConfigView) -> Self {

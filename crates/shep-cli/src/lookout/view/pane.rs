@@ -1302,7 +1302,7 @@ mod tests {
     /// park. `autostart` is `NextSpawn`, draws `next start`, and takes
     /// effect at muster, not at the next spawn. The column is never
     /// corrected after a reply, since a reply covers one row of
-    /// thirty-nine; it stays a prediction everywhere, the bar reports the
+    /// forty; it stays a prediction everywhere, the bar reports the
     /// outcome, and the row's `!` flag carries it afterwards.
     #[test]
     fn the_cost_column_predicts_and_the_status_bar_reports() {
