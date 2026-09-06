@@ -227,7 +227,11 @@ MSRV 1.88, edition 2024. `shep-core`, `shep-client` and `shep` are
 two files: `sys.rs`, for adopting a descriptor the daemon inherited, and
 `sys_windows.rs`, for the job object that holds a sheep and its lambs. That
 is eight sites on unix and ten on Windows, each with its own
-`// SAFETY:` note, and the whole of the workspace's unsafe surface.
+`// SAFETY:` note. `shep-channel` also denies it crate-wide and permits two
+sites, both in `endpoint.rs`: taking the descriptor the shepherd names in
+`SHEP_CHANNEL_FD`, which a process-global guard makes reachable at most once
+per process, and `PeekNamedPipe` on Windows. The workspace's unsafe surface
+is three files across two crates.
 
 ## License
 

@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/shep-channel",
     "crates/shep-core",
     "crates/shep-daemon",
     "crates/shep-client",
@@ -27,6 +28,12 @@ license = "MIT OR Apache-2.0"
 # cargo publish strips `path`, so these need a literal version even though
 # every consumer here resolves by path. Not sourced from
 # workspace.package.version above; a release bump touches both by hand.
+#
+# shep-channel takes default-features = false: Cargo lets a workspace member
+# turn an inherited dependency's default features back on but never off, so the
+# floor is set off here. shep-core wants the wire types without the client
+# feature; a future consumer that wants the client opts back in.
+shep-channel = { path = "crates/shep-channel", version = "0.4.3", default-features = false }
 shep-core = { path = "crates/shep-core", version = "0.4.3" }
 shep-daemon = { path = "crates/shep-daemon", version = "0.4.3" }
 shep-client = { path = "crates/shep-client", version = "0.4.3" }

@@ -1,28 +1,20 @@
-//! The client<->daemon wire protocol (version 4)
+//! The client<->daemon wire protocol (version 4).
 //!
-//! Typed request/response enums plus bus events. Framing lives in [`wire`];
-//! every type here is snapshot-pinned, so changing a serialized shape bumps
-//! [`PROTOCOL_VERSION`].
+//! Typed request/response enums plus bus events. Framing lives in
+//! [`wire`]; a serialized shape change bumps [`PROTOCOL_VERSION`].
+//! Version 4 bumped on an addition. An older daemon cannot decode the
+//! new config requests, so the handshake catches the skew.
 //!
-//! Version 4 bumped on an addition, against the rule below. An older daemon
-//! cannot decode the new config requests, so the handshake must catch the
-//! skew.
-//!
-//! Two test-name conventions assert opposite things: a `*_wire_v4` snapshot
-//! pins the shape this crate serializes today, so it follows
-//! [`PROTOCOL_VERSION`] and gets renamed when that moves; a
-//! `v1_*_fixture_still_deserializes` test pins a literal payload from an old
-//! peer, and its name must never move since it records where the bytes
-//! came from.
+//! A `*_wire_v4` test pins today's shape. A
+//! `v1_*_fixture_still_deserializes` test pins an old peer's payload and
+//! never renames.
 
-pub mod channel;
 pub mod events;
 pub mod frame;
 pub mod request;
 /// Frame encoding shared by daemon and client
 pub mod wire;
 
-pub use channel::{CHANNEL_VERSION, ChildMessage, ShepherdMessage};
 pub use events::{BusEvent, ProcessEventKind};
 pub use frame::ServerFrame;
 pub use request::{
@@ -31,13 +23,22 @@ pub use request::{
     Request, Response, RpcError, RpcErrorCode, SelectorSpec, SheepApplied, SheepConfigView,
     SheepDrift, SignalOutcome, SignalReply, Smit, SmitError, sort_flock,
 };
+pub use shep_channel::{CHANNEL_VERSION, ChildMessage, ShepherdMessage};
 pub use wire::{MAX_FRAME_BYTES, WireError, codec, decode_frame, encode_frame};
+
+/// The shepherd channel's wire types. Moved to the `shep-channel` crate;
+/// this path is kept so consumers of 0.1.x do not break. Use
+/// `shep_core::protocol` directly instead.
+#[deprecated(note = "use `shep_core::protocol` directly")]
+pub mod channel {
+    pub use shep_channel::{CHANNEL_VERSION, ChildMessage, ShepherdMessage};
+}
 
 /// Wire protocol version.
 ///
-/// Evolution rule: ADDITIVE optional fields (new serde-defaulted `Option<T>`
-/// fields, new variants behind `#[non_exhaustive]`) keep the version.
-/// Removing, renaming, or retyping anything serialized bumps it, recorded in
-/// the CHANGELOG. Byte fixtures in each protocol module pin the deserialize
+/// Additive optional fields (new serde-defaulted `Option<T>` fields, new
+/// variants behind `#[non_exhaustive]`) keep the version. Removing,
+/// renaming, or retyping anything serialized bumps it, recorded in the
+/// CHANGELOG. Byte fixtures in each protocol module pin the deserialize
 /// direction.
 pub const PROTOCOL_VERSION: u32 = 4;
