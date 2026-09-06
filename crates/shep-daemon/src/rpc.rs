@@ -4593,6 +4593,32 @@ mod tests {
         assert!(pending, "kill_signal really is read at a spawn");
     }
 
+    /// `depends_on` shares `autostart`'s carve-out above, and the pane is
+    /// the door that shows it: a field reported pending puts a `!` on the
+    /// row and sends the operator to `shep reload` for a value the next
+    /// ordered walk reads off the stored spec regardless.
+    #[tokio::test(start_paused = true)]
+    async fn depends_on_reports_in_force_the_way_autostart_does() {
+        // fails if `depends_on` is left in the ordinary NextSpawn arm.
+        let h = harness(vec![ProcScript::never_exits()]);
+        start_web_with_a_secret(&h.ctx).await;
+
+        assert_eq!(
+            apply_group("depends_on"),
+            ApplyGroup::NextSpawn,
+            "the premise: the carve-out is against its own group"
+        );
+
+        let reply = set_field(&h.ctx, 2, "web", "depends_on", serde_json::json!(["db"])).await;
+        let Ok(Response::SheepFieldSet { pending, .. }) = reply else {
+            panic!("{reply:?}")
+        };
+        assert!(
+            !pending,
+            "an ordered walk reads depends_on off the stored spec, so a restart would do nothing"
+        );
+    }
+
     /// The same hole `a_dog_is_refused_an_env_override_rather_than_given_one`
     /// closes for `env`, sharper here since this door reaches `script` and
     /// `args` directly and a dog runs at the daemon's own trust level.

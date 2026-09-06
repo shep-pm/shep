@@ -4664,11 +4664,14 @@ impl<R: ProcessRunner> Actor<R> {
             self.rearm_name(name);
         }
 
-        // In force, or waiting for a respawn. `autostart` is the
-        // `NextSpawn` field that reports as in force, because `restorable()`
-        // reads it at muster or boot rather than at a spawn, and telling an
-        // operator to restart for it would be telling them to do nothing.
-        let in_force = !park_all && (group == ApplyGroup::Live || key == "autostart");
+        // In force, or waiting for a respawn. `autostart` and `depends_on`
+        // are the two `NextSpawn` fields that report as in force, because
+        // both are read at a muster, a boot or an ordered walk rather than at
+        // a spawn: `restorable()` reads one and `plan_for_names` the other,
+        // off the stored spec the moment it lands. Telling an operator to
+        // restart for either would be telling them to do nothing.
+        let in_force =
+            !park_all && (group == ApplyGroup::Live || matches!(key, "autostart" | "depends_on"));
         Ok(Some(FieldSet {
             app: parked.unwrap_or_else(|| next_spec.unwrap_or(merged)),
             pending: !in_force,
@@ -4870,12 +4873,14 @@ impl<R: ProcessRunner> Actor<R> {
             self.rearm_name(&name);
         }
 
-        // `autostart` is the one `NextSpawn` field that reports as applied:
-        // `restorable()` reads it at muster or boot rather than at a spawn, so
-        // it is in force the moment it lands on the stored spec.
-        let (autostart, later): (Vec<String>, Vec<String>) = next_spawn
+        // `autostart` and `depends_on` are the two `NextSpawn` fields that
+        // report as applied: neither is read at a spawn. `restorable()` reads
+        // `autostart` at a muster or a boot, and `plan_for_names` reads
+        // `depends_on` whenever a batch is ordered, so both are in force the
+        // moment they land on the stored spec.
+        let (already_in_force, later): (Vec<String>, Vec<String>) = next_spawn
             .into_iter()
-            .partition(|field| field == "autostart");
+            .partition(|field| matches!(field.as_str(), "autostart" | "depends_on"));
         // What could not be parked, for the refusal below to name. Under
         // `park_all` that is every field; otherwise the `NeedsRespawn` ones
         // alone, since a `NextSpawn` field is already on the stored spec.
@@ -4884,7 +4889,7 @@ impl<R: ProcessRunner> Actor<R> {
         } else if park_all {
             live.iter()
                 .cloned()
-                .chain(autostart.iter().cloned())
+                .chain(already_in_force.iter().cloned())
                 .chain(later.iter().cloned())
                 .chain(respawn.iter().cloned())
                 .collect()
@@ -4963,7 +4968,7 @@ impl<R: ProcessRunner> Actor<R> {
                 } else {
                     live.iter()
                         .cloned()
-                        .chain(autostart)
+                        .chain(already_in_force)
                         .chain(later)
                         .chain(respawn)
                         .collect()
@@ -4971,7 +4976,7 @@ impl<R: ProcessRunner> Actor<R> {
             )
         } else {
             (
-                live.iter().cloned().chain(autostart).collect(),
+                live.iter().cloned().chain(already_in_force).collect(),
                 if parked_failed {
                     later
                 } else {
@@ -17804,6 +17809,46 @@ mod tests {
         assert_eq!(actor.sheep[&0].entry.spec.config().max_restarts, 42);
         assert_eq!(reply[0].applied, vec!["max_restarts".to_string()]);
         assert!(reply[0].pending.is_empty(), "{reply:?}");
+    }
+
+    /// `depends_on` is `ApplyGroup::NextSpawn` and reports as in force
+    /// anyway, the carve-out `autostart` already had and for the same reason:
+    /// nothing reads either at a spawn. `plan_for_names` reads `depends_on`
+    /// when a batch is ordered, off the stored spec, so the new value already
+    /// governs the next restart, the next shutdown and the next boot.
+    /// Reporting it pending would send an operator to `shep reload` to
+    /// promote a value that is already promoted.
+    #[tokio::test(start_paused = true)]
+    async fn a_loaded_depends_on_is_in_force_and_never_reports_as_pending() {
+        // fails if `depends_on` is left in the ordinary NextSpawn arm, which
+        // shows the sheep as `!1` in `shep flock` and tells `shep describe`
+        // to reload for a value the next ordered walk is already reading.
+        let dir = tempfile::tempdir().unwrap();
+        let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
+
+        let mut file = AppConfig::minimal("web", "./srv");
+        file.depends_on = vec!["db".to_string()];
+        let reply = apply_config(
+            &mut actor,
+            vec![declared_app(file, &["name", "script", "depends_on"])],
+            ResetDepth::None,
+        )
+        .await;
+
+        assert_eq!(
+            actor.sheep[&0].entry.spec.config().depends_on,
+            vec!["db".to_string()],
+            "the edge has to be on the stored spec for the walk to read it"
+        );
+        assert_eq!(reply[0].applied, vec!["depends_on".to_string()]);
+        assert!(
+            reply[0].pending.is_empty(),
+            "an edge already being read is not pending: {reply:?}"
+        );
+        assert!(
+            actor.sheep[&0].entry.pending.is_none(),
+            "nothing may be parked for a respawn to promote"
+        );
     }
 
     /// A load must never kill a process.
