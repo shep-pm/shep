@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use shep_core::config::ResolvedApp;
 use shep_core::config::graph::{BootNode, BootPlan, NodeKind};
-use shep_core::protocol::{BusEvent, ProcessInfo};
+use shep_core::protocol::{BusEvent, ProcessEventKind, ProcessInfo};
 use shep_core::selector::ProcessSelector;
 use shep_core::status::ProcStatus;
 use tokio::sync::broadcast::{self, error::RecvError};
@@ -287,7 +287,10 @@ fn corrected_for_earlier_stages(err: SupervisorError, started: &[ProcessInfo]) -
 /// Everything is inside `bound`, the flock read included: it awaits an mpsc
 /// send and a oneshot on the actor, neither of which carries a deadline of
 /// its own.
-async fn await_stage(
+///
+/// `rpc.rs`'s ordered restart reaches this too, for the same question: a
+/// restart is done when the sheep it respawned has stopped being `Starting`.
+pub(crate) async fn await_stage(
     mut rx: broadcast::Receiver<SharedEvent>,
     mut waiting: BTreeSet<String>,
     bound: Duration,
@@ -316,6 +319,64 @@ async fn await_stage(
     };
     let _ = tokio::time::timeout(bound, settle).await;
     waiting
+}
+
+/// Waits until every name in `waiting` has finished reloading, or until
+/// `bound` elapses. Answers with the names that did not finish.
+///
+/// The reload half of [`await_stage`], and it cannot share that function's
+/// shape. A reload leaves an app serving from start to finish, so no status
+/// a flock read could return says whether a swap has happened; the bus is
+/// the only source there is. `waiting` therefore carries a count rather than
+/// a name alone: `advance_reload` replaces one instance at a time and emits
+/// a `Reloaded` for each, so a name is finished when it has emitted as many
+/// as the reload accepted.
+///
+/// A `ReloadAbandoned` finishes a name outright, whatever its count: an
+/// abandonment ends the whole reload and leaves the instances it had not
+/// reached alone, so nothing further about that name is coming.
+///
+/// A lagged receiver is left to the bound rather than recovered from, which
+/// is where this parts company with [`await_stage`]: that one asks the flock,
+/// and there is no flock read that could answer this question. A lag costs
+/// the stage its bound and no more, and the walk advances either way.
+pub(crate) async fn await_reloads(
+    mut rx: broadcast::Receiver<SharedEvent>,
+    mut waiting: BTreeMap<String, usize>,
+    bound: Duration,
+) -> BTreeSet<String> {
+    let settle = async {
+        while !waiting.is_empty() {
+            match rx.recv().await {
+                Ok(event) => {
+                    let BusEvent::Process {
+                        event: kind, info, ..
+                    } = &*event
+                    else {
+                        continue;
+                    };
+                    match kind {
+                        ProcessEventKind::Reloaded => {
+                            if let Some(left) = waiting.get_mut(&info.name) {
+                                *left = left.saturating_sub(1);
+                                if *left == 0 {
+                                    waiting.remove(&info.name);
+                                }
+                            }
+                        }
+                        ProcessEventKind::ReloadAbandoned => {
+                            waiting.remove(&info.name);
+                        }
+                        _ => {}
+                    }
+                }
+                Err(RecvError::Lagged(_)) => continue,
+                Err(RecvError::Closed) => return,
+            }
+        }
+    };
+    let _ = tokio::time::timeout(bound, settle).await;
+    waiting.into_keys().collect()
 }
 
 /// Whether a boot stage has its answer about an instance in this status.
@@ -429,7 +490,7 @@ mod tests {
 
     use shep_core::config::graph::plan;
     use shep_core::config::{AppConfig, normalize_all};
-    use shep_core::protocol::{DogSource, ProcessEventKind};
+    use shep_core::protocol::DogSource;
     use shep_core::values::UpDuration;
 
     use crate::fake::ProcScript;

@@ -13,7 +13,7 @@
 use core::future::Future;
 use core::time::Duration;
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -28,6 +28,7 @@ use shep_core::protocol::{
 };
 use shep_core::selector::ProcessSelector;
 use shep_core::signals::OperatorSignal;
+use shep_core::status::ProcStatus;
 
 use crate::bus::{Bus, TopicFilter};
 use crate::dogs::DogSpec;
@@ -407,28 +408,24 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
         Request::Stop { selector } => {
             selector_call(id, selector, |s| ctx.supervisor.stop(s), Response::Stopped).await
         }
-        Request::Restart { selector } => {
-            selector_call(
-                id,
-                selector,
-                |s| ctx.supervisor.restart(s),
-                Response::Restarted,
-            )
-            .await
-        }
-        // `Reloading` names an acceptance: the supervisor answers as soon as
-        // the reload is taken, before the first replacement is spawned. A
-        // reply that waited for the swaps would routinely outlive
-        // `MAX_DEADLINE_MS` and be abandoned by `with_deadline`.
-        Request::Reload { selector } => {
-            selector_call(
-                id,
-                selector,
-                |s| ctx.supervisor.reload(s),
-                Response::Reloading,
-            )
-            .await
-        }
+        // Forward, dependencies first, when the selector matches more than
+        // one sheep. Not reverse-stop then forward-start: the rolling version
+        // puts the whole fold down at once in the middle, and forward-only
+        // never does.
+        Request::Restart { selector } => restart_request(id, selector, ctx).await,
+        // Staged like `Restart` above and for its reason. Which of the two
+        // reloads an app gets is still `ReloadMode::of`'s call: ordering
+        // decides when a stage begins and nothing about the swap inside it.
+        //
+        // `Reloading` still names an acceptance, and a single-target reload
+        // still answers before the first replacement is spawned. A walk of
+        // several stages is what that costs: it holds for the swaps of every
+        // app another matched app waits on, so the reply lands that much
+        // later, and a fold deep enough outlives the request budget and is
+        // abandoned by `with_deadline` with its last stages unreloaded.
+        // `staged_start_deadline` is how `shep start` buys the room for the
+        // same walk; `shep reload` still sends the client's default.
+        Request::Reload { selector } => reload_request(id, selector, ctx).await,
         Request::Reopen { selector } => {
             selector_call(
                 id,
@@ -1180,6 +1177,321 @@ fn rpc_error(err: &SupervisorError) -> RpcError {
     }
 }
 
+/// A restart or reload the selector matched more than one sheep for, grouped
+/// into the stages it walks.
+struct OrderedWalk {
+    /// The matched names, dependencies first, one `Vec` per stage.
+    stages: Vec<Vec<String>>,
+    /// The matched names another matched name waits for.
+    ///
+    /// The only ones a stage has to be held for: a sheep nothing in this
+    /// request depends on can settle after the walk has moved on, and waiting
+    /// for it would let one slow app that nobody waits for cost every later
+    /// stage its bound. The same gate `start_in_stages` builds.
+    depended_on: BTreeSet<String>,
+}
+
+/// How `selector` is walked, or `None` when it names at most one sheep and
+/// there is nothing to order.
+///
+/// A single-target `shep restart web` therefore goes out as the one
+/// supervisor call it has always been, deadlines and refusal and all. Two
+/// matches or more is where a fold's shape starts to matter.
+///
+/// The match is computed the way `Actor::matching_ids` computes it, dogs and
+/// all, so the walk covers what the supervisor would have matched. It is
+/// still a second pass over a listing the actor has since moved on from: a
+/// sheep that exits between the two is one this walk names and the supervisor
+/// no longer matches, which costs a `NotFound` warning for that name.
+fn ordered_walk(
+    ctx: &RpcContext,
+    selector: &ProcessSelector,
+    flock: &[ProcessInfo],
+) -> Option<OrderedWalk> {
+    let exact = selector.is_exact();
+    let matched: BTreeSet<String> = flock
+        .iter()
+        .filter(|info| exact || info.dog.is_none())
+        .filter(|info| selector.matches(&info.name, info.id, info.fold.as_deref(), info.instance))
+        .map(|info| info.name.clone())
+        .collect();
+    if matched.len() < 2 {
+        return None;
+    }
+
+    let edges = ctx.registry.depends_on_by_name();
+    let plan = crate::boot_order::plan_for_names(&edges);
+    let mut stages: Vec<Vec<String>> = plan
+        .stages
+        .iter()
+        .map(|stage| {
+            stage
+                .iter()
+                .filter(|name| matched.contains(name.as_str()))
+                .cloned()
+                .collect::<Vec<String>>()
+        })
+        .filter(|stage| !stage.is_empty())
+        .collect();
+    // A matched name the registry does not hold has no node in the plan, and
+    // dropping it here would leave a sheep the operator named unrestarted
+    // while the reply says otherwise. It goes last, since nothing here can say
+    // what waits for it. A `shep dev` teardown clearing the registry under a
+    // live flock is the shape that gets here; a dog does not, since a selector
+    // reaching one is exact and an exact selector matches one name.
+    let placed: BTreeSet<&str> = stages.iter().flatten().map(String::as_str).collect();
+    let unplaced: Vec<String> = matched
+        .iter()
+        .filter(|name| !placed.contains(name.as_str()))
+        .cloned()
+        .collect();
+    if !unplaced.is_empty() {
+        stages.push(unplaced);
+    }
+
+    let depended_on = matched
+        .iter()
+        .filter_map(|name| edges.get(name))
+        .flatten()
+        .filter(|dependency| matched.contains(dependency.as_str()))
+        .cloned()
+        .collect();
+    Some(OrderedWalk {
+        stages,
+        depended_on,
+    })
+}
+
+/// How long one sheep gets to settle before its stage moves on.
+///
+/// A restart waits out `listen_timeout`; a reload waits out
+/// `graceful_timeout` as well, which is the pair its own swap is already
+/// bounded by (`Actor::arm_reload_deadline`). A name the registry does not
+/// hold falls back to the slack alone: nothing else here knows what that
+/// sheep's deadlines are, and a stage that advances early is better than one
+/// that hangs on a guess.
+fn settle_bound(ctx: &RpcContext, name: &str, reloading: bool) -> Duration {
+    let (readiness, drain) = ctx.registry.timeouts_of(name).unwrap_or_default();
+    let drain = if reloading { drain } else { Duration::ZERO };
+    readiness + drain + crate::boot_order::STAGE_SLACK
+}
+
+/// The longest bound any of `stage`'s members asks for.
+fn stage_bound(ctx: &RpcContext, stage: &[String], reloading: bool) -> Duration {
+    stage
+        .iter()
+        .map(|name| settle_bound(ctx, name, reloading))
+        .max()
+        .unwrap_or(crate::boot_order::STAGE_SLACK)
+}
+
+/// `Restart`'s arm: ordered when the selector matches several sheep, the
+/// plain supervisor call when it matches one.
+async fn restart_request(id: u64, spec: SelectorSpec, ctx: &RpcContext) -> Outcome {
+    let result = match selector_of(spec) {
+        Err(err) => Err(err),
+        Ok(selector) => match walk_for(ctx, &selector).await {
+            None => ctx
+                .supervisor
+                .restart(selector)
+                .await
+                .map(Response::Restarted)
+                .map_err(|err| rpc_error(&err)),
+            Some(walk) => restart_in_stages(ctx, &walk).await.map(Response::Restarted),
+        },
+    };
+    Outcome::Reply(Reply { id, result })
+}
+
+/// `Reload`'s arm, mirroring [`restart_request`].
+async fn reload_request(id: u64, spec: SelectorSpec, ctx: &RpcContext) -> Outcome {
+    let result = match selector_of(spec) {
+        Err(err) => Err(err),
+        Ok(selector) => match walk_for(ctx, &selector).await {
+            None => ctx
+                .supervisor
+                .reload(selector)
+                .await
+                .map(Response::Reloading)
+                .map_err(|err| rpc_error(&err)),
+            Some(walk) => reload_in_stages(ctx, &walk).await.map(Response::Reloading),
+        },
+    };
+    Outcome::Reply(Reply { id, result })
+}
+
+/// [`ordered_walk`] over a fresh listing, or `None` when there is nothing to
+/// order, which includes an actor that could not answer: the supervisor call
+/// the caller falls back to reports that failure itself, in its own words.
+async fn walk_for(ctx: &RpcContext, selector: &ProcessSelector) -> Option<OrderedWalk> {
+    let flock = ctx.supervisor.list_checked().await.ok()?;
+    ordered_walk(ctx, selector, &flock)
+}
+
+/// Restarts each stage's members at once, then holds the walk until the ones
+/// a later stage waits for are back.
+///
+/// A member that fails is warned about and the walk continues, the rule
+/// `start_in_stages` takes under `BatchPolicy::PerApp` and for its reason: a
+/// fold half restarted is worse than a fold restarted around one bad app.
+///
+/// # Errors
+///
+/// - The first member's refusal, when no member restarted at all. A request
+///   that moved nothing has to say so, and a selector matching one dog that
+///   is mid-shutdown would otherwise answer `Ok` with an empty table.
+async fn restart_in_stages(
+    ctx: &RpcContext,
+    walk: &OrderedWalk,
+) -> Result<Vec<ProcessInfo>, RpcError> {
+    let mut restarted = Vec::new();
+    let mut refusal = None;
+    for stage in &walk.stages {
+        // Subscribed before the calls for the reason `start_in_stages` gives:
+        // a receiver taken afterwards starts past a fast sheep's `Online`.
+        let rx = ctx.events.subscribe();
+        // Concurrently inside a stage, serially across them. Awaiting members
+        // in turn would make the walk cost the SUM of their kill ladders and
+        // readiness deadlines where an unordered restart costs the longest
+        // one; `stop_in_reverse` carries the same note.
+        let outcomes = futures_util::future::join_all(stage.iter().map(|name| async move {
+            (
+                name,
+                ctx.supervisor
+                    .restart(ProcessSelector::Name(name.clone()))
+                    .await,
+            )
+        }))
+        .await;
+        for (name, outcome) in outcomes {
+            match outcome {
+                Ok(infos) => restarted.extend(infos),
+                Err(err) => {
+                    tracing::warn!(sheep = %name, %err, "a sheep did not restart in its stage");
+                    refusal.get_or_insert(err);
+                }
+            }
+        }
+
+        let waiting: BTreeSet<String> = stage
+            .iter()
+            .filter(|name| walk.depended_on.contains(name.as_str()))
+            .cloned()
+            .collect();
+        if waiting.is_empty() {
+            continue;
+        }
+        let bound = stage_bound(ctx, stage, false);
+        let unsettled = crate::boot_order::await_stage(rx, waiting, bound, &ctx.supervisor).await;
+        warn_about_unsettled(&unsettled);
+    }
+    finished(restarted, refusal)
+}
+
+/// [`restart_in_stages`] for a reload: same walk, a different call and a
+/// different definition of done.
+///
+/// A stage is done when every member has emitted a `Reloaded` for each
+/// instance the reload accepted, or a `ReloadAbandoned` for the app. Which of
+/// the two reloads an app gets is still `ReloadMode::of`'s call, and the
+/// abandonment path is untouched: this waits on it rather than around it.
+///
+/// Only the instances the reload answered as `Online` are counted, since
+/// those are the ones `reload_eligible` lets a swap replace. An instance a
+/// failed earlier reload left up and not serving is `Starting` here and is
+/// undercounted, so a stage holding one can advance while its last swap is
+/// still running; the alternative is counting instances no swap will ever
+/// reach and paying the bound on every ordinary reload.
+///
+/// # Errors
+///
+/// - The first member's refusal, when no member was accepted. `ReloadInFlight`
+///   is the one an operator meets: the supervisor refuses a selector whole
+///   when any app it names is already reloading, and a staged walk asks per
+///   app, so an app already reloading now refuses its own stage while the
+///   rest of the fold goes ahead.
+async fn reload_in_stages(
+    ctx: &RpcContext,
+    walk: &OrderedWalk,
+) -> Result<Vec<ProcessInfo>, RpcError> {
+    let mut accepted = Vec::new();
+    let mut refusal = None;
+    for stage in &walk.stages {
+        let rx = ctx.events.subscribe();
+        let outcomes = futures_util::future::join_all(stage.iter().map(|name| async move {
+            (
+                name,
+                ctx.supervisor
+                    .reload(ProcessSelector::Name(name.clone()))
+                    .await,
+            )
+        }))
+        .await;
+        let mut waiting: BTreeMap<String, usize> = BTreeMap::new();
+        for (name, outcome) in outcomes {
+            match outcome {
+                Ok(infos) => {
+                    if walk.depended_on.contains(name.as_str()) {
+                        let swaps = infos
+                            .iter()
+                            .filter(|info| info.status == ProcStatus::Online)
+                            .count();
+                        if swaps > 0 {
+                            waiting.insert(name.clone(), swaps);
+                        }
+                    }
+                    accepted.extend(infos);
+                }
+                Err(err) => {
+                    tracing::warn!(sheep = %name, %err, "a sheep did not reload in its stage");
+                    refusal.get_or_insert(err);
+                }
+            }
+        }
+
+        if waiting.is_empty() {
+            continue;
+        }
+        let bound = stage_bound(ctx, stage, true);
+        let unsettled = crate::boot_order::await_reloads(rx, waiting, bound).await;
+        warn_about_unsettled(&unsettled);
+    }
+    finished(accepted, refusal)
+}
+
+/// A stage that ran out of time, named. Nothing is retried and the walk goes
+/// on: a stage held to its bound has already cost the operator that wait, and
+/// stopping here would leave the fold half done.
+fn warn_about_unsettled(unsettled: &BTreeSet<String>) {
+    if unsettled.is_empty() {
+        return;
+    }
+    let names: Vec<&str> = unsettled.iter().map(String::as_str).collect();
+    tracing::warn!(
+        unsettled = ?names,
+        "a stage did not settle inside its bound; advancing anyway"
+    );
+}
+
+/// The walk's answer: the rows it moved, sorted as every operator-facing
+/// listing is, or the refusal it kept when it moved nothing.
+fn finished(
+    mut rows: Vec<ProcessInfo>,
+    refusal: Option<SupervisorError>,
+) -> Result<Vec<ProcessInfo>, RpcError> {
+    match refusal {
+        Some(err) if rows.is_empty() => Err(rpc_error(&err)),
+        _ => {
+            // Sorted here rather than left in stage order: each supervisor
+            // call sorts its own answer, and a table stitched from several is
+            // otherwise ordered by the graph, which is not what an operator
+            // reading a flock listing expects.
+            shep_core::protocol::sort_flock(&mut rows);
+            Ok(rows)
+        }
+    }
+}
+
 fn not_found() -> RpcError {
     RpcError {
         code: RpcErrorCode::NotFound,
@@ -1283,9 +1595,9 @@ mod tests {
     };
     use shep_core::config::{AppConfig, ApplyGroup, DeclaredApp, ResetDepth, apply_group};
     use shep_core::protocol::{
-        ActionOutcome, ActionReply, DogSource, Request, Response, RpcErrorCode, SelectorSpec,
+        ActionOutcome, ActionReply, DogSource, ProcessEventKind, Request, Response, RpcErrorCode,
+        SelectorSpec,
     };
-    use shep_core::status::ProcStatus;
     use shep_core::values::UpDuration;
     use std::collections::BTreeSet;
     use tokio::time::Instant;
@@ -1984,6 +2296,225 @@ mod tests {
         assert_eq!(flock[1].status, ProcStatus::Starting);
     }
 
+    /// `AppConfig`'s own default `kill_timeout`, which every app built by
+    /// `AppConfig::minimal` here carries.
+    const DEFAULT_KILL_TIMEOUT: Duration = Duration::from_millis(1600);
+
+    /// A `db` and an `api` that waits for it, started through the ordinary
+    /// `Start` arm so the registry holds the edge an ordered walk reads.
+    ///
+    /// `api` is started first, and alone, deliberately: it takes the lower
+    /// id, and it sorts first by name as well, so neither the id order a
+    /// batch verb resolves in nor the name order a reload queues in matches
+    /// the dependency order. Started together, the staged `Start` would give
+    /// `db` the lower id and an unordered restart would pass by accident.
+    async fn start_api_before_the_db_it_waits_for(h: &Harness) {
+        let mut api = AppConfig::minimal("api", "./api");
+        api.depends_on = vec!["db".to_string()];
+        for (id, app) in [(1, api), (2, AppConfig::minimal("db", "./db"))] {
+            let started =
+                reply_of(dispatch(envelope(id, Request::Start { apps: vec![app] }), &h.ctx).await);
+            let Response::Started(infos) = started.result.unwrap() else {
+                panic!("expected started")
+            };
+            assert_eq!(infos.len(), 1, "each app comes up before the next");
+        }
+    }
+
+    /// The names `kind` was published for, in the order the bus carried them.
+    fn names_for(
+        rx: &mut tokio::sync::broadcast::Receiver<crate::bus::SharedEvent>,
+        kind: ProcessEventKind,
+    ) -> Vec<String> {
+        let mut names = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            let shep_core::protocol::BusEvent::Process {
+                event: seen, info, ..
+            } = &*event
+            else {
+                continue;
+            };
+            if *seen == kind {
+                names.push(info.name.clone());
+            }
+        }
+        names
+    }
+
+    /// fails if a fold restarts as one batch, which restarts `api` against a
+    /// database that has not come back. Four scripts: two for the pair's
+    /// first spawn and two for their respawns.
+    #[tokio::test(start_paused = true)]
+    async fn a_restart_matching_several_walks_the_stages_forward() {
+        let h = harness(vec![ProcScript::never_exits(); 4]);
+        start_api_before_the_db_it_waits_for(&h).await;
+
+        let mut rx = h.ctx.events.subscribe();
+        let reply = reply_of(
+            dispatch(
+                envelope(
+                    3,
+                    Request::Restart {
+                        selector: SelectorSpec::All,
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        let Response::Restarted(infos) = reply.result.unwrap() else {
+            panic!("expected restarted")
+        };
+        assert_eq!(infos.len(), 2, "both sheep restart: {infos:?}");
+
+        assert_eq!(names_for(&mut rx, ProcessEventKind::Restart), ["db", "api"]);
+    }
+
+    /// fails if a fold reloads as one batch, which swaps `api` while the
+    /// database it waits for is still swapping. Four scripts: two for the
+    /// pair's first spawn and two for the replacements each swap spawns.
+    #[tokio::test(start_paused = true)]
+    async fn a_reload_matching_several_walks_the_stages_forward() {
+        let h = harness(vec![ProcScript::never_exits(); 4]);
+        start_api_before_the_db_it_waits_for(&h).await;
+
+        let mut rx = h.ctx.events.subscribe();
+        let reply = reply_of(
+            dispatch(
+                envelope(
+                    3,
+                    Request::Reload {
+                        selector: SelectorSpec::All,
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        let Response::Reloading(accepted) = reply.result.unwrap() else {
+            panic!("expected reloading")
+        };
+        assert_eq!(accepted.len(), 2, "both sheep are accepted: {accepted:?}");
+
+        assert_eq!(names_for(&mut rx, ProcessEventKind::Reload), ["db", "api"]);
+    }
+
+    /// fails if the ordered walk answers a selector it matched nothing for
+    /// with an empty table. A restart that moved nothing is `NotFound`, which
+    /// is what makes `shep restart typo` exit non-zero.
+    #[tokio::test(start_paused = true)]
+    async fn a_restart_naming_nothing_the_flock_holds_is_still_not_found() {
+        let h = harness(vec![ProcScript::never_exits(); 2]);
+        start_api_before_the_db_it_waits_for(&h).await;
+
+        let reply = reply_of(
+            dispatch(
+                envelope(
+                    3,
+                    Request::Restart {
+                        selector: SelectorSpec::Name("typo".to_string()),
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        assert_eq!(reply.result.unwrap_err().code, RpcErrorCode::NotFound);
+    }
+
+    /// fails if a stage awaits its members in turn, which costs a restart the
+    /// SUM of their kill ladders where an unordered one costs the longest.
+    /// Two sheep with no edge between them are one stage, and both ignore
+    /// SIGTERM, so each burns its whole 1600ms ladder. Virtual time under
+    /// `start_paused`, which advances only when every task is idle, so the
+    /// two shapes are exact rather than close.
+    #[tokio::test(start_paused = true)]
+    async fn one_stage_restarts_its_members_at_the_same_time() {
+        let h = harness(vec![
+            ProcScript::ignores_signals(),
+            ProcScript::ignores_signals(),
+            ProcScript::never_exits(),
+            ProcScript::never_exits(),
+        ]);
+        let started = reply_of(
+            dispatch(
+                envelope(
+                    1,
+                    Request::Start {
+                        apps: vec![
+                            AppConfig::minimal("alpha", "./a"),
+                            AppConfig::minimal("zulu", "./z"),
+                        ],
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        assert!(started.result.is_ok(), "both apps come up");
+
+        let began = Instant::now();
+        let reply = reply_of(
+            dispatch(
+                envelope(
+                    2,
+                    Request::Restart {
+                        selector: SelectorSpec::All,
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        let spent = began.elapsed();
+
+        let Response::Restarted(infos) = reply.result.unwrap() else {
+            panic!("expected restarted")
+        };
+        assert_eq!(infos.len(), 2, "both sheep restart: {infos:?}");
+        assert!(
+            spent < DEFAULT_KILL_TIMEOUT * 2,
+            "one stage's ladders must overlap; spent {spent:?} on two of them"
+        );
+    }
+
+    /// fails if a matched name with no node in the plan is dropped from the
+    /// walk, which would answer `Ok` for a sheep nothing restarted. The
+    /// registry is what the stages are built from, and it holds no dog and
+    /// nothing a `shep dev` teardown cleared.
+    #[tokio::test(start_paused = true)]
+    async fn a_matched_sheep_the_registry_does_not_hold_still_restarts() {
+        let h = harness(vec![ProcScript::never_exits(); 4]);
+        start_api_before_the_db_it_waits_for(&h).await;
+        h.ctx.registry.clear();
+
+        let mut rx = h.ctx.events.subscribe();
+        let reply = reply_of(
+            dispatch(
+                envelope(
+                    3,
+                    Request::Restart {
+                        selector: SelectorSpec::All,
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        let Response::Restarted(infos) = reply.result.unwrap() else {
+            panic!("expected restarted")
+        };
+        assert_eq!(infos.len(), 2, "both sheep restart: {infos:?}");
+        assert_eq!(
+            names_for(&mut rx, ProcessEventKind::Restart)
+                .into_iter()
+                .collect::<BTreeSet<_>>(),
+            ["api".to_string(), "db".to_string()]
+                .into_iter()
+                .collect::<BTreeSet<_>>(),
+        );
+    }
+
     /// The daemon's code becomes the CLI's exit status and its message is
     /// all that is printed. Fails if either refusal answers a code that is
     /// not `Internal`, since neither has one of its own and
@@ -2003,8 +2534,9 @@ mod tests {
 
     /// Fails if `Reload` skips the selector conversion, or converts it
     /// without reporting the failure: a peer regex the daemon cannot compile
-    /// is the client's usage error. The shared `selector_call` is what keeps
-    /// it; a hand-rolled arm answering `Reloading` could still lose it.
+    /// is the client's usage error. `reload_request` converts before it can
+    /// ask what the selector matched, and an arm that answered `Reloading`
+    /// off an unconverted selector could still lose it.
     #[tokio::test(start_paused = true)]
     async fn a_bad_reload_selector_is_invalid_config() {
         let h = harness(vec![]);

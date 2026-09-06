@@ -150,6 +150,25 @@ impl FlockRegistry {
             .collect()
     }
 
+    /// `name`'s `listen_timeout` and `graceful_timeout`, in that order, or
+    /// `None` when no registered sheep has that name.
+    ///
+    /// The pair an ordered restart or reload bounds a stage's wait by. Read
+    /// here because a `ProcessInfo` carries no timeout at all, and the
+    /// alternative is a round trip to the actor per member of a stage.
+    pub(crate) fn timeouts_of(&self, name: &str) -> Option<(Duration, Duration)> {
+        self.apps
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(name)
+            .map(|app| {
+                (
+                    app.listen_timeout.as_duration(),
+                    app.graceful_timeout.as_duration(),
+                )
+            })
+    }
+
     /// Builds the roll from the live listing, pruning names the flock no
     /// longer has (a deleted sheep must not resurrect).
     #[must_use]
