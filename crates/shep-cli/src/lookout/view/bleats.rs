@@ -44,6 +44,7 @@ pub fn feed_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
             )));
             return out;
         }
+        Some(RowKey::Section(_)) => unreachable!("a header is never selectable"),
         Some(RowKey::Sheep(_)) => {
             let row = app
                 .selected_row()

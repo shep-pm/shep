@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
 use ratatui::style::Color;
 
 use shep_client::RequestError;
@@ -28,7 +29,7 @@ use super::app::{ActionVerb, App, Control, KeyPress, Msg, RowKey, Sent, Settings
 use super::source::HostSample;
 use super::tail::{Stream, Tail, TailLine};
 use super::theme::Palette;
-use super::view::draw;
+use super::view::{body_rows, draw};
 use crate::commands::settings::{
     DogView, ScalarView, SettingField, SettingsSnapshot, load_settings,
 };
@@ -114,6 +115,9 @@ pub enum Scene {
     /// Three instances of one app under a group header, with the cursor on
     /// the header.
     Grouped,
+    /// Both sections at once: several sheep under Flock, a healthy
+    /// built-in dog and a silent adopted one under Dogs.
+    WithDogs,
     /// Nothing registered.
     Empty,
     /// A narrow terminal: four columns dropped.
@@ -178,6 +182,9 @@ pub enum Scene {
     /// The settings screen on a narrow terminal, where both of its tables
     /// have dropped a column.
     SettingsNarrow,
+    /// The settings screen on a terminal too short to hold every row, with
+    /// the cursor on the last one, so the view has scrolled.
+    SettingsShort,
 }
 
 impl Scene {
@@ -186,6 +193,7 @@ impl Scene {
         Self::HealthyWide,
         Self::Errored,
         Self::Grouped,
+        Self::WithDogs,
         Self::Empty,
         Self::Narrow,
         Self::TooNarrow,
@@ -214,6 +222,7 @@ impl Scene {
         Self::SettingsTyping,
         Self::SettingsDogs,
         Self::SettingsNarrow,
+        Self::SettingsShort,
     ];
 
     /// The snapshot name and the gallery heading.
@@ -223,6 +232,7 @@ impl Scene {
             Self::HealthyWide => "healthy_wide",
             Self::Errored => "errored",
             Self::Grouped => "grouped",
+            Self::WithDogs => "with_dogs",
             Self::Empty => "empty",
             Self::Narrow => "narrow",
             Self::TooNarrow => "too_narrow",
@@ -251,6 +261,7 @@ impl Scene {
             Self::SettingsTyping => "settings_typing",
             Self::SettingsDogs => "settings_dogs",
             Self::SettingsNarrow => "settings_narrow",
+            Self::SettingsShort => "settings_short",
         }
     }
 
@@ -270,6 +281,9 @@ impl Scene {
             }
             Self::Grouped => {
                 "Three instances of one app under a group header, with the cursor parked on the header. The header sums their restarts, CPU and memory and takes the SHORTEST of their uptimes, so a group reads as time since the app was last disturbed rather than as the age of its luckiest instance. The detail pane repeats that rollup and says lambs are per-instance; the feed will not guess which instance to tail."
+            }
+            Self::WithDogs => {
+                "Three sheep under a Flock header and two dogs under a Dogs header: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it."
             }
             Self::Empty => {
                 "No sheep registered. Each of the three panes says why it is empty, and the three sentences are different because the three reasons are."
@@ -355,26 +369,22 @@ impl Scene {
             Self::SettingsNarrow => {
                 "The same screen at 45 columns. Both of its tables have dropped a column rather than clipping: the scalar rows have lost the apply cost and kept SOURCE, and the dogs table has lost SOURCE and kept RUNNING. Each keeps whichever half is not said anywhere else."
             }
+            Self::SettingsShort => {
+                "The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last dog, so the view has scrolled to reach it and `... 5 above` says how much is off the top. The scroll is counted in LINES rather than in rows: a section header and the dogs caption cost the same height a row does."
+            }
         }
     }
 
     /// Whether this scene's dashboard may act.
     ///
-    /// `Lambs` is in here as well as the three action scenes: its bar has
-    /// nothing in the left slot, so it is the one frame in the gallery that
-    /// shows the control-enabled key hint.
+    /// Allowed is the fallthrough, matching the real dashboard's default.
+    /// `Refused` is the one scene that exists to show the gate closed, so
+    /// it is the one exception.
     #[must_use]
     pub const fn control(self) -> Control {
         match self {
-            Self::Confirm
-            | Self::Acting
-            | Self::ActionRefused
-            | Self::ActionAccepted
-            | Self::ActionRefusedOffline
-            | Self::Lambs
-            | Self::SettingsConfirm
-            | Self::SettingsTyping => Control::Allowed,
-            _ => Control::ReadOnly,
+            Self::Refused => Control::ReadOnly,
+            _ => Control::Allowed,
         }
     }
 
@@ -404,9 +414,15 @@ impl Scene {
             // 45: the middle tier of both `SCALAR_TIERS` and `DOG_TIERS`,
             // so both tables have dropped one column without losing a row.
             Self::SettingsNarrow => (45, 24),
-            // HealthyWide, Errored, Grouped, Retrying, Frozen, Refused, FeedGap,
-            // FeedMissing, HostUnknown, Lambs, LambsUnknown: every scene that
-            // carries all three optional panes at their ordinary rows.
+            // 14 rows: twelve of body, against a screen that wants
+            // eighteen lines. Short enough that the cursor cannot be
+            // reached without scrolling, tall enough that what survives is
+            // a legible section rather than a single row.
+            Self::SettingsShort => (120, 14),
+            // HealthyWide, Errored, Grouped, WithDogs, Retrying, Frozen,
+            // Refused, FeedGap, FeedMissing, HostUnknown, Lambs, LambsUnknown:
+            // every scene that carries all three optional panes at their
+            // ordinary rows.
             _ => (120, 30),
         }
     }
@@ -561,9 +577,52 @@ fn scene_with(which: Scene, age: Duration) -> Buffer {
         // Two dog processes: `otel` up and healthy, `bark` up but never
         // handshook. `ledger` has no row here, which is what "enabled and
         // absent" means in the settings snapshot below.
-        Scene::SettingsDogs | Scene::SettingsNarrow => vec![
-            dog_sheep(90, "otel", None),
-            dog_sheep(91, "bark", Some(false)),
+        Scene::SettingsDogs | Scene::SettingsNarrow | Scene::SettingsShort => vec![
+            dog_sheep(90, "otel", DogSource::BuiltIn, None),
+            dog_sheep(91, "bark", DogSource::BuiltIn, Some(false)),
+        ],
+        // A flock's two sections at once: three sheep, a healthy built-in
+        // dog and a silent adopted one.
+        Scene::WithDogs => vec![
+            sheep(
+                0,
+                "web",
+                ProcStatus::Online,
+                Some(48_211),
+                0,
+                Some(3.4),
+                Some(182 << 20),
+                Some("edge"),
+            ),
+            sheep(
+                1,
+                "api",
+                ProcStatus::Online,
+                Some(48_219),
+                1,
+                Some(7.1),
+                Some(241 << 20),
+                Some("edge"),
+            ),
+            sheep(
+                2,
+                "cron",
+                ProcStatus::Online,
+                Some(48_233),
+                0,
+                Some(0.1),
+                Some(8 << 20),
+                None,
+            ),
+            dog_sheep(90, "bark", DogSource::BuiltIn, None),
+            dog_sheep(
+                91,
+                "log-rotate",
+                DogSource::Adopted {
+                    path: "/usr/local/bin/shep-log-rotate".to_string(),
+                },
+                Some(false),
+            ),
         ],
         _ => vec![
             sheep(
@@ -639,7 +698,7 @@ fn scene_with(which: Scene, age: Duration) -> Buffer {
     // Selects `api` (id 2) so the panes below describe a fixed sheep,
     // walked by id since the table sorts by name. Skipped where there is
     // no flock, no pane below the table, or the cursor belongs elsewhere
-    // (`Grouped`, and the two settings scenes with no id 2).
+    // (`Grouped`, and the three settings scenes with no id 2).
     if !matches!(
         which,
         Scene::Empty
@@ -647,8 +706,10 @@ fn scene_with(which: Scene, age: Duration) -> Buffer {
             | Scene::TooNarrow
             | Scene::TableOnly
             | Scene::Grouped
+            | Scene::WithDogs
             | Scene::SettingsDogs
             | Scene::SettingsNarrow
+            | Scene::SettingsShort
     ) {
         select_id(&mut app, 2);
     }
@@ -664,6 +725,12 @@ fn scene_with(which: Scene, age: Duration) -> Buffer {
     // `LambsUnknown` wants `cron`, id 4, instead.
     if which == Scene::LambsUnknown {
         select_id(&mut app, 4);
+    }
+
+    // `WithDogs` parks on the silent adopted dog, id 91, the row this
+    // scene exists to show.
+    if which == Scene::WithDogs {
+        select_id(&mut app, 91);
     }
 
     match which {
@@ -879,10 +946,23 @@ fn scene_with(which: Scene, age: Duration) -> Buffer {
                 result: Ok(settings_snapshot_with_dog_drift()),
             });
         }
+        Scene::SettingsShort => {
+            app.update(Msg::Key(KeyPress::Settings));
+            app.update(Msg::Settings {
+                result: Ok(settings_snapshot_with_dog_drift()),
+            });
+            // Onto the last row, which is the one a body this short cannot
+            // reach without scrolling.
+            app.update(Msg::Key(KeyPress::SelectLast));
+        }
         _ => {}
     }
 
     let (width, height) = which.size();
+    // The same call `run_ui` makes before every draw. Without it
+    // `Viewport::rows` stays zero, which means unlimited, so a guard on a
+    // scrolled screen never triggers.
+    app.note_body_rows(body_rows(Rect::new(0, 0, width, height)));
     let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
     terminal.draw(|frame| draw(&app, frame)).unwrap();
     terminal.backend().buffer().clone()
@@ -899,12 +979,34 @@ fn scene_with(which: Scene, age: Duration) -> Buffer {
 ///
 /// `FeedMissing`: no lines, no counts, and a `note` mirroring
 /// [`super::tail::read`]'s wording for a log file that was never created.
+///
+/// `WithDogs`: the selected row is the adopted `log-rotate` dog, so its
+/// lines say what a log-rotate dog says rather than the default fixture's
+/// web-server lines.
 fn feed_for(which: Scene) -> Tail {
     match which {
         // Mirrors `run_ui`: an empty flock has no selected row, so no
         // `tail::read` call, just the pane's own "no sheep is selected"
         // header.
         Scene::Empty => Tail::default(),
+        Scene::WithDogs => Tail {
+            lines: [
+                "rotated /var/log/api/access.log -> access.log.1",
+                "compressed access.log.1 (4.2M -> 380K)",
+                "pruned 2 archives older than 14 days",
+                "next rotation in 6h",
+            ]
+            .into_iter()
+            .map(|text| TailLine {
+                stream: Stream::Out,
+                text: text.to_string(),
+            })
+            .collect(),
+            missed_lines: 0,
+            missed_bytes: 0,
+            read_bytes: 256,
+            note: None,
+        },
         Scene::FeedGap => Tail {
             lines: (0..30)
                 .map(|n| TailLine {
@@ -1099,10 +1201,10 @@ fn flock_without_api() -> Vec<ProcessInfo> {
 /// carries the three-state signal a real listing does: `None` reads
 /// `online`, `Some(false)` reads `silent`, per
 /// [`crate::vocabulary::Reported::of`].
-fn dog_sheep(id: u32, name: &str, handshook: Option<bool>) -> ProcessInfo {
+fn dog_sheep(id: u32, name: &str, source: DogSource, handshook: Option<bool>) -> ProcessInfo {
     ProcessInfo::builder(id, name, ProcStatus::Online)
         .pid(Some(90_000 + id))
-        .dog(Some(DogSource::BuiltIn))
+        .dog(Some(source))
         .handshook(handshook)
         .build()
 }
@@ -1210,7 +1312,7 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi is the same thirty-one frames with colour; read it with `less -R`.
+frames.ansi is the same thirty-three frames with colour; read it with `less -R`.
 
 All four panes are here: the flock table (the spine), the host-usage strip,
 the sheep detail pane and the bleats feed. `>` marks the selected sheep, and
@@ -1227,11 +1329,12 @@ it read and dropped are counted exactly; bytes below its 64 KiB window were
 never read at all, so those are reported in bytes, because nothing counted the
 lines in them and guessing would be worse than saying so.
 
-The last six frames are the settings screen, `s` from the dashboard. It owns
+The last seven frames are the settings screen, `s` from the dashboard. It owns
 the whole body between the title and the status bar rather than sharing it
 with the flock table, so a fresh $SHEP_HOME, some scalars declared, an armed
-confirm, the socket editor mid-type, the dogs table's own drift and the same
-screen at 45 columns each get a frame of their own.
+confirm, the socket editor mid-type, the dogs table's own drift, the same
+screen at 45 columns and the same screen too short to hold every row each get
+a frame of their own.
 ";
 
 #[cfg(test)]
@@ -1321,7 +1424,7 @@ mod tests {
     /// artifacts under `docs/lookout/` are unix renderings for the same
     /// reason.
     #[cfg(unix)]
-    #[allow(clippy::too_many_lines)] // thirty-one captions, each pinned clause by clause
+    #[allow(clippy::too_many_lines)] // thirty-three captions, each pinned clause by clause
     fn every_scene_shows_the_thing_it_is_named_for() {
         // HealthyWide: all three panes at 120x30.
         let wide = render_text(&scene(Scene::HealthyWide).1);
@@ -1397,6 +1500,29 @@ mod tests {
         assert!(
             !grouped.contains("GET /healthz 200 3ms"),
             "with no instance's lines under that sentence: {grouped:?}"
+        );
+
+        // WithDogs: the flock table's two sections, sheep then dogs.
+        let with_dogs = render_text(&scene(Scene::WithDogs).1);
+        assert!(
+            with_dogs.contains("Flock ") && with_dogs.contains("Dogs "),
+            "both section headers are drawn: {with_dogs:?}"
+        );
+        assert!(
+            row_for(&with_dogs, "bark").is_some_and(|row| row.contains("online")),
+            "the built-in dog is healthy: {with_dogs:?}"
+        );
+        assert!(
+            row_for(&with_dogs, "log-rotate").is_some_and(|row| row.contains("silent")),
+            "the adopted dog has never handshaken, so it reads silent: {with_dogs:?}"
+        );
+        assert!(
+            marked_row_name_starts_with(&with_dogs, "log-rotate"),
+            "the cursor is parked on the silent dog: {with_dogs:?}"
+        );
+        assert!(
+            with_dogs.contains("dog adopted /usr/local/"),
+            "the detail pane names it adopted, not built-in: {with_dogs:?}"
         );
 
         // Empty: each of the three panes gives its own reason.
@@ -1488,7 +1614,7 @@ mod tests {
             );
         }
         assert!(
-            cramped.lines().last().unwrap().contains("read-only"),
+            cramped.lines().last().unwrap().contains("control enabled"),
             "and the status bar is still the last row"
         );
 
@@ -1574,7 +1700,7 @@ mod tests {
 
         // Refused: `x` with actions gated off.
         let refused = render_text(&scene(Scene::Refused).1);
-        assert!(refused.contains("--allow-control"));
+        assert!(refused.contains("--read-only"), "{refused}");
         assert!(
             refused.contains("bleats  api"),
             "a refusal does not blank the screen"
@@ -1703,8 +1829,8 @@ mod tests {
             "the ladder has not run out yet, so the refusal must not claim it has: {offline:?}"
         );
 
-        // The only frame with the left bar slot empty while the gate is
-        // open, so it is the only one showing the control hint.
+        // The left bar slot is empty here, same as on every ordinary
+        // dashboard scene, so this bar carries the plain control hint.
         let lambs_bar = render_text(&scene(Scene::Lambs).1);
         for key in ["x stop", "R restart", "L reload"] {
             assert!(lambs_bar.contains(key), "the control hint names {key}");
@@ -1777,6 +1903,32 @@ mod tests {
             "the dogs table keeps RUNNING: {narrow:?}"
         );
         assert!(!narrow.contains("built-in"), "and loses SOURCE: {narrow:?}");
+
+        // "The same screen at 14 rows, which is fewer than it has to draw.
+        //  The cursor is on the last dog, so the view has scrolled to reach
+        //  it and `... 5 above` says how much is off the top. The scroll is
+        //  counted in lines rather than in rows: a section header and the
+        //  dogs caption cost the same height a row does."
+        let short = render_text(&scene(Scene::SettingsShort).1);
+        assert!(
+            short.contains("... 5 above"),
+            "the marker names how many rows are off the top: {short:?}"
+        );
+        assert!(
+            short
+                .lines()
+                .any(|line| line.starts_with("> bark")
+                    || line.starts_with('>') && line.contains("bark")),
+            "the cursor's own row is drawn: {short:?}"
+        );
+        assert!(
+            !short.contains("log_level"),
+            "and the rows above it are the ones that went: {short:?}"
+        );
+        assert!(
+            short.contains("[style]") && short.contains("[dogs]"),
+            "what survives is whole sections, headers and all: {short:?}"
+        );
     }
 
     /// Two grouped apps, four sheep, six visible rows: a `0..=flock_len()`
@@ -1805,8 +1957,8 @@ mod tests {
         });
         assert_eq!(
             app.visible_rows().len(),
-            6,
-            "four sheep and two group headers"
+            7,
+            "the flock header, four sheep and two group headers"
         );
 
         // `web`'s second slot: the last visible row, and the one a
@@ -1834,10 +1986,10 @@ mod tests {
                 which.label()
             );
         }
-        // The literal 31 catches a scene added to the enum but not to
+        // The literal 33 catches a scene added to the enum but not to
         // `ALL`, or the reverse; `labels.len()` would not, since `insert`
         // above already guarantees it.
-        assert_eq!(Scene::ALL.len(), 31);
+        assert_eq!(Scene::ALL.len(), 33);
     }
 
     /// `sgr` renders foregrounds only, so a modifier would come out
