@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-09-06
+
+### Fixed
+
+- Sweep the exec probe's process group on every exit path ([#160](https://github.com/shep-pm/shep/pull/160))
+
+
 ## [0.4.2] - 2026-09-06
 
 ### Fixed
