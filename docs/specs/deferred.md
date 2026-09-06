@@ -461,6 +461,40 @@ The last of those is the reason this is deferred rather than squeezed in: the
 question is what a dog does when its shepherd is gone, and answering it for
 bark alone would leave two dogs answering it differently for the third time.
 
+### A staged reload's refusal has no field in `--format json`, open, 2026-09-06
+
+`Response::Reloading` carries a `refused: Vec<SheepRefusal>` list, and the
+CLI's plain output reads it. A `--format json` caller does not get the same
+answer: the exit code is the only in-band signal a staged reload's walk
+refused an app, while the JSON envelope shows a clean fold with nothing
+naming what was skipped.
+
+**Why this matters more than a cosmetic gap.** Deploy scripts are the named
+audience for the exit code shep already returns here, and a script parsing
+JSON has no field to check instead, so it either trusts an exit code it
+otherwise ignores or has no way to tell a refused app from one that reloaded
+cleanly. Closing this needs another wire field on the JSON envelope, which
+is a deliberate addition rather than a bug fix, so it stays out of this
+branch.
+
+### `EXTEND_TIMEOUT_USEC` would remove an operator's readiness homework, open, 2026-09-06
+
+systemd's `sd_notify` protocol accepts `EXTEND_TIMEOUT_USEC=<n>`, which lets a
+`Type=notify` service push `TimeoutStartSec` out as it reports progress,
+rather than needing the whole boot to fit inside one fixed budget set in
+advance. The daemon already has a notify module and already emits one info
+line per boot stage, so the hook this would ride on already exists.
+
+**Why this is the systemd-native answer, not a nice-to-have.** A staged boot
+with real dependencies takes an unbounded but progressing amount of time --
+more stages, more `depends_on` chains, more apps waiting out their own
+`listen_timeout` -- and the current answer is documentation telling an
+operator to size `TimeoutStartSec` generously. `EXTEND_TIMEOUT_USEC` lets the
+unit extend its own deadline as each stage lands, which removes that sizing
+guess entirely rather than asking the operator to guess better. Left for its
+own task because it is a new notify-protocol call, not a fix to anything
+built on this branch.
+
 ## Ideas, recorded but not designed
 
 Not debt, not deferred spec surface, and not promised to anybody. Things worth
