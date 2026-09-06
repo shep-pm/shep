@@ -10,7 +10,7 @@
 //! shared since `KvLock` is private to its module.
 
 use core::fmt;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write as _;
 use std::path::Path;
 // `PathBuf` backs `lock_path` below, gated the same way for both platform
@@ -19,6 +19,9 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
+
+use crate::config::AppConfig;
+use crate::config::template;
 
 /// The on-disk format's version.
 ///
@@ -490,6 +493,110 @@ impl fmt::Display for SecretRef<'_> {
     }
 }
 
+/// Every `{{secret:...}}` reference `config` names, exactly as the operator
+/// wrote it (`KEY` or `namespace/KEY`, no braces), deduplicated.
+///
+/// Walks `env`'s values, `args`, `out_file` and `err_file` through
+/// `template`'s own tokenizer, the same one [`template::render`] resolves
+/// against at spawn: a value this misses is one `render` would not touch
+/// either, and a positional token (`{{instance}}`, `{{name}}`) contributes
+/// nothing.
+#[must_use]
+pub fn references(config: &AppConfig) -> BTreeSet<String> {
+    let mut found = BTreeSet::new();
+    let mut scan = |value: &str| {
+        let _ = template::walk::<core::convert::Infallible>(value, |segment| {
+            if let template::Segment::Token(token) = segment
+                && let Some(reference) = template::secret_reference(token)
+            {
+                found.insert(match reference.namespace {
+                    Some(namespace) => format!("{namespace}/{}", reference.key),
+                    None => reference.key.to_string(),
+                });
+            }
+            Ok(())
+        });
+    };
+    for value in config.env.values() {
+        scan(value);
+    }
+    for value in &config.args {
+        scan(value);
+    }
+    if let Some(value) = &config.out_file {
+        scan(value);
+    }
+    if let Some(value) = &config.err_file {
+        scan(value);
+    }
+    found
+}
+
+/// The provider namespaces [`references`] names, derived with
+/// [`SecretRef::parse`] and kept to the namespaced half.
+///
+/// No I/O of its own: the seam boot-dependency ordering asks "which
+/// provider namespaces does this sheep depend on" through.
+#[must_use]
+pub fn namespaces_of(config: &AppConfig) -> BTreeSet<String> {
+    references(config)
+        .iter()
+        .filter_map(|reference| SecretRef::parse(reference))
+        .filter_map(|reference| reference.namespace.map(str::to_string))
+        .collect()
+}
+
+/// The on-disk shape of `secrets-cache.json`, mirrored from
+/// `shep-daemon`'s own private writer so a reader on this side of the
+/// crate boundary can stay in step with it without importing a published
+/// binary crate's internals.
+#[derive(Default, Deserialize)]
+struct ProviderCacheFile {
+    version: u32,
+    #[serde(default)]
+    namespaces: BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>>,
+}
+
+/// Redacted (IR-41), matching `shep-daemon`'s own `CacheFile`: `namespaces`
+/// holds provider values in the clear.
+impl fmt::Debug for ProviderCacheFile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProviderCacheFile")
+            .field("version", &self.version)
+            .field("namespaces", &self.namespaces.len())
+            .finish()
+    }
+}
+
+/// The cache file version [`provider_namespaces_on_disk`] understands.
+///
+/// Matches `shep-daemon`'s own `CACHE_VERSION`; a mismatch there and here
+/// is a drift this module cannot detect on its own; the two constants
+/// carry the same comment for that reason.
+const PROVIDER_CACHE_VERSION: u32 = 1;
+
+/// Every provider dog's namespace as `secrets-cache.json` currently holds
+/// it on disk, or nothing when the file is missing, will not parse, or is a
+/// version this build does not understand.
+///
+/// Best-effort, more so than [`all`]: a namespace whose provider pushed
+/// with `persist = false` never reaches this file at all, so a caller here
+/// can under-report `MissingNamespace` for one the running shepherd
+/// currently holds in memory. A caller that needs the shepherd's live
+/// answer has to ask it directly rather than read this file.
+#[must_use]
+pub fn provider_namespaces_on_disk(
+    path: &Path,
+) -> BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>> {
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return BTreeMap::new();
+    };
+    match serde_json::from_str::<ProviderCacheFile>(&raw) {
+        Ok(file) if file.version == PROVIDER_CACHE_VERSION => file.namespaces,
+        _ => BTreeMap::new(),
+    }
+}
+
 /// What one environment can see: the operator's store plus every provider
 /// dog's, resolved against a single environment name.
 ///
@@ -744,6 +851,64 @@ mod tests {
     }
 
     #[test]
+    fn references_finds_every_secret_in_a_config_and_nothing_else() {
+        let mut config = AppConfig::minimal("web", "./srv");
+        config.env.insert("A".into(), "{{secret:ONE}}".into());
+        config.env.insert("B".into(), "plain".into());
+        config
+            .env
+            .insert("C".into(), "{{name}}-{{secret:vercel/TWO}}".into());
+        config.args = vec!["--x={{secret:ONE}}".into()];
+
+        let found = references(&config);
+        assert_eq!(
+            found,
+            BTreeSet::from(["ONE".to_string(), "vercel/TWO".to_string()]),
+            "deduplicated, and no positional tokens"
+        );
+    }
+
+    #[test]
+    fn namespaces_of_a_config_is_the_seam_boot_ordering_will_want() {
+        let mut config = AppConfig::minimal("web", "./srv");
+        config.env.insert("A".into(), "{{secret:ONE}}".into());
+        config
+            .env
+            .insert("B".into(), "{{secret:vercel/TWO}}".into());
+        assert_eq!(
+            namespaces_of(&config),
+            BTreeSet::from(["vercel".to_string()])
+        );
+    }
+
+    #[test]
+    fn provider_namespaces_on_disk_reads_a_real_cache_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("secrets-cache.json");
+        std::fs::write(
+            &path,
+            r#"{"version":1,"namespaces":{"vercel":{"API_KEY":{"production":"sk_live"}}}}"#,
+        )
+        .unwrap();
+        let namespaces = provider_namespaces_on_disk(&path);
+        assert_eq!(namespaces["vercel"]["API_KEY"]["production"], "sk_live");
+    }
+
+    #[test]
+    fn provider_namespaces_on_disk_is_empty_for_a_missing_or_broken_file() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(provider_namespaces_on_disk(&dir.path().join("absent.json")).is_empty());
+
+        let broken = dir.path().join("broken.json");
+        std::fs::write(&broken, "not json").unwrap();
+        assert!(provider_namespaces_on_disk(&broken).is_empty());
+
+        let future = dir.path().join("future.json");
+        std::fs::write(&future, r#"{"version":999,"namespaces":{}}"#).unwrap();
+        assert!(provider_namespaces_on_disk(&future).is_empty());
+    }
+
+    #[test]
     fn resolution_prefers_the_exact_environment_then_all_then_gives_up() {
         let mut store = BTreeMap::new();
         store.insert(
@@ -883,6 +1048,26 @@ mod tests {
         let rendered = format!("{file:?}");
         assert_eq!(rendered, "SecretFile { version: 1, keys: 1 }");
         assert!(!rendered.contains("hunter2"));
+    }
+
+    /// IR-41, the same guard for the on-disk shape [`provider_namespaces_on_disk`]
+    /// reads: it mirrors `shep-daemon`'s `CacheFile`, values in the clear
+    /// included.
+    #[test]
+    fn a_provider_cache_file_debug_never_prints_a_value() {
+        let file = ProviderCacheFile {
+            version: PROVIDER_CACHE_VERSION,
+            namespaces: BTreeMap::from([(
+                "vercel".to_string(),
+                BTreeMap::from([(
+                    "API_KEY".to_string(),
+                    BTreeMap::from([("production".to_string(), "sk_live".to_string())]),
+                )]),
+            )]),
+        };
+        let rendered = format!("{file:?}");
+        assert_eq!(rendered, "ProviderCacheFile { version: 1, namespaces: 1 }");
+        assert!(!rendered.contains("sk_live"));
     }
 
     /// IR-41, the same guard for the type a resolved value travels in.

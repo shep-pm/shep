@@ -105,7 +105,10 @@ pub fn secret(streams: &mut Streams<'_>, paths: &ShepPaths, args: &SecretArgs) -
 /// nobody can parse is the worst moment for a gate to disappear. None of
 /// `DaemonConfig`'s environment overrides touch either field, so the
 /// closure is always `&|_| None`.
-fn daemon_config(paths: &ShepPaths) -> DaemonConfig {
+///
+/// `pub(crate)`: `commands::query`'s `describe` reads the same default
+/// host environment this verb's `get` falls back to, for the same reason.
+pub(crate) fn daemon_config(paths: &ShepPaths) -> DaemonConfig {
     let text = std::fs::read_to_string(&paths.daemon_config).ok();
     DaemonConfig::load(text.as_deref(), &|_| None).unwrap_or_default()
 }

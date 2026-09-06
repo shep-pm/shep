@@ -2182,6 +2182,72 @@ impl Render for SecretValueRow {
     const PRIORITIES: &'static [u8] = &[0, 0];
 }
 
+/// The verdict [`DescribedSecret::status`] carries: whether a reference
+/// currently resolves, and if not, which of the two reasons it does not.
+///
+/// Serializes `snake_case`, matching this crate's other JSON enums (a dog's
+/// `kind`, for one). [`Self::as_table_word`] is the separate, human-prose
+/// spelling `describe`'s table form prints; the two are kept apart on
+/// purpose; a JSON reader should never have to translate table wording, and
+/// a table reader should never see an underscore.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SecretStatus {
+    /// The operator's store or a provider's namespace holds a value for
+    /// this reference in this environment.
+    Resolved,
+    /// The store or namespace exists but holds nothing for this key in
+    /// this environment.
+    Missing,
+    /// No provider dog has ever pushed to this namespace, as far as the
+    /// local cache on disk shows.
+    ProviderNotReady,
+}
+
+impl SecretStatus {
+    /// Classifies a live [`shep_core::secrets::Resolution`] the same way
+    /// everywhere this crate reports one, so the table and JSON forms of
+    /// `describe`'s secrets section can never disagree about a verdict.
+    #[must_use]
+    pub fn from_resolution(resolution: &shep_core::secrets::Resolution<'_>) -> Self {
+        match resolution {
+            shep_core::secrets::Resolution::Found(_) => Self::Resolved,
+            shep_core::secrets::Resolution::MissingKey => Self::Missing,
+            shep_core::secrets::Resolution::MissingNamespace => Self::ProviderNotReady,
+        }
+    }
+
+    /// The word `describe`'s table prints for this verdict.
+    #[must_use]
+    pub fn as_table_word(self) -> &'static str {
+        match self {
+            Self::Resolved => "resolved",
+            Self::Missing => "missing",
+            Self::ProviderNotReady => "provider not ready",
+        }
+    }
+}
+
+/// One `{{secret:...}}` reference `shep describe` reports on: never a
+/// value, only whether it currently resolves.
+///
+/// Not a [`Render`] payload: `describe`'s table form prints these as prose
+/// under the flock table, the same way `Pending`/`Overridden` do, and its
+/// JSON form rides beside `data` on the envelope rather than inside it, so
+/// existing `data[].name` scripts see no shape change. `emit_described`
+/// builds both from a `&[DescribedSecret]` directly.
+#[derive(Debug, Clone, Serialize)]
+pub struct DescribedSecret {
+    /// Which sheep this reference belongs to.
+    pub name: String,
+    /// The reference as the operator wrote it: `KEY` or `namespace/KEY`.
+    pub reference: String,
+    /// The environment it resolved in.
+    pub environment: String,
+    /// Whether this reference currently resolves, and if not, why.
+    pub status: SecretStatus,
+}
+
 /// `shep dogs --available`'s community-index listing.
 ///
 /// Never from a `Response`: the community index never touches the daemon

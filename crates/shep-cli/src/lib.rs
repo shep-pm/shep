@@ -975,11 +975,11 @@ async fn run(
         Commands::Adopt(ref args) => dogs::adopt(&mut streams, &paths, args).await,
         Commands::Rehome(ref args) => dogs::rehome(&mut streams, &paths, &args.name).await,
         Commands::Describe(ref args) => match connect_client(&mut streams, &paths, guard).await {
-            Ok(client) => query::describe(&client, &mut streams, args).await,
+            Ok(client) => query::describe(&client, &mut streams, &paths, args).await,
             Err(code) => code,
         },
         Commands::Fold(ref args) => match connect_client(&mut streams, &paths, guard).await {
-            Ok(client) => query::fold(&client, &mut streams, args).await,
+            Ok(client) => query::fold(&client, &mut streams, &paths, args).await,
             Err(code) => code,
         },
         // Not `connect_client`: a verb reporting whether a shepherd answers

@@ -30,7 +30,10 @@ const SECRET_PREFIX: &str = "secret:";
 ///
 /// [`SecretRef::parse`] is the only grammar for a reference, so a token
 /// [`validate`] accepts is one [`render`] can parse.
-fn secret_reference(token: &str) -> Option<SecretRef<'_>> {
+///
+/// `pub(crate)`: [`crate::secrets::references`] shares this rather than
+/// re-deriving what a `secret:` body is.
+pub(crate) fn secret_reference(token: &str) -> Option<SecretRef<'_>> {
     token.strip_prefix(SECRET_PREFIX).and_then(SecretRef::parse)
 }
 
@@ -139,7 +142,10 @@ impl core::error::Error for RenderError {}
 
 /// One piece of `value` as [`walk`] sees it: ordinary text, or a token name
 /// with the braces stripped.
-enum Segment<'a> {
+///
+/// `pub(crate)`: [`crate::secrets::references`] matches on this directly
+/// rather than [`walk`] growing a second, narrower traversal.
+pub(crate) enum Segment<'a> {
     /// A run of ordinary text, copied through unchanged.
     Literal(&'a str),
     /// The name between a `{{` and its `}}`, braces stripped.
@@ -147,7 +153,7 @@ enum Segment<'a> {
 }
 
 /// How far [`walk`] got through a value.
-enum Completion {
+pub(crate) enum Completion {
     /// Every `{{` was closed by a `}}`.
     Complete,
     /// A `{{` was never closed; the segments before it were still emitted.
@@ -156,17 +162,21 @@ enum Completion {
 
 /// Walks `value`, calling `on_segment` for each literal run and each token.
 ///
-/// One walker, one closure, so [`validate`], [`render`] and
-/// [`render_positional`] can never disagree about what a token is.
+/// One walker, one closure, so [`validate`], [`render`], [`render_positional`]
+/// and [`crate::secrets::references`] can never disagree about what a token
+/// is.
 ///
 /// Generic over the closure's error so each caller keeps its own, with an
 /// unclosed `{{` reported through [`Completion`] rather than as an error
 /// every caller would have to be able to spell.
 ///
+/// `pub(crate)`: [`crate::secrets::references`] walks a config's own values
+/// for `{{secret:...}}` tokens rather than parsing them a second way.
+///
 /// # Errors
 ///
 /// Whatever `on_segment` returns, at the first segment it refuses.
-fn walk<E>(
+pub(crate) fn walk<E>(
     value: &str,
     mut on_segment: impl FnMut(Segment<'_>) -> Result<(), E>,
 ) -> Result<Completion, E> {
