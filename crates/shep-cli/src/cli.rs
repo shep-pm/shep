@@ -994,16 +994,22 @@ pub struct SecretArgs {
 pub enum SecretCommand {
     /// Store a value
     ///
-    /// The value is an argument, so it is visible in `ps` and in this
-    /// shell's history for as long as the command runs.
+    /// The value is a positional argument by default, so it is visible in
+    /// `ps` and in this shell's history for as long as the command runs.
+    /// Pass `--stdin` to keep it out of both.
     Set {
         /// The key
         key: String,
-        /// The value
-        value: String,
+        /// The value; required unless --stdin is given
+        #[arg(required_unless_present = "stdin", conflicts_with = "stdin")]
+        value: Option<String>,
         /// Which environment; omit for every environment
         #[arg(long)]
         env: Option<String>,
+        /// Read the value from stdin; the positional form is visible in
+        /// `ps` and in shell history
+        #[arg(long)]
+        stdin: bool,
     },
     /// Print a value back, if `[secrets] allow_read` is on
     Get {

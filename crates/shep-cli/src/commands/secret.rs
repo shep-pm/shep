@@ -12,6 +12,7 @@
 //! asked for.
 
 use std::collections::BTreeMap;
+use std::io::Read;
 
 use shep_core::config::DaemonConfig;
 use shep_core::paths::ShepPaths;
@@ -61,7 +62,25 @@ fn fail(streams: &mut Streams<'_>, err: &SecretError) -> ExitCode {
 /// `shep secret`, dispatched to one of its four subcommands.
 pub fn secret(streams: &mut Streams<'_>, paths: &ShepPaths, args: &SecretArgs) -> ExitCode {
     match &args.command {
-        SecretCommand::Set { key, value, env } => set(streams, paths, key, env.as_deref(), value),
+        SecretCommand::Set {
+            key,
+            value,
+            env,
+            stdin,
+        } => {
+            let value = if *stdin {
+                match resolve_stdin_value(&mut std::io::stdin().lock()) {
+                    Ok(value) => value,
+                    Err(message) => return streams.fail(ExitCode::Failure, &message),
+                }
+            } else {
+                // clap's `required_unless_present = "stdin"` guarantees this.
+                value
+                    .clone()
+                    .expect("clap requires a value unless --stdin is set")
+            };
+            set(streams, paths, key, env.as_deref(), &value)
+        }
         SecretCommand::Get { key, env } => {
             let config = daemon_config(paths);
             get(
@@ -91,7 +110,37 @@ fn daemon_config(paths: &ShepPaths) -> DaemonConfig {
     DaemonConfig::load(text.as_deref(), &|_| None).unwrap_or_default()
 }
 
-/// `shep secret set <key> <value> [--env <environment>]`.
+/// `--stdin`'s value: `reader`'s bytes, with at most one trailing `\n`
+/// stripped, and one `\r` immediately before it if present, then decoded as
+/// UTF-8.
+///
+/// Only that one newline is trimmed. Leading and interior whitespace can be
+/// part of a credential, so `echo "$PW" | shep secret set KEY --stdin` and
+/// `printf %s "$PW" | shep secret set KEY --stdin` both store exactly what
+/// was piped, and nothing wider is touched.
+///
+/// `reader` rather than reading `std::io::stdin()` directly keeps this
+/// testable without touching the test process's real stdin; [`secret`]
+/// passes the real one.
+///
+/// # Errors
+/// The read failed, or the trimmed bytes are not valid UTF-8.
+fn resolve_stdin_value(reader: &mut dyn Read) -> Result<String, String> {
+    let mut bytes = Vec::new();
+    reader
+        .read_to_end(&mut bytes)
+        .map_err(|err| format!("could not read the value from stdin: {err}"))?;
+    if bytes.last() == Some(&b'\n') {
+        bytes.pop();
+        if bytes.last() == Some(&b'\r') {
+            bytes.pop();
+        }
+    }
+    String::from_utf8(bytes)
+        .map_err(|_utf8_error| "the value read from stdin is not valid UTF-8".to_string())
+}
+
+/// `shep secret set <key> (<value> | --stdin) [--env <environment>]`.
 ///
 /// No `--env` means [`ALL_ENVIRONMENTS`], the slot every environment falls
 /// back to.
@@ -285,7 +334,7 @@ mod tests {
     use shep_core::paths::ShepPaths;
     use shep_core::secrets::ALL_ENVIRONMENTS;
 
-    use crate::cli::Format;
+    use crate::cli::{Cli, Format};
     use crate::exit::ExitCode;
     use crate::output::Streams;
 
@@ -594,5 +643,68 @@ mod tests {
         let paths = paths_in(home.path());
         run_set(&paths, "K", None, "v").unwrap();
         assert!(paths.secrets.exists());
+    }
+
+    /// Covers `printf %s "$PW" | shep secret set KEY --stdin`: no trailing
+    /// newline at all, so nothing is trimmed.
+    #[test]
+    fn stdin_value_reads_bytes_with_no_trailing_newline() {
+        let mut input = std::io::Cursor::new(b"hunter2".to_vec());
+        assert_eq!(resolve_stdin_value(&mut input).unwrap(), "hunter2");
+    }
+
+    /// Covers `echo "$PW" | shep secret set KEY --stdin` on both a unix
+    /// pipe (`\n`) and a Windows one (`\r\n`): exactly one trailing newline
+    /// comes off, so both store the same value.
+    #[test]
+    fn stdin_value_strips_exactly_one_trailing_newline_and_a_preceding_cr() {
+        let mut lf = std::io::Cursor::new(b"hunter2\n".to_vec());
+        assert_eq!(resolve_stdin_value(&mut lf).unwrap(), "hunter2");
+
+        let mut crlf = std::io::Cursor::new(b"hunter2\r\n".to_vec());
+        assert_eq!(resolve_stdin_value(&mut crlf).unwrap(), "hunter2");
+    }
+
+    /// fails if trimming widens past that one newline: leading and interior
+    /// whitespace, and a `\r` anywhere but immediately before the final
+    /// `\n`, can be part of the credential and must survive.
+    #[test]
+    fn stdin_value_trims_nothing_else() {
+        let mut input = std::io::Cursor::new(b" hunter2 \r more\n".to_vec());
+        assert_eq!(resolve_stdin_value(&mut input).unwrap(), " hunter2 \r more");
+    }
+
+    /// fails if `set K --stdin` stops parsing with no positional value: the
+    /// whole point of the flag is a value with no argument at all.
+    #[test]
+    fn set_stdin_alone_parses_with_no_positional_value() {
+        use clap::Parser;
+
+        let cli = Cli::try_parse_from(["shep", "secret", "set", "K", "--stdin"]).unwrap();
+        let crate::cli::Commands::Secret(args) = cli.command else {
+            panic!("expected Commands::Secret");
+        };
+        let SecretCommand::Set { value, stdin, .. } = args.command else {
+            panic!("expected SecretCommand::Set");
+        };
+        assert_eq!(value, None);
+        assert!(stdin);
+    }
+
+    /// A positional value and `--stdin` disagree about where the value
+    /// comes from; clap refuses before either is ever read, naming both.
+    #[test]
+    fn set_refuses_a_positional_value_and_stdin_together() {
+        use clap::Parser;
+        assert!(Cli::try_parse_from(["shep", "secret", "set", "K", "v", "--stdin"]).is_err());
+    }
+
+    /// Neither a positional value nor `--stdin` leaves nothing to store.
+    #[test]
+    fn set_requires_a_positional_value_or_stdin() {
+        use clap::Parser;
+        assert!(Cli::try_parse_from(["shep", "secret", "set", "K"]).is_err());
+        assert!(Cli::try_parse_from(["shep", "secret", "set", "K", "v"]).is_ok());
+        assert!(Cli::try_parse_from(["shep", "secret", "set", "K", "--stdin"]).is_ok());
     }
 }
