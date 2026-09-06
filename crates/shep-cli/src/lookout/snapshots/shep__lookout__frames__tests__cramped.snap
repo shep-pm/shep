@@ -1,5 +1,6 @@
 ---
 source: crates/shep-cli/src/lookout/frames.rs
+assertion_line: 2149
 expression: render_text(&buffer)
 ---
 shep lookout   /h… 6 in the flock
@@ -16,12 +17,12 @@ host  load  ██░░░░░░░░ 2.31 4.10…
                                  
                                  
 ─────────────────────────────────
-sheep 2  api   online   pid 4821…
+ ██ SHEEP 2  api   online   pid …
 lambs  not read yet              
-out  /home/ada/.shep/logs/api-2-…
-err  /home/ada/.shep/logs/api-2-…
+out  …out.log   │   err  …err.log
+                                 
 ─────────────────────────────────
-bleats  api  … 1 earlier line no…
+ ██ BLEATS bleats  api  … 1 earl…
 out  GET /healthz 200 3ms        
 out  GET /v1/orders 200 44ms     
 out  POST /v1/orders 201 88ms    

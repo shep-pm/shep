@@ -1421,10 +1421,16 @@ mod tests {
             .and_then(|y| text.lines().nth(usize::from(y)))
     }
 
-    /// How many rows of `buffer` are painted as selected: a scene invariant
-    /// is exactly one, the same invariant a `>` glyph count used to check.
+    /// How many rows of `buffer`, EXCLUDING the status bar, are painted as
+    /// selected: a scene invariant is exactly one, the same invariant a `>`
+    /// glyph count used to check.
+    ///
+    /// The status bar is always the buffer's last row and now carries the
+    /// same [`gallery_ground`] the selected row's gutter does
+    /// (`Palette::ground`, painted by `view::status` in this task); it is
+    /// chrome, not a candidate row, so it is excluded rather than counted.
     fn selected_row_count(buffer: &Buffer) -> usize {
-        (0..buffer.area.height)
+        (0..buffer.area.height.saturating_sub(1))
             .filter(|&y| row_is_selected(buffer, y))
             .count()
     }
@@ -1481,8 +1487,8 @@ mod tests {
             "the host strip"
         );
         assert!(
-            wide.contains("sheep 2  api"),
-            "the detail pane, on the selected sheep"
+            wide.contains("SHEEP 2  api"),
+            "the detail pane, on the selected sheep, behind its own chip"
         );
         assert!(
             wide.contains("bleats  api"),
@@ -1492,6 +1498,8 @@ mod tests {
         // the selected row's gutter is now a painted space rather than a
         // `>` glyph (`view::flock::gutter`); checked on the buffer's own
         // background rather than the rendered text, which cannot see one.
+        // Two rows carry it now, not one: the selected row's gutter, and
+        // the status bar this task painted at the foot of the pane.
         use std::ffi::OsStr;
         let ground = Palette::detect(None, Some(OsStr::new("xterm-256color")), None)
             .ground()
@@ -1504,7 +1512,10 @@ mod tests {
                     .is_some_and(|cell| cell.bg == ground)
             })
             .count();
-        assert_eq!(painted_rows, 1, "exactly one row's gutter is painted");
+        assert_eq!(
+            painted_rows, 2,
+            "the selected row's gutter and the status bar"
+        );
 
         // Grouped: cursor on the group header, which rolls up restarts,
         // CPU and memory and takes the shortest uptime.
@@ -1578,7 +1589,7 @@ mod tests {
             "the cursor is parked on the silent dog: {with_dogs:?}"
         );
         assert!(
-            with_dogs.contains("dog adopted /usr/local/"),
+            with_dogs.contains("dog adopted"),
             "the detail pane names it adopted, not built-in: {with_dogs:?}"
         );
 
@@ -1613,7 +1624,7 @@ mod tests {
         assert!(narrow.contains("host  load"), "the strip is up at 14 rows");
         assert!(!narrow.contains("bleats  "), "the feed is not");
         assert!(
-            !narrow.contains("sheep 0  "),
+            !narrow.contains("SHEEP 0  "),
             "and neither is the detail pane"
         );
 
@@ -1665,16 +1676,27 @@ mod tests {
         assert!(cramped.contains('…'), "something truncated, visibly");
         // Not a row-width check, which `render_text` satisfies trivially:
         // "nothing overlaps" means each pane's marker appears exactly once.
-        for marker in ["host  ", "bleats  ", "out  /home/ada/.shep/logs/"] {
+        // `contains`, not `starts_with`: the `BLEATS` chip now leads that
+        // row.
+        for marker in ["host  ", "bleats  "] {
             assert_eq!(
-                cramped
-                    .lines()
-                    .filter(|line| line.starts_with(marker))
-                    .count(),
+                cramped.lines().filter(|line| line.contains(marker)).count(),
                 1,
                 "{marker:?} appears once at 33 columns"
             );
         }
+        // The detail pane's merged log row carries no chip of its own, so
+        // `starts_with` still works, but the path itself can truncate away
+        // at 33 columns; the divider is what survives to identify the row
+        // instead.
+        assert_eq!(
+            cramped
+                .lines()
+                .filter(|line| line.starts_with("out  ") && line.contains('\u{2502}'))
+                .count(),
+            1,
+            "the detail pane's merged log row appears once at 33 columns"
+        );
         assert!(
             cramped.lines().last().unwrap().contains("control enabled"),
             "and the status bar is still the last row"
@@ -1684,7 +1706,7 @@ mod tests {
         let retrying = render_text(&scene(Scene::Retrying).1);
         assert!(retrying.contains("reconnecting"));
         assert!(
-            retrying.contains("sheep 2  api"),
+            retrying.contains("SHEEP 2  api"),
             "the detail pane is still up"
         );
         assert!(retrying.contains("host  load"), "and so is the strip");
@@ -1702,7 +1724,7 @@ mod tests {
         let errored = render_text(&errored_buffer);
         assert!(errored.contains("errored"));
         assert!(
-            errored.contains("sheep 2  api"),
+            errored.contains("SHEEP 2  api"),
             "the selection is on the errored sheep"
         );
         assert_eq!(
@@ -1830,7 +1852,7 @@ mod tests {
             !unknown.contains("none found"),
             "which is the other sentence"
         );
-        assert!(unknown.contains("sheep 4  cron"), "on the stopped sheep");
+        assert!(unknown.contains("SHEEP 4  cron"), "on the stopped sheep");
 
         // Confirm: `R` pressed, nothing sent yet.
         let confirm = render_text(&scene(Scene::Confirm).1);

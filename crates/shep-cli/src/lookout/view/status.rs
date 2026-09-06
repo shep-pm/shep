@@ -132,9 +132,13 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // either dashboard hint is true while it is up. Its own form: a
         // hint naming `x stop` beside a pane where `x` does nothing is
         // the asterisk this file's standing rule forbids.
+        //
+        // Butter, not muted: this is a key hint, same as the dashboard's own
+        // below, and the redesign paints the keys butter over the bar's
+        // ground.
         (
             pane_hint(app.control(), pane_screen(pane)).to_string(),
-            palette.muted(),
+            palette.attention(),
         )
     } else if app.settings().is_none() && !app.filter().is_empty() {
         // Gated on the screen being closed: the filter survives the swap
@@ -146,9 +150,10 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             palette.muted(),
         )
     } else {
+        // Butter: the keys, same rule as the pane's own hint above.
         (
             hint_for(app.control(), app.settings().is_some()),
-            palette.muted(),
+            palette.attention(),
         )
     };
     // Always rendered, in both states. An operator who does not know whether
@@ -163,9 +168,16 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
     // butts against the label. The gap rides inside the right span, styled
     // like the label, keeping the line two spans rather than three.
     let left_width = width.saturating_sub(right_len).saturating_sub(1);
+    // `patch`, not a fresh `Style`: `ground` sets only the background, so
+    // patching it onto each span's own foreground paints the bar's ground
+    // ([`Palette::ground`]) without disturbing what the span already means.
+    // `fit` already pads `left` to `left_width`, so the background reaches
+    // every column the label does not, the same reasoning `flock::pad_ground`
+    // uses for the selected row.
+    let ground = palette.ground();
     Line::from(vec![
-        Span::styled(fit(&left, left_width), left_style),
-        Span::styled(format!(" {right}"), palette.muted()),
+        Span::styled(fit(&left, left_width), left_style.patch(ground)),
+        Span::styled(format!(" {right}"), palette.muted().patch(ground)),
     ])
 }
 
