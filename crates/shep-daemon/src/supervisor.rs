@@ -2983,8 +2983,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// spawns reaches the second without a daemon restart.
     ///
     /// A store that cannot be read yields an empty view rather than failing
-    /// here. A sheep that needs nothing from it still spawns, and one that
-    /// does gets the ordinary refusal naming its own reference.
+    /// here, and logs why. A sheep that needs nothing from it still spawns,
+    /// and one that does gets the ordinary refusal naming its own reference,
+    /// which on its own would send an operator to `shep secret set` for a
+    /// store that is corrupt or newer than this build.
     ///
     /// The namespaced half comes from [`ProviderSecrets`], in memory, so
     /// this reads the file for the operator's own store and nothing else.
@@ -2994,7 +2996,14 @@ impl<R: ProcessRunner> Actor<R> {
             .environment
             .clone()
             .unwrap_or_else(|| self.host_environment.clone());
-        let store = shep_core::secrets::all(&self.paths.secrets).unwrap_or_default();
+        let store = shep_core::secrets::all(&self.paths.secrets).unwrap_or_else(|error| {
+            tracing::warn!(
+                path = %self.paths.secrets.display(),
+                %error,
+                "the secret store could not be read; every reference will refuse"
+            );
+            BTreeMap::new()
+        });
         SecretView::new(environment, store, self.provider_secrets.snapshot())
     }
 
@@ -8242,8 +8251,6 @@ mod tests {
         Harness, RecordingEnforcer, ScriptedProber, SharedRunner, app_with, armed_entry, harness,
         idle_stats, probe_config, test_paths,
     };
-    // unix only: its one caller drives an unresolvable `user`.
-    #[cfg(unix)]
     use crate::testing::capture_logs;
     #[cfg(unix)]
     use crate::tokio_runner::TokioRunner;
@@ -20286,6 +20293,36 @@ mod tests {
             0,
             "nothing may reach the runner"
         );
+    }
+
+    /// A store this build cannot read refuses every reference with the same
+    /// words a key nobody set does, which sends an operator to `shep secret
+    /// set` for a file that is corrupt or newer than this build. The empty
+    /// view it falls back to has to say so on its way past.
+    #[test]
+    fn an_unreadable_store_warns_before_it_falls_back_to_an_empty_view() {
+        let dir = tempfile::tempdir().unwrap();
+        let actor = actor_with_an_empty_flock(&dir, vec![]);
+        std::fs::write(&actor.paths.secrets, "{ not json").unwrap();
+        let app = normalize(AppConfig::minimal("web", "./srv")).unwrap();
+
+        let logs = capture_logs(|| {
+            let view = actor.secret_view(&app);
+            let reference = shep_core::secrets::SecretRef {
+                namespace: None,
+                key: "K",
+            };
+            assert!(
+                matches!(
+                    view.resolve(&reference),
+                    shep_core::secrets::Resolution::MissingKey
+                ),
+                "the fallback is an empty view, not a failed spawn"
+            );
+        });
+
+        assert!(logs.contains("WARN"), "loud enough to read: {logs}");
+        assert!(logs.contains("secrets.json"), "names the file: {logs}");
     }
 
     /// A namespace no provider dog has pushed to clears itself, so the sheep
