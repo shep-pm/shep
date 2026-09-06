@@ -183,13 +183,13 @@ Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in 
 Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a quarter of its limit and its MEM/CEIL gauge fills a little, web-hot sits at 94 percent of its own limit and its gauge fills almost all the way, and where there is colour the fuller gauge also switches to the butter warning role. batch-worker has no ceiling at all, so its gauge reads the same muted bar a stopped sheep's does. The cursor is parked on web-hot, the row this frame exists to show.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                          3 in the flock[0m
-[0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     flock cpu 5.0%        █   flock me…[0m
+[0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     flock cpu 5.0%        ▁   flock me…[0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;245m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                                                           [0m
-  2     batch-wor…  [0m[38;5;29monline         [0m  48303    0         -          -     [0m[38;5;29m         █[0m  1.0%    [0m[38;5;245m░░░░░░░░░░[0m  64.0M     1h 28m    -           -            [0m
-  0     web-headr…  [0m[38;5;29monline         [0m  48300    0         -          -     [0m[38;5;29m         █[0m  2.0%    [0m[38;5;74m███[0m[38;5;236m░░░░░░░[0m  128.0M    1h 25m    edge        -            [0m
-[0m[48;5;235m [0m [0m[48;5;235m1     web-hot     [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48301    0         -          -     [0m[38;5;29m[48;5;235m         █[0m[48;5;235m  2.0%    [0m[38;5;221m[48;5;235m█████████[0m[38;5;236m[48;5;235m░[0m[48;5;235m  480.0M    1h 26m    edge        -            [0m
+  2     batch-wor…  [0m[38;5;29monline         [0m  48303    0         -          -     [0m[38;5;29m         ▁[0m  1.0%    [0m[38;5;245m░░░░░░░░░░[0m  64.0M     1h 28m    -           -            [0m
+  0     web-headr…  [0m[38;5;29monline         [0m  48300    0         -          -     [0m[38;5;29m         ▁[0m  2.0%    [0m[38;5;74m███[0m[38;5;236m░░░░░░░[0m  128.0M    1h 25m    edge        -            [0m
+[0m[48;5;235m [0m [0m[48;5;235m1     web-hot     [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48301    0         -          -     [0m[38;5;29m[48;5;235m         ▁[0m[48;5;235m  2.0%    [0m[38;5;221m[48;5;235m█████████[0m[38;5;236m[48;5;235m░[0m[48;5;235m  480.0M    1h 26m    edge        -            [0m
                                                                                                                                                       [0m
                                                                                                                                                       [0m
                                                                                                                                                       [0m
@@ -218,13 +218,13 @@ Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a
 140 columns: wide enough for the CFG and CPU 20s columns beside the ones every other scene shows. web has two fields parked for the next spawn and reads !2, api has one field an operator set that its Flockfile does not declare and reads *1, and cron has neither and reads a bare -. The status bar's own legend explains both glyphs; this is where they actually appear in a cell. web's CPU history carries ten distinct samples, so its sparkline draws a shape over time rather than one static bar, and the cursor is parked on web so the detail pane's own cfg !2 pending cell is on screen too.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                3 in the flock[0m
-[0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 1 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     flock cpu 7.5% ▅█▅▇▄▆▇▆ …[0m
+[0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 1 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     flock cpu 7.5% ▁▂▁▂▁▂▂▂ …[0m
   [0m[38;5;245mID    NAME          STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                                                 [0m
-  11    api           [0m[38;5;29monline         [0m  48411    0         -          *1    [0m[38;5;29m██████████[0m  3.0%    96.0M     1h 41m    edge        -            [0m
-  12    cron          [0m[38;5;29monline         [0m  48412    0         -          -     [0m[38;5;29m██████████[0m  0.5%    8.0M      1h 43m    -           -            [0m
-[0m[48;5;235m [0m [0m[48;5;235m10    web           [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48410    0         -          !2    [0m[38;5;29m[48;5;235m▂▆▃█▄▇▃▅▇▅[0m[48;5;235m  4.0%    64.0M     1h 40m    edge        -            [0m
+  11    api           [0m[38;5;29monline         [0m  48411    0         -          *1    [0m[38;5;29m▁▁▁▁▁▁▁▁▁▁[0m  3.0%    96.0M     1h 41m    edge        -            [0m
+  12    cron          [0m[38;5;29monline         [0m  48412    0         -          -     [0m[38;5;29m▁▁▁▁▁▁▁▁▁▁[0m  0.5%    8.0M      1h 43m    -           -            [0m
+[0m[48;5;235m [0m [0m[48;5;235m10    web           [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48410    0         -          !2    [0m[38;5;29m[48;5;235m▁▁▁▂▁▁▁▁▁▁[0m[48;5;235m  4.0%    64.0M     1h 40m    edge        -            [0m
                                                                                                                                             [0m
                                                                                                                                             [0m
                                                                                                                                             [0m
@@ -623,7 +623,7 @@ The selected sheep has never written a log in this $SHEP_HOME. The feed names th
 `sysinfo` reports this platform unsupported. The strip says so and keeps the flock's own totals, which lookout can always compute.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
-[0m[38;5;245mhost  usage is not available on this platform   0 errored · 0 parked   flock cpu 14.7%        █   flock mem 716.0M      [0m
+[0m[38;5;245mhost  usage is not available on this platform   0 errored · 0 parked   flock cpu 14.7%        ▂   flock mem 716.0M      [0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m

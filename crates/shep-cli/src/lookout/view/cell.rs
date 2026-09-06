@@ -44,31 +44,38 @@ pub fn gauge(value: u64, ceiling: Option<u64>, cells: usize) -> String {
     out
 }
 
-/// The newest `cells` samples, one cell each, scaled to the window's own
-/// peak.
+/// One core's worth of CPU percent: the ceiling [`sparkline`] scales
+/// against, so a row's height means the same thing in every row.
+const SPARKLINE_CEILING: f32 = 100.0;
+
+/// The newest `cells` samples, one cell each, scaled against
+/// [`SPARKLINE_CEILING`] rather than the window's own peak.
 ///
 /// Padded on the left with spaces when there are fewer samples than cells,
 /// so the line grows into the column from the right as history arrives.
 /// No samples at all is blank rather than a flat line at the floor: a flat
 /// line reads as measured and idle, and blank reads as not measured yet.
+/// A sample above the ceiling saturates at the tallest step rather than
+/// overflowing it, the same way [`gauge_fill`] saturates a value above its
+/// ceiling. Scaling to a fixed ceiling, instead of the window's own peak,
+/// is what makes two rows comparable: an idle sheep and a busy one used to
+/// both fill their own column, which is the discontinuity the design's
+/// opening problem statement (a 2% sheep and a 90% sheep differing only by
+/// a number in a column) exists to fix.
 #[must_use]
 pub fn sparkline(samples: &[f32], cells: usize) -> String {
     if samples.is_empty() || cells == 0 {
         return " ".repeat(cells);
     }
     let window = &samples[samples.len().saturating_sub(cells)..];
-    let peak = window.iter().copied().fold(0.0_f32, f32::max);
     let mut out = String::with_capacity(cells * 3);
     for _ in window.len()..cells {
         out.push(' ');
     }
     for sample in window {
-        let step = if peak <= 0.0 {
-            0
-        } else {
-            let scaled = (sample / peak * (STEPS.len() - 1) as f32).round();
-            (scaled as usize).min(STEPS.len() - 1)
-        };
+        let clamped = sample.max(0.0).min(SPARKLINE_CEILING);
+        let scaled = (clamped / SPARKLINE_CEILING * (STEPS.len() - 1) as f32).round();
+        let step = (scaled as usize).min(STEPS.len() - 1);
         out.push(STEPS[step]);
     }
     out
@@ -133,8 +140,13 @@ mod tests {
     }
 
     #[test]
-    fn a_sparkline_is_one_cell_per_sample_scaled_to_its_own_peak() {
+    fn a_sparkline_is_one_cell_per_sample_scaled_to_a_fixed_ceiling() {
         assert_eq!(sparkline(&[0.0, 50.0, 100.0], 3), "▁▅█");
+    }
+
+    #[test]
+    fn a_sparkline_over_its_ceiling_is_full_rather_than_wider() {
+        assert_eq!(sparkline(&[250.0], 4), "   █");
     }
 
     #[test]
@@ -160,6 +172,18 @@ mod tests {
     }
 
     #[test]
+    fn two_rows_at_different_loads_render_differently() {
+        // The bug this fix closes: scaling each row to its own peak made an
+        // idle sheep and a busy one both fill their column, so a reader
+        // could not tell them apart. Scaling both to the same ceiling means
+        // an idle row and a busy row read as idle and busy.
+        let idle = sparkline(&[0.5, 0.5, 0.5], 3);
+        let busy = sparkline(&[80.0, 80.0, 80.0], 3);
+        assert_ne!(idle, busy);
+        assert_eq!(idle, "▁▁▁");
+    }
+
+    #[test]
     fn a_rule_is_exactly_its_cells() {
         assert_eq!(rule(4), "────");
         assert_eq!(rule(0), "");
@@ -172,6 +196,6 @@ mod tests {
 
     #[test]
     fn a_band_narrower_than_its_label_truncates_rather_than_overflowing() {
-        assert_eq!(band("FLOCK", 6).chars().count(), 6);
+        assert_eq!(band("FLOCK", 6), " ██ F…");
     }
 }
