@@ -107,8 +107,8 @@ impl OsProber {
         // `kill_probe_group` below reaches what it forked.
         cmd.kill_on_drop(true);
         // Puts the shell in a process group of its own, whose pgid is its
-        // own pid: without it `-pid` names no group and the timeout path
-        // has nothing group-wide to signal.
+        // own pid: without it `-pid` names no group and there is nothing
+        // group-wide to signal.
         #[cfg(unix)]
         cmd.process_group(0);
         // A probe's output is the probe's business, never the daemon's: the
@@ -128,10 +128,15 @@ impl OsProber {
         let mut child = cmd
             .spawn()
             .map_err(|err| ProbeFailure::Transport(err.to_string()))?;
-        // Bound to a `let`, not matched inline: a `match` would keep
-        // `child.wait()`'s `&mut child` borrow alive across every arm, and
-        // the abandon arms need `child` back to signal its group.
+        // Read before the wait: `Child::id` is `None` once a child has been
+        // reaped, and the two exit arms below reap it.
+        let pid = child.id();
+        // Bound to a `let` so the sweep lands between the wait and the verdict.
         let waited = tokio::time::timeout(timeout, child.wait()).await;
+        // Every arm leaves the shell's forks behind, exit and abandon alike:
+        // `kill_on_drop` reaches the shell alone, so `sh -c 'worker & curl …'`
+        // strands one `worker` per interval for as long as the sheep runs.
+        kill_probe_group(pid);
         match waited {
             Ok(Ok(status)) if status.success() => Ok(()),
             // A command naming a nonexistent binary is `Rejected("127")`,
@@ -139,35 +144,26 @@ impl OsProber {
             // "not found" through its own exit code. Exec straight to the
             // program instead and the same 127 becomes a real spawn failure.
             Ok(Ok(status)) => Err(ProbeFailure::Rejected(exit_code_text(&status))),
-            // Both remaining arms abandon a process that may still be
-            // running: the timeout by definition, and a `wait` error (e.g.
-            // ECHILD) without ever confirming the child is gone.
-            Ok(Err(err)) => {
-                kill_probe_group(&child);
-                Err(ProbeFailure::Transport(err.to_string()))
-            }
-            Err(_elapsed) => {
-                kill_probe_group(&child);
-                Err(ProbeFailure::Timeout)
-            }
+            Ok(Err(err)) => Err(ProbeFailure::Transport(err.to_string())),
+            Err(_elapsed) => Err(ProbeFailure::Timeout),
         }
     }
 }
 
-/// SIGKILLs the whole process group of a probe child being abandoned.
+/// SIGKILLs the whole process group of a probe child, exited or abandoned.
 ///
-/// Reuses the runner's own [`signal_group`](crate::tokio_runner::signal_group):
-/// `sh -c 'thing & …'` leaves a fork that a leader-only kill never reaches,
-/// the same orphan shape the stop rungs handle for a sheep.
+/// Reuses the runner's own [`signal_group`](crate::tokio_runner::signal_group).
+/// `sh -c 'thing & …'` leaves a fork a leader-only kill never reaches; a
+/// descendant that calls `setsid` escapes the group and survives anyway.
 ///
-/// Failure is logged, never returned: the verdict a timed-out probe reports
-/// is [`ProbeFailure::Timeout`] either way, and `ESRCH` here just means the
-/// group was already gone.
+/// Signalling `-pid` after the leader is reaped cannot reach a stranger:
+/// POSIX holds a group id out of the pool until its last member leaves.
+/// Failure is logged, because the probe's verdict is the same either way.
 #[cfg(unix)]
-fn kill_probe_group(child: &tokio::process::Child) {
-    // `None` once the child has been waited to completion: nothing left to
-    // signal, and a pid the OS may have recycled since must never get sent SIGKILL.
-    let Some(pid) = child.id() else {
+fn kill_probe_group(pid: Option<u32>) {
+    // `None` only if the caller read the pid from an already-reaped `Child`,
+    // which leaves nothing to name the group by.
+    let Some(pid) = pid else {
         return;
     };
     if let Err(error) = crate::tokio_runner::signal_group(pid, nix::sys::signal::Signal::SIGKILL) {
@@ -180,7 +176,7 @@ fn kill_probe_group(child: &tokio::process::Child) {
 /// `#[cfg(unix)]`, so a Windows daemon has no supervised processes to leak
 /// in the first place.
 #[cfg(windows)]
-fn kill_probe_group(_child: &tokio::process::Child) {}
+fn kill_probe_group(_pid: Option<u32>) {}
 
 /// Renders an `ExitStatus` for [`ProbeFailure::Rejected`]. `code()` is
 /// `None` on unix when the child died from a signal rather than exiting,
@@ -626,8 +622,7 @@ mod tests {
         );
     }
 
-    /// How long the forked grandchild in
-    /// [`a_timed_out_exec_probe_kills_the_grandchild_too`] sleeps: comfortably
+    /// How long the grandchild the exec probe tests fork sleeps: comfortably
     /// longer than [`REAP_DEADLINE`], so a passing run proves the kill reached
     /// it rather than that it finished on its own; short enough that a run
     /// panicking before [`Reaper`] fires leaves nothing lingering for a whole
@@ -720,6 +715,41 @@ mod tests {
 
         // The assertion the whole test exists for.
         assert_reaped(grandchild, "the probe command's forked child").await;
+    }
+
+    // A probe that forks and then exits normally runs on every interval, so
+    // its forks accumulate for as long as the sheep is supervised. Watching
+    // the shell instead would prove nothing: `kill_on_drop` reaches that.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_passing_exec_probe_kills_the_grandchild_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("grandchild.pid");
+        // No `wait`: the shell exits while its fork lives, which is the
+        // shape of a real probe like `worker & curl -sf localhost:8080/up`.
+        // The redirect completes before `sh` exits, so the file is whole.
+        let command = format!(
+            "sleep {ORPHAN_SLEEP_SECS} & echo $! > \"{}\"",
+            pidfile.display()
+        );
+
+        let prober = OsProber::new(None, BTreeMap::new());
+        let result = prober.probe(&exec_target(&command), PROBE_TIMEOUT).await;
+        assert_eq!(
+            result,
+            Ok(()),
+            "fixture precondition: the probe command must pass"
+        );
+
+        let grandchild: i32 = std::fs::read_to_string(&pidfile)
+            .expect("fixture precondition: the shell must record its forked child's pid")
+            .trim()
+            .parse()
+            .expect("`echo $!` prints a pid");
+        let _reaper = Reaper(grandchild);
+
+        // The assertion the whole test exists for.
+        assert_reaped(grandchild, "a passing probe command's forked child").await;
     }
 
     // A nonexistent binary name does not exercise this: `sh -c
