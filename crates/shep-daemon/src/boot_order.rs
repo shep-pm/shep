@@ -324,15 +324,22 @@ async fn drop_settled(supervisor: &SupervisorHandle, waiting: &mut BTreeSet<Stri
 /// instead.
 pub(crate) async fn stop_in_reverse(plan: &BootPlan, supervisor: &SupervisorHandle) {
     for stage in plan.stages.iter().rev() {
-        for name in stage {
-            // One name at a time rather than concurrently: the members of one
-            // stage do not depend on each other, so nothing is gained by
-            // overlapping them, and a serial walk keeps the emitted order
-            // readable in the log.
+        // `join_all` inside a stage, a serial walk across them, for the reason
+        // `spawn_send_line_task` gives: every `stop` here runs its own kill
+        // ladder to the end, so awaiting them in turn would make a teardown
+        // cost the SUM of the stage's `kill_timeout`s rather than the longest
+        // one. That is what the flock-wide `shutdown` this replaced cost, the
+        // ladder is 1600ms by default with no upper bound, and nothing rescues
+        // a slow teardown: a repeat signal is a documented no-op while one
+        // runs, and the platform kills the daemon on its own clock. Nothing is
+        // lost by overlapping them, since a stage's members have no edges
+        // between each other by construction.
+        futures_util::future::join_all(stage.iter().map(|name| async move {
             if let Err(err) = supervisor.stop(ProcessSelector::Name(name.clone())).await {
                 tracing::warn!(sheep = %name, %err, "a sheep did not stop in its stage");
             }
-        }
+        }))
+        .await;
     }
 }
 
@@ -382,6 +389,10 @@ mod tests {
     /// than a test sitting through it; the value is still short enough to
     /// read as a bound rather than as a duration under test.
     const SHORT_BOUND: Duration = Duration::from_millis(500);
+
+    /// `AppConfig`'s own default `kill_timeout`, which every app built by
+    /// `AppConfig::minimal` here carries.
+    const DEFAULT_KILL_TIMEOUT: Duration = Duration::from_millis(1600);
 
     /// Every `process.*` event waiting on `rx`, as `"<kind> <name>"`, in the
     /// order the bus carried them.
@@ -552,12 +563,62 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn one_stage_stops_its_members_at_the_same_time() {
+        // fails if the walk awaits each stop to full termination before it
+        // arms the next, which costs a teardown the SUM of its members' kill
+        // ladders where the flock-wide shutdown it replaced cost the longest
+        // one. Two sheep in one stage that ignore SIGTERM, so each burns its
+        // whole 1600ms ladder: overlapped that is one ladder, serialized it is
+        // two. Virtual time under `start_paused`, which advances only when
+        // every task is idle, so the two are exact rather than close.
+        let h = harness(vec![
+            ProcScript::ignores_signals(),
+            ProcScript::ignores_signals(),
+        ]);
+        let apps = normalize_all(vec![
+            AppConfig::minimal("alpha", "./sleep"),
+            AppConfig::minimal("zulu", "./sleep"),
+        ])
+        .expect("two apps, no edges");
+        let plan = plan(&nodes_for(&apps, &[]));
+        assert_eq!(plan.stages, vec![vec!["alpha", "zulu"]], "one stage");
+        h.ctx
+            .supervisor
+            .start(apps)
+            .await
+            .expect("two scripted apps start");
+
+        let began = tokio::time::Instant::now();
+        stop_in_reverse(&plan, &h.ctx.supervisor).await;
+        let spent = began.elapsed();
+
+        assert!(
+            spent < DEFAULT_KILL_TIMEOUT * 2,
+            "one stage's ladders must overlap; spent {spent:?} on two of them"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn stopping_walks_the_stages_backwards() {
         // fails if shutdown stays parallel, which gives a worker and its
-        // database the same SIGTERM millisecond
-        let h = harness(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
-        let apps = db_then_api();
+        // database the same SIGTERM millisecond. Asserted per stage rather
+        // than as a flat sequence of names: a stage's members are stopped
+        // concurrently, so which of `api` and `worker` reaches the bus first
+        // is not something this walk decides. What it does decide is that
+        // both of them stop before `db` does.
+        let h = harness(vec![
+            ProcScript::never_exits(),
+            ProcScript::never_exits(),
+            ProcScript::never_exits(),
+        ]);
+        let db = AppConfig::minimal("db", "./sleep");
+        let mut api = AppConfig::minimal("api", "./sleep");
+        api.depends_on = vec!["db".to_string()];
+        let mut worker = AppConfig::minimal("worker", "./sleep");
+        worker.depends_on = vec!["db".to_string()];
+        let apps = normalize_all(vec![db, api, worker]).expect("three apps, two edges, no cycle");
         let plan = plan(&nodes_for(&apps, &[]));
+        assert_eq!(plan.stages, vec![vec!["db"], vec!["api", "worker"]]);
         start_in_stages(
             &plan,
             &apps,
@@ -571,7 +632,16 @@ mod tests {
         let mut rx = h.ctx.events.subscribe();
         stop_in_reverse(&plan, &h.ctx.supervisor).await;
 
-        assert_eq!(drain(&mut rx), vec!["Stop api", "Stop db"]);
+        let stops = drain(&mut rx);
+        let (last_stage, first_stage) = stops.split_at(2);
+        assert_eq!(
+            last_stage.iter().collect::<BTreeSet<_>>(),
+            ["Stop api".to_string(), "Stop worker".to_string()]
+                .iter()
+                .collect::<BTreeSet<_>>(),
+            "the later stage stops first, in no order of its own: {stops:?}"
+        );
+        assert_eq!(first_stage, ["Stop db".to_string()], "{stops:?}");
     }
 
     #[tokio::test(start_paused = true)]
