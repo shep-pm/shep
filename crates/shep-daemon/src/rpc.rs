@@ -334,6 +334,11 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
             },
         },
         // Peer input is untrusted: re-normalize before anything is registered.
+        //
+        // `AllOrNothing` no longer means the whole request is atomic: the
+        // stages are one `Command::Start` each, so a refusal in stage 1 leaves
+        // stage 0 running and nothing rolls it back. The refusal names those
+        // apps; `start_in_stages` argues why they are left alone.
         Request::Start { apps } => match normalize_all(apps) {
             Err(err) => reply(Err(RpcError {
                 code: RpcErrorCode::InvalidConfig,
@@ -1094,7 +1099,7 @@ fn rpc_error(err: &SupervisorError) -> RpcError {
         // The same code as `SpawnFailed`: `RpcErrorCode` is versioned, and a
         // client predating a new code cannot decode the reply at all. The
         // bare payload rather than `err.to_string()`, since this message
-        // already opens with "nothing was registered".
+        // already opens with "nothing in this batch was registered".
         SupervisorError::CannotStart(msg) => RpcError {
             code: RpcErrorCode::SpawnFailed,
             message: msg.clone(),

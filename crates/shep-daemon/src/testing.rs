@@ -330,6 +330,15 @@ pub(crate) fn harness_at_pid(scripts: Vec<ProcScript>, pid: u32) -> Harness {
     harness_sampling_with(ScriptedRunner::new(scripts).spawning_at(pid), vec![vec![]])
 }
 
+/// [`harness`], with every named app refused by the runner's preflight.
+///
+/// For a test that needs one app of a batch to be provably unstartable, which
+/// is the supervisor's pre-registration pass and the only door to
+/// `SupervisorError::CannotStart`; see [`ScriptedRunner::refusing`].
+pub(crate) fn harness_refusing(scripts: Vec<ProcScript>, names: &[&str]) -> Harness {
+    harness_sampling_with(ScriptedRunner::new(scripts).refusing(names), vec![vec![]])
+}
+
 /// [`harness`] over a scripted process table, the body both spellings share.
 fn harness_sampling(scripts: Vec<ProcScript>, readings: Vec<Vec<ProcessRss>>) -> Harness {
     harness_sampling_with(ScriptedRunner::new(scripts), readings)

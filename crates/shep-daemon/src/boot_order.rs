@@ -124,10 +124,20 @@ pub(crate) fn nodes_for_with_dogs(
 /// `snapshot::warn_about_the_graph` reports the edge.
 /// Answers with every instance started, in stage order.
 ///
+/// **An [`BatchPolicy::AllOrNothing`] batch that fails here leaves a PARTIAL
+/// flock.** That policy refuses one `Command::Start` before it registers
+/// anything, and while `shep start` was one such call the refusal really did
+/// mean an untouched flock. It now covers one stage: stage 0 is running by the
+/// time stage 1 proves unstartable. Nothing is rolled back, deliberately,
+/// since rolling back means stopping apps that came up fine on a guess about
+/// what the operator wanted. [`corrected_for_earlier_stages`] is what makes
+/// the refusal say so.
+///
 /// # Errors
 ///
 /// - [`SupervisorError`]: under [`BatchPolicy::AllOrNothing`] only, the first
-///   stage that did not start. That policy is the operator's, and an operator
+///   stage that did not start, with the earlier stages that are still running
+///   named in its message. That policy is the operator's, and an operator
 ///   who typed `shep start` gets the failure back rather than a warning in a
 ///   log they are not reading; a later stage waits on the stage that failed,
 ///   so there is nothing useful to run after it either. Under
@@ -201,7 +211,9 @@ pub(crate) async fn start_in_stages(
         tracing::info!(stage = index, members = ?stage, "boot stage starting");
         match supervisor.start_staged(members, gate, policy).await {
             Ok(infos) => started.extend(infos),
-            Err(err) if policy == BatchPolicy::AllOrNothing => return Err(err),
+            Err(err) if policy == BatchPolicy::AllOrNothing => {
+                return Err(corrected_for_earlier_stages(err, &started));
+            }
             Err(err) => tracing::warn!(stage = index, %err, "a boot stage did not start"),
         }
         if waiting.is_empty() {
@@ -218,6 +230,39 @@ pub(crate) async fn start_in_stages(
         }
     }
     Ok(started)
+}
+
+/// `err`, told to name what earlier stages already started.
+///
+/// [`BatchPolicy::AllOrNothing`] refuses one `Command::Start` before it
+/// registers anything, and both its messages say so. That was the whole truth
+/// while `shep start` was one such call. It is now the truth about ONE stage:
+/// stage 0 is running by the time stage 1 proves unstartable, and nothing
+/// rolls it back, because rolling back means stopping apps that came up fine
+/// on a guess about what the operator wanted. So the message says which ones
+/// they are instead, and an operator who wants them down types `shep stop`.
+///
+/// Only the two variants carrying a message about registration are touched.
+/// Every other one is about a single sheep and says nothing this could
+/// correct.
+fn corrected_for_earlier_stages(
+    err: SupervisorError,
+    started: &[ProcessInfo],
+) -> SupervisorError {
+    let names: BTreeSet<&str> = started.iter().map(|info| info.name.as_str()).collect();
+    if names.is_empty() {
+        return err;
+    }
+    let running: Vec<&str> = names.into_iter().collect();
+    let note = format!(
+        " (an earlier stage of this start is already running and is left alone: {})",
+        running.join(", ")
+    );
+    match err {
+        SupervisorError::CannotStart(message) => SupervisorError::CannotStart(message + &note),
+        SupervisorError::SpawnFailed(message) => SupervisorError::SpawnFailed(message + &note),
+        other => other,
+    }
 }
 
 /// Waits until every name in `waiting` has reached a settled answer, or until
@@ -378,7 +423,7 @@ mod tests {
     use shep_core::values::UpDuration;
 
     use crate::fake::ProcScript;
-    use crate::testing::harness;
+    use crate::testing::{harness, harness_refusing};
 
     /// The bound a test passes `await_stage` when it expects the wait to end
     /// on its own answer rather than on the clock.
@@ -560,6 +605,41 @@ mod tests {
         assert_eq!(plain.stages, vec![vec!["web"], vec!["metrics"]]);
         let promoted = plan_for(&apps, &dogs, &["metrics".to_string()]);
         assert_eq!(promoted.stages, vec![vec!["metrics"], vec!["web"]]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_refused_stage_names_what_earlier_stages_already_started() {
+        // fails if the refusal still promises an untouched flock. `shep start`
+        // was one `Command::Start`, so `AllOrNothing` really did register
+        // nothing and the message saying so was true. A staged batch refuses
+        // one stage at a time, and `db` is up by the time `api` is refused.
+        let h = harness_refusing(vec![ProcScript::never_exits()], &["api"]);
+        let apps = db_then_api();
+        let plan = plan(&nodes_for(&apps, &[]));
+
+        let err = start_in_stages(
+            &plan,
+            &apps,
+            &h.ctx.supervisor,
+            &h.ctx.events,
+            BatchPolicy::AllOrNothing,
+        )
+        .await
+        .expect_err("a refused preflight ends an `AllOrNothing` batch");
+
+        let SupervisorError::CannotStart(message) = &err else {
+            panic!("a refused preflight is `CannotStart`, got {err:?}");
+        };
+        assert!(
+            message.contains("db"),
+            "the refusal must name the stage that is running: {message}"
+        );
+        let flock = h.ctx.supervisor.list_checked().await.expect("the actor is up");
+        assert_eq!(
+            flock.iter().map(|info| info.name.as_str()).collect::<Vec<_>>(),
+            vec!["db"],
+            "the earlier stage is deliberately left running"
+        );
     }
 
     #[tokio::test(start_paused = true)]

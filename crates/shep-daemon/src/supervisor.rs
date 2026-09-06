@@ -569,7 +569,11 @@ pub enum SupervisorError {
     /// not run. Carries `"<name>: <reason>"` per app that could not.
     ///
     /// Unlike [`Self::SpawnFailed`], which can leave earlier apps registered
-    /// and running, this guarantees an untouched flock. Both map to
+    /// and running, this guarantees an untouched flock for the batch it
+    /// refuses. That is not the whole flock when the caller is
+    /// `boot_order::start_in_stages`, which sends one batch per stage and
+    /// leaves an earlier stage running; the message it answers with names
+    /// those apps. Both map to
     /// [`RpcErrorCode::SpawnFailed`](shep_core::protocol::RpcErrorCode::SpawnFailed).
     CannotStart(String),
     /// The selector reached an app that is already being reloaded; carries
@@ -718,7 +722,7 @@ impl SupervisorHandle {
     /// # Errors
     ///
     /// - [`SupervisorError::CannotStart`]: at least one app provably could
-    ///   not run, so nothing was registered. Carries one
+    ///   not run, so nothing in this batch was registered. Carries one
     ///   `"<name>: <reason>"` per refused app, never one per failed check.
     /// - [`SupervisorError::SpawnFailed`]: the first instance that failed to
     ///   spawn (already-registered instances persist regardless).
@@ -734,9 +738,11 @@ impl SupervisorHandle {
     /// # Errors
     ///
     /// - [`SupervisorError::CannotStart`]: only reachable under
-    ///   [`BatchPolicy::AllOrNothing`] (`Self::start`'s policy); nothing was
-    ///   registered. Carries one `"<name>: <reason>"` per refused app, never
-    ///   one per failed check.
+    ///   [`BatchPolicy::AllOrNothing`] (`Self::start`'s policy); nothing in
+    ///   this batch was registered. Carries one `"<name>: <reason>"` per
+    ///   refused app, never one per failed check. A staged start sends one
+    ///   batch per stage, so an earlier stage of it can be running;
+    ///   `boot_order::start_in_stages` is what says so.
     /// - [`SupervisorError::SpawnFailed`]: an instance that failed to spawn.
     ///   Under `AllOrNothing` this is the first such failure, and every
     ///   already-registered app in the batch persists regardless. Under
@@ -2824,7 +2830,7 @@ impl<R: ProcessRunner> Actor<R> {
         }
         if !refusals.is_empty() {
             return Err(SupervisorError::CannotStart(format!(
-                "nothing was registered; {} of {} apps cannot start: {}",
+                "nothing in this batch was registered; {} of {} apps cannot start: {}",
                 refusals.len(),
                 total,
                 refusals.join("; "),
