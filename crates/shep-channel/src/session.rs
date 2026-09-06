@@ -12,14 +12,29 @@ use crate::{ChannelError, ChildMessage, ShepherdMessage};
 pub(crate) fn read_message<R: BufRead>(
     reader: &mut R,
 ) -> Result<Option<ShepherdMessage>, ChannelError> {
-    let mut line = String::new();
-    if reader.read_line(&mut line).map_err(ChannelError::Io)? == 0 {
+    let mut line = Vec::new();
+    if reader
+        .read_until(b'\n', &mut line)
+        .map_err(ChannelError::Io)?
+        == 0
+    {
         return Ok(None);
     }
+    // Bytes then decode, rather than `read_line`, because of how the
+    // failure has to be classified. `read_line` reports a line that is not
+    // UTF-8 as `io::ErrorKind::InvalidData`, which lands here as
+    // `ChannelError::Io` -- and `Channel::recv` documents `Io` as the
+    // transport failing, so a caller that ends its loop on `Io` would stop
+    // on one garbage byte. A frame that is not UTF-8 is a bad frame, so it
+    // is `Malformed` and the next call resumes at the following line, which
+    // is the same bargain `a_malformed_line_is_recoverable` pins for a line
+    // that is valid UTF-8 and not valid JSON.
+    let text =
+        core::str::from_utf8(&line).map_err(|error| ChannelError::Malformed(error.to_string()))?;
     // Belt and braces, not load-bearing: serde_json already skips a
     // trailing `\r`/`\n` as JSON whitespace before parsing. Kept explicit
     // so a bare line does not quietly depend on that.
-    let trimmed = line.trim_end_matches(['\n', '\r']);
+    let trimmed = text.trim_end_matches(['\n', '\r']);
     serde_json::from_str(trimmed)
         .map(Some)
         .map_err(|error| ChannelError::Malformed(error.to_string()))
@@ -106,6 +121,32 @@ mod tests {
         assert_eq!(
             read_message(&mut reader).unwrap(),
             Some(ShepherdMessage::Shutdown)
+        );
+    }
+
+    /// fails if a frame that is not UTF-8 is reported as `Io`.
+    /// `Channel::recv` documents `Io` as the transport failing and
+    /// `Malformed` as one bad line the caller can resume past, so the
+    /// difference decides whether a caller's loop ends on a garbage byte.
+    /// `read_line` classified it the first way, because it returns
+    /// `InvalidData` rather than handing back the bytes it read.
+    ///
+    /// Both halves matter: the error kind, and that the next line still
+    /// arrives. A decode that consumed nothing would loop on the bad frame
+    /// forever instead.
+    #[test]
+    fn a_frame_that_is_not_utf8_is_malformed_and_recoverable() {
+        let mut raw = b"\xff\xfe\n".to_vec();
+        raw.extend_from_slice(b"{\"kind\":\"shutdown\"}\n");
+        let mut reader = Cursor::new(raw);
+        assert!(
+            matches!(read_message(&mut reader), Err(ChannelError::Malformed(_))),
+            "a non-UTF-8 frame must be Malformed, not Io"
+        );
+        assert_eq!(
+            read_message(&mut reader).unwrap(),
+            Some(ShepherdMessage::Shutdown),
+            "the reader must resume at the line after a bad frame"
         );
     }
 
