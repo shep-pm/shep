@@ -16,7 +16,9 @@ use shep_core::config::{
     AppConfig, DeclaredApp, FlockFormat, Flockfile, FlockfileError, ResetDepth,
 };
 use shep_core::paths::ShepPaths;
-use shep_core::protocol::{ProcessInfo, Request, Response, SelectorSpec, SheepApplied};
+use shep_core::protocol::{
+    ProcessInfo, Request, Response, SelectorSpec, SheepApplied, SheepRefusal,
+};
 use shep_core::selector::ProcessSelector;
 
 use crate::cli::Format;
@@ -426,11 +428,14 @@ async fn request_each<I, B, F>(
     selectors: &[SelectorSpec],
     deadline: Option<Duration>,
     body: B,
-    extract: F,
+    mut extract: F,
 ) -> (Vec<I>, Option<ExitCode>)
 where
     B: Fn(SelectorSpec) -> Request,
-    F: Fn(Response) -> Option<Vec<I>>,
+    // `FnMut` so a caller can keep what the reply carried beside the rows:
+    // `reload` collects the refused apps out of a response whose row half is
+    // all this returns.
+    F: FnMut(Response) -> Option<Vec<I>>,
 {
     let mut collected = Vec::new();
     let mut failure: Option<ExitCode> = None;
@@ -1464,6 +1469,7 @@ pub async fn reload(client: &Client, streams: &mut Streams<'_>, args: &SelectorA
         Ok(selectors) => selectors,
         Err(code) => return code,
     };
+    let mut refused: Vec<SheepRefusal> = Vec::new();
     let (procs, failure) = request_each(
         client,
         streams,
@@ -1471,19 +1477,54 @@ pub async fn reload(client: &Client, streams: &mut Streams<'_>, args: &SelectorA
         Some(RELOAD_DEADLINE),
         |selector| Request::Reload { selector },
         |response| match response {
-            Response::Reloading(procs) => Some(procs),
+            Response::Reloading {
+                accepted,
+                refused: rows,
+            } => {
+                refused.extend(rows);
+                Some(accepted)
+            }
             _ => None,
         },
     )
     .await;
-    // Printed whenever the verb did its work; see `load`.
+    // Printed whenever the verb did its work; see `load`. The refused apps
+    // are named after it, not instead of it: what did reload is still the
+    // answer to the question the operator asked.
     if !procs.is_empty() || failure.is_none() {
         let wrote = render_outcome(client, streams, "reload", FlockRows(procs)).await;
         if wrote != ExitCode::Success {
             return wrote;
         }
     }
-    failure.unwrap_or(ExitCode::Success)
+    let refusal = refused_line(&refused).map(|message| streams.fail(RELOAD_REFUSED_EXIT, &message));
+    failure.or(refusal).unwrap_or(ExitCode::Success)
+}
+
+/// What a refused app inside an otherwise successful reload exits with
+///
+/// A staged reload asks the shepherd per app, so `shep reload all` can
+/// reload thirty-nine and be refused the fortieth. Not the
+/// [`ExitCode::Internal`] a single-target refusal exits with: that code is
+/// what the wire spells a conflict as for want of one of its own, and it
+/// tells an operator to go looking for a daemon bug where the fold in fact
+/// reloaded around one busy app.
+const RELOAD_REFUSED_EXIT: ExitCode = ExitCode::Failure;
+
+/// One line for the apps a reload could not reload, or `None` when it
+/// reloaded every one it named
+///
+/// `name: reason`, the shape [`applied_line`] prints a load's refusal in,
+/// so the two verbs read alike. The reason is the shepherd's own sentence.
+fn refused_line(refused: &[SheepRefusal]) -> Option<String> {
+    if refused.is_empty() {
+        return None;
+    }
+    let listed: Vec<String> = refused
+        .iter()
+        .map(|sheep| format!("{}: {}", sheep.name, sheep.reason))
+        .collect();
+    Some(format!("did not reload: {}", listed.join("; ")))
 }
 
 /// Deletes (stops and deregisters) the sheep matching `args.selector`.
@@ -2736,6 +2777,103 @@ mod tests {
             "a failed verb leaves stdout empty, so `--format json` never \
              carries a data envelope beside an error one: {printed}"
         );
+    }
+
+    /// fails if a reload that the shepherd refused an app of exits 0 with
+    /// that app's row simply absent: `shep reload all` is a deploy step, and
+    /// exit 0 there says the whole fold reloaded when part of it did not.
+    #[tokio::test]
+    async fn a_reload_the_shepherd_refused_an_app_of_names_it_and_exits_non_zero() {
+        use shep_client::testing::fake_client_answering;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) = fake_client_answering(&path, move |request| match request {
+            Request::Reload { .. } => Response::Reloading {
+                accepted: vec![reloaded_api()],
+                refused: vec![SheepRefusal::new("db", "db is already being reloaded")],
+            },
+            // The table a lifecycle verb prints is a fresh listing, not the
+            // reply's own rows.
+            Request::ListFlock => Response::Flock(vec![reloaded_api()]),
+            _ => Response::Pong,
+        })
+        .await;
+
+        let (code, printed, said) = reload_against(&client, "all").await;
+
+        assert_eq!(
+            code,
+            ExitCode::Failure,
+            "a fold reloaded around a refused app is not a success: {said}"
+        );
+        assert!(
+            said.contains("db") && said.contains("already being reloaded"),
+            "the refused app and the shepherd's reason reach the operator: {said}"
+        );
+        assert!(
+            printed.contains("api"),
+            "and what did reload is still printed: {printed}"
+        );
+    }
+
+    /// fails if an ordinary reload starts exiting non-zero: the refused list
+    /// is empty on every reload nothing was refused of, which is all of them
+    /// bar the staged walk.
+    #[tokio::test]
+    async fn a_reload_that_refused_nothing_still_exits_zero() {
+        use shep_client::testing::fake_client_answering;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) = fake_client_answering(&path, move |request| match request {
+            Request::Reload { .. } => Response::Reloading {
+                accepted: vec![reloaded_api()],
+                refused: Vec::new(),
+            },
+            Request::ListFlock => Response::Flock(vec![reloaded_api()]),
+            _ => Response::Pong,
+        })
+        .await;
+
+        let (code, printed, said) = reload_against(&client, "all").await;
+
+        assert_eq!(code, ExitCode::Success, "{said}");
+        assert!(printed.contains("api"), "{printed}");
+        assert!(said.is_empty(), "nothing to say: {said}");
+    }
+
+    /// The one sheep the two reload tests reload.
+    fn reloaded_api() -> ProcessInfo {
+        ProcessInfo::builder(1, "api", shep_core::status::ProcStatus::Online).build()
+    }
+
+    /// Runs `shep reload <selector>` against `client`, handing back its code
+    /// and both streams.
+    async fn reload_against(client: &Client, selector: &str) -> (ExitCode, String, String) {
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = Streams {
+                out: &mut out,
+                err: &mut err,
+                style: crate::style::Presentation::BARE,
+                fmt: Format::Table,
+            };
+            reload(
+                client,
+                &mut streams,
+                &SelectorArgs {
+                    selectors: vec![selector.to_string()],
+                },
+            )
+            .await
+        };
+        (
+            code,
+            String::from_utf8(out).unwrap(),
+            String::from_utf8(err).unwrap(),
+        )
     }
 
     /// A load whose answer this client cannot read means the whole file went

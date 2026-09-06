@@ -207,7 +207,15 @@ expression: replies
     "result": {
       "Ok": {
         "kind": "reloading",
-        "data": []
+        "data": {
+          "accepted": [],
+          "refused": [
+            {
+              "name": "db",
+              "reason": "db is already being reloaded"
+            }
+          ]
+        }
       }
     }
   },

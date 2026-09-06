@@ -1224,6 +1224,40 @@ impl SheepApplied {
     }
 }
 
+/// One app a multi-sheep reload could not accept, and why
+///
+/// A staged reload asks the supervisor per app, so an app already reloading
+/// is refused on its own while the rest of the fold goes ahead. One of these
+/// per refused app rides back in [`Response::Reloading`], which is what lets
+/// the client name the app and exit non-zero instead of printing a table
+/// with a row quietly missing from it.
+///
+/// [`Self::reason`] is the daemon's own sentence rather than a code, the
+/// rule [`SheepApplied::refused`] takes and for its reason: the class of
+/// refusal is not on the wire, and the message is what tells two of them
+/// apart. `Debug` is derived; a name and a refusal sentence carry no env,
+/// no path and no argument vector.
+// wire format: changing field names is a breaking change
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SheepRefusal {
+    /// The app's name, as the walk that planned the reload spelled it.
+    pub name: String,
+    /// Why the reload was refused, in the daemon's own words.
+    pub reason: String,
+}
+
+impl SheepRefusal {
+    /// Builds one app's refusal.
+    #[must_use]
+    pub fn new(name: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            reason: reason.into(),
+        }
+    }
+}
+
 /// One sheep's effective config as a pane sees it: every field but env's
 /// values, plus which fields an operator has overridden and which are
 /// waiting on a respawn.
@@ -1424,7 +1458,17 @@ pub enum Response {
     /// reply arrives no sooner than the last stage's acceptance and the rows
     /// are stitched from one acceptance per stage. A client asking for a
     /// budget sizes it for the whole walk, not for one acceptance.
-    Reloading(Vec<ProcessInfo>),
+    Reloading {
+        /// The sheep whose reloads were accepted, one row each.
+        accepted: Vec<ProcessInfo>,
+        /// The apps the walk could not reload, empty when it reloaded every
+        /// one it named.
+        ///
+        /// Only a walk fills this. A selector matching one app is refused
+        /// whole, as the `Err` arm, so a client reading a single-target
+        /// reload never sees a row here.
+        refused: Vec<SheepRefusal>,
+    },
     /// Answer to `Scale`: the app's instances that will remain, one row each,
     /// ordered by [`sort_flock`]. Every row shares one name, so that is slot
     /// order with the id breaking a tie.
@@ -2417,9 +2461,14 @@ mod tests {
                 id: 12,
                 result: Ok(Response::Restarted(vec![])),
             },
+            // Both halves populated: `refused` is the one field on this
+            // variant a walk fills and a single-target reload never does.
             Reply {
                 id: 13,
-                result: Ok(Response::Reloading(vec![])),
+                result: Ok(Response::Reloading {
+                    accepted: vec![],
+                    refused: vec![SheepRefusal::new("db", "db is already being reloaded")],
+                }),
             },
             Reply {
                 id: 14,

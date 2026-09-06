@@ -1707,7 +1707,10 @@ impl App {
         let rows = match result {
             Ok(Response::Stopped(rows)) if verb == ActionVerb::Stop => rows,
             Ok(Response::Restarted(rows)) if verb == ActionVerb::Restart => rows,
-            Ok(Response::Reloading(rows)) if verb == ActionVerb::Reload => rows,
+            // `refused` is a staged walk's field and a lookout action always
+            // names one app, which the shepherd refuses whole through the
+            // `Err` arm below, so there is never a row in it here.
+            Ok(Response::Reloading { accepted, .. }) if verb == ActionVerb::Reload => accepted,
             Ok(_unrecognised) => {
                 self.notice = Some(Notice {
                     text: format!(
@@ -5518,11 +5521,10 @@ mod tests {
                 target: RowKey::Sheep(2),
                 name: "api".to_string(),
             },
-            result: Ok(Response::Reloading(vec![sheep(
-                2,
-                "api",
-                ProcStatus::Online,
-            )])),
+            result: Ok(Response::Reloading {
+                accepted: vec![sheep(2, "api", ProcStatus::Online)],
+                refused: Vec::new(),
+            }),
         });
         let said = app.notice().map(ToString::to_string).unwrap_or_default();
         assert_eq!(

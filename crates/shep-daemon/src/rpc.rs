@@ -24,7 +24,7 @@ use shep_core::config::{DeclaredApp, NormalizeError, ResolvedApp, normalize_all}
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{
     Envelope, Lamb, ProcessInfo, Reply, Request, Response, RpcError, RpcErrorCode, SelectorSpec,
-    SheepApplied,
+    SheepApplied, SheepRefusal,
 };
 use shep_core::selector::ProcessSelector;
 use shep_core::signals::OperatorSignal;
@@ -1386,6 +1386,10 @@ async fn restart_request(id: u64, spec: SelectorSpec, ctx: &RpcContext) -> Outco
 }
 
 /// `Reload`'s arm, mirroring [`restart_request`].
+///
+/// The refused half of the reply is a walk's alone: the supervisor refuses a
+/// selector matching one app whole, so that arm answers `Err` and has
+/// nothing to name.
 async fn reload_request(id: u64, spec: SelectorSpec, ctx: &RpcContext) -> Outcome {
     let result = match selector_of(spec) {
         Err(err) => Err(err),
@@ -1394,9 +1398,14 @@ async fn reload_request(id: u64, spec: SelectorSpec, ctx: &RpcContext) -> Outcom
                 .supervisor
                 .reload(selector)
                 .await
-                .map(Response::Reloading)
+                .map(|accepted| Response::Reloading {
+                    accepted,
+                    refused: Vec::new(),
+                })
                 .map_err(|err| rpc_error(&err)),
-            Some(walk) => reload_in_stages(ctx, &walk).await.map(Response::Reloading),
+            Some(walk) => reload_in_stages(ctx, &walk)
+                .await
+                .map(|(accepted, refused)| Response::Reloading { accepted, refused }),
         },
     };
     Outcome::Reply(Reply { id, result })
@@ -1495,6 +1504,13 @@ async fn restart_in_stages(
 /// still running; the alternative is counting instances no swap will ever
 /// reach and paying the bound on every ordinary reload.
 ///
+/// Every member that was refused is named in the second half of the answer,
+/// so the client can print the apps this walk went around and exit non-zero
+/// over them. A walk that reloaded something still answers `Ok`: refusing
+/// forty apps because one is busy is the whole-selector rule this walk
+/// exists to get away from, and exit 0 with a row silently missing is what
+/// carrying the names replaces.
+///
 /// # Errors
 ///
 /// - The first member's refusal, when no member was accepted. `ReloadInFlight`
@@ -1506,8 +1522,9 @@ async fn restart_in_stages(
 async fn reload_in_stages(
     ctx: &RpcContext,
     walk: &OrderedWalk,
-) -> Result<Vec<ProcessInfo>, RpcError> {
+) -> Result<(Vec<ProcessInfo>, Vec<SheepRefusal>), RpcError> {
     let mut accepted = Vec::new();
+    let mut refused: Vec<SheepRefusal> = Vec::new();
     let mut refusal = None;
     for stage in &walk.stages {
         let rx = ctx.events.subscribe();
@@ -1556,6 +1573,9 @@ async fn reload_in_stages(
                         "a sheep did not reload in its stage; it may have left the flock since \
                          the walk was planned"
                     );
+                    // The daemon log is not somewhere a deploy script looks,
+                    // so the name rides back on the reply as well.
+                    refused.push(SheepRefusal::new(name.clone(), err.to_string()));
                     refusal.get_or_insert(err);
                 }
             }
@@ -1568,7 +1588,7 @@ async fn reload_in_stages(
         let unsettled = crate::boot_order::await_reloads(rx, waiting, bound).await;
         warn_about_unsettled(&unsettled);
     }
-    finished(accepted, refusal)
+    finished(accepted, refusal).map(|rows| (rows, refused))
 }
 
 /// A stage that ran out of time, named. Nothing is retried and the walk goes
@@ -2533,7 +2553,7 @@ mod tests {
             )
             .await,
         );
-        let Response::Reloading(accepted) = reply.result.unwrap() else {
+        let Response::Reloading { accepted, .. } = reply.result.unwrap() else {
             panic!("expected reloading")
         };
         assert_eq!(accepted.len(), 1);
@@ -2656,7 +2676,7 @@ mod tests {
             )
             .await,
         );
-        let Response::Reloading(accepted) = reply.result.unwrap() else {
+        let Response::Reloading { accepted, .. } = reply.result.unwrap() else {
             panic!("expected reloading")
         };
         assert_eq!(accepted.len(), 2, "both sheep are accepted: {accepted:?}");
@@ -2836,7 +2856,7 @@ mod tests {
             )
             .await,
         );
-        let Response::Reloading(accepted) = reply.result.unwrap() else {
+        let Response::Reloading { accepted, .. } = reply.result.unwrap() else {
             panic!("expected reloading")
         };
         let names: Vec<&str> = accepted.iter().map(|info| info.name.as_str()).collect();
@@ -2854,6 +2874,55 @@ mod tests {
         assert!(
             swapped < dependant,
             "api must wait out the refused stage's swap: {seen:?}"
+        );
+    }
+
+    /// fails if a staged reload drops the name of an app it went around: the
+    /// walk asks per app, so a busy one is refused on its own and the reply
+    /// would otherwise be a success with that app's row silently missing.
+    /// Four scripts, as the sibling above.
+    #[tokio::test(start_paused = true)]
+    async fn a_staged_reload_names_the_app_it_could_not_reload() {
+        let h = harness(vec![ProcScript::never_exits(); 4]);
+        start_api_before_the_db_it_waits_for(&h).await;
+
+        let first = reply_of(
+            dispatch(
+                envelope(
+                    3,
+                    Request::Reload {
+                        selector: SelectorSpec::Name("db".to_string()),
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        assert!(first.result.is_ok(), "the first reload is accepted");
+
+        let reply = reply_of(
+            dispatch(
+                envelope(
+                    4,
+                    Request::Reload {
+                        selector: SelectorSpec::All,
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        let Response::Reloading { accepted, refused } = reply.result.unwrap() else {
+            panic!("expected reloading")
+        };
+        let names: Vec<&str> = accepted.iter().map(|info| info.name.as_str()).collect();
+        assert_eq!(names, ["api"], "the rest of the fold still reloads");
+        let refused_names: Vec<&str> = refused.iter().map(|row| row.name.as_str()).collect();
+        assert_eq!(refused_names, ["db"], "and the one that did not is named");
+        assert!(
+            refused[0].reason.contains("already being reloaded"),
+            "with the shepherd's own reason: {:?}",
+            refused[0].reason
         );
     }
 
