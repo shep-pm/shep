@@ -16,7 +16,7 @@ running before a sheep starts writing logs, and a metrics dog must not answer
 for a flock that is not up yet. Both are true in the same flock, so dogs need
 per-dog positioning rather than one global side.
 
-This pass adds one Flockfile field, one `shep.toml` key, and one wire bump. It
+This pass adds one Flockfile field, one `shep.toml` key, and two wire bumps. It
 does not touch a lookout pane.
 
 ## The problem
@@ -371,6 +371,11 @@ comment *"Read once at muster or boot, by `restorable()`"*.
 
 `PROTOCOL_VERSION` moves from 4 to 5.
 
+**Correction, 2026-09-06.** It moved again, 5 to 6, for a second reason this
+spec did not anticipate. `Response::Reloading` had to carry the apps a staged
+reload refused, so a tuple variant became a struct variant, which retypes the
+shape rather than adding to it. `docs/decisions.md` carries the argument.
+
 The protocol's own evolution rule says a new serde-defaulted field keeps the
 version. That rule assumes the receiver tolerates unknown fields, and
 `AppConfig` does not: it is `#[serde(deny_unknown_fields, default)]`, so a
@@ -441,7 +446,7 @@ shep-daemon:
 - a dependency with `autostart = false` warns and the dependent starts
 - dogs land in the final stage by default
 - `boot_first_dogs` puts a dog in stage 0
-- a sheep's `depends_on` pulls a dog earlier
+- a sheep's `depends_on` naming a dog warns, and does not pull it earlier
 - shutdown observes reverse order
 - dogs stop in the backstop, after every sheep
 

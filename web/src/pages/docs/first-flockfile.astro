@@ -124,7 +124,7 @@ const fieldGroups: FieldGroup[] = [
     fields: [
       { name: "max_memory", type: "size?", default: "none", does: "Memory ceiling: the polling enforcer restarts the sheep above it." },
       { name: "fold", type: "string?", default: "none", does: "Names the fold (group) this sheep belongs to." },
-      { name: "depends_on", type: "string[]", default: "[]", does: "Sheep or dogs that must be up before this one starts, when shep is starting more than one thing at once. Names, never name:slot. Read once when a batch is ordered, so an edit reaches the next boot, muster or staged start rather than the running child." },
+      { name: "depends_on", type: "string[]", default: "[]", does: "Sheep or dogs to start before this one, when shep is starting more than one thing at once. Ordering, not a guarantee: a dependency with no readiness signal is waited out rather than waited for, and one that is missing or sets autostart = false warns and lets this app start anyway. Names, never name:slot. Read once when a batch is ordered, so an edit reaches the next boot, muster, staged start, restart or reload rather than the running child." },
       { name: "user", type: "string?", default: "none", does: "Run as this user (unix)." },
       { name: "group", type: "string?", default: "none", does: "Run as this group (unix)." },
     ],

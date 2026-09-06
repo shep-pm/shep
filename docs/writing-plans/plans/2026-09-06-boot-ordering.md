@@ -15,6 +15,14 @@ stages in reverse.
 
 **Spec:** [docs/brainstorming/specs/2026-09-06-boot-ordering-design.md](../../brainstorming/specs/2026-09-06-boot-ordering-design.md)
 
+**What shipped differs from this plan in one place, 2026-09-06.** The plan
+below moves `PROTOCOL_VERSION` from 4 to 5 and stops. It ended at 6: a late
+review found that `Response::Reloading` had to carry the apps a staged reload
+refused, and turning that tuple variant into a struct variant retypes the wire
+shape. The body is left as written, because a plan is a record of what was
+planned rather than a second copy of the outcome. `docs/decisions.md` and the
+spec carry the delivered contract.
+
 ## Global constraints
 
 - **Clean room.** Never open, read, or port source from `~/GitHub/pm2`.
