@@ -126,6 +126,19 @@
             "group": "process"
           }
         },
+        "depends_on": {
+          "description": "Sheep or dogs that must be up before this one starts\n\nNames, never `name:slot`: a dependency on one instance of a\nload-balanced app is not a claim about availability. A dependency on\na multi-instance app waits for every instance.\n\nRead once when a batch is ordered, at a boot, a muster, or a staged\nstart, so an edit reaches the next such operation rather than the\nrunning child.",
+          "type": "array",
+          "default": [],
+          "init": {
+            "blurb": "Other sheep or dogs that must be up before this one starts",
+            "example": "[\"db\", \"cache\"]",
+            "group": "process"
+          },
+          "items": {
+            "type": "string"
+          }
+        },
         "env": {
           "description": "Environment for the sheep (merged over the daemon's filtered env)",
           "type": "object",

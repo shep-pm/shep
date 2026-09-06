@@ -278,6 +278,21 @@ pub struct AppConfig {
         "blurb": "A fold to group this app with others, for commands that take one"
     })))]
     pub fold: Option<String>,
+    /// Sheep or dogs that must be up before this one starts
+    ///
+    /// Names, never `name:slot`: a dependency on one instance of a
+    /// load-balanced app is not a claim about availability. A dependency on
+    /// a multi-instance app waits for every instance.
+    ///
+    /// Read once when a batch is ordered, at a boot, a muster, or a staged
+    /// start, so an edit reaches the next such operation rather than the
+    /// running child.
+    #[cfg_attr(feature = "schema", schemars(extend("init" = {
+        "example": "[\"db\", \"cache\"]",
+        "group": "process",
+        "blurb": "Other sheep or dogs that must be up before this one starts"
+    })))]
+    pub depends_on: Vec<String>,
     /// Run as this user (unix)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "www-data",
@@ -477,6 +492,7 @@ impl Default for AppConfig {
             watch_delay: None,
             cron_restart: None,
             fold: None,
+            depends_on: Vec::new(),
             user: None,
             group: None,
             out_file: None,

@@ -204,6 +204,8 @@ fn expand_paths(app: &mut AppConfig, home: Option<&Path>) -> Result<(), Normaliz
 /// - [`NormalizeError::SharedLogPath`]: `out_file` or `err_file` renders to the same path for two instances.
 /// - [`NormalizeError::TildeUser`]: a path field names another user's `~user` home.
 /// - [`NormalizeError::NoHomeForTilde`]: a path field expands `~/` but no home directory could be found.
+/// - [`NormalizeError::SelfDependency`]: an app names itself in `depends_on`.
+/// - [`NormalizeError::InstanceDependency`]: a `depends_on` entry is written `name:slot`.
 pub fn normalize(app: AppConfig) -> Result<ResolvedApp, NormalizeError> {
     normalize_with_home(app, std::env::home_dir().as_deref())
 }
@@ -354,6 +356,23 @@ pub fn normalize_with_home(
     // happens.
     validate_watch_globs(&app.name, "watch_options", &app.watch_options)?;
     validate_watch_globs(&app.name, "ignore_watch", &app.ignore_watch)?;
+    let mut seen = BTreeSet::new();
+    let mut deduped = Vec::with_capacity(app.depends_on.len());
+    for target in &app.depends_on {
+        if target == &app.name {
+            return Err(NormalizeError::SelfDependency(app.name.clone()));
+        }
+        if target.contains(':') {
+            return Err(NormalizeError::InstanceDependency {
+                sheep: app.name.clone(),
+                target: target.clone(),
+            });
+        }
+        if seen.insert(target.clone()) {
+            deduped.push(target.clone());
+        }
+    }
+    app.depends_on = deduped;
     Ok(ResolvedApp { config: app })
 }
 
@@ -625,6 +644,18 @@ pub enum NormalizeError {
         /// `out_file` or `err_file`
         field: &'static str,
     },
+    /// An app names itself in `depends_on`. Carries the sheep name. A
+    /// one-node cycle, caught here rather than in the graph because it is
+    /// visible in a single `AppConfig`.
+    SelfDependency(String),
+    /// A `depends_on` entry names one instance rather than an app. Carries
+    /// the sheep and the offending target, so the refusal can name both.
+    InstanceDependency {
+        /// The sheep whose list holds the entry
+        sheep: String,
+        /// The entry as written
+        target: String,
+    },
 }
 
 impl fmt::Display for NormalizeError {
@@ -719,6 +750,18 @@ impl fmt::Display for NormalizeError {
                 f,
                 "sheep `{name}` runs several instances and sets `{field}` to one path: put `{{{{instance}}}}` in it, or set `merge_logs = true` to share it on purpose"
             ),
+            Self::SelfDependency(n) => {
+                write!(f, "`{n}` names itself in depends_on")
+            }
+            Self::InstanceDependency { sheep, target } => {
+                let app = target.split(':').next().unwrap_or(target);
+                write!(
+                    f,
+                    "`{sheep}` depends on `{target}`, which names one instance. \
+                     Depend on `{app}` instead: a dependency waits for every \
+                     instance of an app"
+                )
+            }
         }
     }
 }
@@ -1578,5 +1621,62 @@ target = "http://127.0.0.1:8080/healthz"
         let mut app = AppConfig::minimal("web", "./srv");
         app.watch_options = vec!["src/**".to_string()];
         assert!(normalize(app).is_ok());
+    }
+
+    #[test]
+    fn a_sheep_that_depends_on_itself_is_refused_by_name() {
+        // fails if the self-edge check is missing, or if it reports a bare
+        // cycle rather than naming the sheep
+        let mut app = AppConfig::minimal("api", "./api");
+        app.depends_on = vec!["api".to_string()];
+        match normalize(app) {
+            Err(NormalizeError::SelfDependency(name)) => assert_eq!(name, "api"),
+            other => panic!("expected SelfDependency, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_dependency_on_one_instance_is_refused_naming_the_app_form() {
+        // fails if `name:slot` is accepted as a dependency target
+        let mut app = AppConfig::minimal("api", "./api");
+        app.depends_on = vec!["db:2".to_string()];
+        match normalize(app) {
+            Err(NormalizeError::InstanceDependency { sheep, target }) => {
+                assert_eq!(sheep, "api");
+                assert_eq!(target, "db:2");
+            }
+            other => panic!("expected InstanceDependency, got {other:?}"),
+        }
+        let rendered = NormalizeError::InstanceDependency {
+            sheep: "api".to_string(),
+            target: "db:2".to_string(),
+        }
+        .to_string();
+        assert!(
+            rendered.contains("`db`"),
+            "the refusal must name the app-level form: {rendered}"
+        );
+    }
+
+    #[test]
+    fn duplicate_dependencies_dedupe_rather_than_refusing() {
+        // fails if a repeated name is an error, or if it survives into the
+        // normalized config twice
+        let mut app = AppConfig::minimal("api", "./api");
+        app.depends_on = vec!["db".to_string(), "db".to_string()];
+        let resolved = normalize(app).expect("a repeated name is not an error");
+        assert_eq!(resolved.config().depends_on, vec!["db".to_string()]);
+    }
+
+    #[test]
+    fn an_ordinary_dependency_list_survives_normalize() {
+        // fails if the field is dropped or reordered
+        let mut app = AppConfig::minimal("api", "./api");
+        app.depends_on = vec!["db".to_string(), "cache".to_string()];
+        let resolved = normalize(app).expect("an ordinary list normalizes");
+        assert_eq!(
+            resolved.config().depends_on,
+            vec!["db".to_string(), "cache".to_string()]
+        );
     }
 }
