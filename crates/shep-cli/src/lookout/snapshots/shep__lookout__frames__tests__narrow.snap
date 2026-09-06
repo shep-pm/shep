@@ -15,4 +15,4 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12…
   1     web       online           2.9%    1h 26m  
                                                    
                                                    
-q quit   j/k select   g/G first/last   r… read-only
+q quit   j/k select   / filter   x… control enabled

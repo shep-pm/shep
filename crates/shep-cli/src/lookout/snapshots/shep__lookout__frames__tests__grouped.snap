@@ -31,4 +31,4 @@ bleats  web  follows one instance; select one to see its log
                                                                                                                         
                                                                                                                         
                                                                                                                         
-q quit   j/k select   g/G first/last   r refresh   / filter   s settings   e edit   * yours   ! parked         read-only
+q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled

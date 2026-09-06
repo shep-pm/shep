@@ -15,4 +15,4 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
                                                                                                     
                                                                                                     
                                                                                                     
-filter  web▏   enter applies   esc cancels   ctrl-c quits                                  read-only
+filter  web▏   enter applies   esc cancels   ctrl-c quits                            control enabled

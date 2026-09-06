@@ -31,4 +31,4 @@ out  compressed access.log.1 (4.2M -> 380K)
 out  pruned 2 archives older than 14 days                                                                               
 out  next rotation in 6h                                                                                                
                                                                                                                         
-q quit   j/k select   g/G first/last   r refresh   / filter   s settings   e edit   * yours   ! parked         read-only
+q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled

@@ -37,7 +37,7 @@ out  GET /v1/orders 200 44ms
 out  POST /v1/orders 201 88ms
 out  GET /v1/orders/8821 200 9ms
 out  connection pool: 14/50 in use
-q quit   j/k select   g/G first/last   r refresh   / filter   s settings   e edit   * yours   ! parked         read-only`;
+q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled`;
 
 const narrow = `shep lookout   /home/ada/.shep       6 in the flock
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12…
@@ -50,7 +50,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12…
   5     metrics   online           0.4%    1h 32m
   0     web       online           3.4%    1h 25m
   1     web       online           2.9%    1h 26m
-q quit   j/k select   g/G first/last   r… read-only`;
+q quit   j/k select   / filter   x… control enabled`;
 
 const tooNarrow = `too small
 need 33x6`;
@@ -79,7 +79,7 @@ out  GET /v1/orders 200 44ms
 out  POST /v1/orders 201 88ms
 out  GET /v1/orders/8821 200 9ms
 out  connection pool: 14/50 in use
-q quit   j/k select   g/G first/last   r refresh   / filter   s settings   e edit   * yours   ! parked         read-only`;
+q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled`;
 
 const refused = `shep lookout   /home/ada/.shep                                                                            6 in the flock
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h
@@ -145,7 +145,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
   Flock ────────────────────────────────────────────────────────────────────────────────────────────
 > 0     web                online           48211    0         -          3.4%    182.0M    1h 25m
   1     web                online           48212    0         -          2.9%    178.0M    1h 26m
-filter "web"   / edit   esc clear                                                          read-only`;
+filter "web"   / edit   esc clear                                                    control enabled`;
 
 const confirm = `shep lookout   /home/ada/.shep                                                        6 in the flock
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …
@@ -192,7 +192,7 @@ const settingsFresh = `shep lookout   /home/ada/.shep                           
   bark                                                                no       built-in                  not running
   metrics                                                             no       built-in                  not running
 
-esc/s close   j/k select   g/G first/last   r refresh   q quit                                                 read-only`;
+esc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit               control enabled`;
 
 const settingsConfirm = `shep lookout   /home/ada/.shep                                                                                                                                        6 in the flock
   [daemon]
@@ -236,7 +236,7 @@ const settingsDogs = `shep lookout   /home/ada/.shep                            
   ledger                                                              yes      /opt/ledger/bin/dog       not running
   bark                                                                yes      built-in                  silent
 
-esc/s close   j/k select   g/G first/last   r refresh   q quit                                                 read-only`;
+esc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit               control enabled`;
 
 const settingsNarrow = `shep lookout   /home/ada/.shep 2 in the flock
   [daemon]
@@ -258,7 +258,7 @@ const settingsNarrow = `shep lookout   /home/ada/.shep 2 in the flock
   ledger             yes      not running
   bark               yes      silent
 
-esc/s close   j/k select   g/G fir… read-only`;
+esc/s close   j/k select   g… control enabled`;
 ---
 
 <DocsLayout

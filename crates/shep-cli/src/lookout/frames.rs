@@ -377,21 +377,14 @@ impl Scene {
 
     /// Whether this scene's dashboard may act.
     ///
-    /// `Lambs` is in here as well as the three action scenes: its bar has
-    /// nothing in the left slot, so it is the one frame in the gallery that
-    /// shows the control-enabled key hint.
+    /// Allowed is the fallthrough, matching the real dashboard's default.
+    /// `Refused` is the one scene that exists to show the gate closed, so
+    /// it is the one exception.
     #[must_use]
     pub const fn control(self) -> Control {
         match self {
-            Self::Confirm
-            | Self::Acting
-            | Self::ActionRefused
-            | Self::ActionAccepted
-            | Self::ActionRefusedOffline
-            | Self::Lambs
-            | Self::SettingsConfirm
-            | Self::SettingsTyping => Control::Allowed,
-            _ => Control::ReadOnly,
+            Self::Refused => Control::ReadOnly,
+            _ => Control::Allowed,
         }
     }
 
@@ -1621,7 +1614,7 @@ mod tests {
             );
         }
         assert!(
-            cramped.lines().last().unwrap().contains("read-only"),
+            cramped.lines().last().unwrap().contains("control enabled"),
             "and the status bar is still the last row"
         );
 
@@ -1836,8 +1829,8 @@ mod tests {
             "the ladder has not run out yet, so the refusal must not claim it has: {offline:?}"
         );
 
-        // The only frame with the left bar slot empty while the gate is
-        // open, so it is the only one showing the control hint.
+        // The left bar slot is empty here, same as on every ordinary
+        // dashboard scene, so this bar carries the plain control hint.
         let lambs_bar = render_text(&scene(Scene::Lambs).1);
         for key in ["x stop", "R restart", "L reload"] {
             assert!(lambs_bar.contains(key), "the control hint names {key}");
