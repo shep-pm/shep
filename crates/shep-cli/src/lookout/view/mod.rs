@@ -6,6 +6,7 @@
 //! both testable and cheap to keep working across a ratatui release.
 
 pub mod bleats;
+pub mod cell;
 pub mod detail;
 pub mod flock;
 pub mod host;
