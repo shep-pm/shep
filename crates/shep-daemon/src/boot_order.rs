@@ -132,17 +132,19 @@ pub(crate) fn nodes_for_with_dogs(
 /// **An [`BatchPolicy::AllOrNothing`] batch that fails here leaves a PARTIAL
 /// flock.** That policy refuses one `Command::Start` before it registers
 /// anything, and while `shep start` was one such call the refusal really did
-/// mean an untouched flock. It now covers one stage: stage 0 is running by the
-/// time stage 1 proves unstartable. Nothing is rolled back, deliberately,
-/// since rolling back means stopping apps that came up fine on a guess about
-/// what the operator wanted. [`corrected_for_earlier_stages`] is what makes
-/// the refusal say so.
+/// mean an untouched flock. It now covers the checks one stage can make in
+/// advance, and not even the whole of that stage: stage 0 is running by the
+/// time stage 1 proves unstartable, and a spawn that fails part way through a
+/// stage leaves the members ahead of it running too. Nothing is rolled back,
+/// deliberately, since rolling back means stopping apps that came up fine on
+/// a guess about what the operator wanted. [`left_running`] and
+/// [`corrected_for_earlier_stages`] are what make the refusal say so.
 ///
 /// # Errors
 ///
 /// - [`SupervisorError`]: under [`BatchPolicy::AllOrNothing`] only, the first
-///   stage that did not start, with the earlier stages that are still running
-///   named in its message. That policy is the operator's, and an operator
+///   stage that did not start, with everything this start left running named
+///   in its message. That policy is the operator's, and an operator
 ///   who typed `shep start` gets the failure back rather than a warning in a
 ///   log they are not reading; a later stage waits on the stage that failed,
 ///   so there is nothing useful to run after it either. Under
@@ -217,7 +219,8 @@ pub(crate) async fn start_in_stages(
         match supervisor.start_staged(members, gate, policy).await {
             Ok(infos) => started.extend(infos),
             Err(err) if policy == BatchPolicy::AllOrNothing => {
-                return Err(corrected_for_earlier_stages(err, &started));
+                let left = left_running(supervisor, &started, &names).await;
+                return Err(corrected_for_earlier_stages(err, &left));
             }
             Err(err) => tracing::warn!(stage = index, %err, "a boot stage did not start"),
         }
@@ -237,27 +240,67 @@ pub(crate) async fn start_in_stages(
     Ok(started)
 }
 
-/// `err`, told to name what earlier stages already started.
+/// What this start left running: every earlier stage, plus whatever of the
+/// failing stage was up before the failure.
+///
+/// The second half is why the flock is read at all. `do_start` refuses a
+/// whole batch before registering anything only for the checks it can make
+/// in advance; a spawn that fails anyway leaves the batch part-registered,
+/// because only exec knows for certain, and those apps are in no stage this
+/// walk has completed. `started` alone therefore named some of what a staged
+/// start left running rather than all of it.
+///
+/// One `Command::List` on a failure path, and only under
+/// [`BatchPolicy::AllOrNothing`]: the walk is ending either way.
+///
+/// A stage member the flock holds as `Stopped` or `Errored` is left out. It
+/// is registered, so `shep delete` still has something to do about it, but
+/// the message this feeds is about children that are up and are being left
+/// alone.
+async fn left_running(
+    supervisor: &SupervisorHandle,
+    started: &[ProcessInfo],
+    stage: &BTreeSet<&str>,
+) -> BTreeSet<String> {
+    let mut names: BTreeSet<String> = started.iter().map(|info| info.name.clone()).collect();
+    let Ok(flock) = supervisor.list_checked().await else {
+        return names;
+    };
+    names.extend(
+        flock
+            .iter()
+            .filter(|info| stage.contains(info.name.as_str()))
+            .filter(|info| !matches!(info.status, ProcStatus::Stopped | ProcStatus::Errored))
+            .map(|info| info.name.clone()),
+    );
+    names
+}
+
+/// `err`, told to name what this start already left running.
 ///
 /// [`BatchPolicy::AllOrNothing`] refuses one `Command::Start` before it
 /// registers anything, and both its messages say so. That was the whole truth
-/// while `shep start` was one such call. It is now the truth about ONE stage:
-/// stage 0 is running by the time stage 1 proves unstartable, and nothing
-/// rolls it back, because rolling back means stopping apps that came up fine
-/// on a guess about what the operator wanted. So the message says which ones
-/// they are instead, and an operator who wants them down types `shep stop`.
+/// while `shep start` was one such call. It is now the truth about ONE stage,
+/// and not even all of that: stage 0 is running by the time stage 1 proves
+/// unstartable, and a spawn failure part way through stage 1 leaves the
+/// members it reached first running too. Nothing rolls any of it back,
+/// because rolling back means stopping apps that came up fine on a guess
+/// about what the operator wanted. So the message says which ones they are
+/// instead, and an operator who wants them down types `shep stop`.
 ///
 /// Only the two variants carrying a message about registration are touched.
 /// Every other one is about a single sheep and says nothing this could
 /// correct.
-fn corrected_for_earlier_stages(err: SupervisorError, started: &[ProcessInfo]) -> SupervisorError {
-    let names: BTreeSet<&str> = started.iter().map(|info| info.name.as_str()).collect();
-    if names.is_empty() {
+fn corrected_for_earlier_stages(
+    err: SupervisorError,
+    left_running: &BTreeSet<String>,
+) -> SupervisorError {
+    if left_running.is_empty() {
         return err;
     }
-    let running: Vec<&str> = names.into_iter().collect();
+    let running: Vec<&str> = left_running.iter().map(String::as_str).collect();
     let note = format!(
-        " (an earlier stage of this start is already running and is left alone: {})",
+        " (this start already has children running and leaves them alone: {})",
         running.join(", ")
     );
     match err {
@@ -507,7 +550,7 @@ mod tests {
     use shep_core::values::UpDuration;
 
     use crate::fake::ProcScript;
-    use crate::testing::{harness, harness_refusing};
+    use crate::testing::{harness, harness_failing_to_spawn, harness_refusing};
 
     /// The bound a test passes `await_stage` when it expects the wait to end
     /// on its own answer rather than on the clock.
@@ -731,6 +774,45 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["db"],
             "the earlier stage is deliberately left running"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_stage_that_fails_part_way_names_what_it_left_running() {
+        // fails if the refusal names completed stages only: `do_start`
+        // refuses a batch up front for the checks it can make in advance,
+        // and a spawn that fails anyway leaves the members ahead of it
+        // running, in a stage no completed-stage list holds. One stage here,
+        // so `started` is empty and the note exists only if the flock was
+        // read.
+        let h = harness_failing_to_spawn(
+            vec![ProcScript::never_exits(), ProcScript::never_exits()],
+            &["zulu"],
+        );
+        let apps = normalize_all(vec![
+            AppConfig::minimal("alpha", "./sleep"),
+            AppConfig::minimal("zulu", "./sleep"),
+        ])
+        .expect("two apps, no edges");
+        let plan = plan(&nodes_for(&apps, &[]));
+        assert_eq!(plan.stages, vec![vec!["alpha", "zulu"]], "one stage");
+
+        let err = start_in_stages(
+            &plan,
+            &apps,
+            &h.ctx.supervisor,
+            &h.ctx.events,
+            BatchPolicy::AllOrNothing,
+        )
+        .await
+        .expect_err("a failed spawn ends an `AllOrNothing` batch");
+
+        let SupervisorError::SpawnFailed(message) = &err else {
+            panic!("a failed spawn is `SpawnFailed`, got {err:?}");
+        };
+        assert!(
+            message.contains("alpha"),
+            "the member that came up first must be named: {message}"
         );
     }
 

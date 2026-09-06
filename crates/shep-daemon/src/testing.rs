@@ -339,6 +339,18 @@ pub(crate) fn harness_refusing(scripts: Vec<ProcScript>, names: &[&str]) -> Harn
     harness_sampling_with(ScriptedRunner::new(scripts).refusing(names), vec![vec![]])
 }
 
+/// [`harness`], with every named app failing at the spawn itself.
+///
+/// The half [`harness_refusing`] cannot express: a preflight refusal happens
+/// before anything in the batch is registered, while a spawn failure happens
+/// after the apps ahead of it are already running.
+pub(crate) fn harness_failing_to_spawn(scripts: Vec<ProcScript>, names: &[&str]) -> Harness {
+    harness_sampling_with(
+        ScriptedRunner::new(scripts).failing_to_spawn(names),
+        vec![vec![]],
+    )
+}
+
 /// [`harness`] over a scripted process table, the body both spellings share.
 fn harness_sampling(scripts: Vec<ProcScript>, readings: Vec<Vec<ProcessRss>>) -> Harness {
     harness_sampling_with(ScriptedRunner::new(scripts), readings)
