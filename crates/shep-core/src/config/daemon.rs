@@ -13,13 +13,18 @@ use serde::Deserialize;
 use crate::values::UpDuration;
 
 /// The `[daemon]` section
-#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct DaemonSection {
     /// Emit the daemon's own logs as JSON lines
     pub log_json: bool,
     /// Lowest severity of the daemon's own records that reaches its log
     pub log_level: LogLevel,
+    /// The environment every sheep resolves in unless it sets its own.
+    ///
+    /// A shepherd supervising real processes on a host is production unless
+    /// somebody says otherwise.
+    pub environment: String,
     /// Control-socket path override (default: `$SHEP_HOME/run/shep.sock`)
     pub socket: Option<std::path::PathBuf>,
     /// Dogs to autostart with the daemon (`shep enable` writes this)
@@ -41,6 +46,22 @@ pub struct DaemonSection {
     /// There is no upper bound: a very long value only degrades to sleeping
     /// straight through to the occurrence, which still fires.
     pub max_cron_sleep: Option<UpDuration>,
+}
+
+/// Not derived: [`DaemonSection::environment`] defaults to `"production"`,
+/// which `String`'s own `Default` cannot express.
+impl Default for DaemonSection {
+    fn default() -> Self {
+        Self {
+            log_json: false,
+            log_level: LogLevel::default(),
+            environment: "production".to_string(),
+            socket: None,
+            enabled_dogs: Vec::new(),
+            adopted_dogs: BTreeMap::new(),
+            max_cron_sleep: None,
+        }
+    }
 }
 
 /// How much of the daemon's own diagnostics reaches its log.
@@ -615,6 +636,19 @@ otel = "/usr/local/bin/shep-otel"
         );
     }
 
+    #[test]
+    fn the_host_environment_defaults_to_production() {
+        let cfg = DaemonConfig::load(None, &|_| None).unwrap();
+        assert_eq!(cfg.daemon.environment, "production");
+    }
+
+    #[test]
+    fn the_host_environment_reads_from_the_file() {
+        let cfg =
+            DaemonConfig::load(Some("[daemon]\nenvironment = \"staging\"\n"), &|_| None).unwrap();
+        assert_eq!(cfg.daemon.environment, "staging");
+    }
+
     // `as_str`, `from_name` and serde's `rename_all` are three separate
     // spellings of the same mapping; nothing else keeps them in agreement.
     // fails if any one drifts from the other two.
@@ -895,7 +929,7 @@ otel = "/usr/local/bin/shep-otel"
         let cfg = DaemonConfig::load(Some("[dog.metrics]\nport = 9615"), &no_env).unwrap();
         assert_eq!(
             format!("{cfg:?}"),
-            "DaemonConfig { daemon: DaemonSection { log_json: false, log_level: Warn, socket: None, enabled_dogs: [], adopted_dogs: {}, max_cron_sleep: None }, whistle: WhistleSection { allow_control: false }, style: StyleSection { level: None }, interpreters: {}, dog: <1 tables> }"
+            "DaemonConfig { daemon: DaemonSection { log_json: false, log_level: Warn, environment: \"production\", socket: None, enabled_dogs: [], adopted_dogs: {}, max_cron_sleep: None }, whistle: WhistleSection { allow_control: false }, style: StyleSection { level: None }, interpreters: {}, dog: <1 tables> }"
         );
     }
 }

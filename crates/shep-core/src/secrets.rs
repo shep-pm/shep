@@ -151,7 +151,7 @@ impl From<serde_json::Error> for SecretError {
 ///
 /// Excludes `/`, so a name can never contain the separator
 /// [`SecretRef::parse`] splits a namespace from a key on.
-fn is_name(value: &str) -> bool {
+pub(crate) fn is_name(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_KEY_BYTES
         && !value.starts_with('.')

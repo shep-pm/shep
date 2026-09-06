@@ -676,6 +676,7 @@ expression: replies
             "cwd": null,
             "interpreter": null,
             "env": {},
+            "environment": null,
             "instances": 1,
             "autorestart": true,
             "autostart": true,

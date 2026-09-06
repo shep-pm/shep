@@ -113,6 +113,18 @@ pub struct AppConfig {
         "blurb": "Environment variables for this app, layered over the daemon's own"
     })))]
     pub env: BTreeMap<String, String>,
+    /// Which environment this sheep resolves `{{secret:...}}` in.
+    ///
+    /// Absent falls back to `[daemon] environment` in `shep.toml`, which
+    /// itself defaults to `production`. Never `all`: that is the store's
+    /// every-environment slot, and a sheep claiming it would read that slot
+    /// twice and never one of its own.
+    #[cfg_attr(feature = "schema", schemars(extend("init" = {
+        "example": "staging",
+        "group": "inputs",
+        "blurb": "Which environment this app resolves secrets in"
+    })))]
+    pub environment: Option<String>,
     /// Instance count ("cluster" = N fork instances; spec §4)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "group": "process",
@@ -455,6 +467,7 @@ impl Default for AppConfig {
             cwd: None,
             interpreter: None,
             env: BTreeMap::new(),
+            environment: None,
             instances: 1,
             autorestart: true,
             autostart: true,
@@ -601,6 +614,15 @@ mod tests {
         let parsed: AppConfig =
             toml::from_str("name = \"web\"\nscript = \"./srv\"\nstdin = true").unwrap();
         assert!(parsed.stdin);
+    }
+
+    #[test]
+    fn environment_defaults_to_absent_and_parses_from_a_flockfile() {
+        assert_eq!(AppConfig::default().environment, None);
+        let app: AppConfig =
+            toml::from_str("name = \"web\"\nscript = \"./srv\"\nenvironment = \"staging\"")
+                .unwrap();
+        assert_eq!(app.environment.as_deref(), Some("staging"));
     }
 
     #[test]

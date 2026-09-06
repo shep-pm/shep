@@ -14,6 +14,7 @@ use globset::Glob;
 use crate::config::{
     AppConfig, CronParseError, CronSchedule, KillSignal, ProbeConfig, ProbeTarget,
 };
+use crate::secrets;
 use crate::values::UpDuration;
 
 /// Shortest `interval` a `liveness_probe` may name.
@@ -185,6 +186,7 @@ fn expand_paths(app: &mut AppConfig, home: Option<&Path>) -> Result<(), Normaliz
 ///
 /// - [`NormalizeError::MissingName`]: `name` is empty.
 /// - [`NormalizeError::InvalidName`]: `name` contains a path separator or a colon, or is `.`/`..`.
+/// - [`NormalizeError::InvalidEnvironment`]: `environment` is `all`, the secrets store's every-environment slot, or falls outside the store's name grammar.
 /// - [`NormalizeError::ReservedEnvVar`]: `env` sets `SHEP_INSTANCE` or `SHEP_NAME`, which shep injects itself.
 /// - [`NormalizeError::IncrementVarRemoved`]: `increment_var` is set; removed in favour of `{{instance}}` templating.
 /// - [`NormalizeError::MissingScript`]: `script` is empty.
@@ -227,6 +229,14 @@ pub fn normalize_with_home(
     }
     if app.name.contains(['/', '\\', ':']) || app.name == "." || app.name == ".." {
         return Err(NormalizeError::InvalidName(app.name));
+    }
+    if let Some(environment) = &app.environment
+        && (environment == secrets::ALL_ENVIRONMENTS || !secrets::is_name(environment))
+    {
+        return Err(NormalizeError::InvalidEnvironment {
+            name: app.name.clone(),
+            value: environment.clone(),
+        });
     }
     for var in ["SHEP_INSTANCE", "SHEP_NAME"] {
         if app.env.contains_key(var) {
@@ -466,6 +476,16 @@ pub enum NormalizeError {
     /// Windows filename, which a sheep name becomes part of. Carries the
     /// name.
     InvalidName(String),
+    /// `environment` is [`crate::secrets::ALL_ENVIRONMENTS`], the secrets
+    /// store's every-environment slot, or falls outside the grammar
+    /// [`crate::secrets`] keys and environment names share. Carries the
+    /// sheep name and the value as written.
+    InvalidEnvironment {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+        /// The value as the user wrote it.
+        value: String,
+    },
     /// An app's `env` sets a variable shep injects itself. Carries the sheep
     /// name and the variable, so the error names the entry to edit.
     ReservedEnvVar {
@@ -637,6 +657,13 @@ impl fmt::Display for NormalizeError {
                     "sheep name `{n}` may not contain a path separator or a colon, or be `.` or `..`; use `-` in place of a colon"
                 )
             }
+            Self::InvalidEnvironment { name, value } => write!(
+                f,
+                "sheep `{name}` has environment = `{value}`: must be 1-128 bytes of \
+                 `[A-Za-z0-9._-]` not starting with `.`, and not `{}` (the secrets \
+                 store's every-environment slot)",
+                secrets::ALL_ENVIRONMENTS
+            ),
             Self::ReservedEnvVar { name, var } => write!(
                 f,
                 "sheep `{name}` sets `{var}` in env, but shep injects it: use a different name, or `{{{{instance}}}}` in your own variable"
@@ -1264,6 +1291,25 @@ mod tests {
         let app = AppConfig::minimal("web", "./srv");
         assert!(app.kill_signal.is_none());
         assert!(normalize(app).is_ok());
+    }
+
+    #[test]
+    fn a_sheep_cannot_claim_the_all_environment() {
+        // `all` is the store's every-environment slot. A sheep resolving in
+        // it would read that slot twice and never its own.
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.environment = Some("all".to_string());
+        let err = normalize(app).unwrap_err();
+        assert!(err.to_string().contains("all"), "{err}");
+    }
+
+    #[test]
+    fn an_environment_outside_the_grammar_is_refused() {
+        for bad in ["", "has space", "has/slash"] {
+            let mut app = AppConfig::minimal("web", "./srv");
+            app.environment = Some(bad.to_string());
+            assert!(normalize(app).is_err(), "{bad:?} must be refused");
+        }
     }
 
     #[test]
