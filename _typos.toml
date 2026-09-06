@@ -58,3 +58,13 @@ resurect = "resurect" # trace/tests.md:48, pm2's own `resurect_state.mocha.js`
 # running sheep's uptime..."). Not the plural CLAUDE.md bans.
 sheeps = "sheeps"
 childs = "childs"
+
+[files]
+# The Claude Design bundle under docs/lookout/design-files: two generated
+# HTML pages, their runtime, and nine PNG screenshots. Nothing in it is
+# written by hand, so a spelling report on it has nobody to act on it. The
+# PNGs are the reason this is a file rule rather than more extend-words —
+# passed an explicit path, typos reads a PNG as text and reports the
+# compressed bytes a few dozen times per image. The bundle's sample data also
+# carries a GitHub handle that typos reads as a misspelt English word.
+extend-exclude = ["docs/lookout/design-files/"]
