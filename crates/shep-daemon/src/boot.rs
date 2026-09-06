@@ -995,6 +995,14 @@ pub async fn boot<R: ProcessRunner>(
     // 5. A failure is a `warn!` and the boot continues: only systemd's view
     //    is wrong. Unix only, since `$NOTIFY_SOCKET` is a unix datagram
     //    socket; the field stays on `BootOptions` for both platforms.
+    //
+    //    Reported here, after the restore, which is the honest answer to
+    //    `Type=notify` and is also what puts the staged restore inside
+    //    systemd's `TimeoutStartSec`. The restore holds each stage until its
+    //    members are ready, so the wait is a sum over stages: past the 90s
+    //    default the shepherd is killed mid-restore and restarted on
+    //    `RestartSec`. `startup::unit`'s `systemd_unit` carries the numbers
+    //    and the argument for leaving the timeout to the operator.
     #[cfg(unix)]
     if let Some(target) = options.notify_socket.as_deref()
         && let Err(err) = crate::notify::notify(target)

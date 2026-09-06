@@ -251,6 +251,20 @@ error[invalid_config]: the daemon reported InvalidConfig: dependency cycle: api 
       because monitoring should outlive what it monitors and a strict
       reverse would kill the bark dog before the flock it reports on.
     </p>
+    <Callout variant="careful">
+      Starting is the direction with the sharp edge, not stopping. The
+      shepherd reports readiness to systemd after the restore, and the
+      restore holds each stage until its members are ready, so a boot costs
+      the sum of the stages. Roughly thirty stages at the default 3s{" "}
+      <code>listen_timeout</code> clears systemd's default{" "}
+      <code>TimeoutStartSec</code> of ninety seconds, and three or four do
+      at a <code>listen_timeout</code> of half a minute. Past it systemd
+      kills the shepherd mid-restore and starts it again on{" "}
+      <code>RestartSec</code>, which is a loop rather than a slow boot. A
+      flock that deep wants a <code>TimeoutStartSec</code> of its own in the{" "}
+      <code>[Service]</code> section; <code>shep startup</code> writes no
+      value, so the default applies.
+    </Callout>
     <p>
       <code>shep restart</code> and <code>shep reload</code> against a
       selector matching several sheep walk the stages forward instead,
