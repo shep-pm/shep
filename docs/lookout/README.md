@@ -32,7 +32,7 @@ cargo test -p shep --lib --all-features -- --ignored write_the_gallery
 - **Daemon death: bounded retry, then freeze, never exit.** The link task
   re-dials the shepherd 5 times, at 250/500/1000/2000/4000 ms — about 7.75 s
   of waiting — before it gives up. Once the ladder is exhausted, lookout
-  shows the frozen banner (`the shepherd has died — these values are frozen
+  shows the frozen banner (`the shepherd has died: these values are frozen
   as of <time>`), stops polling and re-dialling, and leaves the last known
   values on screen. The uptime column stops advancing with it: a frozen
   dashboard whose clock kept counting would be lying about a specific sheep
