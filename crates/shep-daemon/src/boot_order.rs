@@ -477,7 +477,20 @@ pub(crate) async fn stop_registered_in_reverse(
     dogs: &[String],
     supervisor: &SupervisorHandle,
 ) {
-    let mut edges = registry.depends_on_by_name();
+    stop_edges_in_reverse(registry.depends_on_by_name(), dogs, supervisor).await;
+}
+
+/// [`stop_registered_in_reverse`] against edges read earlier.
+///
+/// For the one caller whose registry is empty by the time the walk runs:
+/// `shep dev` clears it before the final roll is written, so that session
+/// reads its edges first and stops against them here. A name the flock no
+/// longer holds costs a `NotFound` warning and nothing else.
+pub(crate) async fn stop_edges_in_reverse(
+    mut edges: BTreeMap<String, Vec<String>>,
+    dogs: &[String],
+    supervisor: &SupervisorHandle,
+) {
     for dog in dogs {
         edges.remove(dog);
     }

@@ -1161,6 +1161,13 @@ impl RunningDaemon {
         // 2. The final roll, written while every sheep is still online, unless
         //    `delete_flock_on_shutdown` (`shep dev`'s case) wiped the registry
         //    first. Runs however serving ended, a caught signal included.
+        //
+        //    The edges are read BEFORE the clear, because step 4 needs them
+        //    and the clear is about what a roll persists, not about how a
+        //    session tears down: a `shep dev` worker drains against its
+        //    database the same as any other, and reading them after the clear
+        //    left that session with no ordered teardown at all.
+        let edges = ctx.registry.depends_on_by_name();
         if delete_flock_on_shutdown {
             ctx.registry.clear();
         }
@@ -1175,16 +1182,8 @@ impl RunningDaemon {
         //    against a database that is still answering. Every sheep is
         //    bounded by its own kill ladder, and step 5 is the backstop: a
         //    sheep this walk misses is still killed there, so a bug here
-        //    cannot leave a child alive. Under `delete_flock_on_shutdown`
-        //    step 2 has just emptied the registry, so the plan is empty and
-        //    this walk does nothing at all: that session is deleting its whole
-        //    flock anyway, and step 5 is what stops it.
-        crate::boot_order::stop_registered_in_reverse(
-            &ctx.registry,
-            &ctx.dog_names,
-            &ctx.supervisor,
-        )
-        .await;
+        //    cannot leave a child alive.
+        crate::boot_order::stop_edges_in_reverse(edges, &ctx.dog_names, &ctx.supervisor).await;
 
         // 5. Kill ladder on whatever is still online, dogs included: they are
         //    deliberately not in the reverse stages above, because monitoring
@@ -2310,6 +2309,74 @@ mod tests {
             final_roll.apps.is_empty(),
             "delete_flock_on_shutdown must leave the roll empty, not {:?}",
             final_roll.apps
+        );
+    }
+
+    #[tokio::test]
+    async fn a_dev_session_still_stops_its_flock_in_dependency_order() {
+        // fails if the reverse walk reads its edges after the registry is
+        // cleared: `delete_flock_on_shutdown` empties it before the final
+        // roll, so the walk planned nothing and the backstop killed the
+        // whole flock at once. A dev worker drains against its database the
+        // same as any other, and not persisting a roll is a different thing
+        // from not draining.
+        let _guard = SIGNAL_TEST_LOCK.lock().await;
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(&dir);
+        init_dirs(&paths).unwrap();
+
+        let daemon = boot(
+            // `worker` ignores signals, so its stop has a kill ladder to
+            // burn while `db` answers at once. Without that the two `Stop`
+            // events land in poll order, which matches stage order by
+            // accident whether the walk kept its stages or not.
+            ScriptedRunner::new(vec![
+                ProcScript::never_exits(),
+                ProcScript::ignores_signals(),
+            ]),
+            paths.clone(),
+            BootOptions {
+                delete_flock_on_shutdown: true,
+                ..BootOptions::default()
+            },
+        )
+        .await
+        .unwrap();
+        let ctx = daemon.context();
+        let db = AppConfig::minimal("db", "./db");
+        let mut worker = AppConfig::minimal("worker", "./worker");
+        worker.depends_on = vec!["db".to_string()];
+        // Short enough that the ladder is a margin the assertion can read
+        // rather than a second and a half of test.
+        worker.kill_timeout = shep_core::values::UpDuration::from_millis(100);
+        let apps = shep_core::config::normalize_all(vec![db, worker]).unwrap();
+        ctx.registry.record(&apps);
+        ctx.supervisor.start(apps).await.unwrap();
+
+        let mut rx = ctx.events.subscribe();
+        let run = tokio::spawn(daemon.run());
+        ctx.shutdown();
+        tokio::time::timeout(Duration::from_secs(5), run)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+
+        let mut stops = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            if let shep_core::protocol::BusEvent::Process {
+                event: shep_core::protocol::ProcessEventKind::Stop,
+                info,
+                ..
+            } = &*event
+            {
+                stops.push(info.name.clone());
+            }
+        }
+        assert_eq!(
+            stops,
+            vec!["worker".to_string(), "db".to_string()],
+            "the dependant stops before what it waits on"
         );
     }
 
