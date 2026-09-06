@@ -448,9 +448,19 @@ fn warn_about_the_graph(plan: &BootPlan, to_start: &[ResolvedApp], members: &[Re
         .filter(|app| !app.config().autostart)
         .map(|app| app.config().name.as_str())
         .collect();
+    // Every name the roll can put back, whether or not this restore starts
+    // it. The plan is built from `to_start` alone, so a dependency already
+    // running, saved stopped, or opted out is absent from the graph and reads
+    // as unresolved. On `shep muster` against a live flock that is the whole
+    // flock, and the warning below would fire on the commonest path there is.
+    let restorable: BTreeSet<&str> = members
+        .iter()
+        .map(|app| app.config().name.as_str())
+        .collect();
 
     for unresolved in &plan.unresolved {
-        if opted_out.contains(unresolved.missing.as_str()) {
+        // `opted_out` is a subset of this, and has its own warning below.
+        if restorable.contains(unresolved.missing.as_str()) {
             continue;
         }
         tracing::warn!(
@@ -479,12 +489,20 @@ fn warn_about_the_graph(plan: &BootPlan, to_start: &[ResolvedApp], members: &[Re
     // `BootPlan::cycles` carries ONE representative path per knot, so a sheep
     // inside the knot but off that path is just as stuck and is never named by
     // the warning above. The cyclic stage is every one of them.
+    //
+    // Silent when the paths already named everybody, which is the plain
+    // two-node cycle: `plan` puts every knot in one stage, so this line is
+    // flock-wide and would otherwise repeat the line above verbatim. Per-knot
+    // membership is a `BootPlan` field the graph module does not expose.
     if let Some(stuck) = cyclic_stage(plan) {
-        let names: Vec<&str> = stuck.iter().map(String::as_str).collect();
-        tracing::warn!(
-            stuck = ?names,
-            "every sheep a dependency cycle holds; each of them starts last"
-        );
+        let named: BTreeSet<&str> = plan.cycles.iter().flatten().map(String::as_str).collect();
+        if stuck.iter().any(|name| !named.contains(name.as_str())) {
+            let names: Vec<&str> = stuck.iter().map(String::as_str).collect();
+            tracing::warn!(
+                stuck = ?names,
+                "every sheep a dependency cycle holds; each of them starts last"
+            );
+        }
     }
 }
 
@@ -627,7 +645,7 @@ mod tests {
     use super::*;
     use crate::fake::{ProcScript, ScriptedRunner};
     use crate::supervisor::spawn_supervisor;
-    use crate::testing::test_paths;
+    use crate::testing::{capture_logs, test_paths};
     use shep_core::config::graph::{BootNode, NodeKind, plan};
     use shep_core::config::{AppConfig, normalize};
     use shep_core::protocol::{BusEvent, ProcessEventKind, ProcessInfo};
@@ -1218,6 +1236,69 @@ mod tests {
             "db opted out; api starts without it"
         );
         handle.shutdown().await;
+    }
+
+    /// An app named `name` that waits for `deps`, normalized.
+    fn dependant(name: &str, deps: &[&str]) -> ResolvedApp {
+        let mut app = AppConfig::minimal(name, "./srv");
+        app.depends_on = deps.iter().map(|dep| (*dep).to_string()).collect();
+        normalize(app).expect("a minimal app with edges normalizes")
+    }
+
+    /// fails if a dependency the roll still holds is reported as naming
+    /// nothing this flock has. The plan is built from `to_start` alone, so on
+    /// `shep muster` against a live flock every already-running dependency is
+    /// unresolved, and this warning fired on the commonest path there is.
+    ///
+    /// The second half is the control: a name the roll does not hold either
+    /// really is missing, and must still be said out loud.
+    #[test]
+    fn a_dependency_the_roll_still_holds_is_not_called_missing() {
+        let api = dependant("api", &["db"]);
+        let db = normalize(AppConfig::minimal("db", "./srv")).expect("a minimal app normalizes");
+        let to_start = vec![api.clone()];
+        let plan = crate::boot_order::plan_for(&to_start, &[], &[]);
+        assert_eq!(
+            plan.unresolved.len(),
+            1,
+            "the plan only ever sees what this restore starts"
+        );
+
+        let held = capture_logs(|| warn_about_the_graph(&plan, &to_start, &[db, api.clone()]));
+        assert!(!held.contains("names nothing this flock has"), "{held}");
+
+        let absent = capture_logs(|| warn_about_the_graph(&plan, &to_start, &[api]));
+        assert!(absent.contains("names nothing this flock has"), "{absent}");
+    }
+
+    /// fails if a plain two-node cycle prints its membership twice. `plan`
+    /// puts every knot into one stage, so the membership line is flock-wide,
+    /// and on two nodes it repeats the representative path verbatim.
+    ///
+    /// The three-node knot is the control: there the path names two of the
+    /// three, so the membership line is the only thing that names the third.
+    #[test]
+    fn a_two_node_knot_is_not_reported_twice_over() {
+        let pair = vec![dependant("a", &["b"]), dependant("b", &["a"])];
+        let plan = crate::boot_order::plan_for(&pair, &[], &[]);
+
+        let two = capture_logs(|| warn_about_the_graph(&plan, &pair, &pair));
+        assert!(
+            !two.contains("every sheep a dependency cycle holds"),
+            "{two}"
+        );
+
+        let trio = vec![
+            dependant("a", &["b"]),
+            dependant("b", &["a", "c"]),
+            dependant("c", &["b"]),
+        ];
+        let plan = crate::boot_order::plan_for(&trio, &[], &[]);
+        let three = capture_logs(|| warn_about_the_graph(&plan, &trio, &trio));
+        assert!(
+            three.contains("every sheep a dependency cycle holds"),
+            "{three}"
+        );
     }
 
     /// fails if the cycle warning names only the representative path. Every
