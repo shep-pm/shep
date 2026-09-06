@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-06
+
+### Fixed
+
+- Refuse a url carrying credentials, and keep a webhook token out of Debug ([#148](https://github.com/shep-pm/shep/pull/148))
+
+
 ## [0.4.0] - 2026-09-06
 
 ### Added
