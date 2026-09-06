@@ -26,9 +26,9 @@
 //!   process on its own.
 
 #![doc(test(attr(deny(warnings))))]
-// Not `forbid`: `endpoint` needs one `unsafe` block per platform.
-// One takes the inherited descriptor on unix; the other peeks a
-// Windows pipe's buffer. Each carries its own `// SAFETY:` comment.
+// Not `forbid`: `endpoint` needs unsafe to reach the channel. Two blocks
+// on unix probe the inherited descriptor and then take it. One on
+// Windows peeks a pipe's buffer. Each carries its own `// SAFETY:` comment.
 #![deny(unsafe_code)]
 
 #[cfg(feature = "client")]

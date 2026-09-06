@@ -403,14 +403,16 @@ never costs clarity.
   lives in three files across two crates, each carrying its own
   `#![allow(unsafe_code)]` or `#[allow(unsafe_code)]` with per-block
   `// SAFETY:` (IR-22/23): shep-daemon's `sys.rs` (eight sites on unix) and
-  `sys_windows.rs` (ten on Windows), and shep-channel's `endpoint.rs` (two
-  sites, one per platform: taking the descriptor the shepherd names in
-  `SHEP_CHANNEL_FD`, sound because a process-global guard makes it reachable
-  at most once per process, and `PeekNamedPipe` on Windows, which
+  `sys_windows.rs` (ten on Windows), and shep-channel's `endpoint.rs`
+  (three sites, two on unix and one on Windows: probing the descriptor the
+  shepherd names in `SHEP_CHANNEL_FD` under a `ManuallyDrop` that closes
+  nothing, then taking it, sound because a process-global guard makes that
+  reachable at most once per process, and `PeekNamedPipe` on Windows, which
   `PipeReader`'s own doc comment exists to justify). This line said
   "planned" and named only `sys.rs` for the whole of the Windows port, then
   said "exactly two files" after shep-channel added a third, then said "one
-  site" in `endpoint.rs` after it had grown a second.
+  site" in `endpoint.rs` after it had grown a second, then said "two sites,
+  one per platform" after unix grew the probe.
 - Open design decisions live at the bottom of map.md and in goals.md's open
   questions — check them before making architectural calls; if a decision is
   listed there, it is the maintainer's, not yours.
