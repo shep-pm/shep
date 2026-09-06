@@ -8,11 +8,11 @@
 //! is what delivers `Msg::ReadyResult`, so a wait inside it could never end.
 
 // Nothing calls in yet: the boot sequence and the RPC start path are the two
-// callers, and both land after this module. `allow` rather than `expect`,
-// which would be the self-removing spelling: the crate's own tests use every
-// item here, so the expectation is unfulfilled in the `cfg(test)` build and
-// `--all-targets` would refuse it. Delete this the moment a caller lands.
-#![allow(dead_code)]
+// callers, and both land after this module. `expect` rather than `allow`, so
+// it deletes itself the moment one does; `cfg_attr(not(test), ...)` because
+// the crate's own tests use every item here, so a bare `expect` is unfulfilled
+// in the `cfg(test)` build and `--all-targets` refuses it there instead.
+#![cfg_attr(not(test), expect(dead_code))]
 
 use core::time::Duration;
 
@@ -88,7 +88,7 @@ pub(crate) fn nodes_for_with_dogs(
 /// Answers with every instance started, in stage order.
 pub(crate) async fn start_in_stages(
     plan: &BootPlan,
-    apps: Vec<ResolvedApp>,
+    apps: &[ResolvedApp],
     supervisor: &SupervisorHandle,
     events: &Bus,
     policy: BatchPolicy,
@@ -97,10 +97,14 @@ pub(crate) async fn start_in_stages(
         .iter()
         .map(|app| (app.config().name.as_str(), app))
         .collect();
-    // Every name a later stage waits on. Read once, so a stage's own members
-    // are gated by what follows them rather than by what sits beside them.
+    // Every name anything in the flock waits on, read once. That is usually
+    // "what follows them", since the sort puts a dependency in an earlier
+    // stage than its dependants; a cycle is the exception the graph keeps,
+    // and there every member depends on another member of its own stage, so
+    // a two-node cycle with nothing downstream still costs the stage a wait
+    // gated purely by what sits beside it.
     let mut depended_on: BTreeSet<&str> = BTreeSet::new();
-    for app in &apps {
+    for app in apps {
         depended_on.extend(app.config().depends_on.iter().map(String::as_str));
     }
 
@@ -113,6 +117,12 @@ pub(crate) async fn start_in_stages(
         if members.is_empty() {
             continue;
         }
+        // The gate rides on this one `Command::Start` and so is a property of
+        // the first spawn only: `respawn` reads a sheep's own readiness
+        // source and never this set, so a depended-on app that crashes comes
+        // back `Online` at once rather than re-entering the readiness wait.
+        // That is intended. A crashed app has already settled its stage, by
+        // crashing, and no later stage is still waiting to learn its fate.
         let gate: BTreeSet<String> = members
             .iter()
             .map(|app| app.config().name.clone())
@@ -165,30 +175,35 @@ pub(crate) async fn start_in_stages(
 /// full deadline, which is what keeps a missing binary from costing the boot
 /// its whole budget.
 ///
-/// Two sources, because neither alone closes the window. The flock's own
-/// state, read once before any wait, answers for a member that settled while
-/// the start call was still returning. The bus answers for a member that has
-/// settled and moved on since, a restarted one being back at `Starting` by
-/// the time the read lands.
+/// Two sources with one definition. The flock, read through `drop_settled`,
+/// is the only thing that decides a name has settled, because a name is an
+/// app and an app can hold several instances. The bus decides only *when* to
+/// ask: an event is a trigger, never an answer. The read alone would be a
+/// snapshot that misses whatever settles after it, and the stream alone would
+/// miss what settled while the start call was still returning.
+///
+/// The cost of that is one `Command::List` round trip per settling event of a
+/// name this stage is waiting on, which is bounded by the stage's own size.
+///
+/// Everything is inside `bound`, the flock read included: it awaits an mpsc
+/// send and a oneshot on the actor, neither of which carries a deadline of
+/// its own.
 async fn await_stage(
     mut rx: broadcast::Receiver<SharedEvent>,
     mut waiting: BTreeSet<String>,
     bound: Duration,
     supervisor: &SupervisorHandle,
 ) -> BTreeSet<String> {
-    drop_settled(supervisor, &mut waiting).await;
-    if waiting.is_empty() {
-        return waiting;
-    }
     let settle = async {
+        drop_settled(supervisor, &mut waiting).await;
         while !waiting.is_empty() {
             match rx.recv().await {
                 Ok(event) => {
                     let BusEvent::Process { info, .. } = &*event else {
                         continue;
                     };
-                    if is_settled(info.status) {
-                        waiting.remove(&info.name);
+                    if waiting.contains(&info.name) && is_settled(info.status) {
+                        drop_settled(supervisor, &mut waiting).await;
                     }
                 }
                 // The events a lagged receiver skipped are gone, so treating
@@ -226,9 +241,12 @@ fn is_settled(status: ProcStatus) -> bool {
 /// register it has already returned, and nothing else will.
 ///
 /// A name with several instances is kept while any one of them is still
-/// starting, which is stricter than the event path's first-instance-wins.
-/// That is deliberate: this is a net under that path, and a net that
-/// resolves earlier than the path it backs would be the bug.
+/// starting. That is the whole reason this is the only definition of settled
+/// and the bus is a trigger: every instance of an app publishes under the
+/// same `ProcessInfo::name`, so settling on an event would release the name
+/// on whichever instance answered first. `AppConfig::depends_on` promises the
+/// opposite, and with probe-gated instances warming up unevenly the gap is
+/// seconds, not a window.
 ///
 /// An actor that has gone empties `waiting` outright. Nothing will ever
 /// report now, so holding the boot for the bound would only delay the same
@@ -277,6 +295,13 @@ mod tests {
 
     use crate::fake::ProcScript;
     use crate::testing::harness;
+
+    /// The bound a test passes `await_stage` when it expects the wait to end
+    /// on its own answer rather than on the clock.
+    ///
+    /// Short, because a test that reaches it either failed already or is
+    /// asserting that nothing settled; the passing path never pays it.
+    const SHORT_BOUND: Duration = Duration::from_millis(500);
 
     /// Every `process.*` event waiting on `rx`, as `"<kind> <name>"`, in the
     /// order the bus carried them.
@@ -329,7 +354,7 @@ mod tests {
         let mut rx = h.ctx.events.subscribe();
         start_in_stages(
             &plan,
-            apps,
+            &apps,
             &h.ctx.supervisor,
             &h.ctx.events,
             BatchPolicy::PerApp,
@@ -361,7 +386,7 @@ mod tests {
             Duration::from_secs(5),
             start_in_stages(
                 &plan,
-                apps,
+                &apps,
                 &h.ctx.supervisor,
                 &h.ctx.events,
                 BatchPolicy::PerApp,
@@ -393,7 +418,7 @@ mod tests {
         let plan = plan(&nodes_for(&apps, &[]));
         start_in_stages(
             &plan,
-            apps,
+            &apps,
             &h.ctx.supervisor,
             &h.ctx.events,
             BatchPolicy::PerApp,
@@ -411,8 +436,9 @@ mod tests {
         // fails if the driver reads the bus alone: an app that reached its
         // answer while the start call was still returning would then be
         // waited on until the bound, since its event is behind the cursor
-        // rather than ahead of it. The bound here is zero, so anything the
-        // wait does before reading the flock's own state fails the test.
+        // rather than ahead of it. Nothing will ever put that event on the bus
+        // again, so only the flock read can end this wait, and the short bound
+        // is what it costs when it does not happen.
         let h = harness(vec![ProcScript::never_exits()]);
         let apps = normalize_all(vec![AppConfig::minimal("db", "./sleep")]).expect("one app");
         h.ctx
@@ -423,23 +449,30 @@ mod tests {
 
         let rx = h.ctx.events.subscribe();
         let waiting = ["db".to_string()].into_iter().collect();
-        let unsettled = await_stage(rx, waiting, Duration::ZERO, &h.ctx.supervisor).await;
+        let unsettled = await_stage(rx, waiting, SHORT_BOUND, &h.ctx.supervisor).await;
 
         assert!(unsettled.is_empty(), "db is online, so nothing is waiting");
     }
 
     #[tokio::test]
-    async fn an_event_that_landed_before_the_wait_began_still_settles_the_stage() {
-        // fails if the subscription is taken after the start rather than
-        // before it: a fast app's `Online` lands in the gap and the stage
-        // then waits out its whole bound for an event nobody will send again.
-        // `db` is still `Starting` here, so only the buffered event can end
-        // this wait.
-        let h = harness(vec![ProcScript::never_exits()]);
-        let mut db = AppConfig::minimal("db", "./sleep");
-        db.listen_timeout = UpDuration::from_millis(30_000);
-        let apps = normalize_all(vec![db]).expect("one app");
-        let gate = ["db".to_string()].into_iter().collect();
+    async fn one_instance_going_online_does_not_settle_a_multi_instance_dependency() {
+        // fails if the wait settles a name off the event that triggered it:
+        // every instance of an app publishes under the same `ProcessInfo::name`,
+        // so instance 0 passing its probe would release a name whose other two
+        // instances are seconds away, against what `AppConfig::depends_on`
+        // promises. The event is put on the bus before the wait starts, so
+        // there is no race over whether it was read; the bound is what the
+        // wait costs when nothing settles, not a duration under test.
+        let h = harness(vec![
+            ProcScript::never_exits(),
+            ProcScript::never_exits(),
+            ProcScript::never_exits(),
+        ]);
+        let mut web = AppConfig::minimal("web", "./sleep");
+        web.instances = 3;
+        web.listen_timeout = UpDuration::from_millis(30_000);
+        let apps = normalize_all(vec![web]).expect("one app");
+        let gate = ["web".to_string()].into_iter().collect();
 
         let rx = h.ctx.events.subscribe();
         let started = h
@@ -448,25 +481,36 @@ mod tests {
             .start_staged(apps, gate, BatchPolicy::PerApp)
             .await
             .expect("a scripted app that never exits starts");
-        let mut info = started[0].clone();
-        assert_eq!(info.status, ProcStatus::Starting);
-        info.status = ProcStatus::Online;
+        assert_eq!(started.len(), 3);
+        assert!(
+            h.ctx
+                .supervisor
+                .list_checked()
+                .await
+                .expect("the actor is up")
+                .iter()
+                .all(|info| info.status == ProcStatus::Starting),
+            "a gated app parks every instance at Starting"
+        );
+
+        let mut first = started[0].clone();
+        first.status = ProcStatus::Online;
         h.ctx
             .events
-            .send(online_event(info).into())
+            .send(online_event(first).into())
             .expect("the harness holds a receiver open");
 
-        let waiting = ["db".to_string()].into_iter().collect();
+        let waiting = ["web".to_string()].into_iter().collect();
         let unsettled = tokio::time::timeout(
             Duration::from_secs(5),
-            await_stage(rx, waiting, Duration::from_secs(30), &h.ctx.supervisor),
+            await_stage(rx, waiting, SHORT_BOUND, &h.ctx.supervisor),
         )
         .await
-        .expect("an event already on the bus must end the wait");
+        .expect("the wait is bounded, so it ends either way");
 
         assert!(
-            unsettled.is_empty(),
-            "db reported online, so nothing is waiting"
+            unsettled.contains("web"),
+            "two of web's three instances are still starting"
         );
     }
 }
