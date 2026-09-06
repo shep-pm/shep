@@ -357,6 +357,7 @@ mod tests {
             .err_file(Some("/tmp/api-err.log".to_string()))
             .cpu_percent(Some(12.5))
             .memory_bytes(Some(1024 * 1024))
+            .max_memory(Some(64 * 1024 * 1024))
             .dog(Some(DogSource::Adopted {
                 path: "/usr/local/bin/dog".to_string(),
             }))
