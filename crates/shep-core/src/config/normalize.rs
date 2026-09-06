@@ -272,8 +272,8 @@ pub fn normalize_with_home(
             // one literal path for every instance, which is exactly the
             // collision this refuses. Two slots that render alike collide.
             if let Some(path) = path
-                && crate::config::template::render(path, &app.name, 0)
-                    == crate::config::template::render(path, &app.name, 1)
+                && crate::config::template::render_positional(path, &app.name, 0)
+                    == crate::config::template::render_positional(path, &app.name, 1)
             {
                 return Err(NormalizeError::SharedLogPath {
                     name: app.name.clone(),

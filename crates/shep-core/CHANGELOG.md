@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A third Flockfile template token, `{{secret:KEY}}` and
+  `{{secret:namespace/KEY}}`, resolved against the secret store. A malformed
+  reference is refused at config time, by the same grammar
+  `secrets::SecretRef::parse` enforces, so no second parser can drift from it.
+
+### Changed
+
+- `config::template::render` now takes a `secrets::SecretView` and returns
+  `Result<String, RenderError>`, so a spawn can refuse on a secret it cannot
+  resolve. Callers that have no store use the new `render_positional`, which
+  substitutes `{{instance}}` and `{{name}}` and leaves `{{secret:...}}` alone.
+  `RenderError::is_retriable` separates a namespace no provider dog has pushed
+  to yet, which a later attempt can clear, from a value only a person will
+  supply.
+
 ## [0.4.4] - 2026-09-06
 
 ### Changed
