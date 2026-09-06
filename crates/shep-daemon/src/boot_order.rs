@@ -482,9 +482,11 @@ pub(crate) async fn stop_in_reverse(plan: &BootPlan, supervisor: &SupervisorHand
         // one. That is what the flock-wide `shutdown` this replaced cost, the
         // ladder is 1600ms by default with no upper bound, and nothing rescues
         // a slow teardown: a repeat signal is a documented no-op while one
-        // runs, and the platform kills the daemon on its own clock. Nothing is
-        // lost by overlapping them, since a stage's members have no edges
-        // between each other by construction.
+        // runs, and the platform kills the daemon on its own clock. Nothing
+        // is lost by overlapping them: a Kahn stage's members have no edges
+        // between each other, and the one stage that does is the cyclic one
+        // the sort lifts in unordered, where every member depends on another
+        // member and no order is the correct one anyway.
         futures_util::future::join_all(stage.iter().map(|name| async move {
             if let Err(err) = supervisor.stop(ProcessSelector::Name(name.clone())).await {
                 tracing::warn!(sheep = %name, %err, "a sheep did not stop in its stage");
