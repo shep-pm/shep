@@ -300,14 +300,20 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
                 // The `Flock`/`Dogs` header becomes a band, drawn here
                 // rather than through `flock::key_line`'s own
                 // `RowKey::Section` arm: that arm's `section_line` stays,
-                // muted rather than a band, for `flock.rs`'s own direct
-                // callers, which this task's file list does not reach.
-                section_band(
-                    &label.to_ascii_uppercase(),
-                    Role::Meadow,
-                    &palette,
-                    table_width,
-                )
+                // muted rather than a band, but no current caller reaches
+                // it, since this task's file list does not extend to
+                // `flock.rs`.
+                //
+                // Meadow for the flock band, sky for the dogs band
+                // (docs/lookout/design-files/README.md:149). `"Dogs"` is
+                // the only other label `RowKey::Section` ever carries
+                // (see `App::visible_rows`), so anything else stays meadow.
+                let role = if *label == "Dogs" {
+                    Role::Sky
+                } else {
+                    Role::Meadow
+                };
+                section_band(&label.to_ascii_uppercase(), role, &palette, table_width)
             } else {
                 flock::key_line(app, key, columns, table_width, is_selected)
             };
@@ -460,6 +466,46 @@ mod tests {
         assert!(
             !title.contains(" of "),
             "no second number when nothing is hidden"
+        );
+    }
+
+    #[test]
+    fn the_flock_and_dogs_bands_carry_different_roles() {
+        // Meadow for the flock band, sky for the dogs band
+        // (docs/lookout/design-files/README.md:149).
+        let flock = vec![
+            ProcessInfo::builder(1, "web", ProcStatus::Online).build(),
+            ProcessInfo::builder(90, "otel", ProcStatus::Online)
+                .pid(Some(90_000))
+                .dog(Some(shep_core::protocol::DogSource::BuiltIn))
+                .build(),
+        ];
+        let app = fixtures::app_with(flock, fixtures::coloured());
+        let width = 60;
+        let mut terminal = Terminal::new(TestBackend::new(width, 12)).unwrap();
+        terminal.draw(|frame| draw(&app, frame)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let text = crate::lookout::frames::render_text(buffer);
+        let lines: Vec<&str> = text.lines().collect();
+        let flock_y = u16::try_from(
+            lines
+                .iter()
+                .position(|l| l.contains("FLOCK"))
+                .expect("a FLOCK band is drawn"),
+        )
+        .unwrap();
+        let dogs_y = u16::try_from(
+            lines
+                .iter()
+                .position(|l| l.contains("DOGS"))
+                .expect("a DOGS band is drawn"),
+        )
+        .unwrap();
+        let flock_fg = buffer.cell((flock::GUTTER, flock_y)).unwrap().fg;
+        let dogs_fg = buffer.cell((flock::GUTTER, dogs_y)).unwrap().fg;
+        assert_ne!(
+            flock_fg, dogs_fg,
+            "the flock and dogs bands must carry different roles"
         );
     }
 
