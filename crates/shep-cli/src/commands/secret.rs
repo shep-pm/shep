@@ -171,9 +171,12 @@ fn set(
 /// (`web/src/pages/docs/json-output.astro`), and a bare credential like
 /// `hunter2` is not even valid JSON.
 ///
-/// `--env` reads that slot exactly. Without it the value resolves the way a
-/// spawn in `host_environment` would, so an operator checking a value sees
-/// what the sheep would see.
+/// `--env` reads that slot exactly. Without it the value resolves against
+/// `host_environment`, [`daemon_config`]'s `[daemon] environment` default:
+/// this verb takes no sheep name, so it cannot read a Flockfile's own
+/// `environment` override, and an app that sets one may resolve
+/// differently. `--env` is how to check exactly what a given environment
+/// holds.
 ///
 /// Exits [`ExitCode::NotFound`] for a key with no value, writing nothing to
 /// `streams.out`, so `shep secret get k || echo default` works in a script.
@@ -225,8 +228,13 @@ fn get(
     }
 }
 
-/// The value a sheep running in `host_environment` would resolve `key` to:
-/// that environment's own slot, then [`ALL_ENVIRONMENTS`].
+/// What `key` resolves to in `host_environment`: that environment's own
+/// slot, then [`ALL_ENVIRONMENTS`].
+///
+/// `host_environment` is [`get`]'s own parameter, not a sheep's actual
+/// environment: this verb takes no sheep name, so it cannot tell whether
+/// some app's Flockfile sets its own `environment` and would resolve a
+/// value differently.
 ///
 /// The operator's own store alone. A provider dog's namespace is not
 /// reachable from here: those values live in the shepherd's memory, are not

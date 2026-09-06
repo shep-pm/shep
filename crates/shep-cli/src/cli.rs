@@ -1015,7 +1015,8 @@ pub enum SecretCommand {
     Get {
         /// The key
         key: String,
-        /// Which environment; omit to resolve the way a spawn would
+        /// Which environment; omit to use `[daemon] environment`'s
+        /// default, which an app's own environment may override
         #[arg(long)]
         env: Option<String>,
     },
