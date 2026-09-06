@@ -1,0 +1,8 @@
+---
+source: crates/shep-cli/src/lookout/view/pane.rs
+expression: "lines.join(\"\\n\")"
+---
+  web  args (list)                                                                                                      
+> 0    --port                                                                                                           
+  1    8080                                                                                                             
+       + new

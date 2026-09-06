@@ -6,7 +6,8 @@ use std::time::Instant;
 
 use ratatui::text::Line;
 use shep_client::RequestError;
-use shep_core::protocol::{BusEvent, DogSource, Lamb, ProcessInfo, Response};
+use shep_core::config::AppConfig;
+use shep_core::protocol::{BusEvent, DogSource, Lamb, ProcessInfo, Response, SheepConfigView};
 use shep_core::status::ProcStatus;
 
 use super::super::app::{
@@ -62,6 +63,55 @@ pub fn flock_of(count: u32, with_readings: u32) -> Vec<ProcessInfo> {
                 .build()
         })
         .collect()
+}
+
+/// Two sheep and one dog, for the flock table's section-header tests: a
+/// [`RowKey::Section`] splits the two kinds.
+pub fn app_with_a_dog() -> App {
+    let flock = vec![
+        ProcessInfo::builder(1, "web", ProcStatus::Online)
+            .pid(Some(48_001))
+            .uptime_ms(4_512_000)
+            .build(),
+        ProcessInfo::builder(2, "api", ProcStatus::Online)
+            .pid(Some(48_002))
+            .uptime_ms(4_512_000)
+            .build(),
+        ProcessInfo::builder(90, "otel", ProcStatus::Online)
+            .pid(Some(90_000))
+            .dog(Some(DogSource::BuiltIn))
+            .build(),
+    ];
+    app_with(flock, plain())
+}
+
+/// A dashboard with `otel` adopted from `/opt/otel`, selected, and the
+/// control gate open.
+pub fn app_with_a_dog_selected_and_control() -> App {
+    let decoy = ProcessInfo::builder(0, "!decoy", ProcStatus::Online).build();
+    let dog = ProcessInfo::builder(90, "otel", ProcStatus::Online)
+        .pid(Some(90_000))
+        .dog(Some(DogSource::Adopted {
+            path: "/opt/otel".to_string(),
+        }))
+        .build();
+    let mut app = app_with(vec![decoy, dog], plain());
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::SelectDown));
+    app
+}
+
+/// The same, with `otel` built in rather than adopted, so it carries no path.
+pub fn app_with_a_built_in_dog_selected_and_control() -> App {
+    let decoy = ProcessInfo::builder(0, "!decoy", ProcStatus::Online).build();
+    let dog = ProcessInfo::builder(90, "otel", ProcStatus::Online)
+        .pid(Some(90_000))
+        .dog(Some(DogSource::BuiltIn))
+        .build();
+    let mut app = app_with(vec![decoy, dog], plain());
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::SelectDown));
+    app
 }
 
 /// One plausible host reading: the same numbers the gallery's scenes use, so
@@ -596,4 +646,155 @@ pub fn app_in_settings_on_dog(name: &str) -> App {
 /// what the test is asserting on without checking the dogs list.
 pub fn app_in_settings_on_enabled_dog(name: &str) -> App {
     app_in_settings_on_dog(name)
+}
+
+/// One sheep's config as the shepherd would answer it: `web`, with two
+/// fields an operator has overridden, one parked until a respawn, and two
+/// env keys whose values the view never carries.
+pub fn sheep_config_view() -> SheepConfigView {
+    sheep_config_view_parking(vec!["kill_signal".to_string()])
+}
+
+/// [`sheep_config_view`] with `pending` in place of the one field it parks.
+fn sheep_config_view_parking(pending: Vec<String>) -> SheepConfigView {
+    let mut config = AppConfig {
+        name: "web".to_string(),
+        script: "./srv".to_string(),
+        args: vec!["--port".to_string(), "8080".to_string()],
+        max_restarts: 32,
+        instances: 3,
+        ..AppConfig::default()
+    };
+    config
+        .env
+        .insert("DB_HOST".to_string(), "db.internal".to_string());
+    config
+        .env
+        .insert("LOG_LEVEL".to_string(), "debug".to_string());
+    SheepConfigView::new(
+        config,
+        vec!["max_restarts".to_string(), "reuse_port".to_string()],
+        pending,
+    )
+}
+
+/// The bark dog's `[bark]` section as `Request::DogConfig` would answer it:
+/// a comment, two scalars, and a sink holding a webhook credential.
+///
+/// The comment is load-bearing rather than decoration: a write goes out as
+/// the WHOLE section, so a pane that re-rendered it from the parsed values
+/// would delete this line on the operator's own keystroke.
+pub fn dog_section() -> String {
+    "# how often\npoll = \"60s\"\nhistory_bytes = 4096\n\n[sinks.ops]\nkind = \"slack\"\nurl = \"https://hooks.example/x\"\n"
+        .to_string()
+}
+
+/// A dashboard with the bark dog's config pane open, opened the way the
+/// event loop opens it: `e` on the settings screen's own dog row, then the
+/// schema its binary answered with, then the shepherd's section. The
+/// control gate is open, so the pane can write.
+///
+/// bark is [`settings_snapshot`]'s first dog, and the six scalar rows
+/// always sort ahead of the dogs, so row 6 is its row.
+pub fn app_in_dog_pane() -> App {
+    let mut app = app_with(flock_of(3, 0), plain());
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::Settings));
+    app.update(Msg::Settings {
+        result: Ok(settings_snapshot()),
+    });
+    for _ in 0..6 {
+        app.update(Msg::Key(KeyPress::SelectDown));
+    }
+    app.update(Msg::Key(KeyPress::Edit));
+    app.update(Msg::DogPane {
+        name: "bark".to_string(),
+        adopted_path: None,
+        result: Ok(crate::dog::builtin_schema("bark").expect("bark is a built-in")),
+    });
+    app.update(Msg::Replied {
+        sent: Sent::DogSection {
+            name: "bark".to_string(),
+        },
+        result: Ok(Response::DogSection {
+            toml: dog_section().into(),
+        }),
+    });
+    app
+}
+
+/// [`app_in_sheep_pane`] with the control gate open: the pane can write.
+///
+/// The gate is set BEFORE the pane opens, so nothing about how it opened
+/// depends on it, which is what makes a read-only refusal and a permitted
+/// write comparable frames.
+pub fn app_in_sheep_pane_with_control() -> App {
+    let mut app = with_selection(
+        ProcessInfo::builder(9, "web", ProcStatus::Online)
+            .pid(Some(48_000))
+            .build(),
+    );
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::Edit));
+    app.update(Msg::Replied {
+        sent: Sent::SheepConfig {
+            name: "web".to_string(),
+        },
+        result: Ok(Response::SheepConfig(Box::new(sheep_config_view()))),
+    });
+    app
+}
+
+/// [`app_in_sheep_pane_with_control`], named for the tests about the apply
+/// menu: [`sheep_config_view`] parks `kill_signal` and nothing else.
+pub fn app_in_sheep_pane_with_a_parked_field() -> App {
+    app_in_sheep_pane_with_control()
+}
+
+/// The same pane over a sheep whose config parks two fields.
+pub fn app_in_sheep_pane_with_two_parked_fields() -> App {
+    app_in_sheep_pane_parking(vec!["kill_signal".to_string(), "script".to_string()])
+}
+
+/// The same pane over a sheep the running process is fully caught up with.
+pub fn app_in_sheep_pane_with_nothing_parked() -> App {
+    app_in_sheep_pane_parking(Vec::new())
+}
+
+/// [`app_in_sheep_pane_with_control`] over a view parking `pending`.
+fn app_in_sheep_pane_parking(pending: Vec<String>) -> App {
+    let mut app = with_selection(
+        ProcessInfo::builder(9, "web", ProcStatus::Online)
+            .pid(Some(48_000))
+            .build(),
+    );
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::Edit));
+    app.update(Msg::Replied {
+        sent: Sent::SheepConfig {
+            name: "web".to_string(),
+        },
+        result: Ok(Response::SheepConfig(Box::new(sheep_config_view_parking(
+            pending,
+        )))),
+    });
+    app
+}
+
+/// A dashboard with `web` selected and its config pane open, opened the way
+/// the event loop opens it: `e`, then the shepherd's own reply.
+pub fn app_in_sheep_pane() -> App {
+    let mut app = with_selection(
+        ProcessInfo::builder(9, "web", ProcStatus::Online)
+            .pid(Some(48_000))
+            .build(),
+    );
+    app.update(Msg::Key(KeyPress::Edit));
+    app.update(Msg::Replied {
+        sent: Sent::SheepConfig {
+            name: "web".to_string(),
+        },
+        result: Ok(Response::SheepConfig(Box::new(sheep_config_view()))),
+    });
+    app
 }

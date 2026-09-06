@@ -39,7 +39,7 @@
           "default": "3s",
           "init": {
             "blurb": "How long a triggered action has to answer before shep gives up",
-            "group": "control"
+            "group": "shutdown"
           }
         },
         "args": {
@@ -60,7 +60,7 @@
           "default": true,
           "init": {
             "blurb": "Restarts the process automatically when it exits unexpectedly",
-            "group": "control"
+            "group": "restart"
           }
         },
         "autostart": {
@@ -69,7 +69,7 @@
           "default": true,
           "init": {
             "blurb": "Start this app when the daemon starts, and on shep muster",
-            "group": "control"
+            "group": "restart"
           }
         },
         "channel": {
@@ -91,7 +91,13 @@
           "init": {
             "blurb": "Restart on a schedule, written as a cron pattern",
             "example": "* * * * *",
-            "group": "cron"
+            "group": "cron",
+            "suggest": [
+              "*/5 * * * *",
+              "0 * * * *",
+              "0 0 * * *",
+              "0 0 * * 0"
+            ]
           }
         },
         "cron_timezone": {
@@ -143,7 +149,7 @@
           "init": {
             "blurb": "Where stderr goes. Defaults to a file under $SHEP_HOME/logs",
             "example": "/var/log/my-first-sheep/err.log",
-            "group": "process"
+            "group": "logging"
           }
         },
         "exp_backoff_restart_delay": {
@@ -160,7 +166,7 @@
           "init": {
             "blurb": "Starting delay between restarts, growing each time it fails again",
             "example": "5s",
-            "group": "control"
+            "group": "restart"
           }
         },
         "fold": {
@@ -182,7 +188,7 @@
           "default": "8s",
           "init": {
             "blurb": "How long the old instance gets to drain during a reload",
-            "group": "control"
+            "group": "shutdown"
           }
         },
         "group": {
@@ -204,7 +210,7 @@
           "default": [],
           "init": {
             "blurb": "Paths watch should skip, on top of dotfiles and node_modules",
-            "group": "control"
+            "group": "watch"
           },
           "items": {
             "type": "string"
@@ -244,7 +250,13 @@
           "init": {
             "blurb": "Which signal shep sends first when stopping this app",
             "example": "SIGTERM",
-            "group": "process"
+            "group": "shutdown",
+            "suggest": [
+              "SIGTERM",
+              "SIGINT",
+              "SIGQUIT",
+              "SIGUSR2"
+            ]
           }
         },
         "kill_timeout": {
@@ -253,7 +265,7 @@
           "default": "1600",
           "init": {
             "blurb": "How long shep waits after the stop signal before SIGKILL",
-            "group": "control"
+            "group": "shutdown"
           }
         },
         "listen_timeout": {
@@ -262,7 +274,7 @@
           "default": "3s",
           "init": {
             "blurb": "How long to wait for readiness when nothing else reports it",
-            "group": "control"
+            "group": "readiness"
           }
         },
         "liveness_probe": {
@@ -282,7 +294,7 @@
               "kind": "http",
               "target": "http://127.0.0.1:8080/healthz"
             },
-            "group": "control"
+            "group": "readiness"
           }
         },
         "max_memory": {
@@ -299,7 +311,7 @@
           "init": {
             "blurb": "Restart the app if it climbs above this much memory",
             "example": "512M",
-            "group": "control"
+            "group": "restart"
           }
         },
         "max_restarts": {
@@ -309,7 +321,7 @@
           "default": 16,
           "init": {
             "blurb": "How many unstable exits in a row before shep gives up",
-            "group": "control"
+            "group": "restart"
           },
           "minimum": 0
         },
@@ -319,7 +331,7 @@
           "default": false,
           "init": {
             "blurb": "Put every instance's output in one pair of files",
-            "group": "process"
+            "group": "logging"
           }
         },
         "min_uptime": {
@@ -328,7 +340,7 @@
           "default": "1s",
           "init": {
             "blurb": "An exit sooner than this counts as unstable",
-            "group": "control"
+            "group": "restart"
           }
         },
         "name": {
@@ -351,7 +363,7 @@
           "init": {
             "blurb": "Where stdout goes. Defaults to a file under $SHEP_HOME/logs",
             "example": "/var/log/my-first-sheep/out.log",
-            "group": "process"
+            "group": "logging"
           }
         },
         "readiness_probe": {
@@ -371,7 +383,7 @@
               "kind": "http",
               "target": "http://127.0.0.1:8080/ready"
             },
-            "group": "control"
+            "group": "readiness"
           }
         },
         "restart_delay": {
@@ -388,7 +400,7 @@
           "init": {
             "blurb": "A fixed wait before every restart, instead of growing backoff",
             "example": "3s",
-            "group": "control"
+            "group": "restart"
           }
         },
         "reuse_port": {
@@ -416,7 +428,7 @@
           "default": false,
           "init": {
             "blurb": "Ask the app to stop over the channel instead of signalling it",
-            "group": "control"
+            "group": "shutdown"
           }
         },
         "stdin": {
@@ -434,7 +446,7 @@
           "default": [],
           "init": {
             "blurb": "Exit codes that mean a clean stop, so shep will not restart",
-            "group": "control"
+            "group": "restart"
           },
           "items": {
             "type": "integer",
@@ -460,7 +472,7 @@
           "default": false,
           "init": {
             "blurb": "Wait for the app to say it is ready on the channel",
-            "group": "control"
+            "group": "readiness"
           }
         },
         "watch": {
@@ -469,7 +481,7 @@
           "default": false,
           "init": {
             "blurb": "Restart when a file changes",
-            "group": "control"
+            "group": "watch"
           }
         },
         "watch_delay": {
@@ -486,7 +498,7 @@
           "init": {
             "blurb": "How long to wait after a change before restarting",
             "example": "500",
-            "group": "control"
+            "group": "watch"
           }
         },
         "watch_options": {
@@ -495,7 +507,7 @@
           "default": [],
           "init": {
             "blurb": "Which paths to watch. Empty means the working directory",
-            "group": "control"
+            "group": "watch"
           },
           "items": {
             "type": "string"

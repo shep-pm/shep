@@ -228,6 +228,20 @@ const NO_MEM: &[Column] = &[
 const NO_CPU: &[Column] = &[Column::Id, Column::Name, Column::Status, Column::Uptime];
 const FLOOR: &[Column] = &[Column::Id, Column::Name, Column::Status];
 
+/// The narrowest terminal that still draws the `CFG` column.
+///
+/// Read by the status bar's own test: the legend explaining `*` and `!`
+/// only has to fit where the glyphs it explains are drawn.
+#[cfg(test)]
+pub(super) fn cfg_tier_width() -> u16 {
+    TIERS
+        .iter()
+        .filter(|(_, columns)| columns.contains(&Column::Cfg))
+        .map(|(threshold, _)| *threshold)
+        .min()
+        .expect("a tier draws CFG")
+}
+
 /// Width thresholds, widest first. Each entry is the narrowest terminal that
 /// still gets that column set.
 ///
@@ -333,8 +347,8 @@ pub fn header_line(columns: &[Column], width: u16, style: Style) -> Line<'static
     Line::from(Span::styled(text, style))
 }
 
-/// One line for a row the table draws: a real sheep, or the header above an
-/// app's grouped instances.
+/// One line for a row the table draws: a real sheep, the header above an
+/// app's grouped instances, or a [`RowKey::Section`] header.
 ///
 /// `key`'s `Sheep` ids always name a row still in the flock in practice, so
 /// the blank fallback below is never drawn; it exists rather than an
@@ -352,7 +366,16 @@ pub fn key_line(app: &App, key: &RowKey, columns: &[Column], width: u16) -> Line
             |row| row_line(app, row, columns, width, app.is_grouped(&row.info.name)),
         ),
         RowKey::Group(name) => group_line(app, name, columns, width),
+        RowKey::Section(label) => section_line(label, width, app.palette().muted()),
     }
+}
+
+/// A [`RowKey::Section`] header: the label, then a rule filling the rest of
+/// the table's width.
+fn section_line(label: &str, width: u16, style: Style) -> Line<'static> {
+    let used = label.chars().count() + 1;
+    let rule = "─".repeat(usize::from(width).saturating_sub(used));
+    Line::from(Span::styled(format!("{label} {rule}"), style))
 }
 
 /// An app's group header row: [`App::group_totals`]'s own rollup, in the
