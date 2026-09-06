@@ -641,8 +641,9 @@ fn warn_about_the_graph(
     //
     // Silent when the paths already named everybody, which is the plain
     // two-node cycle: `plan` puts every knot in one stage, so this line is
-    // flock-wide and would otherwise repeat the line above verbatim. Per-knot
-    // membership is a `BootPlan` field the graph module does not expose.
+    // flock-wide and would otherwise repeat the line above verbatim.
+    // `BootPlan::knots` carries the membership per knot; this line wants the
+    // flock-wide set, which the cyclic stage already is.
     if let Some(stuck) = cyclic_stage(plan) {
         let named: BTreeSet<&str> = plan.cycles.iter().flatten().map(String::as_str).collect();
         if stuck.iter().any(|name| !named.contains(name.as_str())) {

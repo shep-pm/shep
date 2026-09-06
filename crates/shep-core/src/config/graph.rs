@@ -53,6 +53,13 @@ pub struct BootPlan {
     /// Several cycles can run through the same knot; the one named here is
     /// a representative, and breaking it is what an operator does about it.
     pub cycles: Vec<Vec<String>>,
+    /// Every member of each knot, index-aligned with [`BootPlan::cycles`].
+    ///
+    /// The representative path names only the nodes one cycle runs through,
+    /// so a knot of three reached by two edges leaves one of them off it. A
+    /// caller asking whether a name is stuck asks this; a caller printing
+    /// what to break prints the path.
+    pub knots: Vec<BTreeSet<String>>,
 }
 
 /// Renders one cycle as `a -> b -> c -> a`.
@@ -118,6 +125,10 @@ pub fn plan(nodes: &[BootNode]) -> BootPlan {
         .iter()
         .map(|members| representative_cycle(&edges, members))
         .collect();
+    let members: Vec<BTreeSet<String>> = knots
+        .iter()
+        .map(|knot| knot.iter().map(|name| (*name).to_string()).collect())
+        .collect();
 
     let after_cycle = depends_on_a_cycle(&edges, &in_a_cycle);
 
@@ -163,6 +174,7 @@ pub fn plan(nodes: &[BootNode]) -> BootPlan {
         stages,
         unresolved,
         cycles,
+        knots: members,
     }
 }
 
@@ -525,6 +537,31 @@ mod tests {
             out.cycles
         );
         assert_eq!(out.stages, vec![vec!["a", "b", "c", "d"]]);
+    }
+
+    #[test]
+    fn a_knot_reports_every_member_even_when_its_path_names_two() {
+        // fails if `knots` is derived from the reported path: the path runs
+        // through one cycle and "c" is off it, so a caller asking whether a
+        // name is stuck would read "c" as free
+        let out = plan(&[
+            sheep("a", &["b", "c"]),
+            sheep("b", &["a"]),
+            sheep("c", &["a"]),
+        ]);
+        assert_eq!(out.knots.len(), out.cycles.len(), "one set per path");
+        assert_eq!(
+            out.knots[0],
+            ["a", "b", "c"]
+                .iter()
+                .map(|n| (*n).to_string())
+                .collect::<BTreeSet<String>>()
+        );
+        assert!(
+            !out.cycles[0].contains(&"c".to_string()),
+            "the representative path is still a path: {:?}",
+            out.cycles[0]
+        );
     }
 
     #[test]

@@ -865,10 +865,16 @@ fn staged_plan(ctx: &RpcContext, apps: &[ResolvedApp]) -> Result<BootPlan, RpcEr
     // in the fold with an error naming apps the operator never mentioned.
     // A cycle that closes THROUGH the batch still has a batch member in it
     // and is still refused.
+    // Membership, not the path: `cycles` holds one representative path per
+    // knot, so a knot of three reached by two edges names two of them and a
+    // batch holding only the third would pass a test against the path.
+    // `knots` is index-aligned with `cycles`, so the path is still what the
+    // message renders.
     let cycle = plan
-        .cycles
+        .knots
         .iter()
-        .find(|cycle| cycle.iter().any(|name| batch.contains(name.as_str())));
+        .position(|knot| knot.iter().any(|name| batch.contains(name.as_str())))
+        .and_then(|knot| plan.cycles.get(knot));
     if let Some(cycle) = cycle {
         return Err(RpcError {
             code: RpcErrorCode::InvalidConfig,
@@ -907,6 +913,7 @@ fn staged_plan(ctx: &RpcContext, apps: &[ResolvedApp]) -> Result<BootPlan, RpcEr
             .collect(),
         unresolved: plan.unresolved,
         cycles: Vec::new(),
+        knots: Vec::new(),
     })
 }
 
@@ -1977,6 +1984,78 @@ mod tests {
         assert!(
             err.message.contains("api") && err.message.contains("db"),
             "both ends of the cycle must be named: {}",
+            err.message
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_batch_in_a_knot_the_named_path_leaves_out_is_still_refused() {
+        // fails if the cycle check tests the batch against the representative
+        // PATH instead of the knot's members: `plan` reports one path per
+        // knot, so a knot of three reached through two edges names only two
+        // of them, and the third starts into a dependency that can never be
+        // satisfied while the operator is told nothing.
+        let h = harness(vec![ProcScript::never_exits(); 3]);
+        let _started = reply_of(
+            dispatch(
+                envelope(
+                    1,
+                    Request::Start {
+                        apps: ["api", "db", "web"]
+                            .iter()
+                            .map(|name| AppConfig::minimal(name, "./srv"))
+                            .collect(),
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+
+        // `api -> {db, web}`, `db -> api`, `web -> api`: one knot holding all
+        // three, planted through `ApplyConfig` the way the sibling test does.
+        for (name, waits_for) in [
+            ("api", vec!["db", "web"]),
+            ("db", vec!["api"]),
+            ("web", vec!["api"]),
+        ] {
+            let mut config = AppConfig::minimal(name, "./srv");
+            config.depends_on = waits_for.iter().map(|n| (*n).to_string()).collect();
+            let reply = reply_of(
+                dispatch(
+                    envelope(
+                        2,
+                        Request::ApplyConfig {
+                            apps: vec![DeclaredApp {
+                                config,
+                                declared: ["depends_on"].iter().map(|k| (*k).to_string()).collect(),
+                                declared_env: BTreeSet::new(),
+                            }],
+                            reset: ResetDepth::None,
+                        },
+                    ),
+                    &h.ctx,
+                )
+                .await,
+            );
+            assert!(reply.result.is_ok(), "the load itself draws no cycle");
+        }
+
+        let mut web = AppConfig::minimal("web", "./srv");
+        web.depends_on = vec!["api".to_string()];
+        let reply =
+            reply_of(dispatch(envelope(3, Request::Start { apps: vec![web] }), &h.ctx).await);
+        let err = reply.result.unwrap_err();
+        assert_eq!(err.code, RpcErrorCode::InvalidConfig);
+        assert!(
+            err.message.starts_with("dependency cycle:"),
+            "web is in the knot even though the reported path omits it: {}",
+            err.message
+        );
+        assert!(
+            !err.message.contains("web"),
+            "the message still renders the representative path, which is what \
+             an operator breaks: {}",
             err.message
         );
     }
