@@ -449,8 +449,12 @@ pub(crate) fn harness_with_runner(
     // the extras must share one state, or a listing would read a watch set
     // nothing ever wrote to.
     let stats = Arc::clone(&extras.stats);
+    // Shared for `boot`'s reason: a `PutSecrets` through the harness has to
+    // reach the same registry a spawn resolves against.
+    let provider_secrets = Arc::new(crate::secrets::ProviderSecrets::load(&paths.secrets_cache));
     let supervisor = SupervisorBuilder::new(runner, paths.clone(), events.clone())
         .extras(extras)
+        .provider_secrets(Arc::clone(&provider_secrets))
         .spawn();
     let (shutdown, shutdown_rx) = watch::channel(false);
     Harness {
@@ -475,6 +479,7 @@ pub(crate) fn harness_with_runner(
             pid: 4242,
             shutdown: Arc::new(shutdown),
             stats: Arc::clone(&stats),
+            provider_secrets,
         },
         _dir: dir,
         _events_rx: events_rx,

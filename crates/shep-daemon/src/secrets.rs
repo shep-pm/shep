@@ -1,0 +1,458 @@
+//! `secrets-cache.json`: what provider dogs have pushed.
+//!
+//! A `{{secret:vercel/API_KEY}}` reference reads the namespace `vercel`,
+//! which is whatever the dog of that name last pushed over
+//! `Request::PutSecrets`. The values live in memory; the cache file exists
+//! so a shepherd that restarts still resolves them before the dog's next
+//! poll comes round.
+//!
+//! Derived, never authored: a file that will not read is skipped rather
+//! than refused, unlike [`shep_core::secrets`], which holds the operator's
+//! own store and refuses instead of guessing.
+
+use core::fmt;
+use std::collections::{BTreeMap, BTreeSet};
+use std::io::Write as _;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, PoisonError};
+
+use serde::{Deserialize, Serialize};
+
+/// The cache file's format version.
+///
+/// A file carrying any other version is read as empty: nothing here is
+/// authored, so a refetch costs one provider poll.
+const CACHE_VERSION: u32 = 1;
+
+/// `namespace -> key -> environment -> value`, the shape
+/// [`shep_core::secrets::SecretView::new`] takes its third argument in.
+type Namespaces = BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>>;
+
+/// The cache file's shape.
+///
+/// `BTreeMap` throughout so two writes of the same content produce
+/// byte-identical files.
+#[derive(Default, Serialize, Deserialize)]
+struct CacheFile {
+    version: u32,
+    namespaces: Namespaces,
+}
+
+/// Redacted (IR-41): `namespaces` holds provider values in the clear.
+impl fmt::Debug for CacheFile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CacheFile")
+            .field("version", &self.version)
+            .field("namespaces", &self.namespaces.len())
+            .finish()
+    }
+}
+
+/// What is pushed, and what of it may reach disk.
+#[derive(Default)]
+struct State {
+    /// Every namespace a dog has pushed to, empty push included.
+    namespaces: Namespaces,
+    /// The namespaces whose most recent push asked to persist. Exactly what
+    /// [`write_cache`] writes, so a namespace an operator set
+    /// `persist = false` for is never carried along by a neighbour's write.
+    persisted: BTreeSet<String>,
+}
+
+/// Every provider dog's pushed values, and the cache file the persisting
+/// ones survive a restart in.
+///
+/// Shared between the connection task that serves `Request::PutSecrets` and
+/// the supervisor actor that reads a view out of it per spawn. The two
+/// mutexes exist to keep those apart: `state` is never held across file
+/// I/O, so the actor's [`Self::snapshot`] can never wait on an `fsync`,
+/// and `writer` serializes the rewrites so the file ends up holding the
+/// last push rather than whichever write finished last.
+///
+/// Lock order is `writer` then `state`, never the reverse.
+pub struct ProviderSecrets {
+    state: Mutex<State>,
+    writer: Mutex<()>,
+    cache: PathBuf,
+}
+
+/// Redacted (IR-41): the values are the whole point of this type.
+impl fmt::Debug for ProviderSecrets {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProviderSecrets")
+            .field("namespaces", &self.state().namespaces.len())
+            .finish()
+    }
+}
+
+impl ProviderSecrets {
+    /// Reads `cache`, or starts empty when there is nothing readable there.
+    ///
+    /// Everything loaded counts as persisting: it came off disk, so the
+    /// setting that put it there was `persist = true` and stays so until a
+    /// push says otherwise.
+    pub fn load(cache: &Path) -> Self {
+        let namespaces = read_cache(cache);
+        let persisted = namespaces.keys().cloned().collect();
+        Self {
+            state: Mutex::new(State {
+                namespaces,
+                persisted,
+            }),
+            writer: Mutex::new(()),
+            cache: cache.to_path_buf(),
+        }
+    }
+
+    /// Replaces `namespace`'s values for `environment` with `entries`,
+    /// returning how many are stored for that pair.
+    ///
+    /// Replaces rather than merges: a key the provider has deleted is
+    /// absent from the push, and must be absent here too. Other
+    /// environments of the same namespace are untouched.
+    ///
+    /// `persist` decides whether the namespace may reach `cache`, and it is
+    /// read per push rather than settled once: a push that turns it off
+    /// takes the namespace out of the file on the spot. An empty `entries`
+    /// still registers the namespace, because "the dog has nothing" and "no
+    /// dog has pushed" send an operator to different places.
+    ///
+    /// # Errors
+    /// [`std::io::Error`] if the cache had to be rewritten and the staging
+    /// file, the `fsync` or the `rename` failed. The in-memory values are
+    /// already updated in that case: a spawn resolves against them, and
+    /// only a restart loses them.
+    pub fn put(
+        &self,
+        namespace: &str,
+        environment: &str,
+        entries: BTreeMap<String, String>,
+        persist: bool,
+    ) -> std::io::Result<u32> {
+        // Saturating rather than fallible: `MAX_FRAME_BYTES` caps a request
+        // long before a push can carry four billion entries.
+        let accepted = u32::try_from(entries.len()).unwrap_or(u32::MAX);
+
+        // Held for the whole call, the write included, so two pushes cannot
+        // land their files out of order. `state` below is not: it is
+        // released before the write, which is what keeps `snapshot` off the
+        // disk.
+        let _writer = self.writer.lock().unwrap_or_else(PoisonError::into_inner);
+
+        let pending = {
+            let mut state = self.state();
+            let table = state.namespaces.entry(namespace.to_owned()).or_default();
+            table.retain(|_, by_environment| {
+                by_environment.remove(environment);
+                !by_environment.is_empty()
+            });
+            for (key, value) in entries {
+                table
+                    .entry(key)
+                    .or_default()
+                    .insert(environment.to_owned(), value);
+            }
+
+            let rewrite = if persist {
+                state.persisted.insert(namespace.to_owned());
+                true
+            } else {
+                state.persisted.remove(namespace)
+            };
+            rewrite.then(|| persisted_view(&state))
+        };
+
+        if let Some(file) = pending {
+            write_cache(&self.cache, &file)?;
+        }
+        Ok(accepted)
+    }
+
+    /// Every namespace's values, in the shape
+    /// [`shep_core::secrets::SecretView::new`] takes.
+    ///
+    /// Cloned rather than borrowed: the supervisor holds the result across
+    /// a whole resolution pass, and a guard held that long would be the
+    /// thing a push waits on.
+    pub fn snapshot(&self) -> Namespaces {
+        self.state().namespaces.clone()
+    }
+
+    /// Every namespace a dog has pushed to, values not included.
+    pub fn namespaces(&self) -> BTreeSet<String> {
+        self.state().namespaces.keys().cloned().collect()
+    }
+
+    /// A poisoned lock is recovered rather than propagated, as
+    /// [`crate::rpc::KnownDogs`] does: a panic mid-push can leave a
+    /// namespace half replaced, and the next push replaces it whole.
+    fn state(&self) -> MutexGuard<'_, State> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// The cache file `state` should hold: its persisting namespaces and no
+/// others.
+fn persisted_view(state: &State) -> CacheFile {
+    CacheFile {
+        version: CACHE_VERSION,
+        namespaces: state
+            .persisted
+            .iter()
+            .filter_map(|name| {
+                state
+                    .namespaces
+                    .get(name)
+                    .map(|table| (name.clone(), table.clone()))
+            })
+            .collect(),
+    }
+}
+
+/// Whatever `path` holds, or nothing.
+fn read_cache(path: &Path) -> Namespaces {
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return Namespaces::new();
+    };
+    match serde_json::from_str::<CacheFile>(&raw) {
+        Ok(file) if file.version == CACHE_VERSION => file.namespaces,
+        _ => Namespaces::new(),
+    }
+}
+
+/// Rewrites `path` to hold exactly `file`: staged owner-only beside it,
+/// `fsync`ed, then renamed over the original.
+///
+/// # Errors
+/// [`std::io::Error`] from the staging file, the write, either `fsync`, or
+/// the `rename`. A failed rename leaves `path` as it was and removes the
+/// staging file.
+fn write_cache(path: &Path, file: &CacheFile) -> std::io::Result<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut tmp = shep_core::atomic_file::create_staging_file(parent, "secrets-cache", ".tmp")?;
+
+    let json = serde_json::to_string_pretty(file).map_err(std::io::Error::other)?;
+    tmp.write_all(json.as_bytes())?;
+    tmp.write_all(b"\n")?;
+    tmp.as_file().sync_all()?;
+
+    tmp.persist(path).map_err(|err| err.error)?;
+    shep_core::atomic_file::sync_dir(parent)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_push_replaces_that_namespace_and_environment_rather_than_merging() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("secrets-cache.json");
+        let store = ProviderSecrets::load(&cache);
+
+        store
+            .put(
+                "vercel",
+                "production",
+                BTreeMap::from([("A".into(), "1".into()), ("B".into(), "2".into())]),
+                false,
+            )
+            .unwrap();
+        // B is gone at the provider, so it must be gone here too.
+        store
+            .put(
+                "vercel",
+                "production",
+                BTreeMap::from([("A".into(), "9".into())]),
+                false,
+            )
+            .unwrap();
+
+        let snap = store.snapshot();
+        let vercel = &snap["vercel"];
+        assert_eq!(vercel["A"]["production"], "9");
+        assert!(
+            !vercel.contains_key("B"),
+            "a replaced push drops what it omits"
+        );
+    }
+
+    #[test]
+    fn one_environment_does_not_disturb_another() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ProviderSecrets::load(&dir.path().join("secrets-cache.json"));
+        store
+            .put(
+                "v",
+                "production",
+                BTreeMap::from([("A".into(), "p".into())]),
+                false,
+            )
+            .unwrap();
+        store
+            .put(
+                "v",
+                "staging",
+                BTreeMap::from([("A".into(), "s".into())]),
+                false,
+            )
+            .unwrap();
+        let snap = store.snapshot();
+        assert_eq!(snap["v"]["A"]["production"], "p");
+        assert_eq!(snap["v"]["A"]["staging"], "s");
+    }
+
+    #[test]
+    fn a_persisted_push_survives_a_reload_and_an_unpersisted_one_does_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("secrets-cache.json");
+
+        let first = ProviderSecrets::load(&cache);
+        first
+            .put(
+                "kept",
+                "production",
+                BTreeMap::from([("A".into(), "1".into())]),
+                true,
+            )
+            .unwrap();
+        first
+            .put(
+                "gone",
+                "production",
+                BTreeMap::from([("B".into(), "2".into())]),
+                false,
+            )
+            .unwrap();
+
+        let second = ProviderSecrets::load(&cache);
+        assert!(second.namespaces().contains("kept"));
+        assert!(!second.namespaces().contains("gone"));
+    }
+
+    /// The reverse order of the test above, which is the one that matters:
+    /// the unpersisted namespace is already in memory when the persisted
+    /// push rewrites the file, so it is a bystander the write could sweep
+    /// in against the operator's `persist = false`.
+    #[test]
+    fn an_unpersisted_namespace_is_not_swept_in_by_a_later_persisted_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("secrets-cache.json");
+
+        let first = ProviderSecrets::load(&cache);
+        first
+            .put(
+                "unpersisted",
+                "production",
+                BTreeMap::from([("A".into(), "1".into())]),
+                false,
+            )
+            .unwrap();
+        first
+            .put(
+                "persisted",
+                "production",
+                BTreeMap::from([("B".into(), "2".into())]),
+                true,
+            )
+            .unwrap();
+
+        let second = ProviderSecrets::load(&cache);
+        assert_eq!(
+            second.namespaces(),
+            BTreeSet::from(["persisted".to_string()])
+        );
+        let raw = std::fs::read_to_string(&cache).unwrap();
+        assert!(
+            !raw.contains("unpersisted"),
+            "the unpersisted namespace reached disk: {raw}"
+        );
+    }
+
+    /// A namespace the operator has stopped persisting leaves the file on
+    /// the push that says so, rather than lingering until some other
+    /// namespace happens to rewrite it.
+    #[test]
+    fn dropping_persist_removes_that_namespace_from_the_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("secrets-cache.json");
+
+        let first = ProviderSecrets::load(&cache);
+        first
+            .put(
+                "v",
+                "production",
+                BTreeMap::from([("A".into(), "1".into())]),
+                true,
+            )
+            .unwrap();
+        first
+            .put(
+                "v",
+                "production",
+                BTreeMap::from([("A".into(), "2".into())]),
+                false,
+            )
+            .unwrap();
+
+        assert!(ProviderSecrets::load(&cache).namespaces().is_empty());
+    }
+
+    #[test]
+    fn a_namespace_is_known_as_soon_as_it_is_pushed_even_when_empty() {
+        // MissingNamespace means "no dog has pushed here"; an empty push is
+        // a dog saying it has nothing, which is a different answer.
+        let dir = tempfile::tempdir().unwrap();
+        let store = ProviderSecrets::load(&dir.path().join("secrets-cache.json"));
+        store
+            .put("v", "production", BTreeMap::new(), false)
+            .unwrap();
+        assert!(store.namespaces().contains("v"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn the_cache_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("secrets-cache.json");
+        ProviderSecrets::load(&cache)
+            .put(
+                "v",
+                "production",
+                BTreeMap::from([("A".into(), "1".into())]),
+                true,
+            )
+            .unwrap();
+        let mode = std::fs::metadata(&cache).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
+
+    /// A cache file this build cannot read is a refetch, not a boot
+    /// failure: nothing in it is authored, and the dog that wrote it
+    /// rewrites it on its next push.
+    #[test]
+    fn an_unreadable_cache_loads_as_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("secrets-cache.json");
+        std::fs::write(&cache, "{ not json").unwrap();
+        assert!(ProviderSecrets::load(&cache).namespaces().is_empty());
+    }
+
+    /// IR-41.
+    #[test]
+    fn debug_never_prints_a_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ProviderSecrets::load(&dir.path().join("secrets-cache.json"));
+        store
+            .put(
+                "v",
+                "production",
+                BTreeMap::from([("A".into(), "hunter2".into())]),
+                false,
+            )
+            .unwrap();
+        let rendered = format!("{store:?}");
+        assert_eq!(rendered, "ProviderSecrets { namespaces: 1 }");
+    }
+}

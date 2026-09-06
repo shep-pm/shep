@@ -65,6 +65,7 @@ use crate::runner::{
     ExitOutcome, FlushError, LogCtl, Preflight, ProcIo, ProcessRunner, ReopenError, RunnerError,
     RunningProcess, SpawnSpec, StdinWrite, check_log_ancestry, open_log_path,
 };
+use crate::secrets::ProviderSecrets;
 
 /// Capacity of the actor's own mailbox (commands + internal events).
 const MAILBOX_CAPACITY: usize = 256;
@@ -1396,6 +1397,7 @@ pub(crate) struct SupervisorBuilder<R: ProcessRunner> {
     events: Bus,
     extras: Option<Extras>,
     environment: String,
+    provider_secrets: Option<Arc<ProviderSecrets>>,
 }
 
 impl<R: ProcessRunner> SupervisorBuilder<R> {
@@ -1409,6 +1411,7 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
             events,
             extras: None,
             environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets: None,
         }
     }
 
@@ -1428,6 +1431,19 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
     #[must_use]
     pub(crate) fn environment(mut self, environment: String) -> Self {
         self.environment = environment;
+        self
+    }
+
+    /// The registry a provider dog pushes into, shared with the connection
+    /// tasks that serve `Request::PutSecrets`.
+    ///
+    /// Left unset, the actor loads one of its own from
+    /// [`ShepPaths::secrets_cache`], which is what a cold boot with no dog
+    /// yet running resolves against anyway. `boot` passes the shared one
+    /// so a push reaches the next spawn.
+    #[must_use]
+    pub(crate) fn provider_secrets(mut self, secrets: Arc<ProviderSecrets>) -> Self {
+        self.provider_secrets = Some(secrets);
         self
     }
 
@@ -1484,11 +1500,15 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
 
     /// The actor both spawn paths start from: no sheep, counters at zero.
     fn build(self, tx: mpsc::Sender<Msg>) -> Actor<R> {
+        let provider_secrets = self
+            .provider_secrets
+            .unwrap_or_else(|| Arc::new(ProviderSecrets::load(&self.paths.secrets_cache)));
         Actor {
             runner: self.runner,
             paths: self.paths,
             events: self.events,
             host_environment: self.environment,
+            provider_secrets,
             tx,
             sheep: HashMap::new(),
             next_id: 0,
@@ -2441,6 +2461,10 @@ struct Actor<R: ProcessRunner> {
     /// The environment a sheep that sets no `environment` of its own
     /// resolves its `{{secret:...}}` references in; see [`Self::secret_view`].
     host_environment: String,
+    /// What provider dogs have pushed, the namespaced half of every
+    /// [`SecretView`] this actor builds. Shared with the connection tasks
+    /// that write it; see [`ProviderSecrets`].
+    provider_secrets: Arc<ProviderSecrets>,
     /// Bus: process lifecycle events + forwarded logs.
     events: Bus,
     /// Clone handed to sheep tasks and restart timers so they can report
@@ -2961,6 +2985,9 @@ impl<R: ProcessRunner> Actor<R> {
     /// A store that cannot be read yields an empty view rather than failing
     /// here. A sheep that needs nothing from it still spawns, and one that
     /// does gets the ordinary refusal naming its own reference.
+    ///
+    /// The namespaced half comes from [`ProviderSecrets`], in memory, so
+    /// this reads the file for the operator's own store and nothing else.
     fn secret_view(&self, app: &ResolvedApp) -> SecretView {
         let environment = app
             .config()
@@ -2968,9 +2995,7 @@ impl<R: ProcessRunner> Actor<R> {
             .clone()
             .unwrap_or_else(|| self.host_environment.clone());
         let store = shep_core::secrets::all(&self.paths.secrets).unwrap_or_default();
-        // No provider dog can push yet, so every `{{secret:ns/KEY}}` is
-        // refused retriably and the sheep waits rather than erroring.
-        SecretView::new(environment, store, BTreeMap::new())
+        SecretView::new(environment, store, self.provider_secrets.snapshot())
     }
 
     /// The field names an operator has overridden for `name`, for a
@@ -9667,11 +9692,13 @@ mod tests {
         sheep.insert(0, slot);
         let (events, _events_rx) = crate::bus::test_bus(16);
         let (tx, _rx) = mpsc::channel(16);
+        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
         let actor = Actor {
             runner: ScriptedRunner::new(vec![]),
             paths,
             events,
             host_environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets,
             tx,
             sheep,
             next_id: 1,
@@ -9774,11 +9801,13 @@ mod tests {
         );
         let (events, _events_rx) = crate::bus::test_bus(16);
         let (tx, _mailbox) = mpsc::channel(16);
+        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
         let mut actor = Actor {
             runner: ScriptedRunner::new(vec![]),
             paths,
             events,
             host_environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets,
             tx,
             sheep,
             next_id: 1,
@@ -10431,11 +10460,13 @@ mod tests {
         );
         let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, rx) = mpsc::channel(MAILBOX_CAPACITY);
+        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
         let actor = Actor {
             runner: ScriptedRunner::new(scripts),
             paths,
             events,
             host_environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets,
             tx,
             sheep,
             next_id: 1,
@@ -10492,11 +10523,13 @@ mod tests {
         }
         let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, rx) = mpsc::channel(MAILBOX_CAPACITY);
+        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
         let actor = Actor {
             runner: ScriptedRunner::new(Vec::new()),
             paths,
             events,
             host_environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets,
             tx,
             sheep,
             next_id: DOG_ID + 1,
@@ -10671,11 +10704,13 @@ mod tests {
         }
         let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, _rx) = mpsc::channel(MAILBOX_CAPACITY);
+        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
         Actor {
             runner: ScriptedRunner::new(scripts),
             paths,
             events,
             host_environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets,
             tx,
             sheep,
             next_id: instances,
@@ -15121,11 +15156,14 @@ mod tests {
     ) -> Actor<ScriptedRunner> {
         let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, _rx) = mpsc::channel(MAILBOX_CAPACITY);
+        let paths = test_paths(dir);
+        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
         Actor {
             runner: ScriptedRunner::new(scripts),
-            paths: test_paths(dir),
+            paths,
             events,
             host_environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets,
             tx,
             sheep: HashMap::new(),
             next_id: 0,
@@ -17807,6 +17845,7 @@ mod tests {
         };
         let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, _rx) = mpsc::channel(MAILBOX_CAPACITY);
+        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
         let actor = Actor {
             // Enough scripts for a scale-up to come up: without them a case
             // that scales would assert on a shortfall rather than the apply.
@@ -17814,6 +17853,7 @@ mod tests {
             paths,
             events,
             host_environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets,
             tx,
             sheep,
             next_id,

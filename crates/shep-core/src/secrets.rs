@@ -149,9 +149,16 @@ impl From<serde_json::Error> for SecretError {
 
 /// The grammar shared by keys, namespaces and environment names.
 ///
-/// Excludes `/`, so a name can never contain the separator
-/// [`SecretRef::parse`] splits a namespace from a key on.
-pub(crate) fn is_name(value: &str) -> bool {
+/// Non-empty, at most [`MAX_KEY_BYTES`], not starting with `.`, and drawn
+/// from `[A-Za-z0-9._-]`. Excludes `/`, so a name can never contain the
+/// separator [`SecretRef::parse`] splits a namespace from a key on.
+///
+/// Public because the daemon checks a peer's namespace and environment
+/// against it before storing anything under either: a name outside this
+/// grammar is one no `{{secret:...}}` reference could ever name, so
+/// accepting it would be a silent no-op.
+#[must_use]
+pub fn is_name(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_KEY_BYTES
         && !value.starts_with('.')
@@ -335,11 +342,13 @@ fn write_file(path: &Path, file: &SecretFile) -> Result<(), SecretError> {
 /// Every key in the store with its per-environment values, in key order.
 ///
 /// Takes no lock, so a caller that must not block never does: the daemon
-/// reads this from inside its actor loop, once per spawn. That is safe
-/// because a writer publishes by renaming a fully written file over this
-/// one, so a reader sees the whole store either before or after a
-/// `set`/`unset`, never a fragment of one. The lock [`set`] and [`unset`]
-/// take is what orders those read-modify-writes against each other.
+/// reads this from inside its actor loop, once per spawn, once per app at
+/// preflight, and once more each time a sheep's extras arm on the way to
+/// `Online`. That is safe because a writer publishes by renaming a fully
+/// written file over this one, so a reader sees the whole store either
+/// before or after a `set`/`unset`, never a fragment of one. The lock
+/// [`set`] and [`unset`] take is what orders those read-modify-writes
+/// against each other.
 ///
 /// # Errors
 ///

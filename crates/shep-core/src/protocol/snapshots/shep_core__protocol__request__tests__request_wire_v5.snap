@@ -434,5 +434,17 @@ expression: requests
       "name": "bark",
       "toml": "debounce = \"30s\"\n"
     }
+  },
+  {
+    "id": 32,
+    "deadline_ms": null,
+    "body": {
+      "kind": "put_secrets",
+      "namespace": "vercel",
+      "environment": "production",
+      "entries": {
+        "API_KEY": "sk_live_placeholder"
+      }
+    }
   }
 ]

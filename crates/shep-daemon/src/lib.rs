@@ -213,6 +213,10 @@ pub(crate) mod extras;
 #[cfg(unix)]
 pub(crate) mod handover;
 pub(crate) mod kill;
+// The provider values a dog has pushed, and the cache file they survive a
+// restart in. Crate-private: a dog writes here over the socket, never by
+// linking this crate.
+pub(crate) mod secrets;
 pub(crate) mod watch;
 
 // Reachable tier: each of these is named from outside this crate's `src`, by

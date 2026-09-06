@@ -1,11 +1,12 @@
-//! The client<->daemon wire protocol (version 4).
+//! The client<->daemon wire protocol (version 5).
 //!
 //! Typed request/response enums plus bus events. Framing lives in
 //! [`wire`]; a serialized shape change bumps [`PROTOCOL_VERSION`].
-//! Version 4 bumped on an addition. An older daemon cannot decode the
-//! new config requests, so the handshake catches the skew.
+//! Versions 4 and 5 bumped on an addition. An older daemon cannot decode
+//! the new config requests or a provider dog's push, so the handshake
+//! catches the skew.
 //!
-//! A `*_wire_v4` test pins today's shape. A
+//! A `*_wire_v5` test pins today's shape. A
 //! `v1_*_fixture_still_deserializes` test pins an old peer's payload and
 //! never renames.
 
@@ -41,4 +42,4 @@ pub mod channel {
 /// renaming, or retyping anything serialized bumps it, recorded in the
 /// CHANGELOG. Byte fixtures in each protocol module pin the deserialize
 /// direction.
-pub const PROTOCOL_VERSION: u32 = 4;
+pub const PROTOCOL_VERSION: u32 = 5;

@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Request::PutSecrets`: a provider dog pushes the values it fetched from
+  Vercel, Vault or anywhere else into a namespace, and
+  `{{secret:<namespace>/KEY}}` resolves against them. Push rather than pull,
+  because `assemble` is a synchronous pure function on the spawn path and a
+  pull would put a socket round trip and a timeout on every instance of every
+  sheep.
+- `$SHEP_HOME/secrets-cache.json`, owner-only, so a shepherd that restarts
+  resolves a namespace before its dog's next poll comes round. A dog's
+  `persist` key in `dogs.toml` decides whether its namespace may reach the
+  file, defaulting to `true`, and only the namespaces whose most recent push
+  asked for it are ever written. The file is derived: one that will not read
+  is skipped rather than refused.
+
 ## [0.4.4] - 2026-09-06
 
 ### Changed

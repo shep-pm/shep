@@ -760,5 +760,16 @@ expression: replies
         }
       }
     }
+  },
+  {
+    "id": 38,
+    "result": {
+      "Ok": {
+        "kind": "secrets_put",
+        "data": {
+          "accepted": 2
+        }
+      }
+    }
   }
 ]

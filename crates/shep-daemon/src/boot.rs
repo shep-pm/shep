@@ -860,7 +860,21 @@ pub async fn boot<R: ProcessRunner>(
     // baseline and the RPC layer reads a live sample against it, so a second
     // state would leave one of them on an empty watch set.
     let stats = Arc::clone(&extras.stats);
-    let mut builder = SupervisorBuilder::new(runner, paths.clone(), events.clone()).extras(extras);
+    // One registry, two owners, as `stats` above: the connection tasks
+    // serving `Request::PutSecrets` write it and the actor reads a view out
+    // of it per spawn, so a second one would leave a dog pushing into a
+    // registry no spawn ever consults.
+    let provider_secrets = Arc::new(crate::secrets::ProviderSecrets::load(&paths.secrets_cache));
+    // Names, never values (IR-41). This is the line that separates "the dog
+    // has not polled since the restart" from "the operator turned the cache
+    // off", which a sheep held back by a `MissingNamespace` cannot say.
+    tracing::debug!(
+        namespaces = ?provider_secrets.namespaces(),
+        "provider namespaces restored from the secrets cache"
+    );
+    let mut builder = SupervisorBuilder::new(runner, paths.clone(), events.clone())
+        .extras(extras)
+        .provider_secrets(Arc::clone(&provider_secrets));
     if let Some(environment) = options.environment.take() {
         builder = builder.environment(environment);
     }
@@ -970,6 +984,7 @@ pub async fn boot<R: ProcessRunner>(
         pid,
         shutdown,
         stats,
+        provider_secrets,
     };
 
     // 5. A failure is a `warn!` and the boot continues: only systemd's view
