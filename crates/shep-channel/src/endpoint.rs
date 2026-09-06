@@ -227,12 +227,43 @@ fn read_half(transport: Transport) -> ReadHalf {
 /// a later, legitimate call would be refused for no reason.
 static CHANNEL_TAKEN: AtomicBool = AtomicBool::new(false);
 
+/// Refuses a descriptor that cannot be the shepherd's channel.
+///
+/// `getsockname` answers for any socket, connected or not. A shepherd
+/// that has already closed its end still passes.
+/// It reports `ENOTSOCK` for a plain file or pipe, `EBADF` for a closed
+/// number.
+/// A socket this process owns for its own reasons passes. Nothing the
+/// kernel offers names the descriptor a parent handed over.
+///
+/// # Errors
+///
+/// [`ChannelError::Unusable`] when the descriptor is not an open socket.
+/// It is left open either way.
+#[cfg(unix)]
+fn refuse_unless_socket(fd: i32) -> Result<(), ChannelError> {
+    use std::os::fd::FromRawFd as _;
+
+    // SAFETY: `ManuallyDrop` is the invariant. The value is never dropped,
+    // so nothing closes a descriptor this process may not own.
+    // `local_addr` reads through `&self` and moves nothing.
+    #[allow(unsafe_code)]
+    let probe = core::mem::ManuallyDrop::new(unsafe { Transport::from_raw_fd(fd) });
+    probe.local_addr().map_err(|error| {
+        ChannelError::Unusable(format!(
+            "{FD_VAR}={fd} is not an open socket ({error}): the shepherd passes \
+             the channel as one end of a socketpair"
+        ))
+    })?;
+    Ok(())
+}
+
 /// Opens the endpoint, returning the reader's half and the writer's clone.
 ///
 /// # Errors
 ///
 /// - [`ChannelError::Unusable`] when the endpoint names a mechanism this
-///   platform does not have.
+///   platform does not have, or a descriptor that is not an open socket.
 /// - [`ChannelError::Io`] when the pipe cannot be opened or the descriptor
 ///   cannot be cloned.
 /// - [`ChannelError::AlreadyTaken`] when this process already took its
@@ -241,14 +272,18 @@ pub(crate) fn connect(endpoint: &Endpoint) -> Result<(ReadHalf, Transport), Chan
     let transport = match endpoint {
         #[cfg(unix)]
         Endpoint::Descriptor(fd) => {
+            // Probes before claiming, like the Windows arm below. A refusal
+            // must leave the guard alone, or one bad descriptor would refuse
+            // every later call in this process.
+            refuse_unless_socket(*fd)?;
             if CHANNEL_TAKEN.swap(true, Ordering::SeqCst) {
                 return Err(ChannelError::AlreadyTaken);
             }
             use std::os::fd::FromRawFd as _;
             // SAFETY: soundness rests on the shepherd naming a descriptor it
-            // handed this process. `from_raw_fd` validates nothing, and the
-            // floor of 3 only keeps stdio out of reach. `CHANNEL_TAKEN` above
-            // makes this arm reachable once per process.
+            // handed this process. The probe above rules out everything but
+            // another socket this process owns. `CHANNEL_TAKEN` makes this arm
+            // reachable once per process.
             #[allow(unsafe_code)]
             unsafe {
                 Transport::from_raw_fd(*fd)
@@ -318,7 +353,7 @@ pub(crate) fn connect(endpoint: &Endpoint) -> Result<(ReadHalf, Transport), Chan
 #[cfg(test)]
 mod tests {
     #[cfg(unix)]
-    use std::os::fd::IntoRawFd as _;
+    use std::os::fd::{AsRawFd as _, IntoRawFd as _};
     #[cfg(unix)]
     use std::os::unix::net::UnixStream;
 
@@ -389,9 +424,49 @@ mod tests {
         ));
     }
 
-    /// The only test here that calls `connect`. `CHANNEL_TAKEN` is
-    /// process-global, and tests share one process. A second caller
-    /// here would find the channel already taken.
+    /// Fails if a descriptor that is not a socket is adopted.
+    /// Fails too if the refusal closes it.
+    /// Adopting one would write frames into a file the process opened
+    /// for itself, then close it under the owner.
+    #[cfg(unix)]
+    #[test]
+    fn a_descriptor_that_is_not_a_socket_is_refused_and_left_open() {
+        use std::io::{Read as _, Seek as _, Write as _};
+
+        let path =
+            std::env::temp_dir().join(format!("shep-channel-not-a-socket-{}", std::process::id()));
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&path)
+            .expect("open a plain file to point the descriptor at");
+        std::fs::remove_file(&path).expect("unlink the plain file");
+
+        match connect(&Endpoint::Descriptor(file.as_raw_fd())) {
+            Err(ChannelError::Unusable(what)) => assert!(
+                what.contains("is not an open socket"),
+                "the refusal does not say what is wrong with the descriptor: {what}"
+            ),
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+
+        // The point of the refusal, not a second assertion about it. A
+        // probe that closed the descriptor would leave the number free
+        // for the next `open` to hand to someone else.
+        file.write_all(b"still open")
+            .expect("write after the refusal");
+        file.rewind().expect("rewind after the refusal");
+        let mut back = String::new();
+        file.read_to_string(&mut back)
+            .expect("read after the refusal");
+        assert_eq!(back, "still open");
+    }
+
+    /// The only test that takes the channel. `CHANNEL_TAKEN` is
+    /// process-global, and tests share one process. The refusal above
+    /// probes before claiming, so it leaves the guard for this one.
     ///
     /// Asserts the transition, not just the second call's error. The
     /// first call must succeed here too, or a `connect` that refused
