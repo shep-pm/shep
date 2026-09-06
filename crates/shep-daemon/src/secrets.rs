@@ -17,16 +17,18 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use serde::{Deserialize, Serialize};
+use shep_core::secrets::{NamespaceValues, ProviderCache, PushedPairs};
 
 /// The cache file's format version.
 ///
 /// A file carrying any other version is read as empty: nothing here is
 /// authored, so a refetch costs one provider poll.
-const CACHE_VERSION: u32 = 1;
-
-/// `namespace -> key -> environment -> value`, the shape
-/// [`shep_core::secrets::SecretView::new`] takes its third argument in.
-type Namespaces = BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>>;
+///
+/// Matches `shep_core::secrets`'s own `PROVIDER_CACHE_VERSION`, which is
+/// what `shep describe` reads this file with; a mismatch there and here is
+/// a drift neither side can detect on its own, so the two constants carry
+/// the same comment.
+const CACHE_VERSION: u32 = 2;
 
 /// The cache file's shape.
 ///
@@ -35,7 +37,8 @@ type Namespaces = BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>>;
 #[derive(Default, Serialize, Deserialize)]
 struct CacheFile {
     version: u32,
-    namespaces: Namespaces,
+    namespaces: NamespaceValues,
+    pushed: PushedPairs,
 }
 
 /// Redacted (IR-41): `namespaces` holds provider values in the clear.
@@ -44,6 +47,7 @@ impl fmt::Debug for CacheFile {
         f.debug_struct("CacheFile")
             .field("version", &self.version)
             .field("namespaces", &self.namespaces.len())
+            .field("pushed", &self.pushed.len())
             .finish()
     }
 }
@@ -52,7 +56,12 @@ impl fmt::Debug for CacheFile {
 #[derive(Default)]
 struct State {
     /// Every namespace a dog has pushed to, empty push included.
-    namespaces: Namespaces,
+    namespaces: NamespaceValues,
+    /// Every `(namespace, environment)` pair a push has landed for. A push
+    /// carries one pair, so a dog that has done `production` and not yet
+    /// `staging` is present here for one of the two, which is what keeps a
+    /// staging sheep on the restart ladder instead of `Errored`.
+    pushed: PushedPairs,
     /// The namespaces whose most recent push asked to persist. Exactly what
     /// [`write_cache`] writes, so a namespace an operator set
     /// `persist = false` for is never carried along by a neighbour's write.
@@ -92,11 +101,12 @@ impl ProviderSecrets {
     /// setting that put it there was `persist = true` and stays so until a
     /// push says otherwise.
     pub fn load(cache: &Path) -> Self {
-        let namespaces = read_cache(cache);
-        let persisted = namespaces.keys().cloned().collect();
+        let cached = read_cache(cache);
+        let persisted = cached.values.keys().cloned().collect();
         Self {
             state: Mutex::new(State {
-                namespaces,
+                namespaces: cached.values,
+                pushed: cached.pushed,
                 persisted,
             }),
             writer: Mutex::new(()),
@@ -153,6 +163,12 @@ impl ProviderSecrets {
                     .insert(environment.to_owned(), value);
             }
 
+            state
+                .pushed
+                .entry(namespace.to_owned())
+                .or_default()
+                .insert(environment.to_owned());
+
             let rewrite = if persist {
                 state.persisted.insert(namespace.to_owned());
                 true
@@ -168,19 +184,26 @@ impl ProviderSecrets {
         Ok(accepted)
     }
 
-    /// Every namespace's values, in the shape
-    /// [`shep_core::secrets::SecretView::new`] takes.
+    /// Every namespace's values and every pair pushed for them, in the
+    /// shape [`shep_core::secrets::SecretView::new`] takes.
     ///
     /// Cloned rather than borrowed: the supervisor holds the result across
     /// a whole resolution pass, and a guard held that long would be the
-    /// thing a push waits on.
-    pub fn snapshot(&self) -> Namespaces {
-        self.state().namespaces.clone()
+    /// thing a push waits on. Both halves come out under one lock, so a
+    /// resolution never reads values from before a push beside the pairs
+    /// from after it.
+    pub fn snapshot(&self) -> ProviderCache {
+        let state = self.state();
+        ProviderCache {
+            values: state.namespaces.clone(),
+            pushed: state.pushed.clone(),
+        }
     }
 
-    /// Every namespace a dog has pushed to, values not included.
-    pub fn namespaces(&self) -> BTreeSet<String> {
-        self.state().namespaces.keys().cloned().collect()
+    /// Every `(namespace, environment)` pair a dog has pushed, values not
+    /// included.
+    pub fn pushed(&self) -> PushedPairs {
+        self.state().pushed.clone()
     }
 
     /// A poisoned lock is recovered rather than propagated, as
@@ -206,17 +229,30 @@ fn persisted_view(state: &State) -> CacheFile {
                     .map(|table| (name.clone(), table.clone()))
             })
             .collect(),
+        pushed: state
+            .persisted
+            .iter()
+            .filter_map(|name| {
+                state
+                    .pushed
+                    .get(name)
+                    .map(|environments| (name.clone(), environments.clone()))
+            })
+            .collect(),
     }
 }
 
 /// Whatever `path` holds, or nothing.
-fn read_cache(path: &Path) -> Namespaces {
+fn read_cache(path: &Path) -> ProviderCache {
     let Ok(raw) = std::fs::read_to_string(path) else {
-        return Namespaces::new();
+        return ProviderCache::default();
     };
     match serde_json::from_str::<CacheFile>(&raw) {
-        Ok(file) if file.version == CACHE_VERSION => file.namespaces,
-        _ => Namespaces::new(),
+        Ok(file) if file.version == CACHE_VERSION => ProviderCache {
+            values: file.namespaces,
+            pushed: file.pushed,
+        },
+        _ => ProviderCache::default(),
     }
 }
 
@@ -269,7 +305,7 @@ mod tests {
             .unwrap();
 
         let snap = store.snapshot();
-        let vercel = &snap["vercel"];
+        let vercel = &snap.values["vercel"];
         assert_eq!(vercel["A"]["production"], "9");
         assert!(
             !vercel.contains_key("B"),
@@ -298,8 +334,13 @@ mod tests {
             )
             .unwrap();
         let snap = store.snapshot();
-        assert_eq!(snap["v"]["A"]["production"], "p");
-        assert_eq!(snap["v"]["A"]["staging"], "s");
+        assert_eq!(snap.values["v"]["A"]["production"], "p");
+        assert_eq!(snap.values["v"]["A"]["staging"], "s");
+        assert_eq!(
+            snap.pushed["v"],
+            BTreeSet::from(["production".to_string(), "staging".to_string()]),
+            "both pairs carry a push"
+        );
     }
 
     #[test]
@@ -326,8 +367,8 @@ mod tests {
             .unwrap();
 
         let second = ProviderSecrets::load(&cache);
-        assert!(second.namespaces().contains("kept"));
-        assert!(!second.namespaces().contains("gone"));
+        assert!(second.pushed().contains_key("kept"));
+        assert!(!second.pushed().contains_key("gone"));
     }
 
     /// The reverse order of the test above, which is the one that matters:
@@ -359,7 +400,7 @@ mod tests {
 
         let second = ProviderSecrets::load(&cache);
         assert_eq!(
-            second.namespaces(),
+            second.pushed().into_keys().collect::<BTreeSet<_>>(),
             BTreeSet::from(["persisted".to_string()])
         );
         let raw = std::fs::read_to_string(&cache).unwrap();
@@ -395,7 +436,7 @@ mod tests {
             )
             .unwrap();
 
-        assert!(ProviderSecrets::load(&cache).namespaces().is_empty());
+        assert!(ProviderSecrets::load(&cache).pushed().is_empty());
     }
 
     #[test]
@@ -407,7 +448,7 @@ mod tests {
         store
             .put("v", "production", BTreeMap::new(), false)
             .unwrap();
-        assert!(store.namespaces().contains("v"));
+        assert!(store.pushed()["v"].contains("production"));
     }
 
     #[test]
@@ -436,7 +477,88 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cache = dir.path().join("secrets-cache.json");
         std::fs::write(&cache, "{ not json").unwrap();
-        assert!(ProviderSecrets::load(&cache).namespaces().is_empty());
+        assert!(ProviderSecrets::load(&cache).pushed().is_empty());
+    }
+
+    /// A push carries one `(namespace, environment)` pair, so a provider
+    /// part way through `production` then `staging` has said nothing about
+    /// staging. The pair set is what says so, since the values alone cannot:
+    /// a namespace with production keys in it looks populated from any
+    /// environment.
+    #[test]
+    fn a_push_registers_the_pair_it_carried_and_not_the_namespace() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ProviderSecrets::load(&dir.path().join("secrets-cache.json"));
+        store
+            .put(
+                "vercel",
+                "production",
+                BTreeMap::from([("A".into(), "1".into())]),
+                false,
+            )
+            .unwrap();
+
+        let snap = store.snapshot();
+        assert!(snap.values.contains_key("vercel"), "the values are there");
+        assert_eq!(snap.pushed["vercel"], BTreeSet::from(["production".to_string()]));
+    }
+
+    /// The pairs ride the cache file, so a shepherd that restarts still
+    /// tells "the dog has not pushed staging" from "staging has no such
+    /// key". Deriving them from the values would lose an empty push.
+    #[test]
+    fn the_pairs_survive_a_reload_through_the_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("secrets-cache.json");
+        let first = ProviderSecrets::load(&cache);
+        first
+            .put(
+                "vercel",
+                "production",
+                BTreeMap::from([("A".into(), "1".into())]),
+                true,
+            )
+            .unwrap();
+        first.put("vercel", "staging", BTreeMap::new(), true).unwrap();
+
+        let second = ProviderSecrets::load(&cache);
+        assert_eq!(
+            second.pushed()["vercel"],
+            BTreeSet::from(["production".to_string(), "staging".to_string()]),
+            "an empty push is a push"
+        );
+    }
+
+    /// A namespace an operator stopped persisting leaves the file whole:
+    /// its pairs must not linger there for a namespace whose values are
+    /// gone.
+    #[test]
+    fn an_unpersisted_namespaces_pairs_do_not_reach_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("secrets-cache.json");
+        let first = ProviderSecrets::load(&cache);
+        first
+            .put(
+                "unpersisted",
+                "production",
+                BTreeMap::from([("A".into(), "1".into())]),
+                false,
+            )
+            .unwrap();
+        first
+            .put(
+                "persisted",
+                "production",
+                BTreeMap::from([("B".into(), "2".into())]),
+                true,
+            )
+            .unwrap();
+
+        let raw = std::fs::read_to_string(&cache).unwrap();
+        assert!(
+            !raw.contains("unpersisted"),
+            "neither its values nor its pairs: {raw}"
+        );
     }
 
     /// IR-41.

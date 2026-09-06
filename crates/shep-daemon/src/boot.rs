@@ -865,11 +865,12 @@ pub async fn boot<R: ProcessRunner>(
     // of it per spawn, so a second one would leave a dog pushing into a
     // registry no spawn ever consults.
     let provider_secrets = Arc::new(crate::secrets::ProviderSecrets::load(&paths.secrets_cache));
-    // Names, never values (IR-41). This is the line that separates "the dog
-    // has not polled since the restart" from "the operator turned the cache
-    // off", which a sheep held back by a `MissingNamespace` cannot say.
+    // Names and environments, never values (IR-41). This is the line that
+    // separates "the dog has not polled since the restart" from "the operator
+    // turned the cache off", which a sheep held back by a `MissingNamespace`
+    // cannot say.
     tracing::debug!(
-        namespaces = ?provider_secrets.namespaces(),
+        pushed = ?provider_secrets.pushed(),
         "provider namespaces restored from the secrets cache"
     );
     let mut builder = SupervisorBuilder::new(runner, paths.clone(), events.clone())

@@ -380,7 +380,7 @@ mod tests {
                 key.to_string(),
                 BTreeMap::from([(environment.to_string(), value.to_string())]),
             )]),
-            BTreeMap::new(),
+            shep_core::secrets::ProviderCache::default(),
         )
     }
 

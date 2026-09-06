@@ -24,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `secrets::is_name` is public. The daemon checks a peer's namespace and
   environment against the store's own grammar before storing anything under
   either, and a second copy of that grammar is what would drift.
+- `secrets::ProviderCache`, with `secrets::NamespaceValues` and
+  `secrets::PushedPairs`: what provider dogs have pushed, both the values and
+  the `(namespace, environment)` pairs a push has landed for.
+  `secrets::provider_cache_on_disk` reads one back from `secrets-cache.json`,
+  and `secrets::SecretView::new` resolves against one. A namespaced reference
+  is retriable while no provider has pushed that namespace for the
+  environment being resolved, rather than while the namespace is absent
+  altogether: a push carries one pair, so a dog part way through `production`
+  then `staging` would otherwise leave a staging sheep `Errored` for good.
 
 ### Changed
 
@@ -38,8 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolve. Callers that have no store use the new `render_positional`, which
   substitutes `{{instance}}` and `{{name}}` and leaves `{{secret:...}}` alone.
   `RenderError::is_retriable` separates a namespace no provider dog has pushed
-  to yet, which a later attempt can clear, from a value only a person will
-  supply.
+  to for that environment yet, which a later attempt can clear, from a value
+  only a person will supply.
 
 ## [0.4.4] - 2026-09-06
 

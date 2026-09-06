@@ -3900,7 +3900,8 @@ mod tests {
         assert_eq!(reply.result.unwrap(), Response::SecretsPut { accepted: 2 });
 
         let snapshot = h.ctx.provider_secrets.snapshot();
-        assert_eq!(snapshot["vercel"]["API_KEY"]["production"], "sk_live");
+        assert_eq!(snapshot.values["vercel"]["API_KEY"]["production"], "sk_live");
+        assert!(snapshot.pushed["vercel"].contains("production"));
     }
 
     /// A namespace with a `/` in it is the exact shape `SecretRef::parse`
@@ -3915,7 +3916,7 @@ mod tests {
             panic!("a namespace carrying a separator must be refused")
         };
         assert_eq!(err.code, RpcErrorCode::InvalidConfig, "{err:?}");
-        assert!(h.ctx.provider_secrets.namespaces().is_empty());
+        assert!(h.ctx.provider_secrets.pushed().is_empty());
     }
 
     /// The same refusal for the other name, since an environment outside
@@ -3961,7 +3962,7 @@ mod tests {
         );
 
         assert!(!h.ctx.paths.secrets_cache.exists());
-        assert!(h.ctx.provider_secrets.namespaces().contains("vercel"));
+        assert!(h.ctx.provider_secrets.pushed().contains_key("vercel"));
     }
 
     /// The default, and the half the test above cannot prove: a dog whose

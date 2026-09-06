@@ -546,6 +546,50 @@ pub fn namespaces_of(config: &AppConfig) -> BTreeSet<String> {
         .collect()
 }
 
+/// `namespace -> key -> environment -> value`, every provider dog's pushed
+/// values.
+pub type NamespaceValues = BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>>;
+
+/// `namespace -> environments`, the pairs a provider dog has actually
+/// pushed for.
+///
+/// A push carries one namespace and one environment
+/// (`Request::PutSecrets`), so a provider that has pushed `production` and
+/// not yet `staging` has one entry here, not two. That distinction is what
+/// [`Resolution::MissingNamespace`] is keyed on.
+pub type PushedPairs = BTreeMap<String, BTreeSet<String>>;
+
+/// What provider dogs have pushed: the values, and which
+/// `(namespace, environment)` pairs carry a push at all.
+///
+/// The two travel together because they are read together and must come
+/// from one moment: a values map from before a push read beside a pair set
+/// from after it would call a key permanently missing that the push had
+/// just supplied.
+///
+/// An empty push is why the pair set is not derivable from the values. A
+/// dog saying "I have nothing for staging" registers the pair and holds no
+/// keys, which is a different answer from a dog that has not pushed.
+///
+/// Debug does not leak a value: it prints two counts.
+#[derive(Default, Clone)]
+pub struct ProviderCache {
+    /// Every namespace's values.
+    pub values: NamespaceValues,
+    /// Every `(namespace, environment)` pair a push has landed for.
+    pub pushed: PushedPairs,
+}
+
+/// Redacted (IR-41): `values` holds provider values in the clear.
+impl fmt::Debug for ProviderCache {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProviderCache")
+            .field("namespaces", &self.values.len())
+            .field("pushed", &self.pushed.len())
+            .finish()
+    }
+}
+
 /// The on-disk shape of `secrets-cache.json`, mirrored from
 /// `shep-daemon`'s own private writer so a reader on this side of the
 /// crate boundary can stay in step with it without importing a published
@@ -554,7 +598,9 @@ pub fn namespaces_of(config: &AppConfig) -> BTreeSet<String> {
 struct ProviderCacheFile {
     version: u32,
     #[serde(default)]
-    namespaces: BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>>,
+    namespaces: NamespaceValues,
+    #[serde(default)]
+    pushed: PushedPairs,
 }
 
 /// Redacted (IR-41), matching `shep-daemon`'s own `CacheFile`: `namespaces`
@@ -564,36 +610,38 @@ impl fmt::Debug for ProviderCacheFile {
         f.debug_struct("ProviderCacheFile")
             .field("version", &self.version)
             .field("namespaces", &self.namespaces.len())
+            .field("pushed", &self.pushed.len())
             .finish()
     }
 }
 
-/// The cache file version [`provider_namespaces_on_disk`] understands.
+/// The cache file version [`provider_cache_on_disk`] understands.
 ///
 /// Matches `shep-daemon`'s own `CACHE_VERSION`; a mismatch there and here
 /// is a drift this module cannot detect on its own; the two constants
 /// carry the same comment for that reason.
-const PROVIDER_CACHE_VERSION: u32 = 1;
+const PROVIDER_CACHE_VERSION: u32 = 2;
 
-/// Every provider dog's namespace as `secrets-cache.json` currently holds
-/// it on disk, or nothing when the file is missing, will not parse, or is a
-/// version this build does not understand.
+/// The provider cache as `secrets-cache.json` currently holds it on disk,
+/// or nothing when the file is missing, will not parse, or is a version
+/// this build does not understand.
 ///
 /// Best-effort, more so than [`all`]: a namespace whose provider pushed
 /// with `persist = false` never reaches this file at all, so a caller here
-/// can under-report `MissingNamespace` for one the running shepherd
+/// can under-report `MissingNamespace` for a pair the running shepherd
 /// currently holds in memory. A caller that needs the shepherd's live
 /// answer has to ask it directly rather than read this file.
 #[must_use]
-pub fn provider_namespaces_on_disk(
-    path: &Path,
-) -> BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>> {
+pub fn provider_cache_on_disk(path: &Path) -> ProviderCache {
     let Ok(raw) = std::fs::read_to_string(path) else {
-        return BTreeMap::new();
+        return ProviderCache::default();
     };
     match serde_json::from_str::<ProviderCacheFile>(&raw) {
-        Ok(file) if file.version == PROVIDER_CACHE_VERSION => file.namespaces,
-        _ => BTreeMap::new(),
+        Ok(file) if file.version == PROVIDER_CACHE_VERSION => ProviderCache {
+            values: file.namespaces,
+            pushed: file.pushed,
+        },
+        _ => ProviderCache::default(),
     }
 }
 
@@ -607,40 +655,41 @@ pub fn provider_namespaces_on_disk(
 pub struct SecretView {
     environment: String,
     store: BTreeMap<String, BTreeMap<String, String>>,
-    namespaces: BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>>,
+    providers: ProviderCache,
 }
 
-/// Redacted (IR-41): `store` and `namespaces` hold secret values.
+/// Redacted (IR-41): `store` and the provider cache hold secret values.
 impl fmt::Debug for SecretView {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SecretView")
             .field("environment", &self.environment)
             .field("keys", &self.store.len())
-            .field("namespaces", &self.namespaces.len())
+            .field("namespaces", &self.providers.values.len())
             .finish()
     }
 }
 
 impl SecretView {
-    /// A view over `store` and `namespaces`, resolved for `environment`.
+    /// A view over `store` and `providers`, resolved for `environment`.
     #[must_use]
     pub fn new(
         environment: String,
         store: BTreeMap<String, BTreeMap<String, String>>,
-        namespaces: BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>>,
+        providers: ProviderCache,
     ) -> Self {
         Self {
             environment,
             store,
-            namespaces,
+            providers,
         }
     }
 
-    /// A view holding nothing, so every reference resolves to
-    /// [`Resolution::MissingKey`].
+    /// A view holding nothing, so a bare reference resolves to
+    /// [`Resolution::MissingKey`] and a namespaced one to
+    /// [`Resolution::MissingNamespace`].
     #[must_use]
     pub fn empty(environment: String) -> Self {
-        Self::new(environment, BTreeMap::new(), BTreeMap::new())
+        Self::new(environment, BTreeMap::new(), ProviderCache::default())
     }
 
     /// The environment this view resolves against.
@@ -655,42 +704,62 @@ impl SecretView {
     /// deliberately no fallback to another named environment: filling an
     /// empty `staging` slot from `production` would hand a live credential
     /// to staging the first time somebody forgot to set one.
+    ///
+    /// A miss on a namespaced reference is [`Resolution::MissingNamespace`]
+    /// unless a provider has pushed this view's own environment for that
+    /// namespace: a push carries one `(namespace, environment)` pair, so a
+    /// dog part way through `production` then `staging` has said nothing
+    /// about staging yet, and calling that a missing key would `Errored` a
+    /// staging sheep permanently for a value arriving a second later.
     #[must_use]
     pub fn resolve(&self, reference: &SecretRef<'_>) -> Resolution<'_> {
         let table = match reference.namespace {
-            None => &self.store,
-            Some(namespace) => match self.namespaces.get(namespace) {
-                Some(table) => table,
-                None => return Resolution::MissingNamespace,
-            },
+            None => Some(&self.store),
+            Some(namespace) => self.providers.values.get(namespace),
         };
-        let Some(by_environment) = table.get(reference.key) else {
-            return Resolution::MissingKey;
-        };
-        by_environment
-            .get(&self.environment)
-            .or_else(|| by_environment.get(ALL_ENVIRONMENTS))
-            .map_or(Resolution::MissingKey, |value| {
-                Resolution::Found(value.as_str())
+        if let Some(value) = table
+            .and_then(|table| table.get(reference.key))
+            .and_then(|by_environment| {
+                by_environment
+                    .get(&self.environment)
+                    .or_else(|| by_environment.get(ALL_ENVIRONMENTS))
             })
+        {
+            return Resolution::Found(value.as_str());
+        }
+        match reference.namespace {
+            None => Resolution::MissingKey,
+            Some(namespace) if self.is_pushed(namespace) => Resolution::MissingKey,
+            Some(_) => Resolution::MissingNamespace,
+        }
+    }
+
+    /// Whether a provider has pushed `namespace` for this view's own
+    /// environment.
+    fn is_pushed(&self, namespace: &str) -> bool {
+        self.providers
+            .pushed
+            .get(namespace)
+            .is_some_and(|environments| environments.contains(&self.environment))
     }
 }
 
 /// The outcome of resolving one [`SecretRef`].
 ///
 /// [`Self::MissingKey`] and [`Self::MissingNamespace`] are kept apart
-/// because they need different remedies: a namespace nobody has pushed
-/// under is a dog that has not reported yet, which a retry fixes, while a
-/// missing key is a person's to set.
+/// because they need different remedies: a pair no dog has pushed is a dog
+/// that has not reported yet, which a retry fixes, while a missing key is a
+/// person's to set.
 ///
 /// Debug does not leak a value: [`Self::Found`] prints as `Found(..)`.
 pub enum Resolution<'a> {
     /// The resolved value.
     Found(&'a str),
-    /// The store or namespace exists and holds no value for this key in
-    /// this environment.
+    /// The operator's store holds nothing for this key, or a provider has
+    /// pushed this namespace for this environment and that push lacks the
+    /// key.
     MissingKey,
-    /// No provider dog has ever pushed under this namespace.
+    /// No provider dog has pushed this namespace for this environment yet.
     MissingNamespace,
 }
 
@@ -882,30 +951,35 @@ mod tests {
     }
 
     #[test]
-    fn provider_namespaces_on_disk_reads_a_real_cache_file() {
+    fn provider_cache_on_disk_reads_a_real_cache_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("secrets-cache.json");
         std::fs::write(
             &path,
-            r#"{"version":1,"namespaces":{"vercel":{"API_KEY":{"production":"sk_live"}}}}"#,
+            r#"{"version":2,"namespaces":{"vercel":{"API_KEY":{"production":"sk_live"}}},"pushed":{"vercel":["production"]}}"#,
         )
         .unwrap();
-        let namespaces = provider_namespaces_on_disk(&path);
-        assert_eq!(namespaces["vercel"]["API_KEY"]["production"], "sk_live");
+        let cache = provider_cache_on_disk(&path);
+        assert_eq!(cache.values["vercel"]["API_KEY"]["production"], "sk_live");
+        assert_eq!(cache.pushed["vercel"], BTreeSet::from(["production".to_string()]));
     }
 
     #[test]
-    fn provider_namespaces_on_disk_is_empty_for_a_missing_or_broken_file() {
+    fn provider_cache_on_disk_is_empty_for_a_missing_or_broken_file() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(provider_namespaces_on_disk(&dir.path().join("absent.json")).is_empty());
+        assert!(
+            provider_cache_on_disk(&dir.path().join("absent.json"))
+                .values
+                .is_empty()
+        );
 
         let broken = dir.path().join("broken.json");
         std::fs::write(&broken, "not json").unwrap();
-        assert!(provider_namespaces_on_disk(&broken).is_empty());
+        assert!(provider_cache_on_disk(&broken).values.is_empty());
 
         let future = dir.path().join("future.json");
         std::fs::write(&future, r#"{"version":999,"namespaces":{}}"#).unwrap();
-        assert!(provider_namespaces_on_disk(&future).is_empty());
+        assert!(provider_cache_on_disk(&future).values.is_empty());
     }
 
     #[test]
@@ -927,7 +1001,7 @@ mod tests {
             BTreeMap::from([("production".to_string(), "prod".to_string())]),
         );
 
-        let view = SecretView::new("staging".to_string(), store, BTreeMap::new());
+        let view = SecretView::new("staging".to_string(), store, ProviderCache::default());
         assert!(matches!(
             view.resolve(&SecretRef {
                 namespace: None,
@@ -959,16 +1033,27 @@ mod tests {
         ));
     }
 
+    /// A cache holding `vercel/PRESENT` for `production`, pushed as that
+    /// one pair.
+    fn vercel_production() -> ProviderCache {
+        ProviderCache {
+            values: BTreeMap::from([(
+                "vercel".to_string(),
+                BTreeMap::from([(
+                    "PRESENT".to_string(),
+                    BTreeMap::from([("production".to_string(), "v".to_string())]),
+                )]),
+            )]),
+            pushed: BTreeMap::from([(
+                "vercel".to_string(),
+                BTreeSet::from(["production".to_string()]),
+            )]),
+        }
+    }
+
     #[test]
     fn an_unpopulated_namespace_is_told_apart_from_a_missing_key() {
-        let namespaces = BTreeMap::from([(
-            "vercel".to_string(),
-            BTreeMap::from([(
-                "PRESENT".to_string(),
-                BTreeMap::from([("production".to_string(), "v".to_string())]),
-            )]),
-        )]);
-        let view = SecretView::new("production".to_string(), BTreeMap::new(), namespaces);
+        let view = SecretView::new("production".to_string(), BTreeMap::new(), vercel_production());
 
         assert!(matches!(
             view.resolve(&SecretRef {
@@ -992,6 +1077,69 @@ mod tests {
                 key: "ANY"
             }),
             Resolution::MissingNamespace
+        ));
+    }
+
+    /// The case this pair set exists for. A provider pushes `production`
+    /// and then `staging`, which is the ordinary shape, and a staging sheep
+    /// spawning between the two must wait on the restart ladder rather than
+    /// `Errored` for good. Keying on the namespace alone calls the second
+    /// push's keys permanently missing the moment the first push lands.
+    #[test]
+    fn a_namespace_pushed_for_another_environment_is_not_populated_for_this_one() {
+        let view = SecretView::new("staging".to_string(), BTreeMap::new(), vercel_production());
+
+        assert!(
+            matches!(
+                view.resolve(&SecretRef {
+                    namespace: Some("vercel"),
+                    key: "PRESENT"
+                }),
+                Resolution::MissingNamespace
+            ),
+            "staging has had no push, so waiting is what fixes this"
+        );
+    }
+
+    /// The other half, and the one that must stay permanent: the pair has
+    /// been pushed and the key is not in it, so the provider genuinely does
+    /// not have it and no amount of waiting will produce one.
+    #[test]
+    fn a_pushed_pair_missing_a_key_stays_permanent() {
+        let view = SecretView::new("production".to_string(), BTreeMap::new(), vercel_production());
+
+        assert!(matches!(
+            view.resolve(&SecretRef {
+                namespace: Some("vercel"),
+                key: "ABSENT"
+            }),
+            Resolution::MissingKey
+        ));
+    }
+
+    /// An empty push is a dog saying it holds nothing for that pair, which
+    /// is an answer. Deriving the pairs from the values would lose it and
+    /// leave such a sheep retrying against a dog that has already spoken.
+    #[test]
+    fn an_empty_push_populates_the_pair_it_carried() {
+        let view = SecretView::new(
+            "production".to_string(),
+            BTreeMap::new(),
+            ProviderCache {
+                values: BTreeMap::from([("vercel".to_string(), BTreeMap::new())]),
+                pushed: BTreeMap::from([(
+                    "vercel".to_string(),
+                    BTreeSet::from(["production".to_string()]),
+                )]),
+            },
+        );
+
+        assert!(matches!(
+            view.resolve(&SecretRef {
+                namespace: Some("vercel"),
+                key: "ANY"
+            }),
+            Resolution::MissingKey
         ));
     }
 
@@ -1023,7 +1171,7 @@ mod tests {
             "K".to_string(),
             BTreeMap::from([("production".to_string(), "hunter2".to_string())]),
         )]);
-        let view = SecretView::new("production".to_string(), store, BTreeMap::new());
+        let view = SecretView::new("production".to_string(), store, ProviderCache::default());
         let rendered = format!("{view:?}");
         assert_eq!(
             rendered,
@@ -1050,7 +1198,7 @@ mod tests {
         assert!(!rendered.contains("hunter2"));
     }
 
-    /// IR-41, the same guard for the on-disk shape [`provider_namespaces_on_disk`]
+    /// IR-41, the same guard for the on-disk shape [`provider_cache_on_disk`]
     /// reads: it mirrors `shep-daemon`'s `CacheFile`, values in the clear
     /// included.
     #[test]
@@ -1064,10 +1212,27 @@ mod tests {
                     BTreeMap::from([("production".to_string(), "sk_live".to_string())]),
                 )]),
             )]),
+            pushed: BTreeMap::from([(
+                "vercel".to_string(),
+                BTreeSet::from(["production".to_string()]),
+            )]),
         };
         let rendered = format!("{file:?}");
-        assert_eq!(rendered, "ProviderCacheFile { version: 1, namespaces: 1 }");
+        assert_eq!(
+            rendered,
+            "ProviderCacheFile { version: 2, namespaces: 1, pushed: 1 }"
+        );
         assert!(!rendered.contains("sk_live"));
+    }
+
+    /// IR-41 for the type the two halves travel in together.
+    #[test]
+    fn a_provider_cache_debug_never_prints_a_value() {
+        let cache = vercel_production();
+        assert_eq!(
+            format!("{cache:?}"),
+            "ProviderCache { namespaces: 1, pushed: 1 }"
+        );
     }
 
     /// IR-41, the same guard for the type a resolved value travels in.

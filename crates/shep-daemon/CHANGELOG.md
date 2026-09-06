@@ -19,11 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pull would put a socket round trip and a timeout on every instance of every
   sheep.
 - `$SHEP_HOME/secrets-cache.json`, owner-only, so a shepherd that restarts
-  resolves a namespace before its dog's next poll comes round. A dog's
-  `persist` key in `dogs.toml` decides whether its namespace may reach the
-  file, defaulting to `true`, and only the namespaces whose most recent push
-  asked for it are ever written. The file is derived: one that will not read
-  is skipped rather than refused.
+  resolves a namespace before its dog's next poll comes round. It carries the
+  `(namespace, environment)` pairs a provider has pushed beside the values, so
+  a restart still tells "the dog has not pushed staging" from "staging has no
+  such key". A dog's `persist` key in `dogs.toml` decides whether its
+  namespace may reach the file, defaulting to `true`, and only the namespaces
+  whose most recent push asked for it are ever written. The file is derived:
+  one that will not read is skipped rather than refused.
 
 ### Changed
 

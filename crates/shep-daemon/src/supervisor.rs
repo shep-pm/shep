@@ -20348,6 +20348,77 @@ mod tests {
         assert_eq!(runner.spawn_count(), 0, "nothing may reach the runner");
     }
 
+    /// A push carries one `(namespace, environment)` pair, so a provider
+    /// that has done `production` and not yet `staging` has said nothing
+    /// about staging. Keying the refusal on the namespace alone `Errored`s
+    /// a staging sheep permanently the moment the first push lands, which is
+    /// the ordinary shape for a provider dog polling one environment at a
+    /// time, and the cache makes it survive a reboot.
+    #[tokio::test(start_paused = true)]
+    async fn a_namespace_pushed_for_another_environment_leaves_the_sheep_waiting() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut actor = actor_with_an_empty_flock(&dir, vec![ProcScript::never_exits()]);
+        actor
+            .provider_secrets
+            .put(
+                "vercel",
+                "production",
+                BTreeMap::from([("API_KEY".to_string(), "sk_live".to_string())]),
+                false,
+            )
+            .expect("no cache is written with persist off");
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.environment = Some("staging".to_string());
+        app.env
+            .insert("K".to_string(), "{{secret:vercel/API_KEY}}".to_string());
+
+        actor
+            .do_start(vec![normalize(app).unwrap()], None, BatchPolicy::PerApp)
+            .expect("a provider that has not pushed staging yet is not a failed start");
+
+        let entry = &actor.sheep.values().next().expect("one row").entry;
+        assert_eq!(entry.status, ProcStatus::WaitingRestart);
+        assert_eq!(
+            actor.runner.spawn_count(),
+            0,
+            "nothing may reach the runner"
+        );
+    }
+
+    /// The other half, which must stay permanent: the pair has been pushed
+    /// and the key is not in it, so the provider genuinely does not have it
+    /// and sixteen retries would report the same thing sixteen turns later.
+    #[tokio::test(start_paused = true)]
+    async fn a_key_absent_from_a_pushed_pair_errors_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut actor = actor_with_an_empty_flock(&dir, vec![ProcScript::never_exits()]);
+        actor
+            .provider_secrets
+            .put(
+                "vercel",
+                "production",
+                BTreeMap::from([("OTHER".to_string(), "1".to_string())]),
+                false,
+            )
+            .expect("no cache is written with persist off");
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.env
+            .insert("K".to_string(), "{{secret:vercel/API_KEY}}".to_string());
+
+        let err = actor
+            .do_start(vec![normalize(app).unwrap()], None, BatchPolicy::PerApp)
+            .unwrap_err();
+
+        assert!(matches!(err, SupervisorError::SpawnFailed(_)), "{err:?}");
+        let entry = &actor.sheep.values().next().expect("one row").entry;
+        assert_eq!(entry.status, ProcStatus::Errored);
+        assert_eq!(
+            actor.runner.spawn_count(),
+            0,
+            "nothing may reach the runner"
+        );
+    }
+
     /// The ladder is bounded by the same budget a crash loop spends, so a
     /// provider that never arrives ends as an error rather than retrying for
     /// the daemon's life.

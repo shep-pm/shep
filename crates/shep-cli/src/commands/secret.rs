@@ -11,12 +11,13 @@
 //! reaches stdout down exactly one path, in `get`, whichever format is
 //! asked for.
 
-use std::collections::BTreeMap;
 use std::io::Read;
 
 use shep_core::config::DaemonConfig;
 use shep_core::paths::ShepPaths;
-use shep_core::secrets::{self, ALL_ENVIRONMENTS, Resolution, SecretError, SecretRef, SecretView};
+use shep_core::secrets::{
+    self, ALL_ENVIRONMENTS, ProviderCache, Resolution, SecretError, SecretRef, SecretView,
+};
 
 use crate::cli::{Format, SecretArgs, SecretCommand};
 use crate::exit::ExitCode;
@@ -259,7 +260,7 @@ fn resolve(
     let view = SecretView::new(
         host_environment.to_string(),
         secrets::all(&paths.secrets)?,
-        BTreeMap::new(),
+        ProviderCache::default(),
     );
     Ok(
         match view.resolve(&SecretRef {

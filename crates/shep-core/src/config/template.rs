@@ -94,13 +94,15 @@ pub enum RenderError {
         /// The environment the lookup ran against
         environment: String,
     },
-    /// No provider dog has ever pushed under the namespace this reference
-    /// reads
+    /// No provider dog has pushed the namespace this reference reads for
+    /// the environment it was resolved in
     NamespaceUnready {
         /// The namespace the reference names
         namespace: String,
         /// The reference as it appears in the value, braces and all
         reference: String,
+        /// The environment the lookup ran against
+        environment: String,
     },
 }
 
@@ -108,8 +110,8 @@ impl RenderError {
     /// Whether waiting could make this reference resolve.
     ///
     /// `true` for [`Self::NamespaceUnready`] alone: a provider dog that has
-    /// not pushed yet is the one failure a later attempt can clear. An
-    /// [`Self::Unresolved`] waits on a person instead.
+    /// not pushed this environment yet is the one failure a later attempt
+    /// can clear. An [`Self::Unresolved`] waits on a person instead.
     #[must_use]
     pub fn is_retriable(&self) -> bool {
         matches!(self, Self::NamespaceUnready { .. })
@@ -129,10 +131,11 @@ impl fmt::Display for RenderError {
             Self::NamespaceUnready {
                 namespace,
                 reference,
+                environment,
             } => write!(
                 f,
                 "`{reference}` reads the `{namespace}` namespace, which no provider dog \
-                 has pushed to yet"
+                 has pushed to for the `{environment}` environment yet"
             ),
         }
     }
@@ -222,8 +225,8 @@ fn push_token(out: &mut String, token: &str) {
 ///
 /// # Errors
 ///
-/// - [`RenderError::NamespaceUnready`]: the reference names a namespace the
-///   view has never seen.
+/// - [`RenderError::NamespaceUnready`]: the reference names a namespace no
+///   provider has pushed for this view's environment.
 /// - [`RenderError::Unresolved`]: every other miss.
 fn resolve_secret<'a>(
     reference: &SecretRef<'_>,
@@ -234,6 +237,7 @@ fn resolve_secret<'a>(
         (Resolution::MissingNamespace, Some(namespace)) => Err(RenderError::NamespaceUnready {
             namespace: namespace.to_string(),
             reference: reference.to_string(),
+            environment: secrets.environment().to_string(),
         }),
         (Resolution::MissingKey | Resolution::MissingNamespace, _) => {
             Err(RenderError::Unresolved {
@@ -306,8 +310,8 @@ pub fn render_positional(value: &str, name: &str, instance: u32) -> String {
 /// - [`RenderError::Unresolved`]: a reference the store has no value for in
 ///   this view's environment. Nothing but a person will supply it.
 /// - [`RenderError::NamespaceUnready`]: a namespace no provider dog has
-///   pushed to yet. [`RenderError::is_retriable`] is `true` for this one
-///   alone.
+///   pushed to for this view's environment yet.
+///   [`RenderError::is_retriable`] is `true` for this one alone.
 pub fn render(
     value: &str,
     name: &str,
@@ -407,19 +411,26 @@ mod tests {
     }
 
     fn view(environment: &str) -> SecretView {
-        use std::collections::BTreeMap;
+        use crate::secrets::ProviderCache;
+        use std::collections::{BTreeMap, BTreeSet};
         let store = BTreeMap::from([(
             "DB_PASSWORD".to_string(),
             BTreeMap::from([("production".to_string(), "hunter2".to_string())]),
         )]);
-        let namespaces = BTreeMap::from([(
-            "vercel".to_string(),
-            BTreeMap::from([(
-                "API_KEY".to_string(),
-                BTreeMap::from([("production".to_string(), "sk_live".to_string())]),
+        let providers = ProviderCache {
+            values: BTreeMap::from([(
+                "vercel".to_string(),
+                BTreeMap::from([(
+                    "API_KEY".to_string(),
+                    BTreeMap::from([("production".to_string(), "sk_live".to_string())]),
+                )]),
             )]),
-        )]);
-        SecretView::new(environment.to_string(), store, namespaces)
+            pushed: BTreeMap::from([(
+                "vercel".to_string(),
+                BTreeSet::from(["production".to_string()]),
+            )]),
+        };
+        SecretView::new(environment.to_string(), store, providers)
     }
 
     #[test]

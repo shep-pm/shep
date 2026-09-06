@@ -150,7 +150,7 @@ fn render_describe_secrets(entries: &[(&str, &str, Resolution<'_>)]) -> String {
 /// for each name's [`shep_core::config::AppConfig`] (which can trail a
 /// config change that has not yet reached disk by
 /// `shep_daemon::snapshot`'s debounce window), the operator's own secret
-/// store, and the provider cache [`secrets::provider_namespaces_on_disk`]
+/// store, and the provider cache [`secrets::provider_cache_on_disk`]
 /// reads. A namespace whose provider pushed with `persist = false` never
 /// reaches that cache, so this can call a namespace uncached when the
 /// running shepherd already has it in memory; only the shepherd itself can
@@ -162,7 +162,7 @@ fn render_describe_secrets(entries: &[(&str, &str, Resolution<'_>)]) -> String {
 fn gather_secrets(paths: &ShepPaths, procs: &[ProcessInfo]) -> Vec<DescribedSecret> {
     let roll = read_roll(paths);
     let store = secrets::all(&paths.secrets).unwrap_or_default();
-    let namespaces = secrets::provider_namespaces_on_disk(&paths.secrets_cache);
+    let providers = secrets::provider_cache_on_disk(&paths.secrets_cache);
     let host_environment = daemon_config(paths).daemon.environment;
 
     let mut json = Vec::new();
@@ -186,7 +186,7 @@ fn gather_secrets(paths: &ShepPaths, procs: &[ProcessInfo]) -> Vec<DescribedSecr
             .environment
             .clone()
             .unwrap_or_else(|| host_environment.clone());
-        let view = SecretView::new(environment.clone(), store.clone(), namespaces.clone());
+        let view = SecretView::new(environment.clone(), store.clone(), providers.clone());
 
         for reference in &refs {
             let Some(parsed) = SecretRef::parse(reference) else {
