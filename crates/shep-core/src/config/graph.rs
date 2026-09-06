@@ -100,8 +100,9 @@ pub fn render_cycle(cycle: &[String]) -> String {
 /// nothing depends on, the cyclic stage, then the nodes that depend on the
 /// cycle in their own edge order.
 ///
-/// That paragraph describes the plan this function returns, and only shep's
-/// boot honours all of it. `shep-daemon`'s `boot` spawns dogs in two groups,
+/// That paragraph describes the plan this function returns, and not even
+/// shep's boot honours all of it. `shep-daemon`'s `boot` spawns dogs in two
+/// groups,
 /// the promoted ones before the restore and every other one after the last
 /// stage, so a dog's plan position between those two points is not read: a
 /// sheep depending on a dog is warned about and started anyway. The driver
