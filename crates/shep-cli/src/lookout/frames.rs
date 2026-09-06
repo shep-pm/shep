@@ -298,7 +298,7 @@ impl Scene {
                 "The shepherd stopped answering. Five attempts over about eight seconds before this becomes the next frame. Every pane below the table keeps describing the selected sheep from the last listing."
             }
             Self::Frozen => {
-                "The ladder ran out. Last known values stay, the uptime clock has stopped, and so has the host strip — one line ticking over on a frozen screen is a contradiction on the same frame."
+                "The ladder ran out. Last known values stay, the uptime clock has stopped, and so has the host strip: one line ticking over on a frozen screen is a contradiction on the same frame."
             }
             Self::Refused => {
                 "`x` with actions gated off. The refusal is literal, nothing about damage gets charming, and the panes below carry on."
@@ -325,7 +325,7 @@ impl Scene {
                 "The selected sheep has never written a log in this $SHEP_HOME. The feed names that cause rather than sitting blank."
             }
             Self::Cramped => {
-                "33 columns: the narrowest terminal that draws. 26 rows — a couple more than the 24-row floor for all three panes being up, so this frame has a little breathing room rather than sitting exactly on the edge. Everything truncates with an ellipsis; nothing overlaps."
+                "33 columns: the narrowest terminal that draws. 26 rows (a couple more than the 24-row floor for all three panes being up), so this frame has a little breathing room rather than sitting exactly on the edge. Everything truncates with an ellipsis; nothing overlaps."
             }
             Self::HostUnknown => {
                 "`sysinfo` reports this platform unsupported. The strip says so and keeps the flock's own totals, which lookout can always compute."
@@ -349,7 +349,7 @@ impl Scene {
                 "The shepherd refused while the request was out, and its own sentence is forwarded rather than rewritten. The sheep has left the flock in the listing behind it, so the table is one row shorter and the cursor has moved to the row below."
             }
             Self::ActionRefusedOffline => {
-                "An action key pressed while the link is coming back. The refusal names the same reconnect attempt the banner above it does, rather than the exhausted-ladder sentence — Phase 16 review Minor #8 caught the two disagreeing on one frame."
+                "An action key pressed while the link is coming back. The refusal names the same reconnect attempt the banner above it does, rather than the exhausted-ladder sentence. Phase 16 review Minor #8 caught the two disagreeing on one frame."
             }
             Self::SettingsFresh => {
                 "The settings screen on a fresh $SHEP_HOME: shep.toml holds only [interpreters], so every scalar's SOURCE column reads `the default` and its VALUE is the compiled fallback. The state most operators open this screen in."
@@ -1303,8 +1303,8 @@ fn settings_snapshot_with_dog_drift() -> SettingsSnapshot {
 /// Not a doc comment on the test: this text is read by a person opening
 /// `docs/lookout/frames.txt` with no context at all, and it is the only
 /// place that says where those frames came from.
-const GALLERY_PREAMBLE: &str = "shep lookout — Phase 16 frames
-================================
+const GALLERY_PREAMBLE: &str = "shep lookout frames
+===================
 
 These are real frames, rendered headlessly through ratatui's TestBackend by
 
