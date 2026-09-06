@@ -1395,8 +1395,9 @@ mod tests {
             "the plan only ever sees what this restore starts"
         );
 
-        let held =
-            capture_logs(|| warn_about_the_graph(&plan, &to_start, &[db, api.clone()], &[], &[], &[]));
+        let held = capture_logs(|| {
+            warn_about_the_graph(&plan, &to_start, &[db, api.clone()], &[], &[], &[])
+        });
         assert!(!held.contains("names nothing this flock has"), "{held}");
 
         let absent = capture_logs(|| warn_about_the_graph(&plan, &to_start, &[api], &[], &[], &[]));
@@ -1508,7 +1509,10 @@ mod tests {
         assert!(!live.contains("starts after the whole flock"), "{live}");
 
         let at_boot = restore(false);
-        assert!(at_boot.contains("starts after the whole flock"), "{at_boot}");
+        assert!(
+            at_boot.contains("starts after the whole flock"),
+            "{at_boot}"
+        );
     }
 
     /// fails if a promoted dog takes a saved sheep's name in silence. It
