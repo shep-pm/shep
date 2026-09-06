@@ -7544,7 +7544,7 @@ struct HandoverDraft {
 ///
 /// The sheep are visited concurrently because the deadline on the other end is
 /// fixed at `shep-cli`'s `admin::KILL_TEARDOWN_WAIT`. Serially, N wedged pumps
-/// cost N times [`REPORT_DEADLINE`], and past six that outlasts the client,
+/// cost N times [`REPORT_DEADLINE`], and past thirty that outlasts the client,
 /// which falls back to a predecessor still serving and exits 0 mid-sweep.
 /// `join_all` returns results in input order, so `drafts`' id-sorted order
 /// survives into `candidates` and `carried` with no re-sort.
@@ -7649,8 +7649,9 @@ enum PumpReport {
 ///
 /// Per pump but paid once: [`spawn_handover_task`] visits every pump
 /// concurrently, so a flock of wedged pumps costs one deadline, not N. `shep
-/// daemon reload` gives the successor `admin::KILL_TEARDOWN_WAIT` (10s), which
-/// a sweep scaling with N would outlast at six wedged pumps.
+/// daemon reload` gives the successor `admin::KILL_TEARDOWN_WAIT` (60s, and
+/// 10s until the staged teardown raised it), which a sweep scaling with N
+/// would outlast at thirty wedged pumps.
 #[cfg(unix)]
 const REPORT_DEADLINE: Duration = Duration::from_secs(2);
 
@@ -15868,12 +15869,16 @@ mod tests {
         );
     }
 
-    /// Six is where a serial sweep first outlasts `shep-cli`'s
-    /// `admin::KILL_TEARDOWN_WAIT` (10s): past it the client gives up first,
-    /// falls back to a predecessor still serving, and exits 0 before the gate
-    /// refuses for real. Under the paused clock a serial sweep reads six
-    /// [`REPORT_DEADLINE`]s (12s) and a concurrent one about one (2s); the
-    /// bound below sits in that gap.
+    /// Six wedged pumps is the size this test pins, and the bound it asserts
+    /// is about the shape rather than about any one budget: a serial sweep
+    /// scales with N and a concurrent one does not. Under the paused clock a
+    /// serial sweep reads six [`REPORT_DEADLINE`]s (12s) and a concurrent one
+    /// about one (2s); the bound below sits in that gap. Six was also where a
+    /// serial sweep first outlasted `shep-cli`'s `admin::KILL_TEARDOWN_WAIT`
+    /// while that was 10s, past which the client gives up first, falls back
+    /// to a predecessor still serving, and exits 0 before the gate refuses
+    /// for real. At 60s that crossing moved to thirty; the failure it names
+    /// did not go away, it got further off.
     #[cfg(unix)]
     #[tokio::test(start_paused = true)]
     async fn a_sweep_of_six_wedged_pumps_costs_one_deadline_not_six() {

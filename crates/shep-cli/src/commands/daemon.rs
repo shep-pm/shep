@@ -697,11 +697,56 @@ fn proven_shepherd(streams: &mut Streams<'_>, paths: &ShepPaths) -> Result<u32, 
     }
 }
 
+/// What a reload does when [`admin::KILL_TEARDOWN_WAIT`] elapses with the
+/// control address still answering: the refusal to report, or `None` to go on
+/// and start the successor anyway.
+///
+/// The elapsed clock is not the answer, the pidfile lock is. A staged
+/// teardown costs a sum over stages rather than one kill ladder, so no
+/// constant is large enough for every flock, and the one state this verb must
+/// never leave behind is a signalled predecessor with no successor. So:
+///
+/// - [`Shepherd::Absent`] means the predecessor is gone and only its socket
+///   file outlived it. Starting the successor is the whole point of the verb,
+///   and refusing here is what would strand the flock.
+/// - [`Shepherd::Running`] and [`Shepherd::Booting`] mean the predecessor
+///   still owns the home, so it is still the shepherd supervising the flock
+///   and nothing has been lost by not replacing it yet.
+/// - An unreadable pidfile answers neither, so it refuses rather than start a
+///   second shepherd over a first that may still be running.
+fn refusal_after_teardown_budget(
+    liveness: Result<Shepherd, BootError>,
+) -> Option<(ExitCode, String)> {
+    match liveness {
+        Ok(Shepherd::Absent) => None,
+        Ok(Shepherd::Running(_) | Shepherd::Booting) => Some((
+            ExitCode::DeadlineExceeded,
+            "the shepherd was signalled and its teardown is still in progress, so it still \
+             owns this home and still supervises the flock; nothing has been started in its \
+             place, and `shep daemon reload` can be run again once it has stopped"
+                .to_string(),
+        )),
+        Err(err) => Some((
+            ExitCode::Failure,
+            format!(
+                "the shepherd was signalled, teardown is still in progress, and this home's \
+                 pidfile could not be read to find out whether it stopped ({err}); nothing has \
+                 been started in its place"
+            ),
+        )),
+    }
+}
+
 /// Stops the shepherd, waits it out, starts a successor, and musters.
 ///
 /// [`boot::daemon_liveness`] proves the pid, `commands::admin` owns the signal
 /// and the teardown wait, and `crate::connect_or_spawn_client` is the
 /// autostart `shep start` already uses.
+///
+/// A budget that elapses is a question rather than an answer, and
+/// [`refusal_after_teardown_budget`] asks the lock: the predecessor has been
+/// signalled by then, so reading the clock as a failure is how this verb
+/// would leave a home with no shepherd at all.
 async fn stop_and_start(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
@@ -715,10 +760,10 @@ async fn stop_and_start(
     if let Err((code, message)) = admin::signal_graceful_stop(pid) {
         return streams.fail(code, &message);
     }
-    if !admin::wait_for_socket_to_disappear(&paths.socket, wait).await {
-        let message = "the shepherd was signalled, but teardown is still in progress; \
-                       nothing has been started in its place";
-        return streams.fail(ExitCode::DeadlineExceeded, message);
+    if !admin::wait_for_socket_to_disappear(&paths.socket, wait).await
+        && let Some((code, message)) = refusal_after_teardown_budget(boot::daemon_liveness(paths))
+    {
+        return streams.fail(code, &message);
     }
     let client = match crate::connect_or_spawn_client(streams, paths, guard).await {
         Ok(client) => client,
@@ -1733,6 +1778,64 @@ otel = "/usr/local/bin/shep-otel"
             "these dogs have not answered this shepherd after 3s: `bark`, `metrics`; a dog \
              silent past 5s is restarted once from the binary on disk and then reported \
              stale, and `shep bleats <dog>` shows why for each"
+        );
+    }
+
+    #[test]
+    fn a_predecessor_that_is_still_tearing_down_gets_no_successor_started_over_it() {
+        // fails if an elapsed teardown budget is read as "the predecessor is
+        // gone". It still holds the lock, so it is still the shepherd, and a
+        // second one over the top of it would be two supervisors on one home.
+        let (code, message) =
+            refusal_after_teardown_budget(Ok(Shepherd::Running(4242))).expect("a refusal");
+        assert_eq!(code, ExitCode::DeadlineExceeded);
+        assert!(
+            message.contains("still supervises the flock")
+                && message.contains("nothing has been started in its place"),
+            "the refusal must say the flock is still supervised: {message}"
+        );
+
+        let (booting, _) =
+            refusal_after_teardown_budget(Ok(Shepherd::Booting)).expect("a refusal");
+        assert_eq!(booting, ExitCode::DeadlineExceeded);
+    }
+
+    #[test]
+    fn a_predecessor_already_gone_when_the_budget_elapsed_still_gets_a_successor() {
+        // fails if a slow teardown that finished just past the budget is
+        // reported as a timeout. That is the one outcome this verb may never
+        // leave behind: a signalled predecessor and no successor.
+        assert!(
+            refusal_after_teardown_budget(Ok(Shepherd::Absent)).is_none(),
+            "an absent predecessor is the state the successor is started in"
+        );
+    }
+
+    #[test]
+    fn a_pidfile_that_cannot_be_read_after_the_budget_refuses_rather_than_guess() {
+        // fails if an unreadable pidfile is treated as an absent shepherd,
+        // which would start a second one over a first that may still run.
+        let (code, message) = refusal_after_teardown_budget(Err(BootError::Io {
+            path: std::path::PathBuf::from("run/shepd.pid"),
+            source: std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+        }))
+        .expect("a refusal");
+        assert_eq!(code, ExitCode::Failure);
+        assert!(
+            message.contains("pidfile could not be read"),
+            "the refusal must name what it could not read: {message}"
+        );
+    }
+
+    #[test]
+    fn the_teardown_budget_covers_a_staged_shutdown_and_not_one_kill_ladder() {
+        // fails if the budget goes back to a single flock-wide ladder. A
+        // reverse-order teardown pays each stage's longest ladder in turn, so
+        // four stages holding one `kill_timeout = "5s"` member each need
+        // twenty seconds of a shutdown that is working correctly.
+        assert!(
+            admin::KILL_TEARDOWN_WAIT >= std::time::Duration::from_secs(60),
+            "the budget is the daemon's own 60s ceiling, not one ladder"
         );
     }
 
