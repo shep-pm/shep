@@ -74,17 +74,23 @@ pub fn render_cycle(cycle: &[String]) -> String {
 /// [`BootPlan::unresolved`], because a dependency on an app whose Flockfile
 /// lives in another repository is legitimate.
 ///
-/// Nodes in a cycle are lifted out of the sort into one final unordered
-/// stage, and one cycle through each knot they form is recorded in
+/// Nodes in a cycle are lifted out of the sort into one unordered stage, and
+/// one cycle through each knot they form is recorded in
 /// [`BootPlan::cycles`]. Refusing here would strand an unattended boot; the
 /// caller decides whether to refuse, and only the operator-facing callers
-/// do.
+/// do. Anything depending on a knot, directly or through a chain, follows
+/// that stage rather than preceding it, for the reason argued on
+/// `depends_on_a_cycle`.
 ///
-/// Dogs default to a final stage, after every sheep, so an existing install
-/// keeps the order `boot.rs` argues for. Two things move one: `boot_first`,
-/// which puts it in the first stage, and anything depending on it, which
-/// gives it an ordinary graph position. A dog runs at the earliest stage
-/// anything asks for.
+/// Dogs default to a stage after every sheep, so an existing install keeps
+/// the order `boot.rs` argues for. Two things move one: `boot_first`, which
+/// puts it in the first stage, and anything depending on it, which gives it
+/// an ordinary graph position. A dog runs at the earliest stage anything
+/// asks for.
+///
+/// The stages therefore run: `boot_first` dogs, the ordinary sort, dogs
+/// nothing depends on, the cyclic stage, then the nodes that depend on the
+/// cycle in their own edge order.
 #[must_use]
 pub fn plan(nodes: &[BootNode]) -> BootPlan {
     let names: BTreeSet<&str> = nodes.iter().map(|n| n.name.as_str()).collect();
@@ -112,13 +118,15 @@ pub fn plan(nodes: &[BootNode]) -> BootPlan {
         .map(|members| representative_cycle(&edges, members))
         .collect();
 
+    let after_cycle = depends_on_a_cycle(&edges, &in_a_cycle);
+
     let depended_on: BTreeSet<&str> = edges.values().flatten().copied().collect();
     let mut first = Vec::new();
     let mut last = Vec::new();
     let mut ordered: BTreeSet<&str> = BTreeSet::new();
     for node in nodes {
         let name = node.name.as_str();
-        if in_a_cycle.contains(name) {
+        if in_a_cycle.contains(name) || after_cycle.contains(name) {
             continue;
         }
         match node.kind {
@@ -145,11 +153,47 @@ pub fn plan(nodes: &[BootNode]) -> BootPlan {
         // node several cycles run through is still started once.
         stages.push(in_a_cycle.iter().map(|n| (*n).to_string()).collect());
     }
+    // Whatever hangs off the knot, in its own edge order. Every dependency
+    // outside this set is already placed, which is what `kahn` reads a
+    // missing name as.
+    stages.extend(kahn(&after_cycle, &edges, &[]));
 
     BootPlan {
         stages,
         unresolved,
         cycles,
+    }
+}
+
+/// Every node outside `in_a_cycle` with a path to one of its members.
+///
+/// The surprising part: shep does not refuse a boot over a cycle, it warns
+/// and brings the flock up with the knot last. A dependent of the knot can
+/// never have its dependency satisfied, so it starts anyway, and the only
+/// question left is where. A plain topological sort answers "first", because
+/// the edge points at a name the sort no longer holds and an absent
+/// dependency reads as a met one. That is the worst of the available orders,
+/// so these nodes are held out of the sort too and replanted after the
+/// cyclic stage.
+fn depends_on_a_cycle<'a>(
+    edges: &BTreeMap<&'a str, BTreeSet<&'a str>>,
+    in_a_cycle: &BTreeSet<&'a str>,
+) -> BTreeSet<&'a str> {
+    let mut found: BTreeSet<&'a str> = BTreeSet::new();
+    loop {
+        let grown: Vec<&'a str> = edges
+            .iter()
+            .filter(|(name, _)| !in_a_cycle.contains(*name) && !found.contains(*name))
+            .filter(|(_, deps)| {
+                deps.iter()
+                    .any(|dep| in_a_cycle.contains(dep) || found.contains(dep))
+            })
+            .map(|(name, _)| *name)
+            .collect();
+        if grown.is_empty() {
+            return found;
+        }
+        found.extend(grown);
     }
 }
 
@@ -501,6 +545,20 @@ mod tests {
         assert_eq!(out.stages, vec![vec!["a", "b", "c"]]);
     }
 
+    #[test]
+    fn a_node_depending_on_a_cycle_starts_after_it_not_before() {
+        // fails if an edge into a knot reads as satisfied because the knot
+        // was lifted out of the sort, which put "x" in the first stage,
+        // ahead of the "a" it depends on
+        let out = plan(&[
+            sheep("x", &["a"]),
+            sheep("a", &["b"]),
+            sheep("b", &["a"]),
+            sheep("y", &["x"]),
+        ]);
+        assert_eq!(out.stages, vec![vec!["a", "b"], vec!["x"], vec!["y"]]);
+    }
+
     proptest::proptest! {
         #[test]
         fn every_edge_is_respected_in_the_planned_order(
@@ -586,16 +644,37 @@ mod tests {
             proptest::prop_assert_eq!(once.len(), N, "a node is planned nowhere: {:?}", out.stages);
 
             // A node is truly cyclic when it reaches itself, and every one
-            // of them belongs in the final stage.
-            let last = out.stages.len() - 1;
-            for (i, reached) in reaches.iter().enumerate() {
-                if reached[i] {
-                    proptest::prop_assert!(
-                        out.stages[last].contains(&format!("n{i}")),
+            // of them belongs in one stage together. That stage is not the
+            // last one: whatever depends on the knot follows it.
+            let stage_of = |i: usize| {
+                out.stages
+                    .iter()
+                    .position(|stage| stage.contains(&format!("n{i}")))
+                    .expect("every node is planned")
+            };
+            let cyclic: Vec<usize> = (0..N).filter(|i| reaches[*i][*i]).collect();
+            if let Some(first) = cyclic.first().copied() {
+                let knot = stage_of(first);
+                for i in cyclic.iter().copied() {
+                    proptest::prop_assert_eq!(
+                        stage_of(i),
+                        knot,
                         "n{} is cyclic and is planned elsewhere: {:?}",
                         i,
                         out.stages
                     );
+                }
+                // A dependent of the knot can never have its dependency
+                // satisfied, so it starts anyway, but never first.
+                for i in (0..N).filter(|i| !reaches[*i][*i]) {
+                    if cyclic.iter().any(|c| reaches[i][*c]) {
+                        proptest::prop_assert!(
+                            stage_of(i) > knot,
+                            "n{} depends on the knot and is planned before it: {:?}",
+                            i,
+                            out.stages
+                        );
+                    }
                 }
             }
 
