@@ -1408,14 +1408,22 @@ pub enum Response {
     Stopped(Vec<ProcessInfo>),
     /// Answer to `Restart`
     Restarted(Vec<ProcessInfo>),
-    /// Answer to `Reload`: an acceptance, not a result.
+    /// Answer to `Reload`: acceptances, not results.
     ///
     /// One instance costs a readiness wait plus a drain, so a clustered app
-    /// outlasts any deadline a client may ask for. The daemon answers as soon
-    /// as the reload is accepted, with the matched sheep as they stood then,
-    /// and the swaps report themselves on the bus (`process.reload`,
-    /// `process.reloaded`, `process.reload_abandoned`). A matched sheep with
-    /// nothing to replace is listed as the no-op success it is.
+    /// outlasts any deadline a client may ask for. Every row is therefore the
+    /// sheep as it stood when its own reload was accepted, and the swaps
+    /// report themselves on the bus (`process.reload`, `process.reloaded`,
+    /// `process.reload_abandoned`). A matched sheep with nothing to replace
+    /// is listed as the no-op success it is.
+    ///
+    /// **When the reply arrives depends on how many sheep matched.** One
+    /// sheep is answered as soon as its reload is accepted. Two or more are
+    /// reloaded in dependency order, and the daemon holds each stage until
+    /// the swaps of the apps a later stage waits on have landed, so the
+    /// reply arrives no sooner than the last stage's acceptance and the rows
+    /// are stitched from one acceptance per stage. A client asking for a
+    /// budget sizes it for the whole walk, not for one acceptance.
     Reloading(Vec<ProcessInfo>),
     /// Answer to `Scale`: the app's instances that will remain, one row each,
     /// ordered by [`sort_flock`]. Every row shares one name, so that is slot
