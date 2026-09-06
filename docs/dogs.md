@@ -149,6 +149,26 @@ migrated, so check `dogs.toml` first. An empty `[dog.<name>]`, which
 nothing. A dog present in only one file migrates or starts normally
 either way.
 
+**A dog can also push, not only be configured.** A provider dog sends
+`Request::PutSecrets` with its own registered name as the namespace,
+replacing whatever that namespace held for one environment rather than
+merging into it. Pushed values are cached to
+`$SHEP_HOME/secrets-cache.json` by default, so a reboot does not leave
+every sheep that reads them waiting on the dog and a network round trip;
+`persist = false` in the dog's own `[<name>]` section of `dogs.toml` turns
+that off. See `docs/brainstorming/specs/2026-09-06-secrets-store-design.md`
+for the design and `web/src/pages/docs/secrets.astro` for the operator
+account of what a namespace does and does not defend against.
+
+A namespace can legally contain a dot, and an unquoted section header does
+not mean what it looks like: `[vercel.prod]` in `dogs.toml` parses as a
+nested TOML table, key `prod` inside table `vercel`, not as one literal
+section named `vercel.prod`. A namespace with a dot in it needs a quoted
+header, `["vercel.prod"]`, or the section never matches and `persist`
+silently falls back to its default of `true`. Ordinary TOML, and the same
+trap catches any dog name with a dot in it, not only a provider's
+namespace.
+
 ## The metrics dog
 
 `shep enable metrics` serves Prometheus exposition text over plain HTTP,
@@ -355,8 +375,12 @@ that reads wrong rather than an outage.
 Those two are what shep ADDS, not the whole environment. A dog is a
 supervised process like any other, so it also starts from the small base
 every sheep gets: `PATH`, plus whichever of `HOME`, `USER`, `LANG` and `TZ`
-the shepherd itself has, plus `SHEP_INSTANCE`. Nothing from `[<name>]`
-is in there.
+the shepherd itself has, plus `SHEP_INSTANCE`, `SHEP_NAME` and
+`SHEP_ENVIRONMENT`. `SHEP_NAME` carries the same value `SHEP_DOG_NAME`
+does. `SHEP_ENVIRONMENT` is what a provider dog reads to decide which
+environment to fetch and push for: a dog has no `environment` field of its
+own, so it resolves the same way a sheep with none does, against
+`[daemon] environment`. Nothing from `[<name>]` is in there.
 
 **Read `$SHEP_DOG_NAME` rather than hardcoding a name.** It holds the name
 you are registered under, which is the operator's `--name` if they gave one

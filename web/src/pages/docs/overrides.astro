@@ -374,6 +374,15 @@ const store = `$ cat $SHEP_HOME/overrides.json
       thing <code>--reset=file</code> and <code>--reset=policy</code> never
       touch.
     </p>
+    <p class="fine">
+      A blank string is the right pattern for a plain value, but a value
+      that is actually a credential has a better one now:{" "}
+      <code>env = &#123; DB_PASSWORD = "{'{{secret:DB_PASSWORD}}'}" &#125;</code>{" "}
+      instead of an empty string. <a href="/docs/secrets">Secrets</a> reads
+      that reference at spawn time from its own store, so the Flockfile's{" "}
+      <code>env</code> key is established once and never needs editing
+      again to fill it in.
+    </p>
 
     <h2>Registering before starting</h2>
     <p>
@@ -398,10 +407,13 @@ const store = `$ cat $SHEP_HOME/overrides.json
       counted it that way since before this verb existed.
     </p>
     <Callout variant="careful">
-      The middle step is the one shep has no verb for yet. Filling in an
-      established key today means editing the Flockfile and loading it with
-      <code>--reset=env</code>, which hands <code>env</code> back to the file
-      and touches nothing else, not even <code>instances</code>.
+      The middle step is the one shep has no verb for yet, for an
+      established key holding a plain value. Filling one in today means
+      editing the Flockfile and loading it with <code>--reset=env</code>,
+      which hands <code>env</code> back to the file and touches nothing
+      else, not even <code>instances</code>. A key holding a{" "}
+      <code>{'{{secret:...}}'}</code> reference does not have this gap: the
+      Flockfile never needs a second edit, only <code>shep secret set</code>.
     </Callout>
     <p>
       Running <code>shep add</code> again changes nothing and prints nothing,

@@ -226,6 +226,30 @@ $ shep disable metrics`}</CodeBlock>
       <code>[dog.&lt;name&gt;]</code> is not a value and refuses nothing. A
       dog present in only one file migrates or starts normally.
     </Callout>
+    <p>
+      A dog can also push, not only be configured. A provider dog sends{" "}
+      <code>Request::PutSecrets</code> with its own registered name as the
+      namespace, replacing whatever that namespace held for one environment
+      rather than merging into it. Pushed values are cached to{" "}
+      <code>$SHEP_HOME/secrets-cache.json</code> by default, so a reboot
+      does not leave every sheep that reads them waiting on the dog and a
+      network round trip; <code>persist = false</code> in the dog's own
+      section of <code>dogs.toml</code> turns that off. See{" "}
+      <a href="/docs/secrets">Secrets</a> for the token that reads a pushed
+      value, and for what a namespace does and does not defend against.
+    </p>
+    <Callout variant="careful">
+      A namespace can legally contain a dot, and an unquoted section header
+      does not mean what it looks like. <code>[vercel.prod]</code> in{" "}
+      <code>dogs.toml</code> parses as a nested TOML table, key{" "}
+      <code>prod</code> inside table <code>vercel</code>, not as one
+      literal section named <code>vercel.prod</code>. A namespace with a
+      dot in it needs a quoted header, <code>["vercel.prod"]</code>, or the
+      section never matches and <code>persist</code> silently falls back to
+      its default of <code>true</code>. This is ordinary TOML, and the same
+      trap catches any dog name with a dot in it, not only a provider's
+      namespace.
+    </Callout>
 
     <h2>The metrics dog</h2>
     <p>
@@ -491,8 +515,14 @@ watchdog  adopted  true      stopped`}</CodeBlock>
       base every sheep gets: <code>PATH</code>, plus whichever of{" "}
       <code>HOME</code>, <code>USER</code>, <code>LANG</code> and{" "}
       <code>TZ</code> the shepherd itself has, plus{" "}
-      <code>SHEP_INSTANCE</code>. Nothing from{" "}
-      <code>[&lt;name&gt;]</code> is in there.
+      <code>SHEP_INSTANCE</code>, <code>SHEP_NAME</code> and{" "}
+      <code>SHEP_ENVIRONMENT</code>. <code>SHEP_NAME</code> carries the
+      same value <code>SHEP_DOG_NAME</code> does; <code>SHEP_ENVIRONMENT</code>{" "}
+      is the same one a provider dog reads when it decides which
+      environment to fetch and push, since a dog has no{" "}
+      <code>environment</code> field of its own and falls back to{" "}
+      <code>[daemon] environment</code> the same as any sheep would. Nothing
+      from <code>[&lt;name&gt;]</code> is in there.
     </p>
     <Callout variant="careful">
       Read <code>$SHEP_DOG_NAME</code> rather than hardcoding a name. It
