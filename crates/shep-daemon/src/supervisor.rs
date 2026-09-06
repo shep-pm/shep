@@ -179,6 +179,13 @@ pub(crate) enum Command {
         apps: Vec<ResolvedApp>,
         /// Whether one app that provably cannot run refuses the whole batch.
         policy: BatchPolicy,
+        /// Names in `apps` that a later boot stage depends on.
+        ///
+        /// Each one is armed with [`ReadinessSource::Heuristic`] rather than
+        /// reported `Online` at spawn, so a stage waiting on it waits for
+        /// its `listen_timeout` rather than for `fork` returning. Empty for
+        /// every caller but the boot-order driver.
+        gate: BTreeSet<String>,
         /// Answers with every spawned instance, or the first spawn failure.
         reply: oneshot::Sender<Result<Vec<ProcessInfo>, SupervisorError>>,
     },
@@ -717,7 +724,8 @@ impl SupervisorHandle {
     ///   spawn (already-registered instances persist regardless).
     /// - [`SupervisorError::EngineStopped`]: the actor is gone.
     pub async fn start(&self, apps: Vec<ResolvedApp>) -> Result<Vec<ProcessInfo>, SupervisorError> {
-        self.start_with(apps, BatchPolicy::AllOrNothing).await
+        self.start_staged(apps, BTreeSet::new(), BatchPolicy::AllOrNothing)
+            .await
     }
 
     /// [`Self::start`], but one app that cannot run costs only itself.
@@ -736,12 +744,20 @@ impl SupervisorHandle {
         &self,
         apps: Vec<ResolvedApp>,
     ) -> Result<Vec<ProcessInfo>, SupervisorError> {
-        self.start_with(apps, BatchPolicy::PerApp).await
+        self.start_staged(apps, BTreeSet::new(), BatchPolicy::PerApp)
+            .await
     }
 
-    async fn start_with(
+    /// [`Self::start`], holding every app in `gate` at `Starting` until its
+    /// readiness deadline, so a later stage can wait on it.
+    ///
+    /// # Errors
+    ///
+    /// The same set [`Self::start`] documents.
+    pub(crate) async fn start_staged(
         &self,
         apps: Vec<ResolvedApp>,
+        gate: BTreeSet<String>,
         policy: BatchPolicy,
     ) -> Result<Vec<ProcessInfo>, SupervisorError> {
         let (reply, rx) = oneshot::channel();
@@ -749,6 +765,7 @@ impl SupervisorHandle {
             .send(Msg::Command(Command::Start {
                 apps,
                 policy,
+                gate,
                 reply,
             }))
             .await
@@ -2520,12 +2537,13 @@ impl<R: ProcessRunner> Actor<R> {
             Command::Start {
                 apps,
                 policy,
+                gate,
                 reply,
             } => {
                 let result = if self.shutting_down {
                     Err(SupervisorError::EngineStopped)
                 } else {
-                    self.do_start(apps, None, policy)
+                    self.do_start(apps, None, policy, &gate)
                 };
                 let _ = reply.send(result);
                 false
@@ -2725,7 +2743,12 @@ impl<R: ProcessRunner> Actor<R> {
         }
         // `PerApp`: a dog that cannot start must land in the dogs table as
         // `Errored`, which `dogs::spawn_dog_watch` subscribes to.
-        let started = self.do_start(vec![app], Some(source), BatchPolicy::PerApp)?;
+        let started = self.do_start(
+            vec![app],
+            Some(source),
+            BatchPolicy::PerApp,
+            &BTreeSet::new(),
+        )?;
         started
             .into_iter()
             .next()
@@ -2747,6 +2770,7 @@ impl<R: ProcessRunner> Actor<R> {
         apps: Vec<ResolvedApp>,
         dog: Option<DogSource>,
         policy: BatchPolicy,
+        gate: &BTreeSet<String>,
     ) -> Result<Vec<ProcessInfo>, SupervisorError> {
         // One sequence rather than two: a zip against `apps` misaligns the
         // moment a failure is skipped.
@@ -2829,7 +2853,7 @@ impl<R: ProcessRunner> Actor<R> {
             let slots = instance_slots(&existing, app.config().instances);
 
             for instance in slots {
-                match self.spawn_fresh(&app, instance, credentials, dog.clone()) {
+                match self.spawn_fresh(&app, instance, credentials, dog.clone(), gate) {
                     Ok(info) => results.push(info),
                     Err(message) => {
                         let failure = format!("{name}: {message}");
@@ -3035,6 +3059,7 @@ impl<R: ProcessRunner> Actor<R> {
         instance: u32,
         credentials: Option<Credentials>,
         dog: Option<DogSource>,
+        gate: &BTreeSet<String>,
     ) -> Result<ProcessInfo, String> {
         // Read before the spawn: a scale-up's new instance must show the same
         // overrides its siblings do, not a blank cell until the next load.
@@ -3053,7 +3078,11 @@ impl<R: ProcessRunner> Actor<R> {
         // `normalize`, so an `Err` here means an app skipped that step.
         let source = ReadinessSource::of(app.config())
             .expect("ResolvedApp already passed ProbeTarget::parse in normalize");
-        let gated = !matches!(source, ReadinessSource::Heuristic);
+        // An app a later stage waits on is gated even with no signal of its
+        // own: the wait then costs its `listen_timeout`, which is the field's
+        // documented fallback, rather than costing nothing.
+        let gated =
+            !matches!(source, ReadinessSource::Heuristic) || gate.contains(&app.config().name);
 
         match self.runner.spawn(&spec) {
             Ok((proc, io)) => {
@@ -4034,7 +4063,8 @@ impl<R: ProcessRunner> Actor<R> {
                 let mut ids: Vec<u32> = slots.iter().map(|(_, id)| *id).collect();
                 for instance in instance_slots(&existing, count - current) {
                     let attempted_id = self.next_id;
-                    match self.spawn_fresh(&rescaled, instance, credentials, None) {
+                    match self.spawn_fresh(&rescaled, instance, credentials, None, &BTreeSet::new())
+                    {
                         Ok(info) => ids.push(info.id),
                         Err(message) => {
                             // Partial, and said so: the instances already
@@ -10849,6 +10879,51 @@ mod tests {
         assert_eq!(errored.dog, Some(DogSource::BuiltIn));
     }
 
+    /// Fails if the gate is ignored: with no `wait_ready` and no
+    /// `readiness_probe`, `spawn_fresh`'s ungated arm reports `Online` at once
+    /// and a stage gate on this app would wait for nothing.
+    ///
+    /// Paused time, since the daemon still arms a readiness task for the
+    /// gated fallback: the assertion below reads the status `handle_command`
+    /// answers with synchronously, before that task's `listen_timeout` runs
+    /// out either way, but pausing keeps the fixture's background tasks from
+    /// costing real wall clock while the case holds them.
+    #[tokio::test(start_paused = true)]
+    async fn an_app_in_the_gate_set_holds_at_starting_without_a_probe() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut actor, _mailbox) =
+            actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
+        let (reply, rx) = oneshot::channel();
+        let mut app = AppConfig::minimal("db", "./db");
+        app.listen_timeout = UpDuration::from_millis(50);
+        actor.handle_command(Command::Start {
+            apps: vec![normalize(app).unwrap()],
+            policy: BatchPolicy::AllOrNothing,
+            gate: BTreeSet::from(["db".to_string()]),
+            reply,
+        });
+        let started = rx.await.unwrap().unwrap();
+        assert_eq!(started[0].status, ProcStatus::Starting);
+    }
+
+    /// Fails if gating leaks to every app, which would hold a plain
+    /// `shep start db` at `Starting` for its whole `listen_timeout`.
+    #[tokio::test(start_paused = true)]
+    async fn an_app_outside_the_gate_set_is_online_at_spawn() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut actor, _mailbox) =
+            actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
+        let (reply, rx) = oneshot::channel();
+        actor.handle_command(Command::Start {
+            apps: vec![normalize(AppConfig::minimal("db", "./db")).unwrap()],
+            policy: BatchPolicy::AllOrNothing,
+            gate: BTreeSet::new(),
+            reply,
+        });
+        let started = rx.await.unwrap().unwrap();
+        assert_eq!(started[0].status, ProcStatus::Online);
+    }
+
     /// `PerApp` skips an app whose credentials do not resolve, so `credentials`
     /// is shorter than `apps` while still in order: a naive `zip` against `apps`
     /// pairs app 2 with app 3's credentials and drops the last app. The first of
@@ -10888,6 +10963,7 @@ mod tests {
                 normalize(plain).unwrap(),
             ],
             policy: BatchPolicy::PerApp,
+            gate: BTreeSet::new(),
             reply,
         });
 
@@ -12573,6 +12649,7 @@ mod tests {
         actor.handle_command(Command::Start {
             apps: vec![normalize(AppConfig::minimal("api", "./api")).unwrap()],
             policy: BatchPolicy::AllOrNothing,
+            gate: BTreeSet::new(),
             reply,
         });
 
@@ -12652,6 +12729,7 @@ mod tests {
         actor.handle_command(Command::Start {
             apps: vec![normalize(app).unwrap()],
             policy: BatchPolicy::AllOrNothing,
+            gate: BTreeSet::new(),
             reply,
         });
         assert!(
@@ -15006,7 +15084,7 @@ mod tests {
         let app = app_with("web", |app| app.user = Some(NO_SUCH_USER.to_string()));
 
         let err = actor
-            .do_start(vec![app], None, BatchPolicy::PerApp)
+            .do_start(vec![app], None, BatchPolicy::PerApp, &BTreeSet::new())
             .expect_err("an unresolvable user must refuse the start");
         assert!(
             err.to_string().contains(NO_SUCH_USER),
@@ -15045,7 +15123,7 @@ mod tests {
         let app = app_with("web", |app| app.user = Some(NO_SUCH_USER.to_string()));
 
         let err = actor
-            .do_start(vec![app], None, BatchPolicy::AllOrNothing)
+            .do_start(vec![app], None, BatchPolicy::AllOrNothing, &BTreeSet::new())
             .expect_err("an unresolvable user must refuse the start");
         assert!(
             err.to_string().contains(NO_SUCH_USER),
@@ -15114,7 +15192,12 @@ mod tests {
         for attempt in 1..=2 {
             assert!(
                 actor
-                    .do_start(vec![app.clone()], None, BatchPolicy::PerApp)
+                    .do_start(
+                        vec![app.clone()],
+                        None,
+                        BatchPolicy::PerApp,
+                        &BTreeSet::new()
+                    )
                     .is_err(),
                 "restore {attempt} must refuse the app"
             );
@@ -15154,7 +15237,7 @@ mod tests {
 
         // The row, made the way an unattended boot makes it.
         actor
-            .do_start(vec![app], None, BatchPolicy::PerApp)
+            .do_start(vec![app], None, BatchPolicy::PerApp, &BTreeSet::new())
             .expect_err("an unresolvable user must refuse the start");
         let id = actor
             .sheep
