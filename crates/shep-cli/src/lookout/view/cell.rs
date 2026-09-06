@@ -73,7 +73,7 @@ pub fn sparkline(samples: &[f32], cells: usize) -> String {
         out.push(' ');
     }
     for sample in window {
-        let clamped = sample.max(0.0).min(SPARKLINE_CEILING);
+        let clamped = sample.clamp(0.0, SPARKLINE_CEILING);
         let scaled = (clamped / SPARKLINE_CEILING * (STEPS.len() - 1) as f32).round();
         let step = (scaled as usize).min(STEPS.len() - 1);
         out.push(STEPS[step]);
