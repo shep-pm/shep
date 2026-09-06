@@ -138,6 +138,9 @@ impl Render for FlockRows {
         "instance",
         // CFG's header maps to `pending`, so `overridden` rides here.
         "overridden",
+        // MEM already reports the raw reading; a gauge against this ceiling
+        // is lookout's, not this table's.
+        "max_memory",
     ];
 
     // Parallel to `headers()`. The rest survive in ascending order. CFG ties
@@ -789,6 +792,9 @@ impl Render for DogRows {
         // can neither park nor override one.
         "pending",
         "overridden",
+        // A sheep concept: a dog has no `AppConfig` and so no ceiling to
+        // report; always `null` here.
+        "max_memory",
     ];
 
     // Parallel to `headers()`. The nine shared columns carry the numbers
@@ -1195,6 +1201,9 @@ impl Render for FlushedRows {
         "instance",
         "pending",
         "overridden",
+        // A ceiling is a resource reading, the same reason `memory_bytes`
+        // rides here.
+        "max_memory",
     ];
 
     // Parallel to `headers()`. ERR_FILE survives one round longer than

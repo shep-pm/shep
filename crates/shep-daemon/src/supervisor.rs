@@ -7176,6 +7176,7 @@ fn to_info(entry: &ProcessEntry, smits: &Smits) -> ProcessInfo {
         // that can register or replace a sheep keeps `ProcessEntry::overridden`
         // correct, so this listing path does no I/O.
         .overridden((!entry.overridden.is_empty()).then(|| entry.overridden.clone()))
+        .max_memory(entry.spec.config().max_memory.map(MemSize::bytes))
         .build()
 }
 
