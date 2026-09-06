@@ -75,9 +75,9 @@ pub fn sparkline(samples: &[f32], cells: usize) -> String {
 }
 
 /// A rule of exactly `cells` box-drawing horizontals.
+///
+/// `status::rule_line` is its only non-test caller today.
 #[must_use]
-// No non-test caller yet: this cell's callers arrive in tasks 5 and 7 to 9.
-#[allow(dead_code)]
 pub fn rule(cells: usize) -> String {
     "\u{2500}".repeat(cells)
 }

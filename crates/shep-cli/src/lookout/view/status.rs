@@ -10,6 +10,7 @@ use super::super::app::{
     ActionState, App, Control, InputMode, Link, RowKey, Settings, SettingsPrompt, retrying_sentence,
 };
 use super::super::pane::{ConfigPane, PanePending};
+use super::cell;
 use super::flock::fit;
 use super::settings::field_label;
 
@@ -360,7 +361,7 @@ fn hint_for(control: Control, settings_open: bool) -> String {
 /// and two rows of the thing they are trying to read.
 #[must_use]
 pub fn rule_line(style: Style, width: u16) -> Line<'static> {
-    Line::from(Span::styled("─".repeat(usize::from(width)), style))
+    Line::from(Span::styled(cell::rule(usize::from(width)), style))
 }
 
 #[cfg(test)]

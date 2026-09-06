@@ -306,28 +306,22 @@ pub fn full_app() -> App {
     app
 }
 
-/// A short, deterministic base for [`app_fixture`]'s tempdir.
-///
-/// `std::env::temp_dir()` resolves to a `/var/folders/…` prefix over 60
-/// columns long on macOS, which alone would spend the width-160 log-row
-/// test's whole budget before either log path is even written. `/tmp` is
-/// the same directory under a short alias on every unix this crate ships
-/// for. `RUNNER_TEMP` is GitHub Actions' own short alias on Windows; the OS
-/// default is the local-machine fallback there.
-fn short_temp_base() -> std::path::PathBuf {
-    if cfg!(windows) {
-        std::env::var_os("RUNNER_TEMP")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(std::env::temp_dir)
-    } else {
-        std::path::PathBuf::from("/tmp")
-    }
-}
-
 /// One sheep, `catcher`, selected, with a two-line feed applied and its log
 /// paths pointing at real files in a leaked tempdir, so `fs::metadata` in
 /// [`super::detail::log_row`] succeeds the way it would against a live
 /// sheep's own logs.
+///
+/// The tempdir is whatever [`tempfile`] resolves for the host: no attempt is
+/// made here to force it short. A prior version tried, picking `/tmp` on
+/// unix and `RUNNER_TEMP` on Windows, because `log_row`'s own tests once
+/// asserted against hardcoded widths (160/70/60) that only produced the
+/// intended three-tier behaviour when the path was short. `RUNNER_TEMP` is
+/// unset outside GitHub Actions, so a real Windows box fell to the OS
+/// default there — a ~35-column prefix under the user profile — and failed
+/// the width-160 test for a reason that had nothing to do with the code
+/// under test. Those tests now derive their widths from this fixture's own
+/// rendered path lengths (see `detail::tests::log_row_thresholds`), so no
+/// path-length assumption belongs here any more.
 ///
 /// The tempdir is leaked (`TempDir::keep`) rather than dropped: dropping it
 /// would delete the files before the test that calls this reads them, and
@@ -335,7 +329,7 @@ fn short_temp_base() -> std::path::PathBuf {
 pub fn app_fixture() -> App {
     let dir = tempfile::Builder::new()
         .prefix("shep-fx-")
-        .tempdir_in(short_temp_base())
+        .tempdir()
         .expect("a tempdir for the fixture's logs");
     let out_path = dir.path().join("catcher-out.log");
     let err_path = dir.path().join("catcher-err.log");

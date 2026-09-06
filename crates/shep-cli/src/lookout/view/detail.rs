@@ -112,6 +112,17 @@ fn sheep_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
     // with the flock table's own STATUS cell for the same row, and a dog
     // that has never handshook reads `silent` there.
     let status = row.reported().word();
+    // Reuses `cfg_cell`, the same function `Column::Cfg` calls, rather than a
+    // second renderer for the same rule. Only the pending half: an override
+    // with nothing parked is already the flock table's `*N`, and this cell
+    // names what a `shep reload` would change, not what already differs.
+    // Nothing pending shows nothing at all, not a `cfg !0 pending`.
+    let cfg = crate::output::cfg_cell(info.pending.as_deref(), None);
+    let cfg_text = if cfg.starts_with('!') {
+        format!("   cfg {cfg} pending")
+    } else {
+        String::new()
+    };
     let rest = format!(
         "   pid {}   restarts {}   uptime {}   cpu {}   mem {}   fold {}{}",
         info.pid
@@ -136,13 +147,17 @@ fn sheep_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
             _ => "   dog (unrecognised source)".to_string(),
         }
     );
-    let used = chip.chars().count() + facts.chars().count() + status.chars().count();
+    let used = chip.chars().count()
+        + facts.chars().count()
+        + status.chars().count()
+        + cfg_text.chars().count();
 
     vec![
         Line::from(vec![
             Span::styled(chip, palette.band(Role::Meadow)),
             Span::raw(facts),
             Span::styled(status, palette.reported(row.reported())),
+            Span::styled(cfg_text, palette.attention()),
             Span::raw(fit(
                 &rest,
                 width.saturating_sub(u16::try_from(used).unwrap_or(width)),
@@ -445,6 +460,37 @@ mod tests {
         assert!(rendered.contains("err  /home/ada/.shep/logs/payments-err.log"));
     }
 
+    /// The design spec names this cell alongside the `SHEEP N` chip; reuses
+    /// `cfg_cell`, the same function the flock table's own CFG column calls.
+    #[test]
+    fn the_header_names_the_pending_count_in_butter() {
+        let palette = coloured();
+        let app = with_selection_and_palette(
+            ProcessInfo::builder(2, "api", ProcStatus::Online)
+                .pending(Some(vec!["cwd".to_string(), "env".to_string()]))
+                .build(),
+            palette,
+        );
+        let header = &detail_lines(&app, 200)[0];
+        let rendered = render_all(std::slice::from_ref(header));
+        assert!(rendered.contains("cfg !2 pending"), "got {rendered:?}");
+        let cfg_style = header
+            .spans
+            .iter()
+            .find(|span| span.content.contains("cfg !2 pending"))
+            .map(|span| span.style.fg);
+        assert_eq!(cfg_style, Some(palette.attention().fg));
+    }
+
+    /// "Nothing at all rather than a zero": a sheep with no pending fields
+    /// gets no `cfg` cell at all, not `cfg !0 pending`.
+    #[test]
+    fn a_sheep_with_nothing_pending_shows_no_cfg_cell() {
+        let app = with_selection(ProcessInfo::builder(2, "api", ProcStatus::Online).build());
+        let rendered = render_all(&detail_lines(&app, 200));
+        assert!(!rendered.contains("cfg"), "got {rendered:?}");
+    }
+
     /// Same rule as the table's: the coloured cell is the cell whose text
     /// already says the same thing.
     #[test]
@@ -573,9 +619,34 @@ mod tests {
         assert_eq!(detail_colour, Some(palette.attention().fg));
     }
 
+    /// The three widths `log_row`'s own tiers need, derived from the
+    /// fixture's actual paths rather than a hardcoded literal.
+    ///
+    /// A hardcoded 160/70/60 (this brief's own first draft) assumes the
+    /// fixture's tempdir path is short. `app_fixture`'s tempdir is whatever
+    /// the host resolves, unbounded, so a fixed literal is a bet on the
+    /// environment rather than a fact about `log_row`. `wide` comfortably
+    /// fits both paths plus the size; `medium` fits both paths but not the
+    /// size text; `narrow` is a small constant, independent of the fixture's
+    /// path length, that is always well under the full row's width and still
+    /// leaves each path enough budget to keep its identifying tail.
+    fn log_row_thresholds(app: &App) -> (u16, u16, u16) {
+        let info = &app.selected_row().expect("a selected sheep").info;
+        let out = info.out_file.as_deref().unwrap_or("not reported");
+        let err = info.err_file.as_deref().unwrap_or("not reported");
+        let full = "out  ".len() + out.len() + "   \u{2502}   ".len() + "err  ".len() + err.len();
+        let wide = u16::try_from(full + 40).expect("a test fixture's width fits u16");
+        let medium = u16::try_from(full + 5).expect("a test fixture's width fits u16");
+        // Independent of the fixture's path length: `full` above always
+        // exceeds this, since a real tempdir path is never this short.
+        let narrow = 39;
+        (wide, medium, narrow)
+    }
+
     #[test]
     fn the_log_row_carries_both_paths_and_the_size() {
-        let line = log_row(&app_fixture(), 160);
+        let (wide, ..) = log_row_thresholds(&app_fixture());
+        let line = log_row(&app_fixture(), wide);
         let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(text.contains("out"));
         assert!(text.contains("err"));
@@ -584,27 +655,34 @@ mod tests {
 
     #[test]
     fn a_narrow_log_row_drops_the_size_before_it_truncates_a_path() {
-        let wide: String = log_row(&app_fixture(), 160)
+        let app = app_fixture();
+        let (wide, medium, _) = log_row_thresholds(&app);
+        let wide_text: String = log_row(&app, wide)
             .spans
             .iter()
             .map(|s| s.content.as_ref())
             .collect();
-        let narrow: String = log_row(&app_fixture(), 70)
+        let medium_text: String = log_row(&app, medium)
             .spans
             .iter()
             .map(|s| s.content.as_ref())
             .collect();
-        assert!(wide.contains("on disk"));
-        assert!(!narrow.contains("on disk"));
+        assert!(wide_text.contains("on disk"));
+        assert!(!medium_text.contains("on disk"));
     }
 
     #[test]
     fn a_path_truncates_from_the_left_so_its_filename_survives() {
-        let narrow: String = log_row(&app_fixture(), 60)
+        let app = app_fixture();
+        let (_, _, narrow) = log_row_thresholds(&app);
+        let narrow_text: String = log_row(&app, narrow)
             .spans
             .iter()
             .map(|s| s.content.as_ref())
             .collect();
-        assert!(narrow.contains("-out.log"), "the tail identifies the file");
+        assert!(
+            narrow_text.contains("-out.log"),
+            "the tail identifies the file"
+        );
     }
 }
