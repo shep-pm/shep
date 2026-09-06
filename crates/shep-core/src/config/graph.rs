@@ -768,9 +768,13 @@ mod tests {
                 // the knot's stage or after it.
                 for i in (0..N).filter(|i| !reaches[*i][*i]) {
                     let is_dependent = cyclic.iter().any(|c| reaches[i][*c]);
-                    proptest::prop_assert_ne!(
-                        stage_of(i),
-                        knot,
+                    // `prop_assert!` with a comparison rather than
+                    // `prop_assert_ne!`: that macro expands to an unqualified
+                    // `prop_assert!` in proptest 1.0.0, so a path-qualified
+                    // call to it fails to compile under the minimal-versions
+                    // job even though it is fine on a current proptest.
+                    proptest::prop_assert!(
+                        stage_of(i) != knot,
                         "n{} is acyclic but planned into the knot's own stage: {:?}",
                         i,
                         out.stages
