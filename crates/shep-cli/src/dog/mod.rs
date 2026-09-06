@@ -443,6 +443,8 @@ mod tests {
             barks: home.join("barks.jsonl"),
             kv: home.join("kv.json"),
             overrides: home.join("overrides.json"),
+            secrets: home.join("secrets.json"),
+            secrets_cache: home.join("secrets-cache.json"),
             home,
         }
     }

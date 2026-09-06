@@ -40,6 +40,7 @@ pub mod logstamp;
 pub mod overrides;
 pub mod paths;
 pub mod protocol;
+pub mod secrets;
 pub mod selector;
 pub mod signals;
 pub mod status;

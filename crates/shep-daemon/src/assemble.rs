@@ -227,6 +227,8 @@ mod tests {
             barks: PathBuf::from("/home/ada/.shep/barks.jsonl"),
             kv: PathBuf::from("/home/ada/.shep/kv.json"),
             overrides: PathBuf::from("/home/ada/.shep/overrides.json"),
+            secrets: PathBuf::from("/home/ada/.shep/secrets.json"),
+            secrets_cache: PathBuf::from("/home/ada/.shep/secrets-cache.json"),
         }
     }
 

@@ -217,6 +217,8 @@ mod tests {
             barks: std::path::PathBuf::from("/nonexistent/barks.jsonl"),
             kv: std::path::PathBuf::new(),
             overrides: std::path::PathBuf::new(),
+            secrets: std::path::PathBuf::new(),
+            secrets_cache: std::path::PathBuf::new(),
         };
         Whistle::new(paths, gate::Control::Allowed)
     }
