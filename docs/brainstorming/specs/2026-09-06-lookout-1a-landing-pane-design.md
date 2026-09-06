@@ -105,11 +105,11 @@ CFG and SMIT stay. `NAME` keeps taking the remainder, so the frames' fixed
 |---|---|---|
 | gutter | 2 | |
 | ID | 4 | unchanged |
-| NAME | remainder | 44 cells at 160, against 66 today |
+| NAME | remainder | 20 cells at 160, against 44 today |
 | STATUS | 15 | unchanged |
-| CPU 20s | 11 | new |
+| CPU 20s | 10 | new |
 | CPU | 6 | unchanged |
-| MEM/CEIL | 11 | new |
+| MEM/CEIL | 10 | new |
 | MEM | 8 | unchanged |
 | PID | 7 | unchanged |
 | RESTARTS | 8 | unchanged |
@@ -119,7 +119,10 @@ CFG and SMIT stay. `NAME` keeps taking the remainder, so the frames' fixed
 | FOLD | 10 | unchanged |
 | SMIT | 13 | unchanged |
 
-Fixed total 116, against 94 today.
+Fixed total 112, against 92 today. Those are the widths alone: `name_width`
+adds a two-cell gap between every pair, and the table body is the terminal
+minus the two-cell gutter. So the fourteen columns cost 138 of a 160-column
+terminal's 158, and `NAME` takes the 20 that are left.
 
 **Why keep the three the frames drop.** All three are shipped, tested columns.
 CFG is the one whose loss costs most: it marks every row that has drifted from
@@ -136,15 +139,24 @@ degrades correctly.
 `TIERS` keeps every existing threshold and its tests untouched. Two rungs go on
 top:
 
-- 144 and above: everything.
-- 133: drop `MEM/CEIL`, keeping the `MEM` number.
+- 146 and above: everything.
+- 134: drop `MEM/CEIL`, keeping the `MEM` number.
 - 122: drop `CPU 20s`, keeping the `CPU` percentage.
 - 122 and below: today's ladder, verbatim.
 
-122 is where the current ladder starts, so the two new rungs restore exactly
-today's table before any existing column is shed. That also matches what the
-frames ask for, the gauge going before the sparkline and both before the old
-columns.
+Every existing threshold is exactly `fixed + gaps + NAME_MIN` for its column
+set, and a test at flock.rs:660 pins that for every width from 31 to 200. The
+two new rungs are derived the same way: 112 + 26 + 8 for the full set, 102 +
+24 + 8 without the gauge, and 92 + 22 + 8 without the sparkline, which is the
+122 the ladder already starts at. So the new rungs restore today's table
+exactly before any existing column is shed, and no existing threshold or test
+changes.
+
+**What this costs.** The thresholds are table-body widths, so the sparkline
+needs a terminal at least 148 columns wide and the gauge needs 136. On a
+120-column window neither is drawn and the pane is today's table with bands
+on it. That is the ladder working as designed rather than a defect, but it
+does mean the block half of this redesign is for wide terminals.
 
 ## Decision 4: bands are reverse video, rows are painted
 
