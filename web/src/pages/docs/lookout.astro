@@ -110,8 +110,8 @@ read-only: from --read-only or lookout.allow_control                            
 const startCmds = `$ shep lookout
 $ shep lookout --read-only`;
 
-const feedExcerpt = `bleats  api  … 525 earlier lines not shown, and 3.8M before them never read
-bleats  api  out then err  from the log files, re-read with each listing
+const feedExcerpt = ` ██ BLEATS bleats  api  … 525 earlier lines not shown, and 3.8M before them never read
+ ██ BLEATS bleats  api  out then err  from the log files, re-read with each listing
 this sheep has not written a log in this $SHEP_HOME`;
 
 const lambs = `shep lookout   /home/ada/.shep                                                                            6 in the flock
@@ -300,9 +300,9 @@ esc/s close   j/k select   g… control enabled`;
     </p>
     <CodeBlock label="120×30">{healthy}</CodeBlock>
     <p>
-      Rows sit under two headers, <code>Flock</code> for the sheep and
-      <code>Dogs</code> below it for anything shep is supervising as a
-      dog. Each header shows up only when its side has a row.
+      Rows sit under two reverse-video bands, <code>FLOCK</code> for the
+      sheep and <code>DOGS</code> below it for anything shep is supervising
+      as a dog. Each band shows up only when its side has a row.
     </p>
 
     <h2>Multi-instance apps</h2>
@@ -332,10 +332,12 @@ esc/s close   j/k select   g… control enabled`;
     <h2>The three panes underneath</h2>
     <p>
       The host strip is the line above the table: load average, host memory,
-      the flock's own summed CPU and memory, and how long the machine's been
-      up. Below the table, the detail pane restates the selected row in full
-      sentences and adds what the row can't fit: the untruncated name and
-      both log paths.
+      how many sheep are errored or parked, the flock's own summed CPU and
+      memory, and how long the machine's been up. At 120 columns the frame
+      above only has room for the first three; flock CPU, flock memory and
+      uptime crowd off the edge before you can read them. Below the table,
+      the detail pane restates the selected row in full sentences and adds
+      what the row can't fit: the untruncated name and both log paths.
     </p>
     <p>
       The detail pane also shows the selected sheep's lambs: a count of the
@@ -399,7 +401,8 @@ esc/s close   j/k select   g… control enabled`;
       so neither shows up below.
     </p>
     <p class="fine">
-      <code>CFG</code> goes first, ahead of even <code>SMIT</code>, which is
+      <code>CFG</code> drops third, right after <code>MEM/CEIL</code> and
+      <code>CPU 20s</code> and still ahead of <code>SMIT</code>, which is
       not where the <a href="/docs/output">CLI table</a> puts it. The frames
       on this page are 120 columns wide, and tying <code>CFG</code> to
       <code>EXIT</code>'s tier the way that table does would have pushed the
