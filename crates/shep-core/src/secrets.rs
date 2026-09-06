@@ -267,7 +267,7 @@ impl SecretLock {
         const ERROR_SHARING_VIOLATION: i32 = 32;
 
         /// How long a contended retry sleeps before trying again. Short
-        /// enough that a lock held for a normal `set`/`get`'s duration (a
+        /// enough that a lock held for a normal `set`/`unset`'s duration (a
         /// handful of small file operations) costs this loop only a few
         /// iterations, long enough not to spin the CPU while it waits.
         const RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(2);
@@ -291,7 +291,7 @@ impl SecretLock {
     }
 }
 
-/// Reads `path` under the lock the caller already holds.
+/// Reads whichever version of the store `path` currently names.
 ///
 /// A missing file reads as an empty, current-version store: reading against
 /// a fresh `$SHEP_HOME` should not fail with `ENOENT`. Any other
@@ -334,6 +334,13 @@ fn write_file(path: &Path, file: &SecretFile) -> Result<(), SecretError> {
 
 /// Every key in the store with its per-environment values, in key order.
 ///
+/// Takes no lock, so a caller that must not block never does: the daemon
+/// reads this from inside its actor loop, once per spawn. That is safe
+/// because a writer publishes by renaming a fully written file over this
+/// one, so a reader sees the whole store either before or after a
+/// `set`/`unset`, never a fragment of one. The lock [`set`] and [`unset`]
+/// take is what orders those read-modify-writes against each other.
+///
 /// # Errors
 ///
 /// - [`SecretError::Io`]: the store could not be opened or read. A store
@@ -342,9 +349,6 @@ fn write_file(path: &Path, file: &SecretFile) -> Result<(), SecretError> {
 /// - [`SecretError::FutureVersion`]: the file's `version` is newer than
 ///   [`SECRETS_VERSION`]. Nothing is read and nothing is written.
 pub fn all(path: &Path) -> Result<BTreeMap<String, BTreeMap<String, String>>, SecretError> {
-    // Taking the lock here too costs one extra `open`, but it orders this
-    // read against `set`/`unset`'s read-modify-rename instead of racing it.
-    let _lock = SecretLock::acquire(path)?;
     Ok(read_file(path)?.entries)
 }
 
