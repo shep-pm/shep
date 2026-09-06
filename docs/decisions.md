@@ -1918,6 +1918,30 @@ The reply is `SheepFieldSet { name, key, pending }` rather than `Response::Appli
 
 `verified crates/shep-core/src/protocol/mod.rs (PROTOCOL_VERSION), crates/shep-core/src/config/app.rs (AppConfig's deny_unknown_fields and depends_on)`
 
+### `PROTOCOL_VERSION` moved to 6 for `Response::Reloading`'s retype
+
+`Response::Reloading` was `Vec<ProcessInfo>`, a tuple variant. It needed a
+second list, the apps a staged reload's walk could not reload, so it became
+a struct variant carrying `accepted` and `refused`. The constant moved
+again, 5 to 6, on the same branch as the entry above.
+
+**Why:** The entry above is about a field an old daemon cannot decode
+because the receiving struct forbids unknown fields; this one is about the
+shape of the reply changing under every peer regardless of `deny_unknown_fields`.
+A tuple variant serializes `Reloading` as a JSON array under
+`data`; a struct variant serializes it as an object. That is a retype in
+the sense the protocol's own doc comment already names as bump-forcing, and
+it is the exact case `A reload's own deadline is exposed per-instance on
+ProcessInfo` above argued against courting: putting a second field directly
+on `Reloading` was rejected there for turning the same array into an object.
+This bump is that rejected move happening anyway, because a staged reload's
+refusals have nowhere else on the wire to live. The bump turns a peer still
+on 5 into a named `protocol_mismatch` refusal, exit 6, at the handshake,
+rather than a `Reload` call that a newer daemon answers with a shape an
+older client cannot parse.
+
+`verified crates/shep-core/src/protocol/mod.rs (PROTOCOL_VERSION, and the doc comment naming the retype), crates/shep-core/src/protocol/request.rs (Response::Reloading's accepted/refused fields)`
+
 ### An app something depends on waits out `listen_timeout`, and there is no `boot_delay`
 
 An app a later stage depends on is armed with `ReadinessSource::Heuristic` instead of being inserted `Online` at spawn. It sits `Starting` for its own `listen_timeout`, 3000ms by default, then flips and the stage advances. The gating is per app: `Command::Start` carries a `gate: BTreeSet<String>` naming the apps in this batch that something later waits on, so `shep start db` on its own is untouched.

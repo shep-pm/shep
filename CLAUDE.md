@@ -804,5 +804,14 @@ before the restore, every other dog after every stage. `PROTOCOL_VERSION`
 moved to 5, because `AppConfig` is `deny_unknown_fields` and a shepherd at 4
 cannot decode `depends_on`, so restart the shepherd after upgrading to it.
 
+**It moved again, to 6, on the same branch.** `Response::Reloading` carried
+the refused half of a staged reload back to the caller and had to say which
+apps a walk could not reload, so the variant went from a tuple over
+`Vec<ProcessInfo>` to a struct carrying `accepted` and `refused`. That
+serializes as an object where it used to serialize as an array, which is a
+retype under the constant's own rule, not an addition, so it bumps on the
+same terms as the 4-to-5 move rather than skating past it. Restart the
+shepherd after upgrading to this one too.
+
 Project memory (cross-session state) tracks decisions; docs above are the
 source of truth.
