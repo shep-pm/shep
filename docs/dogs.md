@@ -161,8 +161,7 @@ restored rather than after it.
 ```toml
 # $SHEP_HOME/shep.toml
 [daemon]
-enabled_dogs    = ["metrics", "bark"]
-adopted_dogs    = ["log-rotate"]
+enabled_dogs    = ["metrics", "bark", "log-rotate"]
 boot_first_dogs = ["log-rotate"]
 ```
 
