@@ -2795,6 +2795,81 @@ mod tests {
         assert_eq!(web.app.env.get("NEW").map(String::as_str), Some("1"));
     }
 
+    /// The sibling above asserts the registry; this asserts the file, which
+    /// is what a cold boot actually reads. A parked edit moves no process, so
+    /// the bus says nothing and the roll's only other schedule is the
+    /// graceful shutdown a `SIGKILL` never reaches. The store keeps the edit
+    /// either way and `overridden_for` reads it back, so a stale roll is not
+    /// a lost edit but a divergent one: the sheep comes back on the old value
+    /// under a CFG cell claiming the operator set a new one.
+    #[tokio::test(start_paused = true)]
+    async fn a_parked_env_edit_reaches_the_roll_before_a_hard_stop_can_lose_it() {
+        let h = harness(vec![ProcScript::never_exits()]);
+        start_web_with_a_secret(&h.ctx).await;
+
+        // The roll as a `shep save` left it, so the baseline is on disk
+        // whatever the writer does, and the writer subscribing after the
+        // start's own events so the edit below is all it has left to react
+        // to.
+        h.ctx.save_roll_now().await.unwrap();
+        let baseline = crate::snapshot::read(&h.ctx.snapshot_path).unwrap();
+        assert_eq!(baseline.apps[0].app.env.get("NEW"), None);
+        let writer = crate::snapshot::spawn_snapshot_writer(
+            h.ctx.snapshot_path.clone(),
+            h.ctx.supervisor.clone(),
+            h.ctx.registry.clone(),
+            h.ctx.events.subscribe(),
+        );
+        let settle = std::time::Duration::from_millis(crate::snapshot::SNAPSHOT_DEBOUNCE_MS * 2);
+        tokio::time::sleep(settle).await;
+
+        let reply = reply_of(
+            dispatch(
+                envelope(
+                    2,
+                    Request::SetSheepEnv {
+                        name: "web".to_string(),
+                        key: "NEW".to_string(),
+                        value: Some("1".to_string().into()),
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        assert!(reply.result.is_ok(), "{:?}", reply.result);
+        tokio::time::sleep(settle).await;
+
+        // The hard stop: the writer goes where a `SIGKILL` would have taken
+        // it, and no graceful `save_roll_now` runs after this line.
+        writer.stop().await;
+
+        let (events, _rx) = crate::bus::test_bus(64);
+        let cold = crate::supervisor::spawn_supervisor(
+            crate::fake::ScriptedRunner::new(vec![ProcScript::never_exits()]),
+            h.ctx.paths.clone(),
+            events,
+        );
+        // The cold registry, not `sheep_config`: that view clears `env` on
+        // its way out, and the registry is what the restored sheep was
+        // started from.
+        let cold_registry = crate::snapshot::FlockRegistry::new();
+        let restored = crate::snapshot::muster(&h.ctx.snapshot_path, &cold_registry, &cold)
+            .await
+            .unwrap();
+        assert_eq!(restored, vec!["web".to_string()]);
+
+        let listed = cold.list().await;
+        let came_back = cold_registry.roll(&listed, 0);
+        assert_eq!(
+            came_back.apps[0].app.env.get("NEW").map(String::as_str),
+            Some("1"),
+            "the sheep must come back on the edit its CFG cell claims: {:?}",
+            listed[0].overridden
+        );
+        cold.shutdown().await;
+    }
+
     /// `map.remove` is a no-op for a key the app's own config supplied, so
     /// without a tombstone the store comes back empty and the removal
     /// lives only in `ProcessEntry::pending`, a change the operator just

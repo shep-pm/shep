@@ -20,6 +20,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
+use tokio::sync::Notify;
 use tokio::sync::broadcast::{self, error::RecvError};
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, Instant, sleep_until};
@@ -72,6 +73,10 @@ pub struct SavedApp {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct FlockRegistry {
     apps: Arc<Mutex<BTreeMap<String, AppConfig>>>,
+    /// Woken by every write to `apps`, so the roll writer schedules a file
+    /// write for a change that moves no process and so publishes no
+    /// [`BusEvent::Process`] of its own.
+    dirty: Arc<Notify>,
 }
 
 impl FlockRegistry {
@@ -87,6 +92,8 @@ impl FlockRegistry {
         for app in apps {
             map.insert(app.config().name.clone(), app.config().clone());
         }
+        drop(map);
+        self.dirty.notify_one();
     }
 
     /// Records one app's config directly, for a successor rebuilding this
@@ -105,6 +112,7 @@ impl FlockRegistry {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(config.name.clone(), config.clone());
+        self.dirty.notify_one();
     }
 
     /// Drops every recorded app, so the next [`Self::roll`] describes an
@@ -120,6 +128,7 @@ impl FlockRegistry {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clear();
+        self.dirty.notify_one();
     }
 
     /// Builds the roll from the live listing, pruning names the flock no
@@ -457,6 +466,9 @@ impl SnapshotWriter {
 /// Coalesces bursts of lifecycle events (spec §13.4: one restart storm, one
 /// write) into a single [`write_atomic`] call per [`SNAPSHOT_DEBOUNCE_MS`]
 /// window. Log traffic never resets or starts the debounce timer.
+///
+/// Woken by [`FlockRegistry`]'s own writes as well as by the bus, so a config
+/// change that parks a field reaches the file without a process having moved.
 pub(crate) fn spawn_snapshot_writer(
     path: PathBuf,
     supervisor: SupervisorHandle,
@@ -465,7 +477,15 @@ pub(crate) fn spawn_snapshot_writer(
 ) -> SnapshotWriter {
     let writes = Arc::new(AtomicU64::new(0));
     let task_writes = Arc::clone(&writes);
-    let handle = tokio::spawn(run_writer(path, supervisor, registry, events, task_writes));
+    let dirty = Arc::clone(&registry.dirty);
+    let handle = tokio::spawn(run_writer(
+        path,
+        supervisor,
+        registry,
+        events,
+        dirty,
+        task_writes,
+    ));
     SnapshotWriter { handle, writes }
 }
 
@@ -477,6 +497,7 @@ async fn run_writer(
     supervisor: SupervisorHandle,
     registry: FlockRegistry,
     mut events: broadcast::Receiver<SharedEvent>,
+    dirty: Arc<Notify>,
     writes: Arc<AtomicU64>,
 ) {
     let mut deadline: Option<Instant> = None;
@@ -493,6 +514,12 @@ async fn run_writer(
                     deadline = Some(Instant::now() + Duration::from_millis(SNAPSHOT_DEBOUNCE_MS));
                 },
                 Err(RecvError::Closed) => break,
+            },
+            // A config write that parks a field moves no process, so the bus
+            // says nothing and only this arm reaches the file before the next
+            // unrelated lifecycle event or a graceful shutdown.
+            () = dirty.notified() => if deadline.is_none() {
+                deadline = Some(Instant::now() + Duration::from_millis(SNAPSHOT_DEBOUNCE_MS));
             },
             () = sleep_until(deadline.unwrap_or_else(Instant::now)), if deadline.is_some() => {
                 deadline = None;
@@ -1038,6 +1065,45 @@ mod tests {
         let roll = read(&paths.snapshot).unwrap();
         assert_eq!(roll.apps.len(), 1);
         assert_eq!(roll.apps[0].instances_running, 1);
+        writer.stop().await;
+    }
+
+    /// fails if the bus is the writer's only schedule. A config write that
+    /// parks a field moves no process, so it publishes no
+    /// [`BusEvent::Process`], and the registry's own recording is the roll's
+    /// only route to disk before the next unrelated lifecycle event or a
+    /// graceful shutdown.
+    #[tokio::test(start_paused = true)]
+    async fn writer_schedules_a_write_for_a_recording_the_bus_says_nothing_about() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(&dir);
+        std::fs::create_dir_all(&paths.home).unwrap();
+        let (events, _keep) = crate::bus::test_bus(64);
+        let supervisor = spawn_supervisor(
+            ScriptedRunner::new(vec![ProcScript::never_exits()]),
+            paths.clone(),
+            events.clone(),
+        );
+        let registry = FlockRegistry::new();
+        let app = normalize(AppConfig::minimal("web", "./srv")).unwrap();
+        supervisor.start(vec![app.clone()]).await.unwrap();
+
+        // Subscribing here means the start's own events are already behind us,
+        // so the bus has nothing left to say about this flock.
+        let writer = spawn_snapshot_writer(
+            paths.snapshot.clone(),
+            supervisor.clone(),
+            registry.clone(),
+            events.subscribe(),
+        );
+        assert!(!paths.snapshot.exists(), "nothing has recorded yet");
+
+        registry.record(std::slice::from_ref(&app));
+        tokio::time::sleep(Duration::from_millis(SNAPSHOT_DEBOUNCE_MS + 1)).await;
+
+        assert_eq!(writer.writes(), 1, "a recording leaves the roll dirty");
+        let roll = read(&paths.snapshot).unwrap();
+        assert_eq!(roll.apps.len(), 1);
         writer.stop().await;
     }
 
