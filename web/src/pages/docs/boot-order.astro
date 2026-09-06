@@ -64,9 +64,9 @@ ID  NAME  STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM   UPTIME  FOLD  SMIT
     <p class="lede">
       shep starts a flock all at once unless you tell it otherwise. Add
       <code>depends_on</code> to an app and it sorts the flock into stages
-      instead, holding each one until its members are up. An app that would
-      have crash-looped through its restart budget waiting for a database
-      waits for the database instead.
+      instead, holding each one until the members something later waits on
+      are up. An app that would have crash-looped through its restart budget
+      waiting for a database waits for the database instead.
     </p>
 
     <h2>Naming a dependency</h2>
@@ -156,11 +156,11 @@ depends_on = ["db"]`}</CodeBlock>
     <CodeBlock label="$SHEP_HOME/shep.toml">{`[daemon]
 enabled_dogs    = ["metrics", "log-rotate"]
 boot_first_dogs = ["log-rotate"]`}</CodeBlock>
-    <CodeBlock label="the resulting boot">{`stage 0  log-rotate
-stage 1  db
-stage 2  api
-stage 3  web
-stage 4  metrics`}</CodeBlock>
+    <CodeBlock label="the resulting boot">{`         log-rotate   promoted, so it spawns before the restore
+stage 0  db
+stage 1  api
+stage 2  web
+         metrics      spawns after every stage`}</CodeBlock>
     <p class="fine">
       A name here that is not in <code>enabled_dogs</code> is inert: nothing
       enables a dog by promoting it. A sheep may also name a dog in its own
@@ -248,6 +248,13 @@ error[invalid_config]: the daemon reported InvalidConfig: dependency cycle: api 
       dependencies first. Not reverse-stop then forward-start: that sounds
       more correct and behaves worse, since it puts the whole fold down at
       once in the middle.
+    </p>
+    <p>
+      A reload asks the shepherd once per app, so an app already being
+      reloaded is refused on its own and the rest of the fold reloads
+      anyway. <code>shep reload</code> names the app it went around on
+      stderr and exits non-zero: a row missing from the table is not
+      something a deploy script can read.
     </p>
 
     <h2>What a staged start leaves behind</h2>
