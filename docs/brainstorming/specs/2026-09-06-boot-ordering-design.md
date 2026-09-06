@@ -146,6 +146,14 @@ name = "db"
 readiness_probe = { kind = "tcp", target = "127.0.0.1:5432" }
 ```
 
+**Correction, 2026-09-06.** "Near zero" holds only if the probe's `interval`
+is cut too, and the example above does not cut it. It defaults to 10 seconds,
+and `await_ready` probes first and sleeps after, so an app that binds in 50ms
+fails the poll at t=0 and has nothing left to try before `listen_timeout`
+elapses at 3s. Measured on a real flock: 3.05s at the default interval against
+0.14s at `interval = "100ms"`. As written, the two lines above buy an operator
+no speedup at all.
+
 Two rejected alternatives. Treating `Online` as ready outright would make
 `depends_on` order the spawns and nothing else, so an operator who wrote it
 expecting a wait would get no wait, no warning, and no sign anything was wrong
@@ -188,6 +196,13 @@ boot_first_dogs = ["log-rotate"]
 The second lever is a sheep naming a dog in its own `depends_on`, which puts
 that dog in the stage before it. A sidecar dog an app genuinely needs lands
 where the app needs it rather than in stage 0 ahead of everything.
+
+**Correction, 2026-09-06.** That second lever is not what shipped. `boot`
+spawns dogs in exactly two groups, the promoted ones before the restore and
+everything else after every stage, so a plan position for a dog is never
+honoured. A sheep naming a dog gets a warning rather than an earlier dog, and
+`[daemon] boot_first_dogs` is the only lever that moves one. Putting each dog
+at its own stage boundary is a design change and was deferred to its own task.
 
 `boot_first_dogs` lives in `shep.toml` rather than in `dogs.toml` because a
 dog's section there is passed through to the dog itself, so a shep key in it

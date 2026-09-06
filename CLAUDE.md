@@ -791,5 +791,18 @@ boot under `deny_unknown_fields`, so it stays as the thing the migration
 reads from. The migration itself lives in
 `crates/shep-cli/src/commands/dog_migration.rs`.
 
+**Boot ordering merged on 2026-09-06.** A Flockfile app can name
+`depends_on = ["db"]`, and shep sorts the flock into stages that start one
+after another. An app something depends on is armed with
+`ReadinessSource::Heuristic`, so it holds its stage for its own
+`listen_timeout` instead of going straight to `Online`. A cycle refuses at the
+keyboard and only warns at boot, where a typo must not strand a machine
+nobody is watching. Shutdown walks the same stages in reverse. Dogs are held
+out of that walk and stop in the backstop after every sheep, and `[daemon]
+boot_first_dogs` is the only thing that moves one earlier: those dogs spawn
+before the restore, every other dog after every stage. `PROTOCOL_VERSION`
+moved to 5, because `AppConfig` is `deny_unknown_fields` and a shepherd at 4
+cannot decode `depends_on`, so restart the shepherd after upgrading to it.
+
 Project memory (cross-session state) tracks decisions; docs above are the
 source of truth.
