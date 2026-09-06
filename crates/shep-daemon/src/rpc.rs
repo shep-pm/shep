@@ -3926,7 +3926,10 @@ mod tests {
         assert_eq!(reply.result.unwrap(), Response::SecretsPut { accepted: 2 });
 
         let snapshot = h.ctx.provider_secrets.snapshot();
-        assert_eq!(snapshot.values["vercel"]["API_KEY"]["production"], "sk_live");
+        assert_eq!(
+            snapshot.values["vercel"]["API_KEY"]["production"],
+            "sk_live"
+        );
         assert!(snapshot.pushed["vercel"].contains("production"));
     }
 

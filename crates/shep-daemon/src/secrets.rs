@@ -500,7 +500,10 @@ mod tests {
 
         let snap = store.snapshot();
         assert!(snap.values.contains_key("vercel"), "the values are there");
-        assert_eq!(snap.pushed["vercel"], BTreeSet::from(["production".to_string()]));
+        assert_eq!(
+            snap.pushed["vercel"],
+            BTreeSet::from(["production".to_string()])
+        );
     }
 
     /// The pairs ride the cache file, so a shepherd that restarts still
@@ -519,7 +522,9 @@ mod tests {
                 true,
             )
             .unwrap();
-        first.put("vercel", "staging", BTreeMap::new(), true).unwrap();
+        first
+            .put("vercel", "staging", BTreeMap::new(), true)
+            .unwrap();
 
         let second = ProviderSecrets::load(&cache);
         assert_eq!(

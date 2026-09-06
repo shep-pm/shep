@@ -717,13 +717,14 @@ impl SecretView {
             None => Some(&self.store),
             Some(namespace) => self.providers.values.get(namespace),
         };
-        if let Some(value) = table
-            .and_then(|table| table.get(reference.key))
-            .and_then(|by_environment| {
-                by_environment
-                    .get(&self.environment)
-                    .or_else(|| by_environment.get(ALL_ENVIRONMENTS))
-            })
+        if let Some(value) =
+            table
+                .and_then(|table| table.get(reference.key))
+                .and_then(|by_environment| {
+                    by_environment
+                        .get(&self.environment)
+                        .or_else(|| by_environment.get(ALL_ENVIRONMENTS))
+                })
         {
             return Resolution::Found(value.as_str());
         }
@@ -961,7 +962,10 @@ mod tests {
         .unwrap();
         let cache = provider_cache_on_disk(&path);
         assert_eq!(cache.values["vercel"]["API_KEY"]["production"], "sk_live");
-        assert_eq!(cache.pushed["vercel"], BTreeSet::from(["production".to_string()]));
+        assert_eq!(
+            cache.pushed["vercel"],
+            BTreeSet::from(["production".to_string()])
+        );
     }
 
     #[test]
@@ -1053,7 +1057,11 @@ mod tests {
 
     #[test]
     fn an_unpopulated_namespace_is_told_apart_from_a_missing_key() {
-        let view = SecretView::new("production".to_string(), BTreeMap::new(), vercel_production());
+        let view = SecretView::new(
+            "production".to_string(),
+            BTreeMap::new(),
+            vercel_production(),
+        );
 
         assert!(matches!(
             view.resolve(&SecretRef {
@@ -1106,7 +1114,11 @@ mod tests {
     /// not have it and no amount of waiting will produce one.
     #[test]
     fn a_pushed_pair_missing_a_key_stays_permanent() {
-        let view = SecretView::new("production".to_string(), BTreeMap::new(), vercel_production());
+        let view = SecretView::new(
+            "production".to_string(),
+            BTreeMap::new(),
+            vercel_production(),
+        );
 
         assert!(matches!(
             view.resolve(&SecretRef {

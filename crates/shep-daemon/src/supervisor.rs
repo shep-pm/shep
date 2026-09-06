@@ -8248,11 +8248,11 @@ mod tests {
     use crate::extras::{ExtrasReports, spawn_extras_reporter};
     use crate::fake::{ProcScript, ScriptedRunner};
     use crate::limits::LimitEnforcer;
+    use crate::testing::capture_logs;
     use crate::testing::{
         Harness, RecordingEnforcer, ScriptedProber, SharedRunner, app_with, armed_entry, harness,
         idle_stats, probe_config, test_paths,
     };
-    use crate::testing::capture_logs;
     #[cfg(unix)]
     use crate::tokio_runner::TokioRunner;
     use tokio::sync::watch;
