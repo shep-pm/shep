@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-09-06
+
+### Changed
+
+- Move the shepherd-channel wire into its own crate
+
+### Fixed
+
+- Keep a published path alive, and ship the licences
+- Drop the shim's `since`, which cannot be right until after the release
+
+
 ## [0.4.3] - 2026-09-06
 
 
