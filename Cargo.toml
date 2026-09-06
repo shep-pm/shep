@@ -83,7 +83,7 @@ tokio = { version = "1.41", default-features = false }
 tokio-util = { version = "0.7.9", default-features = false, features = ["codec"] }
 bytes = { version = "1", default-features = false }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
-# Only shep-daemon: process-group signal delivery and process-related syscalls for the
+# process-group signal delivery and process-related syscalls for shep-daemon's
 # real ProcessRunner (kill ladder, SIGKILL tree); `user` adds geteuid for the same-uid
 # peer-cred check and passwd/group lookups for `user`/`group` spawn.
 nix = { version = "0.29", default-features = false, features = ["signal", "process", "user"] }

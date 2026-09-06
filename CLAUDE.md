@@ -543,11 +543,20 @@ cannot connect. The contract is published in `docs/dogs.md`; answering is
 optional, and a dog that does not answer is adopted with its protocol
 unknown rather than refused, which is every dog written before it.
 
-Two things it deliberately does not do, both argued at their call sites. A
+One thing it deliberately does not do, argued at its call site: a
 DAEMON-initiated restart gets no warning, since the check is CLI-side, so a
-crash or an autorestart respawn still walks into G12 row 5 unannounced. And
-`Child::kill` does not reach descendants, so a probe's grandchild can
-outlive it; closing that needs a process group rather than a patch.
+crash or an autorestart respawn still walks into G12 row 5 unannounced.
+
+**A probe's descendants are contained on unix now.** This paragraph used to
+say `Child::kill` does not reach them and that closing it needed a process
+group rather than a patch, which was right about the mechanism. `ask` in
+`crates/shep-cli/src/commands/dogs.rs` spawns with `process_group(0)` and
+`kill_probe_tree` sweeps `-pid`, the same shape `probes/os.rs` already used
+for the exec prober. Two holes stay open and are documented rather than
+closed. A descendant that calls `setsid` leaves the group, as `kill.rs`
+records for a sheep. And Windows has no process group, so the probe there
+still kills only the binary it spawned; containment would mean reaching the
+`pub(crate)` job object in `sys_windows.rs`.
 
 **There are three doors into the override store, not one.** A Flockfile
 load through `Request::ApplyConfig`, described below, is the one that
