@@ -1,5 +1,10 @@
 # Handoff: `shep lookout` pane redesign
 
+> Read [rulings.md](rulings.md) first. These frames are concepts, and that
+> file records which of them are being built, where the copy and the
+> behaviour claims below are wrong about shipped shep, and what changed
+> after the maintainer reviewed them.
+
 ## Overview
 
 `shep lookout` (alias `dash`) is the terminal dashboard over the shepherd, built with ratatui in `crates/shep-cli/src/lookout/`. Today it draws four plain panes: the flock table, a host strip, a sheep detail pane and the bleats feed. This handoff covers a redesign of every pane plus five new ones, in a glyph vocabulary of half-blocks, shade blocks and reverse-video bands.
