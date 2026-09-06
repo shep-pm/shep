@@ -1477,7 +1477,7 @@ mod tests {
             "every column fits at 120 columns"
         );
         assert!(
-            wide.contains("host  load 2.31 4.10 3.88 / 10 cores"),
+            wide.contains("host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores"),
             "the host strip"
         );
         assert!(
@@ -1593,9 +1593,14 @@ mod tests {
             "the detail pane's"
         );
         assert!(empty.contains("bleats  no sheep is selected"), "the feed's");
+        // The summary now sits second on the strip (right after the load
+        // segment, ahead of host memory), which is a wider budget than
+        // `flock cpu -` survives at this scene's 100 columns; the
+        // dash-not-zero invariant itself is pinned at the unit level in
+        // `host::tests::a_flock_with_no_readings_shows_a_dash_and_not_a_zero`.
         assert!(
-            empty.contains("flock cpu -"),
-            "and the strip shows no reading, not zero"
+            empty.contains("0 errored · 0 parked"),
+            "and the summary reflects the empty flock"
         );
 
         // Narrow: 51 columns drops FOLD, EXIT, RESTARTS, PID and MEM but
@@ -1688,7 +1693,7 @@ mod tests {
         let frozen = render_text(&scene(Scene::Frozen).1);
         assert!(frozen.contains("the shepherd has died"));
         assert!(
-            frozen.contains("host  load 2.31 4.10 3.88 / 10 cores"),
+            frozen.contains("host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores"),
             "the strip kept its LAST values rather than blanking"
         );
 

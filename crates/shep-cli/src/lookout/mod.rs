@@ -821,7 +821,7 @@ mod tests {
 
         let frame = crate::lookout::frames::render_text(terminal.backend().buffer());
         assert!(
-            frame.contains("host  load 2.31 4.10 3.88 / 10 cores"),
+            frame.contains("host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores"),
             "the strip drew the sample the heartbeat took: {frame}"
         );
         assert!(

@@ -151,48 +151,76 @@ fn runs(app: &App) -> Vec<Run> {
     match app.host() {
         Some(host) => {
             let (one, five, fifteen) = host.load;
-            let load_text = match host.cores {
-                Some(cores) => {
-                    format!("host  load {one:.2} {five:.2} {fifteen:.2} / {cores} cores  ")
-                }
-                // No denominator: the numbers alone are not readable, so they
-                // are shown without a claim about how many cores they are
-                // spread over rather than with a guessed one.
-                None => format!("host  load {one:.2} {five:.2} {fifteen:.2}  "),
-            };
+            // Gauge before numbers, per the design: a reader scanning for
+            // "is this loaded" anchors on a fixed offset only if the gauge
+            // sits right after its label, not after numbers of varying width.
             out.push(Run {
-                text: load_text,
+                text: "host  load  ".to_string(),
                 ink: Ink::Muted,
             });
             out.push(Run {
                 text: load_gauge(one, host.cores),
                 ink: Ink::Load,
             });
+            let load_suffix = match host.cores {
+                Some(cores) => format!(" {one:.2} {five:.2} {fifteen:.2} / {cores} cores  "),
+                // No denominator: the numbers alone are not readable, so they
+                // are shown without a claim about how many cores they are
+                // spread over rather than with a guessed one.
+                None => format!(" {one:.2} {five:.2} {fifteen:.2}  "),
+            };
+            out.push(Run {
+                text: load_suffix,
+                ink: Ink::Muted,
+            });
             out.push(sep());
             out.push(Run {
-                text: format!(
-                    "host mem {} / {}  ",
-                    human_bytes(host.memory_used_bytes),
-                    human_bytes(host.memory_total_bytes)
-                ),
+                text: summary(app),
+                ink: Ink::Muted,
+            });
+            out.push(sep());
+            out.push(Run {
+                text: "host mem  ".to_string(),
                 ink: Ink::Muted,
             });
             out.push(Run {
                 text: cell::gauge(host.memory_used_bytes, Some(host.memory_total_bytes), 10),
                 ink: Ink::Mem,
             });
+            out.push(Run {
+                text: format!(
+                    " {} / {}  ",
+                    human_bytes(host.memory_used_bytes),
+                    human_bytes(host.memory_total_bytes)
+                ),
+                ink: Ink::Muted,
+            });
         }
-        None if app.host_unsupported() => out.push(Run {
-            text: "host  usage is not available on this platform".to_string(),
-            ink: Ink::Muted,
-        }),
+        None if app.host_unsupported() => {
+            out.push(Run {
+                text: "host  usage is not available on this platform".to_string(),
+                ink: Ink::Muted,
+            });
+            out.push(sep());
+            out.push(Run {
+                text: summary(app),
+                ink: Ink::Muted,
+            });
+        }
         // Reachable for at most one redraw: `tokio::time::interval`'s first
         // tick is immediate, so the heartbeat samples before the second
         // frame.
-        None => out.push(Run {
-            text: "host  not read yet".to_string(),
-            ink: Ink::Muted,
-        }),
+        None => {
+            out.push(Run {
+                text: "host  not read yet".to_string(),
+                ink: Ink::Muted,
+            });
+            out.push(sep());
+            out.push(Run {
+                text: summary(app),
+                ink: Ink::Muted,
+            });
+        }
     }
 
     // Summed from the whole flock, `all_rows`, not the filtered `rows`, so
@@ -225,12 +253,6 @@ fn runs(app: &App) -> Vec<Run> {
         ),
         ink: Ink::Muted,
     });
-    out.push(sep());
-    out.push(Run {
-        text: summary(app),
-        ink: Ink::Muted,
-    });
-
     // Last, and therefore the first thing a narrow terminal loses: a host that
     // has been up six days explains nothing about right now.
     if let Some(host) = app.host() {
@@ -376,6 +398,25 @@ mod tests {
         assert!(
             !filtered.contains("flock cpu -"),
             "a filter matching nothing is not the same as no reading arriving: {filtered:?}"
+        );
+    }
+
+    /// `N errored · N parked` is the segment that answers "is anything wrong
+    /// right now", so it sits second, right after the load segment, ahead of
+    /// host memory. At an ordinary 120-column terminal that means it survives
+    /// the cut even though later segments (the flock sparkline, `flock mem`,
+    /// `up`) do not.
+    #[test]
+    fn the_summary_survives_a_120_column_cut() {
+        let app = with_host(sample(), flock_of(4, 1));
+        let line = rendered(&strip_line(&app, 120));
+        assert!(
+            line.contains("0 errored · 0 parked"),
+            "summary dropped at 120 columns: {line:?}"
+        );
+        assert!(
+            line.find("errored").unwrap() < line.find("host mem").unwrap(),
+            "summary must come before host mem: {line:?}"
         );
     }
 }

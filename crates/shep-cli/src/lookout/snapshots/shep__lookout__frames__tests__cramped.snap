@@ -3,7 +3,7 @@ source: crates/shep-cli/src/lookout/frames.rs
 expression: render_text(&buffer)
 ---
 shep lookout   /h… 6 in the flock
-host  load 2.31 4.10 3.88 / 10 c…
+host  load  ██░░░░░░░░ 2.31 4.10…
   ID    NAME      STATUS         
 ─────────────────────────────────
    ██ FLOCK                      
