@@ -1906,3 +1906,21 @@ The reply is `SheepFieldSet { name, key, pending }` rather than `Response::Appli
 `PROTOCOL_VERSION` did not move again. It went to 4 earlier on the same branch, for the entry above, and one bump covers every additive variant that ships with it.
 
 `verified crates/shep-core/src/protocol/request.rs (Request::SetSheepField, Response::SheepFieldSet), crates/shep-daemon/src/supervisor.rs (handle_set_sheep_field, and merge_declared's next.fields.remove(key) which is the line this exists to avoid), crates/shep-daemon/src/rpc.rs (a_field_edit_is_reported_as_an_operator_override)`
+
+## The inherited descriptor
+
+### shep-channel probes the descriptor with `getsockname`, and refuses everything but a socket
+
+`SHEP_CHANNEL_FD` names a number and `from_raw_fd` believes it. The floor of 3 keeps stdio out of reach and that was the whole of the validation: a variable naming an open log file at fd 7 was adopted, written newline-delimited JSON, and closed on drop, with no error at any point. The descriptor's real owner then wrote into whatever the next `open` recycled that number for.
+
+**Why probe at all, when it cannot prove ownership:** it cannot, and nothing the kernel offers can. A socket this process opened for its own reasons still passes, so the check narrows the hole rather than closing it. What it changes is the shape of the failure: every wrong descriptor that is not a socket becomes a named refusal at startup, and only another unix socket stays silent. The harm is not hypothetical and std states it precisely. Remove the check, run the test, and the process aborts with `IO Safety violation: owned file descriptor already closed`, which is the double close caught by std's own runtime.
+
+**Why `getsockname` and not `SO_ERROR` or `getpeername`:** review suggested `take_error()`, which is `getsockopt(SO_ERROR)` underneath. It answers only whether the number is a socket, it accepts a TCP socket, and it reads-and-clears a pending socket error the app would otherwise see. `getpeername` answers more, and the extra thing it answers is connection state, which a live channel legitimately loses. Measured on macOS: a socketpair whose far end has closed returns `EINVAL` from `peer_addr()` while `read` still returns a clean `Ok(0)`, so a probe built on it would refuse a working channel whose shepherd went away first. `getsockname` is state-independent, so it can only refuse a descriptor that was always wrong, and std's `local_addr` rejects a non-unix address family for free.
+
+All three measured against the same descriptors. A plain file, a pipe and stdout report `ENOTSOCK`; a closed number reports `EBADF`; a TCP socket passes `SO_ERROR` and fails both address calls; a live socketpair and one whose peer has closed both pass `getsockname`.
+
+The probe runs before `CHANNEL_TAKEN`, matching the Windows arm's rule that a refusal takes nothing. Otherwise one bad descriptor would refuse every later call in the process. `ManuallyDrop` is what makes the probe sound without ownership, and it is load-bearing rather than decorative: drop it while keeping the check and the same test aborts the same way.
+
+What would actually close the hole is a shepherd-side change, not a client-side one. A nonce written into the socket before the exec, or a `SHEP_CHANNEL_PID` the crate compares against `getpid()`, would both survive an environment inherited by a grandchild. Both break every app on the current contract, so neither ships here.
+
+`verified crates/shep-channel/src/endpoint.rs (refuse_unless_socket, connect's Descriptor arm, a_descriptor_that_is_not_a_socket_is_refused_and_left_open)`
