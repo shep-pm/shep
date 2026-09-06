@@ -84,9 +84,10 @@ pub fn render_cycle(cycle: &[String]) -> String {
 ///
 /// Dogs default to a stage after every sheep, so an existing install keeps
 /// the order `boot.rs` argues for. Two things move one: `boot_first`, which
-/// puts it in the first stage, and anything depending on it, which gives it
-/// an ordinary graph position. A dog runs at the earliest stage anything
-/// asks for.
+/// puts it in the first stage unless it depends on a knot, in which case it
+/// plans after the cyclic stage like anything else that does; and anything
+/// depending on it, which gives it an ordinary graph position. A dog runs
+/// at the earliest stage anything asks for.
 ///
 /// The stages therefore run: `boot_first` dogs, the ordinary sort, dogs
 /// nothing depends on, the cyclic stage, then the nodes that depend on the
@@ -564,9 +565,9 @@ mod tests {
         fn every_edge_is_respected_in_the_planned_order(
             edges in proptest::collection::vec((0usize..8, 0usize..8), 0..24)
         ) {
-            // A DAG by construction: an edge only ever points at a lower
-            // index, so no input can be cyclic and every edge must show up
-            // as a strictly earlier stage.
+            // fails if the sort violates edge order anywhere on an acyclic
+            // graph. An edge only ever points at a lower index by
+            // construction, so no input here can be cyclic.
             let mut deps: Vec<Vec<String>> = vec![Vec::new(); 8];
             for (from, to) in edges {
                 if to < from {
@@ -582,6 +583,12 @@ mod tests {
                 .collect();
             let out = plan(&nodes);
             proptest::prop_assert!(out.cycles.is_empty());
+            for stage in &out.stages {
+                proptest::prop_assert!(!stage.is_empty(), "an empty stage: {:?}", out.stages);
+                let mut sorted = stage.clone();
+                sorted.sort();
+                proptest::prop_assert_eq!(stage, &sorted, "an unsorted stage: {:?}", out.stages);
+            }
             let mut stage_of = std::collections::BTreeMap::new();
             for (index, stage) in out.stages.iter().enumerate() {
                 for name in stage {
@@ -597,13 +604,18 @@ mod tests {
 
         #[test]
         fn every_cyclic_node_is_reported_and_no_node_is_planned_twice(
-            edges in proptest::collection::vec((0usize..6, 0usize..6), 0..18)
+            edges in proptest::collection::vec((0usize..6, 0usize..6), 0..18),
+            shuffle_keys in proptest::collection::vec(0u32.., 6)
         ) {
-            // Arbitrary edges, so most draws are cyclic: the DAG-by-
-            // construction case above gives the cyclic path no coverage at
-            // all. Ground truth is a transitive closure computed here, not
-            // anything the module does, so the test cannot agree with a bug
-            // by sharing its logic.
+            // fails if a node is dropped or duplicated, a cyclic node is
+            // missed or misplaced, an edge out of an acyclic node is not
+            // respected, a stage is empty or unsorted, two reported cycles
+            // share a node, or the plan changes when the same nodes are
+            // planned in a different order. Arbitrary edges, so most draws
+            // are cyclic: the DAG-by-construction case above gives the
+            // cyclic path no coverage at all. Ground truth is a transitive
+            // closure computed here, not anything the module does, so the
+            // test cannot agree with a bug by sharing its logic.
             const N: usize = 6;
             let mut adjacent = [[false; N]; N];
             for (from, to) in edges {
@@ -631,6 +643,28 @@ mod tests {
                 .collect();
             let out = plan(&nodes);
 
+            for stage in &out.stages {
+                proptest::prop_assert!(!stage.is_empty(), "an empty stage: {:?}", out.stages);
+                let mut sorted = stage.clone();
+                sorted.sort();
+                proptest::prop_assert_eq!(stage, &sorted, "an unsorted stage: {:?}", out.stages);
+            }
+
+            // Determinism against input order: planning the same nodes in a
+            // different order must produce the identical plan. The reorder
+            // is a sort key drawn independently of the edges, not a
+            // transform derived from the module under test.
+            let mut reordered: Vec<(u32, BootNode)> =
+                shuffle_keys.into_iter().zip(nodes.iter().cloned()).collect();
+            reordered.sort_by_key(|(key, _)| *key);
+            let shuffled_nodes: Vec<BootNode> = reordered.into_iter().map(|(_, n)| n).collect();
+            let out_shuffled = plan(&shuffled_nodes);
+            proptest::prop_assert_eq!(
+                &out_shuffled,
+                &out,
+                "the same nodes in a different order planned differently"
+            );
+
             let planned: Vec<String> = out.stages.iter().flatten().cloned().collect();
             let mut once = planned.clone();
             once.sort();
@@ -653,6 +687,25 @@ mod tests {
                     .expect("every node is planned")
             };
             let cyclic: Vec<usize> = (0..N).filter(|i| reaches[*i][*i]).collect();
+
+            // An edge out of an acyclic node has to land strictly earlier,
+            // the same claim the DAG test above makes, just without the
+            // guarantee that every node here qualifies: a node inside a
+            // knot has no such promise, since its own dependency can sit in
+            // the same stage or after it.
+            for i in (0..N).filter(|i| !reaches[*i][*i]) {
+                for j in (0..N).filter(|j| adjacent[i][*j]) {
+                    proptest::prop_assert!(
+                        stage_of(j) < stage_of(i),
+                        "n{} depends on n{} but n{} is not strictly earlier: {:?}",
+                        i,
+                        j,
+                        j,
+                        out.stages
+                    );
+                }
+            }
+
             if let Some(first) = cyclic.first().copied() {
                 let knot = stage_of(first);
                 for i in cyclic.iter().copied() {
@@ -665,16 +718,26 @@ mod tests {
                     );
                 }
                 // A dependent of the knot can never have its dependency
-                // satisfied, so it starts anyway, but never first.
+                // satisfied, so it starts anyway, but never first; an
+                // acyclic node that is NOT a dependent has no business in
+                // the knot's stage or after it.
                 for i in (0..N).filter(|i| !reaches[*i][*i]) {
-                    if cyclic.iter().any(|c| reaches[i][*c]) {
-                        proptest::prop_assert!(
-                            stage_of(i) > knot,
-                            "n{} depends on the knot and is planned before it: {:?}",
-                            i,
-                            out.stages
-                        );
-                    }
+                    let is_dependent = cyclic.iter().any(|c| reaches[i][*c]);
+                    proptest::prop_assert_ne!(
+                        stage_of(i),
+                        knot,
+                        "n{} is acyclic but planned into the knot's own stage: {:?}",
+                        i,
+                        out.stages
+                    );
+                    proptest::prop_assert_eq!(
+                        stage_of(i) > knot,
+                        is_dependent,
+                        "n{} depends on the knot: {}, but its stage relative to the knot disagrees: {:?}",
+                        i,
+                        is_dependent,
+                        out.stages
+                    );
                 }
             }
 
@@ -701,6 +764,25 @@ mod tests {
                         adjacent[from][to],
                         "{} is not a path anything can walk",
                         render_cycle(cycle)
+                    );
+                }
+            }
+
+            // Two reported cycles never share a node: a component is a set
+            // of nodes, so two distinct components are disjoint, and this
+            // checks the reported paths against each other rather than
+            // against `components` above, since a bug that miscomputed both
+            // the same way would slip past a check that used one to verify
+            // the other.
+            for (i, a) in out.cycles.iter().enumerate() {
+                for b in &out.cycles[i + 1..] {
+                    let a_names: BTreeSet<&str> = a.iter().map(String::as_str).collect();
+                    let b_names: BTreeSet<&str> = b.iter().map(String::as_str).collect();
+                    proptest::prop_assert!(
+                        a_names.is_disjoint(&b_names),
+                        "two reported cycles share a node: {} and {}",
+                        render_cycle(a),
+                        render_cycle(b)
                     );
                 }
             }
