@@ -5079,8 +5079,13 @@ impl<R: ProcessRunner> Actor<R> {
             return;
         }
 
-        // Refused whole, before anything is spawned: a partly-accepted selector
-        // is worse than a refused one.
+        // Refused whole, before anything is spawned: a partly-accepted
+        // selector is worse than a refused one. The rule holds per supervisor
+        // call rather than per request now, since `rpc::reload_in_stages`
+        // walks a multi-sheep selector one name at a time and so reaches this
+        // once per app. That walk carries every refusal back on
+        // `Response::Reloading`, so a fold reloaded around a busy app is
+        // still named at the operator rather than being a missing row.
         let in_flight = matched.iter().find_map(|id| {
             let slot = self
                 .sheep
