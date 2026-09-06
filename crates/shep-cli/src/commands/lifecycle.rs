@@ -1237,10 +1237,14 @@ async fn load_one(
         streams, // Both requests carry the apps, so this "selector" is a
         // placeholder the body closure ignores.
         &[SelectorSpec::All],
-        // `START_DEADLINE`: a cold spawn plus a readiness probe routinely
-        // outruns the client's default 5s, and on `Add` a single-threaded
-        // actor behind a batch of cold spawns does too.
-        Some(START_DEADLINE),
+        Some(match mode {
+            // `add` registers and starts nothing, so it runs no stages and
+            // needs no more than the batch budget. `START_DEADLINE`: a
+            // single-threaded actor behind a batch of cold spawns outruns the
+            // client's default 5s on its own.
+            Load::Add => START_DEADLINE,
+            Load::Start => staged_start_deadline(&apps),
+        }),
         |_| match mode {
             Load::Start => Request::Start { apps: apps.clone() },
             Load::Add => Request::Add { apps: apps.clone() },
@@ -1266,6 +1270,37 @@ async fn load_one(
         applied,
         first_failure(failure.unwrap_or(ExitCode::Success), recorded),
     )
+}
+
+/// Slack over the summed readiness deadlines of a staged start.
+///
+/// Covers the daemon's own per-stage slack (`boot_order::STAGE_SLACK`) plus
+/// the round trip, so a client gives up only after the daemon has.
+const STAGED_START_SLACK: Duration = Duration::from_secs(10);
+
+/// The deadline a staged start needs.
+///
+/// The daemon runs a `Request::Start` batch in dependency order and holds
+/// each stage until its members settle, so the reply lands only after the
+/// last one. The worst case is every app in its own stage, each held for its
+/// own `listen_timeout`, and the sum of those is the bound. Never under
+/// [`START_DEADLINE`], which is what a one-stage batch of cold spawns already
+/// needs.
+///
+/// The CLI computes it rather than asking the daemon because the CLI is what
+/// holds every [`AppConfig`] going out. `shep bleats -f` asks for a longer
+/// deadline the same way.
+///
+/// The daemon clamps anything past its own `MAX_DEADLINE_MS` (60s), so a
+/// batch whose stages sum past that is bounded there whatever this returns;
+/// asking for more only makes the client outlast the daemon rather than the
+/// other way round.
+fn staged_start_deadline(apps: &[AppConfig]) -> Duration {
+    let stages: Duration = apps
+        .iter()
+        .map(|app| app.listen_timeout.as_duration())
+        .sum();
+    (stages + STAGED_START_SLACK).max(START_DEADLINE)
 }
 
 /// Stops the sheep matching `args.selector`.
@@ -3094,6 +3129,62 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[tokio::test]
+    async fn a_start_asks_for_a_deadline_its_own_stages_fit_inside() {
+        // fails if `shep start` sends a fixed budget: the daemon holds every
+        // stage for its members' listen_timeout, so a flock whose timeouts
+        // sum past `START_DEADLINE` is abandoned by the client while the
+        // shepherd is doing exactly what it was asked
+        let dir = tempfile::tempdir().unwrap();
+        // Two apps at 40s each, so the sum clears `START_DEADLINE` by enough
+        // that neither app's timeout alone would.
+        let flockfile = dir.path().join("Flockfile.toml");
+        std::fs::write(
+            &flockfile,
+            "[[app]]\nname = \"db\"\nscript = \"/bin/sleep\"\nlisten_timeout = \"40s\"\n\
+             [[app]]\nname = \"api\"\nscript = \"/bin/sleep\"\nlisten_timeout = \"40s\"\n\
+             depends_on = [\"db\"]\n",
+        )
+        .unwrap();
+
+        let sock = shep_client::testing::control_address(dir.path());
+        let (client, mut envelopes) = fake_client_capturing_envelopes(&sock).await;
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let args = StartArgs {
+            targets: vec![flockfile.to_string_lossy().into_owned()],
+            name: None,
+            fold: None,
+            cwd: None,
+            interpreter: None,
+            flockfile: false,
+            reset: None,
+        };
+        {
+            let mut streams = Streams {
+                out: &mut out,
+                err: &mut err,
+                style: crate::style::Presentation::BARE,
+                fmt: Format::Table,
+            };
+            let _ = start(&client, &mut streams, &args, None, &BTreeMap::new()).await;
+        }
+
+        // The first envelope is the `ListFlock` the bare-name rule needs; the
+        // `Start` is the one under test.
+        let mut deadlines = Vec::new();
+        while let Ok(sent) = envelopes.try_recv() {
+            if matches!(sent.body, Request::Start { .. }) {
+                deadlines.push(sent.deadline_ms);
+            }
+        }
+        assert_eq!(
+            deadlines,
+            vec![Some(90_000)],
+            "two 40s stages plus STAGED_START_SLACK, not a fixed budget"
+        );
     }
 
     /// A `$SHEP_HOME`, a dog binary answering `--version` with `protocol`,
