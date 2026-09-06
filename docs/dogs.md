@@ -455,10 +455,10 @@ the ordinary case, not a skew, and comparing the two would report every
 dog that exists.
 
 A candidate gets one second to exit and another to have its output read,
-and an adopt runs two probes, so roughly four seconds is the worst case. It
-is killed either way, so a dog that ignores both flags and runs costs that
-time and is adopted with an unknown protocol. It cannot hang the `adopt`
-that is vetting it.
+and an adopt runs two probes, so roughly four seconds is the worst case. Its
+process group is killed either way, so a dog that ignores both flags and
+runs costs that time and is adopted with an unknown protocol. It cannot
+hang the `adopt` that is vetting it.
 
 None of the answer is written down. `[daemon] adopted_dogs` records the
 path and nothing else, and a protocol stored at adopt time would be a copy
@@ -547,7 +547,7 @@ shep runs it with `--version`, and a dog that does not RECOGNISE that flag
 ignores it and starts doing its ordinary job instead, with `SHEP_HOME`
 pointing at the live shepherd. So a rotator can rotate once and a bark dog
 can open a second subscription, for up to the budget above, before the
-process is killed.
+process and everything it forked are killed.
 
 Only dogs that ignore the flag are affected. A dog that recognises
 `--version` and exits, even without naming a protocol, does no work: its
@@ -691,8 +691,11 @@ adopt time, so the dog does not have to be running. Configure then enable is
 the order an operator wants, and it works.
 
 **Asking runs it.** Opening the pane on an adopted dog spawns that binary
-with `--schema`, waits a second for an answer, then kills it, on the same
-terms `shep adopt` asks on. That is a third party's code executing because
+with `--schema`, waits a second for an answer, then kills its whole process
+group, on the same terms `shep adopt` asks on. The group is what catches a
+dog that forks a worker before answering. A descendant that calls `setsid`
+leaves the group and survives it, and on Windows there is no group, so only
+the probe itself is killed. That is a third party's code executing because
 somebody pressed a key, so it is worth knowing before browsing the config of
 a dog you did not write. A built-in dog is shep's own binary and is never
 spawned.

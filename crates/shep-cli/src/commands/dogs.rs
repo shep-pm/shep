@@ -576,7 +576,8 @@ fn ask(
     // environment: this runs a stranger's binary. `SHEP_HOME` is the home
     // this invocation resolved, or the candidate finds the live daemon's
     // socket. Stdout is piped so it cannot write on the operator's terminal.
-    match Command::new(path)
+    let mut command = Command::new(path);
+    command
         .arg(flag)
         .env_clear()
         .envs(probe_env())
@@ -584,9 +585,16 @@ fn ask(
         .env("SHEP_DOG_NAME", name)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
+        .stderr(Stdio::null());
+    // A group of the probe's own, whose id is its own pid: without one
+    // `kill_probe_tree` has no group to name and reaches only the leader.
+    #[cfg(unix)]
     {
+        use std::os::unix::process::CommandExt as _;
+        command.process_group(0);
+    }
+
+    match command.spawn() {
         Err(err) => Err(AdoptRefusal::WillNotExec {
             reason: err.to_string(),
         }),
@@ -600,10 +608,35 @@ fn ask(
                 return Err(AdoptRefusal::WillNotExec { reason });
             }
             let answer = answer_text(&mut child, reading, budget);
-            let _ = child.kill();
+            kill_probe_tree(&mut child);
             let _ = child.wait();
             Ok(answer)
         }
+    }
+}
+
+/// SIGKILLs the probe, and on unix everything it forked
+///
+/// A dog that does not recognise the flag runs its ordinary job instead, so
+/// a probe can fork before it answers. `Child::kill` reaches only the
+/// leader. A descendant that calls `setsid` leaves the group and survives.
+///
+/// Failure is never reported: an empty group answers `ESRCH`, and the
+/// caller's answer is the same either way.
+fn kill_probe_tree(child: &mut Child) {
+    // `Child` skips the syscall once it holds a status, so a child already
+    // reaped here is never signalled through a pid the OS may have recycled.
+    let _ = child.kill();
+    // POSIX holds a group id out of the pool while the group has members, so
+    // a sweep with forks to reach cannot name a stranger's group. An empty
+    // one answers ESRCH, short of a pid wrap inside the microseconds since
+    // the reap. `-0` is `0`, this process's own group, so zero must not pass.
+    #[cfg(unix)]
+    if let Ok(pid) = i32::try_from(child.id())
+        && pid > 0
+    {
+        let group = nix::unistd::Pid::from_raw(-pid);
+        let _ = nix::sys::signal::kill(group, nix::sys::signal::Signal::SIGKILL);
     }
 }
 
@@ -2276,6 +2309,86 @@ mod tests {
             schema["properties"]["endpoint"]["type"], "string",
             "the schema is kept as the dog wrote it, not summarised"
         );
+    }
+
+    /// How long a fork the probe left behind would go on running.
+    const PROBE_FORK_LIFETIME_SECS: u64 = 30;
+
+    /// How long [`waited_out`] gives a SIGKILLed fork to leave the process
+    /// table.
+    ///
+    /// The signal is unblockable, so this covers the reaping parent's
+    /// scheduling and nothing else. Five seconds against the sub-millisecond
+    /// it takes idle, sized for a loaded runner rather than for this machine.
+    const FORK_EXIT_DEADLINE: Duration = Duration::from_secs(5);
+
+    /// Gap between [`FORK_EXIT_DEADLINE`]'s retries, as
+    /// `cli_e2e.rs`'s own pid guard does it.
+    const FORK_EXIT_POLL_INTERVAL: Duration = Duration::from_millis(5);
+
+    /// Whether `pid` left the process table inside [`FORK_EXIT_DEADLINE`].
+    ///
+    /// A fork the probe abandons is reparented to init, which reaps it, so
+    /// `ESRCH` is what being gone looks like from here. Polled rather than
+    /// awaited: the fork is nobody's child in this process, so there is no
+    /// exit status to wait on.
+    fn waited_out(pid: nix::unistd::Pid) -> bool {
+        let started = Instant::now();
+        while started.elapsed() < FORK_EXIT_DEADLINE {
+            if nix::sys::signal::kill(pid, None).is_err() {
+                return true;
+            }
+            std::thread::sleep(FORK_EXIT_POLL_INTERVAL);
+        }
+        false
+    }
+
+    /// fails if a fork the probe left behind outlives the probe
+    ///
+    /// Opening a dog's config pane runs that dog's binary, and a dog that
+    /// does not recognise the flag starts its ordinary job instead. Killing
+    /// the leader alone leaves what it forked running against the live
+    /// `SHEP_HOME`, once per keystroke.
+    #[test]
+    fn a_fork_the_probe_left_behind_is_killed_with_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("fork.pid");
+        // The fork writes its pid before the script answers, so an answer is
+        // proof the file is there to read. Its stdout goes to `/dev/null`: a
+        // fork holding the inherited pipe open spends the whole budget and
+        // leaves no answer to wait on.
+        let bin = two_flag_dog(
+            dir.path(),
+            &format!(
+                "sh -c 'echo $$ > {pid}.tmp; mv {pid}.tmp {pid}; exec sleep {secs}' \
+                 >/dev/null 2>&1 &\n\
+                 while [ ! -f {pid} ]; do sleep 0.01; done\n\
+                 echo '{{}}'",
+                pid = pid_file.display(),
+                secs = PROBE_FORK_LIFETIME_SECS,
+            ),
+        );
+
+        let schema = ask_schema(&bin, dir.path(), "otel", TEST_BUDGET);
+        assert!(
+            matches!(schema, DogSchema::Published(_)),
+            "the probe must answer, or the fork never wrote its pid: {schema:?}"
+        );
+        let pid = nix::unistd::Pid::from_raw(
+            std::fs::read_to_string(&pid_file)
+                .unwrap()
+                .trim()
+                .parse()
+                .unwrap(),
+        );
+
+        let gone = waited_out(pid);
+        // Before the assertion: a red run must not leave the fork behind for
+        // the rest of its lifetime.
+        if !gone {
+            let _ = nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGKILL);
+        }
+        assert!(gone, "a fork the probe left behind outlived it");
     }
 
     /// A dog with a broken schema flag may still do its job.
