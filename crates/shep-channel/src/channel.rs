@@ -2,9 +2,9 @@ use crate::{ChannelError, ChildMessage, ShepherdMessage, endpoint, session};
 
 /// The channel with no threads: you own the loop.
 ///
-/// [`crate::serve`] is the other road and the documented default, because it
-/// answers the messages you did not register a handler for. Reach for this
-/// when your app already has an event loop and wants the channel inside it.
+/// [`crate::serve`] is the other, documented default: it answers messages
+/// you never registered a handler for. Reach for this when your app
+/// already runs its own event loop.
 #[derive(Debug)]
 pub struct Channel {
     pub(crate) reader: std::io::BufReader<endpoint::ReadHalf>,
@@ -15,10 +15,8 @@ pub struct Channel {
 impl Channel {
     /// Opens this process's channel, or `Ok(None)` when it has none.
     ///
-    /// At most one channel exists per process. A second call does not take
-    /// the inherited descriptor again -- which would produce two values
-    /// that both believe they own it -- it returns
-    /// [`ChannelError::AlreadyTaken`] instead.
+    /// At most one channel exists per process. A second call returns
+    /// [`ChannelError::AlreadyTaken`] rather than retake the descriptor.
     ///
     /// # Errors
     ///

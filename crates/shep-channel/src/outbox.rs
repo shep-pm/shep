@@ -1,14 +1,12 @@
 //! The queue between the app's threads and the one thread that writes.
 //!
-//! Two push policies, because two kinds of message have different costs when
-//! they go missing. A dropped metric costs nothing today: the shepherd logs
-//! metrics at debug level and no dog reads them. A dropped `ready` hangs a
-//! `wait_ready` gate, and a dropped reply costs an operator the whole
-//! `action_timeout`. So metrics are lossy and never block the caller, and
-//! everything else waits for room.
+//! Two push policies. A dropped metric costs nothing: the shepherd only
+//! logs it at debug level. A dropped `Ready` hangs `wait_ready`, and a
+//! dropped reply costs an operator the whole `action_timeout`. So metrics
+//! are lossy and never block; everything else waits for room.
 //!
-//! One queue carries both, so the eviction rule has to hold the same line:
-//! a full queue gives up a metric, never a `Ready` or an `ActionReply`.
+//! One queue holds both. A full queue gives up a metric, never a
+//! `Ready` or an `ActionReply`.
 
 use std::collections::VecDeque;
 use std::sync::{Condvar, Mutex, PoisonError};
@@ -17,16 +15,9 @@ use crate::{ChannelError, ChildMessage};
 
 /// How many messages may wait for the writer before the policy applies.
 ///
-/// 1024 is a starting guess, not a measurement: no benchmark backs it yet.
-/// The reasoning behind picking it: `ChildMessage` itself is 64 bytes on the
-/// stack (`size_of`, checked directly, not estimated), so a full queue's
-/// fixed cost is tens of kilobytes plus whatever the queued names and
-/// bodies heap-allocate -- not a memory concern at this size for a process
-/// meant to run one app. What would justify moving it is throughput
-/// evidence in either direction: an app that regularly sees
-/// `dropped_metrics() > 0` under real load wants it raised, and profiling
-/// that finds this bound is where an app's peak memory actually goes wants
-/// it lowered.
+/// 1024 is a starting guess, not a measurement. `ChildMessage` is 64
+/// bytes on the stack. So a full queue's fixed cost is tens of
+/// kilobytes plus whatever names and bodies heap-allocate.
 pub(crate) const DEFAULT_CAPACITY: usize = 1024;
 
 #[derive(Debug)]
@@ -50,7 +41,7 @@ pub(crate) struct Outbox {
 impl Outbox {
     /// `capacity` bounds how many messages `push_lossy` will hold before it
     /// starts discarding. Zero is legal: nothing is ever retained, so every
-    /// lossy push is immediately counted as a drop.
+    /// lossy push is counted as a drop.
     pub(crate) fn new(capacity: usize) -> Self {
         Self {
             inner: Mutex::new(Inner {
@@ -66,38 +57,31 @@ impl Outbox {
 
     /// Queues a message that may be dropped. Never blocks, never fails.
     ///
-    /// On a full queue the oldest waiting metric is discarded and counted,
-    /// never a `Ready` or an `ActionReply`. Oldest rather than newest: a
-    /// metric's value is a sample, and the newer sample is the one worth
-    /// keeping. A full queue holding no metric at all has nothing this may
-    /// take, so the incoming message is what gets dropped.
+    /// A full queue discards its oldest metric, never a `Ready` or an
+    /// `ActionReply`, and counts it. Newer samples are worth more, so the
+    /// older one goes. With nothing to evict, the incoming message is the
+    /// one dropped instead.
     pub(crate) fn push_lossy(&self, message: ChildMessage) {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         if inner.closed {
-            // The sample is genuinely gone, so count it. `dropped()` is the
-            // one number an app reads to judge whether the shepherd is
-            // keeping up, and a counter frozen at whatever it held when the
-            // shepherd went away is a lie told exactly when an app is
-            // trying to find out why its samples stopped arriving.
+            // The sample is really gone, so count it. `dropped()` must keep
+            // moving after the shepherd leaves. Otherwise an app cannot tell
+            // why its samples stopped.
             inner.dropped = inner.dropped.saturating_add(1);
             return;
         }
         if self.capacity == 0 {
-            // Nothing is ever retained at zero capacity, so the message
-            // being pushed is exactly what gets dropped. Count it and stop,
-            // rather than evicting nothing and queueing past capacity.
+            // Nothing is ever retained at zero capacity, so the message being
+            // pushed is what gets dropped. Count it and stop, rather than
+            // evicting nothing and queueing past capacity.
             inner.dropped = inner.dropped.saturating_add(1);
             return;
         }
         if inner.queue.len() >= self.capacity {
-            // Scan for a metric rather than taking whatever is at the head.
-            // This queue is shared with `push_blocking`, and the whole point
-            // of the split policy is that a droppable message never
-            // displaces one that is not: a `Ready` evicted here hangs the
-            // operator's `wait_ready` gate with nothing anywhere saying why,
-            // and an `ActionReply` evicted here costs the operator the full
-            // `action_timeout`. The scan is O(n) only on a full queue, over
-            // a discriminant check.
+            // Scans for a metric instead of taking the head. A droppable message
+            // must never displace a `Ready` or an `ActionReply`. Evicting either
+            // one hangs `wait_ready` or costs a full `action_timeout`. Only a
+            // full queue pays for the scan.
             let Some(oldest_metric) = inner
                 .queue
                 .iter()
@@ -123,10 +107,9 @@ impl Outbox {
     /// is the shepherd having gone away.
     pub(crate) fn push_blocking(&self, message: ChildMessage) -> Result<(), ChannelError> {
         if self.capacity == 0 {
-            // Nothing is ever retained, so the wait below would never end:
-            // its condition is `len >= 0`, which no drain can falsify.
-            // `push_lossy` counts a drop in this case; a message that must
-            // not be dropped has no honest outcome here but a refusal, and
+            // Nothing is ever retained, so this wait would never end. `len >=
+            // capacity` is `0 >= 0`, which no drain can falsify. A message that
+            // must not be dropped has no honest outcome here but a refusal.
             // `ready()` calls straight into this.
             return Err(ChannelError::Closed);
         }
@@ -197,8 +180,7 @@ mod tests {
     use super::*;
 
     /// Every wait in this module's tests is bounded by this. A working
-    /// outbox answers in microseconds; this is slack for a loaded runner,
-    /// not an expected duration.
+    /// outbox answers in microseconds; this is slack for a loaded runner.
     const DEADLINE: Duration = Duration::from_secs(5);
 
     fn metric(value: f64) -> ChildMessage {
@@ -220,13 +202,6 @@ mod tests {
         assert_eq!(outbox.pop(), Some(metric(3.0)));
     }
 
-    /// fails if a metric evicts a message that must not be lost. Nothing
-    /// mixed durable and lossy messages in a full queue before 2026-09-02,
-    /// which is the gap an unfiltered `pop_front()` lived in: it took
-    /// whatever sat at the head rather than the oldest metric, so a `Ready`
-    /// queued by `ready()` could be thrown away after that call had returned
-    /// `Ok(())`, hanging the operator's `wait_ready` gate with nothing
-    /// anywhere saying why -- and counting the loss as a dropped metric.
     #[test]
     fn a_full_outbox_evicts_a_metric_rather_than_a_readiness_signal() {
         let outbox = Outbox::new(3);
@@ -248,10 +223,6 @@ mod tests {
         assert_eq!(outbox.pop(), Some(metric(3.0)));
     }
 
-    /// fails if a full queue holding nothing droppable gives up something
-    /// durable anyway. With no metric to take, the incoming metric is what
-    /// goes: the queue never grows past its bound, and a `Ready` or an
-    /// `ActionReply` already waiting is never the thing that pays for it.
     #[test]
     fn a_full_outbox_with_no_metric_to_evict_drops_the_incoming_one() {
         let reply = ChildMessage::ActionReply {
@@ -280,10 +251,8 @@ mod tests {
         );
     }
 
-    /// fails if `push_blocking` returns while the queue is full. The forcing
-    /// mechanism is the channel: the pusher reports only after it returns,
-    /// so a `recv_timeout` that times out proves it is still waiting, and
-    /// the `pop` that follows is the explicit transition that releases it.
+    /// The pusher reports only after `push_blocking` returns, so a
+    /// `recv_timeout` timeout proves it is still waiting.
     #[test]
     fn a_must_deliver_push_waits_for_room_and_then_proceeds() {
         let outbox = Arc::new(Outbox::new(1));
@@ -310,8 +279,7 @@ mod tests {
         handle.join().expect("pusher panicked");
     }
 
-    /// fails if closing leaves a blocked pusher parked. Without this an app
-    /// whose shepherd went away hangs on `ready()` forever.
+    /// Without this, an app whose shepherd went away hangs on `ready()`.
     #[test]
     fn closing_releases_a_blocked_push_with_an_error() {
         let outbox = Arc::new(Outbox::new(1));
@@ -337,11 +305,9 @@ mod tests {
         handle.join().expect("pusher panicked");
     }
 
-    /// fails if a must-deliver push parks on an outbox that can never hold
-    /// anything. The wait condition is `len >= capacity`, which at capacity 0
-    /// is `0 >= 0` and no drain can falsify, so a regression here hangs
-    /// `ready()` rather than failing it. Bounded for that reason: a
-    /// regression fails at `DEADLINE` instead of parking the suite.
+    /// `len >= capacity` at capacity 0 is `0 >= 0`, which no drain can
+    /// falsify. So a regression hangs instead of failing. `DEADLINE` bounds
+    /// the wait, so a regression fails loudly instead of parking the suite.
     #[test]
     fn a_must_deliver_push_refuses_a_zero_capacity_outbox_rather_than_parking() {
         let outbox = Arc::new(Outbox::new(0));
@@ -359,8 +325,7 @@ mod tests {
         handle.join().expect("pusher panicked");
     }
 
-    /// fails if `pop` parks forever on a closed empty outbox, which would
-    /// leave the writer thread unjoinable at shutdown.
+    /// Otherwise the writer thread is unjoinable at shutdown.
     #[test]
     fn pop_returns_none_once_closed_and_empty() {
         let outbox = Outbox::new(4);
@@ -368,13 +333,8 @@ mod tests {
         assert_eq!(outbox.pop(), None);
     }
 
-    /// fails if a lossy push on a closed outbox panics, queues, or goes
-    /// uncounted. An app emitting metrics past shutdown is ordinary, not an
-    /// error -- but the sample really is gone, and `dropped()` is the one
-    /// number an app has to notice that with. This asserted `dropped() == 0`
-    /// until 2026-09-02, which pinned a counter that froze at exactly the
-    /// moment it mattered: once the shepherd goes away every metric is
-    /// discarded and the number an app reads stops moving.
+    /// Emitting a metric after shutdown is ordinary, not an error, but the
+    /// sample is really gone. `dropped()` is how an app notices that.
     #[test]
     fn a_lossy_push_after_close_counts_the_drop_and_queues_nothing() {
         let outbox = Outbox::new(4);
@@ -384,11 +344,8 @@ mod tests {
         assert_eq!(outbox.dropped(), 1);
     }
 
-    /// fails if a zero-capacity outbox either under-counts the drop or
-    /// queues past its own capacity. `dropped()` is what an app reads to
-    /// judge whether the shepherd is keeping up, so it must count exactly
-    /// what it discards -- and closing before `pop()` is what keeps this
-    /// test from blocking on an empty, open outbox.
+    /// Closes before `pop()` so the test does not block on an empty, open
+    /// outbox.
     #[test]
     fn a_zero_capacity_outbox_counts_the_drop_and_retains_nothing() {
         let outbox = Outbox::new(0);

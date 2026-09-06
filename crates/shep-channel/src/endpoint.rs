@@ -20,30 +20,21 @@ pub const VERSION_VAR: &str = "SHEP_CHANNEL_VERSION";
 
 /// The lowest descriptor number the channel can arrive on.
 ///
-/// The shepherd maps the child's end of the socketpair onto 3 and never
-/// anything lower, because 0, 1 and 2 are the app's own standard streams.
+/// The shepherd maps the socketpair's child end onto 3, never lower.
+/// Descriptors 0, 1 and 2 are the app's own standard streams.
 const FIRST_INHERITABLE_FD: i32 = 3;
 
 /// Where this process's channel is, if it has one.
 ///
 /// # Debug
 ///
-/// Derived, and prints the Windows pipe path in full including the random
-/// suffix the shepherd puts on it. That is a decision rather than an
-/// oversight, so it has a test.
+/// Derived, so it prints the Windows pipe path with its random
+/// suffix. That is deliberate and has a test.
 ///
-/// The suffix is not a secret. `tokio_runner.rs`, where the shepherd builds
-/// the name, argues that 128 bits closes prediction and not observation: the
-/// pipe namespace lists to any unprivileged local user, measured at 190
-/// pipes from a non-elevated session, so anyone positioned to read this
-/// value out of a log can enumerate the live name directly. It is also in
-/// `SHEP_CHANNEL_PIPE` in this process's own environment, and the instance
-/// it names is consumed once the app connects.
-///
-/// The rest of the crate leaks nothing here to match, which is worth knowing
-/// before adding a redaction: on Windows `std::fs::File`'s own `Debug` is
-/// `File { handle: 0xb4 }` and carries no path, so [`crate::Channel`] and
-/// the reader half print handles rather than names.
+/// The suffix is not a secret. The pipe namespace lists to any
+/// local user, so a log already reveals it. [`crate::Channel`] and
+/// the reader half print handles instead, matching `std::fs::File`'s
+/// own undecorated Debug on Windows.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Endpoint {
@@ -59,10 +50,9 @@ pub enum Endpoint {
 ///
 /// # Errors
 ///
-/// [`ChannelError::Unusable`] when `SHEP_CHANNEL_FD` is set to something
-/// that is not a descriptor number, or to a number below 3. Either is a
-/// broken environment rather than an absent channel, and saying so beats
-/// silently doing nothing.
+/// [`ChannelError::Unusable`] when `SHEP_CHANNEL_FD` holds something that
+/// is not a descriptor, or a number below 3. A broken environment, not an
+/// absent channel, so it fails loudly.
 pub fn discover() -> Result<Endpoint, ChannelError> {
     if let Some(raw) = std::env::var_os(FD_VAR) {
         return descriptor_from(&raw.to_string_lossy());
@@ -75,15 +65,14 @@ pub fn discover() -> Result<Endpoint, ChannelError> {
 
 /// Reads one `SHEP_CHANNEL_FD` value and says whether it can be the channel.
 ///
-/// Split out of [`discover`] so the refusals below can be tested without
-/// setting an environment variable: that is `unsafe` in edition 2024, which
-/// this crate denies outside its one descriptor site, and it would race
-/// every other test sharing the process.
+/// Split out of [`discover`] so the refusals below need no environment variable.
+/// Setting one is `unsafe` in edition 2024, which this crate forbids
+/// outside its one descriptor site.
+/// It would also race any other test sharing the process.
 ///
-/// The floor is what [`connect`]'s `from_raw_fd` leans on. A negative number
-/// is not an owned descriptor at all, and 1 is worse in practice than a
-/// number that is merely wrong: taking it would hand this crate ownership of
-/// the app's stdout, write JSON into it, and close it on drop.
+/// A negative number is not an owned descriptor at all. Taking 1 would
+/// be worse than a merely wrong number.
+/// This crate would own the app's stdout, write JSON into it, and close it on drop.
 fn descriptor_from(text: &str) -> Result<Endpoint, ChannelError> {
     let Ok(fd) = text.trim().parse::<i32>() else {
         return Err(ChannelError::Unusable(format!("{FD_VAR}={text}")));
@@ -107,70 +96,35 @@ pub(crate) type Transport = std::fs::File;
 
 /// The half the reader thread owns.
 ///
-/// The duplex itself on unix, where a socketpair's two ends are independent
-/// open file descriptions and a `read` parked on one costs a concurrent
-/// `write` on the other nothing at all.
+/// The duplex itself on unix. A socketpair's two ends are independent
+/// open file descriptions. A `read` parked on one costs a concurrent
+/// `write` nothing.
 #[cfg(unix)]
 pub(crate) type ReadHalf = Transport;
 /// The half the reader thread owns.
 ///
-/// [`PipeReader`] on Windows, which is not a refinement -- see that type for
-/// the deadlock it exists to avoid.
+/// [`PipeReader`] on Windows, not a plain type alias. See it for the
+/// deadlock it exists to avoid.
 #[cfg(windows)]
 pub(crate) type ReadHalf = PipeReader;
 
 /// How long the Windows reader sleeps between peeks at an empty pipe.
 ///
-/// The price of not being able to park inside `ReadFile`. What arrives on
-/// this half is an operator triggering an action or asking the app to stop,
-/// measured against `action_timeout` and `kill_timeout` -- both seconds --
-/// so 20 ms is invisible where a deadlock is not. Much shorter spins for
-/// nothing; much longer starts to show in how quickly an app answers
-/// `shep trigger`.
+/// The price of not parking inside `ReadFile`. Compared to
+/// `action_timeout` and `kill_timeout`, both in seconds, 20 ms is
+/// invisible. Shorter wastes cycles for nothing; longer shows up in
+/// how fast an app answers `shep trigger`.
 #[cfg(windows)]
 const PIPE_POLL_INTERVAL: core::time::Duration = core::time::Duration::from_millis(20);
 
-/// Reads the channel's named pipe without ever parking inside `ReadFile`.
+/// Reads the channel's named pipe without parking inside `ReadFile`.
 ///
-/// The shepherd hands a Windows app **one** pipe instance, so the reader and
-/// the writer are two handles onto one kernel file object: `try_clone` is
-/// `DuplicateHandle`, which duplicates the handle and not the object beneath
-/// it. That object is opened synchronously, and the I/O manager serialises
-/// every operation on a synchronous file object. A `ReadFile` waiting for a
-/// message that has no reason to be coming holds the object for as long as
-/// it waits, and the writer thread's `WriteFile` queues behind it.
-///
-/// Nothing breaks that on its own, because the two sides are each waiting
-/// for the other: the shepherd will not send anything until it has heard
-/// `ready`, and the app cannot send `ready` until the shepherd sends
-/// something. An app linking this crate would hang at startup and
-/// `wait_ready` would time out with nothing anywhere saying why. Measured on
-/// real Windows before this type existed -- the write never returned, and
-/// came back only when the pipe was torn down.
-///
-/// So this half never waits FOR DATA inside the kernel. `PeekNamedPipe` does
-/// not block for bytes to arrive, and a `ReadFile` is issued only for bytes
-/// it has just been told are sitting there, so the file object is held for
-/// the length of a copy rather than the length of a wait and the writer gets
-/// in between polls. That is what breaks the startup deadlock above.
-///
-/// It does not make the two halves independent, and the difference is worth
-/// stating rather than discovering. The handle is still synchronous, so the
-/// peek queues behind any operation already running on the same file object.
-/// Microsoft documents `PeekNamedPipe` as able to block in a multithreaded
-/// application for exactly that reason. In practice that means a writer
-/// parked in `WriteFile` on a full pipe buffer delays the next peek until
-/// the shepherd drains, which is a stall bounded by the shepherd's own
-/// reader rather than a wait on the app itself. The shepherd reads and
-/// writes on independent tasks, so it does drain.
-///
-/// Making them genuinely independent needs `FILE_FLAG_OVERLAPPED` on both
-/// handles, which is a larger change than this one and is not done here.
-///
-/// Opening the pipe a second time would be the other way out, and it is not
-/// available: the shepherd creates a single instance and accepts once, so a
-/// second `CreateFile` reaches an instance nothing on the far side will ever
-/// read.
+/// The shepherd hands a Windows app one pipe instance. The writer gets a
+/// duplicate handle onto the same object. Windows serialises every
+/// operation on it, so a blocking read holds it against the writer.
+/// Peeking avoids that park. The halves are still not independent: a
+/// peek can wait behind an in-progress `WriteFile`.
+/// `FILE_FLAG_OVERLAPPED` on both handles is what would separate them.
 #[cfg(windows)]
 #[derive(Debug)]
 pub(crate) struct PipeReader {
@@ -181,14 +135,17 @@ pub(crate) struct PipeReader {
 
 #[cfg(windows)]
 impl PipeReader {
-    /// How many bytes are buffered, or `None` once the shepherd has closed
-    /// its end and everything it sent has been drained.
+    /// How many bytes are buffered.
+    ///
+    /// `None` once the shepherd has closed its end and every sent byte
+    /// is drained.
     ///
     /// # Errors
     ///
-    /// Whatever `PeekNamedPipe` reports, except the two codes that mean the
-    /// far end is gone. Those are this channel's end of stream, which
-    /// `serve`'s reader loop ends on cleanly, and not a failure to pass up.
+    /// Whatever `PeekNamedPipe` reports, except the two codes that mean
+    /// the far end is gone. Those codes are this channel's clean end
+    /// of stream. `serve`'s reader loop ends on them without treating
+    /// them as a failure.
     fn buffered(&self) -> std::io::Result<Option<u32>> {
         use std::os::windows::io::AsRawHandle as _;
 
@@ -196,15 +153,10 @@ impl PipeReader {
         use windows_sys::Win32::System::Pipes::PeekNamedPipe;
 
         let mut available: u32 = 0;
-        // SAFETY: `self.pipe` is this process's open channel, borrowed for
-        // the length of the call, so its handle cannot be closed underneath
-        // it. `connect` opened it for reading, which is what `PeekNamedPipe`
-        // requires of a handle. A null `lpBuffer` with a zero `nBufferSize`
-        // is the documented way to ask for the counts without copying any
-        // data out, and the three count pointers this call does not want are
-        // null, which the same documentation permits. The one it does want
-        // is `&raw mut available`, which points at an initialised `u32` this
-        // frame owns and outlives the call.
+        // SAFETY: `self.pipe`'s handle is open and borrowed for the call, so
+        // it cannot close underneath us. `connect` opened it for reading, as
+        // `PeekNamedPipe` requires. Null `lpBuffer` and zero size query counts
+        // without copying. `&raw mut available` is a live `u32` for the call.
         #[allow(unsafe_code)]
         let reported = unsafe {
             PeekNamedPipe(
@@ -244,9 +196,9 @@ impl std::io::Read for PipeReader {
                 std::thread::sleep(PIPE_POLL_INTERVAL);
                 continue;
             }
-            // Never more than the peek just reported. Asking for more is
-            // what would park this thread in the kernel again and bring
-            // back the deadlock this type exists to avoid.
+            // Never more than the peek just reported. Asking for more would
+            // park this thread in the kernel again. That would revive the
+            // deadlock this type exists to avoid.
             let want = buf.len().min(buffered as usize);
             return self.pipe.read(&mut buf[..want]);
         }
@@ -269,10 +221,10 @@ fn read_half(transport: Transport) -> ReadHalf {
 
 /// Guards the inherited channel from being taken twice in one process.
 ///
-/// Consumed only by the branch that actually takes a channel. A refusal --
-/// `Endpoint::Absent`, or a `Descriptor`/`Pipe` naming a mechanism this
-/// platform does not have -- takes nothing and must not consume it, or a
-/// later, legitimate call would be refused for no reason.
+/// Consumed only by the branch that actually takes a channel. A refusal
+/// takes nothing. `Endpoint::Absent`, or a `Descriptor`/`Pipe` naming a
+/// mechanism this platform lacks, must not consume the guard. Otherwise
+/// a later, legitimate call would be refused for no reason.
 static CHANNEL_TAKEN: AtomicBool = AtomicBool::new(false);
 
 /// Opens the endpoint, returning the reader's half and the writer's clone.
@@ -293,18 +245,10 @@ pub(crate) fn connect(endpoint: &Endpoint) -> Result<(ReadHalf, Transport), Chan
                 return Err(ChannelError::AlreadyTaken);
             }
             use std::os::fd::FromRawFd as _;
-            // SAFETY: the shepherd hands this process one descriptor for the
-            // channel and names its number in `SHEP_CHANNEL_FD`.
-            // `CHANNEL_TAKEN`, swapped just above, makes this arm reachable
-            // at most once per process, and nothing else in this crate
-            // touches that number, so this call takes sole ownership of it.
-            // `discover` is the only path that builds a `Descriptor` from
-            // the environment and it refuses anything below 3, so the two
-            // cases that are plainly not an owned descriptor -- a negative
-            // number, and this process's own standard streams -- never
-            // reach here. What is left is a number in range that the
-            // environment names wrongly; the standard library's socket
-            // calls report that as `EBADF` on first use.
+            // SAFETY: the shepherd names this process's one channel descriptor
+            // in `SHEP_CHANNEL_FD`. `CHANNEL_TAKEN`, swapped above, makes this
+            // arm reachable once per process. `discover` refused anything below
+            // 3, so a wrong value only fails `EBADF`.
             #[allow(unsafe_code)]
             unsafe {
                 Transport::from_raw_fd(*fd)
@@ -312,23 +256,20 @@ pub(crate) fn connect(endpoint: &Endpoint) -> Result<(ReadHalf, Transport), Chan
         }
         #[cfg(windows)]
         Endpoint::Pipe(path) => {
-            // Opened BEFORE the claim, which is the opposite order to the
-            // unix arm above, because this step can fail and that one
-            // cannot. `from_raw_fd` always takes the descriptor, so
-            // claiming first is honest there. An `open` that fails after a
-            // claim would leave the channel marked taken by a process that
-            // never took it, and every later attempt would be refused.
+            // Opens before claiming, unlike the unix arm, because this
+            // step can fail. Claiming first would mark the channel taken
+            // by a process that never took it. Every later attempt would
+            // then be refused for nothing.
             let opened = std::fs::OpenOptions::new()
                 .read(true)
                 .write(true)
                 .open(path)
                 .map_err(ChannelError::Io)?;
             if CHANNEL_TAKEN.swap(true, Ordering::SeqCst) {
-                // Defensive rather than expected. The shepherd creates
-                // one pipe instance, so a second caller's `open` above
-                // should fail busy long before it reaches this swap.
-                // Dropping is still the right answer if it ever does:
-                // two owners of one pipe is worse than a refusal.
+                // Defensive, not expected. The shepherd creates one pipe
+                // instance, so a second caller's `open` should already
+                // fail busy. Dropping here is still correct if it somehow
+                // does not. Two owners of one pipe is worse than a refusal.
                 drop(opened);
                 return Err(ChannelError::AlreadyTaken);
             }
@@ -353,30 +294,16 @@ pub(crate) fn connect(endpoint: &Endpoint) -> Result<(ReadHalf, Transport), Chan
             ));
         }
     };
-    // Whether a failure here releases the claim depends on what was taken,
-    // and the two platforms differ.
-    //
-    // On unix the descriptor is owned for the life of the process the
-    // moment `from_raw_fd` returns, and there is no way to hand a raw
-    // descriptor back, so the channel really is taken however this ends.
-    //
-    // On Windows nothing irrevocable has happened. `transport` is a handle
-    // that closes cleanly when it drops, and the pipe can be opened again,
-    // so a claim kept here would refuse a later attempt that might well
-    // have worked, and would refuse it as `AlreadyTaken` by a process
-    // holding nothing.
+    // Failure here releases the claim only on Windows. Unix already owns
+    // the descriptor irrevocably once `from_raw_fd` returns, so the claim
+    // stands regardless. Windows has nothing irrevocable yet. Keeping the
+    // claim would wrongly refuse a later attempt that might work.
     let writer = match transport.try_clone() {
         Ok(writer) => writer,
         Err(error) => {
-            // Drop the handle before clearing the claim, in that order,
-            // so the pipe is actually free at the moment the channel
-            // reads as free. Without the explicit drop, `transport`
-            // lives until this function returns and the flag goes false
-            // while this thread still holds the pipe open.
-            //
-            // A racing caller fails at its `open`, not at its claim:
-            // this arm opens first and claims second, so in that window
-            // the other thread never reaches the swap.
+            // Drops the handle before clearing the claim. The pipe is then
+            // free at the moment the flag says so. A racing caller fails at
+            // `open`, not at the claim, since this arm opens first.
             #[cfg(windows)]
             {
                 drop(transport);
@@ -397,16 +324,12 @@ mod tests {
 
     use super::*;
 
-    /// fails if [`Endpoint`]'s `Debug` starts redacting, or stops printing
-    /// the path at all. Both are reasonable things for someone to do to a
-    /// type carrying an environment value, which is exactly why the
-    /// decision not to is pinned here rather than left to a derive nobody
-    /// revisits. The reasoning is on the type; change it there first if
-    /// this test is ever meant to fail.
+    /// Fails if [`Endpoint`]'s `Debug` starts redacting the path, or
+    /// drops it. The decision not to redact lives on the type.
+    /// Change it there first if this test should start failing.
     ///
-    /// Platform-independent despite naming a Windows path: `Path`'s `Debug`
-    /// escapes a backslash the same way on every target, so the expected
-    /// string below is the same one a unix run produces.
+    /// Windows path, but platform-independent: `Path`'s `Debug` escapes
+    /// a backslash the same way everywhere.
     #[test]
     fn the_pipe_endpoint_prints_its_path_in_full() {
         let endpoint = Endpoint::Pipe(PathBuf::from(
@@ -418,18 +341,17 @@ mod tests {
         );
     }
 
-    /// fails if the other two variants start carrying something they did
-    /// not, which is the cheap half of the same guard.
+    /// Fails if the other two variants start carrying something new.
+    /// That is the cheap half of the same guard.
     #[test]
     fn the_other_endpoints_print_only_what_they_hold() {
         assert_eq!(format!("{:?}", Endpoint::Descriptor(3)), "Descriptor(3)");
         assert_eq!(format!("{:?}", Endpoint::Absent), "Absent");
     }
 
-    /// fails if a descriptor number the shepherd cannot have passed is
-    /// accepted. `from_raw_fd` wants a valid owned descriptor and -1 is
-    /// not one, so this is the case the SAFETY comment in `connect` used to
-    /// over-claim about.
+    /// Fails if a descriptor the shepherd could never have passed is
+    /// accepted. `from_raw_fd` needs a valid, owned descriptor, and -1
+    /// is not one.
     #[test]
     fn a_negative_descriptor_is_refused() {
         match descriptor_from("-1") {
@@ -441,10 +363,10 @@ mod tests {
         }
     }
 
-    /// fails if `SHEP_CHANNEL_FD=1` is accepted. Worse in practice than a
-    /// number that is merely wrong: taking 1 would give this crate
-    /// ownership of the app's stdout, write JSON into it, and close it on
-    /// drop.
+    /// Fails if `SHEP_CHANNEL_FD=1` is accepted. Worse in practice than
+    /// a merely wrong number. Taking 1 would give this crate ownership
+    /// of the app's stdout. It would write JSON into it and close it
+    /// on drop.
     #[test]
     fn stdout_is_refused_as_a_descriptor() {
         match descriptor_from("1") {
@@ -456,9 +378,9 @@ mod tests {
         }
     }
 
-    /// fails if the floor is set so high it rejects the descriptor the
-    /// shepherd actually passes, which would make the two refusals above
-    /// pass for the wrong reason.
+    /// Fails if the floor rejects the descriptor the shepherd actually
+    /// passes. That would make the two refusals above pass for the
+    /// wrong reason.
     #[test]
     fn the_descriptor_the_shepherd_passes_is_accepted() {
         assert!(matches!(
@@ -467,14 +389,13 @@ mod tests {
         ));
     }
 
-    /// The only test in this crate that calls `connect()`. `CHANNEL_TAKEN`
-    /// is process-global and tests share one process, so a second test
-    /// that called `connect()` would find the channel already taken by
-    /// this one -- there is nowhere else to put that test.
+    /// The only test here that calls `connect`. `CHANNEL_TAKEN` is
+    /// process-global, and tests share one process. A second caller
+    /// here would find the channel already taken.
     ///
-    /// Asserts the transition, not just the second call's error: the first
-    /// call must succeed in this same test, or a `connect()` that refused
-    /// everything would pass this test for the wrong reason.
+    /// Asserts the transition, not just the second call's error. The
+    /// first call must succeed here too, or a `connect` that refused
+    /// everything would still pass.
     #[cfg(unix)]
     #[test]
     fn a_descriptor_can_only_be_taken_once() {
@@ -488,8 +409,8 @@ mod tests {
         let second = connect(&endpoint);
         assert!(matches!(second, Err(ChannelError::AlreadyTaken)));
 
-        // `first` stays bound (not `let _ = ...`) through both calls above,
-        // so its transport keeps the descriptor open rather than closing it
+        // `first` stays bound, not `let _ = ...`, through both calls.
+        // Its transport keeps the descriptor open, so it cannot close
         // out from under `second`.
         drop(first);
     }

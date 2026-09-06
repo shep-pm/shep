@@ -1,18 +1,13 @@
 //! Turning one shepherd message into the reply that has to go back.
 //!
-//! The contract asks an app to reply even to an action name it does not
-//! recognise, because from the shepherd's side a slow handler and an app
-//! that has no idea what it was asked are both silence, and only
-//! `action_timeout` running out tells them apart. An app author can forget
-//! that. This module cannot.
+//! An app must reply even to an action name it does not recognise. A slow
+//! handler and a confused app both look like silence from the shepherd's
+//! side. Only `action_timeout` tells them apart.
 //!
-//! Looking a handler up and running it are two different steps
-//! ([`Dispatch::resolve`] and [`run`]), on purpose: `resolve` is the only
-//! part that touches the registry, so the reader can drop its lock before
-//! `run` calls into app code. Without that split, a handler that registers
-//! a handler -- the obvious shape of a `reload` action swapping its own
-//! handlers -- would try to take the write lock `resolve` is still holding,
-//! on the same thread, and deadlock.
+//! Looking a handler up ([`Dispatch::resolve`]) and running it ([`run`])
+//! are separate steps. That way the registry's lock is dropped before app
+//! code runs. A handler that re-registers itself, like a `reload` action,
+//! would otherwise deadlock on the same lock.
 
 use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -20,18 +15,17 @@ use std::sync::Arc;
 
 use crate::{ChildMessage, ShepherdMessage};
 
-/// What an action handler is: params, then the action's own name, returning
+/// What an action handler is: params, then the action's own name. Returns
 /// the reply body the operator reads.
 pub type ActionHandler = Box<dyn Fn(Option<&str>, &str) -> String + Send + Sync + 'static>;
 
 /// What a shutdown handler is.
 pub type ShutdownHandler = Box<dyn Fn() + Send + Sync + 'static>;
 
-/// The registry's own storage for an action handler: an `Arc` rather than
-/// the `Box` callers register with, so [`Dispatch::resolve`] can clone a
-/// handle out to the caller and release the registry's lock before the
-/// handler runs. Not part of the public API -- `ActionHandler` stays a
-/// `Box`, and `register_action` converts on the way in.
+/// The registry's storage for an action handler: an `Arc`, not the `Box`
+/// callers register with. [`Dispatch::resolve`] clones a handle out and
+/// releases the registry's lock before the handler runs. Not part of the
+/// public API: `register_action` converts a `Box` on the way in.
 type ActionFn = dyn Fn(Option<&str>, &str) -> String + Send + Sync;
 
 /// The shutdown-handler equivalent of [`ActionFn`].
@@ -52,8 +46,8 @@ pub(crate) enum Outcome {
 }
 
 /// What resolving one message against the registry found, before anything
-/// has run. Carries an owned handle to whatever handler applies (or the
-/// context to build a reply without one), so the registry's lock is free by
+/// has run. Carries a handle to whatever handler applies, or the context
+/// to build a reply without one. That keeps the registry's lock free by
 /// the time [`run`] calls into it.
 pub(crate) enum Resolved {
     /// A registered action's handler, ready to call.
@@ -88,8 +82,8 @@ pub(crate) struct Dispatch {
 }
 
 // Hand-written because a boxed closure is not `Debug` and the workspace
-// denies `missing_debug_implementations`. Names what is registered, which is
-// the only part worth seeing, and holds no user data (IR-41).
+// denies `missing_debug_implementations`. Names what is registered, the
+// only part worth seeing, and holds no user data (IR-41).
 impl core::fmt::Debug for Dispatch {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut names: Vec<&str> = self.actions.keys().map(String::as_str).collect();
@@ -111,8 +105,8 @@ impl Dispatch {
     }
 
     /// Looks a message up against the registry and clones out whatever it
-    /// finds. The only step that touches `self` -- see the module doc for
-    /// why that split matters.
+    /// finds. The only step that touches `self`; see the module doc for why
+    /// that split matters.
     pub(crate) fn resolve(&self, message: ShepherdMessage) -> Resolved {
         match message {
             ShepherdMessage::Shutdown => match &self.shutdown {
@@ -131,11 +125,9 @@ impl Dispatch {
         }
     }
 
-    // Test-only now: `reader_loop` in `serve.rs` calls `resolve` and `run`
-    // separately so it can drop the registry's lock between them (Finding
-    // B). Kept as one call for the test suite below, which exercises
-    // `resolve`+`run` together the same way `reader_loop` does, just
-    // without a lock in between to drop.
+    // Test-only: `reader_loop` calls `resolve` and `run` separately so it
+    // can drop the registry's lock between them. This keeps them as one
+    // call, for tests that exercise both with no lock to drop.
     #[cfg(test)]
     pub(crate) fn handle(&self, message: ShepherdMessage) -> Outcome {
         run(self.resolve(message))
@@ -226,9 +218,8 @@ mod tests {
         );
     }
 
-    /// fails if an unregistered name produces silence. That silence is the
-    /// exact failure the contract calls out: the operator waits out
-    /// `action_timeout` for a typo.
+    /// The contract calls this out: the operator waits out `action_timeout`
+    /// for a typo.
     #[test]
     fn an_unregistered_action_still_gets_a_reply() {
         let dispatch = Dispatch::default();
@@ -238,9 +229,7 @@ mod tests {
         assert_eq!(id, Some(3));
     }
 
-    /// fails if a panicking handler takes the reply down with it. An app
-    /// that panics in one action should not cost the operator a timeout on
-    /// top of the bug.
+    /// An app that panics should not cost the operator a timeout too.
     #[test]
     fn a_panicking_handler_replies_with_the_panic_message() {
         let mut dispatch = Dispatch::default();
@@ -273,10 +262,8 @@ mod tests {
         assert_eq!(hits.load(Ordering::SeqCst), 1);
     }
 
-    /// fails if an unhandled shutdown is silently swallowed. D5 says the
-    /// library never stops the app itself, so the only thing standing
-    /// between the author and a `kill_timeout` is that this case is
-    /// distinguishable and gets a warning.
+    /// The library never stops the app, so this must be distinguishable
+    /// before `kill_timeout`.
     #[test]
     fn a_shutdown_with_no_handler_is_reported_rather_than_ignored() {
         let dispatch = Dispatch::default();
@@ -286,11 +273,8 @@ mod tests {
         ));
     }
 
-    /// fails if a panicking shutdown handler takes the reader thread down
-    /// with it. Mirrors `a_panicking_handler_replies_with_the_panic_message`
-    /// for the one handler `handle` used to call unguarded: an unwind out of
-    /// here would skip the reader's own `close()` and hang the writer in
-    /// `pop()` forever.
+    /// An unwind here would skip the reader's own `close()` and hang the
+    /// writer in `pop()` forever.
     #[test]
     fn a_panicking_shutdown_handler_is_reported_rather_than_taking_the_reader_down() {
         let mut dispatch = Dispatch::default();
@@ -307,8 +291,7 @@ mod tests {
         }
     }
 
-    /// fails if `Debug` starts printing handler internals or stops naming
-    /// what is registered (IR-41: the Debug is a decision, not a derive).
+    /// IR-41: the Debug is a decision, not a derive.
     #[test]
     fn debug_names_the_registered_actions_and_nothing_else() {
         let mut dispatch = Dispatch::default();

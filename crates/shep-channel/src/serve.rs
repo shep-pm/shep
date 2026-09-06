@@ -16,28 +16,22 @@ const UNHANDLED_SHUTDOWN_ADVICE: &str = "the shepherd sent shutdown and no on_sh
 
 /// Writes one line of advice to stderr, prefixed so it is attributable.
 ///
-/// stderr rather than a log crate: this crate has no logging dependency and
-/// an app's stderr is already where shep collects its bleats, so the author
-/// reads this where they are already looking.
+/// This crate has no logging dependency. shep already collects an app's
+/// stderr as bleats. The author reads this where they already look.
 fn warn(message: &str) {
     eprintln!("shep-channel: {message}");
 }
 
 /// A handle on this process's shepherd channel.
 ///
-/// Cheap to clone and safe to share: every method takes `&self`, so a
-/// long-lived clone can sit in application state and emit from any thread.
-/// With no channel, every method is a no-op, so nothing above this needs to
-/// know whether the operator opted in.
+/// Cheap to clone and safe to share across threads: every method takes
+/// `&self`. With no channel, every method is a no-op. Callers need no
+/// branch on whether the operator opted in.
 #[derive(Clone)]
 pub struct Shepherd(Arc<Inner>);
 
-// Hand-written rather than derived, for the same reason `Dispatch` below is:
-// the derive walks `Inner` into the outbox, whose queue holds whole
-// `ChildMessage` values, so an app logging `{shepherd:?}` would print the
-// body of every reply and the name of every metric still waiting to go out,
-// plus the environment's version stamp verbatim. Names the state worth
-// seeing and no payload (IR-41).
+// Hand-written: the derive reaches the outbox's queued messages.
+// It would print reply bodies and metric names verbatim (IR-41).
 impl core::fmt::Debug for Shepherd {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Shepherd")
@@ -50,9 +44,8 @@ impl core::fmt::Debug for Shepherd {
     }
 }
 
-// Pins the "safe to share... from any thread" claim above at compile time,
-// so a later field addition that quietly breaks it fails the build instead
-// of the next reader's assumption.
+// Pins the "safe to share... from any thread" claim at compile time.
+// A field addition that breaks it fails the build, not a reader's assumption.
 const _: () = {
     const fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Shepherd>();
@@ -77,15 +70,12 @@ impl Shepherd {
 
     /// Whether this process's channel is live right now.
     ///
-    /// False when the operator never opened one, and false again once the
-    /// shepherd goes away: the spec's shared contract calls this row
-    /// `live?`, and a handle that answered "a channel existed when we
-    /// started" would leave an app watching a frozen
-    /// [`Shepherd::dropped_metrics`] with no way to tell that every
-    /// [`Shepherd::metric`] since is being discarded.
+    /// False before the operator opens one, and false again once the
+    /// shepherd goes away. [`Shepherd::dropped_metrics`] never freezes
+    /// silently as a result.
     ///
-    /// Branching on this is optional: every method already does nothing
-    /// without a channel.
+    /// Checking this is optional: every method already does nothing without
+    /// a channel.
     #[must_use]
     pub fn is_active(&self) -> bool {
         self.0
@@ -107,18 +97,14 @@ impl Shepherd {
         self.0.outbox.as_ref().map_or(0, |outbox| outbox.dropped())
     }
 
-    /// Registers a handler for one action name, replacing any handler
-    /// already registered under it.
+    /// Registers a handler for one action name, replacing any prior one.
     ///
-    /// The handler is called with the action's params (`None` when the
-    /// operator triggered it with none) and then the action's own name,
-    /// and returns the reply body sent back to the operator.
+    /// Called with the action's params (`None` if triggered with none) and
+    /// its name, in that order. The return value becomes the reply body.
     ///
-    /// Registering from another thread while [`serve`] is running is fine,
-    /// and so is registering from inside a handler -- a `reload` action
-    /// that swaps its own handlers is exactly what this is for. Either way
-    /// it takes effect on the next message: the registry's lock is never
-    /// held while a handler runs, so this never contends with dispatch.
+    /// Safe to call from another thread, or from inside a handler.
+    /// A `reload` action can swap its own handlers this way. The
+    /// registry's lock is never held while a handler runs.
     pub fn on_action<H>(&self, name: impl AsRef<str>, handler: H) -> &Self
     where
         H: Fn(Option<&str>, &str) -> String + Send + Sync + 'static,
@@ -133,8 +119,8 @@ impl Shepherd {
 
     /// Registers the handler run when the shepherd asks this app to stop.
     ///
-    /// Without one, a shutdown message warns and nothing else happens: this
-    /// crate never ends a process on its own judgement.
+    /// Without one, a shutdown message warns and nothing else happens.
+    /// This crate never ends a process on its own judgement.
     pub fn on_shutdown<H>(&self, handler: H) -> &Self
     where
         H: Fn() + Send + Sync + 'static,
@@ -152,8 +138,8 @@ impl Shepherd {
     /// # Errors
     ///
     /// [`ChannelError::Closed`] when the shepherd has gone away. Without a
-    /// channel this is `Ok(())`, because an app that was never given one
-    /// has nothing to report and no failure to handle.
+    /// channel this always returns `Ok(())`: nothing to report, no
+    /// failure to handle.
     pub fn ready(&self) -> Result<(), ChannelError> {
         match &self.0.outbox {
             Some(outbox) => outbox.push_blocking(ChildMessage::Ready),
@@ -164,13 +150,12 @@ impl Shepherd {
     /// Records one metric sample. Never blocks and never fails.
     ///
     /// A sample may be dropped if the shepherd stops reading; see
-    /// [`Shepherd::dropped_metrics`]. That trade is deliberate, so that no
-    /// call on an app's hot path can park on a full socket.
+    /// [`Shepherd::dropped_metrics`]. That trade avoids parking a hot path
+    /// on a full socket.
     ///
-    /// Takes `impl Into<String>` rather than `on_action`'s `impl AsRef<str>`:
-    /// this runs per sample on a documented hot path, and an owned `String`
-    /// the caller already has moves in for free instead of being copied
-    /// again.
+    /// Takes `impl Into<String>`, unlike `on_action`'s `impl AsRef<str>`.
+    /// This runs per sample on a hot path. An owned `String` the caller
+    /// already has moves in for free.
     pub fn metric(&self, name: impl Into<String>, value: f64) {
         if let Some(outbox) = &self.0.outbox {
             outbox.push_lossy(ChildMessage::Metric {
@@ -183,13 +168,12 @@ impl Shepherd {
 
 /// Opens this process's channel and starts serving it.
 ///
-/// Always returns a usable handle. With no channel every call on it is a
-/// no-op, so an app needs no branch at its emit sites; one line goes to
-/// stderr in that case, and only when `SHEP_NAME` says this process is
-/// running under shep at all.
+/// Always returns a usable handle. With no channel, every call on it
+/// is a no-op. So an app needs no branch at its emit sites. One
+/// line goes to stderr when `SHEP_NAME` says this process runs under shep.
 ///
-/// A process singleton: the channel is one descriptor and can be owned once.
-/// A second call returns the same handle.
+/// A process singleton: the channel is one descriptor and can be owned
+/// once. A second call returns the same handle.
 #[must_use]
 pub fn serve() -> Shepherd {
     static SHEPHERD: OnceLock<Shepherd> = OnceLock::new();
@@ -205,11 +189,11 @@ pub fn serve() -> Shepherd {
     shepherd.clone()
 }
 
-/// Drives the writer side: drains `outbox` and writes each message, until
-/// the transport fails or the outbox closes. Free function over `BufRead`/
-/// `Write` rather than an inline thread closure so it can be driven over a
-/// `Vec<u8>` in a test with no thread, no socket, and no descriptor -- the
-/// same reason `session`'s own functions are generic (see its module doc).
+/// Drives the writer side: drains `outbox` and writes each message.
+/// Stops once the transport fails or the outbox closes.
+///
+/// A free function over `BufRead`/`Write`, not an inline closure. A test
+/// can drive it over a `Vec<u8>`, with no thread or socket.
 pub(crate) fn writer_loop<W: Write>(writer: &mut W, outbox: &Outbox) {
     while let Some(message) = outbox.pop() {
         if session::write_message(writer, &message).is_err() {
@@ -219,12 +203,12 @@ pub(crate) fn writer_loop<W: Write>(writer: &mut W, outbox: &Outbox) {
     outbox.close();
 }
 
-/// Drives the reader side: reads one message at a time, resolves it against
-/// `dispatch`, and runs the result -- with the registry's lock dropped
-/// before that run, per this crate's `dispatch` module doc. `warn` is
-/// injected rather than called directly so a test can assert on exactly
-/// what was said and how many times, which is the only way to pin the
-/// once-per-loop malformed-frame latch.
+/// Drives the reader side: reads one message, resolves it against
+/// `dispatch`, and runs the result. The registry's lock is dropped before
+/// that run, per `dispatch`'s own module doc.
+///
+/// `warn` is injected so a test can assert what was said and how
+/// often. This pins the once-per-loop malformed-frame latch.
 pub(crate) fn reader_loop<R: BufRead>(
     reader: &mut R,
     outbox: &Outbox,
@@ -299,14 +283,10 @@ fn start() -> Shepherd {
         .name("shep-channel-writer".to_string())
         .spawn(move || writer_loop(&mut writer, &writing));
     if let Err(error) = writer_spawn {
-        // Nothing will ever drain the outbox without this thread, so a
-        // handle that reported `is_active()` true here would be worse than
-        // no handle: `ready()` would queue into a channel nothing reads and
-        // return `Ok(())`, and the operator's `wait_ready` gate would time
-        // out with nothing anywhere saying why. Close the outbox first so
-        // `ready()`/`metric()` see the failure honestly, then hand back an
-        // inert handle -- still carrying the version stamp, since the
-        // channel itself did open.
+        // Without this thread, nothing drains the outbox.
+        // `ready()` would queue silently and `wait_ready` would hang.
+        // Close the outbox first so `ready()`/`metric()` fail honestly.
+        // The handle still carries the version stamp, since the channel opened.
         warn(&format!(
             "failed to spawn the shep-channel writer thread: {error}; continuing without a channel"
         ));
@@ -323,12 +303,10 @@ fn start() -> Shepherd {
             reader_loop(&mut reader, &reading, &handlers, &warn);
         });
     if let Err(error) = reader_spawn {
-        // The writer is still useful without this thread: `ready()` and
-        // `metric()` still reach the shepherd. Only actions go unanswered,
-        // since nothing is left to read `ShepherdMessage::Action` off the
-        // wire and dispatch it -- warn and hand back a handle that still
-        // does the two things it can, rather than tearing the writer down
-        // over a failure that does not touch it.
+        // The writer still works without this thread: `ready()` and
+        // `metric()` reach the shepherd. Only actions go unanswered, since
+        // nothing reads the action message off the wire. Warn and keep
+        // the handle partly working.
         warn(&format!(
             "failed to spawn the shep-channel reader thread: {error}; readiness and metrics still work, but no action sent to this process will ever be answered"
         ));
@@ -349,16 +327,11 @@ mod tests {
 
     use super::*;
 
-    /// Bounds this module's one test that could hang the calling thread
-    /// forever on a real regression (the deadlock test below). A working
-    /// reader answers in microseconds; this is slack for a loaded runner,
-    /// not an expected duration -- the same convention `outbox`'s and
-    /// `session`'s own tests use.
+    /// Bounds the one test below that could hang forever on a real
+    /// regression. A working reader answers in microseconds. This is slack
+    /// for a loaded runner, not an expected duration.
     const DEADLINE: Duration = Duration::from_secs(5);
 
-    /// fails if a handle with no channel refuses work. An app must be able
-    /// to call every method without asking whether it has a channel, which
-    /// is the whole of D3.
     #[test]
     fn an_inert_handle_accepts_everything_and_does_nothing() {
         let shepherd = Shepherd::inert(None);
@@ -371,11 +344,6 @@ mod tests {
         assert_eq!(shepherd.version(), None);
     }
 
-    /// fails if `is_active()` keeps saying yes after the shepherd has gone
-    /// away. The spec's shared contract calls this row `live?`, and it
-    /// answered `outbox.is_some()` until 2026-09-02 -- fixed at `serve()`
-    /// time, so it reported "a channel existed when we started" while every
-    /// `metric()` was being discarded and `dropped_metrics()` sat frozen.
     #[test]
     fn a_handle_stops_being_active_once_the_channel_closes() {
         let outbox = Arc::new(Outbox::new(4));
@@ -394,15 +362,8 @@ mod tests {
         );
     }
 
-    /// IR-41: pins the redacted `Debug` as an exact string, and pins that a
-    /// queued reply body does not reach it.
-    ///
-    /// The derive reached `Inner` -> `Outbox` -> the queued `ChildMessage`
-    /// values, so `{shepherd:?}` printed reply bodies and metric names. The
-    /// queue here holds a body no other test would produce, so a return to
-    /// the derive fails on the exact string AND on the containment
-    /// assertion, rather than only on a field list someone might update to
-    /// match.
+    /// IR-41: pins the exact string, and separately that no queued payload
+    /// appears. Either check alone would catch a regression.
     #[test]
     fn a_shepherds_debug_names_state_and_never_a_queued_payload() {
         let outbox = Arc::new(Outbox::new(4));
@@ -432,12 +393,8 @@ mod tests {
         );
     }
 
-    /// fails if the no-channel advice stops naming all three fields that
-    /// would open one. An author reading this line is deciding which to
-    /// set. Asserts the exact `channel = true` clause, not the bare
-    /// substring "channel" -- that substring also occurs in the advice's
-    /// leading "no channel on this process" and would pass even with the
-    /// whole `channel = true` clause deleted.
+    /// Checks the exact `channel = true` clause, not the bare substring
+    /// "channel". That substring is already in the advice's own preamble.
     #[test]
     fn the_no_channel_advice_names_every_field_that_opens_one() {
         for field in ["channel = true", "wait_ready", "shutdown_with_message"] {
@@ -448,22 +405,14 @@ mod tests {
         }
     }
 
-    /// fails if the shutdown warning stops naming the method an author has
-    /// to call. D5 makes this warning the only thing between a missing
-    /// handler and a `kill_timeout`.
+    /// This warning is the only thing standing between a missing handler
+    /// and a `kill_timeout` kill.
     #[test]
     fn the_unhandled_shutdown_warning_names_the_method_to_call() {
         assert!(UNHANDLED_SHUTDOWN_ADVICE.contains("on_shutdown"));
         assert!(UNHANDLED_SHUTDOWN_ADVICE.contains("kill_timeout"));
     }
 
-    /// fails if two malformed frames produce two warnings instead of one,
-    /// or if a malformed frame ends the loop instead of being skipped. This
-    /// is the test Finding A asked for by name: `start`'s two threads were
-    /// previously inline closures with no test reaching them at all, so the
-    /// once-per-loop latch and the daemon-matching "skip and keep reading"
-    /// behavior were both unverified. Non-vacuity is proven separately,
-    /// below this module (see the fix-round report).
     #[test]
     fn two_malformed_lines_warn_once_and_the_loop_keeps_going() {
         let mut reader =
@@ -497,8 +446,8 @@ mod tests {
         );
     }
 
-    /// fails if end of stream leaves the outbox open, which would park the
-    /// writer thread in `pop()` forever.
+    /// fails if end of stream leaves the outbox open, parking the writer
+    /// thread in `pop()` forever.
     #[test]
     fn end_of_stream_breaks_the_loop_and_closes_the_outbox() {
         let mut reader = Cursor::new(Vec::new());
@@ -508,12 +457,10 @@ mod tests {
 
         reader_loop(&mut reader, &outbox, &dispatch, &warn);
 
-        // Non-blocking probe for "closed" before the (otherwise
-        // could-park-forever) pop() below: push_blocking on a closed
-        // outbox returns Err(Closed) immediately rather than waiting, so a
-        // dropped `outbox.close()` in reader_loop fails right here in
-        // microseconds instead of hanging this test on an empty, open
-        // queue with no bound.
+        // Non-blocking probe: `push_blocking` on a closed outbox returns
+        // `Err(Closed)` at once rather than waiting.
+        // A dropped `close()` in `reader_loop` fails here in microseconds.
+        // Otherwise this test hangs on an open, unbounded queue.
         assert!(
             outbox.push_blocking(ChildMessage::Ready).is_err(),
             "reader_loop returned without closing the outbox"
@@ -525,8 +472,8 @@ mod tests {
         );
     }
 
-    /// fails if an action's reply does not reach the outbox, or drops the
-    /// id the daemon needs to match it to its trigger.
+    /// fails if a reply never reaches the outbox, or drops its id. The
+    /// daemon needs that id to match a reply to its trigger.
     #[test]
     fn an_actions_reply_reaches_the_outbox_carrying_its_id() {
         let mut reader = Cursor::new(b"{\"kind\":\"action\",\"name\":\"gc\",\"id\":7}\n".to_vec());
@@ -550,10 +497,8 @@ mod tests {
         }
     }
 
-    /// fails if the writer stops after the first `pop()` once `close()` has
-    /// been called, rather than draining what was already queued. A
-    /// shutdown reply queued right before the shepherd goes away must still
-    /// go out.
+    /// A shutdown reply queued right before the shepherd leaves must still
+    /// reach the wire.
     #[test]
     fn the_writer_drains_what_is_already_queued_after_close() {
         let outbox = Outbox::new(4);
@@ -582,17 +527,8 @@ mod tests {
         assert!(lines[1].contains("\"kind\":\"metric\""));
     }
 
-    /// fails if a handler that registers another handler deadlocks the
-    /// reader on itself. Finding B: `Dispatch::resolve` clones the handler
-    /// out and drops the registry's read guard before `run` calls into app
-    /// code, so a `reload` action swapping its own handlers -- the obvious
-    /// shape this would break on -- completes instead of parking the write
-    /// lock `resolve` would otherwise still be holding on the same thread.
-    ///
-    /// Bounded like `outbox`'s own real-blocking-risk tests: a real
-    /// deadlock here would hang the calling thread forever with no natural
-    /// timeout, so `reader_loop` runs on its own thread and this fails fast
-    /// on the deadline instead of hanging the whole suite.
+    /// Runs on its own thread with a deadline. A real deadlock would hang
+    /// the whole suite otherwise.
     #[test]
     fn a_handler_that_registers_another_handler_does_not_deadlock_the_reader() {
         let shepherd = Shepherd::inert(None);

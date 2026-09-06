@@ -1,8 +1,7 @@
 //! Reading and writing one newline-delimited JSON message.
 //!
-//! Generic over `BufRead` and `Write` rather than over the transport,
-//! because that is what lets these tests run on a platform where the real
-//! transport cannot be constructed without a live shepherd.
+//! Generic over `BufRead` and `Write`, not the transport itself. That lets
+//! these tests run without a live shepherd to construct the real one.
 
 use std::io::{BufRead, Write};
 
@@ -20,20 +19,14 @@ pub(crate) fn read_message<R: BufRead>(
     {
         return Ok(None);
     }
-    // Bytes then decode, rather than `read_line`, because of how the
-    // failure has to be classified. `read_line` reports a line that is not
-    // UTF-8 as `io::ErrorKind::InvalidData`, which lands here as
-    // `ChannelError::Io` -- and `Channel::recv` documents `Io` as the
-    // transport failing, so a caller that ends its loop on `Io` would stop
-    // on one garbage byte. A frame that is not UTF-8 is a bad frame, so it
-    // is `Malformed` and the next call resumes at the following line, which
-    // is the same bargain `a_malformed_line_is_recoverable` pins for a line
-    // that is valid UTF-8 and not valid JSON.
+    // Bytes then decode, not `read_line`. `read_line` reports non-UTF-8 as
+    // `io::ErrorKind::InvalidData`, which would surface as the transport
+    // failure case, `ChannelError::Io`. A non-UTF-8 frame is `Malformed`
+    // instead, so the next call resumes at the following line.
     let text =
         core::str::from_utf8(&line).map_err(|error| ChannelError::Malformed(error.to_string()))?;
-    // Belt and braces, not load-bearing: serde_json already skips a
-    // trailing `\r`/`\n` as JSON whitespace before parsing. Kept explicit
-    // so a bare line does not quietly depend on that.
+    // `serde_json` already skips a trailing `\r`/`\n` as JSON whitespace.
+    // This trim keeps that explicit rather than implicit.
     let trimmed = text.trim_end_matches(['\n', '\r']);
     serde_json::from_str(trimmed)
         .map(Some)
@@ -61,13 +54,11 @@ mod tests {
     use super::*;
 
     /// Bounds the one real-socket read in this module's tests. A working
-    /// channel answers in microseconds; this is slack for a loaded runner,
-    /// not an expected duration.
+    /// channel answers in microseconds; this is slack for a loaded runner.
     ///
-    /// Unix-gated with the one test that uses it. Windows has no socketpair
-    /// to point that test at, and an ungated constant is dead code there --
-    /// which `clippy --all-targets -- -D warnings` fails on, on a platform
-    /// CI only ever runs `cargo test` against.
+    /// Unix-gated: Windows has no socketpair for the one test that uses
+    /// this. An ungated constant is dead code there, which CI's clippy
+    /// gate refuses.
     #[cfg(unix)]
     const DEADLINE: Duration = Duration::from_secs(5);
 
@@ -91,13 +82,11 @@ mod tests {
         assert_eq!(read_message(&mut reader).unwrap(), None);
     }
 
-    /// pins that a `\r\n`-terminated line still parses -- the Windows
-    /// transport is a byte-mode pipe and an app on the far side may well
-    /// write one. Doesn't guard `trim_end_matches` in `read_message` above:
-    /// serde_json already treats a trailing `\r`/`\n` as JSON whitespace,
-    /// so removing that call would not fail this test. What it would catch
-    /// is a parser swap, or framing that stops handing whole lines to the
-    /// decoder.
+    /// The Windows transport is a byte-mode pipe, so an app there may
+    /// write `\r\n`. This doesn't guard `trim_end_matches`, since
+    /// `serde_json` already treats a trailing `\r`/`\n` as whitespace. It
+    /// catches a parser swap or framing that stops handing whole lines
+    /// over.
     #[test]
     fn a_carriage_return_before_the_newline_is_tolerated() {
         let mut reader = Cursor::new("{\"kind\":\"shutdown\"}\r\n".as_bytes());
@@ -107,10 +96,9 @@ mod tests {
         );
     }
 
-    /// fails if a malformed line ends the stream instead of being one
-    /// recoverable error. The daemon skips a bad frame and keeps reading
-    /// (`tokio_runner.rs`, the channel pumps); this side must be able to do
-    /// the same or the two halves disagree about what a bad line costs.
+    /// The daemon skips a bad frame and keeps reading (`tokio_runner.rs`).
+    /// This side must match, or the two halves disagree about what a bad
+    /// line costs.
     #[test]
     fn a_malformed_line_is_recoverable() {
         let mut reader = Cursor::new("not json\n{\"kind\":\"shutdown\"}\n".as_bytes());
@@ -124,16 +112,9 @@ mod tests {
         );
     }
 
-    /// fails if a frame that is not UTF-8 is reported as `Io`.
-    /// `Channel::recv` documents `Io` as the transport failing and
-    /// `Malformed` as one bad line the caller can resume past, so the
-    /// difference decides whether a caller's loop ends on a garbage byte.
-    /// `read_line` classified it the first way, because it returns
-    /// `InvalidData` rather than handing back the bytes it read.
-    ///
-    /// Both halves matter: the error kind, and that the next line still
-    /// arrives. A decode that consumed nothing would loop on the bad frame
-    /// forever instead.
+    /// `Channel::recv` documents `Io` as a transport failure and
+    /// `Malformed` as one resumable bad line. Both halves matter here:
+    /// the error kind, and that the next line still arrives.
     #[test]
     fn a_frame_that_is_not_utf8_is_malformed_and_recoverable() {
         let mut raw = b"\xff\xfe\n".to_vec();
@@ -168,8 +149,8 @@ mod tests {
         );
     }
 
-    /// fails if `Channel` cannot drive a real duplex. The generic tests
-    /// above prove the framing; this proves the type wired to a socket.
+    /// The generic tests above prove the framing; this proves the type
+    /// wired to a socket.
     #[cfg(unix)]
     #[test]
     fn a_channel_over_a_socketpair_round_trips() {

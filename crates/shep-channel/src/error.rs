@@ -1,7 +1,7 @@
 /// Anything that can go wrong on the shepherd channel.
 ///
-/// `#[non_exhaustive]` per IR-20: this is on the peer-facing surface and the
-/// channel will grow reasons to fail.
+/// `#[non_exhaustive]` per IR-20: this is on the peer-facing surface, which
+/// will grow reasons to fail.
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum ChannelError {
@@ -9,9 +9,9 @@ pub enum ChannelError {
     Io(std::io::Error),
     /// One frame could not be encoded or decoded. Carries serde's message.
     ///
-    /// Recoverable: the frame is lost and the next call resumes at the next
-    /// line, which is what the daemon does with a bad frame in the other
-    /// direction.
+    /// Recoverable: the frame is lost, and the next call resumes at the
+    /// next line. The daemon does the same with a bad frame going the
+    /// other way.
     Malformed(String),
     /// The environment names a channel this platform cannot open, for
     /// example `SHEP_CHANNEL_PIPE` on unix. Carries the variable and value.
@@ -19,9 +19,8 @@ pub enum ChannelError {
     /// The writer has stopped and the message was not queued.
     Closed,
     /// This process already took its shepherd channel. A second
-    /// [`crate::Channel::open`] call returns this instead of taking the
-    /// inherited descriptor a second time, which would produce two values
-    /// that both believe they own it.
+    /// [`crate::Channel::open`] call returns this rather than retake the
+    /// descriptor, which would produce two owners.
     AlreadyTaken,
 }
 

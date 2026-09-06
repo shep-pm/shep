@@ -1,10 +1,11 @@
 //! The fixture corpus, and the test that keeps it honest.
 //!
-//! Each case is serialized from this crate's own types and compared byte for
-//! byte with the committed file, then read back and compared with the value.
-//! Both directions, because the Go, JavaScript and Python libraries are
-//! written against these bytes and a drift in either direction would reach
-//! them silently.
+//! Each case is serialized and compared byte for byte with the committed
+//! file. It is also read back and compared with the original value.
+//!
+//! Both directions matter. Go, JavaScript and Python libraries are written
+//! against these bytes. A drift in either direction would reach them
+//! silently.
 //!
 //! Regenerate with `SHEP_CHANNEL_BLESS=1 cargo test -p shep-channel --test fixtures`.
 
@@ -103,9 +104,8 @@ fn shepherd_messages_match_their_fixtures() {
     }
 }
 
-/// fails if an `action-reply` carrying no `id` stops decoding. Every app
-/// written before the correlation id existed sends this shape, and the
-/// daemon's name-and-order fallback exists for exactly it.
+/// Old apps send this shape without an id. The daemon's name-and-order
+/// fallback exists for exactly this case.
 #[test]
 fn an_action_reply_without_an_id_still_decodes() {
     let decoded: ChildMessage =

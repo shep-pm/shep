@@ -1,31 +1,21 @@
-//! The shepherd channel: newline-JSON wire on fd 3 between the shepherd and
-//! each spawned child. [`ChildMessage`] flows child -> shepherd;
-//! [`ShepherdMessage`] flows shepherd -> child. Framing is wired by
-//! shep-daemon.
+//! The shepherd channel: newline-JSON wire on fd 3 between the shepherd
+//! and each spawned child. [`ChildMessage`] flows child to shepherd;
+//! [`ShepherdMessage`] flows shepherd to child.
 //!
-//! These types live here, in shep-channel, because this is the crate an app
-//! links to speak the channel. shep-core re-exports them: `BusEvent::Channel`
-//! carries a `ChildMessage` verbatim to every bus subscriber, so the message a
-//! bus event holds has to be the same type an app writing on fd 3 constructs.
+//! Both enums are exhaustive on purpose. The channel has no handshake, so
+//! a new variant has to be announced out of band. An exhaustive match
+//! forces every call site to react to it.
 //!
-//! Both enums are exhaustive, unlike everything else under `protocol`: fd 3
-//! has no handshake, so a new variant means telling every app out of band,
-//! and exhaustive matches force every call site to react to it.
-//!
-//! Pins the wire shapes only, not the app-facing contract: see
-//! `docs/shepherd-channel.md` for reply and correlation semantics.
+//! Pins the wire shapes only. See `docs/shepherd-channel.md` for reply and
+//! correlation semantics.
 
 use serde::{Deserialize, Serialize};
 
-/// The value the shepherd exports as `SHEP_CHANNEL_VERSION` to every child it
-/// opens a channel for.
+/// The value the shepherd exports as `SHEP_CHANNEL_VERSION` to every child
+/// it opens a channel for.
 ///
-/// Stays `"1"` through this field addition: a daemon that stamps and an app
-/// that ignores the stamp interoperate exactly as before. Not a
-/// negotiation, just a way for a defensive app to notice that fd 3 carries
-/// a protocol it has never seen.
-///
-/// `docs/shepherd-channel.md` defines what `"1"` means.
+/// Not a negotiation: a way for an app to notice a wire it has never
+/// seen. `docs/shepherd-channel.md` defines what `"1"` means.
 pub const CHANNEL_VERSION: &str = "1";
 
 /// Child -> daemon shepherd-channel message (spec §7, kebab-case kinds)
@@ -49,8 +39,8 @@ pub enum ChildMessage {
         /// Free-form reply body
         body: String,
         /// The `id` of the [`ShepherdMessage::Action`] this answers, echoed
-        /// back verbatim. `None` when the app did not echo it, in which
-        /// case the daemon falls back to matching by name and order.
+        /// back verbatim. `None` when the app did not echo it. Then the
+        /// daemon falls back to matching by name and order.
         #[serde(skip_serializing_if = "Option::is_none", default)]
         id: Option<u64>,
     },
@@ -68,27 +58,25 @@ pub enum ShepherdMessage {
         /// The action name
         name: String,
         /// Argument text for the action, passed through to the child
-        /// verbatim; `None` when triggered without any.
+        /// verbatim; `None` when triggered without any. Omitted from the
+        /// wire when `None`, so a message with no arguments round-trips
+        /// byte-identical.
         ///
-        /// Omitted from the wire when `None`, so a message with no
-        /// arguments round-trips byte-identical.
-        ///
-        /// One opaque string, not structured data: the daemon never reads
-        /// it, so an app parses it in whatever grammar it already has.
-        // `skip_serializing_if` is load-bearing: without it a message with
-        // no arguments serializes `"params":null` instead of omitting the
-        // key. `default` guards a future type change on a channel with no
+        /// One opaque string the daemon never reads, so an app parses it
+        /// in its own grammar.
+        // `skip_serializing_if` is load-bearing: without it, an empty
+        // message serializes `"params":null` instead of omitting the key.
+        // `default` guards a future type change on a channel with no
         // version to announce one.
         #[serde(skip_serializing_if = "Option::is_none", default)]
         params: Option<String>,
         /// This dispatch's correlation id, unique for the life of the
-        /// daemon. Echo it back on your [`ChildMessage::ActionReply`] as
-        /// `id` and the daemon matches your answer to this exact request
-        /// rather than to its name.
+        /// daemon. Echo it back as `id` on your
+        /// [`ChildMessage::ActionReply`]. The daemon then matches your
+        /// answer to this request, not to its name.
         ///
-        /// Always present, unlike `params`. Treat it as an opaque token to
-        /// hand back: `u64` and increasing are implementation details, not
-        /// a promise.
+        /// Always present, unlike `params`. Treat `u64` and increasing as
+        /// implementation details, not a promise.
         id: u64,
     },
 }
@@ -97,8 +85,8 @@ pub enum ShepherdMessage {
 mod tests {
     use super::*;
 
-    // Fixtures pinned from spec §7 strings, round-tripped both ways so a
-    // silent field or rename drift fails loudly.
+    // Fixtures pinned from spec §7. Round-tripped both ways so a silent
+    // drift fails loudly.
 
     #[test]
     fn ready_wire_fixture_round_trips() {
@@ -124,7 +112,6 @@ mod tests {
         assert_eq!(serde_json::to_string(&msg).unwrap(), fixture);
     }
 
-    /// Apps with no correlation id still send this shape.
     #[test]
     fn an_action_reply_without_an_id_round_trips() {
         let fixture = r#"{"kind":"action-reply","action":"gc","body":"ok"}"#;
@@ -162,7 +149,7 @@ mod tests {
         );
     }
 
-    /// `id` is unconditional; `params` is not. Both cases, both directions.
+    /// Checks both directions: serialize and deserialize.
     #[test]
     fn an_action_carries_its_id_with_or_without_params() {
         let bare = r#"{"kind":"action","name":"gc","id":7}"#;
