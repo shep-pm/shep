@@ -39,7 +39,7 @@ a frame of their own.
 All three panes at 120x30: the host strip under the title, the detail pane and the bleats feed under the table. The selected row is painted, and every pane below the table describes that sheep.
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 14.7%        █   floc…
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                                             
@@ -73,7 +73,7 @@ q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e 
 One errored, one waiting to restart, one stopped, with the selection parked on the errored sheep. Each row's own STATUS cell is the only coloured cell in that row, and EXIT carries why each of the three stopped: a code for the two that crashed, a signal name for the one shep stopped itself.
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 6.7%   flock mem 371.0M   up 6d 3h            
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 6.7%        █   flock…
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                                             
@@ -107,7 +107,7 @@ q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e 
 Three instances of one app under a group header, with the cursor parked on the header. The header sums their restarts, CPU and memory and takes the SHORTEST of their uptimes, so a group reads as time since the app was last disturbed rather than as the age of its luckiest instance. The detail pane repeats that rollup and says lambs are per-instance; the feed will not guess which instance to tail.
 
 shep lookout   /home/ada/.shep                                                                            4 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 16.5%   flock mem 781.0M   up 6d 3h           
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 16.5%        █   floc…
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                                             
@@ -141,7 +141,7 @@ q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e 
 Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it.
 
 shep lookout   /home/ada/.shep                                                                            5 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 10.6%   flock mem 431.0M   up 6d 3h           
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 10.6%        █   floc…
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                                             
@@ -175,7 +175,7 @@ q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e 
 No sheep registered. Each of the three panes says why it is empty, and the three sentences are different because the three reasons are.
 
 shep lookout   /home/ada/.shep                                                        0 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu -   flock mem -   up 6d 3h
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu -…
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 the flock is empty                                                                                  
@@ -207,7 +207,7 @@ q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e 
 51 columns: FOLD, EXIT, RESTARTS, PID and MEM are gone, in that order. CPU and UPTIME survive because they explain WHY a RUNNING sheep is behaving badly, a question EXIT cannot even ask. The host strip fits; the detail pane and the feed do not, at 14 rows.
 
 shep lookout   /home/ada/.shep       6 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12…
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░  …
   ID    NAME      STATUS           CPU     UPTIME  
 ───────────────────────────────────────────────────
    ██ FLOCK                                        
@@ -238,7 +238,7 @@ The shepherd stopped answering. Five attempts over about eight seconds before th
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
 the shepherd stopped answering: reconnecting (attempt 3)                                                                
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 14.7%        █   floc…
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                                             
@@ -272,7 +272,7 @@ The ladder ran out. Last known values stay, the uptime clock has stopped, and so
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
 the shepherd has died: these values are frozen as of 2026-08-14 14:32:07                                                
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 6.7%   flock mem 371.0M   up 6d 3h            
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 6.7%        █   flock…
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                                             
@@ -305,7 +305,7 @@ q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e 
 `x` with actions gated off. The refusal is literal, nothing about damage gets charming, and the panes below carry on.
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 14.7%        █   floc…
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                                             
@@ -339,7 +339,7 @@ read-only: from --read-only or lookout.allow_control                            
 Mid-type at 100x14. The table has already narrowed to the two sheep whose names contain the query, the title counts the narrowed set and the whole flock, and the status bar carries the query, a cursor, and the three keys that mean anything while the box is open.
 
 shep lookout   /home/ada/.shep                                                   2 of 6 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 1…
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                         
@@ -357,7 +357,7 @@ filter  web▏   enter applies   esc cancels   ctrl-c quits                     
 The same query applied. The box is closed, the table is still narrowed, and the bar has changed to name the two keys that now touch the filter.
 
 shep lookout   /home/ada/.shep                                                   2 of 6 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 1…
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                         
@@ -375,7 +375,7 @@ filter "web"   / edit   esc clear                                               
 A query nothing matches. The table names the query rather than claiming the flock is empty, and the title keeps the flock's real size on screen.
 
 shep lookout   /home/ada/.shep                                                   0 of 6 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 1…
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 no sheep's name contains "zzz"                                                                      
@@ -393,7 +393,7 @@ filter  zzz▏   enter applies   esc cancels   ctrl-c quits                     
 20 rows: the detail pane is the first to go, because every number on it but the log paths is already in the row above it.
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 14.7%        █   floc…
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                                             
@@ -433,7 +433,7 @@ q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e 
 The feed under a burst: 3.8 megabytes were never read and some hundreds of lines were read and dropped. The pane counts both, and counts them separately, because it knows the second exactly and cannot know how many lines are in the first.
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 14.7%        █   floc…
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                                             
@@ -467,7 +467,7 @@ q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e 
 The selected sheep has never written a log in this $SHEP_HOME. The feed names that cause rather than sitting blank.
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 14.7%        █   floc…
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                                             
@@ -531,7 +531,7 @@ q quit   j/k sel… control enabled
 `sysinfo` reports this platform unsupported. The strip says so and keeps the flock's own totals, which lookout can always compute.
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
-host  usage is not available on this platform   flock cpu 14.7%   flock mem 716.0M                                      
+host  usage is not available on this platform   flock cpu 14.7%        █   flock mem 716.0M   0 errored · 0 parked      
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                                             
@@ -565,7 +565,7 @@ q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e 
 The detail pane with a lamb list: how many descendants the shepherd's walk found, how old that reading is, and each lamb's pid and executable name. The stamp sits before the list so a narrow terminal truncates lambs rather than the caveat.
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 14.7%        █   floc…
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                                             
@@ -599,7 +599,7 @@ q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e 
 The same pane on a stopped sheep. The shepherd had no pid to walk from and left the field unset rather than empty, and the line says which of the two it is looking at rather than reporting none found.
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 6.7%   flock mem 371.0M   up 6d 3h            
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 6.7%        █   flock…
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                                             
@@ -633,7 +633,7 @@ q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e 
 `R` pressed with the gate open. Nothing has been sent: the bar asks a question naming the verb and the exact sheep, and `api` is still online in the table behind it.
 
 shep lookout   /home/ada/.shep                                                        6 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 1…
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                         
@@ -651,7 +651,7 @@ restart api (id 2)? enter confirms, any other key cancels                       
 Enter pressed. The request is out and nothing on the table has changed, because nothing the shepherd has said has changed: `api` is still online and the cursor has not moved.
 
 shep lookout   /home/ada/.shep                                                        6 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 1…
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                         
@@ -669,7 +669,7 @@ restart api (id 2): sent, waiting for the shepherd                              
 The shepherd refused while the request was out, and its own sentence is forwarded rather than rewritten. The sheep has left the flock in the listing behind it, so the table is one row shorter and the cursor has moved to the row below.
 
 shep lookout   /home/ada/.shep                                                        5 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 7.6%   flock mem 475.0M  …
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 7…
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                         
@@ -687,7 +687,7 @@ restart api (id 2): selector matched no registered sheep                        
 The shepherd answered. The bar says what it did, in the non-grave style a refusal does not get, and the table shows the row the reply carried rather than waiting for the next poll.
 
 shep lookout   /home/ada/.shep                                                        6 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 1…
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                         
@@ -706,7 +706,7 @@ An action key pressed while the link is coming back. The refusal names the same 
 
 shep lookout   /home/ada/.shep                                                        6 in the flock
 the shepherd stopped answering: reconnecting (attempt 3)                                            
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 1…
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                         

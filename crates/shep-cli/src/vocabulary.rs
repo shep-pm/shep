@@ -26,11 +26,6 @@ pub(crate) enum Role {
     Ink3,
     /// Lookout-only: the memory gauge's filled portion. No `ProcStatus`
     /// wears it, since `shep flock` has no gauge to colour.
-    ///
-    /// No non-test constructor yet: a later task in the landing-pane
-    /// revamp builds the gauge that names it. `#[allow(dead_code)]` says
-    /// so rather than inventing one.
-    #[allow(dead_code)]
     Sky,
 }
 

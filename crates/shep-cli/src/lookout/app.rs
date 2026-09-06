@@ -3531,7 +3531,6 @@ impl App {
 
     /// The whole flock's summed CPU-percent samples, oldest first, newest
     /// last, same depth as [`Self::cpu_history`].
-    #[allow(dead_code, reason = "consumed by the sparkline in a later task")]
     pub fn flock_cpu_history(&self) -> &[f32] {
         self.flock_cpu.as_slices().0
     }

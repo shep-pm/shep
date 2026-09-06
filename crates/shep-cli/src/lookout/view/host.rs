@@ -1,4 +1,4 @@
-//! The host-usage strip: one line, five self-labelled segments.
+//! The host-usage strip: one line, several self-labelled segments.
 //!
 //! Half is read from this machine ([`super::super::source::HostSample`])
 //! and half is summed from [`super::super::app::App::all_rows`], the whole
@@ -7,55 +7,192 @@
 //! half, so a truncated strip never leaves a bare `mem 12.4G` beside a bare
 //! `mem 706.0M`.
 //!
-//! Segments join in the drop order (`up` last, load average first) and
-//! [`super::flock::fit`] truncates from the right, so truncation is the
-//! drop order with no second mechanism.
+//! Segments join in the drop order (`up` last, load average first) and are
+//! truncated from the right, so truncation is the drop order with no second
+//! mechanism.
 
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
+use shep_core::status::ProcStatus;
 
 use super::super::app::App;
+use super::super::theme::Palette;
+use super::cell;
+use crate::output::width::char_columns;
 use crate::output::{human_bytes, human_duration};
 
 /// The strip, fitted to `width`.
 #[must_use]
 pub fn strip_line(app: &App, width: u16) -> Line<'static> {
-    // One `Span`, muted: nothing on this line is damage, and nothing on it is
-    // a status word. Colour here would be decoration with no meaning behind
-    // it, which is the one thing the palette module forbids.
-    Line::from(Span::styled(
-        super::flock::fit(&segments(app).join("   "), width),
-        app.palette().muted(),
-    ))
+    Line::from(Ink::fit(&runs(app), width, app.palette()))
 }
 
-/// The segments, widest set first.
-fn segments(app: &App) -> Vec<String> {
-    let mut out = Vec::with_capacity(5);
+// One run of the strip and the role it renders in.
+struct Run {
+    text: String,
+    ink: Ink,
+}
+
+// Which colour a run wears. Most of the line is words and numbers with no
+// status behind them, so it stays muted. The load and memory gauges are the
+// exception: two bars on one line are unreadable without something to tell
+// them apart by, which is meaning rather than the plain decoration the rest
+// of the line has none of.
+#[derive(Clone, Copy)]
+enum Ink {
+    Muted,
+    Load,
+    Mem,
+}
+
+impl Ink {
+    fn style(self, palette: Palette) -> Style {
+        match self {
+            Ink::Muted => palette.muted(),
+            Ink::Load => palette.attention(),
+            Ink::Mem => palette.sky(),
+        }
+    }
+
+    // `runs` truncated to exactly `width` columns, one `Span` per surviving
+    // run plus the tail. Mirrors `super::flock::fit`'s own algorithm
+    // (single-width-char truncation, one column reserved for a trailing
+    // `…`) but walks a list of coloured runs instead of one string, so a
+    // caller with several roles on one line keeps the same
+    // drop-from-the-right behaviour.
+    fn fit(runs: &[Run], width: u16, palette: Palette) -> Vec<Span<'static>> {
+        let width = usize::from(width);
+        let total: usize = runs
+            .iter()
+            .flat_map(|run| run.text.chars())
+            .map(char_columns)
+            .sum();
+        if total <= width {
+            let mut spans: Vec<Span<'static>> = runs
+                .iter()
+                .map(|run| Span::styled(run.text.clone(), run.ink.style(palette)))
+                .collect();
+            spans.push(Span::styled(" ".repeat(width - total), palette.muted()));
+            return spans;
+        }
+        if width == 0 {
+            return vec![Span::raw(String::new())];
+        }
+        let budget = width - 1;
+        let mut spans = Vec::new();
+        let mut used = 0;
+        for run in runs {
+            if used >= budget {
+                break;
+            }
+            let mut kept = String::new();
+            for c in run.text.chars() {
+                let c_width = char_columns(c);
+                if used + c_width > budget {
+                    break;
+                }
+                kept.push(c);
+                used += c_width;
+            }
+            if !kept.is_empty() {
+                spans.push(Span::styled(kept, run.ink.style(palette)));
+            }
+        }
+        spans.push(Span::styled("…", palette.muted()));
+        if budget > used {
+            spans.push(Span::styled(" ".repeat(budget - used), palette.muted()));
+        }
+        spans
+    }
+}
+
+// The load gauge: ten cells, filled by the one-minute average as a
+// percentage of `cores`. `None`, and a reported zero cores, draw an empty
+// gauge rather than a division by zero: a platform that cannot say how many
+// cores it has cannot say what fraction of them is busy either.
+fn load_gauge(load: f64, cores: Option<usize>) -> String {
+    match cores.filter(|&count| count > 0) {
+        Some(cores) => {
+            let percent = (load / cores as f64 * 100.0).round() as u64;
+            cell::gauge(percent, Some(100), 10)
+        }
+        None => cell::gauge(0, None, 10),
+    }
+}
+
+// `N errored · N parked`, summed over the whole flock. Errored filters
+// `ProcStatus::Errored`; parked counts a non-empty `pending`, the same
+// field `crate::output::cfg_cell` reads for the `CFG` column.
+fn summary(app: &App) -> String {
+    let rows = app.all_rows();
+    let errored = rows
+        .iter()
+        .filter(|row| row.info.status == ProcStatus::Errored)
+        .count();
+    let parked = rows
+        .iter()
+        .filter(|row| {
+            row.info
+                .pending
+                .as_deref()
+                .is_some_and(|fields| !fields.is_empty())
+        })
+        .count();
+    format!("{errored} errored · {parked} parked")
+}
+
+// The runs, widest set first.
+fn runs(app: &App) -> Vec<Run> {
+    let mut out = Vec::with_capacity(9);
+    let sep = || Run {
+        text: "   ".to_string(),
+        ink: Ink::Muted,
+    };
     match app.host() {
         Some(host) => {
             let (one, five, fifteen) = host.load;
-            out.push(match host.cores {
+            let load_text = match host.cores {
                 Some(cores) => {
-                    format!("host  load {one:.2} {five:.2} {fifteen:.2} / {cores} cores")
+                    format!("host  load {one:.2} {five:.2} {fifteen:.2} / {cores} cores  ")
                 }
                 // No denominator: the numbers alone are not readable, so they
                 // are shown without a claim about how many cores they are
                 // spread over rather than with a guessed one.
-                None => format!("host  load {one:.2} {five:.2} {fifteen:.2}"),
+                None => format!("host  load {one:.2} {five:.2} {fifteen:.2}  "),
+            };
+            out.push(Run {
+                text: load_text,
+                ink: Ink::Muted,
             });
-            out.push(format!(
-                "host mem {} / {}",
-                human_bytes(host.memory_used_bytes),
-                human_bytes(host.memory_total_bytes)
-            ));
+            out.push(Run {
+                text: load_gauge(one, host.cores),
+                ink: Ink::Load,
+            });
+            out.push(sep());
+            out.push(Run {
+                text: format!(
+                    "host mem {} / {}  ",
+                    human_bytes(host.memory_used_bytes),
+                    human_bytes(host.memory_total_bytes)
+                ),
+                ink: Ink::Muted,
+            });
+            out.push(Run {
+                text: cell::gauge(host.memory_used_bytes, Some(host.memory_total_bytes), 10),
+                ink: Ink::Mem,
+            });
         }
-        None if app.host_unsupported() => {
-            out.push("host  usage is not available on this platform".to_string());
-        }
+        None if app.host_unsupported() => out.push(Run {
+            text: "host  usage is not available on this platform".to_string(),
+            ink: Ink::Muted,
+        }),
         // Reachable for at most one redraw: `tokio::time::interval`'s first
         // tick is immediate, so the heartbeat samples before the second
         // frame.
-        None => out.push("host  not read yet".to_string()),
+        None => out.push(Run {
+            text: "host  not read yet".to_string(),
+            ink: Ink::Muted,
+        }),
     }
 
     // Summed from the whole flock, `all_rows`, not the filtered `rows`, so
@@ -71,22 +208,37 @@ fn segments(app: &App) -> Vec<String> {
         .iter()
         .filter_map(|row| row.info.memory_bytes)
         .fold(None, |sum, value| Some(sum.unwrap_or(0) + value));
-    out.push(cpu.map_or_else(
+    let cpu_text = cpu.map_or_else(
         || "flock cpu -".to_string(),
         |cpu| format!("flock cpu {cpu:.1}%"),
-    ));
-    out.push(mem.map_or_else(
-        || "flock mem -".to_string(),
-        |mem| format!("flock mem {}", human_bytes(mem)),
-    ));
+    );
+    out.push(sep());
+    out.push(Run {
+        text: format!("{cpu_text} {}", cell::sparkline(app.flock_cpu_history(), 8)),
+        ink: Ink::Muted,
+    });
+    out.push(sep());
+    out.push(Run {
+        text: mem.map_or_else(
+            || "flock mem -".to_string(),
+            |mem| format!("flock mem {}", human_bytes(mem)),
+        ),
+        ink: Ink::Muted,
+    });
+    out.push(sep());
+    out.push(Run {
+        text: summary(app),
+        ink: Ink::Muted,
+    });
 
     // Last, and therefore the first thing a narrow terminal loses: a host that
     // has been up six days explains nothing about right now.
     if let Some(host) = app.host() {
-        out.push(format!(
-            "up {}",
-            human_duration(host.uptime_seconds * 1_000)
-        ));
+        out.push(sep());
+        out.push(Run {
+            text: format!("up {}", human_duration(host.uptime_seconds * 1_000)),
+            ink: Ink::Muted,
+        });
     }
     out
 }
@@ -94,10 +246,40 @@ fn segments(app: &App) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::super::MIN_TERM_WIDTH;
-    use super::super::fixtures::{flock_of, rendered, sample, with_host, with_host_none};
+    use super::super::fixtures::{
+        app_with, flock_of, plain, rendered, sample, with_host, with_host_none,
+    };
     use super::*;
     use shep_core::protocol::ProcessInfo;
     use shep_core::status::ProcStatus;
+
+    /// `fixture_with` in the brief's own words: an app over one flock and no
+    /// host reading, since these tests exercise `summary` alone.
+    fn fixture_with(flock: Vec<ProcessInfo>) -> App {
+        app_with(flock, plain())
+    }
+
+    #[test]
+    fn the_load_gauge_measures_against_the_core_count() {
+        // 5.12 of 14 cores is 37%, four of ten cells.
+        assert_eq!(load_gauge(5.12, Some(14)), "████░░░░░░");
+    }
+
+    #[test]
+    fn a_host_that_cannot_report_cores_draws_no_load_gauge() {
+        assert_eq!(load_gauge(5.12, None), "░░░░░░░░░░");
+    }
+
+    #[test]
+    fn the_summary_counts_errored_and_parked_sheep() {
+        let app = fixture_with(vec![
+            ProcessInfo::builder(1, "flaky", ProcStatus::Errored).build(),
+            ProcessInfo::builder(2, "catcher", ProcStatus::Online)
+                .pending(Some(vec!["max_memory".to_string(), "err_file".to_string()]))
+                .build(),
+        ]);
+        assert_eq!(summary(&app), "1 errored · 1 parked");
+    }
 
     /// A truncated strip must never leave a bare `mem 12.4G` beside a bare
     /// `mem 706.0M`, one the host's and one the flock's.
@@ -110,7 +292,7 @@ mod tests {
         }
     }
 
-    /// There is no drop loop and no width table: `flock::fit` truncates from
+    /// There is no drop loop and no width table: `Ink::fit` truncates from
     /// the right, so truncating is the drop order.
     #[test]
     fn a_narrow_strip_truncates_visibly_and_keeps_the_load_average() {

@@ -4,7 +4,7 @@ expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                        6 in the flock
 the shepherd stopped answering: reconnecting (attempt 3)                                            
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …
+host  load 2.31 4.10 3.88 / 10 cores  ██░░░░░░░░   host mem 12.4G / 32.0G  ████░░░░░░   flock cpu 1…
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
    ██ FLOCK                                                                                         
