@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
+use crate::secrets;
 use crate::values::UpDuration;
 
 /// The `[daemon]` section
@@ -237,6 +238,7 @@ impl DaemonConfig {
     /// - [`DaemonConfigError::Toml`]: the file source is invalid TOML.
     /// - [`DaemonConfigError::BadEnvValue`]: a `SHEP_*` value is not parseable.
     /// - [`DaemonConfigError::BelowMinimum`]: the effective `max_cron_sleep` is below the floor.
+    /// - [`DaemonConfigError::InvalidEnvironment`]: the effective `environment` is `all` or falls outside the secrets store's name grammar.
     pub fn load(
         file_source: Option<&str>,
         env: &dyn Fn(&str) -> Option<String>,
@@ -254,6 +256,7 @@ impl DaemonConfig {
     /// - [`DaemonConfigError::Toml`]: the file source is invalid TOML.
     /// - [`DaemonConfigError::BadEnvValue`]: a `SHEP_*` value is not parseable.
     /// - [`DaemonConfigError::BelowMinimum`]: the effective `max_cron_sleep` is below the floor.
+    /// - [`DaemonConfigError::InvalidEnvironment`]: the effective `environment` is `all` or falls outside the secrets store's name grammar.
     pub fn load_layered(
         file_source: Option<&str>,
         env: &dyn Fn(&str) -> Option<String>,
@@ -325,7 +328,15 @@ impl DaemonConfig {
     ///
     /// # Errors
     /// - [`DaemonConfigError::BelowMinimum`]: `max_cron_sleep` is under the floor.
+    /// - [`DaemonConfigError::InvalidEnvironment`]: `environment` is `all` or falls outside the secrets store's name grammar.
     fn validate(&self, key: &'static str) -> Result<(), DaemonConfigError> {
+        if self.daemon.environment == secrets::ALL_ENVIRONMENTS
+            || !secrets::is_name(&self.daemon.environment)
+        {
+            return Err(DaemonConfigError::InvalidEnvironment(
+                self.daemon.environment.clone(),
+            ));
+        }
         if let Some(value) = self.daemon.max_cron_sleep
             && value < MIN_CRON_SLEEP
         {
@@ -441,6 +452,11 @@ pub enum DaemonConfigError {
         /// The floor it failed.
         min: UpDuration,
     },
+    /// `[daemon] environment` is [`crate::secrets::ALL_ENVIRONMENTS`], the
+    /// secrets store's every-environment slot, or falls outside the grammar
+    /// [`crate::secrets`] keys and environment names share. Carries the
+    /// value as written.
+    InvalidEnvironment(String),
 }
 
 impl fmt::Display for DaemonConfigError {
@@ -454,6 +470,13 @@ impl fmt::Display for DaemonConfigError {
                     "invalid value `{value}` for {key}: must be at least {min}"
                 )
             }
+            Self::InvalidEnvironment(value) => write!(
+                f,
+                "invalid value `{value}` for environment: must be 1-128 bytes of \
+                 `[A-Za-z0-9._-]` not starting with `.`, and not `{}` (the secrets \
+                 store's every-environment slot)",
+                secrets::ALL_ENVIRONMENTS
+            ),
         }
     }
 }
@@ -647,6 +670,28 @@ otel = "/usr/local/bin/shep-otel"
         let cfg =
             DaemonConfig::load(Some("[daemon]\nenvironment = \"staging\"\n"), &|_| None).unwrap();
         assert_eq!(cfg.daemon.environment, "staging");
+    }
+
+    #[test]
+    fn the_host_environment_cannot_be_all() {
+        // `all` is the secrets store's every-environment slot. A host
+        // default of `all` would put every sheep with no environment of
+        // its own there, bypassing the same refusal `normalize.rs` gives a
+        // sheep that names `all` directly.
+        let err =
+            DaemonConfig::load(Some("[daemon]\nenvironment = \"all\"\n"), &|_| None).unwrap_err();
+        assert!(err.to_string().contains("all"), "{err}");
+    }
+
+    #[test]
+    fn a_host_environment_outside_the_grammar_is_refused() {
+        for bad in ["", "has space", "has/slash"] {
+            let source = format!("[daemon]\nenvironment = \"{bad}\"\n");
+            assert!(
+                DaemonConfig::load(Some(&source), &|_| None).is_err(),
+                "{bad:?} must be refused"
+            );
+        }
     }
 
     // `as_str`, `from_name` and serde's `rename_all` are three separate
