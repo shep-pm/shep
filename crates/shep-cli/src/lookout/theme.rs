@@ -191,9 +191,8 @@ impl Palette {
     /// `NO_COLOR`: it is a modifier rather than a colour, and it is what keeps
     /// a band naming the mode on a monochrome terminal.
     ///
-    /// No non-test caller yet; see [`Self::sky`].
+    /// Called by `view::mod`'s `title_band` and `section_band`.
     #[must_use]
-    #[allow(dead_code)]
     pub fn band(self, role: crate::vocabulary::Role) -> Style {
         Self::fg(self.of(role)).add_modifier(Modifier::REVERSED)
     }

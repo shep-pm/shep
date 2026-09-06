@@ -6,7 +6,7 @@ shep lookout   /home/ada/.shep       6 in the flock
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12…
   ID    NAME      STATUS           CPU     UPTIME  
 ───────────────────────────────────────────────────
-  Flock ───────────────────────────────────────────
+   ██ FLOCK                                        
   2     api       online           7.1%    1h 28m  
   3     billing…  online           0.8%    1h 29m  
   4     cron      online           0.1%    1h 31m  

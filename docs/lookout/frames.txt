@@ -42,7 +42,7 @@ shep lookout   /home/ada/.shep                                                  
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                                             
   2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
@@ -76,7 +76,7 @@ shep lookout   /home/ada/.shep                                                  
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 6.7%   flock mem 371.0M   up 6d 3h            
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                                             
   2     api         errored          -        14        1          -       -         1h 18m    edge        -            
   3     billing-r…  waiting-restart  -        3         1          -       -         1h 19m    -           -            
   4     cron        stopped          -        0         SIGTERM    -       -         1h 21m    -           -            
@@ -110,7 +110,7 @@ shep lookout   /home/ada/.shep                                                  
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 16.5%   flock mem 781.0M   up 6d 3h           
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                                             
   3     api         online           48219    1         -          7.1%    241.0M    1h 29m    edge        -            
         web ×3      online                    3                    9.4%    540.0M    15m       edge        -            
   0      ↳ :0       online           48400    0         -          3.4%    182.0M    1h 25m                             
@@ -138,17 +138,17 @@ bleats  web  follows one instance; select one to see its log
 q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
 
 === with_dogs  (120x30) ===
-Three sheep under a Flock header and two dogs under a Dogs header: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it.
+Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it.
 
 shep lookout   /home/ada/.shep                                                                            5 in the flock
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 10.6%   flock mem 431.0M   up 6d 3h           
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                                             
   1     api         online           48219    1         -          7.1%    241.0M    1h 26m    edge        -            
   2     cron        online           48233    0         -          0.1%    8.0M      1h 28m    -           -            
   0     web         online           48211    0         -          3.4%    182.0M    1h 25m    edge        -            
-  Dogs ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ██ DOGS                                                                                                              
   90    bark        online           90090    0         -          -       -         10m       -           -            
   91    log-rotate  silent           90091    0         -          -       -         10m       -           -            
                                                                                                                         
@@ -210,7 +210,7 @@ shep lookout   /home/ada/.shep       6 in the flock
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12…
   ID    NAME      STATUS           CPU     UPTIME  
 ───────────────────────────────────────────────────
-  Flock ───────────────────────────────────────────
+   ██ FLOCK                                        
   2     api       online           7.1%    1h 28m  
   3     billing…  online           0.8%    1h 29m  
   4     cron      online           0.1%    1h 31m  
@@ -241,7 +241,7 @@ the shepherd stopped answering: reconnecting (attempt 3)
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                                             
   2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
@@ -275,7 +275,7 @@ the shepherd has died: these values are frozen as of 2026-08-14 14:32:07
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 6.7%   flock mem 371.0M   up 6d 3h            
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                                             
   2     api         errored          -        14        1          -       -         1h 18m    edge        -            
   3     billing-r…  waiting-restart  -        3         1          -       -         1h 19m    -           -            
   4     cron        stopped          -        0         SIGTERM    -       -         1h 21m    -           -            
@@ -308,7 +308,7 @@ shep lookout   /home/ada/.shep                                                  
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                                             
   2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
@@ -342,7 +342,7 @@ shep lookout   /home/ada/.shep                                                  
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                         
   0     web                online           48211    0         -          3.4%    182.0M    1h 25m  
   1     web                online           48212    0         -          2.9%    178.0M    1h 26m  
                                                                                                     
@@ -360,7 +360,7 @@ shep lookout   /home/ada/.shep                                                  
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                         
   0     web                online           48211    0         -          3.4%    182.0M    1h 25m  
   1     web                online           48212    0         -          2.9%    178.0M    1h 26m  
                                                                                                     
@@ -396,7 +396,7 @@ shep lookout   /home/ada/.shep                                                  
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                                             
   2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
@@ -419,7 +419,7 @@ q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                                             
   2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
@@ -436,7 +436,7 @@ shep lookout   /home/ada/.shep                                                  
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                                             
   2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
@@ -470,7 +470,7 @@ shep lookout   /home/ada/.shep                                                  
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                                             
   2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
@@ -504,7 +504,7 @@ shep lookout   /h… 6 in the flock
 host  load 2.31 4.10 3.88 / 10 c…
   ID    NAME      STATUS         
 ─────────────────────────────────
-  Flock ─────────────────────────
+   ██ FLOCK                      
   2     api       online         
   3     billing…  online         
   4     cron      online         
@@ -534,7 +534,7 @@ shep lookout   /home/ada/.shep                                                  
 host  usage is not available on this platform   flock cpu 14.7%   flock mem 716.0M                                      
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                                             
   2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
@@ -568,7 +568,7 @@ shep lookout   /home/ada/.shep                                                  
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                                             
   2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
@@ -602,7 +602,7 @@ shep lookout   /home/ada/.shep                                                  
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 6.7%   flock mem 371.0M   up 6d 3h            
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                                             
   2     api         errored          -        14        1          -       -         1h 18m    edge        -            
   3     billing-r…  waiting-restart  -        3         1          -       -         1h 19m    -           -            
   4     cron        stopped          -        0         SIGTERM    -       -         1h 21m    -           -            
@@ -636,7 +636,7 @@ shep lookout   /home/ada/.shep                                                  
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                         
   2     api                online           48219    1         -          7.1%    241.0M    1h 28m  
   3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m  
   4     cron               online           48233    0         -          0.1%    8.0M      1h 31m  
@@ -654,7 +654,7 @@ shep lookout   /home/ada/.shep                                                  
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                         
   2     api                online           48219    1         -          7.1%    241.0M    1h 28m  
   3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m  
   4     cron               online           48233    0         -          0.1%    8.0M      1h 31m  
@@ -672,7 +672,7 @@ shep lookout   /home/ada/.shep                                                  
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 7.6%   flock mem 475.0M  …
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                         
   3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m  
   4     cron               online           48233    0         -          0.1%    8.0M      1h 31m  
   5     metrics            online           48240    0         -          0.4%    11.0M     1h 32m  
@@ -690,7 +690,7 @@ shep lookout   /home/ada/.shep                                                  
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                         
   2     api                online           48299    2         -          7.1%    241.0M    1h 18m  
   3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m  
   4     cron               online           48233    0         -          0.1%    8.0M      1h 31m  
@@ -709,7 +709,7 @@ the shepherd stopped answering: reconnecting (attempt 3)
 host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M …
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                         
   2     api                online           48219    1         -          7.1%    241.0M    1h 28m  
   3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m  
   4     cron               online           48233    0         -          0.1%    8.0M      1h 31m  

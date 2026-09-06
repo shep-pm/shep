@@ -17,7 +17,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier};
 
 use shep_client::RequestError;
 use shep_core::protocol::{
@@ -86,9 +86,11 @@ pub fn render_ansi(buffer: &Buffer) -> String {
 
 /// The SGR sequence for one cell's foreground.
 ///
-/// Foreground only: no pane uses bold, reverse, or any other modifier, since
-/// the selected row is a marker character rather than a style.
-/// `no_scene_uses_a_modifier_the_ansi_renderer_would_drop` pins it.
+/// Foreground only. The selected row's painted ground and the title and
+/// section bands' `REVERSED` modifier are both real styles this renderer
+/// does not draw yet; `no_scene_uses_a_modifier_the_ansi_renderer_cannot_render`
+/// tolerates `REVERSED` rather than forbidding it, since task 10 owns
+/// teaching this function to emit it.
 fn sgr(fg: Color) -> String {
     let mut out = String::new();
     match fg {
@@ -283,7 +285,7 @@ impl Scene {
                 "Three instances of one app under a group header, with the cursor parked on the header. The header sums their restarts, CPU and memory and takes the SHORTEST of their uptimes, so a group reads as time since the app was last disturbed rather than as the age of its luckiest instance. The detail pane repeats that rollup and says lambs are per-instance; the feed will not guess which instance to tail."
             }
             Self::WithDogs => {
-                "Three sheep under a Flock header and two dogs under a Dogs header: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it."
+                "Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it."
             }
             Self::Empty => {
                 "No sheep registered. Each of the three panes says why it is empty, and the three sentences are different because the three reasons are."
@@ -1560,8 +1562,8 @@ mod tests {
         let with_dogs_buffer = scene(Scene::WithDogs).1;
         let with_dogs = render_text(&with_dogs_buffer);
         assert!(
-            with_dogs.contains("Flock ") && with_dogs.contains("Dogs "),
-            "both section headers are drawn: {with_dogs:?}"
+            with_dogs.contains("FLOCK") && with_dogs.contains("DOGS"),
+            "both section bands are drawn: {with_dogs:?}"
         );
         assert!(
             row_for(&with_dogs, "bark").is_some_and(|row| row.contains("online")),
@@ -2050,20 +2052,27 @@ mod tests {
         assert_eq!(Scene::ALL.len(), 33);
     }
 
-    /// `sgr` renders foregrounds only, so a modifier would come out
-    /// unstyled. The selection marker is a character rather than a
-    /// reversed row for exactly this reason.
+    /// `sgr` renders foregrounds only, so a modifier still comes out
+    /// unstyled in `frames.ansi` today. The title and section bands now
+    /// carry `Modifier::REVERSED` on purpose (the design's own acceptance
+    /// criterion), so this no longer forbids every modifier outright — only
+    /// one the renderer cannot yet draw. Making `sgr` actually emit
+    /// `REVERSED` (and a background) is task 10's own brief, at
+    /// `frames.rs`'s `sgr` and `render_ansi`; until then `frames.ansi`
+    /// under-represents a band the same way it already under-represents
+    /// the selected row's painted ground.
     #[test]
-    fn no_scene_uses_a_modifier_the_ansi_renderer_would_drop() {
+    fn no_scene_uses_a_modifier_the_ansi_renderer_cannot_render() {
         for which in Scene::ALL {
             let buffer = scene(*which).1;
             for y in 0..buffer.area.height {
                 for x in 0..buffer.area.width {
                     let cell = &buffer[(buffer.area.x + x, buffer.area.y + y)];
                     assert!(
-                        cell.modifier.is_empty(),
-                        "{} has a modifier at {x},{y}",
-                        which.label()
+                        cell.modifier.is_empty() || cell.modifier == Modifier::REVERSED,
+                        "{} has an unrendered modifier at {x},{y}: {:?}",
+                        which.label(),
+                        cell.modifier
                     );
                 }
             }

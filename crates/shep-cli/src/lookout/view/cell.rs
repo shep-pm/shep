@@ -87,8 +87,7 @@ pub fn rule(cells: usize) -> String {
 /// The caller styles it; this only lays it out. Truncates rather than
 /// overflowing, since a band that runs past its `Rect` shifts the row.
 #[must_use]
-// No non-test caller yet: this cell's callers arrive in tasks 5 and 7 to 9.
-#[allow(dead_code)]
+// Called by `view::mod`'s `section_band`.
 pub fn band(label: &str, cells: usize) -> String {
     let head = format!(" \u{2588}\u{2588} {label}");
     let drawn: usize = head.chars().map(crate::output::width::char_columns).sum();

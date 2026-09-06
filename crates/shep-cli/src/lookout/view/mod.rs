@@ -23,10 +23,13 @@ pub mod fixtures;
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use self::flock::MIN_HEIGHT;
-use super::app::App;
+use super::app::{App, Link, RowKey};
+use super::theme::Palette;
+use crate::vocabulary::Role;
 
 /// The narrowest terminal the dashboard draws into.
 ///
@@ -194,12 +197,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     let bottom = area.y + height - 1;
     let buffer = frame.buffer_mut();
 
-    buffer.set_line(
-        area.x,
-        y,
-        &status::title_line(app, app.home(), width),
-        width,
-    );
+    buffer.set_line(area.x, y, &title_band(app, width), width);
     y += 1;
 
     // The settings screen owns the whole body between the title and the
@@ -298,12 +296,22 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
                 &Line::from(Span::styled(gutter_text, gutter_style)),
                 1,
             );
-            buffer.set_line(
-                area.x + flock::GUTTER,
-                y + slot,
-                &flock::key_line(app, key, columns, table_width, is_selected),
-                table_width,
-            );
+            let line = if let RowKey::Section(label) = key {
+                // The `Flock`/`Dogs` header becomes a band, drawn here
+                // rather than through `flock::key_line`'s own
+                // `RowKey::Section` arm: that arm's `section_line` stays,
+                // muted rather than a band, for `flock.rs`'s own direct
+                // callers, which this task's file list does not reach.
+                section_band(
+                    &label.to_ascii_uppercase(),
+                    Role::Meadow,
+                    &palette,
+                    table_width,
+                )
+            } else {
+                flock::key_line(app, key, columns, table_width, is_selected)
+            };
+            buffer.set_line(area.x + flock::GUTTER, y + slot, &line, table_width);
         }
     }
 
@@ -336,18 +344,135 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
 }
 
+/// The title row: a full-width reverse-video band naming the mode.
+///
+/// Meadow while [`App::link`] is live, bark once it is [`Link::Lost`] — the
+/// only two arms this pane needs; the editing and secrets bands belong to
+/// panes this plan does not build. What this is, where it points, and how
+/// big the flock is, padded to `width` before styling ([`band_line`]):
+/// ratatui paints a span's background, and applies `Modifier::REVERSED`,
+/// only under the cells its text occupies, so a band that stopped where its
+/// text stopped would leave the rest of the row unpainted.
+fn title_band(app: &App, width: u16) -> Line<'static> {
+    let left = format!("shep lookout   {}", app.home());
+    let visible = app.rows().len();
+    let total = app.flock_len();
+    let right = if app.filter().is_empty() {
+        format!(" {total} in the flock")
+    } else {
+        format!(" {visible} of {total} in the flock")
+    };
+    let budget = width.saturating_sub(u16::try_from(right.chars().count()).unwrap_or(0));
+    let text = format!("{}{right}", flock::fit(&left, budget));
+    let role = if matches!(app.link(), Link::Lost { .. }) {
+        Role::Bark
+    } else {
+        Role::Meadow
+    };
+    band_line(text, width, app.palette().band(role))
+}
+
+/// A section header band: [`cell::band`]'s two-block marker and `label`,
+/// reverse video in `role`.
+///
+/// `cell::band` already pads its result to `width`, so unlike [`title_band`]
+/// this needs no separate padding step.
+fn section_band(label: &str, role: Role, palette: &Palette, width: u16) -> Line<'static> {
+    Line::from(Span::styled(
+        cell::band(label, usize::from(width)),
+        palette.band(role),
+    ))
+}
+
+/// Pads `text` to `width` columns before wrapping it in one styled span.
+///
+/// Shared by callers that build their own text rather than going through
+/// [`cell::band`], so a band's `REVERSED` modifier paints every cell of the
+/// row rather than stopping where the text does.
+fn band_line(text: String, width: u16, style: Style) -> Line<'static> {
+    let drawn = text
+        .chars()
+        .map(crate::output::width::char_columns)
+        .sum::<usize>();
+    let mut padded = text;
+    if drawn < usize::from(width) {
+        padded.extend(std::iter::repeat_n(' ', usize::from(width) - drawn));
+    }
+    Line::from(Span::styled(padded, style))
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Instant;
 
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
+    use ratatui::style::{Color, Modifier};
     use shep_core::protocol::ProcessInfo;
     use shep_core::status::ProcStatus;
 
     use super::*;
     use crate::lookout::app::{App, Control, KeyPress, Msg};
     use crate::lookout::theme::Palette;
+
+    #[test]
+    fn the_title_band_is_reverse_video_across_the_whole_width() {
+        let app = fixtures::app_with(Vec::new(), fixtures::coloured());
+        let line = title_band(&app, 80);
+        assert_eq!(
+            line.spans
+                .iter()
+                .map(|s| s.content.chars().count())
+                .sum::<usize>(),
+            80,
+            "a band that stops where its text stops leaves unpainted cells"
+        );
+        assert!(
+            line.spans[0]
+                .style
+                .add_modifier
+                .contains(Modifier::REVERSED)
+        );
+    }
+
+    #[test]
+    fn a_frozen_link_turns_the_title_band_bark() {
+        let mut app = fixtures::app_with(Vec::new(), fixtures::coloured());
+        app.update(Msg::Frozen {
+            at_local: "2026-08-14 14:32:07".to_string(),
+        });
+        let line = title_band(&app, 80);
+        assert_eq!(line.spans[0].style.fg, Some(Color::Indexed(166)));
+    }
+
+    #[test]
+    fn the_title_band_counts_both_numbers_while_a_filter_is_on() {
+        let app = fixtures::filtered_app("web");
+        let title = fixtures::rendered(&title_band(&app, 120));
+        assert!(title.contains("2 of 4 in the flock"), "got {title:?}");
+    }
+
+    #[test]
+    fn the_unfiltered_title_band_is_unchanged() {
+        let app = fixtures::filtered_app("");
+        let title = fixtures::rendered(&title_band(&app, 120));
+        assert!(title.contains("4 in the flock"), "got {title:?}");
+        assert!(
+            !title.contains(" of "),
+            "no second number when nothing is hidden"
+        );
+    }
+
+    #[test]
+    fn the_section_bands_name_their_section_in_words() {
+        let flock = section_band(
+            "FLOCK",
+            crate::vocabulary::Role::Meadow,
+            &fixtures::coloured(),
+            40,
+        );
+        assert!(flock.spans.iter().any(|s| s.content.contains("FLOCK")));
+    }
 
     fn draw_to(app: &App, width: u16, height: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
@@ -462,7 +587,7 @@ mod tests {
         let frame = draw_to(&app, 100, 12);
         let rows: Vec<&str> = frame.lines().skip(3).take(5).collect();
         assert!(
-            rows[0].starts_with("  Flock "),
+            rows[0].starts_with("   \u{2588}\u{2588} FLOCK "),
             "the section header keeps a blank gutter too: {:?}",
             rows[0]
         );

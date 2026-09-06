@@ -13,31 +13,6 @@ use super::super::pane::{ConfigPane, PanePending};
 use super::flock::fit;
 use super::settings::field_label;
 
-/// The title: what this is, where it points, and how big the flock is.
-///
-/// `right` carries a leading space: `fit` truncates `left` to exactly the
-/// budget `right`'s length reserves, so without that space a truncated
-/// `left`'s `…` would land flush against the flock count.
-#[must_use]
-pub fn title_line(app: &App, home: &str, width: u16) -> Line<'static> {
-    let palette = app.palette();
-    let left = format!("shep lookout   {home}");
-    let visible = app.rows().len();
-    let total = app.flock_len();
-    let right = if app.filter().is_empty() {
-        format!(" {total} in the flock")
-    } else {
-        format!(" {visible} of {total} in the flock")
-    };
-    Line::from(vec![
-        Span::raw(fit(
-            &left,
-            width.saturating_sub(u16::try_from(right.chars().count()).unwrap_or(0)),
-        )),
-        Span::styled(right, palette.muted()),
-    ])
-}
-
 /// The banner, when there is one. `None` while the link is live.
 ///
 /// The frozen sentence names what happened and when the values stopped
@@ -485,24 +460,6 @@ mod tests {
 
         assert_eq!(rendered.chars().count(), 120);
         assert!(rendered.ends_with(" control enabled"));
-    }
-
-    #[test]
-    fn the_title_counts_both_numbers_while_a_filter_is_on() {
-        let app = filtered_app("web");
-        let title = rendered(&title_line(&app, "/home/ada/.shep", 120));
-        assert!(title.contains("2 of 4 in the flock"), "got {title:?}");
-    }
-
-    #[test]
-    fn the_unfiltered_title_is_unchanged() {
-        let app = filtered_app("");
-        let title = rendered(&title_line(&app, "/home/ada/.shep", 120));
-        assert!(title.contains("4 in the flock"), "got {title:?}");
-        assert!(
-            !title.contains(" of "),
-            "no second number when nothing is hidden"
-        );
     }
 
     #[test]

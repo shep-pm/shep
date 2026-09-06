@@ -6,7 +6,7 @@ shep lookout   /h… 6 in the flock
 host  load 2.31 4.10 3.88 / 10 c…
   ID    NAME      STATUS         
 ─────────────────────────────────
-  Flock ─────────────────────────
+   ██ FLOCK                      
   2     api       online         
   3     billing…  online         
   4     cron      online         
