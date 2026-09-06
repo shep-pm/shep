@@ -1493,7 +1493,8 @@ async fn restart_in_stages(
 ///   is the one an operator meets: the supervisor refuses a selector whole
 ///   when any app it names is already reloading, and a staged walk asks per
 ///   app, so an app already reloading now refuses its own stage while the
-///   rest of the fold goes ahead.
+///   rest of the fold goes ahead. Its stage is still held for the reload
+///   already running, which a dependant has the same reason to wait out.
 async fn reload_in_stages(
     ctx: &RpcContext,
     walk: &OrderedWalk,
@@ -1529,6 +1530,18 @@ async fn reload_in_stages(
                 // `restart_in_stages`' note about a `NotFound` applies here
                 // too.
                 Err(err) => {
+                    // An app already reloading is refused per app now, so it
+                    // contributes no swaps of its own and the stage would
+                    // return at once, letting a dependant swap against a
+                    // dependency that is mid-swap. The reload in flight is
+                    // still a reload this stage's dependants have to wait
+                    // out, so it is waited for as one: any `Reloaded` or the
+                    // `ReloadAbandoned` that ends it finishes the name.
+                    if matches!(err, SupervisorError::ReloadInFlight(_))
+                        && walk.depended_on.contains(name.as_str())
+                    {
+                        waiting.insert(name.clone(), 1);
+                    }
                     tracing::warn!(
                         sheep = %name,
                         %err,
@@ -2684,6 +2697,83 @@ mod tests {
             ["api".to_string(), "db".to_string()]
                 .into_iter()
                 .collect::<BTreeSet<_>>(),
+        );
+    }
+
+    /// Every process event the receiver holds, as `(kind, name)` in the
+    /// order the bus carried them.
+    fn events_in_order(
+        rx: &mut tokio::sync::broadcast::Receiver<crate::bus::SharedEvent>,
+    ) -> Vec<(ProcessEventKind, String)> {
+        let mut seen = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            if let shep_core::protocol::BusEvent::Process {
+                event: kind, info, ..
+            } = &*event
+            {
+                seen.push((*kind, info.name.clone()));
+            }
+        }
+        seen
+    }
+
+    /// fails if a stage drops its wait for an app whose reload was refused:
+    /// `ReloadInFlight` is per app now, so a busy dependency contributes
+    /// nothing to `waiting`, the stage returns at once, and the dependant
+    /// swaps against a dependency that is mid-swap. Four scripts: two for the
+    /// pair's first spawn and two for the replacements.
+    #[tokio::test(start_paused = true)]
+    async fn a_stage_still_waits_for_an_app_whose_reload_was_refused() {
+        let h = harness(vec![ProcScript::never_exits(); 4]);
+        start_api_before_the_db_it_waits_for(&h).await;
+
+        // Accepted and still swapping: a single-target reload answers before
+        // the replacement is up, which is what leaves `db` in flight.
+        let first = reply_of(
+            dispatch(
+                envelope(
+                    3,
+                    Request::Reload {
+                        selector: SelectorSpec::Name("db".to_string()),
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        assert!(first.result.is_ok(), "the first reload is accepted");
+
+        let mut rx = h.ctx.events.subscribe();
+        let reply = reply_of(
+            dispatch(
+                envelope(
+                    4,
+                    Request::Reload {
+                        selector: SelectorSpec::All,
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        let Response::Reloading(accepted) = reply.result.unwrap() else {
+            panic!("expected reloading")
+        };
+        let names: Vec<&str> = accepted.iter().map(|info| info.name.as_str()).collect();
+        assert_eq!(names, ["api"], "db is already reloading and is refused");
+
+        let seen = events_in_order(&mut rx);
+        let swapped = seen
+            .iter()
+            .position(|(kind, name)| *kind == ProcessEventKind::Reloaded && name == "db")
+            .unwrap_or_else(|| panic!("db never finished its swap: {seen:?}"));
+        let dependant = seen
+            .iter()
+            .position(|(kind, name)| *kind == ProcessEventKind::Reload && name == "api")
+            .unwrap_or_else(|| panic!("api never reloaded: {seen:?}"));
+        assert!(
+            swapped < dependant,
+            "api must wait out the refused stage's swap: {seen:?}"
         );
     }
 
