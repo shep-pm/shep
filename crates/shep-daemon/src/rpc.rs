@@ -1380,8 +1380,18 @@ async fn restart_in_stages(
         for (name, outcome) in outcomes {
             match outcome {
                 Ok(infos) => restarted.extend(infos),
+                // A `NotFound` here is not necessarily a defect: the walk
+                // was planned from a listing the actor has since moved on
+                // from, so a sheep that exited in between is one this names
+                // and the supervisor no longer matches. The message says so
+                // rather than sending an operator looking for a bug.
                 Err(err) => {
-                    tracing::warn!(sheep = %name, %err, "a sheep did not restart in its stage");
+                    tracing::warn!(
+                        sheep = %name,
+                        %err,
+                        "a sheep did not restart in its stage; it may have left the flock since \
+                         the walk was planned"
+                    );
                     refusal.get_or_insert(err);
                 }
             }
@@ -1456,8 +1466,15 @@ async fn reload_in_stages(
                     }
                     accepted.extend(infos);
                 }
+                // `restart_in_stages`' note about a `NotFound` applies here
+                // too.
                 Err(err) => {
-                    tracing::warn!(sheep = %name, %err, "a sheep did not reload in its stage");
+                    tracing::warn!(
+                        sheep = %name,
+                        %err,
+                        "a sheep did not reload in its stage; it may have left the flock since \
+                         the walk was planned"
+                    );
                     refusal.get_or_insert(err);
                 }
             }
