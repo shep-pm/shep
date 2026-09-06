@@ -1204,7 +1204,7 @@ mod tests {
     /// fails if the restore still hands the whole roll over as one batch. The
     /// roll is written `api` first, which is the order that starts a sheep
     /// before the one it waits for.
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_restore_starts_the_roll_in_dependency_order() {
         let dir = tempfile::tempdir().unwrap();
         let paths = test_paths(&dir);
@@ -1238,7 +1238,7 @@ mod tests {
 
     /// fails if a cycle refuses the restore, which would strand an unattended
     /// boot on a typo nobody is there to read.
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_cyclic_roll_still_brings_the_flock_up() {
         let dir = tempfile::tempdir().unwrap();
         let paths = test_paths(&dir);
@@ -1278,7 +1278,7 @@ mod tests {
 
     /// fails if `depends_on` overrides `autostart`, which would let one app's
     /// file start a sheep another app's file said not to start.
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_dependency_with_autostart_off_is_warned_about_and_skipped() {
         let dir = tempfile::tempdir().unwrap();
         let paths = test_paths(&dir);
@@ -1336,7 +1336,8 @@ mod tests {
             "the plan only ever sees what this restore starts"
         );
 
-        let held = capture_logs(|| warn_about_the_graph(&plan, &to_start, &[db, api.clone()], &[], &[]));
+        let held =
+            capture_logs(|| warn_about_the_graph(&plan, &to_start, &[db, api.clone()], &[], &[]));
         assert!(!held.contains("names nothing this flock has"), "{held}");
 
         let absent = capture_logs(|| warn_about_the_graph(&plan, &to_start, &[api], &[], &[]));

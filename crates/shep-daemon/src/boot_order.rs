@@ -322,7 +322,10 @@ mod tests {
     /// on its own answer rather than on the clock.
     ///
     /// Short, because a test that reaches it either failed already or is
-    /// asserting that nothing settled; the passing path never pays it.
+    /// asserting that nothing settled. Every caller runs under
+    /// `start_paused`, so an idle runtime advances the clock to it rather
+    /// than a test sitting through it; the value is still short enough to
+    /// read as a bound rather than as a duration under test.
     const SHORT_BOUND: Duration = Duration::from_millis(500);
 
     /// Every `process.*` event waiting on `rx`, as `"<kind> <name>"`, in the
@@ -374,7 +377,7 @@ mod tests {
         assert_eq!(nodes[0].kind, NodeKind::Sheep);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_later_stage_does_not_start_until_the_earlier_one_is_online() {
         // fails if the driver fires every stage at once, which is what the
         // supervisor already does and what this exists to change. Asserted as
@@ -402,12 +405,14 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_member_that_exits_does_not_hold_its_stage() {
         // fails if the driver waits for a live sheep only: a dependency whose
         // binary is missing would then hold every later stage for the full
         // deadline instead of resolving at once. The first script exits at
-        // once, standing in for a binary that is not there.
+        // once, standing in for a binary that is not there. Both durations
+        // are virtual under `start_paused`, so the 30s deadline this must not
+        // pay and the 5s bound that catches it cost nothing either way.
         let h = harness(vec![ProcScript::const_exit(1), ProcScript::never_exits()]);
         let mut db = AppConfig::minimal("db", "./does-not-exist");
         db.listen_timeout = UpDuration::from_millis(30_000);
@@ -444,7 +449,7 @@ mod tests {
         assert_eq!(promoted.stages, vec![vec!["metrics"], vec!["web"]]);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn stopping_walks_the_stages_backwards() {
         // fails if shutdown stays parallel, which gives a worker and its
         // database the same SIGTERM millisecond
@@ -466,7 +471,7 @@ mod tests {
         assert_eq!(drain(&mut rx), vec!["Stop api", "Stop db"]);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_stage_whose_members_have_already_settled_waits_for_no_event_at_all() {
         // fails if the driver reads the bus alone: an app that reached its
         // answer while the start call was still returning would then be
@@ -489,7 +494,7 @@ mod tests {
         assert!(unsettled.is_empty(), "db is online, so nothing is waiting");
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn one_instance_going_online_does_not_settle_a_multi_instance_dependency() {
         // fails if the wait settles a name off the event that triggered it:
         // every instance of an app publishes under the same `ProcessInfo::name`,
