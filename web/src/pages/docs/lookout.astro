@@ -374,10 +374,11 @@ esc/s close   j/k select   g… control enabled`;
       pointing at a row the table has stopped drawing. The title always
       carries the flock's true size beside the filtered count, so a narrow
       query can't be read as a small flock, and the host strip above the
-      table keeps summing the whole flock too: its <code>flock cpu</code>/
-      <code>flock mem</code> numbers in the frame below still total all six
-      sheep, not just the two rows the filter leaves on screen, because the
-      strip describes the machine, not the table's current view.
+      table keeps summing the whole flock too, not just the two rows the
+      filter leaves on screen, because it describes the machine, not the
+      table's current view. At 100 columns the strip's gauges crowd those
+      totals off the edge before you can read them, but the filter still
+      hasn't touched what they'd be summing.
     </p>
     <CodeBlock label="100×14, filter applied">{filterActive}</CodeBlock>
 
