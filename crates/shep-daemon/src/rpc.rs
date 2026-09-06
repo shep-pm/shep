@@ -1265,15 +1265,45 @@ fn ordered_walk(
 
     let depended_on = matched
         .iter()
-        .filter_map(|name| edges.get(name))
-        .flatten()
-        .filter(|dependency| matched.contains(dependency.as_str()))
-        .cloned()
+        .flat_map(|name| matched_dependencies(&edges, name, &matched))
         .collect();
     Some(OrderedWalk {
         stages,
         depended_on,
     })
+}
+
+/// Every name in `matched` that `start` waits for, however many hops away.
+///
+/// The transitive walk is the point. A direct-edge intersection loses a
+/// dependency whose intermediate the selector missed: with `web -> mid ->
+/// db` matched at the ends only, `mid` is not in `matched`, so `web` reads
+/// as waiting for nothing and its stage restarts against a `db` no stage
+/// held. A regex or a fold selector is how that shape arrives; `All` cannot
+/// draw it, since it matches every hop.
+///
+/// `start` itself is never returned, so a name in a knot does not end up
+/// waiting for its own stage.
+fn matched_dependencies(
+    edges: &BTreeMap<String, Vec<String>>,
+    start: &str,
+    matched: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    let mut found = BTreeSet::new();
+    let mut seen: BTreeSet<&str> = [start].into_iter().collect();
+    let mut frontier: Vec<&str> = vec![start];
+    while let Some(name) = frontier.pop() {
+        for dependency in edges.get(name).into_iter().flatten() {
+            if !seen.insert(dependency.as_str()) {
+                continue;
+            }
+            if matched.contains(dependency.as_str()) {
+                found.insert(dependency.clone());
+            }
+            frontier.push(dependency.as_str());
+        }
+    }
+    found
 }
 
 /// How long one sheep gets to settle before its stage moves on.
@@ -2624,6 +2654,45 @@ mod tests {
             ["api".to_string(), "db".to_string()]
                 .into_iter()
                 .collect::<BTreeSet<_>>(),
+        );
+    }
+
+    /// fails if the walk's wait follows one hop only: with `web -> mid ->
+    /// db` registered and a selector matching the two ends alone, `mid` is
+    /// not matched, so a one-hop intersection answers that nothing is
+    /// depended on and `web` restarts against a `db` no stage ever waited
+    /// for. That is the failure the ordered walk exists to prevent.
+    #[tokio::test(start_paused = true)]
+    async fn a_walk_waits_for_a_dependency_it_reaches_through_an_unmatched_hop() {
+        let h = harness(vec![ProcScript::never_exits(); 3]);
+        let mut web = AppConfig::minimal("web", "./web");
+        web.depends_on = vec!["mid".to_string()];
+        let mut mid = AppConfig::minimal("mid", "./mid");
+        mid.depends_on = vec!["db".to_string()];
+        // One request each, the way `start_api_before_the_db_it_waits_for`
+        // does: a three-stage batch outlasts the default request budget.
+        for (id, app) in [(1, AppConfig::minimal("db", "./db")), (2, mid), (3, web)] {
+            let started =
+                reply_of(dispatch(envelope(id, Request::Start { apps: vec![app] }), &h.ctx).await);
+            assert!(started.result.is_ok(), "the chain comes up: {started:?}");
+        }
+
+        let listed = reply_of(dispatch(envelope(4, Request::ListFlock), &h.ctx).await);
+        let Response::Flock(flock) = listed.result.unwrap() else {
+            panic!("expected flock")
+        };
+        let selector = selector_of(SelectorSpec::Regex("^(web|db)$".to_string())).unwrap();
+        let walk = ordered_walk(&h.ctx, &selector, &flock).expect("two names matched");
+
+        assert_eq!(
+            walk.stages,
+            vec![vec!["db".to_string()], vec!["web".to_string()]],
+            "the unmatched hop is not restarted, and the ends keep their order"
+        );
+        assert_eq!(
+            walk.depended_on,
+            ["db".to_string()].into_iter().collect::<BTreeSet<_>>(),
+            "web reaches db through mid, so db's stage has to be held"
         );
     }
 
