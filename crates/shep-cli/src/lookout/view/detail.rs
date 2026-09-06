@@ -124,7 +124,7 @@ fn sheep_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
         String::new()
     };
     let rest = format!(
-        "   pid {}   restarts {}   uptime {}   cpu {}   mem {}   fold {}{}",
+        "   pid {}   restarts {}   uptime {}   cpu {}   mem {}   fold {}{}{}",
         info.pid
             .map_or_else(|| "-".to_string(), |pid| pid.to_string()),
         info.restarts,
@@ -135,8 +135,9 @@ fn sheep_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
         info.memory_bytes
             .map_or_else(|| "-".to_string(), human_bytes),
         info.fold.as_deref().unwrap_or("-"),
-        // Last, so it is the first thing a narrow terminal truncates: a dog is
-        // a rare row, and every field before it is true of every row.
+        // Second to last, so it is the first thing a narrow terminal
+        // truncates: a dog is a rare row, and every field before it is true
+        // of every row.
         match &info.dog {
             None => String::new(),
             Some(DogSource::BuiltIn) => "   dog built-in".to_string(),
@@ -145,19 +146,21 @@ fn sheep_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
             // added must not take the pane down, and must not be reported as
             // anything it is not.
             _ => "   dog (unrecognised source)".to_string(),
-        }
+        },
+        // Last of all: rarer still than a dog, since it fires only for a
+        // sheep with edits parked awaiting a respawn. Folded into the same
+        // truncatable string as everything before it, not reserved out of
+        // the width budget, so it is the first thing a narrow terminal
+        // drops rather than the one field immune to truncation.
+        cfg_text,
     );
-    let used = chip.chars().count()
-        + facts.chars().count()
-        + status.chars().count()
-        + cfg_text.chars().count();
+    let used = chip.chars().count() + facts.chars().count() + status.chars().count();
 
     vec![
         Line::from(vec![
             Span::styled(chip, palette.band(Role::Meadow)),
             Span::raw(facts),
             Span::styled(status, palette.reported(row.reported())),
-            Span::styled(cfg_text, palette.attention()),
             Span::raw(fit(
                 &rest,
                 width.saturating_sub(u16::try_from(used).unwrap_or(width)),
@@ -462,24 +465,50 @@ mod tests {
 
     /// The design spec names this cell alongside the `SHEEP N` chip; reuses
     /// `cfg_cell`, the same function the flock table's own CFG column calls.
+    /// Rendered last, inside the same truncatable `rest` span as `pid`,
+    /// `restarts`, `uptime`, `cpu`, `mem`, `fold` and `dog` (see
+    /// `a_narrow_width_truncates_the_cfg_cell_before_the_universal_fields`
+    /// below for the position that matters).
     #[test]
-    fn the_header_names_the_pending_count_in_butter() {
-        let palette = coloured();
-        let app = with_selection_and_palette(
+    fn the_header_names_the_pending_count() {
+        let app = with_selection(
             ProcessInfo::builder(2, "api", ProcStatus::Online)
                 .pending(Some(vec!["cwd".to_string(), "env".to_string()]))
                 .build(),
-            palette,
         );
-        let header = &detail_lines(&app, 200)[0];
-        let rendered = render_all(std::slice::from_ref(header));
+        let rendered = render_all(&detail_lines(&app, 200));
         assert!(rendered.contains("cfg !2 pending"), "got {rendered:?}");
-        let cfg_style = header
-            .spans
-            .iter()
-            .find(|span| span.content.contains("cfg !2 pending"))
-            .map(|span| span.style.fg);
-        assert_eq!(cfg_style, Some(palette.attention().fg));
+    }
+
+    /// The finding this fixes: round 1 put the `cfg` cell outside `rest`,
+    /// unconditionally immune to truncation, so a narrow terminal cut fields
+    /// true of every row to make room for one true of almost none. `rest`'s
+    /// own comment says the least universal field goes last so it is the
+    /// first thing truncated; `cfg` fires only for a sheep with edits
+    /// parked, at least as rare as `dog`, so it belongs after `dog`, and its
+    /// length must go through `fit` with everything else rather than being
+    /// reserved out of the budget.
+    #[test]
+    fn a_narrow_width_truncates_the_cfg_cell_before_the_universal_fields() {
+        let app = with_selection(
+            ProcessInfo::builder(2, "api", ProcStatus::Online)
+                .pid(Some(4_242))
+                .restarts(3)
+                .pending(Some(vec!["cwd".to_string()]))
+                .build(),
+        );
+        let wide = render_all(&detail_lines(&app, 200));
+        assert!(wide.contains("cfg !1 pending"), "got {wide:?}");
+
+        let narrow = render_all(&detail_lines(&app, 40));
+        assert!(
+            !narrow.contains("cfg"),
+            "the rarest field truncates first: {narrow:?}"
+        );
+        assert!(
+            narrow.contains("pid"),
+            "a universal field must survive over the cfg cell: {narrow:?}"
+        );
     }
 
     /// "Nothing at all rather than a zero": a sheep with no pending fields
