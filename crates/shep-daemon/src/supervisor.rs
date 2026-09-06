@@ -753,7 +753,18 @@ impl SupervisorHandle {
     ///
     /// # Errors
     ///
-    /// The same set [`Self::start`] documents.
+    /// - [`SupervisorError::CannotStart`]: only reachable under
+    ///   [`BatchPolicy::AllOrNothing`] (`Self::start`'s policy); nothing was
+    ///   registered. Carries one `"<name>: <reason>"` per refused app, never
+    ///   one per failed check.
+    /// - [`SupervisorError::SpawnFailed`]: an instance that failed to spawn.
+    ///   Under `AllOrNothing` this is the first such failure, and every
+    ///   already-registered app in the batch persists regardless. Under
+    ///   [`BatchPolicy::PerApp`] (`Self::start_restored`'s policy) every app
+    ///   was attempted and this carries one `"<name>: <reason>"` entry per
+    ///   app that could not start, joined by `"; "`; each such app is
+    ///   registered `Errored` and visible.
+    /// - [`SupervisorError::EngineStopped`]: the actor is gone.
     pub(crate) async fn start_staged(
         &self,
         apps: Vec<ResolvedApp>,
@@ -3050,9 +3061,11 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// Always inserts a [`SheepSlot`] before returning: on success `Starting`
     /// with a readiness task armed when the app configures `wait_ready` or
-    /// `readiness_probe` and `Online` otherwise, `Errored` with no task on
-    /// failure. `dog` lands on the entry either way, so a dog whose binary
-    /// cannot be spawned still shows up in the dogs table.
+    /// `readiness_probe`, `Starting` with a readiness task armed on its
+    /// `listen_timeout` fallback when the app's name is in `gate` even though
+    /// it configures no signal of its own, and `Online` otherwise. `Errored`
+    /// with no task on failure. `dog` lands on the entry either way, so a dog
+    /// whose binary cannot be spawned still shows up in the dogs table.
     fn spawn_fresh(
         &mut self,
         app: &ResolvedApp,
