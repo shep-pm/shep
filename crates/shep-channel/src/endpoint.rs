@@ -464,9 +464,9 @@ mod tests {
         assert_eq!(back, "still open");
     }
 
-    /// The only test here that calls `connect`. `CHANNEL_TAKEN` is
-    /// process-global, and tests share one process. A second caller
-    /// here would find the channel already taken.
+    /// The only test that takes the channel. `CHANNEL_TAKEN` is
+    /// process-global, and tests share one process. The refusal above
+    /// probes before claiming, so it leaves the guard for this one.
     ///
     /// Asserts the transition, not just the second call's error. The
     /// first call must succeed here too, or a `connect` that refused
