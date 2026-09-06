@@ -1306,27 +1306,57 @@ fn matched_dependencies(
     found
 }
 
-/// How long one sheep gets to settle before its stage moves on.
+/// How long ONE INSTANCE gets to settle, before the stage's slack.
 ///
 /// A restart waits out `listen_timeout`; a reload waits out
 /// `graceful_timeout` as well, which is the pair its own swap is already
 /// bounded by (`Actor::arm_reload_deadline`). A name the registry does not
-/// hold falls back to the slack alone: nothing else here knows what that
-/// sheep's deadlines are, and a stage that advances early is better than one
-/// that hangs on a guess.
+/// hold falls back to nothing at all, leaving its stage the slack: nothing
+/// else here knows what that sheep's deadlines are, and a stage that
+/// advances early is better than one that hangs on a guess.
 fn settle_bound(ctx: &RpcContext, name: &str, reloading: bool) -> Duration {
     let (readiness, drain) = ctx.registry.timeouts_of(name).unwrap_or_default();
     let drain = if reloading { drain } else { Duration::ZERO };
-    readiness + drain + crate::boot_order::STAGE_SLACK
+    readiness + drain
 }
 
-/// The longest bound any of `stage`'s members asks for.
-fn stage_bound(ctx: &RpcContext, stage: &[String], reloading: bool) -> Duration {
+/// The longest bound any of a restart stage's members asks for.
+///
+/// One instance's worth, unlike [`reload_stage_bound`]: a restart's
+/// instances go down and come back together, so the stage costs the
+/// slowest of them rather than the sum.
+fn stage_bound(ctx: &RpcContext, stage: &[String]) -> Duration {
     stage
         .iter()
-        .map(|name| settle_bound(ctx, name, reloading))
+        .map(|name| settle_bound(ctx, name, false))
         .max()
-        .unwrap_or(crate::boot_order::STAGE_SLACK)
+        .unwrap_or_default()
+        + crate::boot_order::STAGE_SLACK
+}
+
+/// [`stage_bound`] for a reload, sized by the swaps each member still owes.
+///
+/// `advance_reload` replaces one instance at a time, so a three-instance app
+/// costs three drains and three readiness waits, not one of each. A per-app
+/// bound is under a third of that at the defaults, so the stage times out,
+/// logs, and lets the dependant reload against a dependency that is still
+/// half swapped, which is the failure the walk exists to prevent, reached
+/// quietly.
+///
+/// The counts come from `waiting`, which is the instances the reload
+/// answered as `Online`. An instance a failed earlier reload left up and not
+/// serving reads `Starting` there and is missing from the count, so this
+/// bound can only be short, never long: such a stage can advance early and
+/// can never hang.
+fn reload_stage_bound(ctx: &RpcContext, waiting: &BTreeMap<String, usize>) -> Duration {
+    waiting
+        .iter()
+        .map(|(name, swaps)| {
+            settle_bound(ctx, name, true).saturating_mul(u32::try_from(*swaps).unwrap_or(u32::MAX))
+        })
+        .max()
+        .unwrap_or_default()
+        + crate::boot_order::STAGE_SLACK
 }
 
 /// `Restart`'s arm: ordered when the selector matches several sheep, the
@@ -1435,7 +1465,7 @@ async fn restart_in_stages(
         if waiting.is_empty() {
             continue;
         }
-        let bound = stage_bound(ctx, stage, false);
+        let bound = stage_bound(ctx, stage);
         let unsettled = crate::boot_order::await_stage(rx, waiting, bound, &ctx.supervisor).await;
         warn_about_unsettled(&unsettled);
     }
@@ -1513,7 +1543,7 @@ async fn reload_in_stages(
         if waiting.is_empty() {
             continue;
         }
-        let bound = stage_bound(ctx, stage, true);
+        let bound = reload_stage_bound(ctx, &waiting);
         let unsettled = crate::boot_order::await_reloads(rx, waiting, bound).await;
         warn_about_unsettled(&unsettled);
     }
@@ -2654,6 +2684,35 @@ mod tests {
             ["api".to_string(), "db".to_string()]
                 .into_iter()
                 .collect::<BTreeSet<_>>(),
+        );
+    }
+
+    /// fails if a reload stage's bound ignores how many instances are still
+    /// to swap: `advance_reload` replaces one at a time, so a three-instance
+    /// app costs three drains and three readiness waits, and a per-app bound
+    /// abandons the stage a third of the way through with the dependant
+    /// reloading against a half-swapped dependency.
+    #[tokio::test(start_paused = true)]
+    async fn a_reload_stage_is_bounded_by_the_swaps_it_is_waiting_for() {
+        let h = harness(vec![ProcScript::never_exits()]);
+        let mut web = AppConfig::minimal("web", "./web");
+        web.listen_timeout = UpDuration::from_millis(4_000);
+        web.graceful_timeout = UpDuration::from_millis(6_000);
+        let started =
+            reply_of(dispatch(envelope(1, Request::Start { apps: vec![web] }), &h.ctx).await);
+        assert!(started.result.is_ok(), "web comes up: {started:?}");
+
+        let one = [("web".to_string(), 1)].into_iter().collect();
+        let three = [("web".to_string(), 3)].into_iter().collect();
+        assert_eq!(
+            reload_stage_bound(&h.ctx, &one),
+            Duration::from_secs(15),
+            "one swap is a drain plus a readiness wait, plus the stage slack"
+        );
+        assert_eq!(
+            reload_stage_bound(&h.ctx, &three),
+            Duration::from_secs(35),
+            "three swaps are three of each, and the slack is spent once"
         );
     }
 
