@@ -211,6 +211,9 @@ everything else after every stage, so a plan position for a dog is never
 honoured. A sheep naming a dog gets a warning rather than an earlier dog, and
 `[daemon] boot_first_dogs` is the only lever that moves one. Putting each dog
 at its own stage boundary is a design change and was deferred to its own task.
+The block above's `stage 0 log-rotate` and `stage 4 metrics, bark` rows are
+wrong on the same grounds: dogs are not stages, so both rows sit outside the
+numbered stages entirely, one before the restore and one after all of them.
 
 `boot_first_dogs` lives in `shep.toml` rather than in `dogs.toml` because a
 dog's section there is passed through to the dog itself, so a shep key in it
