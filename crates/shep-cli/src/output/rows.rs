@@ -2127,6 +2127,61 @@ impl Render for SecretSlotRow {
     const PRIORITIES: &'static [u8] = &[0, 0];
 }
 
+/// `shep secret get`'s `--format json` payload: the key and the value it
+/// resolved.
+///
+/// The one row type in this module that carries a value. `get`'s table form
+/// never builds one: it writes the bare value straight to stdout, for the
+/// `DB_PASSWORD=$(shep secret get DB_PASSWORD)` case. Its JSON form has to
+/// answer the same output-envelope contract every other command does
+/// (`web/src/pages/docs/json-output.astro`), which means a payload type,
+/// which means `Debug` needs its own redaction (IR-41): `derive(Debug)`
+/// would print the value in a panic message, a test failure, or a `dbg!`.
+#[derive(Serialize)]
+pub struct SecretValueRow {
+    /// The key, exactly as stored.
+    pub key: String,
+    /// The value `get` resolved.
+    pub value: String,
+}
+
+/// Redacted (IR-41): `value` is a credential.
+impl std::fmt::Debug for SecretValueRow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SecretValueRow")
+            .field("key", &self.key)
+            .field("value", &"<redacted>")
+            .finish()
+    }
+}
+
+/// No colour, for [`KvRows`]' reason: both cells are operator data.
+impl Render for SecretValueRow {
+    fn headers() -> &'static [&'static str] {
+        &["KEY", "VALUE"]
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        vec![vec![self.key.clone(), self.value.clone()]]
+    }
+
+    /// # Panics
+    /// If `header` is not one of `Self::headers()`'s own values.
+    #[track_caller]
+    fn json_key_for(header: &str) -> &'static str {
+        match header {
+            "KEY" => "key",
+            "VALUE" => "value",
+            other => panic!("SecretValueRow::headers() does not include {other:?}"),
+        }
+    }
+
+    const JSON_ONLY: &'static [&'static str] = &[];
+
+    // Two columns, and the pair is the whole answer.
+    const PRIORITIES: &'static [u8] = &[0, 0];
+}
+
 /// `shep dogs --available`'s community-index listing.
 ///
 /// Never from a `Response`: the community index never touches the daemon
@@ -3358,11 +3413,22 @@ pub(crate) mod tests {
         assert_no_drift(&row, |j| j, &[]);
     }
 
-    /// fails if either type grows a field that carries the value itself.
-    /// Both are rendered to a terminal and to `--format json`, so a value
-    /// landing in one is a credential in a log or a pipeline.
     #[test]
-    fn no_secret_row_type_can_carry_a_value() {
+    fn secret_value_row_does_not_drift() {
+        let row = SecretValueRow {
+            key: "DB_PASSWORD".to_string(),
+            value: "hunter2".to_string(),
+        };
+        assert_no_drift(&row, |j| j, &[]);
+    }
+
+    /// fails if `SecretKeyRows`/`SecretSlotRow` grow a field that carries
+    /// the value itself, or if `SecretValueRow` stops redacting the one
+    /// value it does carry. All three are rendered to a terminal and to
+    /// `--format json`, so a value landing in the wrong place is a
+    /// credential in a log or a pipeline.
+    #[test]
+    fn only_secret_value_row_carries_a_value_and_its_debug_is_redacted() {
         assert!(!SecretKeyRows::headers().contains(&"VALUE"));
         assert!(!SecretSlotRow::headers().contains(&"VALUE"));
         let json = serde_json::to_string(&SecretSlotRow {
@@ -3371,6 +3437,19 @@ pub(crate) mod tests {
         })
         .unwrap();
         assert!(!json.contains("value"), "{json}");
+
+        let row = SecretValueRow {
+            key: "K".to_string(),
+            value: "hunter2".to_string(),
+        };
+        let rendered = format!("{row:?}");
+        assert!(!rendered.contains("hunter2"), "{rendered}");
+        // Exact string pinned so a lazy derive(Debug) refactor fails here,
+        // matching `secrets::SecretFile`'s own redacted `Debug`.
+        assert_eq!(
+            rendered,
+            r#"SecretValueRow { key: "K", value: "<redacted>" }"#
+        );
     }
 
     /// The live index's single entry (`web/public/dogs.json`).
@@ -3462,6 +3541,7 @@ pub(crate) mod tests {
         assert_priorities_match_headers::<AvailableDogRows>(&["NAME", "PACKAGE"]);
         assert_priorities_match_headers::<SecretKeyRows>(&["KEY", "ENVIRONMENTS"]);
         assert_priorities_match_headers::<SecretSlotRow>(&["KEY", "ENVIRONMENT"]);
+        assert_priorities_match_headers::<SecretValueRow>(&["KEY", "VALUE"]);
     }
 
     /// The floor-set check cannot see two non-floor columns trading numbers.

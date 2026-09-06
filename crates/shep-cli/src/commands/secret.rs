@@ -8,7 +8,8 @@
 //! Reading a value back is gated on `[secrets] allow_read` in `shep.toml`.
 //! Nothing else here is: `list` names keys and the environments each has a
 //! value for, and `set`/`unset` report the slot they touched, so a value
-//! reaches stdout down exactly one path.
+//! reaches stdout down exactly one path, in `get`, whichever format is
+//! asked for.
 
 use std::collections::BTreeMap;
 
@@ -16,9 +17,11 @@ use shep_core::config::DaemonConfig;
 use shep_core::paths::ShepPaths;
 use shep_core::secrets::{self, ALL_ENVIRONMENTS, Resolution, SecretError, SecretRef, SecretView};
 
-use crate::cli::{SecretArgs, SecretCommand};
+use crate::cli::{Format, SecretArgs, SecretCommand};
 use crate::exit::ExitCode;
-use crate::output::{SecretKeyRow, SecretKeyRows, SecretSlotRow, Streams, emit, write_outcome};
+use crate::output::{
+    SecretKeyRow, SecretKeyRows, SecretSlotRow, SecretValueRow, Streams, emit, write_outcome,
+};
 
 /// The one sentence that tells an operator how to open the read gate.
 ///
@@ -108,10 +111,16 @@ fn set(
 
 /// `shep secret get <key> [--env <environment>]`.
 ///
-/// Writes the value and a newline to `streams.out` and nothing else, in
-/// both formats, for [`crate::commands::schema`]'s reason: the whole point
-/// is `DB_PASSWORD=$(shep secret get DB_PASSWORD)`, and an envelope would
-/// make a one-value read need `jq`.
+/// `Format::Table` writes the value and a newline to `streams.out` and
+/// nothing else: the whole point is
+/// `DB_PASSWORD=$(shep secret get DB_PASSWORD)`, and a table with a KEY
+/// column would give the substitution something to strip. `Format::Json`
+/// wraps the same value in the standard envelope instead, through
+/// [`SecretValueRow`], the same shape [`crate::commands::kv`]'s own
+/// single-key `get` wraps a value in: `--format json` has to answer the
+/// contract every command but `bleats` does
+/// (`web/src/pages/docs/json-output.astro`), and a bare credential like
+/// `hunter2` is not even valid JSON.
 ///
 /// `--env` reads that slot exactly. Without it the value resolves the way a
 /// spawn in `host_environment` would, so an operator checking a value sees
@@ -138,7 +147,22 @@ fn get(
         None => resolve(paths, key, host_environment),
     };
     match found {
-        Ok(Some(value)) => write_outcome(writeln!(streams.out, "{value}")),
+        Ok(Some(value)) => match streams.fmt {
+            Format::Table => write_outcome(writeln!(streams.out, "{value}")),
+            Format::Json => {
+                let row = SecretValueRow {
+                    key: key.to_string(),
+                    value,
+                };
+                write_outcome(emit(
+                    &mut *streams.out,
+                    streams.fmt,
+                    "secret",
+                    row,
+                    streams.style,
+                ))
+            }
+        },
         Ok(None) => {
             let message = match environment {
                 Some(environment) => format!("`{key}` has no value for `{environment}`"),
@@ -265,13 +289,17 @@ mod tests {
     use crate::exit::ExitCode;
     use crate::output::Streams;
 
-    fn streams<'a>(out: &'a mut Vec<u8>, err: &'a mut Vec<u8>) -> Streams<'a> {
+    fn streams_with<'a>(out: &'a mut Vec<u8>, err: &'a mut Vec<u8>, fmt: Format) -> Streams<'a> {
         Streams {
             out,
             err,
             style: crate::style::Presentation::BARE,
-            fmt: Format::Json,
+            fmt,
         }
+    }
+
+    fn streams<'a>(out: &'a mut Vec<u8>, err: &'a mut Vec<u8>) -> Streams<'a> {
+        streams_with(out, err, Format::Json)
     }
 
     /// `$SHEP_HOME` is `dir` itself, so `paths.secrets`' parent exists:
@@ -321,11 +349,12 @@ mod tests {
         key: &str,
         environment: Option<&str>,
         allow_read: bool,
+        fmt: Format,
     ) -> (ExitCode, String, String) {
         let mut out = Vec::new();
         let mut err = Vec::new();
         let code = get(
-            &mut streams(&mut out, &mut err),
+            &mut streams_with(&mut out, &mut err, fmt),
             paths,
             key,
             environment,
@@ -339,25 +368,30 @@ mod tests {
         )
     }
 
-    /// [`run_get`]'s stderr half.
+    /// [`run_get`]'s stderr half, under [`Format::Table`]: every caller
+    /// below is after the refusal text, not the envelope shape.
     fn run_get_capturing(
         paths: &ShepPaths,
         key: &str,
         environment: Option<&str>,
         allow_read: bool,
     ) -> (ExitCode, String) {
-        let (code, _, err) = run_get(paths, key, environment, allow_read);
+        let (code, _, err) = run_get(paths, key, environment, allow_read, Format::Table);
         (code, err)
     }
 
-    /// [`run_get`]'s stdout half.
+    /// [`run_get`]'s stdout half, under [`Format::Table`]: the bare-value
+    /// contract `shep secret get k || echo default` and
+    /// `DB_PASSWORD=$(shep secret get DB_PASSWORD)` depend on.
+    /// [`get_under_json_wraps_the_value_in_the_standard_envelope`] covers
+    /// the other format.
     fn run_get_capturing_out(
         paths: &ShepPaths,
         key: &str,
         environment: Option<&str>,
         allow_read: bool,
     ) -> (ExitCode, String) {
-        let (code, out, _) = run_get(paths, key, environment, allow_read);
+        let (code, out, _) = run_get(paths, key, environment, allow_read, Format::Table);
         (code, out)
     }
 
@@ -413,6 +447,24 @@ mod tests {
         let (code, out) = run_get_capturing_out(&paths, "K", None, /* allow_read */ true);
         assert_eq!(code, ExitCode::Success);
         assert_eq!(out.trim(), "v");
+    }
+
+    /// fails if `--format json` goes back to the bare value: a bare
+    /// `hunter2` is not JSON at all, so `shep secret get K --format json |
+    /// jq .` would fail outright, and it would be an undocumented second
+    /// exception to the envelope contract beside `bleats`.
+    #[test]
+    fn get_under_json_wraps_the_value_in_the_standard_envelope() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = paths_in(home.path());
+        run_set(&paths, "K", None, "hunter2").unwrap();
+
+        let (code, out, _) = run_get(&paths, "K", None, true, Format::Json);
+        assert_eq!(code, ExitCode::Success);
+        let envelope: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+        assert_eq!(envelope["command"], "secret");
+        assert_eq!(envelope["data"]["key"], "K");
+        assert_eq!(envelope["data"]["value"], "hunter2");
     }
 
     #[test]
