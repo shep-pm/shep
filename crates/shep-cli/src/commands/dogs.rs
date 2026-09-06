@@ -627,10 +627,10 @@ fn kill_probe_tree(child: &mut Child) {
     // `Child` skips the syscall once it holds a status, so a child already
     // reaped here is never signalled through a pid the OS may have recycled.
     let _ = child.kill();
-    // POSIX holds a process group id out of the pool until the last member
-    // leaves, so `-pid` cannot name a stranger's group even after the leader
-    // is reaped. `-0` is `0`, this process's own group, so a zero pid must
-    // never reach the syscall.
+    // POSIX holds a group id out of the pool while the group has members, so
+    // a sweep with forks to reach cannot name a stranger's group. An empty
+    // one answers ESRCH, short of a pid wrap inside the microseconds since
+    // the reap. `-0` is `0`, this process's own group, so zero must not pass.
     #[cfg(unix)]
     if let Ok(pid) = i32::try_from(child.id())
         && pid > 0
