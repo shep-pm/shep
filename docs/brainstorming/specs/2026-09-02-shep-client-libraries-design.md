@@ -191,11 +191,31 @@ type Action struct {
     Name   string
     Params *string
 }
+
+// Fields splits Params on whitespace, empty when there were none.
+func (a Action) Fields() []string
 ```
 
 A struct rather than two arguments, because adding a field later does not
 break callers. This signature has more to gain from that than most: typed
 action names are deferred under D11, and the dog client lands at 0.2.0.
+
+`Name` is on the struct because the contract table commits all four
+languages to a handler that receives it, and Rust published that signature.
+An app can always close over the name it registered, so the field is
+convenience rather than capability. The struct is what makes carrying it
+free: an unused field is invisible, while Rust's unused parameter shows up
+as `_name` at both of its own call sites.
+
+**`Fields()` is where a whitespace split belongs, and only there.** Most
+actions want words, and making every app write the split plus a nil check is
+friction. Doing it in the library instead of beside it was considered and
+refused. `params` is one opaque string the daemon never reads, so splitting
+would destroy an app's ability to pass JSON or any value containing a space,
+and recovering those needs shell-word parsing that four libraries would have
+to implement identically. A helper costs none of that, and each language can
+spell it its own way without the fixtures encoding a grammar the wire does
+not have.
 
 Two registration methods, one taking params and one not, was considered and
 refused. It reads cleaner for the common case, but it moves a call-time fact
