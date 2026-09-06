@@ -443,6 +443,97 @@ mod tests {
         let _ = paths;
     }
 
+    /// The door an operator uses, not [`exit_code_for`] on its own: a bad
+    /// key is refused before the file is opened, so a typo cannot leave a
+    /// store behind.
+    #[test]
+    fn a_bad_key_is_refused_through_set_and_creates_no_store() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = paths_in(home.path());
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = set(
+            &mut streams(&mut out, &mut err),
+            &paths,
+            "not valid",
+            None,
+            "v",
+        );
+        assert_eq!(code, ExitCode::Usage);
+        assert!(
+            !paths.secrets.exists(),
+            "the store must not be created on a refused key"
+        );
+    }
+
+    /// fails if `--env` starts falling back to `all`. An operator asking
+    /// what `staging` holds is asking about that slot, and answering with
+    /// production's shared value would report a slot that is empty as
+    /// filled.
+    #[test]
+    fn get_with_an_env_reads_that_slot_exactly() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = paths_in(home.path());
+        run_set(&paths, "K", None, "shared").unwrap();
+
+        let (code, out) = run_get_capturing_out(&paths, "K", Some("staging"), true);
+        assert_eq!(code, ExitCode::NotFound);
+        assert!(out.is_empty(), "{out}");
+
+        run_set(&paths, "K", Some("staging"), "staged").unwrap();
+        let (code, out) = run_get_capturing_out(&paths, "K", Some("staging"), true);
+        assert_eq!(code, ExitCode::Success);
+        assert_eq!(out.trim(), "staged");
+    }
+
+    /// fails if either report grows the value it just wrote or removed.
+    /// `shep secret set` runs in terminals and in CI logs, and a value
+    /// echoed there outlives the command.
+    #[test]
+    fn set_and_unset_report_the_slot_and_never_the_value() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = paths_in(home.path());
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+
+        let code = set(
+            &mut streams(&mut out, &mut err),
+            &paths,
+            "K",
+            Some("staging"),
+            "hunter2",
+        );
+        assert_eq!(code, ExitCode::Success);
+        let written = String::from_utf8(std::mem::take(&mut out)).unwrap();
+        assert!(written.contains("K"), "{written}");
+        assert!(written.contains("staging"), "{written}");
+        assert!(!written.contains("hunter2"), "{written}");
+
+        let code = unset(
+            &mut streams(&mut out, &mut err),
+            &paths,
+            "K",
+            Some("staging"),
+        );
+        assert_eq!(code, ExitCode::Success);
+        let removed = String::from_utf8(out).unwrap();
+        assert!(removed.contains("staging"), "{removed}");
+        assert!(!removed.contains("hunter2"), "{removed}");
+    }
+
+    /// fails if an unset that removed nothing starts exiting 0, which an
+    /// operator would read as a value having been there.
+    #[test]
+    fn unset_on_an_empty_slot_exits_not_found() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = paths_in(home.path());
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = unset(&mut streams(&mut out, &mut err), &paths, "ABSENT", None);
+        assert_eq!(code, ExitCode::NotFound);
+        assert!(out.is_empty(), "{out:?}");
+    }
+
     #[test]
     fn the_store_works_with_no_shepherd_running() {
         // The whole reason this verb touches the file directly. If this test
