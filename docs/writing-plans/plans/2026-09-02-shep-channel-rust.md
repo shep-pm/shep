@@ -25,6 +25,7 @@ during execution. The material differences:
 - `metric` takes `impl AsRef<str>` here. What shipped takes `impl Into<String>`.
 - `start()` discards both thread-spawn results with `.ok()` here. What shipped handles them, because a writer thread that never starts makes `ready()` report success for a message nothing will ever write.
 - The reader holds the dispatch read guard across the app's handler here. What shipped resolves under the guard and runs outside it, so a handler that registers a handler does not deadlock.
+- The channel's reader is `std::io::BufReader<endpoint::Transport>` here, and every snippet below that names it agrees. What shipped reads through `endpoint::ReadHalf`, which is `Transport` on unix and a `PipeReader` on Windows that peeks with `PeekNamedPipe` before it reads. Windows serialises every operation on one synchronous file object, so a reader parked in `ReadFile` held it against the writer thread and `ready()` never went out. Following the sample here restores that deadlock.
 
 ## Where this plan sits
 
