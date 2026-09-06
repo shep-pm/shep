@@ -29,6 +29,18 @@ pub const DEFAULT_DEADLINE: Duration = Duration::from_secs(5);
 /// inside what the daemon will honour.
 pub const START_DEADLINE: Duration = Duration::from_secs(30);
 
+/// Budget for `Request::Reload`.
+///
+/// A reload matching several sheep is walked in dependency order, and the
+/// daemon holds every stage for the drains and readiness waits of the apps a
+/// later stage needs, so two stages at the default timeouts already clear
+/// [`START_DEADLINE`]. A client that gave up there would drop the walk with
+/// its later stages never issued and hand the operator a timeout over a
+/// half-reloaded fold. This asks for the daemon's whole `MAX_DEADLINE_MS`
+/// (60s), which is the most it will honour, so a deeper fold is bounded by
+/// the shepherd rather than by the client.
+pub const RELOAD_DEADLINE: Duration = Duration::from_secs(60);
+
 /// Budget for the log-plane verbs that walk the flock file by file:
 /// `Request::Reopen` and `Request::Flush`.
 ///

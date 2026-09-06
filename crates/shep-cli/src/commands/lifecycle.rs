@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::ValueEnum as _;
-use shep_client::{Client, START_DEADLINE};
+use shep_client::{Client, RELOAD_DEADLINE, START_DEADLINE};
 use shep_core::config::{
     AppConfig, DeclaredApp, FlockFormat, Flockfile, FlockfileError, ResetDepth,
 };
@@ -1445,12 +1445,17 @@ pub async fn restart_within(
 ///
 /// The rows printed are the flock as it stood at acceptance.
 ///
-/// Sent with [`START_DEADLINE`], for `restart`'s reason and then some. A
+/// Sent with [`RELOAD_DEADLINE`], for `restart`'s reason and then some. A
 /// reload matching several sheep no longer answers at acceptance: the staged
 /// walk runs in the request handler and holds each stage until its swaps
 /// land, so the reply waits on a drain AND a readiness wait per stage, which
 /// is the longest budget any of these verbs needs. The client's 5s default
-/// would abandon a fold with one edge as a matter of routine.
+/// would abandon a fold with one edge as a matter of routine, and
+/// [`START_DEADLINE`]'s 30s is provably short too: two stages at the default
+/// timeouts already cost more than that, and `with_deadline` DROPS the walk,
+/// so the later stages are never issued and the operator holds a timeout
+/// over a half-reloaded fold. 60s is the daemon's own ceiling, so asking for
+/// it costs nothing the shepherd would not already honour.
 pub async fn reload(client: &Client, streams: &mut Streams<'_>, args: &SelectorArgs) -> ExitCode {
     let selectors = match parse_selectors(streams, &args.selectors) {
         Ok(selectors) => selectors,
@@ -1460,7 +1465,7 @@ pub async fn reload(client: &Client, streams: &mut Streams<'_>, args: &SelectorA
         client,
         streams,
         &selectors,
-        Some(START_DEADLINE),
+        Some(RELOAD_DEADLINE),
         |selector| Request::Reload { selector },
         |response| match response {
             Response::Reloading(procs) => Some(procs),
@@ -3109,8 +3114,10 @@ mod tests {
     /// The whole `sent.body` is asserted, so a verb sending the wrong request
     /// kind is caught. Also pins each verb's budget: `stop` and `delete`
     /// pass `None` and reach the wire as `DEFAULT_DEADLINE`, while `restart`
-    /// and `reload` ask for `START_DEADLINE` because their staged walk runs
-    /// inside the request handler.
+    /// and `reload` ask for their own because their staged walk runs inside
+    /// the request handler. `reload` asks for the larger of the two: its
+    /// stages cost a drain as well as a readiness wait, and two of them
+    /// clear `START_DEADLINE` at the default timeouts.
     #[tokio::test]
     async fn a_selector_reaches_the_wire_in_its_compiled_form() {
         let dir = tempfile::tempdir().unwrap();
@@ -3170,7 +3177,8 @@ mod tests {
                 // signal that the call site passed one.
                 let expected_deadline = match verb {
                     Verb::Stop | Verb::Delete => DEFAULT_DEADLINE,
-                    Verb::Restart | Verb::Reload => START_DEADLINE,
+                    Verb::Restart => START_DEADLINE,
+                    Verb::Reload => RELOAD_DEADLINE,
                 };
                 assert_eq!(
                     sent.deadline_ms,
