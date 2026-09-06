@@ -20,10 +20,26 @@ pub enum FieldKind {
     Text,
     /// A closed set: `enum`, or `oneOf` of `const`s. Cycles.
     Choice(Vec<String>),
+    /// `init.suggest` on a `Text` field. Cycles like a choice and types
+    /// like text: the values are offered, not enforced, because the
+    /// grammar stays open.
+    Suggested(Vec<String>),
     /// `type: object` with `additionalProperties`. Opens a sub-screen.
     Map,
+    /// `type: array` of a shape the editor can parse back. Opens a list
+    /// sub-screen.
+    List(ListItem),
     /// Anything else, including a nested object. Read-only, shown as JSON.
     Opaque,
+}
+
+/// What an array's elements are, so the editor can parse one back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListItem {
+    /// `items: {type: string}`. Each element is typed as written.
+    Text,
+    /// `items: {type: integer}`. Each element is parsed back to a number.
+    Integer,
 }
 
 /// Which of shep-core's own string grammars a [`FieldKind::Text`] field
@@ -232,6 +248,11 @@ fn strip_nullable<'a>(schema: &'a Value, defs: &'a Map<String, Value>) -> &'a Va
     }
 }
 
+/// An array's `items` schema, or `Value::Null` when it declares none.
+fn items(schema: &Value) -> &Value {
+    schema.get("items").unwrap_or(&Value::Null)
+}
+
 /// The `type` keyword, which may be a string or a `[T, "null"]` list.
 fn type_of(schema: &Value) -> Option<&str> {
     match schema.get("type")? {
@@ -267,6 +288,13 @@ fn kind_of(schema: &Value, defs: &Map<String, Value>) -> FieldKind {
         Some("boolean") => FieldKind::Bool,
         Some("integer") => FieldKind::Integer,
         Some("string") => FieldKind::Text,
+        // An array of anything else stays `Opaque`, which is what keeps an
+        // array of nested objects read-only rather than half-editable.
+        Some("array") => match type_of(strip_nullable(resolve(items(schema), defs), defs)) {
+            Some("string") => FieldKind::List(ListItem::Text),
+            Some("integer") => FieldKind::List(ListItem::Integer),
+            _ => FieldKind::Opaque,
+        },
         Some("object")
             if schema.get("additionalProperties").is_some()
                 && schema.get("properties").is_none() =>
@@ -289,6 +317,17 @@ fn render_default(value: Option<&Value>) -> Option<String> {
     }
 }
 
+/// The `init.suggest` values, when every entry is a string.
+fn suggestions(init: Option<&Value>) -> Option<Vec<String>> {
+    let values = init?.get("suggest")?.as_array()?;
+    let names: Vec<String> = values
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect();
+    (names.len() == values.len()).then_some(names)
+}
+
 fn field_from(key: &str, schema: &Value, defs: &Map<String, Value>) -> Field {
     let init = schema.get("init");
     let help = init
@@ -301,10 +340,14 @@ fn field_from(key: &str, schema: &Value, defs: &Map<String, Value>) -> Field {
         .and_then(Value::as_str)
         .map(str::to_owned);
     let kind = kind_of(schema, defs);
-    let editable = kind != FieldKind::Opaque;
     let value_kind = (kind == FieldKind::Text)
         .then(|| value_kind_of(schema))
         .flatten();
+    let kind = match (kind, suggestions(init)) {
+        (FieldKind::Text, Some(names)) if !names.is_empty() => FieldKind::Suggested(names),
+        (kind, _) => kind,
+    };
+    let editable = kind != FieldKind::Opaque;
     Field {
         key: key.to_owned(),
         help,
@@ -322,11 +365,21 @@ fn field_from(key: &str, schema: &Value, defs: &Map<String, Value>) -> Field {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
     use serde_json::json;
 
     fn props(v: serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
         v.as_object().unwrap().clone()
+    }
+
+    /// The real Flockfile schema's fields, in the order a pane would build them.
+    fn real_field_set() -> FieldSet {
+        let schema = shep_core::config::flockfile_schema_json().to_value();
+        let defs = schema["$defs"].as_object().unwrap();
+        let props = defs["AppConfig"]["properties"].as_object().unwrap();
+        FieldSet::from_properties(props, defs, shep_core::config::GROUP_ORDER)
     }
 
     /// The groups the set's fields carry, in the order they first appear.
@@ -540,13 +593,22 @@ mod tests {
     }
 
     #[test]
-    fn the_real_flockfile_schema_yields_thirty_nine_fields_in_four_groups() {
-        let schema = shep_core::config::flockfile_schema_json().to_value();
-        let defs = schema["$defs"].as_object().unwrap();
-        let props = defs["AppConfig"]["properties"].as_object().unwrap();
-        let set = FieldSet::from_properties(props, defs, shep_core::config::GROUP_ORDER);
+    fn the_real_flockfile_schema_yields_thirty_nine_fields_in_eight_groups() {
+        let set = real_field_set();
         assert_eq!(set.len(), 39);
-        assert_eq!(groups_of(&set), ["process", "inputs", "control", "cron"]);
+        assert_eq!(
+            groups_of(&set),
+            [
+                "process",
+                "logging",
+                "inputs",
+                "restart",
+                "readiness",
+                "shutdown",
+                "watch",
+                "cron"
+            ]
+        );
         assert!(
             set.fields().iter().all(|f| f.group.is_some()),
             "every field carries a group"
@@ -556,11 +618,24 @@ mod tests {
     }
 
     #[test]
+    fn no_group_holds_more_than_a_third_of_the_fields() {
+        let set = real_field_set();
+        let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+        for field in set.fields() {
+            *counts
+                .entry(field.group.as_deref().unwrap_or(""))
+                .or_default() += 1;
+        }
+        let (worst, count) = counts
+            .iter()
+            .max_by_key(|(_, n)| **n)
+            .expect("fields exist");
+        assert!(*count <= 13, "{worst} holds {count} of {}", set.len());
+    }
+
+    #[test]
     fn the_real_flockfile_schema_marks_every_mem_size_and_up_duration_field() {
-        let schema = shep_core::config::flockfile_schema_json().to_value();
-        let defs = schema["$defs"].as_object().unwrap();
-        let props = defs["AppConfig"]["properties"].as_object().unwrap();
-        let set = FieldSet::from_properties(props, defs, shep_core::config::GROUP_ORDER);
+        let set = real_field_set();
         assert_eq!(
             set.by_key("max_memory").unwrap().value_kind,
             Some(ValueKind::MemSize)
@@ -582,5 +657,49 @@ mod tests {
             );
         }
         assert_eq!(set.by_key("cwd").unwrap().value_kind, None);
+    }
+
+    #[test]
+    fn a_field_with_init_suggest_cycles_and_still_types() {
+        let schema = json!({
+            "type": ["string", "null"],
+            "init": { "suggest": ["SIGTERM", "SIGINT"] }
+        });
+        let field = field_from("kill_signal", &schema, &Map::new());
+        assert_eq!(
+            field.kind,
+            FieldKind::Suggested(vec!["SIGTERM".into(), "SIGINT".into()])
+        );
+        assert!(field.editable, "a suggestion is not a constraint");
+    }
+
+    #[test]
+    fn kill_signal_and_cron_restart_both_carry_suggestions() {
+        let set = real_field_set();
+        for key in ["kill_signal", "cron_restart"] {
+            let field = set.by_key(key).unwrap_or_else(|| panic!("no {key}"));
+            assert!(
+                matches!(field.kind, FieldKind::Suggested(ref names) if !names.is_empty()),
+                "{key}: {:?}",
+                field.kind
+            );
+        }
+    }
+
+    #[test]
+    fn an_array_of_strings_is_a_list_and_an_array_of_integers_knows_its_item() {
+        let set = real_field_set();
+        assert_eq!(
+            set.by_key("args").map(|f| f.kind.clone()),
+            Some(FieldKind::List(ListItem::Text))
+        );
+        assert_eq!(
+            set.by_key("stop_exit_codes").map(|f| f.kind.clone()),
+            Some(FieldKind::List(ListItem::Integer))
+        );
+        assert!(
+            set.by_key("args").is_some_and(|f| f.editable),
+            "an array is editable now"
+        );
     }
 }

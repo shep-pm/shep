@@ -116,7 +116,7 @@ pub async fn lookout(
         std::env::var_os("TERM").as_deref(),
         std::env::var_os("COLORTERM").as_deref(),
     );
-    let control = resolve_control(args.allow_control, &paths.kv);
+    let control = resolve_control(args.read_only, &paths.kv);
     let mut app = App::new(
         palette,
         control,
@@ -190,23 +190,21 @@ pub async fn lookout(
     ExitCode::Success
 }
 
-/// Whether this lookout may act, from the flag or from the KV store.
+/// Whether this lookout may act, from `--read-only` or from the KV store.
 ///
-/// The flag wins. The store is `$SHEP_HOME/kv.json`
-/// (`shep set lookout.allow_control true`) rather than a `shep.toml` section,
-/// because this gate is the operator's own: lookout runs as the operator, and
-/// the shepherd cannot tell one of its keypresses from a `shep stop`.
-///
-/// A store that cannot be read is read as "no": failing open would drop the
-/// gate exactly when something is wrong with the machine.
+/// Control is on by default. `--read-only` closes it outright; short of
+/// that, `shep set lookout.allow_control false` closes it too. The store is
+/// `$SHEP_HOME/kv.json` rather than a `shep.toml` section, since this gate is
+/// the operator's own, and unreadable it leaves control on: the gate stops
+/// an accident, not an attacker.
 #[must_use]
-pub fn resolve_control(flag: bool, kv: &Path) -> Control {
-    if flag {
-        return Control::Allowed;
+pub fn resolve_control(read_only: bool, kv: &Path) -> Control {
+    if read_only {
+        return Control::ReadOnly;
     }
     match shep_core::kv::get(kv, "lookout.allow_control") {
-        Ok(Some(value)) if value == "true" => Control::Allowed,
-        _ => Control::ReadOnly,
+        Ok(Some(value)) if value == "false" => Control::ReadOnly,
+        _ => Control::Allowed,
     }
 }
 
@@ -687,24 +685,31 @@ mod tests {
         assert_eq!(poll_rx.try_recv(), Ok(()), "the poll request was forwarded");
     }
 
-    /// The flag has to win, and the store has to work: `shep set
-    /// lookout.allow_control true` is why there is no config section for it.
     #[test]
-    fn the_flag_wins_over_the_store_and_the_store_is_read() {
+    fn control_is_allowed_when_nothing_says_otherwise() {
         let dir = tempfile::tempdir().unwrap();
         let kv = dir.path().join("kv.json");
-        assert_eq!(resolve_control(false, &kv), Control::ReadOnly);
-
-        shep_core::kv::set(&kv, "lookout.allow_control", "true").unwrap();
         assert_eq!(resolve_control(false, &kv), Control::Allowed);
-        assert_eq!(resolve_control(true, &kv), Control::Allowed);
+    }
+
+    #[test]
+    fn the_flag_and_the_key_can_each_ask_for_read_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let kv = dir.path().join("kv.json");
+        assert_eq!(resolve_control(true, &kv), Control::ReadOnly);
 
         shep_core::kv::set(&kv, "lookout.allow_control", "false").unwrap();
         assert_eq!(resolve_control(false, &kv), Control::ReadOnly);
+    }
+
+    #[test]
+    fn an_unreadable_store_leaves_control_allowed() {
+        // Fails open now, deliberately: the gate stops an accident, not an
+        // attacker, and a broken store is not a reason to refuse every key.
+        let dir = tempfile::tempdir().unwrap();
         assert_eq!(
-            resolve_control(true, &kv),
-            Control::Allowed,
-            "the flag wins over a store that says no"
+            resolve_control(false, &dir.path().join("missing.json")),
+            Control::Allowed
         );
     }
 

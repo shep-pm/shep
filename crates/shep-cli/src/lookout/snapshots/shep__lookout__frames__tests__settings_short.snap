@@ -15,4 +15,4 @@ shep lookout   /home/ada/.shep                                                  
   ledger                                                              yes      /opt/ledger/bin/dog       not running    
 > bark                                                                yes      built-in                  silent         
                                                                                                                         
-esc/s close   j/k select   g/G first/last   r refresh   q quit                                                 read-only
+esc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit               control enabled

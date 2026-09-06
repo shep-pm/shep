@@ -2,17 +2,17 @@
 source: crates/shep-cli/src/lookout/frames.rs
 expression: render_text(&buffer)
 ---
-shep lookout   /home/ada/.shep                                                                            4 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 16.5%   flock mem 781.0M   up 6d 3h           
+shep lookout   /home/ada/.shep                                                                            5 in the flock
+host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 10.6%   flock mem 431.0M   up 6d 3h           
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  3     api         online           48219    1         -          7.1%    241.0M    1h 29m    edge        -            
->       web ×3      online                    3                    9.4%    540.0M    15m       edge        -            
-  0      ↳ :0       online           48400    0         -          3.4%    182.0M    1h 25m                             
-  1      ↳ :1       online           48401    2         -          2.9%    178.0M    15m                                
-  2      ↳ :2       online           48402    1         -          3.1%    180.0M    2h 40m                             
-                                                                                                                        
+  1     api         online           48219    1         -          7.1%    241.0M    1h 26m    edge        -            
+  2     cron        online           48233    0         -          0.1%    8.0M      1h 28m    -           -            
+  0     web         online           48211    0         -          3.4%    182.0M    1h 25m    edge        -            
+  Dogs ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  90    bark        online           90090    0         -          -       -         10m       -           -            
+> 91    log-rotate  silent           90091    0         -          -       -         10m       -           -            
                                                                                                                         
                                                                                                                         
                                                                                                                         
@@ -20,15 +20,15 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 16.5% 
                                                                                                                         
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-app web ×3  online   restarts 3   uptime 15m   cpu 9.4%   mem 540.0M                                                    
-lambs  not shown for a group; select one instance                                                                       
-                                                                                                                        
-                                                                                                                        
+sheep 91  log-rotate   silent   pid 90091   restarts 0   uptime 10m   cpu -   mem -   fold -   dog adopted /usr/local/b…
+lambs  not read yet                                                                                                     
+out  this shepherd did not report a path                                                                                
+err  this shepherd did not report a path                                                                                
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-bleats  web  follows one instance; select one to see its log                                                            
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
+bleats  log-rotate  out then err  from the log files, re-read with each listing                                         
+out  rotated /var/log/api/access.log -> access.log.1                                                                    
+out  compressed access.log.1 (4.2M -> 380K)                                                                             
+out  pruned 2 archives older than 14 days                                                                               
+out  next rotation in 6h                                                                                                
                                                                                                                         
 q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled

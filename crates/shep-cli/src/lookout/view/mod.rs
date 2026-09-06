@@ -458,21 +458,26 @@ mod tests {
         app.update(Msg::Key(KeyPress::SelectDown));
 
         let frame = draw_to(&app, 100, 12);
-        let rows: Vec<&str> = frame.lines().skip(3).take(4).collect();
+        let rows: Vec<&str> = frame.lines().skip(3).take(5).collect();
         assert!(
-            rows[0].starts_with("  0 "),
-            "unselected rows keep a blank gutter: {:?}",
+            rows[0].starts_with("  Flock "),
+            "the section header keeps a blank gutter too: {:?}",
             rows[0]
         );
         assert!(
-            rows[1].starts_with("> 1 "),
-            "the marker is on row 1: {:?}",
+            rows[1].starts_with("  0 "),
+            "unselected rows keep a blank gutter: {:?}",
             rows[1]
         );
         assert!(
-            rows[2].starts_with("  2 "),
-            "and on no other row: {:?}",
+            rows[2].starts_with("> 1 "),
+            "the marker is on row 1: {:?}",
             rows[2]
+        );
+        assert!(
+            rows[3].starts_with("  2 "),
+            "and on no other row: {:?}",
+            rows[3]
         );
         assert_eq!(
             frame.lines().filter(|line| line.starts_with('>')).count(),

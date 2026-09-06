@@ -65,6 +65,55 @@ pub fn flock_of(count: u32, with_readings: u32) -> Vec<ProcessInfo> {
         .collect()
 }
 
+/// Two sheep and one dog, for the flock table's section-header tests: a
+/// [`RowKey::Section`] splits the two kinds.
+pub fn app_with_a_dog() -> App {
+    let flock = vec![
+        ProcessInfo::builder(1, "web", ProcStatus::Online)
+            .pid(Some(48_001))
+            .uptime_ms(4_512_000)
+            .build(),
+        ProcessInfo::builder(2, "api", ProcStatus::Online)
+            .pid(Some(48_002))
+            .uptime_ms(4_512_000)
+            .build(),
+        ProcessInfo::builder(90, "otel", ProcStatus::Online)
+            .pid(Some(90_000))
+            .dog(Some(DogSource::BuiltIn))
+            .build(),
+    ];
+    app_with(flock, plain())
+}
+
+/// A dashboard with `otel` adopted from `/opt/otel`, selected, and the
+/// control gate open.
+pub fn app_with_a_dog_selected_and_control() -> App {
+    let decoy = ProcessInfo::builder(0, "!decoy", ProcStatus::Online).build();
+    let dog = ProcessInfo::builder(90, "otel", ProcStatus::Online)
+        .pid(Some(90_000))
+        .dog(Some(DogSource::Adopted {
+            path: "/opt/otel".to_string(),
+        }))
+        .build();
+    let mut app = app_with(vec![decoy, dog], plain());
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::SelectDown));
+    app
+}
+
+/// The same, with `otel` built in rather than adopted, so it carries no path.
+pub fn app_with_a_built_in_dog_selected_and_control() -> App {
+    let decoy = ProcessInfo::builder(0, "!decoy", ProcStatus::Online).build();
+    let dog = ProcessInfo::builder(90, "otel", ProcStatus::Online)
+        .pid(Some(90_000))
+        .dog(Some(DogSource::BuiltIn))
+        .build();
+    let mut app = app_with(vec![decoy, dog], plain());
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::SelectDown));
+    app
+}
+
 /// One plausible host reading: the same numbers the gallery's scenes use, so
 /// a failure here and a frame under review name the same figures.
 pub fn sample() -> HostSample {
@@ -603,6 +652,11 @@ pub fn app_in_settings_on_enabled_dog(name: &str) -> App {
 /// fields an operator has overridden, one parked until a respawn, and two
 /// env keys whose values the view never carries.
 pub fn sheep_config_view() -> SheepConfigView {
+    sheep_config_view_parking(vec!["kill_signal".to_string()])
+}
+
+/// [`sheep_config_view`] with `pending` in place of the one field it parks.
+fn sheep_config_view_parking(pending: Vec<String>) -> SheepConfigView {
     let mut config = AppConfig {
         name: "web".to_string(),
         script: "./srv".to_string(),
@@ -620,7 +674,7 @@ pub fn sheep_config_view() -> SheepConfigView {
     SheepConfigView::new(
         config,
         vec!["max_restarts".to_string(), "reuse_port".to_string()],
-        vec!["kill_signal".to_string()],
+        pending,
     )
 }
 
@@ -687,6 +741,42 @@ pub fn app_in_sheep_pane_with_control() -> App {
             name: "web".to_string(),
         },
         result: Ok(Response::SheepConfig(Box::new(sheep_config_view()))),
+    });
+    app
+}
+
+/// [`app_in_sheep_pane_with_control`], named for the tests about the apply
+/// menu: [`sheep_config_view`] parks `kill_signal` and nothing else.
+pub fn app_in_sheep_pane_with_a_parked_field() -> App {
+    app_in_sheep_pane_with_control()
+}
+
+/// The same pane over a sheep whose config parks two fields.
+pub fn app_in_sheep_pane_with_two_parked_fields() -> App {
+    app_in_sheep_pane_parking(vec!["kill_signal".to_string(), "script".to_string()])
+}
+
+/// The same pane over a sheep the running process is fully caught up with.
+pub fn app_in_sheep_pane_with_nothing_parked() -> App {
+    app_in_sheep_pane_parking(Vec::new())
+}
+
+/// [`app_in_sheep_pane_with_control`] over a view parking `pending`.
+fn app_in_sheep_pane_parking(pending: Vec<String>) -> App {
+    let mut app = with_selection(
+        ProcessInfo::builder(9, "web", ProcStatus::Online)
+            .pid(Some(48_000))
+            .build(),
+    );
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::Edit));
+    app.update(Msg::Replied {
+        sent: Sent::SheepConfig {
+            name: "web".to_string(),
+        },
+        result: Ok(Response::SheepConfig(Box::new(sheep_config_view_parking(
+            pending,
+        )))),
     });
     app
 }

@@ -23,7 +23,7 @@ use shep_core::protocol::{
 use shep_core::status::ProcStatus;
 
 use super::field::{FieldKind, FieldSet};
-use super::pane::{ConfigPane, FieldValue, Lock, PaneEdit, PanePending, PaneTarget};
+use super::pane::{ConfigPane, FieldValue, Lock, PaneEdit, PanePending, PaneTarget, ReloadKind};
 use super::theme::Palette;
 use super::viewport::Viewport;
 use crate::commands::settings::{SettingEdit, SettingField, SettingsSnapshot, settings_field_set};
@@ -37,9 +37,12 @@ use crate::vocabulary::Reported;
 /// run `shep stop`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Control {
-    /// Actions refuse. The default.
+    /// Actions refuse. Asked for by `--read-only`, or by
+    /// `lookout.allow_control` being `false`.
     ReadOnly,
-    /// Actions are permitted: `x`, `R` and `L` arm a confirm, Enter sends it.
+    /// Actions are permitted, and the default: `x`, `R` and `L` arm a
+    /// confirm, Enter sends it. The apply menu is the one door that sends on
+    /// the press, since it names its keys on screen.
     Allowed,
 }
 
@@ -102,6 +105,15 @@ pub enum KeyPress {
     /// `h`: shows the selected field's own help text, in the config pane.
     /// Pressing it again, or `Escape`, dismisses it. Bound nowhere else.
     Help,
+    /// `d`: arms the removal of the element under the cursor, on the config
+    /// pane's list sub-screen. Bound nowhere else, and named for that
+    /// screen so every other screen's own keymap reads as the no-op it is.
+    ListRemove,
+    /// `K`: arms the element under the cursor moving up one place, on the
+    /// same sub-screen.
+    ListMoveUp,
+    /// `J`: the same, moving down.
+    ListMoveDown,
 }
 
 /// Everything that can change the dashboard.
@@ -521,6 +533,7 @@ impl Sent {
                 let selector = match target {
                     RowKey::Sheep(id) => SelectorSpec::Id(*id),
                     RowKey::Group(name) => SelectorSpec::Name(name.clone()),
+                    RowKey::Section(_) => unreachable!("a header is never an action target"),
                 };
                 match verb {
                     ActionVerb::Stop => Request::Stop { selector },
@@ -613,6 +626,9 @@ pub enum RowKey {
     Group(String),
     /// One sheep, by id.
     Sheep(u32),
+    /// A header, never selectable. `&'static str` because the only two are
+    /// written here.
+    Section(&'static str),
 }
 
 /// What one lamb fetch came back with. The pane says a different sentence for
@@ -1121,6 +1137,48 @@ struct Action {
     stage: Stage,
 }
 
+/// The offer a pane makes on its way out when the running sheep has not
+/// taken every field yet.
+///
+/// Nothing is at risk while it is up: a pane edit reaches the override
+/// store on the keystroke that makes it, so leaving costs nothing and the
+/// menu says so. What it buys is the operator not walking away from parked
+/// config without knowing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PaneMenu {
+    parked: usize,
+    reload: ReloadKind,
+    at: Instant,
+}
+
+impl PaneMenu {
+    /// One, over `parked` fields and the reload `reload`.
+    #[must_use]
+    pub(super) const fn new(parked: usize, reload: ReloadKind, at: Instant) -> Self {
+        Self { parked, reload, at }
+    }
+
+    /// When it opened. A menu that outlives `CONFIRM_EXPIRY` is dropped by
+    /// the tick, so a later keypress cannot answer a question nobody is
+    /// still looking at.
+    #[must_use]
+    pub const fn at(self) -> Instant {
+        self.at
+    }
+
+    /// How many fields the running sheep has not taken yet.
+    #[must_use]
+    pub const fn parked(self) -> usize {
+        self.parked
+    }
+
+    /// Which reload this sheep would get, so `L` can name its cost.
+    #[must_use]
+    pub const fn reload(self) -> ReloadKind {
+        self.reload
+    }
+}
+
 /// What the status bar needs to know about the action in progress.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ActionState<'a> {
@@ -1146,7 +1204,7 @@ pub const CONFIRM_EXPIRY: Duration = Duration::from_secs(10);
 const LINK_GONE: &str = "the shepherd is gone — nothing left to ask";
 
 /// The sentence every closed-gate refusal gives, dashboard and settings alike.
-const READ_ONLY_REFUSAL: &str = "read-only: actions need --allow-control";
+const READ_ONLY_REFUSAL: &str = "read-only: from --read-only or lookout.allow_control";
 
 /// The whole dashboard's state.
 #[derive(Debug)]
@@ -1222,6 +1280,12 @@ pub struct App {
     /// other. `on_key` checks this one first, so a pane opened over the
     /// dashboard owns the keyboard for as long as it is up.
     config_pane: Option<ConfigPane>,
+    /// The apply offer over the open pane, or `None`.
+    ///
+    /// Opened by `Escape` on a pane with parked fields and the gate open,
+    /// and it owns the keyboard while it is up. Cleared with the pane, so
+    /// no menu can outlive the fields it counted.
+    pane_menu: Option<PaneMenu>,
     /// The resolved style level and which layer chose it. Defaulted here and
     /// overridden through [`Self::set_style`], so the STYLE LEVEL row reads the
     /// same answer the rest of the CLI does.
@@ -1253,6 +1317,7 @@ impl App {
             config_target: None,
             dog_target: None,
             config_pane: None,
+            pane_menu: None,
             style: (StyleLevel::Full, StyleSource::Default),
         }
     }
@@ -1314,6 +1379,12 @@ impl App {
                     });
                     if expired {
                         self.action = None;
+                    }
+                    let stale = self.pane_menu.as_ref().is_some_and(|menu| {
+                        now.saturating_duration_since(menu.at()) >= CONFIRM_EXPIRY
+                    });
+                    if stale {
+                        self.pane_menu = None;
                     }
                 }
                 // Against the tick's own `now`, not `self.now`, which stops on
@@ -1762,6 +1833,14 @@ impl App {
                     .as_ref()
                     .and_then(ConfigPane::env)
                     .map(|env| (env.view().clone(), env.cursor_key().map(str::to_owned)));
+                // The list sub-screen rides across for the same reason,
+                // and by index rather than by name: an element has no
+                // name. See `ListPane::adopt_view`.
+                let carried_list = self
+                    .config_pane
+                    .as_ref()
+                    .and_then(ConfigPane::list)
+                    .map(|list| (list.key().to_owned(), list.view().clone()));
                 // A question the operator has not answered, or a write
                 // still out, survives the rebuild. Only `Typing` is
                 // dropped. See `ConfigPane::adopt_pending_edit`.
@@ -1779,6 +1858,9 @@ impl App {
                 }
                 if let Some((carried, cursor_key)) = carried_env {
                     pane.adopt_env_view(carried, cursor_key.as_deref());
+                }
+                if let Some((key, carried)) = carried_list {
+                    pane.adopt_list_view(&key, carried);
                 }
                 pane.set_help_open(carried_help);
                 self.config_pane = Some(pane);
@@ -2167,8 +2249,8 @@ impl App {
             }
             KeyPress::SelectUp => self.select_by(-1),
             KeyPress::SelectDown => self.select_by(1),
-            KeyPress::SelectFirst => self.select_at(0),
-            KeyPress::SelectLast => self.select_at(self.visible_len().saturating_sub(1)),
+            KeyPress::SelectFirst => self.select_at(0, 1),
+            KeyPress::SelectLast => self.select_at(self.visible_len().saturating_sub(1), -1),
             KeyPress::Action(verb) => self.arm(verb),
             // Enter means nothing outside an armed confirm, including while one
             // is in flight: the routing rule above fires only on `Stage::Armed`.
@@ -2177,12 +2259,17 @@ impl App {
                 self.mode = InputMode::Text;
                 Effect::None
             }
-            // `map_key` produces these only in text mode, which the branch at
-            // the top of this function has already taken.
+            // `TextChar`/`TextBackspace`/`TextApply`/`TextAbandon` reach here
+            // only from text mode, already branched above. `map_key` also
+            // sends `ListRemove`/`ListMoveUp`/`ListMoveDown` from Normal mode
+            // (`d`/`K`/`J`), so those land here too, just inert.
             KeyPress::TextChar(_)
             | KeyPress::TextBackspace
             | KeyPress::TextApply
-            | KeyPress::TextAbandon => Effect::None,
+            | KeyPress::TextAbandon
+            | KeyPress::ListRemove
+            | KeyPress::ListMoveUp
+            | KeyPress::ListMoveDown => Effect::None,
             // The read, not the open: the screen opens only once
             // `Msg::Settings` lands.
             KeyPress::Settings => Effect::LoadSettings,
@@ -2272,7 +2359,10 @@ impl App {
             | KeyPress::TextBackspace
             | KeyPress::TextApply
             | KeyPress::TextAbandon
-            | KeyPress::Help => {}
+            | KeyPress::Help
+            | KeyPress::ListRemove
+            | KeyPress::ListMoveUp
+            | KeyPress::ListMoveDown => {}
         }
         Effect::None
     }
@@ -2303,25 +2393,23 @@ impl App {
         }
     }
 
-    /// `e`'s own handler: refuse a dog here, else ask the shepherd.
-    ///
-    /// The daemon's refusal for a dog names where its config comes from,
-    /// not which screen edits it, so this reducer checks locally and
-    /// answers that question instead: `s` then `e` on the dog's own row.
+    /// `e`'s own handler: open a dog's pane directly, else ask the shepherd.
     ///
     /// [`Self::selected_row`] rather than [`Self::selected_name`]: a dog
     /// runs one process and is never a group row, but a group row must
     /// still work with `e`.
     fn ask_for_config(&mut self) -> Effect {
         if let Some(row) = self.selected_row()
-            && row.info.dog.is_some()
+            && let Some(source) = row.info.dog.as_ref()
         {
-            let name = row.info.name.clone();
-            self.notice = Some(Notice {
-                text: format!("{name} is a dog; press `s` for settings, then `e` on its row"),
-                grave: true,
-            });
-            return Effect::None;
+            let adopted_path = match source {
+                DogSource::Adopted { path } => Some(PathBuf::from(path)),
+                _ => None,
+            };
+            return Effect::LoadDogPane {
+                name: row.info.name.clone(),
+                adopted_path,
+            };
         }
         match self.selected_name() {
             Some(name) => {
@@ -2377,6 +2465,16 @@ impl App {
     /// reach its own next value or its own send.
     fn on_pane_key(&mut self, key: KeyPress) -> Effect {
         self.notice = None;
+        if self.pane_menu.is_some() {
+            return self.on_pane_menu_key(key);
+        }
+        if self
+            .config_pane
+            .as_ref()
+            .is_some_and(|pane| pane.list().is_some())
+        {
+            return self.on_list_key(key);
+        }
         if self
             .config_pane
             .as_ref()
@@ -2411,6 +2509,8 @@ impl App {
                     if let Some(pane) = self.config_pane.as_mut() {
                         pane.close_help();
                     }
+                } else if let Some(menu) = self.apply_offer() {
+                    self.pane_menu = Some(menu);
                 } else {
                     self.close_pane();
                 }
@@ -2449,7 +2549,10 @@ impl App {
             | KeyPress::TextChar(_)
             | KeyPress::TextBackspace
             | KeyPress::TextApply
-            | KeyPress::TextAbandon => {}
+            | KeyPress::TextAbandon
+            | KeyPress::ListRemove
+            | KeyPress::ListMoveUp
+            | KeyPress::ListMoveDown => {}
         }
         Effect::None
     }
@@ -2480,9 +2583,136 @@ impl App {
     /// operator's back `config_target` exists to prevent.
     fn close_pane(&mut self) {
         self.config_pane = None;
+        self.pane_menu = None;
         self.config_target = None;
         self.dog_target = None;
         self.release_text_mode_if_unowned();
+    }
+
+    /// The offer this pane's `Escape` makes, or [`None`] when it just leaves.
+    ///
+    /// Silent with nothing parked, so reading a pane never costs a
+    /// keystroke, and silent behind a closed gate, where the two keys it
+    /// offers would be refused anyway.
+    fn apply_offer(&self) -> Option<PaneMenu> {
+        if self.control == Control::ReadOnly {
+            return None;
+        }
+        let pane = self.config_pane.as_ref()?;
+        let parked = pane.parked_count();
+        (parked > 0).then(|| PaneMenu::new(parked, pane.reload_kind(), self.now))
+    }
+
+    /// The menu's own keymap: `L` reloads, `R` restarts, and anything else
+    /// that backs out leaves the fields parked.
+    ///
+    /// `Escape` closes the pane rather than only the menu: it is the second
+    /// press of the two the operator meant as "leave", and a menu that ate
+    /// it would need a third.
+    fn on_pane_menu_key(&mut self, key: KeyPress) -> Effect {
+        match key {
+            KeyPress::Quit => Effect::Quit,
+            KeyPress::Action(verb @ (ActionVerb::Reload | ActionVerb::Restart)) => {
+                self.apply_parked(verb)
+            }
+            KeyPress::Escape => {
+                self.close_pane();
+                Effect::None
+            }
+            KeyPress::Action(ActionVerb::Stop)
+            | KeyPress::SelectUp
+            | KeyPress::SelectDown
+            | KeyPress::SelectFirst
+            | KeyPress::SelectLast
+            | KeyPress::Refresh
+            | KeyPress::Confirm
+            | KeyPress::Edit
+            | KeyPress::Cycle
+            | KeyPress::Help
+            | KeyPress::Settings
+            | KeyPress::FilterStart
+            | KeyPress::TextChar(_)
+            | KeyPress::TextBackspace
+            | KeyPress::TextApply
+            | KeyPress::TextAbandon
+            | KeyPress::ListRemove
+            | KeyPress::ListMoveUp
+            | KeyPress::ListMoveDown => Effect::None,
+        }
+    }
+
+    /// Sends the menu's chosen verb against the pane's own sheep and closes
+    /// the pane behind it.
+    ///
+    /// The same [`Sent::Action`] the dashboard's `arm` and `confirm` build,
+    /// so [`Self::on_action_reply`] answers it unchanged. The menu is the
+    /// confirm, so there is no second one.
+    fn apply_parked(&mut self, verb: ActionVerb) -> Effect {
+        // Read rather than left to `apply_offer`: the gate is one write to
+        // `pane_menu` away from not covering this, and a send is not the
+        // place to find that out.
+        if self.control == Control::ReadOnly {
+            self.notice = Some(Notice {
+                text: READ_ONLY_REFUSAL.to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
+        if let Some(text) = self.link_refusal() {
+            self.notice = Some(Notice { text, grave: true });
+            return Effect::None;
+        }
+        if self.action.is_some() {
+            self.notice = Some(Notice {
+                text: "one action is already in flight".to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
+        let Some(name) = self
+            .config_pane
+            .as_ref()
+            .map(|pane| pane.target().name().to_owned())
+        else {
+            return Effect::None;
+        };
+        let Some((target, count)) = self.flock_target(&name) else {
+            self.notice = Some(Notice {
+                text: format!("{name}: it is no longer in the flock"),
+                grave: true,
+            });
+            self.close_pane();
+            return Effect::None;
+        };
+        self.action = Some(Action {
+            verb,
+            target: target.clone(),
+            name: name.clone(),
+            count,
+            at: self.now,
+            stage: Stage::Sent,
+        });
+        self.close_pane();
+        Effect::Send(Sent::Action { verb, target, name })
+    }
+
+    /// The row key `name` reaches, and how many processes that is.
+    ///
+    /// A name rather than [`Self::selected`]: a pane is opened per name and
+    /// survives the table underneath it changing. [`None`] when the flock
+    /// has no such sheep left.
+    fn flock_target(&self, name: &str) -> Option<(RowKey, usize)> {
+        let ids: Vec<u32> = self
+            .flock
+            .values()
+            .filter(|row| row.info.name == name)
+            .map(|row| row.info.id)
+            .collect();
+        match ids.as_slice() {
+            [] => None,
+            [id] => Some((RowKey::Sheep(*id), 1)),
+            _ => Some((RowKey::Group(name.to_owned()), ids.len())),
+        }
     }
 
     /// The refusal a locked row gets, in that row's own words.
@@ -2633,6 +2863,7 @@ impl App {
     ///
     /// - Something is armed: sends it and marks it sent.
     /// - The cursor is on `env`: opens the env sub-screen.
+    /// - The cursor is on an array field: opens the list sub-screen.
     /// - The cursor is on a typed field: opens the editor and switches
     ///   [`InputMode::Text`] on.
     ///
@@ -2651,7 +2882,14 @@ impl App {
             return Effect::None;
         };
         let locked = pane.cursor_lock().map(|(key, lock)| (key.to_owned(), lock));
-        let opens = matches!(kind, FieldKind::Map | FieldKind::Text | FieldKind::Integer);
+        let opens = matches!(
+            kind,
+            FieldKind::Map
+                | FieldKind::List(_)
+                | FieldKind::Text
+                | FieldKind::Integer
+                | FieldKind::Suggested(_)
+        );
         // A row `Enter` was never going to open raises nothing at all: a
         // refusal about a key that was never going to act trains an
         // operator to ignore the status bar. A bool and a choice are
@@ -2677,9 +2915,101 @@ impl App {
         };
         if kind == FieldKind::Map {
             pane.open_env();
+        } else if matches!(kind, FieldKind::List(_)) {
+            pane.open_list();
         } else {
             pane.begin_typing();
             self.mode = InputMode::Text;
+        }
+        Effect::None
+    }
+
+    /// The list sub-screen's own keymap, in force for as long as the pane
+    /// holds one.
+    ///
+    /// `Escape` closes the sub-screen, not the pane, the same
+    /// innermost-first rule the env screen follows. `Enter` or `e` opens
+    /// the editor on the element under the cursor, or adds one on `+ new`,
+    /// or sends whatever is armed. `d` removes, and `K`/`J` move the
+    /// element one place.
+    ///
+    /// A removal and a move arm rather than act: the write carries the
+    /// whole array, so a keystroke nobody confirmed would replace the
+    /// array an operator can see with one they have not read.
+    fn on_list_key(&mut self, key: KeyPress) -> Effect {
+        if key == KeyPress::Quit {
+            return Effect::Quit;
+        }
+        if self.config_pane.as_ref().is_some_and(ConfigPane::is_armed)
+            && !matches!(key, KeyPress::Confirm | KeyPress::Edit)
+        {
+            if let Some(pane) = self.config_pane.as_mut() {
+                pane.cancel();
+            }
+            return Effect::None;
+        }
+        let now = self.now;
+        match key {
+            KeyPress::Quit => return Effect::Quit,
+            KeyPress::Escape => {
+                if let Some(pane) = self.config_pane.as_mut() {
+                    pane.close_list();
+                }
+                self.release_text_mode_if_unowned();
+            }
+            KeyPress::SelectUp
+            | KeyPress::SelectDown
+            | KeyPress::SelectFirst
+            | KeyPress::SelectLast => {
+                if let Some(list) = self.config_pane.as_mut().and_then(ConfigPane::list_mut) {
+                    match key {
+                        KeyPress::SelectUp => list.move_by(-1),
+                        KeyPress::SelectDown => list.move_by(1),
+                        KeyPress::SelectFirst => list.move_to_first(),
+                        KeyPress::SelectLast => list.move_to_last(),
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            KeyPress::Refresh => return self.reread_pane(),
+            KeyPress::Confirm | KeyPress::Edit => {
+                if self.config_pane.as_ref().is_some_and(ConfigPane::is_armed) {
+                    return self.send_armed();
+                }
+                if self.authorize_write().is_none() {
+                    return Effect::None;
+                }
+                if let Some(list) = self.config_pane.as_mut().and_then(ConfigPane::list_mut) {
+                    list.begin_typing();
+                    self.mode = InputMode::Text;
+                }
+            }
+            KeyPress::ListRemove => {
+                if self.authorize_write().is_none() {
+                    return Effect::None;
+                }
+                if let Some(pane) = self.config_pane.as_mut() {
+                    pane.arm_list_removal(now);
+                }
+            }
+            KeyPress::ListMoveUp | KeyPress::ListMoveDown => {
+                if self.authorize_write().is_none() {
+                    return Effect::None;
+                }
+                let delta = if key == KeyPress::ListMoveUp { -1 } else { 1 };
+                if let Some(pane) = self.config_pane.as_mut() {
+                    pane.arm_list_reorder(delta, now);
+                }
+            }
+            KeyPress::Action(_)
+            | KeyPress::Cycle
+            | KeyPress::Settings
+            | KeyPress::FilterStart
+            | KeyPress::TextChar(_)
+            | KeyPress::TextBackspace
+            | KeyPress::TextApply
+            | KeyPress::TextAbandon
+            | KeyPress::Help => {}
         }
         Effect::None
     }
@@ -2756,7 +3086,10 @@ impl App {
             | KeyPress::TextBackspace
             | KeyPress::TextApply
             | KeyPress::TextAbandon
-            | KeyPress::Help => {}
+            | KeyPress::Help
+            | KeyPress::ListRemove
+            | KeyPress::ListMoveUp
+            | KeyPress::ListMoveDown => {}
         }
         Effect::None
     }
@@ -2773,6 +3106,13 @@ impl App {
     fn on_pane_text_key(&mut self, key: KeyPress) -> Effect {
         if key == KeyPress::Quit {
             return Effect::Quit;
+        }
+        if self
+            .config_pane
+            .as_ref()
+            .is_some_and(|pane| pane.list().is_some())
+        {
+            return self.on_list_text_key(key);
         }
         if self
             .config_pane
@@ -2799,6 +3139,41 @@ impl App {
             }
             KeyPress::TextAbandon => {
                 pane.abandon_typing();
+                self.mode = InputMode::Normal;
+            }
+            _ => {}
+        }
+        Effect::None
+    }
+
+    /// The list sub-screen's own text keymap.
+    ///
+    /// `TextApply` arms the whole array, so the operator's next `Enter`
+    /// sends it. An integer element whose buffer does not parse keeps the
+    /// editor open, which is why the mode follows what the sub-screen did
+    /// rather than what the key asked for.
+    fn on_list_text_key(&mut self, key: KeyPress) -> Effect {
+        let now = self.now;
+        let Some(pane) = self.config_pane.as_mut() else {
+            return Effect::None;
+        };
+        let Some(list) = pane.list_mut() else {
+            return Effect::None;
+        };
+        match key {
+            KeyPress::TextChar(typed) => list.type_char(typed),
+            KeyPress::TextBackspace => list.type_backspace(),
+            KeyPress::TextApply => {
+                let applied = list.apply_typing();
+                if list.typing().is_none() {
+                    self.mode = InputMode::Normal;
+                }
+                if let Some(text) = applied {
+                    pane.arm_list_element(text, now);
+                }
+            }
+            KeyPress::TextAbandon => {
+                list.abandon_typing();
                 self.mode = InputMode::Normal;
             }
             _ => {}
@@ -2975,6 +3350,23 @@ impl App {
         }
     }
 
+    /// Why the shepherd cannot be sent to right now, if it cannot.
+    ///
+    /// Shared by the dashboard's action keys and the pane's apply menu: a
+    /// dead link refuses the same way whichever door an operator used.
+    fn link_refusal(&self) -> Option<String> {
+        match self.link {
+            // Not `LINK_GONE`, which says the shepherd is gone: this is the
+            // status bar's own sentence for a redial (`view/status.rs`).
+            Link::Retrying { attempt } => Some(format!(
+                "the shepherd stopped answering \u{2014} reconnecting (attempt {attempt})"
+            )),
+            // The ladder is exhausted, so the shepherd really is gone.
+            Link::Lost { .. } => Some(LINK_GONE.to_string()),
+            _ => None,
+        }
+    }
+
     /// Arms a confirm, or refuses and says why.
     ///
     /// Every refusal happens here rather than at confirm time, so an operator
@@ -2983,15 +3375,8 @@ impl App {
     fn arm(&mut self, verb: ActionVerb) -> Effect {
         let refusal = if self.control == Control::ReadOnly {
             Some(READ_ONLY_REFUSAL.to_string())
-        } else if let Link::Retrying { attempt } = self.link {
-            // Not `LINK_GONE`, which says the shepherd is gone: this is the
-            // status bar's own sentence for a redial (`view/status.rs`).
-            Some(format!(
-                "the shepherd stopped answering — reconnecting (attempt {attempt})"
-            ))
-        } else if matches!(self.link, Link::Lost { .. }) {
-            // The ladder is exhausted, so the shepherd really is gone.
-            Some(LINK_GONE.to_string())
+        } else if let Some(text) = self.link_refusal() {
+            Some(text)
         } else if self.selected.is_none() {
             Some("no sheep is selected".to_string())
         } else if self.action.is_some() {
@@ -3020,6 +3405,7 @@ impl App {
                     .count();
                 (RowKey::Group(group_name.clone()), group_name.clone(), count)
             }
+            RowKey::Section(_) => unreachable!("a header is never selectable"),
         };
         self.action = Some(Action {
             verb,
@@ -3068,6 +3454,7 @@ impl App {
         match target {
             RowKey::Sheep(id) => self.flock.contains_key(id),
             RowKey::Group(name) => self.flock.values().any(|row| &row.info.name == name),
+            RowKey::Section(_) => unreachable!("a header is never an action target"),
         }
     }
 
@@ -3200,42 +3587,72 @@ impl App {
     }
 
     /// The rows the table draws, in `(name, instance, id)` order: the whole
-    /// flock, or whatever the filter leaves of it.
+    /// flock, or whatever the filter leaves of it, split into a "Flock"
+    /// section and a "Dogs" section.
     ///
     /// A [`RowKey::Group`] header comes immediately before its own
-    /// [`RowKey::Sheep`] entries, on [`Self::is_grouped`]'s rule. The sort key
-    /// is total on purpose: the table repolls every two seconds, and a partial
-    /// one would let two instances swap places under the cursor.
-    ///
-    /// Every cursor move reads this sequence and nothing else, so `j` and `k`
-    /// cannot step onto a filtered-out row.
+    /// [`RowKey::Sheep`] entries, and a [`RowKey::Section`] header only when
+    /// its side has a row to introduce. The sort key is total on purpose: the
+    /// table repolls every two seconds, and a partial one would let two
+    /// instances swap places under the cursor. Every cursor move reads this
+    /// sequence and nothing else.
     #[must_use]
     pub fn visible_rows(&self) -> Vec<RowKey> {
         let needle = self.filter.to_lowercase();
-        let mut visible: Vec<(&str, Option<u32>, u32)> = self
+        let mut visible: Vec<(&str, Option<u32>, u32, bool)> = self
             .flock
             .iter()
             .filter(|(_, row)| needle.is_empty() || row.info.name.to_lowercase().contains(&needle))
-            .map(|(id, row)| (row.info.name.as_str(), row.info.instance, *id))
+            .map(|(id, row)| {
+                (
+                    row.info.name.as_str(),
+                    row.info.instance,
+                    *id,
+                    row.info.dog.is_some(),
+                )
+            })
             .collect();
         visible.sort_unstable_by(|a, b| a.0.cmp(b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+        let (dogs, sheep): (Vec<_>, Vec<_>) = visible.into_iter().partition(|entry| entry.3);
 
-        let mut out = Vec::with_capacity(visible.len());
+        let mut out = Vec::new();
+        if !sheep.is_empty() {
+            out.push(RowKey::Section("Flock"));
+            self.push_grouped_rows(&sheep, &mut out);
+        }
+        if !dogs.is_empty() {
+            out.push(RowKey::Section("Dogs"));
+            self.push_grouped_rows(&dogs, &mut out);
+        }
+        out
+    }
+
+    /// Appends `entries`' rows to `out`, splicing a [`RowKey::Group`] header
+    /// before a grouped app's instances.
+    fn push_grouped_rows(&self, entries: &[(&str, Option<u32>, u32, bool)], out: &mut Vec<RowKey>) {
         let mut at = 0;
-        while at < visible.len() {
-            let name = visible[at].0;
-            let end = visible[at..]
+        while at < entries.len() {
+            let name = entries[at].0;
+            let end = entries[at..]
                 .iter()
                 .position(|entry| entry.0 != name)
-                .map_or(visible.len(), |offset| at + offset);
-            let group = &visible[at..end];
+                .map_or(entries.len(), |offset| at + offset);
+            let group = &entries[at..end];
             if self.is_grouped(name) {
                 out.push(RowKey::Group(name.to_string()));
             }
             out.extend(group.iter().map(|entry| RowKey::Sheep(entry.2)));
             at = end;
         }
-        out
+    }
+
+    /// Whether `row` names a dog. A header and a group row are neither.
+    #[cfg(test)]
+    fn is_dog_row(&self, row: &RowKey) -> bool {
+        match row {
+            RowKey::Sheep(id) => self.flock.get(id).is_some_and(|r| r.info.dog.is_some()),
+            RowKey::Group(_) | RowKey::Section(_) => false,
+        }
     }
 
     fn visible_len(&self) -> usize {
@@ -3258,13 +3675,11 @@ impl App {
             return false;
         }
         let before = self.selected.clone();
-        let visible = self.visible_rows();
-        if visible.is_empty() {
+        if self.visible_rows().is_empty() {
             self.selected = None;
             return before != self.selected;
         }
-        let index = previous_index.unwrap_or(0).min(visible.len() - 1);
-        self.selected = Some(visible[index].clone());
+        self.select_at(previous_index.unwrap_or(0), 1);
         before != self.selected
     }
 
@@ -3275,21 +3690,33 @@ impl App {
             return Effect::None;
         };
         let next = index.saturating_add_signed(delta);
-        self.select_at(next)
+        let direction = if delta < 0 { -1 } else { 1 };
+        self.select_at(next, direction)
     }
 
     /// Selects the row at `index`, clamped to the flock, and reports whether
     /// that changed anything.
     ///
-    /// `Effect::None` when it did not: [`Effect::RefreshSelected`] reads two
-    /// files and asks the shepherd for lambs, and a held `k` at the top of the
-    /// flock must not do that once per keypress.
-    fn select_at(&mut self, index: usize) -> Effect {
+    /// `direction` is which way to search past a [`RowKey::Section`] header,
+    /// and a header at row 0 searches forward whatever it says.
+    ///
+    /// `Effect::None` when nothing changed: [`Effect::RefreshSelected`] reads
+    /// two files and asks the shepherd for lambs, and a held `k` at the top
+    /// must not do that once per keypress.
+    fn select_at(&mut self, index: usize, direction: isize) -> Effect {
         let visible = self.visible_rows();
         if visible.is_empty() {
             return Effect::None;
         }
-        let next = visible[index.min(visible.len() - 1)].clone();
+        let mut index = index.min(visible.len() - 1);
+        if matches!(visible[index], RowKey::Section(_)) {
+            index = if direction < 0 && index > 0 {
+                index - 1
+            } else {
+                index + 1
+            };
+        }
+        let next = visible[index].clone();
         if Some(&next) == self.selected.as_ref() {
             return Effect::None;
         }
@@ -3403,6 +3830,7 @@ impl App {
         match &self.selected {
             Some(RowKey::Group(name)) => Some(name.clone()),
             Some(RowKey::Sheep(id)) => self.flock.get(id).map(|row| row.info.name.clone()),
+            Some(RowKey::Section(_)) => unreachable!("a header is never selectable"),
             None => None,
         }
     }
@@ -3617,6 +4045,9 @@ impl App {
                 // it pays the same one line and no more.
                 env.set_rows(body);
             }
+            if let Some(list) = pane.list_mut() {
+                list.set_rows(body);
+            }
         }
     }
 
@@ -3624,6 +4055,12 @@ impl App {
     #[must_use]
     pub fn config_pane(&self) -> Option<&ConfigPane> {
         self.config_pane.as_ref()
+    }
+
+    /// The apply offer over the open pane, or `None`.
+    #[must_use]
+    pub fn pane_menu(&self) -> Option<PaneMenu> {
+        self.pane_menu
     }
 
     /// The resolved style level and which layer chose it, which the STYLE LEVEL
@@ -3665,6 +4102,7 @@ fn target_prefix(verb: ActionVerb, target: &RowKey, name: &str) -> String {
     match target {
         RowKey::Sheep(id) => format!("{} {name} (id {id})", verb.label()),
         RowKey::Group(_) => format!("{} all instances of {name}", verb.label()),
+        RowKey::Section(_) => unreachable!("a header is never an action target"),
     }
 }
 
@@ -3686,7 +4124,10 @@ const fn outcome(verb: ActionVerb) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
+    use crate::lookout::pane::ListRow;
     use shep_core::protocol::{ProcessEventKind, RpcError, RpcErrorCode};
 
     use super::super::view::fixtures;
@@ -3783,10 +4224,90 @@ mod tests {
         let app = allowed_with_instances();
         assert_eq!(
             app.visible_rows().len(),
-            4,
-            "three slots and the group row above them"
+            5,
+            "the flock header, three slots and the group row above them"
         );
-        assert!(matches!(app.visible_rows()[0], RowKey::Group(ref n) if n == "web"));
+        assert_eq!(app.visible_rows()[0], RowKey::Section("Flock"));
+        assert!(matches!(app.visible_rows()[1], RowKey::Group(ref n) if n == "web"));
+    }
+
+    #[test]
+    fn a_flock_with_a_dog_draws_a_section_header_before_each_kind() {
+        let app = fixtures::app_with_a_dog();
+        let rows = app.visible_rows();
+        assert_eq!(rows.first(), Some(&RowKey::Section("Flock")), "{rows:?}");
+        let dogs = rows
+            .iter()
+            .position(|row| *row == RowKey::Section("Dogs"))
+            .unwrap_or_else(|| panic!("no dogs header: {rows:?}"));
+        // Every sheep sorts above the header and every dog below it.
+        assert!(
+            rows[..dogs].iter().all(|row| !app.is_dog_row(row)),
+            "{rows:?}"
+        );
+        assert!(
+            rows[dogs + 1..].iter().all(|row| app.is_dog_row(row)),
+            "{rows:?}"
+        );
+    }
+
+    #[test]
+    fn a_flock_with_no_dog_draws_no_dogs_header() {
+        let app = started().0;
+        let rows = app.visible_rows();
+        assert!(!rows.contains(&RowKey::Section("Dogs")), "{rows:?}");
+    }
+
+    #[test]
+    fn a_dog_only_flock_draws_no_flock_header_and_selects_past_the_dogs_one() {
+        let mut app = fixtures::app_with_a_dog();
+        // A filter that leaves only the dog, so the sheep side is empty.
+        app.set_filter("otel".to_string());
+        let rows = app.visible_rows();
+        assert!(!rows.contains(&RowKey::Section("Flock")), "{rows:?}");
+        assert_eq!(rows.first(), Some(&RowKey::Section("Dogs")), "{rows:?}");
+
+        // The only header is row 0, which has nowhere to search backward.
+        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
+        assert!(
+            !matches!(app.selected(), Some(RowKey::Section(_))),
+            "{:?}",
+            app.selected()
+        );
+    }
+
+    #[test]
+    fn moving_down_steps_over_a_section_header() {
+        let mut app = fixtures::app_with_a_dog();
+        app.select_at(1, 1);
+        let before = app.selected();
+        // Walk the whole list; a header must never become the selection.
+        for _ in 0..app.visible_rows().len() + 2 {
+            let _ = app.update(Msg::Key(KeyPress::SelectDown));
+            assert!(
+                !matches!(app.selected(), Some(RowKey::Section(_))),
+                "landed on a header from {before:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn moving_up_steps_over_a_section_header() {
+        let mut app = fixtures::app_with_a_dog();
+        app.select_at(app.visible_rows().len() - 1, -1);
+        let before = app.selected();
+        // Walk the whole list; a header must never become the selection.
+        for _ in 0..app.visible_rows().len() + 2 {
+            let _ = app.update(Msg::Key(KeyPress::SelectUp));
+            assert!(
+                !matches!(app.selected(), Some(RowKey::Section(_))),
+                "landed on a header from {before:?}"
+            );
+        }
+        // The walk has to actually cross the `Dogs` header going up, not
+        // just avoid landing on it: it should reach the first row, `api`
+        // sorting ahead of `web`.
+        assert_eq!(app.selected(), Some(RowKey::Sheep(2)), "{before:?}");
     }
 
     #[test]
@@ -3834,7 +4355,7 @@ mod tests {
         assert!(app.action().is_none());
         assert_eq!(
             app.notice().map(ToString::to_string).as_deref(),
-            Some("read-only: actions need --allow-control")
+            Some("read-only: from --read-only or lookout.allow_control")
         );
     }
 
@@ -4118,7 +4639,7 @@ mod tests {
     fn a_snapshot_that_shrinks_the_flock_pulls_the_selection_back() {
         let (mut app, t0) = started();
         app.update(Msg::Key(KeyPress::SelectLast));
-        assert_eq!(app.selected_index(), Some(2));
+        assert_eq!(app.selected_index(), Some(3), "past the flock header");
 
         app.update(Msg::Snapshot {
             rows: vec![sheep(1, "web", ProcStatus::Online)],
@@ -4126,8 +4647,8 @@ mod tests {
         });
         assert_eq!(
             app.selected_index(),
-            Some(0),
-            "the selection came back with the flock"
+            Some(1),
+            "the selection came back with the flock, past the header"
         );
 
         app.update(Msg::Snapshot {
@@ -4158,7 +4679,11 @@ mod tests {
             at: t0,
         });
         assert_eq!(app.selected(), Some(RowKey::Sheep(3)), "still worker");
-        assert_eq!(app.selected_index(), Some(1), "which is now row 1");
+        assert_eq!(
+            app.selected_index(),
+            Some(2),
+            "which is now row 2, past the header"
+        );
     }
 
     #[test]
@@ -4401,7 +4926,7 @@ mod tests {
             );
             assert_eq!(
                 app.notice().map(ToString::to_string).as_deref(),
-                Some("read-only: actions need --allow-control"),
+                Some("read-only: from --read-only or lookout.allow_control"),
                 "{verb:?}"
             );
         }
@@ -4547,21 +5072,21 @@ mod tests {
         }
         assert_eq!(
             app.selected_index(),
-            Some(0),
-            "up past the first row stays on it"
+            Some(1),
+            "up past the first row stays on it, below the header"
         );
         for _ in 0..10 {
             app.update(Msg::Key(KeyPress::SelectDown));
         }
         assert_eq!(
             app.selected_index(),
-            Some(2),
+            Some(3),
             "down past the last row stays on it"
         );
         app.update(Msg::Key(KeyPress::SelectFirst));
-        assert_eq!(app.selected_index(), Some(0));
+        assert_eq!(app.selected_index(), Some(1));
         app.update(Msg::Key(KeyPress::SelectLast));
-        assert_eq!(app.selected_index(), Some(2));
+        assert_eq!(app.selected_index(), Some(3));
     }
 
     #[test]
@@ -6213,7 +6738,7 @@ mod tests {
     /// level before; `view::status`'s own test only pinned the hint text.
     #[test]
     fn escape_backs_out_of_the_env_sub_screen_one_level_at_a_time() {
-        let mut app = fixtures::app_in_sheep_pane_with_control();
+        let mut app = fixtures::app_in_sheep_pane_with_nothing_parked();
         pane_to(&mut app, "env");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         assert!(app.config_pane().unwrap().env().is_some());
@@ -6228,6 +6753,115 @@ mod tests {
             app.config_pane().is_none(),
             "the second escape closes the pane"
         );
+    }
+
+    #[test]
+    fn escape_closes_a_pane_with_nothing_parked() {
+        let mut app = fixtures::app_in_sheep_pane_with_nothing_parked();
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(
+            app.config_pane().is_none(),
+            "no menu when nothing is parked"
+        );
+        assert!(app.pane_menu().is_none());
+    }
+
+    #[test]
+    fn escape_on_a_parked_pane_offers_the_menu_and_escape_again_leaves() {
+        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(
+            app.config_pane().is_some(),
+            "the pane stays up behind the menu"
+        );
+        assert!(app.pane_menu().is_some(), "the menu is open");
+
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.config_pane().is_none(), "escape twice leaves");
+        assert!(app.pane_menu().is_none());
+    }
+
+    #[test]
+    fn the_menu_counts_the_parked_fields_once() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_parked_fields();
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert_eq!(app.pane_menu().expect("the menu is open").parked(), 2);
+        assert_eq!(
+            app.config_pane().expect("a pane").parked_count(),
+            2,
+            "the pane and the menu agree"
+        );
+    }
+
+    #[test]
+    fn the_menu_reads_which_reload_this_sheep_would_get() {
+        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert_eq!(
+            app.pane_menu().expect("the menu is open").reload(),
+            ReloadKind::Overlap,
+            "the fixture sets no readiness probe"
+        );
+    }
+
+    #[test]
+    fn the_menu_never_opens_while_the_gate_is_closed() {
+        let mut app = fixtures::app_in_sheep_pane();
+        assert!(app.config_pane().expect("a pane").parked_count() > 0);
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.pane_menu().is_none(), "read-only can apply nothing");
+        assert!(app.config_pane().is_none());
+    }
+
+    #[test]
+    fn l_from_the_menu_reloads_the_sheep_and_leaves() {
+        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        let request = wire(app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload))));
+        assert!(
+            matches!(request, Request::Reload { .. }),
+            "expected Reload, got {request:?}"
+        );
+        assert!(app.config_pane().is_none());
+        assert!(app.pane_menu().is_none());
+    }
+
+    #[test]
+    fn r_from_the_menu_restarts_the_sheep_and_leaves() {
+        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        let request = wire(app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart))));
+        assert!(
+            matches!(request, Request::Restart { .. }),
+            "expected Restart, got {request:?}"
+        );
+        assert!(app.config_pane().is_none());
+    }
+
+    #[test]
+    fn escape_walks_out_of_the_sub_screen_then_the_menu_then_the_pane() {
+        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
+        pane_to(&mut app, "env");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(app.config_pane().unwrap().env().is_some());
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.config_pane().unwrap().env().is_none());
+        assert!(app.pane_menu().is_none(), "the sub-screen went first");
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.pane_menu().is_some());
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.config_pane().is_none());
+    }
+
+    /// Help is dismissed before the menu is offered, so `h` then `esc`
+    /// still puts the operator back on the field list.
+    #[test]
+    fn escape_dismisses_help_before_it_offers_the_menu() {
+        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(!app.config_pane().unwrap().help_open());
+        assert!(app.pane_menu().is_none());
     }
 
     #[test]
@@ -6681,9 +7315,9 @@ mod tests {
     }
 
     /// `instances` is `Lock::Refused`, since shep takes no config write for
-    /// it at all. `args` is `Lock::NoWidget`, since this pane simply has no
-    /// editor for the shape. `Lock` exists so one sentence never covers
-    /// both.
+    /// it at all. `liveness_probe` is `Lock::NoWidget`, since this pane
+    /// simply has no editor for a nested object. `Lock` exists so one
+    /// sentence never covers both.
     #[test]
     fn a_refused_field_and_one_with_no_widget_refuse_for_different_reasons() {
         let mut app = fixtures::app_in_sheep_pane_with_control();
@@ -6697,11 +7331,11 @@ mod tests {
             "a field shep refuses is not a field this pane merely lacks a widget for: {refused}"
         );
 
-        pane_to(&mut app, "args");
+        pane_to(&mut app, "liveness_probe");
         assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
         assert!(app.config_pane().unwrap().pending_edit().is_none());
         let no_widget = app.notice().expect("a refusal is raised").to_string();
-        assert!(no_widget.contains("args"), "{no_widget}");
+        assert!(no_widget.contains("liveness_probe"), "{no_widget}");
         assert!(
             no_widget.contains("Flockfile"),
             "a shape with no widget is still one a Flockfile writes: {no_widget}"
@@ -6723,7 +7357,7 @@ mod tests {
     #[test]
     fn space_and_enter_refuse_a_locked_row_with_the_same_sentence() {
         for control in [Control::ReadOnly, Control::Allowed] {
-            for key in ["instances", "args"] {
+            for key in ["instances", "liveness_probe"] {
                 let mut app = fixtures::app_in_sheep_pane();
                 app.set_control_for_tests(control);
                 pane_to(&mut app, key);
@@ -6965,42 +7599,77 @@ mod tests {
         );
     }
 
-    /// The shepherd's own refusal for a dog already names it. Asking
-    /// anyway would double the name: `log-rotate: log-rotate is a dog,
-    /// and ...`.
+    /// A menu nobody answered is a question nobody is still looking at, and
+    /// `L` an hour later must not reload a sheep.
     #[test]
-    fn e_on_a_dog_row_refuses_locally_and_names_the_dog_once() {
-        let mut app = fixtures::with_selection(
-            ProcessInfo::builder(9, "log-rotate", ProcStatus::Online)
-                .dog(Some(shep_core::protocol::DogSource::BuiltIn))
-                .build(),
-        );
-        assert_eq!(
-            app.update(Msg::Key(KeyPress::Edit)),
-            Effect::None,
-            "nothing goes to the shepherd"
-        );
-        let said = app.notice().map(ToString::to_string).unwrap_or_default();
-        assert_eq!(
-            said.matches("log-rotate").count(),
-            1,
-            "the name is said once: {said:?}"
-        );
-        assert!(said.contains("is a dog"), "got {said:?}");
-        assert!(app.config_pane().is_none());
+    fn the_apply_menu_expires_like_every_other_armed_thing() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.pane_menu().is_some(), "the menu opened");
+
+        let later = Instant::now() + CONFIRM_EXPIRY;
+        let _ = app.update(Msg::Tick { now: later });
+        assert!(app.pane_menu().is_none(), "it did not expire");
+
+        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload)));
+        assert_eq!(effect, Effect::None, "a stale L reloads nothing");
     }
 
     #[test]
-    fn e_on_a_dog_row_names_the_screen_that_does_edit_a_dog() {
-        let mut app = fixtures::with_selection(
-            ProcessInfo::builder(9, "log-rotate", ProcStatus::Online)
-                .dog(Some(shep_core::protocol::DogSource::BuiltIn))
-                .build(),
+    fn the_apply_menu_refuses_on_a_dead_link_like_every_other_action() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        let _ = app.update(Msg::Retrying { attempt: 3 });
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload)));
+        assert_eq!(
+            effect,
+            Effect::None,
+            "nothing goes to a shepherd that is gone"
         );
-        let _ = app.update(Msg::Key(KeyPress::Edit));
         let said = app.notice().map(ToString::to_string).unwrap_or_default();
-        assert!(said.contains("`s`"), "{said}");
-        assert!(!said.contains("the config pane is for a sheep"), "{said}");
+        assert!(said.contains("attempt 3"), "{said}");
+    }
+
+    /// The pane-level test reaches `begin_typing` directly, so it passes
+    /// over a dead key path. This one presses the key.
+    #[test]
+    fn e_opens_the_editor_on_a_suggested_field() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        pane_to(&mut app, "kill_signal");
+        let _ = app.update(Msg::Key(KeyPress::Edit));
+        assert!(
+            matches!(
+                app.config_pane().and_then(ConfigPane::pending_edit),
+                Some(PanePending::Typing { .. })
+            ),
+            "{:?}",
+            app.config_pane().and_then(ConfigPane::pending_edit)
+        );
+    }
+
+    #[test]
+    fn e_on_a_dog_row_opens_its_pane_instead_of_refusing() {
+        let mut app = fixtures::app_with_a_dog_selected_and_control();
+        let effect = app.update(Msg::Key(KeyPress::Edit));
+        let Effect::LoadDogPane { name, adopted_path } = effect else {
+            panic!("expected a dog pane, got {effect:?}");
+        };
+        assert_eq!(name, "otel");
+        // The path comes off the row, not the settings screen.
+        assert_eq!(adopted_path.as_deref(), Some(Path::new("/opt/otel")));
+        assert!(app.notice().is_none(), "{:?}", app.notice());
+    }
+
+    #[test]
+    fn e_on_a_built_in_dog_opens_a_pane_with_no_path() {
+        let mut app = fixtures::app_with_a_built_in_dog_selected_and_control();
+        let effect = app.update(Msg::Key(KeyPress::Edit));
+        let Effect::LoadDogPane { adopted_path, .. } = effect else {
+            panic!("expected a dog pane, got {effect:?}");
+        };
+        // A built-in dog is the shep binary's own argv branch, so there is no
+        // adopted path to probe and the pane asks the running binary instead.
+        assert_eq!(adopted_path, None);
     }
 
     /// `EngineStopped` is the one of this request's three refusals with no
@@ -7317,5 +7986,113 @@ mod tests {
         );
         let notice = app.notice().expect("a locked row answers").to_string();
         assert!(notice.contains("no editor in this pane"), "{notice}");
+    }
+
+    /// Through `Msg::Key`, not `ConfigPane::open_list`: `confirm_field`
+    /// has its own gate listing which kinds `Enter` opens, and a test that
+    /// called the pane method would pass over it.
+    #[test]
+    fn enter_on_an_array_row_opens_the_list_sub_screen() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        pane_to(&mut app, "args");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let list = app
+            .config_pane()
+            .expect("the pane is open")
+            .list()
+            .expect("enter on an array row opens the sub-screen");
+        assert_eq!(list.key(), "args");
+        assert_eq!(list.elements(), ["--port", "8080"]);
+    }
+
+    /// Every key the sub-screen's own hint names, driven the way an
+    /// operator drives them, and the array that lands on the wire at the
+    /// end of it.
+    #[test]
+    fn the_list_sub_screen_edits_removes_and_reorders_one_array() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        pane_to(&mut app, "args");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let _ = app.update(Msg::Key(KeyPress::Edit));
+        assert_eq!(app.mode(), InputMode::Text, "e opens the element editor");
+        for _ in 0..4 {
+            let _ = app.update(Msg::Key(KeyPress::TextBackspace));
+        }
+        for typed in "9090".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        assert_eq!(
+            app.update(Msg::Key(KeyPress::TextApply)),
+            Effect::None,
+            "applying the editor arms; it does not send"
+        );
+        let request = wire(app.update(Msg::Key(KeyPress::Confirm)));
+        let Request::SetSheepField { key, value, .. } = request else {
+            panic!("expected SetSheepField, got {request:?}");
+        };
+        assert_eq!(key, "args");
+        assert_eq!(value, serde_json::json!(["--port", "9090"]));
+
+        let _ = app.update(Msg::Key(KeyPress::ListMoveUp));
+        assert_eq!(
+            armed_value(&app),
+            serde_json::json!(["8080", "--port"]),
+            "K moves the element under the cursor up one place"
+        );
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        let _ = app.update(Msg::Key(KeyPress::ListRemove));
+        assert_eq!(
+            armed_value(&app),
+            serde_json::json!(["--port"]),
+            "d drops the element under the cursor"
+        );
+    }
+
+    /// The candidate an armed edit holds.
+    fn armed_value(app: &App) -> serde_json::Value {
+        match app.config_pane().and_then(ConfigPane::pending_edit) {
+            Some(PanePending::Armed {
+                edit: PaneEdit::Set { value, .. },
+                ..
+            }) => value.as_value().clone(),
+            other => panic!("expected an armed set, got {other:?}"),
+        }
+    }
+
+    /// `Escape` backs out of the sub-screen and leaves the pane up, the
+    /// same one-level-at-a-time rule the env screen follows.
+    #[test]
+    fn escape_leaves_the_list_sub_screen_before_it_closes_the_pane() {
+        let mut app = fixtures::app_in_sheep_pane_with_nothing_parked();
+        pane_to(&mut app, "args");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.config_pane().unwrap().list().is_none());
+        assert!(app.config_pane().is_some(), "the pane is still open");
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.config_pane().is_none());
+    }
+
+    /// A write re-reads the whole config, so without the carry the
+    /// sub-screen would shut on the operator's own keystroke.
+    #[test]
+    fn the_list_sub_screen_survives_the_refresh_a_write_triggers() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        pane_to(&mut app, "args");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        refresh_config(&mut app, &[]);
+        let list = app
+            .config_pane()
+            .expect("the pane is open")
+            .list()
+            .expect("the sub-screen rides across the refresh");
+        assert_eq!(list.key(), "args");
+        assert_eq!(
+            list.cursor(),
+            Some(ListRow::New),
+            "a cursor past the end lands on the row where enter destroys nothing"
+        );
     }
 }
