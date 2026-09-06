@@ -7,9 +7,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all thirty-four scenes through the same coloured
+frames.ansi renders all thirty-five scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same thirty-four scenes through the flattened NO_COLOR palette
+renders the same thirty-five scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -40,7 +40,7 @@ a frame of their own.
 
 
 === healthy_wide  (120x30) ===
-All three panes at 120x30: the host strip under the title, the detail pane and the bleats feed under the table. The selected row is painted, and every pane below the table describes that sheep.
+All three panes at 120x30: the host strip under the title, the detail pane and the bleats feed under the table. The selected row is marked, painted where the palette has a ground to paint with and shown with a `>` where it does not, and every pane below the table describes that sheep.
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
 host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  ████░░░░░░ 12.4G / 32.0G     floc…
@@ -208,6 +208,40 @@ out  POST /v1/orders 201 88ms
 out  GET /v1/orders/8821 200 9ms                                                                                                                      
 out  connection pool: 14/50 in use                                                                                                                    
 q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                              control enabled
+
+=== cfg_drift  (140x30) ===
+140 columns: wide enough for the CFG and CPU 20s columns beside the ones every other scene shows. web has two fields parked for the next spawn and reads !2, api has one field an operator set that its Flockfile does not declare and reads *1, and cron has neither and reads a bare -. The status bar's own legend explains both glyphs; this is where they actually appear in a cell. web's CPU history carries ten distinct samples, so its sparkline draws a shape over time rather than one static bar, and the cursor is parked on web so the detail pane's own cfg !2 pending cell is on screen too.
+
+shep lookout   /home/ada/.shep                                                                                                3 in the flock
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 errored · 1 parked   host mem  ████░░░░░░ 12.4G / 32.0G     flock cpu 7.5% ▅█▅▇▄▆▇▆ …
+  ID    NAME          STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM       UPTIME    FOLD        SMIT         
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ██ FLOCK                                                                                                                                 
+  11    api           online           48411    0         -          *1    ██████████  3.0%    96.0M     1h 41m    edge        -            
+  12    cron          online           48412    0         -          -     ██████████  0.5%    8.0M      1h 43m    -           -            
+> 10    web           online           48410    0         -          !2    ▂▆▃█▄▇▃▅▇▅  4.0%    64.0M     1h 40m    edge        -            
+                                                                                                                                            
+                                                                                                                                            
+                                                                                                                                            
+                                                                                                                                            
+                                                                                                                                            
+                                                                                                                                            
+                                                                                                                                            
+                                                                                                                                            
+                                                                                                                                            
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ SHEEP 10  web   online   pid 48410   restarts 0   uptime 1h 40m   cpu 4.0%   mem 64.0M   fold edge   cfg !2 pending                     
+lambs  not read yet                                                                                                                         
+out  /home/ada/.shep/logs/web-10-out.log   │   err  /home/ada/.shep/logs/web-10-err.log                                                     
+                                                                                                                                            
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ BLEATS bleats  web  … 1 earlier line not shown                                                                                          
+out  GET /healthz 200 3ms                                                                                                                   
+out  GET /v1/orders 200 44ms                                                                                                                
+out  POST /v1/orders 201 88ms                                                                                                               
+out  GET /v1/orders/8821 200 9ms                                                                                                            
+out  connection pool: 14/50 in use                                                                                                          
+q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                    control enabled
 
 === empty  (100x28) ===
 No sheep registered. Each of the three panes says why it is empty, and the three sentences are different because the three reasons are.
@@ -452,7 +486,7 @@ out  connection pool: 14/50 in use
 q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
 
 === table_only  (120x12) ===
-12 rows: no optional panes at all. This is 12a's frame, and the only thing that changed is the two-column gutter the selection paints.
+12 rows: no optional panes at all. This is 12a's frame, and the only thing that changed is the two-column gutter that marks the selection, painted where there is a ground to paint with and shown with `>` where there is not.
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         

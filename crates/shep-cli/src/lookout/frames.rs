@@ -143,6 +143,10 @@ pub enum Scene {
     /// a configured ceiling, at 94% of one in the butter warning colour,
     /// and no ceiling configured at all.
     MemCeiling,
+    /// The `CFG` column's `!N` and `*N` markers, one sheep each, plus a CPU
+    /// history long enough that the `CpuSpark` column draws a shape rather
+    /// than a single bar.
+    CfgDrift,
     /// Nothing registered.
     Empty,
     /// A narrow terminal: four columns dropped.
@@ -220,6 +224,7 @@ impl Scene {
         Self::Grouped,
         Self::WithDogs,
         Self::MemCeiling,
+        Self::CfgDrift,
         Self::Empty,
         Self::Narrow,
         Self::TooNarrow,
@@ -260,6 +265,7 @@ impl Scene {
             Self::Grouped => "grouped",
             Self::WithDogs => "with_dogs",
             Self::MemCeiling => "mem_ceiling",
+            Self::CfgDrift => "cfg_drift",
             Self::Empty => "empty",
             Self::Narrow => "narrow",
             Self::TooNarrow => "too_narrow",
@@ -301,7 +307,7 @@ impl Scene {
     pub const fn caption(self) -> &'static str {
         match self {
             Self::HealthyWide => {
-                "All three panes at 120x30: the host strip under the title, the detail pane and the bleats feed under the table. The selected row is painted, and every pane below the table describes that sheep."
+                "All three panes at 120x30: the host strip under the title, the detail pane and the bleats feed under the table. The selected row is marked, painted where the palette has a ground to paint with and shown with a `>` where it does not, and every pane below the table describes that sheep."
             }
             Self::Errored => {
                 "One errored, one waiting to restart, one stopped, with the selection parked on the errored sheep. Each row's own STATUS cell is the only coloured cell in that row, and EXIT carries why each of the three stopped: a code for the two that crashed, a signal name for the one shep stopped itself."
@@ -314,6 +320,9 @@ impl Scene {
             }
             Self::MemCeiling => {
                 "Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a quarter of its limit and draws its MEM/CEIL gauge in the ordinary fill colour, web-hot sits at 94 percent of its own limit and turns butter, and batch-worker has no ceiling at all, so its gauge reads the same muted bar a stopped sheep's does. The cursor is parked on web-hot, the row this frame exists to show."
+            }
+            Self::CfgDrift => {
+                "140 columns: wide enough for the CFG and CPU 20s columns beside the ones every other scene shows. web has two fields parked for the next spawn and reads !2, api has one field an operator set that its Flockfile does not declare and reads *1, and cron has neither and reads a bare -. The status bar's own legend explains both glyphs; this is where they actually appear in a cell. web's CPU history carries ten distinct samples, so its sparkline draws a shape over time rather than one static bar, and the cursor is parked on web so the detail pane's own cfg !2 pending cell is on screen too."
             }
             Self::Empty => {
                 "No sheep registered. Each of the three panes says why it is empty, and the three sentences are different because the three reasons are."
@@ -346,7 +355,7 @@ impl Scene {
                 "20 rows: the detail pane is the first to go, because every number on it but the log paths is already in the row above it."
             }
             Self::TableOnly => {
-                "12 rows: no optional panes at all. This is 12a's frame, and the only thing that changed is the two-column gutter the selection paints."
+                "12 rows: no optional panes at all. This is 12a's frame, and the only thing that changed is the two-column gutter that marks the selection, painted where there is a ground to paint with and shown with `>` where there is not."
             }
             Self::FeedGap => {
                 "The feed under a burst: 3.8 megabytes were never read and some hundreds of lines were read and dropped. The pane counts both, and counts them separately, because it knows the second exactly and cannot know how many lines are in the first."
@@ -427,6 +436,11 @@ impl Scene {
             // 148, past `ALL`'s 146 threshold: the one scene that needs
             // both `CpuSpark` and `MemCeil` drawn, not dropped for width.
             Self::MemCeiling => (150, 30),
+            // 140: `columns_for` runs on `width - GUTTER`, so 140 - GUTTER =
+            // 138, past `NO_CEIL`'s 134 threshold and short of `ALL`'s 146:
+            // `CpuSpark` and `Cfg` both draw, `MemCeil` does not (it has its
+            // own scene above).
+            Self::CfgDrift => (140, 30),
             // 51: `columns_for` runs on `width - GUTTER` (the two-column
             // selection marker), so 51 - GUTTER = 49, the `NO_MEM` tier:
             // four columns gone, CPU and UPTIME still there.
@@ -699,6 +713,59 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
                 None,
             ),
         ],
+        // The CFG column's two markers, `!N` and `*N`, plus a CPU history
+        // long enough that `CpuSpark` draws a shape rather than one bar.
+        // Neither has a fixture anywhere else in the gallery: no other
+        // scene sets `pending` or `overridden`, and every other scene's
+        // flock is built by one `Msg::Snapshot`, giving each sheep exactly
+        // one CPU sample.
+        Scene::CfgDrift => {
+            let mut pending_row = sheep(
+                10,
+                "web",
+                ProcStatus::Online,
+                Some(48_410),
+                0,
+                Some(4.0),
+                Some(64 << 20),
+                Some("edge"),
+            );
+            pending_row.pending = Some(vec!["env".to_string(), "port".to_string()]);
+            let mut overridden_row = sheep(
+                11,
+                "api",
+                ProcStatus::Online,
+                Some(48_411),
+                0,
+                Some(3.0),
+                Some(96 << 20),
+                Some("edge"),
+            );
+            overridden_row.overridden = Some(vec!["instances".to_string()]);
+            let plain_row = sheep(
+                12,
+                "cron",
+                ProcStatus::Online,
+                Some(48_412),
+                0,
+                Some(0.5),
+                Some(8 << 20),
+                None,
+            );
+            // Nine snapshots ahead of the shared one below, each moving
+            // only `web`'s CPU reading, so its history holds ten distinct
+            // samples by the time the frame renders: a full, varying
+            // sparkline rather than a single bar padded with blanks.
+            for cpu in [1.0_f32, 6.0, 2.5, 8.0, 3.5, 7.0, 2.0, 5.0, 6.5] {
+                let mut warming_up = pending_row.clone();
+                warming_up.cpu_percent = Some(cpu);
+                app.update(Msg::Snapshot {
+                    rows: vec![warming_up, overridden_row.clone(), plain_row.clone()],
+                    at: t0,
+                });
+            }
+            vec![pending_row, overridden_row, plain_row]
+        }
         _ => vec![
             sheep(
                 0,
@@ -783,6 +850,7 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
             | Scene::Grouped
             | Scene::WithDogs
             | Scene::MemCeiling
+            | Scene::CfgDrift
             | Scene::SettingsDogs
             | Scene::SettingsNarrow
             | Scene::SettingsShort
@@ -813,6 +881,13 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
     // ceiling: the butter warning this scene exists to show.
     if which == Scene::MemCeiling {
         select_id(&mut app, 1);
+    }
+
+    // `CfgDrift` parks on `web`, id 10, the row carrying the pending
+    // fields: the detail pane's own `cfg !2 pending` cell only renders
+    // for the selected sheep.
+    if which == Scene::CfgDrift {
+        select_id(&mut app, 10);
     }
 
     match which {
@@ -1413,9 +1488,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all thirty-four scenes through the same coloured
+frames.ansi renders all thirty-five scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same thirty-four scenes through the flattened NO_COLOR palette
+renders the same thirty-five scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -1586,7 +1661,7 @@ mod tests {
     /// artifacts under `docs/lookout/` are unix renderings for the same
     /// reason.
     #[cfg(unix)]
-    #[allow(clippy::too_many_lines)] // thirty-four captions, each pinned clause by clause
+    #[allow(clippy::too_many_lines)] // thirty-five captions, each pinned clause by clause
     fn every_scene_shows_the_thing_it_is_named_for() {
         // HealthyWide: all three panes at 120x30.
         let wide_buffer = scene(Scene::HealthyWide).1;
@@ -1723,6 +1798,36 @@ mod tests {
         assert!(
             marked_row_name_starts_with(&ceiling, &ceiling_buffer, "web-hot"),
             "the cursor is parked on the row at 94 percent: {ceiling:?}"
+        );
+
+        // CfgDrift: the CFG column's two markers, plus a CPU history long
+        // enough to draw a shape rather than one bar.
+        let drift_buffer = scene(Scene::CfgDrift).1;
+        let drift = render_text(&drift_buffer);
+        assert!(
+            row_for(&drift, "web").is_some_and(|row| row.contains("!2")),
+            "two fields parked for the next spawn: {drift:?}"
+        );
+        assert!(
+            row_for(&drift, "api").is_some_and(|row| row.contains("*1")),
+            "one field an operator set outside the Flockfile: {drift:?}"
+        );
+        assert!(
+            row_for(&drift, "cron").is_some_and(|row| row.contains(" - ")),
+            "neither pending nor overridden: {drift:?}"
+        );
+        let web_row = row_for(&drift, "web").expect("web's own row");
+        let spark: std::collections::HashSet<char> = web_row
+            .chars()
+            .filter(|glyph| ('\u{2581}'..='\u{2588}').contains(glyph))
+            .collect();
+        assert!(
+            spark.len() > 1,
+            "ten distinct CPU samples draw more than one sparkline step, not a single repeated bar: {web_row:?}"
+        );
+        assert!(
+            drift.contains("cfg !2 pending"),
+            "the detail pane's own cell, for the selected sheep: {drift:?}"
         );
 
         // Empty: each of the three panes gives its own reason.
@@ -2206,7 +2311,7 @@ mod tests {
         // The literal 34 catches a scene added to the enum but not to
         // `ALL`, or the reverse; `labels.len()` would not, since `insert`
         // above already guarantees it.
-        assert_eq!(Scene::ALL.len(), 34);
+        assert_eq!(Scene::ALL.len(), 35);
     }
 
     /// `sgr` now draws a foreground, a background and `REVERSED`, so the
