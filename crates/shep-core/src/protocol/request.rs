@@ -389,6 +389,13 @@ pub enum Request {
     /// it against the spawn. The boundary is the socket itself, which lives
     /// under `$SHEP_HOME` at `0700`.
     ///
+    /// The two names and every entry key are checked against
+    /// [`crate::secrets::is_name`], and a value against
+    /// [`crate::secrets::MAX_VALUE_BYTES`], the same cap the operator's own
+    /// store enforces. One offender refuses the whole push rather than
+    /// dropping its own entry, so a dog never reads `accepted` for a set
+    /// that was stored in part.
+    ///
     /// Answers [`Response::SecretsPut`].
     PutSecrets {
         /// The dog's registered name.

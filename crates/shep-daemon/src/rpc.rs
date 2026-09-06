@@ -768,9 +768,18 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
         // A provider dog's push. Unguarded by design, for the reason the
         // variant's own doc gives.
         //
-        // The two NAMES are checked, against the store's own grammar: one
-        // outside it is a name no `{{secret:...}}` reference could reach,
-        // so storing under it would answer `accepted` and resolve nothing.
+        // Both NAMES and every entry KEY are checked against the store's own
+        // grammar: one outside it is a name no `{{secret:...}}` reference
+        // could reach, so storing under it would answer `accepted` and
+        // resolve nothing. Values are capped at the same `MAX_VALUE_BYTES`
+        // the operator's own store enforces, since without it a socket peer
+        // sets the shepherd's memory and, with `persist`, rewrites and
+        // fsyncs whatever it sent on every later push.
+        //
+        // One offender refuses the whole push, as the namespace check
+        // already does: a partial store is one a dog would report `accepted`
+        // for and a spawn would refuse on, and the dog has the whole set to
+        // send again.
         //
         // Handled here rather than through the supervisor: the registry is
         // not supervisor state, and this arm writes the cache file, which
@@ -785,6 +794,7 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                 ("environment", environment.as_str()),
             ]
             .into_iter()
+            .chain(entries.keys().map(|key| ("key", key.as_str())))
             .find(|(_, value)| !shep_core::secrets::is_name(value));
             if let Some((field, value)) = refused {
                 return reply(Err(RpcError {
@@ -793,6 +803,22 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                         "`{value}` is not a valid {field}: a name is 1 to \
                          {max} bytes of `[A-Za-z0-9._-]` and may not start with `.`",
                         max = shep_core::secrets::MAX_KEY_BYTES
+                    ),
+                    daemon_version: None,
+                }));
+            }
+            // The key, never the value: an error message is the one place a
+            // pushed value must not turn up (IR-41).
+            let oversized = entries
+                .iter()
+                .map(|(key, value)| (key, value.as_str().len()))
+                .find(|(_, len)| *len > shep_core::secrets::MAX_VALUE_BYTES);
+            if let Some((key, len)) = oversized {
+                return reply(Err(RpcError {
+                    code: RpcErrorCode::InvalidConfig,
+                    message: format!(
+                        "the value for `{key}` is {len} bytes, over the {max}-byte limit",
+                        max = shep_core::secrets::MAX_VALUE_BYTES
                     ),
                     daemon_version: None,
                 }));
@@ -3917,6 +3943,62 @@ mod tests {
         };
         assert_eq!(err.code, RpcErrorCode::InvalidConfig, "{err:?}");
         assert!(h.ctx.provider_secrets.pushed().is_empty());
+    }
+
+    /// A key with a `/` in it is as unreachable as a namespace with one:
+    /// `SecretRef::parse` splits on the separator, so `{{secret:ns/A/B}}`
+    /// names a namespace `ns` and a key `A/B` that `parse` refuses. The two
+    /// names were checked and the keys were not.
+    #[tokio::test(start_paused = true)]
+    async fn an_entry_key_outside_the_grammar_refuses_the_whole_push() {
+        let h = harness(vec![]);
+        let reply = push(&h.ctx, 1, "vercel", &[("GOOD", "1"), ("A/B", "2")]).await;
+
+        let Err(err) = reply.result else {
+            panic!("a key carrying a separator must be refused")
+        };
+        assert_eq!(err.code, RpcErrorCode::InvalidConfig, "{err:?}");
+        assert!(err.message.contains("A/B"), "names the key: {err:?}");
+        assert!(
+            h.ctx.provider_secrets.pushed().is_empty(),
+            "the whole push is refused, not the one key"
+        );
+    }
+
+    /// `MAX_VALUE_BYTES` guards `secrets::set`, so an operator cannot put a
+    /// blob in the store. Without the same cap here a socket peer sets the
+    /// shepherd's memory, and with `persist` on, what it sent is
+    /// re-serialized and fsynced whole on every later push.
+    #[tokio::test(start_paused = true)]
+    async fn an_oversized_value_refuses_the_whole_push_without_quoting_it() {
+        let h = harness(vec![]);
+        let huge = "x".repeat(shep_core::secrets::MAX_VALUE_BYTES + 1);
+        let reply = push(&h.ctx, 1, "vercel", &[("BIG", &huge)]).await;
+
+        let Err(err) = reply.result else {
+            panic!("a value over the cap must be refused")
+        };
+        assert_eq!(err.code, RpcErrorCode::InvalidConfig, "{err:?}");
+        assert!(err.message.contains("BIG"), "names the key: {err:?}");
+        assert!(
+            !err.message.contains("xxxx"),
+            "never the value itself: {err:?}"
+        );
+        assert!(h.ctx.provider_secrets.pushed().is_empty());
+    }
+
+    /// The cap is a ceiling, not a refusal of anything long: a 4096-bit RSA
+    /// key in PEM is 3272 bytes, which is what the limit was sized for.
+    #[tokio::test(start_paused = true)]
+    async fn a_value_at_the_cap_is_accepted() {
+        let h = harness(vec![]);
+        let big = "x".repeat(shep_core::secrets::MAX_VALUE_BYTES);
+        assert!(
+            push(&h.ctx, 1, "vercel", &[("BIG", &big)])
+                .await
+                .result
+                .is_ok()
+        );
     }
 
     /// The same refusal for the other name, since an environment outside
