@@ -252,7 +252,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     y += 1;
     // The rule stays full width: it is chrome, and a rule that stopped two
     // columns short of the left edge would look like a rendering bug.
-    buffer.set_line(area.x, y, &status::rule_line(palette.muted(), width), width);
+    buffer.set_line(area.x, y, &status::rule_line(palette.line(), width), width);
     y += 1;
 
     // The bottom stack, laid out upward from the status bar: whichever of
@@ -325,7 +325,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
         buffer.set_line(
             area.x,
             top,
-            &status::rule_line(palette.muted(), width),
+            &status::rule_line(palette.line(), width),
             width,
         );
         for (offset, line) in detail::detail_lines(app, width).iter().enumerate() {
@@ -337,7 +337,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
         buffer.set_line(
             area.x,
             top,
-            &status::rule_line(palette.muted(), width),
+            &status::rule_line(palette.line(), width),
             width,
         );
         let rows = usize::from(FEED_ROWS - 1);
