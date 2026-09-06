@@ -389,9 +389,15 @@ esc/s close   j/k select   g… control enabled`;
       detail pane goes (everything on it but the log paths already sits in
       the row above it). Below 18 the feed goes with it, and below 14 the
       host strip goes too, leaving only the flock table. Within the table,
-      narrow widths drop columns one at a time, in this order: CFG, SMIT,
-      FOLD, EXIT, RESTARTS, PID, MEM, CPU, and finally UPTIME, leaving
-      <code>ID NAME STATUS</code> as the floor.
+      narrow widths drop columns one at a time, in this order:
+      <code>MEM/CEIL</code>, <code>CPU 20s</code>, CFG, SMIT, FOLD, EXIT,
+      RESTARTS, PID, MEM, CPU, and finally UPTIME, leaving
+      <code>ID NAME STATUS</code> as the floor. <code>MEM/CEIL</code> is a
+      gauge of a sheep's memory against its ceiling and <code>CPU 20s</code>
+      is a sparkline of its CPU history; both restate a number CPU and MEM
+      already carry, so they go first. A terminal needs 148 columns for the
+      gauge and 136 for the sparkline, wider than every frame on this page,
+      so neither shows up below.
     </p>
     <p class="fine">
       <code>CFG</code> goes first, ahead of even <code>SMIT</code>, which is
