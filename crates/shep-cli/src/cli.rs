@@ -1095,20 +1095,19 @@ pub struct BleatsArgs {
 /// Arguments to `shep lookout`.
 #[derive(Debug, clap::Args)]
 pub struct LookoutArgs {
-    /// Open the dashboard's action gate. Off by default.
+    /// Close the dashboard's action gate. Actions are permitted by default.
     ///
     /// With the gate open, `x` (stop), `R` (restart) and `L` (reload) each
     /// arm a confirm instead of acting on the keypress that pressed it;
     /// Enter sends the request, any other key cancels, and an unanswered
-    /// confirm expires after ten seconds. Off, all three refuse outright
-    /// with `read-only: actions need --allow-control`.
+    /// confirm expires after ten seconds. Closed, all three refuse outright.
     ///
     /// A guard against a keystroke in a window you were reading, not a
     /// security boundary: lookout runs as you, so anything it could do you can
-    /// already do with `shep stop`. Can also be set with `shep set
-    /// lookout.allow_control true`; this flag wins.
+    /// already do with `shep stop`. Can also be closed with `shep set
+    /// lookout.allow_control false`.
     #[arg(long)]
-    pub allow_control: bool,
+    pub read_only: bool,
 }
 
 /// Arguments to `shep reopen`.
@@ -2388,26 +2387,32 @@ mod tests {
         ));
     }
 
-    /// fails if the control gate stops being off by default, or stops being
-    /// reachable from the flag. The maintainer's ruling: acting on a sheep needs a flag or
-    /// config, mirroring `whistle.allow_control`.
+    /// fails if the control gate stops being on by default, or stops being
+    /// closeable from the flag.
     #[test]
-    fn actions_are_off_unless_the_flag_says_otherwise() {
+    fn actions_are_on_unless_read_only_says_otherwise() {
         use clap::Parser;
         let Commands::Lookout(default) = Cli::try_parse_from(["shep", "lookout"]).unwrap().command
         else {
             panic!("lookout parses to its own variant")
         };
-        assert!(!default.allow_control);
+        assert!(!default.read_only);
 
-        let Commands::Lookout(flagged) =
-            Cli::try_parse_from(["shep", "lookout", "--allow-control"])
-                .unwrap()
-                .command
+        let Commands::Lookout(flagged) = Cli::try_parse_from(["shep", "lookout", "--read-only"])
+            .unwrap()
+            .command
         else {
             panic!("lookout parses to its own variant")
         };
-        assert!(flagged.allow_control);
+        assert!(flagged.read_only);
+    }
+
+    /// fails if `--allow-control` starts parsing again: lookout takes no
+    /// such flag.
+    #[test]
+    fn allow_control_no_longer_parses() {
+        use clap::Parser;
+        assert!(Cli::try_parse_from(["shep", "lookout", "--allow-control"]).is_err());
     }
 
     /// fails if `shep whistle` stops parsing, or grows an argument. The

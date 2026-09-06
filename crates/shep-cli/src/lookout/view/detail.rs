@@ -25,6 +25,7 @@ pub fn detail_lines(app: &App, width: u16) -> Vec<Line<'static>> {
         None => empty_lines(app, width, palette),
         Some(RowKey::Group(name)) => group_lines(app, &name, width, palette),
         Some(RowKey::Sheep(_)) => sheep_lines(app, width, palette),
+        Some(RowKey::Section(_)) => unreachable!("a header is never selectable"),
     }
 }
 

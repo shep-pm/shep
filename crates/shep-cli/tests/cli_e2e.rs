@@ -4245,7 +4245,7 @@ fn shep_lookout_help_names_the_gate() {
         .unwrap();
     assert_eq!(output.status.code(), Some(0));
     let text = String::from_utf8(output.stdout).unwrap();
-    assert!(text.contains("--allow-control"));
+    assert!(text.contains("--read-only"));
     assert!(text.contains("security boundary"));
 }
 
