@@ -3493,8 +3493,7 @@ impl App {
     /// Called after `self.flock` is replaced, so it reads the fresh
     /// snapshot rather than the one before it. A sheep with no reading
     /// contributes `0.0`: skipping it would slide the whole window and
-    /// make an old spike look recent (IR-24: prefer an explicit sentinel
-    /// over silently dropping a data point).
+    /// make an old spike look recent.
     ///
     /// Every touched deque is made contiguous here, while this method
     /// still holds `&mut self`, so [`Self::cpu_history`] and
@@ -4272,11 +4271,16 @@ mod tests {
 
     #[test]
     fn the_buffer_holds_at_most_a_hundred_and_forty_samples() {
+        // Each pushed value is distinct so a wrong-end eviction or a
+        // reversed order fails this, not just a wrong length.
         let mut app = fixture();
-        for _ in 0..200 {
-            app.on_snapshot(vec![row_with_cpu(1, 1.0)]);
+        for i in 0..200 {
+            app.on_snapshot(vec![row_with_cpu(1, i as f32)]);
         }
-        assert_eq!(app.cpu_history(1).len(), 140);
+        let history = app.cpu_history(1);
+        assert_eq!(history.len(), 140);
+        assert_eq!(history.first(), Some(&60.0), "oldest survivor");
+        assert_eq!(history.last(), Some(&199.0), "newest sample");
     }
 
     #[test]
@@ -4294,7 +4298,10 @@ mod tests {
     fn the_flock_series_is_the_sum_of_the_snapshot() {
         let mut app = fixture();
         app.on_snapshot(vec![row_with_cpu(1, 10.0), row_with_cpu(2, 5.5)]);
-        assert_eq!(app.flock_cpu_history(), &[15.5]);
+        // Sheep 2 leaves on the second poll; the next sample must sum only
+        // the sheep still present, not carry the departed one along.
+        app.on_snapshot(vec![row_with_cpu(1, 10.0)]);
+        assert_eq!(app.flock_cpu_history(), &[15.5, 10.0]);
     }
 
     fn started() -> (App, Instant) {
