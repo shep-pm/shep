@@ -1562,6 +1562,14 @@ async fn reload_in_stages(
                     // still a reload this stage's dependants have to wait
                     // out, so it is waited for as one: any `Reloaded` or the
                     // `ReloadAbandoned` that ends it finishes the name.
+                    //
+                    // One swap, and a clustered app owes one per instance.
+                    // Nothing here can see how far the reload in flight has
+                    // got, so a three-instance dependency finishes this wait
+                    // at whichever swap lands next and a dependant can go a
+                    // swap or two early. Accepted, for `reload_in_stages`'
+                    // own reason: a wait sized by a count this side is
+                    // guessing at can hang, and an early stage cannot.
                     if matches!(err, SupervisorError::ReloadInFlight(_))
                         && walk.depended_on.contains(name.as_str())
                     {
