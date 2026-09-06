@@ -721,9 +721,9 @@ fn refusal_after_teardown_budget(
         Ok(Shepherd::Absent) => None,
         Ok(Shepherd::Running(_) | Shepherd::Booting) => Some((
             ExitCode::DeadlineExceeded,
-            "the shepherd was signalled and its teardown is still in progress, so it still \
-             owns this home and still supervises the flock; nothing has been started in its \
-             place, and `shep daemon reload` can be run again once it has stopped"
+            "a shepherd still owns this home and still supervises the flock; nothing has been \
+             started in its place, and `shep daemon reload` can be run again once it has \
+             stopped"
                 .to_string(),
         )),
         Err(err) => Some((
