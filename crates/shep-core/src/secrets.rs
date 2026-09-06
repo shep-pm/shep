@@ -658,6 +658,17 @@ mod tests {
     }
 
     #[test]
+    fn get_does_not_fall_back_to_the_all_slot() {
+        // `get` returns the stored slot only; `SecretView::resolve` is the
+        // one place the `all` fallback lives. Nothing here should fail if
+        // that boundary moves, which is exactly the point of pinning it.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("secrets.json");
+        set(&path, "K", ALL_ENVIRONMENTS, "everywhere").unwrap();
+        assert_eq!(get(&path, "K", "staging").unwrap(), None);
+    }
+
+    #[test]
     fn an_environment_outside_the_grammar_is_refused() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("secrets.json");
@@ -840,6 +851,24 @@ mod tests {
             rendered,
             "SecretView { environment: \"production\", keys: 1, namespaces: 0 }"
         );
+        assert!(!rendered.contains("hunter2"));
+    }
+
+    /// IR-41, the same guard for the on-disk shape everything else is built
+    /// from. `SecretFile` is private, so `missing_debug_implementations`
+    /// never forces it to keep a `Debug` impl at all; this is what stops a
+    /// later edit from deriving one over the hand-written redaction.
+    #[test]
+    fn a_secret_file_debug_never_prints_a_value() {
+        let file = SecretFile {
+            version: SECRETS_VERSION,
+            entries: BTreeMap::from([(
+                "K".to_string(),
+                BTreeMap::from([("production".to_string(), "hunter2".to_string())]),
+            )]),
+        };
+        let rendered = format!("{file:?}");
+        assert_eq!(rendered, "SecretFile { version: 1, keys: 1 }");
         assert!(!rendered.contains("hunter2"));
     }
 
