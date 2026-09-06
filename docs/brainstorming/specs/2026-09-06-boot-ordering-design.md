@@ -86,7 +86,7 @@ Established from the code, not assumed.
 ### 1. One Flockfile field, and shep derives the stages
 
 ```toml
-[[apps]]
+[[app]]
 name = "api"
 script = "./api"
 depends_on = ["db", "cache"]
@@ -142,7 +142,7 @@ The operator cuts it to near zero by configuring a real signal, which is the
 whole point:
 
 ```toml
-[[apps]]
+[[app]]
 name = "db"
 readiness_probe = { kind = "tcp", target = "127.0.0.1:5432" }
 ```
@@ -181,8 +181,8 @@ the earliest stage anything asks for.**
 ```toml
 # $SHEP_HOME/shep.toml
 [daemon]
-enabled_dogs    = ["metrics", "bark"]
-adopted_dogs    = ["log-rotate"]
+enabled_dogs    = ["metrics", "bark", "log-rotate"]
+adopted_dogs    = { "log-rotate" = "/usr/local/bin/shep-log-rotate" }
 boot_first_dogs = ["log-rotate"]
 ```
 
@@ -193,6 +193,13 @@ boot_first_dogs = ["log-rotate"]
   stage 3  web, worker
   stage 4  metrics, bark
 ```
+
+**Correction, 2026-09-06.** The block above wrote `adopted_dogs` as a list and
+named `log-rotate` in it alone. It is a map of dog name to binary path, and
+`BootOptions::dogs` is built from `enabled_dogs`, so a dog missing from that
+list is never spawned and the stage 0 above would have started nothing. Both
+are fixed in place, as is `[[apps]]` in decisions 1 and 2: the Flockfile table
+is `[[app]]`.
 
 The second lever is a sheep naming a dog in its own `depends_on`, which puts
 that dog in the stage before it. A sidecar dog an app genuinely needs lands
