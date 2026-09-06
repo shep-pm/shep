@@ -13,22 +13,31 @@ const STEPS: [char; 8] = [
     '\u{2581}', '\u{2582}', '\u{2583}', '\u{2584}', '\u{2585}', '\u{2586}', '\u{2587}', '\u{2588}',
 ];
 
-/// A horizontal bar of `cells`, filled in proportion to `value` over
-/// `ceiling` and padded with the light shade.
+/// How many of `cells` a `gauge`'d bar fills, given `value` over `ceiling`.
 ///
-/// `None`, zero, and any ceiling a value cannot be measured against give
-/// an all-tail bar: the bar says "no ceiling set" rather than guessing a
-/// denominator. A value above its ceiling fills the bar rather than
-/// overflowing the column.
+/// Shared by [`gauge`] and by callers that draw the fill and the tail as two
+/// separately-styled spans and so need the split point without re-deriving
+/// it. `None`, zero, and any ceiling a value cannot be measured against give
+/// zero: the bar says "no ceiling set" rather than guessing a denominator. A
+/// value above its ceiling saturates at `cells` rather than overflowing it.
 #[must_use]
-pub fn gauge(value: u64, ceiling: Option<u64>, cells: usize) -> String {
-    let filled = match ceiling {
+pub fn gauge_fill(value: u64, ceiling: Option<u64>, cells: usize) -> usize {
+    match ceiling {
         Some(ceiling) if ceiling > 0 => {
             let scaled = (value as f64 / ceiling as f64 * cells as f64).round();
             (scaled as usize).min(cells)
         }
         _ => 0,
-    };
+    }
+}
+
+/// A horizontal bar of `cells`, filled in proportion to `value` over
+/// `ceiling` and padded with the light shade.
+///
+/// See [`gauge_fill`] for the no-ceiling and overflow cases.
+#[must_use]
+pub fn gauge(value: u64, ceiling: Option<u64>, cells: usize) -> String {
+    let filled = gauge_fill(value, ceiling, cells);
     let mut out = String::with_capacity(cells * 3);
     out.extend(std::iter::repeat_n('\u{2588}', filled));
     out.extend(std::iter::repeat_n('\u{2591}', cells - filled));

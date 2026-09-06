@@ -177,11 +177,9 @@ impl Palette {
         Self::fg(self.line)
     }
 
-    /// The memory gauge's unfilled portion.
-    ///
-    /// No non-test caller yet; see [`Self::sky`].
+    /// The memory gauge's unfilled portion, and the flock table's `MEM/CEIL`
+    /// tail when it is drawing against a real ceiling.
     #[must_use]
-    #[allow(dead_code)]
     pub fn gauge_rest(self) -> Style {
         Self::fg(self.gauge_rest)
     }

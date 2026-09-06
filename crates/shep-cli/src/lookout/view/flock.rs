@@ -464,11 +464,13 @@ fn group_line(app: &App, name: &str, columns: &[Column], width: u16) -> Line<'st
         // `palette.status`, not `palette.reported`: a group row is always an
         // app's own instances, never a dog, so it has nothing to be silent
         // about.
-        let status_style = app
-            .group_uniform_status(name)
-            .map_or(Style::default(), |status| palette.status(status));
-        let style = cell_style(palette, *column, status_style, None);
-        spans.push(Span::styled(text, style));
+        let status = app.group_uniform_status(name);
+        let status_style = status.map_or(Style::default(), |status| palette.status(status));
+        let style = cell_style(palette, *column, status_style, status, None);
+        // A group has no single history or ceiling ([`group_cell`]), so its
+        // `MemCeil` text is always empty and there is nothing to fill.
+        let tail_style = mem_ceil_tail_style(palette, status, None, style);
+        push_row_cell(&mut spans, *column, text, style, tail_style, 0);
     }
     Line::from(spans)
 }
@@ -532,7 +534,9 @@ pub fn row_line(
     let palette = app.palette();
     let name = name_width(width, columns);
     let status_style = palette.reported(row.reported());
+    let status = Some(row.info.status);
     let mem_ceil_ratio = mem_ceil_ratio(&row.info);
+    let mem_ceil_fill = self::mem_ceil_fill(&row.info);
     let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len() * 2);
     for (index, column) in columns.iter().enumerate() {
         if index > 0 {
@@ -544,8 +548,9 @@ pub fn row_line(
             column.width()
         };
         let text = fit(&cell(app, row, *column, grouped), cell_width);
-        let style = cell_style(palette, *column, status_style, mem_ceil_ratio);
-        spans.push(Span::styled(text, style));
+        let style = cell_style(palette, *column, status_style, status, mem_ceil_ratio);
+        let tail_style = mem_ceil_tail_style(palette, status, mem_ceil_ratio, style);
+        push_row_cell(&mut spans, *column, text, style, tail_style, mem_ceil_fill);
     }
     Line::from(spans)
 }
@@ -615,6 +620,13 @@ fn mem_ceil_cell(info: &ProcessInfo) -> String {
     cell::gauge(info.memory_bytes.unwrap_or(0), info.max_memory, 10)
 }
 
+/// Where [`mem_ceil_cell`]'s ten characters split into filled and tail, so
+/// [`push_row_cell`] can style the two runs separately without re-deriving
+/// the fill from `info` a second time.
+fn mem_ceil_fill(info: &ProcessInfo) -> usize {
+    cell::gauge_fill(info.memory_bytes.unwrap_or(0), info.max_memory, 10)
+}
+
 /// `memory_bytes` over `max_memory`, or `None` when either is missing or the
 /// ceiling is zero. Feeds [`cell_style`]'s butter threshold; the bar itself
 /// is drawn by [`mem_ceil_cell`], which never divides.
@@ -627,23 +639,35 @@ fn mem_ceil_ratio(info: &ProcessInfo) -> Option<f64> {
     Some(value as f64 / ceiling as f64)
 }
 
+/// Whether `MemCeil` has anything to measure: a live reading against a real
+/// ceiling, on a sheep that is actually running. A stopped sheep's last
+/// known reading and a sheep with no ceiling at all share the same "nothing
+/// to show" rendering (decision 7), so both read `false` here.
+fn mem_ceil_measuring(status: Option<ProcStatus>, ratio: Option<f64>) -> bool {
+    status == Some(ProcStatus::Online) && ratio.is_some()
+}
+
 /// The per-column style [`row_line`] and [`group_line`] both apply, so the
 /// STATUS rule they already shared does not get a second, drifting copy now
 /// that `CpuSpark` and `MemCeil` need one too.
 ///
 /// `status_style` is resolved by the caller, since a sheep and a group
-/// header read status through different paths. `mem_ceil_ratio` is `None`
-/// for a group row: it has no single ceiling to be near.
+/// header read status through different paths. `status` and `mem_ceil_ratio`
+/// are `None` for a group row: it has no single status or ceiling to be
+/// near. This is the style [`push_row_cell`] gives `MemCeil`'s *filled* run;
+/// see [`mem_ceil_tail_style`] for its unfilled tail.
 fn cell_style(
     palette: Palette,
     column: Column,
     status_style: Style,
+    status: Option<ProcStatus>,
     mem_ceil_ratio: Option<f64>,
 ) -> Style {
     match column {
         Column::Status => status_style,
         // The role a healthy sheep's own STATUS cell wears.
         Column::CpuSpark => palette.status(ProcStatus::Online),
+        Column::MemCeil if !mem_ceil_measuring(status, mem_ceil_ratio) => palette.muted(),
         Column::MemCeil => {
             if mem_ceil_ratio.is_some_and(|ratio| ratio >= 0.9) {
                 palette.attention()
@@ -652,6 +676,48 @@ fn cell_style(
             }
         }
         _ => Style::default(),
+    }
+}
+
+/// `MemCeil`'s unfilled tail: `gauge_rest` against a real ceiling on a
+/// running sheep, the same muted role as `fill_style` everywhere else so the
+/// bar reads as one flat colour rather than two competing ones.
+fn mem_ceil_tail_style(
+    palette: Palette,
+    status: Option<ProcStatus>,
+    mem_ceil_ratio: Option<f64>,
+    fill_style: Style,
+) -> Style {
+    if mem_ceil_measuring(status, mem_ceil_ratio) {
+        palette.gauge_rest()
+    } else {
+        fill_style
+    }
+}
+
+/// Pushes one column's text as one span, except `MemCeil`, which splits at
+/// `fill` into a filled run styled `style` and an unfilled tail styled
+/// `tail_style` (decision 7's rule that the tail must not compete with the
+/// fill). `fill` is clamped to the text's own length, so a group row's
+/// always-empty `MemCeil` cell and a stopped sheep's cell both split
+/// harmlessly.
+fn push_row_cell(
+    spans: &mut Vec<Span<'static>>,
+    column: Column,
+    text: String,
+    style: Style,
+    tail_style: Style,
+    fill: usize,
+) {
+    if column == Column::MemCeil {
+        let fill = fill.min(text.chars().count());
+        let mut chars = text.chars();
+        let filled: String = chars.by_ref().take(fill).collect();
+        let rest: String = chars.collect();
+        spans.push(Span::styled(filled, style));
+        spans.push(Span::styled(rest, tail_style));
+    } else {
+        spans.push(Span::styled(text, style));
     }
 }
 
@@ -785,6 +851,112 @@ mod tests {
             .max_memory(Some(52 * 1024 * 1024))
             .build();
         assert_eq!(mem_ceil_cell(&info), "██████████");
+    }
+
+    /// Decision 7: the unfilled tail must not compete with the fill, so the
+    /// two runs need distinct spans and distinct roles, not one style over
+    /// the whole ten-cell text.
+    #[test]
+    fn the_gauges_unfilled_tail_carries_gauge_rest_not_the_fill_role() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let palette = fixtures::coloured();
+        assert_ne!(
+            palette.sky().fg,
+            palette.gauge_rest().fg,
+            "the two roles must actually differ for this test to mean anything"
+        );
+        let info = ProcessInfo::builder(1, "hungry", ProcStatus::Online)
+            .memory_bytes(Some(26 * 1024 * 1024))
+            .max_memory(Some(52 * 1024 * 1024))
+            .build();
+        let app = fixtures::app_with(vec![info], palette);
+        let row = app.row(1).unwrap();
+
+        let line = row_line(&app, row, ALL, 200, false);
+        let fill: Vec<&str> = line
+            .spans
+            .iter()
+            .filter(|span| span.style.fg == palette.sky().fg && !span.content.is_empty())
+            .map(|span| span.content.as_ref())
+            .collect();
+        let tail: Vec<&str> = line
+            .spans
+            .iter()
+            .filter(|span| span.style.fg == palette.gauge_rest().fg && !span.content.is_empty())
+            .map(|span| span.content.as_ref())
+            .collect();
+        assert_eq!(fill, vec!["█████"], "got fill spans {fill:?}");
+        assert_eq!(tail, vec!["░░░░░"], "got tail spans {tail:?}");
+    }
+
+    /// Decision 7: a sheep with nothing to measure against reads as muted,
+    /// not as though `sky` had something to report.
+    #[test]
+    fn a_running_sheep_with_no_ceiling_draws_muted_not_sky() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let palette = fixtures::coloured();
+        let info = ProcessInfo::builder(1, "web", ProcStatus::Online)
+            .memory_bytes(Some(48 * 1024 * 1024))
+            .build();
+        let app = fixtures::app_with(vec![info], palette);
+        let row = app.row(1).unwrap();
+
+        let line = row_line(&app, row, ALL, 200, false);
+        let mem_ceil_text: Vec<&str> = line
+            .spans
+            .iter()
+            .filter(|span| span.content.as_ref() == "░░░░░░░░░░")
+            .map(|span| span.content.as_ref())
+            .collect();
+        assert_eq!(mem_ceil_text, vec!["░░░░░░░░░░"]);
+        assert!(
+            line.spans
+                .iter()
+                .any(|span| span.content.as_ref() == "░░░░░░░░░░"
+                    && span.style.fg == palette.muted().fg),
+            "expected the all-tail bar in muted, got {:?}",
+            line.spans
+                .iter()
+                .map(|s| (s.content.as_ref(), s.style.fg))
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            !line
+                .spans
+                .iter()
+                .any(|span| span.content.as_ref() == "░░░░░░░░░░"
+                    && span.style.fg == palette.sky().fg),
+            "must not read sky, which claims a real measurement"
+        );
+    }
+
+    /// Decision 7's other muted case: a sheep that is not running, even one
+    /// with a ceiling, since a stopped process has nothing live to gauge.
+    #[test]
+    fn a_stopped_sheeps_gauge_draws_muted() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let palette = fixtures::coloured();
+        let info = ProcessInfo::builder(1, "stopped", ProcStatus::Stopped)
+            .memory_bytes(Some(26 * 1024 * 1024))
+            .max_memory(Some(52 * 1024 * 1024))
+            .build();
+        let app = fixtures::app_with(vec![info], palette);
+        let row = app.row(1).unwrap();
+
+        let line = row_line(&app, row, ALL, 200, false);
+        assert!(
+            !line
+                .spans
+                .iter()
+                .any(|span| span.style.fg == palette.sky().fg),
+            "a stopped sheep has nothing live to gauge, so no span reads sky"
+        );
     }
 
     /// `cfg(unix)`: the fixture carries a signalled exit, which
