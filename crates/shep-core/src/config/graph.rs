@@ -99,6 +99,13 @@ pub fn render_cycle(cycle: &[String]) -> String {
 /// The stages therefore run: `boot_first` dogs, the ordinary sort, dogs
 /// nothing depends on, the cyclic stage, then the nodes that depend on the
 /// cycle in their own edge order.
+///
+/// That paragraph describes the plan this function returns, and only shep's
+/// boot honours all of it. `shep-daemon`'s `boot` spawns dogs in two groups,
+/// the promoted ones before the restore and every other one after the last
+/// stage, so a dog's plan position between those two points is not read: a
+/// sheep depending on a dog is warned about and started anyway. The driver
+/// decides, not this plan.
 #[must_use]
 pub fn plan(nodes: &[BootNode]) -> BootPlan {
     let names: BTreeSet<&str> = nodes.iter().map(|n| n.name.as_str()).collect();
