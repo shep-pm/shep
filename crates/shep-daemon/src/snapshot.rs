@@ -368,9 +368,10 @@ pub(crate) fn restorable(snapshot: FlockSnapshot) -> Restorable {
 ///
 /// `dogs` names every dog this shepherd holds and `boot_first_dogs` the ones
 /// `[daemon] boot_first_dogs` promotes ahead of the flock. Neither is spawned
-/// here: they are the graph's dog nodes, and the split is what lets
-/// [`warn_about_the_graph`] tell a sheep waiting on a dog that is already up
-/// from one waiting on a dog that starts after the whole flock.
+/// here: they are the graph's dog nodes, and the split is what positions a
+/// dog in the plan. Which of them [`warn_about_the_graph`] reports on is
+/// decided by the live flock as well, since an unpromoted dog is already up
+/// on every restore but the boot's own.
 ///
 /// # Errors
 /// - [`SnapshotError`]: the roll exists but could not be read or parsed.
@@ -445,7 +446,14 @@ pub(crate) async fn muster(
     registry.record(&to_start);
 
     let plan = crate::boot_order::plan_for(&to_start, dogs, boot_first_dogs);
-    warn_about_the_graph(&plan, &to_start, &restorable.members, dogs, boot_first_dogs);
+    warn_about_the_graph(
+        &plan,
+        &to_start,
+        &restorable.members,
+        &running,
+        dogs,
+        boot_first_dogs,
+    );
     // `BatchPolicy::PerApp`, not `AllOrNothing`: a whole-batch refusal over an
     // app whose script provably is not there is right for an operator typing
     // `shep start` and wrong at an unattended boot, where a binary missing
@@ -495,6 +503,19 @@ fn warn_about_dogs_holding_sheep_names(members: &[ResolvedApp], running: &[Proce
     }
 }
 
+/// Whether `running` holds an entry of this name that has been spawned and
+/// not given up on.
+///
+/// `Stopped` and `Errored` are the two that answer `false`: a dog registered
+/// under either has no process behind it, so a sheep that waits for it really
+/// does start without it. Every other status covers a live child, a
+/// `WaitingRestart` gap between two of them included.
+fn is_up(running: &[ProcessInfo], name: &str) -> bool {
+    running.iter().any(|info| {
+        info.name == name && !matches!(info.status, ProcStatus::Stopped | ProcStatus::Errored)
+    })
+}
+
 /// Reports every way the roll's dependency graph is not what it says it is.
 ///
 /// Nothing here refuses. A restore runs on a machine nobody is watching, so
@@ -502,10 +523,15 @@ fn warn_about_dogs_holding_sheep_names(members: &[ResolvedApp], running: &[Proce
 /// dependency nothing in the roll answers to, one that opted out of
 /// `autostart`, one that is a dog starting after the flock rather than
 /// before it, and a cycle.
+///
+/// `running` is the flock as it stands, which is what keeps the dog warning
+/// from firing on a dog that is already up: this runs at an operator's
+/// `shep muster` as well as at boot.
 fn warn_about_the_graph(
     plan: &BootPlan,
     to_start: &[ResolvedApp],
     members: &[ResolvedApp],
+    running: &[ProcessInfo],
     dogs: &[String],
     boot_first_dogs: &[String],
 ) {
@@ -559,6 +585,14 @@ fn warn_about_the_graph(
         .iter()
         .map(String::as_str)
         .filter(|dog| !boot_first_dogs.iter().any(|first| first == dog))
+        // A dog that is already up is not one this restore starts after the
+        // flock, whatever the promotion list says. `muster` is the handler for
+        // an operator's `Request::Muster` as well as the boot's restore, and
+        // there both dog groups have been running for hours, so reading the
+        // list alone would warn about every such edge on every `shep muster`.
+        // The live flock, read the way `warn_about_dogs_holding_sheep_names`
+        // reads it, is what tells the two apart.
+        .filter(|dog| !is_up(running, dog))
         // A dog whose name a started sheep already holds is not a node at
         // all; the sheep is, and it is ordered properly. `plan_for` drops it
         // against exactly this list.
@@ -1362,10 +1396,10 @@ mod tests {
         );
 
         let held =
-            capture_logs(|| warn_about_the_graph(&plan, &to_start, &[db, api.clone()], &[], &[]));
+            capture_logs(|| warn_about_the_graph(&plan, &to_start, &[db, api.clone()], &[], &[], &[]));
         assert!(!held.contains("names nothing this flock has"), "{held}");
 
-        let absent = capture_logs(|| warn_about_the_graph(&plan, &to_start, &[api], &[], &[]));
+        let absent = capture_logs(|| warn_about_the_graph(&plan, &to_start, &[api], &[], &[], &[]));
         assert!(absent.contains("names nothing this flock has"), "{absent}");
     }
 
@@ -1383,18 +1417,98 @@ mod tests {
 
         let late = capture_logs(|| {
             let plan = crate::boot_order::plan_for(&to_start, &dogs, &[]);
-            warn_about_the_graph(&plan, &to_start, &to_start, &dogs, &[]);
+            warn_about_the_graph(&plan, &to_start, &to_start, &[], &dogs, &[]);
         });
         assert!(late.contains("starts after the whole flock"), "{late}");
 
         let promoted = capture_logs(|| {
             let plan = crate::boot_order::plan_for(&to_start, &dogs, &dogs);
-            warn_about_the_graph(&plan, &to_start, &to_start, &dogs, &dogs);
+            warn_about_the_graph(&plan, &to_start, &to_start, &[], &dogs, &dogs);
         });
         assert!(
             !promoted.contains("starts after the whole flock"),
             "{promoted}"
         );
+    }
+
+    /// fails if the unpromoted-dog warning reads the promotion list alone.
+    /// [`muster`] is also the handler for an operator's `Request::Muster`,
+    /// reached long after boot with both dog groups up, so a sheep waiting on
+    /// an unpromoted but LIVE dog would be warned about on every
+    /// `shep muster`. That is the same false-positive class `restorable`
+    /// closes for a sheep-to-sheep edge.
+    ///
+    /// Driven through `muster` rather than through `warn_about_the_graph`
+    /// with a synthetic list: the sibling cases all hand it their own
+    /// arguments, so none of them can see a flock at all. The control is the
+    /// same roll against a shepherd holding no dog, which is boot's case and
+    /// must still warn.
+    ///
+    /// `#[test]` with a `block_on` of its own, not `#[tokio::test]`:
+    /// `capture_logs` scopes its subscriber to a synchronous closure.
+    #[test]
+    fn a_dependency_on_an_unpromoted_dog_that_is_already_running_is_not_warned_about() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        // `metrics` is a dog this shepherd holds and does not promote, and
+        // `api` waits for it.
+        let dogs = ["metrics".to_string()];
+        let restore = |dog_running: bool| {
+            let dir = tempfile::tempdir().unwrap();
+            let paths = test_paths(&dir);
+            std::fs::create_dir_all(paths.snapshot.parent().unwrap()).unwrap();
+            let mut api = AppConfig::minimal("api", "./srv");
+            api.depends_on = vec!["metrics".to_string()];
+            let roll = FlockSnapshot {
+                version: SNAPSHOT_VERSION,
+                saved_at_ms: 0,
+                apps: vec![SavedApp {
+                    app: api,
+                    instances_running: 1,
+                }],
+            };
+            write_atomic(&paths.snapshot, &roll).unwrap();
+
+            capture_logs(|| {
+                rt.block_on(async {
+                    let (events, _rx) = crate::bus::test_bus(64);
+                    let handle = spawn_supervisor(
+                        ScriptedRunner::new(vec![
+                            ProcScript::never_exits(),
+                            ProcScript::never_exits(),
+                        ]),
+                        paths.clone(),
+                        events.clone(),
+                    );
+                    if dog_running {
+                        let dog = normalize(AppConfig::minimal("metrics", "./srv"))
+                            .expect("a minimal dog normalizes");
+                        handle
+                            .start_dog(dog, DogSource::BuiltIn)
+                            .await
+                            .expect("a scripted dog that never exits starts");
+                    }
+                    muster(
+                        &paths.snapshot,
+                        &FlockRegistry::new(),
+                        &handle,
+                        &events,
+                        &dogs,
+                        &[],
+                    )
+                    .await
+                    .expect("the roll parses");
+                });
+            })
+        };
+
+        let live = restore(true);
+        assert!(!live.contains("starts after the whole flock"), "{live}");
+
+        let at_boot = restore(false);
+        assert!(at_boot.contains("starts after the whole flock"), "{at_boot}");
     }
 
     /// fails if a promoted dog takes a saved sheep's name in silence. It
@@ -1430,7 +1544,7 @@ mod tests {
         let pair = vec![dependant("a", &["b"]), dependant("b", &["a"])];
         let plan = crate::boot_order::plan_for(&pair, &[], &[]);
 
-        let two = capture_logs(|| warn_about_the_graph(&plan, &pair, &pair, &[], &[]));
+        let two = capture_logs(|| warn_about_the_graph(&plan, &pair, &pair, &[], &[], &[]));
         assert!(
             !two.contains("every sheep a dependency cycle holds"),
             "{two}"
@@ -1442,7 +1556,7 @@ mod tests {
             dependant("c", &["b"]),
         ];
         let plan = crate::boot_order::plan_for(&trio, &[], &[]);
-        let three = capture_logs(|| warn_about_the_graph(&plan, &trio, &trio, &[], &[]));
+        let three = capture_logs(|| warn_about_the_graph(&plan, &trio, &trio, &[], &[], &[]));
         assert!(
             three.contains("every sheep a dependency cycle holds"),
             "{three}"
