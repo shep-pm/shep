@@ -117,6 +117,10 @@ pub struct RpcContext {
     /// reads: a later boot plan (rebuilt at shutdown, or for a staged start)
     /// needs the same spawn list `boot` used, and this is where it survives
     /// between requests.
+    ///
+    /// The `expect` goes when the staged restore reads it, and fails the
+    /// build if it is left behind once something does.
+    #[expect(dead_code, reason = "read by the staged restore, not yet written")]
     pub(crate) dog_names: Vec<String>,
     /// Which of [`Self::dog_names`] run before every sheep rather than
     /// after the flock, from `[daemon] boot_first_dogs`.
@@ -125,6 +129,7 @@ pub struct RpcContext {
     /// plan later needs to know which dogs were promoted, and this daemon
     /// has no other way to ask, since it never reads `shep.toml` itself. A
     /// name absent from [`Self::dog_names`] is inert here, not an error.
+    #[expect(dead_code, reason = "read by the staged restore, not yet written")]
     pub(crate) boot_first_dogs: Vec<String>,
     /// This daemon's `$SHEP_HOME` layout, for assembling a dog's app config.
     pub(crate) paths: ShepPaths,

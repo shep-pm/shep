@@ -628,9 +628,13 @@ boot_first_dogs = ["log-rotate"]
             &no_env,
         )
         .expect("boot_first_dogs is a known key");
-        assert_eq!(config.daemon.boot_first_dogs, vec!["log-rotate".to_string()]);
+        assert_eq!(
+            config.daemon.boot_first_dogs,
+            vec!["log-rotate".to_string()]
+        );
 
-        let bare = DaemonConfig::load(Some("[daemon]\n"), &no_env).expect("an empty section parses");
+        let bare =
+            DaemonConfig::load(Some("[daemon]\n"), &no_env).expect("an empty section parses");
         assert!(bare.daemon.boot_first_dogs.is_empty());
     }
 
