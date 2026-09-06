@@ -561,6 +561,34 @@ mod tests {
         );
     }
 
+    /// IR-41 for the on-disk shape, the way shep-core's mirror of it is
+    /// pinned. `CacheFile` is private, so `missing_debug_implementations`
+    /// never forces it to keep a `Debug` at all; this is what stops a later
+    /// edit from deriving one over the hand-written redaction.
+    #[test]
+    fn a_cache_file_debug_never_prints_a_value() {
+        let file = CacheFile {
+            version: CACHE_VERSION,
+            namespaces: BTreeMap::from([(
+                "vercel".to_string(),
+                BTreeMap::from([(
+                    "API_KEY".to_string(),
+                    BTreeMap::from([("production".to_string(), "sk_live".to_string())]),
+                )]),
+            )]),
+            pushed: BTreeMap::from([(
+                "vercel".to_string(),
+                BTreeSet::from(["production".to_string()]),
+            )]),
+        };
+        let rendered = format!("{file:?}");
+        assert_eq!(
+            rendered,
+            "CacheFile { version: 2, namespaces: 1, pushed: 1 }"
+        );
+        assert!(!rendered.contains("sk_live"));
+    }
+
     /// IR-41.
     #[test]
     fn debug_never_prints_a_value() {

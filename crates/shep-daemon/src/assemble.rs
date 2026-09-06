@@ -225,11 +225,19 @@ pub fn assemble(
 /// value holding a `{{secret:...}}` this view cannot resolve keeps its
 /// references as written instead of refusing.
 ///
-/// Never spawn what this returns. Its callers name a sheep's log files,
-/// preflight the program exec will find, or build a prober, and a refusal
-/// there would cost an operator the sheep itself: `shep add` exists to
-/// register a template whose secrets nobody has filled in yet, and an
-/// adoption that refused one would strand a running flock.
+/// Never spawn this sheep's own program from what this returns. Its callers
+/// name a sheep's log files, preflight the program exec will find, or build
+/// a prober, and a refusal there would cost an operator the sheep itself:
+/// `shep add` exists to register a template whose secrets nobody has filled
+/// in yet, and an adoption that refused one would strand a running flock.
+///
+/// A prober is the caller that does spawn something. `OsProber` runs an
+/// exec probe's own command in this spec's `cwd` with this spec's `env`, so
+/// a value that fell back reaches that command as the reference itself:
+/// `PW={{secret:KEY}}`, not the value and not an empty string. Only a sheep
+/// that already spawned is armed with a probe, so the fallback is reachable
+/// there just while the store has stopped answering something it answered
+/// at the spawn.
 ///
 /// The whole value falls back, not the one reference in it that missed, so a
 /// caller cannot read a half-resolved value as a resolved one.

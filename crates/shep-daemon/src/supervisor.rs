@@ -7269,9 +7269,10 @@ impl<R: ProcessRunner> Actor<R> {
         let supervisor = SupervisorHandle {
             tx: self.tx.clone(),
         };
-        // This spec is assembled for `spec_prober` alone and never spawned, so
-        // the unresolved arm costs nothing: extras are armed only for a
-        // process already running, which resolved its identity to start.
+        // Rebuilt for the prober's sake alone, as `spawn_verify_task` does:
+        // nothing spawns this sheep's own program from it. Extras are armed
+        // only for a process already running, which resolved its identity to
+        // start, so the unresolved arm below cannot be reached from here.
         let credentials = match slot.entry.credentials {
             SpawnIdentity::Resolved(creds) => creds,
             SpawnIdentity::Unresolved => None,
