@@ -1004,10 +1004,13 @@ mod tests {
                     );
                 }
                 if panes.feed {
+                    // `contains`, not `starts_with`: the `BLEATS` chip now
+                    // leads the line, ahead of the `bleats  ` text this
+                    // check has always looked for.
                     let positions: Vec<usize> = lines
                         .iter()
                         .enumerate()
-                        .filter(|(_, l)| l.starts_with("bleats  "))
+                        .filter(|(_, l)| l.contains("bleats  "))
                         .map(|(i, _)| i)
                         .collect();
                     assert_eq!(positions.len(), 1, "the feed header at {width}x{height}");
