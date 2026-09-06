@@ -4,8 +4,8 @@ expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep       6 in the flock
 host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores  …
-  ID    NAME      STATUS           CPU     UPTIME  
 ───────────────────────────────────────────────────
+  ID    NAME      STATUS           CPU     UPTIME  
    ██ FLOCK                                        
   2     api       online           7.1%    1h 28m  
   3     billing…  online           0.8%    1h 29m  

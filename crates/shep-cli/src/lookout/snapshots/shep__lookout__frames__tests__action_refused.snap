@@ -4,8 +4,8 @@ expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                        5 in the flock
 host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  ████░░░░░░ 12…
-  ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
+  ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
    ██ FLOCK                                                                                         
   3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m  
   4     cron               online           48233    0         -          0.1%    8.0M      1h 31m  

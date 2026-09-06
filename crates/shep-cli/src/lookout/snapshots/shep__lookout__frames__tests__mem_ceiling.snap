@@ -3,15 +3,15 @@ source: crates/shep-cli/src/lookout/frames.rs
 expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                                                                          3 in the flock
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  ████░░░░░░ 12.4G / 32.0G     flock cpu 5.0%        ▁   flock me…
-  ID    NAME        STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       UPTIME    FOLD        SMIT         
+                                                                                                                                                      
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  ████░░░░░░ 12.4G / 32.0G     flock cpu 5.0%        █   flock me…
 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                                                      
+  ID    NAME        STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       UPTIME    FOLD        SMIT         
    ██ FLOCK                                                                                                                                           
-  2     batch-wor…  online           48303    0         -          -              ▁  1.0%    ░░░░░░░░░░  64.0M     1h 28m    -           -            
-  0     web-headr…  online           48300    0         -          -              ▁  2.0%    ███░░░░░░░  128.0M    1h 25m    edge        -            
-  1     web-hot     online           48301    0         -          -              ▁  2.0%    █████████░  480.0M    1h 26m    edge        -            
-                                                                                                                                                      
-                                                                                                                                                      
+  2     batch-wor…  online           48303    0         -          -              ▅  1.0%    ░░░░░░░░░░  64.0M     1h 28m    -           -            
+  0     web-headr…  online           48300    0         -          -              █  2.0%    ███░░░░░░░  128.0M    1h 25m    edge        -            
+  1     web-hot     online           48301    0         -          -              █  2.0%    █████████░  480.0M    1h 26m    edge        -            
                                                                                                                                                       
                                                                                                                                                       
                                                                                                                                                       

@@ -1,12 +1,11 @@
 ---
 source: crates/shep-cli/src/lookout/frames.rs
-assertion_line: 2149
 expression: render_text(&buffer)
 ---
 shep lookout   /h… 6 in the flock
 host  load  ██░░░░░░░░ 2.31 4.10…
-  ID    NAME      STATUS         
 ─────────────────────────────────
+  ID    NAME      STATUS         
    ██ FLOCK                      
   2     api       online         
   3     billing…  online         

@@ -1,13 +1,14 @@
 ---
 source: crates/shep-cli/src/lookout/frames.rs
-assertion_line: 2149
 expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                                            6 in the flock
+                                                                                                                        
 the shepherd stopped answering: reconnecting (attempt 3)                                                                
 host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  ████░░░░░░ 12.4G / 32.0G     floc…
-  ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                        
+  ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
    ██ FLOCK                                                                                                             
   2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
@@ -15,8 +16,6 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 error
   5     metrics     online           48240    0         -          0.4%    11.0M     1h 32m    -           -            
   0     web         online           48211    0         -          3.4%    182.0M    1h 25m    edge        -            
   1     web         online           48212    0         -          2.9%    178.0M    1h 26m    edge        -            
-                                                                                                                        
-                                                                                                                        
                                                                                                                         
                                                                                                                         
                                                                                                                         

@@ -43,9 +43,11 @@ a frame of their own.
 All three panes at 120x30: the host strip under the title, the detail pane and the bleats feed under the table. The selected row is marked, painted where the palette has a ground to paint with and shown with a `>` where it does not, and every pane below the table describes that sheep, whose log row reads a real size off disk rather than the placeholder every other scene's fictional path leaves blank.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
+                                                                                                                        [0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     floc…[0m
-  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+                                                                                                                        [0m
+  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
@@ -53,8 +55,6 @@ All three panes at 120x30: the host strip under the title, the detail pane and t
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
   0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
   1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -78,9 +78,11 @@ All three panes at 120x30: the host strip under the title, the detail pane and t
 One errored, one waiting to restart, one stopped, with the selection parked on the errored sheep. Each row's own STATUS cell is the only coloured cell in that row, and EXIT carries why each of the three stopped: a code for the two that crashed, a signal name for the one shep stopped itself.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
+                                                                                                                        [0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     1 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     floc…[0m
-  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+                                                                                                                        [0m
+  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;166m[48;5;235merrored        [0m[48;5;235m  -        14        1          -       -         1h 18m    edge        -            [0m
   3     billing-r…  [0m[38;5;221mwaiting-restart[0m  -        3         1          -       -         1h 19m    -           -            [0m
@@ -88,8 +90,6 @@ One errored, one waiting to restart, one stopped, with the selection parked on t
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
   0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
   1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -113,17 +113,17 @@ One errored, one waiting to restart, one stopped, with the selection parked on t
 Three instances of one app under a group header, with the cursor parked on the header. The header sums their restarts, CPU and memory and takes the SHORTEST of their uptimes, so a group reads as time since the app was last disturbed rather than as the age of its luckiest instance. The detail pane repeats that rollup and says lambs are per-instance; the feed will not guess which instance to tail.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            4 in the flock[0m
+                                                                                                                        [0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     floc…[0m
-  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+                                                                                                                        [0m
+  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
   3     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 29m    edge        -            [0m
 [0m[48;5;235m [0m [0m[48;5;235m      web ×3      [0m[38;5;29m[48;5;235monline         [0m[48;5;235m           3                    9.4%    540.0M    15m       edge        -            [0m
   0      ↳ :0       [0m[38;5;29monline         [0m  48400    0         -          3.4%    182.0M    1h 25m                             [0m
   1      ↳ :1       [0m[38;5;29monline         [0m  48401    2         -          2.9%    178.0M    15m                                [0m
   2      ↳ :2       [0m[38;5;29monline         [0m  48402    1         -          3.1%    180.0M    2h 40m                             [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -148,9 +148,11 @@ app web ×3  [0m[38;5;29monline[0m   restarts 3   uptime 15m   cpu 9.4%   mem
 Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            5 in the flock[0m
+                                                                                                                        [0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     floc…[0m
-  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+                                                                                                                        [0m
+  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
   1     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 26m    edge        -            [0m
   2     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 28m    -           -            [0m
@@ -158,8 +160,6 @@ Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in 
   [0m[7m[38;5;74m ██ DOGS                                                                                                              [0m
   90    bark        [0m[38;5;29monline         [0m  90090    0         -          -       -         10m       -           -            [0m
 [0m[48;5;235m [0m [0m[48;5;235m91    log-rotate  [0m[38;5;221m[48;5;235msilent         [0m[48;5;235m  90091    0         -          -       -         10m       -           -            [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -183,15 +183,15 @@ Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in 
 Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a quarter of its limit and its MEM/CEIL gauge fills a little, web-hot sits at 94 percent of its own limit and its gauge fills almost all the way, and where there is colour the fuller gauge also switches to the butter warning role. batch-worker has no ceiling at all, so its gauge reads the same muted bar a stopped sheep's does. The cursor is parked on web-hot, the row this frame exists to show.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                          3 in the flock[0m
-[0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     flock cpu 5.0%        ▁   flock me…[0m
-  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       UPTIME    FOLD        SMIT         [0m
+                                                                                                                                                      [0m
+[0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     flock cpu 5.0%        █   flock me…[0m
 [0m[38;5;238m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+                                                                                                                                                      [0m
+  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                                                           [0m
-  2     batch-wor…  [0m[38;5;29monline         [0m  48303    0         -          -     [0m[38;5;29m         ▁[0m  1.0%    [0m[38;5;245m░░░░░░░░░░[0m  64.0M     1h 28m    -           -            [0m
-  0     web-headr…  [0m[38;5;29monline         [0m  48300    0         -          -     [0m[38;5;29m         ▁[0m  2.0%    [0m[38;5;74m███[0m[38;5;236m░░░░░░░[0m  128.0M    1h 25m    edge        -            [0m
-[0m[48;5;235m [0m [0m[48;5;235m1     web-hot     [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48301    0         -          -     [0m[38;5;29m[48;5;235m         ▁[0m[48;5;235m  2.0%    [0m[38;5;221m[48;5;235m█████████[0m[38;5;236m[48;5;235m░[0m[48;5;235m  480.0M    1h 26m    edge        -            [0m
-                                                                                                                                                      [0m
-                                                                                                                                                      [0m
+  2     batch-wor…  [0m[38;5;29monline         [0m  48303    0         -          -     [0m[38;5;29m         ▅[0m  1.0%    [0m[38;5;245m░░░░░░░░░░[0m  64.0M     1h 28m    -           -            [0m
+  0     web-headr…  [0m[38;5;29monline         [0m  48300    0         -          -     [0m[38;5;29m         █[0m  2.0%    [0m[38;5;74m███[0m[38;5;236m░░░░░░░[0m  128.0M    1h 25m    edge        -            [0m
+[0m[48;5;235m [0m [0m[48;5;235m1     web-hot     [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48301    0         -          -     [0m[38;5;29m[48;5;235m         █[0m[48;5;235m  2.0%    [0m[38;5;221m[48;5;235m█████████[0m[38;5;236m[48;5;235m░[0m[48;5;235m  480.0M    1h 26m    edge        -            [0m
                                                                                                                                                       [0m
                                                                                                                                                       [0m
                                                                                                                                                       [0m
@@ -218,15 +218,15 @@ Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a
 140 columns: wide enough for the CFG and CPU 20s columns beside the ones every other scene shows. web has two fields parked for the next spawn and reads !2, api has one field an operator set that its Flockfile does not declare and reads *1, and cron has neither and reads a bare -. The status bar's own legend explains both glyphs; this is where they actually appear in a cell. web's CPU history carries ten distinct samples, so its sparkline draws a shape over time rather than one static bar, and the cursor is parked on web so the detail pane's own cfg !2 pending cell is on screen too.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                3 in the flock[0m
-[0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 1 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     flock cpu 7.5% ▁▂▁▂▁▂▂▂ …[0m
-  [0m[38;5;245mID    NAME          STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM       UPTIME    FOLD        SMIT         [0m
+                                                                                                                                            [0m
+[0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 1 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     flock cpu 7.5% ▅█▅▇▄▆▇▆ …[0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+                                                                                                                                            [0m
+  [0m[38;5;245mID    NAME          STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                                                 [0m
-  11    api           [0m[38;5;29monline         [0m  48411    0         -          *1    [0m[38;5;29m▁▁▁▁▁▁▁▁▁▁[0m  3.0%    96.0M     1h 41m    edge        -            [0m
+  11    api           [0m[38;5;29monline         [0m  48411    0         -          *1    [0m[38;5;29m▄▄▄▄▄▄▄▄▄▄[0m  3.0%    96.0M     1h 41m    edge        -            [0m
   12    cron          [0m[38;5;29monline         [0m  48412    0         -          -     [0m[38;5;29m▁▁▁▁▁▁▁▁▁▁[0m  0.5%    8.0M      1h 43m    -           -            [0m
-[0m[48;5;235m [0m [0m[48;5;235m10    web           [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48410    0         -          !2    [0m[38;5;29m[48;5;235m▁▁▁▂▁▁▁▁▁▁[0m[48;5;235m  4.0%    64.0M     1h 40m    edge        -            [0m
-                                                                                                                                            [0m
-                                                                                                                                            [0m
+[0m[48;5;235m [0m [0m[48;5;235m10    web           [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48410    0         -          !2    [0m[38;5;29m[48;5;235m▂▆▃█▄▇▃▅▇▅[0m[48;5;235m  4.0%    64.0M     1h 40m    edge        -            [0m
                                                                                                                                             [0m
                                                                                                                                             [0m
                                                                                                                                             [0m
@@ -254,8 +254,8 @@ No sheep registered. Each of the three panes says why it is empty, and the three
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                        0 in the flock[0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12…[0m
-  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;245mthe flock is empty[0m                                                                                  [0m
                                                                                                     [0m
                                                                                                     [0m
@@ -287,8 +287,8 @@ No sheep registered. Each of the three panes says why it is empty, and the three
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep       6 in the flock[0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores  …[0m
-  [0m[38;5;245mID    NAME      STATUS           CPU     UPTIME  [0m
 [0m[38;5;238m───────────────────────────────────────────────────[0m
+  [0m[38;5;245mID    NAME      STATUS           CPU     UPTIME  [0m
   [0m[7m[38;5;29m ██ FLOCK                                        [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api       [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  7.1%    1h 28m  [0m
   3     billing…  [0m[38;5;29monline         [0m  0.8%    1h 29m  [0m
@@ -318,10 +318,12 @@ need 33x6                   [0m
 The shepherd stopped answering. Five attempts over about eight seconds before this becomes the next frame. Every pane below the table keeps describing the selected sheep from the last listing.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
+                                                                                                                        [0m
 [0m[38;5;221mthe shepherd stopped answering: reconnecting (attempt 3)[0m                                                                [0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     floc…[0m
-  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+                                                                                                                        [0m
+  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
@@ -329,8 +331,6 @@ The shepherd stopped answering. Five attempts over about eight seconds before th
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
   0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
   1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -353,10 +353,12 @@ The shepherd stopped answering. Five attempts over about eight seconds before th
 The ladder ran out. Last known values stay, the uptime clock has stopped, and so has the host strip: one line ticking over on a frozen screen is a contradiction on the same frame.
 
 [0m[7m[38;5;166mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
+                                                                                                                        [0m
 [0m[38;5;166mthe shepherd has died: these values are frozen as of 2026-08-14 14:32:07[0m                                                [0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     1 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     floc…[0m
-  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+                                                                                                                        [0m
+  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;166m[48;5;235merrored        [0m[48;5;235m  -        14        1          -       -         1h 18m    edge        -            [0m
   3     billing-r…  [0m[38;5;221mwaiting-restart[0m  -        3         1          -       -         1h 19m    -           -            [0m
@@ -364,8 +366,6 @@ The ladder ran out. Last known values stay, the uptime clock has stopped, and so
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 22m    -           -            [0m
   0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 15m    edge        -            [0m
   1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 16m    edge        -            [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -388,9 +388,11 @@ The ladder ran out. Last known values stay, the uptime clock has stopped, and so
 `x` with actions gated off. The refusal is literal, nothing about damage gets charming, and the panes below carry on.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
+                                                                                                                        [0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     floc…[0m
-  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+                                                                                                                        [0m
+  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
@@ -398,8 +400,6 @@ The ladder ran out. Last known values stay, the uptime clock has stopped, and so
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
   0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
   1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -424,8 +424,8 @@ Mid-type at 100x14. The table has already narrowed to the two sheep whose names 
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                   2 of 6 in the flock[0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12…[0m
-  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                         [0m
 [0m[48;5;235m [0m [0m[48;5;235m0     web                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48211    0         -          3.4%    182.0M    1h 25m  [0m
   1     web                [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m  [0m
@@ -443,8 +443,8 @@ The same query applied. The box is closed, the table is still narrowed, and the 
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                   2 of 6 in the flock[0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12…[0m
-  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                         [0m
 [0m[48;5;235m [0m [0m[48;5;235m0     web                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48211    0         -          3.4%    182.0M    1h 25m  [0m
   1     web                [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m  [0m
@@ -462,8 +462,8 @@ A query nothing matches. The table names the query rather than claiming the floc
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                   0 of 6 in the flock[0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12…[0m
-  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;245mno sheep's name contains "zzz"[0m                                                                      [0m
                                                                                                     [0m
                                                                                                     [0m
@@ -481,8 +481,8 @@ A query nothing matches. The table names the query rather than claiming the floc
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     floc…[0m
-  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
@@ -505,8 +505,8 @@ A query nothing matches. The table names the query rather than claiming the floc
 12 rows: no optional panes at all. This is 12a's frame, and the only thing that changed is the two-column gutter that marks the selection, painted where there is a ground to paint with and shown with `>` where there is not.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
-  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
@@ -522,9 +522,11 @@ A query nothing matches. The table names the query rather than claiming the floc
 The feed under a burst: 3.8 megabytes were never read and some hundreds of lines were read and dropped. The pane counts both, and counts them separately, because it knows the second exactly and cannot know how many lines are in the first.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
+                                                                                                                        [0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     floc…[0m
-  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+                                                                                                                        [0m
+  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
@@ -532,8 +534,6 @@ The feed under a burst: 3.8 megabytes were never read and some hundreds of lines
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
   0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
   1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -557,9 +557,11 @@ The feed under a burst: 3.8 megabytes were never read and some hundreds of lines
 The selected sheep has never written a log in this $SHEP_HOME. The feed names that cause rather than sitting blank.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
+                                                                                                                        [0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     floc…[0m
-  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+                                                                                                                        [0m
+  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
@@ -567,8 +569,6 @@ The selected sheep has never written a log in this $SHEP_HOME. The feed names th
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
   0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
   1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -593,8 +593,8 @@ The selected sheep has never written a log in this $SHEP_HOME. The feed names th
 
 [0m[7m[38;5;29mshep lookout   /h… 6 in the flock[0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10…[0m
-  [0m[38;5;245mID    NAME      STATUS         [0m
 [0m[38;5;238m─────────────────────────────────[0m
+  [0m[38;5;245mID    NAME      STATUS         [0m
   [0m[7m[38;5;29m ██ FLOCK                      [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api       [0m[38;5;29m[48;5;235monline         [0m
   3     billing…  [0m[38;5;29monline         [0m
@@ -623,9 +623,11 @@ The selected sheep has never written a log in this $SHEP_HOME. The feed names th
 `sysinfo` reports this platform unsupported. The strip says so and keeps the flock's own totals, which lookout can always compute.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
-[0m[38;5;245mhost  usage is not available on this platform   0 errored · 0 parked   flock cpu 14.7%        ▂   flock mem 716.0M      [0m
-  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
+                                                                                                                        [0m
+[0m[38;5;245mhost  usage is not available on this platform   0 errored · 0 parked   flock cpu 14.7%        █   flock mem 716.0M      [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+                                                                                                                        [0m
+  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
@@ -633,8 +635,6 @@ The selected sheep has never written a log in this $SHEP_HOME. The feed names th
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
   0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
   1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -658,9 +658,11 @@ The selected sheep has never written a log in this $SHEP_HOME. The feed names th
 The detail pane with a lamb list: how many descendants the shepherd's walk found, how old that reading is, and each lamb's pid and executable name. The stamp sits before the list so a narrow terminal truncates lambs rather than the caveat.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
+                                                                                                                        [0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     floc…[0m
-  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+                                                                                                                        [0m
+  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
@@ -668,8 +670,6 @@ The detail pane with a lamb list: how many descendants the shepherd's walk found
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
   0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
   1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -693,9 +693,11 @@ The detail pane with a lamb list: how many descendants the shepherd's walk found
 The same pane on a stopped sheep. The shepherd had no pid to walk from and left the field unset rather than empty, and the line says which of the two it is looking at rather than reporting none found.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
+                                                                                                                        [0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     1 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     floc…[0m
-  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+                                                                                                                        [0m
+  [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
   2     api         [0m[38;5;166merrored        [0m  -        14        1          -       -         1h 18m    edge        -            [0m
   3     billing-r…  [0m[38;5;221mwaiting-restart[0m  -        3         1          -       -         1h 19m    -           -            [0m
@@ -703,8 +705,6 @@ The same pane on a stopped sheep. The shepherd had no pid to walk from and left 
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
   0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
   1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -729,8 +729,8 @@ The same pane on a stopped sheep. The shepherd had no pid to walk from and left 
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                        6 in the flock[0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12…[0m
-  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                         [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m  [0m
   3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m  [0m
@@ -748,8 +748,8 @@ Enter pressed. The request is out and nothing on the table has changed, because 
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                        6 in the flock[0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12…[0m
-  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                         [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m  [0m
   3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m  [0m
@@ -767,8 +767,8 @@ The shepherd refused while the request was out, and its own sentence is forwarde
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                        5 in the flock[0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12…[0m
-  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                         [0m
 [0m[48;5;235m [0m [0m[48;5;235m3     billing-reconcil…  [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48230    0         -          0.8%    96.0M     1h 29m  [0m
   4     cron               [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m  [0m
@@ -786,8 +786,8 @@ The shepherd answered. The bar says what it did, in the non-grave style a refusa
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                        6 in the flock[0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12…[0m
-  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                         [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48299    2         -          7.1%    241.0M    1h 18m  [0m
   3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m  [0m
@@ -806,8 +806,8 @@ An action key pressed while the link is coming back. The refusal names the same 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                        6 in the flock[0m
 [0m[38;5;221mthe shepherd stopped answering: reconnecting (attempt 3)[0m                                            [0m
 [0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12…[0m
-  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                         [0m
 [0m[48;5;235m [0m [0m[48;5;235m2     api                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m  [0m
   3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m  [0m
@@ -823,6 +823,7 @@ An action key pressed while the link is coming back. The refusal names the same 
 The settings screen on a fresh $SHEP_HOME: shep.toml holds only [interpreters], so every scalar's SOURCE column reads `the default` and its VALUE is the compiled fallback. The state most operators open this screen in.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
+                                                                                                                        [0m
 [0m[38;5;245m  [daemon][0m                                                                                                              [0m
 > log_level        warn                            the default  needs shep daemon reload                                [0m
   log_json         false                           the default  needs shep daemon reload                                [0m
@@ -850,7 +851,6 @@ The settings screen on a fresh $SHEP_HOME: shep.toml holds only [interpreters], 
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
-                                                                                                                        [0m
 [0m[38;5;221m[48;5;235mesc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit              [0m[38;5;245m[48;5;235m control enabled[0m
 
 
@@ -858,6 +858,7 @@ The settings screen on a fresh $SHEP_HOME: shep.toml holds only [interpreters], 
 The settings screen with some scalars declared. `shep.toml` and `the default` sit side by side in the SOURCE column, so what the operator wrote and what shep assumes are both visible at once.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
+                                                                                                                        [0m
 [0m[38;5;245m  [daemon][0m                                                                                                              [0m
 > log_level        warn                            shep.toml    needs shep daemon reload                                [0m
   log_json         false                           the default  needs shep daemon reload                                [0m
@@ -885,7 +886,6 @@ The settings screen with some scalars declared. `shep.toml` and `the default` si
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
-                                                                                                                        [0m
 [0m[38;5;221m[48;5;235mesc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit              [0m[38;5;245m[48;5;235m control enabled[0m
 
 
@@ -893,6 +893,7 @@ The settings screen with some scalars declared. `shep.toml` and `the default` si
 A [daemon] confirm armed on log_level, naming the variable and the flag it cannot see: SHEP_LOG_LEVEL and --log-level, and the shep daemon reload the edit needs.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                                        6 in the flock[0m
+                                                                                                                                                                                    [0m
 [0m[38;5;245m  [daemon][0m                                                                                                                                                                          [0m
 > log_level        warn                            shep.toml    needs shep daemon reload                                                                                            [0m
   log_json         false                           the default  needs shep daemon reload                                                                                            [0m
@@ -920,7 +921,6 @@ A [daemon] confirm armed on log_level, naming the variable and the flag it canno
                                                                                                                                                                                     [0m
                                                                                                                                                                                     [0m
                                                                                                                                                                                     [0m
-                                                                                                                                                                                    [0m
 [0m[38;5;221m[48;5;235mset log_level to info? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level  enter confirms, any other key ca…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
@@ -928,6 +928,7 @@ A [daemon] confirm armed on log_level, naming the variable and the flag it canno
 The socket editor open mid-path. The status bar names the field being typed, not the dashboard's own filter box, which is what it showed here before the fix this frame now pins.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
+                                                                                                                        [0m
 [0m[38;5;245m  [daemon][0m                                                                                                              [0m
   log_level        warn                            shep.toml    needs shep daemon reload                                [0m
   log_json         false                           the default  needs shep daemon reload                                [0m
@@ -955,7 +956,6 @@ The socket editor open mid-path. The status bar names the field being typed, not
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
-                                                                                                                        [0m
 [0m[38;5;221m[48;5;235mediting socket  /home/ada/.shep/run/s▏   enter applies   esc cancels                                    [0m[38;5;245m[48;5;235m control enabled[0m
 
 
@@ -963,6 +963,7 @@ The socket editor open mid-path. The status bar names the field being typed, not
 The dogs table showing the drift it exists to reveal: otel running while disabled in the file, ledger enabled and absent, and bark enabled, running, and silent.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            2 in the flock[0m
+                                                                                                                        [0m
 [0m[38;5;245m  [daemon][0m                                                                                                              [0m
 > log_level        warn                            shep.toml    needs shep daemon reload                                [0m
   log_json         false                           the default  needs shep daemon reload                                [0m
@@ -981,7 +982,6 @@ The dogs table showing the drift it exists to reveal: otel running while disable
   otel                                                                no       /usr/local/bin/shep-otel  online         [0m
   ledger                                                              yes      /opt/ledger/bin/dog       not running    [0m
   bark                                                                yes      built-in                  silent         [0m
-                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m

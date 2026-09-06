@@ -49,6 +49,16 @@ pub const MIN_TERM_WIDTH: u16 = flock::MIN_WIDTH + flock::GUTTER;
 const CHROME_ROWS: u16 = 4;
 
 /// The host strip is one line.
+/// The shortest terminal that gets the design's two blank chrome rows, one
+/// under the title band and one under the rule.
+///
+/// Not a taste threshold. `the_flock_table_keeps_the_middle_of_the_screen`
+/// pins the table at five data rows on a 24-row terminal, and at that height
+/// there is exactly no slack: spending two rows on air there takes the table
+/// to three, which is the pane stopping being the point of the screen. Six
+/// rows above that floor is where the air costs nothing that matters.
+const ROOMY_HEIGHT: u16 = 30;
+
 const HOST_ROWS: u16 = 1;
 
 /// The detail pane: one rule and four lines.
@@ -199,6 +209,14 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
 
     buffer.set_line(area.x, y, &title_band(app, width), width);
     y += 1;
+    // A blank row under the title, and another under the rule further down.
+    // Both come from the design's own row allocation, and both are spent
+    // only where there is height to spare: on a short terminal every row
+    // belongs to the table.
+    let roomy = height >= ROOMY_HEIGHT;
+    if roomy {
+        y += 1;
+    }
 
     // The settings screen owns the whole body between the title and the
     // status bar. That is a swap, not an overlay: the banner, the host
@@ -243,16 +261,24 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     // width >= MIN_TERM_WIDTH, checked above, so this never underflows.
     let table_width = width - flock::GUTTER;
     let columns = flock::columns_for(table_width);
+    // The rule sits between the host strip and the table, not between the
+    // headers and their own rows: it separates two regions, and a rule
+    // directly under the headers reads as underlining them instead.
+    //
+    // Full width, unlike the headers, which start after the gutter: it is
+    // chrome, and a rule that stopped two columns short of the left edge
+    // would look like a rendering bug.
+    buffer.set_line(area.x, y, &status::rule_line(palette.line(), width), width);
+    y += 1;
+    if roomy {
+        y += 1;
+    }
     buffer.set_line(
         area.x + flock::GUTTER,
         y,
         &flock::header_line(columns, table_width, palette.muted()),
         table_width,
     );
-    y += 1;
-    // The rule stays full width: it is chrome, and a rule that stopped two
-    // columns short of the left edge would look like a rendering bug.
-    buffer.set_line(area.x, y, &status::rule_line(palette.line(), width), width);
     y += 1;
 
     // The bottom stack, laid out upward from the status bar: whichever of
@@ -1049,6 +1075,27 @@ mod tests {
     /// Whatever else is on screen, the table gets the remainder, and at the
     /// tier where all three panes are up it still has room for more than a
     /// couple of rows.
+    /// The two blank chrome rows are spent only above [`ROOMY_HEIGHT`].
+    ///
+    /// Guards the trade the constant exists for: air on a tall terminal,
+    /// none on a short one where every row is a sheep you cannot see.
+    #[test]
+    fn a_short_terminal_spends_no_rows_on_air() {
+        let app = fixtures::full_app();
+        let short = draw_to(&app, 120, ROOMY_HEIGHT - 1);
+        let tall = draw_to(&app, 120, ROOMY_HEIGHT);
+
+        let blanks = |frame: &str| {
+            frame
+                .lines()
+                .take(6)
+                .filter(|line| line.trim().is_empty())
+                .count()
+        };
+        assert_eq!(blanks(&short), 0, "short:\n{short}");
+        assert_eq!(blanks(&tall), 2, "tall:\n{tall}");
+    }
+
     #[test]
     fn the_flock_table_keeps_the_middle_of_the_screen() {
         let app = fixtures::full_app(); // twelve sheep

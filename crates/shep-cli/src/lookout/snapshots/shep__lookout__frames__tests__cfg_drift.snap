@@ -3,15 +3,15 @@ source: crates/shep-cli/src/lookout/frames.rs
 expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                                                                3 in the flock
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 errored · 1 parked   host mem  ████░░░░░░ 12.4G / 32.0G     flock cpu 7.5% ▁▂▁▂▁▂▂▂ …
-  ID    NAME          STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM       UPTIME    FOLD        SMIT         
+                                                                                                                                            
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 errored · 1 parked   host mem  ████░░░░░░ 12.4G / 32.0G     flock cpu 7.5% ▅█▅▇▄▆▇▆ …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                                            
+  ID    NAME          STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM       UPTIME    FOLD        SMIT         
    ██ FLOCK                                                                                                                                 
-  11    api           online           48411    0         -          *1    ▁▁▁▁▁▁▁▁▁▁  3.0%    96.0M     1h 41m    edge        -            
+  11    api           online           48411    0         -          *1    ▄▄▄▄▄▄▄▄▄▄  3.0%    96.0M     1h 41m    edge        -            
   12    cron          online           48412    0         -          -     ▁▁▁▁▁▁▁▁▁▁  0.5%    8.0M      1h 43m    -           -            
-  10    web           online           48410    0         -          !2    ▁▁▁▂▁▁▁▁▁▁  4.0%    64.0M     1h 40m    edge        -            
-                                                                                                                                            
-                                                                                                                                            
+  10    web           online           48410    0         -          !2    ▂▆▃█▄▇▃▅▇▅  4.0%    64.0M     1h 40m    edge        -            
                                                                                                                                             
                                                                                                                                             
                                                                                                                                             
