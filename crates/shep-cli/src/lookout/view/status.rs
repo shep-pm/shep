@@ -7,7 +7,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use super::super::app::{
-    ActionState, App, Control, InputMode, Link, RowKey, Settings, SettingsPrompt,
+    ActionState, App, Control, InputMode, Link, RowKey, Settings, SettingsPrompt, retrying_sentence,
 };
 use super::super::pane::{ConfigPane, PanePending};
 use super::flock::fit;
@@ -49,7 +49,7 @@ pub fn banner_line(app: &App) -> Option<Line<'static>> {
     match app.link() {
         Link::Live => None,
         Link::Retrying { attempt } => Some(Line::from(Span::styled(
-            format!("the shepherd stopped answering: reconnecting (attempt {attempt})"),
+            retrying_sentence(*attempt),
             palette.attention(),
         ))),
         Link::Lost { at_local } => Some(Line::from(Span::styled(
