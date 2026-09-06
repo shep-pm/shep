@@ -269,10 +269,38 @@ in Rust, and every CI leg would have been green while it did.
 ## Testing
 
 **Fixtures are the shared floor.** Every library's suite decodes and
-re-encodes the same corpus of JSON lines and asserts byte equality where the
-daemon's own tests assert it. That is what makes four independent
-implementations agree before the generator exists to make them agree by
-construction.
+re-encodes the same corpus of JSON lines. That is what makes four
+independent implementations agree before the generator exists to make them
+agree by construction.
+
+**Byte equality holds on decode and not on encode, which was measured rather
+than assumed.** The same values serialize differently in the four standard
+libraries, 2026-09-06:
+
+| value | Rust | Go | Node | Python |
+|---|---|---|---|---|
+| `42.0` as a float | `42.0` | `42` | `42` | `42.0` |
+| `a<b&c` in a string | verbatim | `a\u003cb\u0026c` | verbatim | verbatim |
+
+Two of the four disagree with the committed fixture on a whole-numbered
+float, and Go alone escapes HTML by default. Neither difference is a wire
+problem, since every decoder accepts both forms, but both defeat a
+byte-for-byte encode assertion.
+
+So the floor is exact in one direction and semantic in the other. Decoding a
+fixture must produce exactly the expected field values. Re-encoding is
+compared by decoding both the library's output and the fixture and comparing
+those, which stays strict about key presence, key names and string values,
+and is tolerant only of number formatting. Go additionally turns HTML
+escaping off, so a reply body carrying angle brackets survives verbatim the
+way it does everywhere else.
+
+**A field that is optional on the wire and has a meaningful zero needs a
+type that can hold absent.** Go's `omitempty` drops a metric of 0 entirely,
+producing a message with no `value` key. The corpus carried no zero-valued
+metric until this was found, so all seven fixtures passed while that bug was
+live. There is a zero-valued metric fixture now, and every library has to
+decode and re-encode it.
 
 **Above the fixtures, each library is driven against a real socketpair**
 with a fake shepherd on the other end, not against a mocked transport. The
