@@ -2310,6 +2310,73 @@ mod tests {
         );
     }
 
+    /// Pins teardown's step 5, the `shutdown` backstop, which nothing else
+    /// does: deleting that line leaves every other test in this crate green.
+    ///
+    /// A dog is what makes it observable. The reverse walk skips dogs
+    /// deliberately, so monitoring outlives what it monitors, which leaves the
+    /// backstop as the only thing in teardown that can stop one. The same
+    /// call is what the step's own comment promises for a sheep the walk
+    /// misses.
+    #[tokio::test]
+    async fn a_dog_is_stopped_by_the_time_run_returns() {
+        // fails if teardown loses its kill-ladder backstop, which would leave
+        // every dog running after a clean shutdown and a sheep the reverse
+        // walk missed alive with nothing supervising it
+        let _guard = SIGNAL_TEST_LOCK.lock().await;
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(&dir);
+        init_dirs(&paths).unwrap();
+
+        let daemon = boot(
+            ScriptedRunner::new(vec![ProcScript::never_exits()]),
+            paths.clone(),
+            BootOptions {
+                dogs: vec![DogSpec {
+                    name: "metrics".to_string(),
+                    source: DogSource::BuiltIn,
+                }],
+                ..BootOptions::default()
+            },
+        )
+        .await
+        .unwrap();
+        let ctx = daemon.context();
+        let flock = ctx.supervisor.list_checked().await.unwrap();
+        assert_eq!(
+            flock.len(),
+            1,
+            "the dog has to be up for its stop to mean anything: {flock:?}"
+        );
+
+        // Subscribed before `run`, since the actor is gone by the time it
+        // returns and the flock cannot be read back.
+        let mut rx = ctx.events.subscribe();
+        let run = tokio::spawn(daemon.run());
+        ctx.shutdown();
+        tokio::time::timeout(Duration::from_secs(5), run)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+
+        let mut stops = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            if let BusEvent::Process {
+                event: ProcessEventKind::Stop,
+                info,
+                ..
+            } = &*event
+            {
+                stops.push(info.name.clone());
+            }
+        }
+        assert!(
+            stops.iter().any(|name| name == "metrics"),
+            "the dog must be stopped before run() returns; stops were {stops:?}"
+        );
+    }
+
     /// A metrics dog that starts first answers for an empty flock for the
     /// whole restore window, and a bark dog alerts on every restored sheep.
     /// [`ScriptedRunner`] hands out pids as `FIRST_SCRIPTED_PID + index`, so
