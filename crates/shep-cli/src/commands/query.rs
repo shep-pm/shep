@@ -14,7 +14,9 @@ use std::collections::BTreeSet;
 use shep_client::Client;
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{ProcessInfo, Request, Response, SelectorSpec};
-use shep_core::secrets::{self, Resolution, SecretRef, SecretView};
+#[cfg(test)]
+use shep_core::secrets::Resolution;
+use shep_core::secrets::{self, SecretRef, SecretView};
 use shep_core::status::ProcStatus;
 use shep_daemon::snapshot::FlockSnapshot;
 
@@ -75,8 +77,9 @@ where
 /// envelope reports.
 ///
 /// `include_secrets` alone gates [`gather_secrets`]: `fold` passes `false`
-/// and stays byte-identical to before this section existed, since it names
-/// no sheep this feature was built for.
+/// and stays byte-identical to before this section existed, because `fold`
+/// is a group view across a selector's sheep, not the single-sheep
+/// diagnostic this feature was built for.
 ///
 /// Not routed through [`request_and_render`]: `emit_described` renders one
 /// `Vec<ProcessInfo>` into two tables, which no single [`Render`] impl can
@@ -91,10 +94,10 @@ async fn describe_selector(
 ) -> ExitCode {
     match client.request(Request::Describe { selector }).await {
         Ok(Response::Described(procs)) => {
-            let (secrets, secrets_text) = if include_secrets {
+            let secrets = if include_secrets {
                 gather_secrets(paths, &procs)
             } else {
-                (Vec::new(), String::new())
+                Vec::new()
             };
             let result = emit_described(
                 &mut *streams.out,
@@ -103,14 +106,7 @@ async fn describe_selector(
                 procs,
                 streams.style,
                 &secrets,
-            )
-            .and_then(|()| {
-                if streams.fmt == Format::Table && !secrets_text.is_empty() {
-                    write!(streams.out, "{secrets_text}")
-                } else {
-                    Ok(())
-                }
-            });
+            );
             write_outcome(result)
         }
         Ok(_) => {
@@ -124,14 +120,19 @@ async fn describe_selector(
     }
 }
 
-/// Renders one sheep's secret references for `Format::Table`: one line per
-/// reference, the reference as written, the environment it resolved in, and
-/// a verdict. Never a value: `Resolution::Found`'s payload is read only to
-/// tell it apart from a miss.
+/// Renders one sheep's secret references the way `describe`'s table form
+/// would: one line per reference, the reference as written, the environment
+/// it resolved in, and a verdict. Never a value: `Resolution::Found`'s
+/// payload is read only to tell it apart from a miss.
 ///
 /// The verdict word comes from [`SecretStatus::from_resolution`], the same
 /// classifier [`gather_secrets`] uses for the JSON form, so the two can
 /// never name a different verdict for the same reference.
+///
+/// Test-only: `emit_described` renders the actual table now, so this exists
+/// to exercise [`SecretStatus::from_resolution`]'s three verdicts in
+/// isolation, without a fake daemon connection.
+#[cfg(test)]
 fn render_describe_secrets(entries: &[(&str, &str, Resolution<'_>)]) -> String {
     let mut rendered = String::new();
     for (reference, environment, resolution) in entries {
@@ -142,9 +143,8 @@ fn render_describe_secrets(entries: &[(&str, &str, Resolution<'_>)]) -> String {
 }
 
 /// `describe`'s secrets section for `procs`, once per distinct sheep name:
-/// the JSON-safe rows [`emit_described`] serializes beside `data`, and the
-/// same data as [`render_describe_secrets`]'s table text (one block per
-/// name, each already carrying its own "Secrets for `<name>`:" heading).
+/// the JSON-safe rows [`emit_described`] both serializes beside `data` and
+/// renders as the table's own "Secrets for `<name>`:" block.
 ///
 /// Reads three local files rather than asking the shepherd: the muster roll
 /// for each name's [`shep_core::config::AppConfig`] (which can trail a
@@ -152,21 +152,20 @@ fn render_describe_secrets(entries: &[(&str, &str, Resolution<'_>)]) -> String {
 /// `shep_daemon::snapshot`'s debounce window), the operator's own secret
 /// store, and the provider cache [`secrets::provider_namespaces_on_disk`]
 /// reads. A namespace whose provider pushed with `persist = false` never
-/// reaches that cache, so this can call a namespace `provider_not_ready`
-/// when the running shepherd already has it in memory; only the shepherd
-/// itself can answer that half.
+/// reaches that cache, so this can call a namespace uncached when the
+/// running shepherd already has it in memory; only the shepherd itself can
+/// answer that half.
 ///
 /// A name the roll does not know, or one with no `{{secret:...}}` at all,
 /// contributes nothing: this reports references that exist, not a claim
 /// that every sheep has one.
-fn gather_secrets(paths: &ShepPaths, procs: &[ProcessInfo]) -> (Vec<DescribedSecret>, String) {
+fn gather_secrets(paths: &ShepPaths, procs: &[ProcessInfo]) -> Vec<DescribedSecret> {
     let roll = read_roll(paths);
     let store = secrets::all(&paths.secrets).unwrap_or_default();
     let namespaces = secrets::provider_namespaces_on_disk(&paths.secrets_cache);
     let host_environment = daemon_config(paths).daemon.environment;
 
     let mut json = Vec::new();
-    let mut text = String::new();
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     for proc in procs {
         if !seen.insert(proc.name.as_str()) {
@@ -189,7 +188,6 @@ fn gather_secrets(paths: &ShepPaths, procs: &[ProcessInfo]) -> (Vec<DescribedSec
             .unwrap_or_else(|| host_environment.clone());
         let view = SecretView::new(environment.clone(), store.clone(), namespaces.clone());
 
-        let mut entries: Vec<(&str, &str, Resolution<'_>)> = Vec::new();
         for reference in &refs {
             let Some(parsed) = SecretRef::parse(reference) else {
                 continue;
@@ -202,14 +200,9 @@ fn gather_secrets(paths: &ShepPaths, procs: &[ProcessInfo]) -> (Vec<DescribedSec
                 environment: environment.clone(),
                 status,
             });
-            entries.push((reference.as_str(), environment.as_str(), resolution));
-        }
-        if !entries.is_empty() {
-            text.push_str(&format!("\nSecrets for {}:\n", proc.name));
-            text.push_str(&render_describe_secrets(&entries));
         }
     }
-    (json, text)
+    json
 }
 
 /// Whatever `flock.json` currently holds, or nothing when it is missing or
@@ -856,7 +849,11 @@ mod tests {
         let (code, _paths, out) = describe_with_a_seeded_web(Format::Table).await;
         assert_eq!(code, ExitCode::Success);
         let rendered = String::from_utf8(out).unwrap();
-        assert!(rendered.contains("Secrets for web"), "{rendered}");
+        // `emit_described` places this block once, right after Overridden.
+        // A second renderer writing the same block again is the exact bug
+        // this pins: `.contains()` alone is true whether it printed once
+        // or twice.
+        assert_eq!(rendered.matches("Secrets for web").count(), 1, "{rendered}");
         assert!(
             rendered.contains("DB_PASSWORD (production): resolved"),
             "{rendered}"
