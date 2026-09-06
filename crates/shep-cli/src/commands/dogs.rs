@@ -2314,17 +2314,31 @@ mod tests {
     /// How long a fork the probe left behind would go on running.
     const PROBE_FORK_LIFETIME_SECS: u64 = 30;
 
-    /// Whether `pid` left the process table inside `budget`.
+    /// How long [`waited_out`] gives a SIGKILLed fork to leave the process
+    /// table.
+    ///
+    /// The signal is unblockable, so this covers the reaping parent's
+    /// scheduling and nothing else. Five seconds against the sub-millisecond
+    /// it takes idle, sized for a loaded runner rather than for this machine.
+    const FORK_EXIT_DEADLINE: Duration = Duration::from_secs(5);
+
+    /// Gap between [`FORK_EXIT_DEADLINE`]'s retries, as
+    /// `cli_e2e.rs`'s own pid guard does it.
+    const FORK_EXIT_POLL_INTERVAL: Duration = Duration::from_millis(5);
+
+    /// Whether `pid` left the process table inside [`FORK_EXIT_DEADLINE`].
     ///
     /// A fork the probe abandons is reparented to init, which reaps it, so
-    /// `ESRCH` is what being gone looks like from here.
-    fn waited_out(pid: nix::unistd::Pid, budget: Duration) -> bool {
+    /// `ESRCH` is what being gone looks like from here. Polled rather than
+    /// awaited: the fork is nobody's child in this process, so there is no
+    /// exit status to wait on.
+    fn waited_out(pid: nix::unistd::Pid) -> bool {
         let started = Instant::now();
-        while started.elapsed() < budget {
+        while started.elapsed() < FORK_EXIT_DEADLINE {
             if nix::sys::signal::kill(pid, None).is_err() {
                 return true;
             }
-            std::thread::sleep(Duration::from_millis(5));
+            std::thread::sleep(FORK_EXIT_POLL_INTERVAL);
         }
         false
     }
@@ -2368,7 +2382,7 @@ mod tests {
                 .unwrap(),
         );
 
-        let gone = waited_out(pid, Duration::from_secs(5));
+        let gone = waited_out(pid);
         // Before the assertion: a red run must not leave the fork behind for
         // the rest of its lifetime.
         if !gone {
