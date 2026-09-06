@@ -19,7 +19,6 @@ use shep_core::status::ProcStatus;
 use tokio::sync::broadcast::{self, error::RecvError};
 
 use crate::bus::{Bus, SharedEvent};
-use crate::snapshot::FlockRegistry;
 use crate::supervisor::{BatchPolicy, SupervisorError, SupervisorHandle};
 
 /// How much longer than the stage's own longest `listen_timeout` the driver
@@ -496,8 +495,14 @@ pub(crate) async fn stop_in_reverse(plan: &BootPlan, supervisor: &SupervisorHand
     }
 }
 
-/// Stops every sheep the registry holds, last stage first, leaving the dogs
+/// Stops every sheep `edges` names, last stage first, leaving the dogs
 /// running.
+///
+/// The edges are read by the caller rather than here, because the one caller
+/// there is reads them before it can call: `shep dev` clears the registry
+/// ahead of the final roll, so a walk that read it at this point would plan
+/// nothing and that session would get no ordered teardown at all. A name the
+/// flock no longer holds costs a `NotFound` warning and nothing else.
 ///
 /// `dogs` names the dogs this shepherd spawned at boot, and each one is
 /// dropped from the plan before it is built. [`stop_in_reverse`] stops
@@ -517,20 +522,6 @@ pub(crate) async fn stop_in_reverse(plan: &BootPlan, supervisor: &SupervisorHand
 ///
 /// A sheep sharing a dog's name is dropped with it, and killed in that same
 /// `shutdown`, which is where every sheep this walk misses is killed anyway.
-pub(crate) async fn stop_registered_in_reverse(
-    registry: &FlockRegistry,
-    dogs: &[String],
-    supervisor: &SupervisorHandle,
-) {
-    stop_edges_in_reverse(registry.depends_on_by_name(), dogs, supervisor).await;
-}
-
-/// [`stop_registered_in_reverse`] against edges read earlier.
-///
-/// For the one caller whose registry is empty by the time the walk runs:
-/// `shep dev` clears it before the final roll is written, so that session
-/// reads its edges first and stops against them here. A name the flock no
-/// longer holds costs a `NotFound` warning and nothing else.
 pub(crate) async fn stop_edges_in_reverse(
     mut edges: BTreeMap<String, Vec<String>>,
     dogs: &[String],
@@ -933,7 +924,12 @@ mod tests {
         .expect("`PerApp` never refuses a stage");
 
         let mut rx = h.ctx.events.subscribe();
-        stop_registered_in_reverse(&h.ctx.registry, &h.ctx.dog_names, &h.ctx.supervisor).await;
+        stop_edges_in_reverse(
+            h.ctx.registry.depends_on_by_name(),
+            &h.ctx.dog_names,
+            &h.ctx.supervisor,
+        )
+        .await;
 
         assert_eq!(drain(&mut rx), vec!["Stop worker", "Stop db"]);
     }
@@ -964,8 +960,12 @@ mod tests {
             .expect("a scripted dog that never exits starts");
 
         let mut rx = h.ctx.events.subscribe();
-        stop_registered_in_reverse(&h.ctx.registry, &["metrics".to_string()], &h.ctx.supervisor)
-            .await;
+        stop_edges_in_reverse(
+            h.ctx.registry.depends_on_by_name(),
+            &["metrics".to_string()],
+            &h.ctx.supervisor,
+        )
+        .await;
         assert_eq!(
             drain(&mut rx),
             vec!["Stop web"],
