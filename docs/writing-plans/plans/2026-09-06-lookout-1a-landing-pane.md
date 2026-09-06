@@ -1105,7 +1105,7 @@ git commit -m "feat(lookout): render backgrounds and reverse video in the galler
 - Consumes: everything above.
 - Produces: nothing code reads.
 
-`docs/lookout/README.md`'s drop-order sentence is already stale before this change: it lists SMIT, FOLD, EXIT, RESTARTS, PID, MEM, CPU, UPTIME and omits CFG entirely, even though CFG is the first column the shipped ladder sheds. Rewrite it against the twelve-rung ladder this plan leaves behind, and say that the sparkline needs a terminal at least 148 columns wide and the gauge at least 136.
+`docs/lookout/README.md`'s drop-order sentence is already stale before this change: it lists SMIT, FOLD, EXIT, RESTARTS, PID, MEM, CPU, UPTIME and omits CFG entirely, even though CFG is the first column the shipped ladder sheds. Rewrite it against the twelve-rung ladder this plan leaves behind, and say that the sparkline needs a terminal at least 136 columns wide and the gauge at least 148.
 
 - [ ] **Step 1: Find what names the columns**
 

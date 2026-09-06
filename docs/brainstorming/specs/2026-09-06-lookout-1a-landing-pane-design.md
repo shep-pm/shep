@@ -153,7 +153,7 @@ exactly before any existing column is shed, and no existing threshold or test
 changes.
 
 **What this costs.** The thresholds are table-body widths, so the sparkline
-needs a terminal at least 148 columns wide and the gauge needs 136. On a
+needs a terminal at least 136 columns wide and the gauge needs 148. On a
 120-column window neither is drawn and the pane is today's table with bands
 on it. That is the ladder working as designed rather than a defect, but it
 does mean the block half of this redesign is for wide terminals.
