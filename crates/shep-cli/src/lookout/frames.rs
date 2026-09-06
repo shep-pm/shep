@@ -2056,6 +2056,47 @@ mod tests {
         }
     }
 
+    /// The two gallery files' text: the plain rendering, then the ANSI one.
+    ///
+    /// Split out of [`write_the_gallery`] so the ordinary suite can read the
+    /// same string that test writes. That test is `#[ignore]`d, so anything
+    /// asserted inside it runs only when somebody regenerates the gallery by
+    /// hand, which is the one moment an assertion is least needed.
+    fn gallery_text() -> (String, String) {
+        let mut plain = String::from(GALLERY_PREAMBLE);
+        let mut ansi = String::from(GALLERY_PREAMBLE);
+        for which in Scene::ALL {
+            let (label, buffer) = scene(*which);
+            let (width, height) = which.size();
+            let heading = format!(
+                "\n\n=== {label}  ({width}x{height}) ===\n{}\n\n",
+                which.caption()
+            );
+            plain.push_str(&heading);
+            plain.push_str(&render_text(&buffer));
+            ansi.push_str(&heading);
+            ansi.push_str(&render_ansi(&buffer));
+        }
+        (plain, ansi)
+    }
+
+    /// IR-47 reaches `docs/lookout/`, which is published.
+    ///
+    /// Over the rendered gallery rather than the source constants: the
+    /// preamble, every scene's commentary and every banner a frame draws all
+    /// land in this one string, which is what a reader of the docs and an
+    /// operator on the dashboard actually meet. Nine other modules in this
+    /// crate carry the same pair of assertions; `lookout` carried none, and
+    /// eight dashes reached the published gallery through the gap.
+    #[test]
+    fn the_gallery_carries_no_dashes() {
+        let (plain, ansi) = gallery_text();
+        for (file, text) in [("frames.txt", &plain), ("frames.ansi", &ansi)] {
+            assert!(!text.contains('\u{2014}'), "em dash in {file}");
+            assert!(!text.contains('\u{2013}'), "en dash in {file}");
+        }
+    }
+
     /// Writes `docs/lookout/frames.txt` and `docs/lookout/frames.ansi`.
     ///
     /// `#[ignore]`: writes into the repository, so it only runs on request.
@@ -2074,20 +2115,7 @@ mod tests {
         let dir = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/lookout"));
         std::fs::create_dir_all(dir).unwrap();
 
-        let mut plain = String::from(GALLERY_PREAMBLE);
-        let mut ansi = String::from(GALLERY_PREAMBLE);
-        for which in Scene::ALL {
-            let (label, buffer) = scene(*which);
-            let (width, height) = which.size();
-            let heading = format!(
-                "\n\n=== {label}  ({width}x{height}) ===\n{}\n\n",
-                which.caption()
-            );
-            plain.push_str(&heading);
-            plain.push_str(&render_text(&buffer));
-            ansi.push_str(&heading);
-            ansi.push_str(&render_ansi(&buffer));
-        }
+        let (plain, ansi) = gallery_text();
         std::fs::write(dir.join("frames.txt"), &plain).unwrap();
         std::fs::write(dir.join("frames.ansi"), &ansi).unwrap();
 
