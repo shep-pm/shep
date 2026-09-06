@@ -386,6 +386,7 @@ pub(crate) async fn muster(
     // and the `start` below announces its own failure.
     let running = supervisor.list_checked().await.unwrap_or_default();
     let known = |app: &ResolvedApp| running.iter().any(|info| info.name == app.config().name);
+    warn_about_dogs_holding_sheep_names(&restorable.members, &running);
 
     // Membership for every entry `start` will not bring up, so a sheep saved
     // while stopped comes back listed. The ones being started are excluded:
@@ -424,7 +425,7 @@ pub(crate) async fn muster(
     registry.record(&to_start);
 
     let plan = crate::boot_order::plan_for(&to_start, dogs, boot_first_dogs);
-    warn_about_the_graph(&plan, &to_start, &restorable.members);
+    warn_about_the_graph(&plan, &to_start, &restorable.members, dogs, boot_first_dogs);
     // `BatchPolicy::PerApp`, not `AllOrNothing`: a whole-batch refusal over an
     // app whose script provably is not there is right for an operator typing
     // `shep start` and wrong at an unattended boot, where a binary missing
@@ -434,11 +435,46 @@ pub(crate) async fn muster(
     Ok(restored)
 }
 
+/// Warns for every saved sheep whose name a running dog has taken.
+///
+/// A `[daemon] boot_first_dogs` dog spawns before this restore and registers
+/// under its own name against an empty flock, so [`muster`]'s `known` finds
+/// the name running and filters the roll's sheep of that name out of both the
+/// membership pass and the start. Nothing refuses that collision, and without
+/// this line an operator loses a sheep in silence.
+///
+/// The name stays in the restored list. It really is in the flock, and
+/// dropping it would report the loss as an absence on a terminal that has no
+/// room to say why; the reply carries no per-app note to put the reason in.
+fn warn_about_dogs_holding_sheep_names(members: &[ResolvedApp], running: &[ProcessInfo]) {
+    for app in members {
+        let name = app.config().name.as_str();
+        let Some(source) = running
+            .iter()
+            .find(|info| info.name == name)
+            .and_then(|info| info.dog.as_ref())
+        else {
+            continue;
+        };
+        tracing::warn!(
+            name,
+            dog = ?source,
+            "a dog holds this name, so the roll's sheep of that name is not restored"
+        );
+    }
+}
+
 /// Reports every way the roll's dependency graph is not what it says it is.
 ///
 /// Nothing here refuses. A restore runs on a machine nobody is watching, so
 /// each of these three brings the flock up and says what it did instead.
-fn warn_about_the_graph(plan: &BootPlan, to_start: &[ResolvedApp], members: &[ResolvedApp]) {
+fn warn_about_the_graph(
+    plan: &BootPlan,
+    to_start: &[ResolvedApp],
+    members: &[ResolvedApp],
+    dogs: &[String],
+    boot_first_dogs: &[String],
+) {
     // A member the roll holds but this restore will not start. Named
     // separately from the unresolved edges below, since "the sheep exists and
     // opted out" is a different thing for an operator to do about than "the
@@ -476,6 +512,32 @@ fn warn_about_the_graph(plan: &BootPlan, to_start: &[ResolvedApp], members: &[Re
                     sheep = %app.config().name,
                     dependency = %target,
                     "the dependency sets autostart = false; starting without it"
+                );
+            }
+        }
+    }
+    // A dog gets an ordinary graph position, but `boot` spawns dogs in two
+    // groups and neither is at a stage boundary: the promoted ones before
+    // this restore, the rest after every stage. So a dependency on an
+    // unpromoted dog is ordered by the plan and by nothing else, and the
+    // sheep starts while the dog is not running.
+    let unpromoted: BTreeSet<&str> = dogs
+        .iter()
+        .map(String::as_str)
+        .filter(|dog| !boot_first_dogs.iter().any(|first| first == dog))
+        // A dog whose name a started sheep already holds is not a node at
+        // all; the sheep is, and it is ordered properly. `plan_for` drops it
+        // against exactly this list.
+        .filter(|dog| !to_start.iter().any(|app| app.config().name == *dog))
+        .collect();
+    for app in to_start {
+        for target in &app.config().depends_on {
+            if unpromoted.contains(target.as_str()) {
+                tracing::warn!(
+                    sheep = %app.config().name,
+                    dog = %target,
+                    "the dependency is a dog outside [daemon] boot_first_dogs, \
+                     which starts after the whole flock; starting without it"
                 );
             }
         }
@@ -648,7 +710,7 @@ mod tests {
     use crate::testing::{capture_logs, test_paths};
     use shep_core::config::graph::{BootNode, NodeKind, plan};
     use shep_core::config::{AppConfig, normalize};
-    use shep_core::protocol::{BusEvent, ProcessEventKind, ProcessInfo};
+    use shep_core::protocol::{BusEvent, DogSource, ProcessEventKind, ProcessInfo};
     use shep_core::status::ProcStatus;
     use shep_core::values::UpDuration;
     use std::time::Duration;
@@ -1264,11 +1326,61 @@ mod tests {
             "the plan only ever sees what this restore starts"
         );
 
-        let held = capture_logs(|| warn_about_the_graph(&plan, &to_start, &[db, api.clone()]));
+        let held = capture_logs(|| warn_about_the_graph(&plan, &to_start, &[db, api.clone()], &[], &[]));
         assert!(!held.contains("names nothing this flock has"), "{held}");
 
-        let absent = capture_logs(|| warn_about_the_graph(&plan, &to_start, &[api]));
+        let absent = capture_logs(|| warn_about_the_graph(&plan, &to_start, &[api], &[], &[]));
         assert!(absent.contains("names nothing this flock has"), "{absent}");
+    }
+
+    /// fails if a sheep that waits for an unpromoted dog is ordered behind it
+    /// in silence. `boot` spawns dogs in two groups, promoted before the
+    /// restore and the rest after every stage, so only a promoted dog is
+    /// running by the time a sheep that names it starts.
+    ///
+    /// The control is the same graph with the dog promoted: there the wait is
+    /// honoured and there is nothing to say.
+    #[test]
+    fn a_dependency_on_a_dog_the_boot_never_promotes_is_warned_about() {
+        let to_start = vec![dependant("api", &["metrics"])];
+        let dogs = ["metrics".to_string()];
+
+        let late = capture_logs(|| {
+            let plan = crate::boot_order::plan_for(&to_start, &dogs, &[]);
+            warn_about_the_graph(&plan, &to_start, &to_start, &dogs, &[]);
+        });
+        assert!(late.contains("starts after the whole flock"), "{late}");
+
+        let promoted = capture_logs(|| {
+            let plan = crate::boot_order::plan_for(&to_start, &dogs, &dogs);
+            warn_about_the_graph(&plan, &to_start, &to_start, &dogs, &dogs);
+        });
+        assert!(
+            !promoted.contains("starts after the whole flock"),
+            "{promoted}"
+        );
+    }
+
+    /// fails if a promoted dog takes a saved sheep's name in silence. It
+    /// registers against an empty flock before the restore, so `muster` reads
+    /// the name as already running and drops the sheep from both the
+    /// membership pass and the start while still reporting it restored.
+    ///
+    /// The control is the same name running as an ordinary sheep, which is
+    /// the idempotent restore this must not start warning about.
+    #[test]
+    fn a_dog_holding_a_saved_sheeps_name_is_warned_about() {
+        let members = vec![normalize(AppConfig::minimal("metrics", "./srv")).expect("normalizes")];
+        let as_dog = [ProcessInfo::builder(0, "metrics", ProcStatus::Online)
+            .dog(Some(DogSource::BuiltIn))
+            .build()];
+        let as_sheep = [ProcessInfo::builder(0, "metrics", ProcStatus::Online).build()];
+
+        let collided = capture_logs(|| warn_about_dogs_holding_sheep_names(&members, &as_dog));
+        assert!(collided.contains("is not restored"), "{collided}");
+
+        let plain = capture_logs(|| warn_about_dogs_holding_sheep_names(&members, &as_sheep));
+        assert!(!plain.contains("is not restored"), "{plain}");
     }
 
     /// fails if a plain two-node cycle prints its membership twice. `plan`
@@ -1282,7 +1394,7 @@ mod tests {
         let pair = vec![dependant("a", &["b"]), dependant("b", &["a"])];
         let plan = crate::boot_order::plan_for(&pair, &[], &[]);
 
-        let two = capture_logs(|| warn_about_the_graph(&plan, &pair, &pair));
+        let two = capture_logs(|| warn_about_the_graph(&plan, &pair, &pair, &[], &[]));
         assert!(
             !two.contains("every sheep a dependency cycle holds"),
             "{two}"
@@ -1294,7 +1406,7 @@ mod tests {
             dependant("c", &["b"]),
         ];
         let plan = crate::boot_order::plan_for(&trio, &[], &[]);
-        let three = capture_logs(|| warn_about_the_graph(&plan, &trio, &trio));
+        let three = capture_logs(|| warn_about_the_graph(&plan, &trio, &trio, &[], &[]));
         assert!(
             three.contains("every sheep a dependency cycle holds"),
             "{three}"

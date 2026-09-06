@@ -2485,6 +2485,75 @@ mod tests {
         drop(daemon); // no run() needed; SignalTasks::drop stops the listeners
     }
 
+    /// fails if a promoted dog takes a saved sheep's name in silence. The
+    /// unpromoted case above is the opposite way round: there the restore has
+    /// already registered the sheep and `start_dog` returns over it, and here
+    /// the dog registers against an empty flock and the sheep is what is
+    /// lost. Nothing refuses either collision, so a warning is all the
+    /// operator gets.
+    ///
+    /// `#[test]` plus `capture_logs` for the reason
+    /// `a_dog_that_will_not_start_does_not_fail_the_boot` gives.
+    #[test]
+    fn a_promoted_dog_that_takes_a_saved_sheeps_name_says_so() {
+        let _guard = SIGNAL_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(&dir);
+        init_dirs(&paths).unwrap();
+        let roll = FlockSnapshot {
+            version: SNAPSHOT_VERSION,
+            saved_at_ms: 0,
+            apps: vec![SavedApp {
+                app: AppConfig::minimal("metrics", "./srv"),
+                instances_running: 1,
+            }],
+        };
+        crate::snapshot::write_atomic(&paths.snapshot, &roll).unwrap();
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        let mut boot_result = None;
+        let logs = capture_logs(|| {
+            boot_result = Some(rt.block_on(boot(
+                // One script, and the dog is what consumes it: the restore
+                // reads `metrics` as already running and starts nothing.
+                ScriptedRunner::new(vec![ProcScript::never_exits()]),
+                paths.clone(),
+                BootOptions {
+                    restore: true,
+                    dogs: vec![DogSpec {
+                        name: "metrics".to_string(),
+                        source: DogSource::BuiltIn,
+                    }],
+                    boot_first_dogs: vec!["metrics".to_string()],
+                    ..BootOptions::default()
+                },
+            )));
+        });
+        let daemon = boot_result
+            .unwrap()
+            .expect("a name collision must not fail the boot");
+
+        let flock = rt
+            .block_on(daemon.context().supervisor.list_checked())
+            .unwrap();
+        assert_eq!(flock.len(), 1, "one name is one entry: {flock:?}");
+        assert!(
+            flock[0].dog.is_some(),
+            "the promoted dog is what holds the name: {:?}",
+            flock[0]
+        );
+        assert!(
+            logs.contains("is not restored"),
+            "the lost sheep must be named out loud: {logs:?}"
+        );
+
+        drop(daemon); // no run() needed; SignalTasks::drop stops the listeners
+    }
+
     /// The ordering `Type=notify` was chosen for: a unit that goes green at
     /// exec time reports a flock that is not up yet, and a hung restore reads
     /// as a healthy service supervising nothing.
