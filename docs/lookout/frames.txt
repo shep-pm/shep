@@ -10,8 +10,11 @@ Nothing here is a mockup.
 frames.ansi is the same thirty-three frames with colour; read it with `less -R`.
 
 All four panes are here: the flock table (the spine), the host-usage strip,
-the sheep detail pane and the bleats feed. `>` marks the selected sheep, and
-every pane below the table describes that one sheep.
+the sheep detail pane and the bleats feed. The selected sheep's row is
+painted (see frames.ansi for the colour; frames.txt carries none, so the
+row reads as a blank gutter there) rather than marked with `>`, which is
+only the fallback for a terminal with no ground to paint with. Every pane
+below the table describes that one sheep.
 
 The feed reads the selected sheep's log files from disk and re-reads them with
 each flock listing. It is not a live subscription, and it says so on its own
@@ -40,7 +43,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-> 2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
+  2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
   5     metrics     online           48240    0         -          0.4%    11.0M     1h 32m    -           -            
@@ -74,7 +77,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 6.7%  
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-> 2     api         errored          -        14        1          -       -         1h 18m    edge        -            
+  2     api         errored          -        14        1          -       -         1h 18m    edge        -            
   3     billing-r…  waiting-restart  -        3         1          -       -         1h 19m    -           -            
   4     cron        stopped          -        0         SIGTERM    -       -         1h 21m    -           -            
   5     metrics     online           48240    0         -          0.4%    11.0M     1h 32m    -           -            
@@ -109,7 +112,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 16.5% 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   3     api         online           48219    1         -          7.1%    241.0M    1h 29m    edge        -            
->       web ×3      online                    3                    9.4%    540.0M    15m       edge        -            
+        web ×3      online                    3                    9.4%    540.0M    15m       edge        -            
   0      ↳ :0       online           48400    0         -          3.4%    182.0M    1h 25m                             
   1      ↳ :1       online           48401    2         -          2.9%    178.0M    15m                                
   2      ↳ :2       online           48402    1         -          3.1%    180.0M    2h 40m                             
@@ -147,7 +150,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 10.6% 
   0     web         online           48211    0         -          3.4%    182.0M    1h 25m    edge        -            
   Dogs ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   90    bark        online           90090    0         -          -       -         10m       -           -            
-> 91    log-rotate  silent           90091    0         -          -       -         10m       -           -            
+  91    log-rotate  silent           90091    0         -          -       -         10m       -           -            
                                                                                                                         
                                                                                                                         
                                                                                                                         
@@ -208,7 +211,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12…
   ID    NAME      STATUS           CPU     UPTIME  
 ───────────────────────────────────────────────────
   Flock ───────────────────────────────────────────
-> 2     api       online           7.1%    1h 28m  
+  2     api       online           7.1%    1h 28m  
   3     billing…  online           0.8%    1h 29m  
   4     cron      online           0.1%    1h 31m  
   5     metrics   online           0.4%    1h 32m  
@@ -239,7 +242,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-> 2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
+  2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
   5     metrics     online           48240    0         -          0.4%    11.0M     1h 32m    -           -            
@@ -273,7 +276,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 6.7%  
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-> 2     api         errored          -        14        1          -       -         1h 18m    edge        -            
+  2     api         errored          -        14        1          -       -         1h 18m    edge        -            
   3     billing-r…  waiting-restart  -        3         1          -       -         1h 19m    -           -            
   4     cron        stopped          -        0         SIGTERM    -       -         1h 21m    -           -            
   5     metrics     online           48240    0         -          0.4%    11.0M     1h 22m    -           -            
@@ -306,7 +309,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-> 2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
+  2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
   5     metrics     online           48240    0         -          0.4%    11.0M     1h 32m    -           -            
@@ -340,7 +343,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────
-> 0     web                online           48211    0         -          3.4%    182.0M    1h 25m  
+  0     web                online           48211    0         -          3.4%    182.0M    1h 25m  
   1     web                online           48212    0         -          2.9%    178.0M    1h 26m  
                                                                                                     
                                                                                                     
@@ -358,7 +361,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────
-> 0     web                online           48211    0         -          3.4%    182.0M    1h 25m  
+  0     web                online           48211    0         -          3.4%    182.0M    1h 25m  
   1     web                online           48212    0         -          2.9%    178.0M    1h 26m  
                                                                                                     
                                                                                                     
@@ -394,7 +397,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-> 2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
+  2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
   5     metrics     online           48240    0         -          0.4%    11.0M     1h 32m    -           -            
@@ -417,7 +420,7 @@ shep lookout   /home/ada/.shep                                                  
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-> 2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
+  2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
   5     metrics     online           48240    0         -          0.4%    11.0M     1h 32m    -           -            
@@ -434,7 +437,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-> 2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
+  2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
   5     metrics     online           48240    0         -          0.4%    11.0M     1h 32m    -           -            
@@ -468,7 +471,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-> 2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
+  2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
   5     metrics     online           48240    0         -          0.4%    11.0M     1h 32m    -           -            
@@ -502,7 +505,7 @@ host  load 2.31 4.10 3.88 / 10 c…
   ID    NAME      STATUS         
 ─────────────────────────────────
   Flock ─────────────────────────
-> 2     api       online         
+  2     api       online         
   3     billing…  online         
   4     cron      online         
   5     metrics   online         
@@ -532,7 +535,7 @@ host  usage is not available on this platform   flock cpu 14.7%   flock mem 716.
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-> 2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
+  2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
   5     metrics     online           48240    0         -          0.4%    11.0M     1h 32m    -           -            
@@ -566,7 +569,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-> 2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
+  2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
   5     metrics     online           48240    0         -          0.4%    11.0M     1h 32m    -           -            
@@ -602,7 +605,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 6.7%  
   Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   2     api         errored          -        14        1          -       -         1h 18m    edge        -            
   3     billing-r…  waiting-restart  -        3         1          -       -         1h 19m    -           -            
-> 4     cron        stopped          -        0         SIGTERM    -       -         1h 21m    -           -            
+  4     cron        stopped          -        0         SIGTERM    -       -         1h 21m    -           -            
   5     metrics     online           48240    0         -          0.4%    11.0M     1h 32m    -           -            
   0     web         online           48211    0         -          3.4%    182.0M    1h 25m    edge        -            
   1     web         online           48212    0         -          2.9%    178.0M    1h 26m    edge        -            
@@ -634,7 +637,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────
-> 2     api                online           48219    1         -          7.1%    241.0M    1h 28m  
+  2     api                online           48219    1         -          7.1%    241.0M    1h 28m  
   3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m  
   4     cron               online           48233    0         -          0.1%    8.0M      1h 31m  
   5     metrics            online           48240    0         -          0.4%    11.0M     1h 32m  
@@ -652,7 +655,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────
-> 2     api                online           48219    1         -          7.1%    241.0M    1h 28m  
+  2     api                online           48219    1         -          7.1%    241.0M    1h 28m  
   3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m  
   4     cron               online           48233    0         -          0.1%    8.0M      1h 31m  
   5     metrics            online           48240    0         -          0.4%    11.0M     1h 32m  
@@ -670,7 +673,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 7.6%  
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────
-> 3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m  
+  3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m  
   4     cron               online           48233    0         -          0.1%    8.0M      1h 31m  
   5     metrics            online           48240    0         -          0.4%    11.0M     1h 32m  
   0     web                online           48211    0         -          3.4%    182.0M    1h 25m  
@@ -688,7 +691,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────
-> 2     api                online           48299    2         -          7.1%    241.0M    1h 18m  
+  2     api                online           48299    2         -          7.1%    241.0M    1h 18m  
   3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m  
   4     cron               online           48233    0         -          0.1%    8.0M      1h 31m  
   5     metrics            online           48240    0         -          0.4%    11.0M     1h 32m  
@@ -707,7 +710,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Flock ────────────────────────────────────────────────────────────────────────────────────────────
-> 2     api                online           48219    1         -          7.1%    241.0M    1h 28m  
+  2     api                online           48219    1         -          7.1%    241.0M    1h 28m  
   3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m  
   4     cron               online           48233    0         -          0.1%    8.0M      1h 31m  
   5     metrics            online           48240    0         -          0.4%    11.0M     1h 32m  

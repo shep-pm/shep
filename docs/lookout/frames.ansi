@@ -10,8 +10,11 @@ Nothing here is a mockup.
 frames.ansi is the same thirty-three frames with colour; read it with `less -R`.
 
 All four panes are here: the flock table (the spine), the host-usage strip,
-the sheep detail pane and the bleats feed. `>` marks the selected sheep, and
-every pane below the table describes that one sheep.
+the sheep detail pane and the bleats feed. The selected sheep's row is
+painted (see frames.ansi for the colour; frames.txt carries none, so the
+row reads as a blank gutter there) rather than marked with `>`, which is
+only the fallback for a terminal with no ground to paint with. Every pane
+below the table describes that one sheep.
 
 The feed reads the selected sheep's log files from disk and re-reads them with
 each flock listing. It is not a live subscription, and it says so on its own
@@ -40,7 +43,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
+  2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
   4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
@@ -75,7 +78,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 2     api         [0m[38;5;166merrored        [0m  -        14        1          -       -         1h 18m    edge        -            [0m
+  2     api         [0m[38;5;166merrored        [0m  -        14        1          -       -         1h 18m    edge        -            [0m
   3     billing-r…  [0m[38;5;221mwaiting-restart[0m  -        3         1          -       -         1h 19m    -           -            [0m
   4     cron        [0m[38;5;245mstopped        [0m  -        0         SIGTERM    -       -         1h 21m    -           -            [0m
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
@@ -111,7 +114,7 @@ shep lookout   /home/ada/.shep                                                  
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   3     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 29m    edge        -            [0m
->       web ×3      [0m[38;5;29monline         [0m           3                    9.4%    540.0M    15m       edge        -            [0m
+        web ×3      [0m[38;5;29monline         [0m           3                    9.4%    540.0M    15m       edge        -            [0m
   0      ↳ :0       [0m[38;5;29monline         [0m  48400    0         -          3.4%    182.0M    1h 25m                             [0m
   1      ↳ :1       [0m[38;5;29monline         [0m  48401    2         -          2.9%    178.0M    15m                                [0m
   2      ↳ :2       [0m[38;5;29monline         [0m  48402    1         -          3.1%    180.0M    2h 40m                             [0m
@@ -150,7 +153,7 @@ shep lookout   /home/ada/.shep                                                  
   0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
   [0m[38;5;245mDogs ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   90    bark        [0m[38;5;29monline         [0m  90090    0         -          -       -         10m       -           -            [0m
-> 91    log-rotate  [0m[38;5;221msilent         [0m  90091    0         -          -       -         10m       -           -            [0m
+  91    log-rotate  [0m[38;5;221msilent         [0m  90091    0         -          -       -         10m       -           -            [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -213,7 +216,7 @@ shep lookout   /home/ada/.shep      [0m[38;5;245m 6 in the flock[0m
   [0m[38;5;245mID    NAME      STATUS           CPU     UPTIME  [0m
 [0m[38;5;245m───────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ───────────────────────────────────────────[0m
-> 2     api       [0m[38;5;29monline         [0m  7.1%    1h 28m  [0m
+  2     api       [0m[38;5;29monline         [0m  7.1%    1h 28m  [0m
   3     billing…  [0m[38;5;29monline         [0m  0.8%    1h 29m  [0m
   4     cron      [0m[38;5;29monline         [0m  0.1%    1h 31m  [0m
   5     metrics   [0m[38;5;29monline         [0m  0.4%    1h 32m  [0m
@@ -246,7 +249,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
+  2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
   4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
@@ -281,7 +284,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 2     api         [0m[38;5;166merrored        [0m  -        14        1          -       -         1h 18m    edge        -            [0m
+  2     api         [0m[38;5;166merrored        [0m  -        14        1          -       -         1h 18m    edge        -            [0m
   3     billing-r…  [0m[38;5;221mwaiting-restart[0m  -        3         1          -       -         1h 19m    -           -            [0m
   4     cron        [0m[38;5;245mstopped        [0m  -        0         SIGTERM    -       -         1h 21m    -           -            [0m
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 22m    -           -            [0m
@@ -315,7 +318,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
+  2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
   4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
@@ -350,7 +353,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 0     web                [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m  [0m
+  0     web                [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m  [0m
   1     web                [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m  [0m
                                                                                                     [0m
                                                                                                     [0m
@@ -369,7 +372,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 0     web                [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m  [0m
+  0     web                [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m  [0m
   1     web                [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m  [0m
                                                                                                     [0m
                                                                                                     [0m
@@ -407,7 +410,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
+  2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
   4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
@@ -431,7 +434,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
+  2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
   4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
@@ -449,7 +452,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
+  2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
   4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
@@ -484,7 +487,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
+  2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
   4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
@@ -519,7 +522,7 @@ shep lookout   /h…[0m[38;5;245m 6 in the flock[0m
   [0m[38;5;245mID    NAME      STATUS         [0m
 [0m[38;5;245m─────────────────────────────────[0m
   [0m[38;5;245mFlock ─────────────────────────[0m
-> 2     api       [0m[38;5;29monline         [0m
+  2     api       [0m[38;5;29monline         [0m
   3     billing…  [0m[38;5;29monline         [0m
   4     cron      [0m[38;5;29monline         [0m
   5     metrics   [0m[38;5;29monline         [0m
@@ -550,7 +553,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
+  2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
   4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
@@ -585,7 +588,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
+  2     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
   3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
   4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
@@ -622,7 +625,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   2     api         [0m[38;5;166merrored        [0m  -        14        1          -       -         1h 18m    edge        -            [0m
   3     billing-r…  [0m[38;5;221mwaiting-restart[0m  -        3         1          -       -         1h 19m    -           -            [0m
-> 4     cron        [0m[38;5;245mstopped        [0m  -        0         SIGTERM    -       -         1h 21m    -           -            [0m
+  4     cron        [0m[38;5;245mstopped        [0m  -        0         SIGTERM    -       -         1h 21m    -           -            [0m
   5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
   0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
   1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
@@ -655,7 +658,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 2     api                [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m  [0m
+  2     api                [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m  [0m
   3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m  [0m
   4     cron               [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m  [0m
   5     metrics            [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m  [0m
@@ -674,7 +677,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 2     api                [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m  [0m
+  2     api                [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m  [0m
   3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m  [0m
   4     cron               [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m  [0m
   5     metrics            [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m  [0m
@@ -693,7 +696,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m  [0m
+  3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m  [0m
   4     cron               [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m  [0m
   5     metrics            [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m  [0m
   0     web                [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m  [0m
@@ -712,7 +715,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 2     api                [0m[38;5;29monline         [0m  48299    2         -          7.1%    241.0M    1h 18m  [0m
+  2     api                [0m[38;5;29monline         [0m  48299    2         -          7.1%    241.0M    1h 18m  [0m
   3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m  [0m
   4     cron               [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m  [0m
   5     metrics            [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m  [0m
@@ -732,7 +735,7 @@ shep lookout   /home/ada/.shep                                                  
   [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mFlock ────────────────────────────────────────────────────────────────────────────────────────────[0m
-> 2     api                [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m  [0m
+  2     api                [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 28m  [0m
   3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m  [0m
   4     cron               [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m  [0m
   5     metrics            [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m  [0m

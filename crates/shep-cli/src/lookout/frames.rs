@@ -1315,8 +1315,11 @@ Nothing here is a mockup.
 frames.ansi is the same thirty-three frames with colour; read it with `less -R`.
 
 All four panes are here: the flock table (the spine), the host-usage strip,
-the sheep detail pane and the bleats feed. `>` marks the selected sheep, and
-every pane below the table describes that one sheep.
+the sheep detail pane and the bleats feed. The selected sheep's row is
+painted (see frames.ansi for the colour; frames.txt carries none, so the
+row reads as a blank gutter there) rather than marked with `>`, which is
+only the fallback for a terminal with no ground to paint with. Every pane
+below the table describes that one sheep.
 
 The feed reads the selected sheep's log files from disk and re-reads them with
 each flock listing. It is not a live subscription, and it says so on its own
@@ -1386,6 +1389,44 @@ mod tests {
         })
     }
 
+    /// The gallery's own palette (`xterm-256color`, deep) always paints a
+    /// ground, so every scene's selected row is a painted gutter rather
+    /// than a `>` glyph ([`super::super::view::flock::gutter`]).
+    /// Constructed the same way [`scene_with`] builds its palette, so the
+    /// two never drift apart.
+    fn gallery_ground() -> ratatui::style::Color {
+        Palette::detect(None, Some(std::ffi::OsStr::new("xterm-256color")), None)
+            .ground()
+            .bg
+            .expect("the gallery's own palette always paints a ground")
+    }
+
+    /// Whether row `y` of `buffer` is the selected one: its gutter cell
+    /// (column 0) carries [`gallery_ground`].
+    fn row_is_selected(buffer: &Buffer, y: u16) -> bool {
+        buffer
+            .cell((0, y))
+            .is_some_and(|cell| cell.bg == gallery_ground())
+    }
+
+    /// The rendered text of whichever row of `buffer` is selected, or
+    /// `None` if none is (a section header, for instance, is never
+    /// selected).
+    #[cfg_attr(windows, allow(dead_code))]
+    fn selected_line<'a>(text: &'a str, buffer: &Buffer) -> Option<&'a str> {
+        (0..buffer.area.height)
+            .find(|&y| row_is_selected(buffer, y))
+            .and_then(|y| text.lines().nth(usize::from(y)))
+    }
+
+    /// How many rows of `buffer` are painted as selected: a scene invariant
+    /// is exactly one, the same invariant a `>` glyph count used to check.
+    fn selected_row_count(buffer: &Buffer) -> usize {
+        (0..buffer.area.height)
+            .filter(|&y| row_is_selected(buffer, y))
+            .count()
+    }
+
     /// The dogs table's own row lookup: unlike [`row_for`], a dog row opens
     /// with `mark` and a name, never a numeric id, so the same "first two
     /// tokens" shape does not apply.
@@ -1395,20 +1436,20 @@ mod tests {
             .find(|line| line.trim_start_matches('>').split_whitespace().next() == Some(name))
     }
 
-    /// Whether the marked row's name starts with `prefix`.
+    /// Whether the selected row's name starts with `prefix`.
     ///
     /// Handles truncation: the NAME column's truncated string depends on
     /// terminal width, so `prefix` only needs to fit the eight-column
-    /// floor `name_width` never shrinks below.
+    /// floor `name_width` never shrinks below. Selection is read off
+    /// `buffer`'s own painted gutter ([`row_is_selected`]), not a `>`
+    /// glyph the gallery's palette no longer draws.
     #[cfg_attr(windows, allow(dead_code))]
-    fn marked_row_name_starts_with(frame: &str, prefix: &str) -> bool {
-        frame.lines().any(|line| {
-            line.starts_with('>')
-                && line
-                    .trim_start_matches('>')
-                    .split_whitespace()
-                    .nth(1)
-                    .is_some_and(|name| name.starts_with(prefix))
+    fn marked_row_name_starts_with(text: &str, buffer: &Buffer, prefix: &str) -> bool {
+        selected_line(text, buffer).is_some_and(|line| {
+            line.trim_start_matches('>')
+                .split_whitespace()
+                .nth(1)
+                .is_some_and(|name| name.starts_with(prefix))
         })
     }
 
@@ -1427,7 +1468,8 @@ mod tests {
     #[allow(clippy::too_many_lines)] // thirty-three captions, each pinned clause by clause
     fn every_scene_shows_the_thing_it_is_named_for() {
         // HealthyWide: all three panes at 120x30.
-        let wide = render_text(&scene(Scene::HealthyWide).1);
+        let wide_buffer = scene(Scene::HealthyWide).1;
+        let wide = render_text(&wide_buffer);
         assert!(
             wide.contains("FOLD") && wide.contains("EXIT"),
             "every column fits at 120 columns"
@@ -1444,15 +1486,28 @@ mod tests {
             wide.contains("bleats  api"),
             "and the feed, on the same one"
         );
-        assert_eq!(
-            wide.lines().filter(|line| line.starts_with('>')).count(),
-            1,
-            "exactly one selection marker"
-        );
+        // The gallery's palette (`xterm-256color`) paints a real ground, so
+        // the selected row's gutter is now a painted space rather than a
+        // `>` glyph (`view::flock::gutter`); checked on the buffer's own
+        // background rather than the rendered text, which cannot see one.
+        use std::ffi::OsStr;
+        let ground = Palette::detect(None, Some(OsStr::new("xterm-256color")), None)
+            .ground()
+            .bg
+            .expect("the gallery's own palette always paints a ground");
+        let painted_rows = (0..wide_buffer.area.height)
+            .filter(|&y| {
+                wide_buffer
+                    .cell((0, y))
+                    .is_some_and(|cell| cell.bg == ground)
+            })
+            .count();
+        assert_eq!(painted_rows, 1, "exactly one row's gutter is painted");
 
         // Grouped: cursor on the group header, which rolls up restarts,
         // CPU and memory and takes the shortest uptime.
-        let grouped = render_text(&scene(Scene::Grouped).1);
+        let grouped_buffer = scene(Scene::Grouped).1;
+        let grouped = render_text(&grouped_buffer);
         assert!(
             grouped.contains("web \u{d7}3"),
             "the group header names the app and how many instances it has: {grouped:?}"
@@ -1466,9 +1521,8 @@ mod tests {
             "one in the table, one in the detail pane, and nowhere else"
         );
         assert!(
-            grouped
-                .lines()
-                .any(|line| line.starts_with('>') && line.contains("web \u{d7}3")),
+            selected_line(&grouped, &grouped_buffer)
+                .is_some_and(|line| line.contains("web \u{d7}3")),
             "the cursor is on the header, not on one of its slots: {grouped:?}"
         );
         assert!(
@@ -1503,7 +1557,8 @@ mod tests {
         );
 
         // WithDogs: the flock table's two sections, sheep then dogs.
-        let with_dogs = render_text(&scene(Scene::WithDogs).1);
+        let with_dogs_buffer = scene(Scene::WithDogs).1;
+        let with_dogs = render_text(&with_dogs_buffer);
         assert!(
             with_dogs.contains("Flock ") && with_dogs.contains("Dogs "),
             "both section headers are drawn: {with_dogs:?}"
@@ -1517,7 +1572,7 @@ mod tests {
             "the adopted dog has never handshaken, so it reads silent: {with_dogs:?}"
         );
         assert!(
-            marked_row_name_starts_with(&with_dogs, "log-rotate"),
+            marked_row_name_starts_with(&with_dogs, &with_dogs_buffer, "log-rotate"),
             "the cursor is parked on the silent dog: {with_dogs:?}"
         );
         assert!(
@@ -1636,16 +1691,17 @@ mod tests {
         );
 
         // Errored: selection parked on the errored sheep.
-        let errored = render_text(&scene(Scene::Errored).1);
+        let errored_buffer = scene(Scene::Errored).1;
+        let errored = render_text(&errored_buffer);
         assert!(errored.contains("errored"));
         assert!(
             errored.contains("sheep 2  api"),
             "the selection is on the errored sheep"
         );
         assert_eq!(
-            errored.lines().filter(|line| line.starts_with('>')).count(),
+            selected_row_count(&errored_buffer),
             1,
-            "exactly one marker, on that row"
+            "exactly one row's gutter is painted, on that row"
         );
         // Only the ANSI rendering carries colour to check STATUS against.
         //
@@ -1779,11 +1835,12 @@ mod tests {
         );
 
         // Acting: request out, table unchanged.
-        let acting = render_text(&scene(Scene::Acting).1);
+        let acting_buffer = scene(Scene::Acting).1;
+        let acting = render_text(&acting_buffer);
         assert!(acting.contains("restart api (id 2): sent, waiting for the shepherd"));
         assert!(
-            row_for(&acting, "api").is_some_and(|row| row.starts_with('>')),
-            "the table is untouched: the marker is still on api"
+            selected_line(&acting, &acting_buffer).is_some_and(|line| line.contains("api")),
+            "the table is untouched: the selection is still on api"
         );
         assert!(
             row_for(&acting, "api").is_some_and(|row| row.contains("online")),
@@ -1799,7 +1856,8 @@ mod tests {
         );
 
         // ActionRefused: the shepherd's own sentence is forwarded as is.
-        let refused = render_text(&scene(Scene::ActionRefused).1);
+        let action_refused_buffer = scene(Scene::ActionRefused).1;
+        let refused = render_text(&action_refused_buffer);
         assert!(refused.contains("restart api (id 2): selector matched no registered sheep"));
         assert!(
             !refused.contains("NotFound"),
@@ -1811,7 +1869,7 @@ mod tests {
             "api is the row that went"
         );
         assert!(
-            marked_row_name_starts_with(&refused, "billing"),
+            marked_row_name_starts_with(&refused, &action_refused_buffer, "billing"),
             "and the cursor has moved to the row below: {refused:?}"
         );
 

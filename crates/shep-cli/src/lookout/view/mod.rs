@@ -291,16 +291,17 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
         for (slot, key) in keys.iter().skip(offset).take(viewport).enumerate() {
             let slot = u16::try_from(slot).unwrap_or(0);
             let is_selected = selected.as_ref() == Some(key);
+            let (gutter_text, gutter_style) = flock::gutter(is_selected, palette);
             buffer.set_line(
                 area.x,
                 y + slot,
-                &Line::from(Span::raw(flock::mark(is_selected))),
+                &Line::from(Span::styled(gutter_text, gutter_style)),
                 1,
             );
             buffer.set_line(
                 area.x + flock::GUTTER,
                 y + slot,
-                &flock::key_line(app, key, columns, table_width),
+                &flock::key_line(app, key, columns, table_width, is_selected),
                 table_width,
             );
         }
@@ -485,6 +486,83 @@ mod tests {
             1,
             "exactly one marker on the frame"
         );
+    }
+
+    /// The regression the padding step in `row_line`/`group_line` guards
+    /// against: a `Span`'s background only paints the cells under its own
+    /// text, so a row styled only to the end of its content would leave a
+    /// ragged, unpainted tail rather than a full row. Checked against the
+    /// live `Buffer`'s own cells, not the rendered text, since a text-only
+    /// assertion cannot see a background at all.
+    #[test]
+    fn the_selected_rows_ground_paints_every_column_of_the_table_not_just_its_text() {
+        let mut app = App::new(
+            Palette::detect(None, None, Some(std::ffi::OsStr::new("truecolor"))),
+            Control::ReadOnly,
+            "/home/ada/.shep".to_string(),
+            Instant::now(),
+        );
+        app.update(Msg::Snapshot {
+            rows: vec![
+                ProcessInfo::builder(0, "web", ProcStatus::Online).build(),
+                ProcessInfo::builder(1, "worker", ProcStatus::Online).build(),
+            ],
+            at: Instant::now(),
+        });
+        // Row 0 is selected by default. The gutter reads as a space either
+        // way at this palette ([`flock::gutter`] paints rather than
+        // switching glyphs), so the row is identified by content, not by
+        // the marker character.
+        let width = 100;
+        let mut terminal = Terminal::new(TestBackend::new(width, 12)).unwrap();
+        terminal.draw(|frame| draw(&app, frame)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let text = crate::lookout::frames::render_text(buffer);
+        let lines: Vec<&str> = text.lines().collect();
+        // title, header, rule, "Flock" section: the selected sheep row is
+        // the first one after them.
+        let selected_y = 4;
+        let unselected_y = 5;
+        assert!(
+            lines[selected_y].contains("web"),
+            "row 0 is the selected one: {:?}",
+            lines[selected_y]
+        );
+        assert!(
+            lines[unselected_y].contains("worker"),
+            "row 1 stays unselected: {:?}",
+            lines[unselected_y]
+        );
+
+        let palette = app.palette();
+        let ground = palette.ground().bg;
+        assert!(
+            ground.is_some(),
+            "truecolor gets a real ground to paint with"
+        );
+
+        let table_width = width - flock::GUTTER;
+        let painted = (flock::GUTTER..width)
+            .filter(|&x| {
+                buffer
+                    .cell((x, u16::try_from(selected_y).unwrap()))
+                    .is_some_and(|cell| Some(cell.bg) == ground)
+            })
+            .count();
+        assert_eq!(
+            painted,
+            usize::from(table_width),
+            "the ground must reach every column of the table, not just the text"
+        );
+
+        let unpainted = (flock::GUTTER..width)
+            .filter(|&x| {
+                buffer
+                    .cell((x, u16::try_from(unselected_y).unwrap()))
+                    .is_some_and(|cell| Some(cell.bg) == ground)
+            })
+            .count();
+        assert_eq!(unpainted, 0, "an unselected row carries no ground at all");
     }
 
     /// Last values stay on screen, with a sentence admitting they are

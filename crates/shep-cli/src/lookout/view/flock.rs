@@ -55,6 +55,23 @@ pub const fn mark(selected: bool) -> &'static str {
     if selected { ">" } else { " " }
 }
 
+/// The selected row's edge: a painted space, or the ASCII marker when
+/// there is no colour to paint with.
+///
+/// A space rather than `▌`, for the reason [`mark`] gives about `▸`:
+/// every block glyph in this pane's vocabulary is East-Asian
+/// *Ambiguous*, and a doubled cell in the gutter shifts the whole row.
+/// A space is one column on every terminal, and the background carries
+/// the whole signal.
+#[must_use]
+pub fn gutter(selected: bool, palette: Palette) -> (&'static str, Style) {
+    match (selected, palette.ground()) {
+        (false, _) => (" ", Style::default()),
+        (true, ground) if ground.bg.is_some() => (" ", ground),
+        (true, _) => (mark(true), Style::default()),
+    }
+}
+
 /// One column of the flock table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Column {
@@ -418,14 +435,33 @@ pub fn header_line(columns: &[Column], width: u16, style: Style) -> Line<'static
 /// A `Sheep` row under a group header draws as a slot rather than a
 /// standalone sheep ([`App::is_grouped`]), so a header reading `web ×3` is
 /// not followed by three rows each repeating `web`.
+///
+/// `selected` paints the row's own ground ([`Palette::ground`]) rather than
+/// relying on the gutter marker alone; a section header ignores it, since
+/// the cursor never lands on one.
 #[must_use]
-pub fn key_line(app: &App, key: &RowKey, columns: &[Column], width: u16) -> Line<'static> {
+pub fn key_line(
+    app: &App,
+    key: &RowKey,
+    columns: &[Column],
+    width: u16,
+    selected: bool,
+) -> Line<'static> {
     match key {
         RowKey::Sheep(id) => app.row(*id).map_or_else(
             || Line::from(Span::raw(" ".repeat(usize::from(width)))),
-            |row| row_line(app, row, columns, width, app.is_grouped(&row.info.name)),
+            |row| {
+                row_line(
+                    app,
+                    row,
+                    columns,
+                    width,
+                    app.is_grouped(&row.info.name),
+                    selected,
+                )
+            },
         ),
-        RowKey::Group(name) => group_line(app, name, columns, width),
+        RowKey::Group(name) => group_line(app, name, columns, width, selected),
         RowKey::Section(label) => section_line(label, width, app.palette().muted()),
     }
 }
@@ -443,17 +479,30 @@ fn section_line(label: &str, width: u16, style: Style) -> Line<'static> {
 /// `output::rows::FlockRows`'s own group row so the two surfaces never
 /// disagree about what an app's instances add up to.
 ///
-/// No row style beyond STATUS, `CpuSpark` and `MemCeil`, the same set
-/// [`row_line`] carries: the selected row is shown by the marker in the
-/// gutter column ([`mark`]), not by a wider style here.
-fn group_line(app: &App, name: &str, columns: &[Column], width: u16) -> Line<'static> {
+/// The selected row's own ground ([`Palette::ground`]) paints these cells
+/// too, on top of STATUS/`CpuSpark`/`MemCeil`; the gutter marker
+/// ([`gutter`]) is no longer the only tell.
+fn group_line(
+    app: &App,
+    name: &str,
+    columns: &[Column],
+    width: u16,
+    selected: bool,
+) -> Line<'static> {
     let palette = app.palette();
     let totals = app.group_totals(name);
     let name_width = self::name_width(width, columns);
-    let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len() * 2);
+    let ground = if selected {
+        palette.ground()
+    } else {
+        Style::default()
+    };
+    let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len() * 2 + 1);
+    let mut used: u16 = 0;
     for (index, column) in columns.iter().enumerate() {
         if index > 0 {
-            spans.push(Span::raw("  "));
+            spans.push(Span::styled("  ", ground));
+            used += 2;
         }
         let cell_width = if *column == Column::Name {
             name_width
@@ -470,8 +519,17 @@ fn group_line(app: &App, name: &str, columns: &[Column], width: u16) -> Line<'st
         // A group has no single history or ceiling ([`group_cell`]), so its
         // `MemCeil` text is always empty and there is nothing to fill.
         let tail_style = mem_ceil_tail_style(palette, status, None, style);
-        push_row_cell(&mut spans, *column, text, style, tail_style, 0);
+        push_row_cell(
+            &mut spans,
+            *column,
+            text,
+            style.patch(ground),
+            tail_style.patch(ground),
+            0,
+        );
+        used += cell_width;
     }
+    pad_ground(&mut spans, used, width, ground);
     Line::from(spans)
 }
 
@@ -517,9 +575,10 @@ fn group_cell(app: &App, name: &str, column: Column, totals: &GroupTotals) -> St
 /// One sheep's line. STATUS, `CpuSpark` and `MemCeil` are the cells that
 /// carry colour.
 ///
-/// No row style beyond that: the selected row is shown by the marker in the
-/// gutter column ([`mark`]), not by a `REVERSED` modifier on the row's own
-/// text.
+/// `selected` paints the row's own ground ([`Palette::ground`]) over every
+/// cell, padded to `width` by [`pad_ground`] so the paint reaches the last
+/// column rather than stopping where the text does; the gutter marker
+/// ([`gutter`]) is no longer the only tell.
 ///
 /// `grouped` says whether a group header sits above this row, which is the
 /// only thing that changes NAME, FOLD and SMIT. See [`cell`].
@@ -530,6 +589,7 @@ pub fn row_line(
     columns: &[Column],
     width: u16,
     grouped: bool,
+    selected: bool,
 ) -> Line<'static> {
     let palette = app.palette();
     let name = name_width(width, columns);
@@ -537,10 +597,17 @@ pub fn row_line(
     let status = Some(row.info.status);
     let mem_ceil_ratio = mem_ceil_ratio(&row.info);
     let mem_ceil_fill = self::mem_ceil_fill(&row.info);
-    let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len() * 2);
+    let ground = if selected {
+        palette.ground()
+    } else {
+        Style::default()
+    };
+    let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len() * 2 + 1);
+    let mut used: u16 = 0;
     for (index, column) in columns.iter().enumerate() {
         if index > 0 {
-            spans.push(Span::raw("  "));
+            spans.push(Span::styled("  ", ground));
+            used += 2;
         }
         let cell_width = if *column == Column::Name {
             name
@@ -550,8 +617,17 @@ pub fn row_line(
         let text = fit(&cell(app, row, *column, grouped), cell_width);
         let style = cell_style(palette, *column, status_style, status, mem_ceil_ratio);
         let tail_style = mem_ceil_tail_style(palette, status, mem_ceil_ratio, style);
-        push_row_cell(&mut spans, *column, text, style, tail_style, mem_ceil_fill);
+        push_row_cell(
+            &mut spans,
+            *column,
+            text,
+            style.patch(ground),
+            tail_style.patch(ground),
+            mem_ceil_fill,
+        );
+        used += cell_width;
     }
+    pad_ground(&mut spans, used, width, ground);
     Line::from(spans)
 }
 
@@ -721,6 +797,23 @@ fn push_row_cell(
     }
 }
 
+/// Fills the gap between `used` and `width` with a trailing span in
+/// `ground`, so a painted row's background reaches every column of the
+/// table rather than stopping where its last cell's text does.
+///
+/// Ratatui only paints a `Span`'s background under the cells its own text
+/// occupies. `NAME` is the only column [`name_width`] can leave short of
+/// the table's full width (it floors at [`NAME_MIN`] on a narrow
+/// terminal), so without this the selected row's ground would end mid-row
+/// on exactly the terminals narrow enough to need the signal most. A no-op
+/// when `used >= width` or `ground` carries no colour.
+fn pad_ground(spans: &mut Vec<Span<'static>>, used: u16, width: u16, ground: Style) {
+    let short = width.saturating_sub(used);
+    if short > 0 {
+        spans.push(Span::styled(" ".repeat(usize::from(short)), ground));
+    }
+}
+
 /// Which slice of the flock is on screen, given where the cursor is.
 ///
 /// Derived every frame from [`super::super::app::App::selected_index`] rather
@@ -741,6 +834,31 @@ pub fn scroll_offset(selected: usize, viewport: usize, total: usize) -> usize {
 mod tests {
     use super::super::fixtures;
     use super::*;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn the_painted_gutter_is_one_column_and_holds_no_glyph() {
+        let deep = Palette::detect(None, None, Some(OsStr::new("truecolor")));
+        let (text, style) = gutter(true, deep);
+        assert_eq!(
+            text, " ",
+            "a space, not a block: a block is Ambiguous width"
+        );
+        assert_eq!(
+            crate::output::width::char_columns(text.chars().next().unwrap()),
+            1
+        );
+        assert!(style.bg.is_some());
+    }
+
+    #[test]
+    fn without_colour_the_gutter_falls_back_to_the_ascii_marker() {
+        let off = Palette::detect(Some(OsStr::new("1")), None, None);
+        let (text, style) = gutter(true, off);
+        assert_eq!(text, ">");
+        assert_eq!(style, Style::default());
+        assert_eq!(gutter(false, off).0, " ");
+    }
 
     /// FOLD goes first (grouping metadata), then EXIT (silent for a running
     /// sheep, the common case), then RESTARTS and PID, then CPU and MEM (the
@@ -874,7 +992,7 @@ mod tests {
         let app = fixtures::app_with(vec![info], palette);
         let row = app.row(1).unwrap();
 
-        let line = row_line(&app, row, ALL, 200, false);
+        let line = row_line(&app, row, ALL, 200, false, false);
         let fill: Vec<&str> = line
             .spans
             .iter()
@@ -905,7 +1023,7 @@ mod tests {
         let app = fixtures::app_with(vec![info], palette);
         let row = app.row(1).unwrap();
 
-        let line = row_line(&app, row, ALL, 200, false);
+        let line = row_line(&app, row, ALL, 200, false, false);
         let mem_ceil_text: Vec<&str> = line
             .spans
             .iter()
@@ -949,7 +1067,7 @@ mod tests {
         let app = fixtures::app_with(vec![info], palette);
         let row = app.row(1).unwrap();
 
-        let line = row_line(&app, row, ALL, 200, false);
+        let line = row_line(&app, row, ALL, 200, false, false);
         assert!(
             !line
                 .spans
@@ -1191,7 +1309,7 @@ mod tests {
             fixtures::plain(),
         );
 
-        let line = key_line(&app, &RowKey::Group("web".to_string()), ALL, 200);
+        let line = key_line(&app, &RowKey::Group("web".to_string()), ALL, 200, false);
         let rendered: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
 
         // The exact row, column by column: a substring check on a run of
@@ -1242,7 +1360,7 @@ mod tests {
         };
         let app = fixtures::app_with(vec![member(1, 0), member(2, 1)], fixtures::plain());
 
-        let line = key_line(&app, &RowKey::Sheep(2), ALL, 200);
+        let line = key_line(&app, &RowKey::Sheep(2), ALL, 200, false);
         let rendered: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
 
         let name = name_width(200, ALL);
@@ -1293,7 +1411,7 @@ mod tests {
             fixtures::plain(),
         );
 
-        let line = key_line(&app, &RowKey::Sheep(7), ALL, 200);
+        let line = key_line(&app, &RowKey::Sheep(7), ALL, 200, false);
         let rendered: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
 
         assert!(rendered.contains("solo"), "got {rendered:?}");
@@ -1317,7 +1435,7 @@ mod tests {
         let app = fixtures::app_with(vec![dog], fixtures::plain());
         let row = app.row(9).unwrap();
 
-        let line = row_line(&app, row, ALL, 200, false);
+        let line = row_line(&app, row, ALL, 200, false, false);
         let rendered: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(
             rendered.contains("silent"),
@@ -1345,7 +1463,7 @@ mod tests {
         let app = fixtures::app_with(vec![dog], fixtures::plain());
         let row = app.row(9).unwrap();
 
-        let line = row_line(&app, row, ALL, 200, false);
+        let line = row_line(&app, row, ALL, 200, false, false);
         let rendered: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(rendered.contains("online"), "got {rendered:?}");
         assert!(!rendered.contains("silent"), "got {rendered:?}");
@@ -1365,7 +1483,7 @@ mod tests {
         let app = fixtures::app_with(vec![sheep], fixtures::plain());
         let row = app.row(1).unwrap();
 
-        let line = row_line(&app, row, ALL, 200, false);
+        let line = row_line(&app, row, ALL, 200, false, false);
         let rendered: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(rendered.contains("online"), "got {rendered:?}");
         assert!(!rendered.contains("silent"), "got {rendered:?}");
@@ -1387,7 +1505,7 @@ mod tests {
         let app = fixtures::app_with(vec![impossible], fixtures::plain());
         let row = app.row(1).unwrap();
 
-        let line = row_line(&app, row, ALL, 200, false);
+        let line = row_line(&app, row, ALL, 200, false, false);
         let rendered: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(
             rendered.contains("online"),

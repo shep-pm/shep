@@ -2697,6 +2697,7 @@ pub(crate) mod tests {
             &RowKey::Group("web".to_string()),
             columns_for(200),
             200,
+            false,
         )
         .spans
         .iter()

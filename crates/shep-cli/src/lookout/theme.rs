@@ -205,9 +205,9 @@ impl Palette {
     /// through everywhere else. `None` under `NO_COLOR` and on the
     /// 16-colour tier, where the callers fall back to the ASCII marker.
     ///
-    /// No non-test caller yet; see [`Self::sky`].
+    /// Called by `view::flock::gutter` and by the selected row's own cells
+    /// in `view::flock::row_line`/`group_line`.
     #[must_use]
-    #[allow(dead_code)]
     pub fn ground(self) -> Style {
         self.paper2
             .map_or_else(Style::default, |colour| Style::default().bg(colour))

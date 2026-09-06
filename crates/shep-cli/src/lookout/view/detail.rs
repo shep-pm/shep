@@ -441,7 +441,7 @@ mod tests {
         assert!(!detail_rendered.contains("online"), "{detail_rendered:?}");
 
         let row = app.row(9).unwrap();
-        let flock_line = row_line(&app, row, columns_for(200), 200, false);
+        let flock_line = row_line(&app, row, columns_for(200), 200, false, false);
         let flock_rendered: String = flock_line
             .spans
             .iter()
