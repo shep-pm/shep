@@ -4,10 +4,11 @@
 //! destructive), `--butter` (attention) and `--ink-3` (muted) onto 16 or
 //! 256 terminal colours, per `docs/shep-design/README.md`.
 //!
-//! `--paper` is painted in exactly two places now: the selected row and the
-//! status bar, through [`Palette::ground`]. Everywhere else it still stays
-//! [`Color::Reset`], so the operator's own terminal background shows
-//! through ordinary text. `--barn` is scenery-only and has no analog here.
+//! [`Palette::ground`] is the only thing in this module that paints a
+//! background, and it is for exactly two rows: the selected row and the
+//! status bar. Ordinary ground still stays [`Color::Reset`] everywhere
+//! else, so the operator's own terminal background shows through ordinary
+//! text. `--barn` is scenery-only and has no analog here.
 //!
 //! Every coloured cell's text already says the same thing, so `NO_COLOR`
 //! costs decoration, never information.
@@ -432,6 +433,17 @@ mod tests {
             ground.fg, None,
             "the row's own cells keep their own foreground"
         );
+    }
+
+    #[test]
+    fn the_shallow_tier_has_no_ground_to_paint() {
+        // Pinned deliberately: the 16-colour set has no quiet dark ground,
+        // and a plain `Black` background is wrong on a light terminal, so
+        // `paper2` stays `None` here on purpose and callers fall back to an
+        // ASCII marker, exactly as they do under `NO_COLOR`. Do not "fix"
+        // this by giving the shallow arm a `paper2` colour.
+        let shallow = Palette::detect(None, Some(OsStr::new("dumb")), None);
+        assert_eq!(shallow.ground(), Style::default());
     }
 
     fn ansi256_index(c: Color) -> u8 {
