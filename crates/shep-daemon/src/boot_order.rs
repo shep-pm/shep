@@ -57,6 +57,11 @@ pub(crate) fn plan_for(apps: &[ResolvedApp], dogs: &[String], boot_first: &[Stri
 /// A shutdown has the registry's own names and edges, and nothing there may
 /// fail: every node is a [`NodeKind::Sheep`], so no dog can reach the stages
 /// through this door.
+///
+/// The plan's `unresolved` and `cycles` are dropped on the floor rather than
+/// warned about, deliberately: the boot already reported both, and a flock
+/// with a bad edge would then say so a second time at the one moment nobody
+/// can act on it, in a log an operator reads after the machine is down.
 #[must_use]
 pub(crate) fn plan_for_names(edges: &BTreeMap<String, Vec<String>>) -> BootPlan {
     let nodes: Vec<BootNode> = edges
@@ -245,10 +250,7 @@ pub(crate) async fn start_in_stages(
 /// Only the two variants carrying a message about registration are touched.
 /// Every other one is about a single sheep and says nothing this could
 /// correct.
-fn corrected_for_earlier_stages(
-    err: SupervisorError,
-    started: &[ProcessInfo],
-) -> SupervisorError {
+fn corrected_for_earlier_stages(err: SupervisorError, started: &[ProcessInfo]) -> SupervisorError {
     let names: BTreeSet<&str> = started.iter().map(|info| info.name.as_str()).collect();
     if names.is_empty() {
         return err;
@@ -391,13 +393,21 @@ pub(crate) async fn stop_in_reverse(plan: &BootPlan, supervisor: &SupervisorHand
 /// Stops every sheep the registry holds, last stage first, leaving the dogs
 /// running.
 ///
-/// `dogs` names every dog this shepherd holds, and each one is dropped from
-/// the plan before it is built. [`stop_in_reverse`] stops whatever it is
-/// handed, so this is the only place the dogs rule can be enforced: they are
-/// stopped afterwards by `SupervisorHandle::shutdown`, because monitoring
-/// should outlive what it monitors. The registry holds sheep alone, so the
-/// filter usually removes nothing; it is what keeps a dog that reached the
-/// registry by some other door out of the stages.
+/// `dogs` names the dogs this shepherd spawned at boot, and each one is
+/// dropped from the plan before it is built. [`stop_in_reverse`] stops
+/// whatever it is handed, so this is the only place the dogs rule can be
+/// enforced: they are stopped afterwards by `SupervisorHandle::shutdown`,
+/// because monitoring should outlive what it monitors. The registry holds
+/// sheep alone, so the filter usually removes nothing.
+///
+/// It is the boot-time spawn list specifically, `RpcContext::dog_names`, and
+/// not every name this shepherd knows: a dog adopted against a running
+/// shepherd lands in `RpcContext::known_dogs` instead and is not filtered
+/// here. No live bug follows, because every other door into the registry
+/// refuses a dog, and widening the filter to `known_dogs` would cost more
+/// than it bought: that list carries dogs nobody enabled, so a sheep sharing
+/// a name with one would drop out of the ordered walk and be killed by the
+/// backstop with its dependants still running.
 ///
 /// A sheep sharing a dog's name is dropped with it, and killed in that same
 /// `shutdown`, which is where every sheep this walk misses is killed anyway.
@@ -634,9 +644,17 @@ mod tests {
             message.contains("db"),
             "the refusal must name the stage that is running: {message}"
         );
-        let flock = h.ctx.supervisor.list_checked().await.expect("the actor is up");
+        let flock = h
+            .ctx
+            .supervisor
+            .list_checked()
+            .await
+            .expect("the actor is up");
         assert_eq!(
-            flock.iter().map(|info| info.name.as_str()).collect::<Vec<_>>(),
+            flock
+                .iter()
+                .map(|info| info.name.as_str())
+                .collect::<Vec<_>>(),
             vec!["db"],
             "the earlier stage is deliberately left running"
         );

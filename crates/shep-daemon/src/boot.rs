@@ -1175,7 +1175,10 @@ impl RunningDaemon {
         //    against a database that is still answering. Every sheep is
         //    bounded by its own kill ladder, and step 5 is the backstop: a
         //    sheep this walk misses is still killed there, so a bug here
-        //    cannot leave a child alive.
+        //    cannot leave a child alive. Under `delete_flock_on_shutdown`
+        //    step 2 has just emptied the registry, so the plan is empty and
+        //    this walk does nothing at all: that session is deleting its whole
+        //    flock anyway, and step 5 is what stops it.
         crate::boot_order::stop_registered_in_reverse(
             &ctx.registry,
             &ctx.dog_names,

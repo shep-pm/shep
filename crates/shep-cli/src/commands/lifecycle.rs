@@ -1295,6 +1295,15 @@ const STAGED_START_SLACK: Duration = Duration::from_secs(10);
 /// batch whose stages sum past that is bounded there whatever this returns;
 /// asking for more only makes the client outlast the daemon rather than the
 /// other way round.
+///
+/// Which is why this is not clamped to 60s here. Past that line the daemon
+/// answers `DeadlineExceeded` while the start carries on running: the budget
+/// bounds the reply, not the actor's work. A client that gave up at the same
+/// moment would race that answer and print a local timeout instead of the
+/// daemon's own, and the operator reconciles with `shep flock` either way.
+/// Seventeen apps at the default 3s `listen_timeout` sum to 51s, which with
+/// the slack is past the ceiling, so this is an ordinary large batch rather
+/// than a pathological one.
 fn staged_start_deadline(apps: &[AppConfig]) -> Duration {
     let stages: Duration = apps
         .iter()
