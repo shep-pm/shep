@@ -96,9 +96,10 @@ pub fn render_cycle(cycle: &[String]) -> String {
 /// depending on it, which gives it an ordinary graph position. A dog runs
 /// at the earliest stage anything asks for.
 ///
-/// The stages therefore run: `boot_first` dogs, the ordinary sort, dogs
-/// nothing depends on, the cyclic stage, then the nodes that depend on the
-/// cycle in their own edge order.
+/// The stages therefore run: `boot_first` dogs, the ordinary sort, the
+/// cyclic stage, the nodes that depend on the cycle in their own edge order,
+/// then dogs nothing depends on. Those come last unconditionally, since a
+/// dog placed before a knot would answer for a flock still coming up.
 ///
 /// That paragraph describes the plan this function returns, and not even
 /// shep's boot honours all of it. `shep-daemon`'s `boot` spawns dogs in two
@@ -165,9 +166,6 @@ pub fn plan(nodes: &[BootNode]) -> BootPlan {
         stages.push(first.iter().map(|n| (*n).to_string()).collect());
     }
     stages.extend(kahn(&ordered, &edges, &first));
-    if !last.is_empty() {
-        stages.push(last.iter().map(|n| (*n).to_string()).collect());
-    }
     if !in_a_cycle.is_empty() {
         // One stage for every cyclic node, never one per reported cycle: a
         // node several cycles run through is still started once.
@@ -177,6 +175,14 @@ pub fn plan(nodes: &[BootNode]) -> BootPlan {
     // outside this set is already placed, which is what `kahn` reads a
     // missing name as.
     stages.extend(kahn(&after_cycle, &edges, &[]));
+    // Dead last, after the knot and everything hanging off it. Placing these
+    // before the cyclic stage would leave a metrics dog answering for a flock
+    // whose knot has not started, which is the case the dogs-last default
+    // exists to prevent, so "last" has to mean last even when the graph is
+    // degraded.
+    if !last.is_empty() {
+        stages.push(last.iter().map(|n| (*n).to_string()).collect());
+    }
 
     BootPlan {
         stages,
@@ -488,6 +494,32 @@ mod tests {
             sheep("api", &["db"]),
         ]);
         assert_eq!(out.stages, vec![vec!["db"], vec!["api"], vec!["metrics"]]);
+    }
+
+    #[test]
+    fn a_dog_still_runs_last_when_the_flock_holds_a_cycle() {
+        // fails if the undepended-on dogs are placed before the cyclic stage
+        // rather than after everything: a metrics dog would then answer for a
+        // flock whose knot has not started, which is the exact case the
+        // dogs-last default exists to prevent.
+        let out = plan(&[
+            dog("metrics", false),
+            sheep("a", &["b"]),
+            sheep("b", &["a"]),
+            sheep("tail", &["a"]),
+            sheep("plain", &[]),
+        ]);
+        let metrics = out
+            .stages
+            .iter()
+            .position(|stage| stage.iter().any(|n| n == "metrics"))
+            .expect("the dog is planned");
+        assert_eq!(
+            metrics,
+            out.stages.len() - 1,
+            "the dog must be the last stage: {:?}",
+            out.stages
+        );
     }
 
     #[test]
