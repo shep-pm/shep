@@ -128,7 +128,29 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
     <CodeBlock label="shep reload all --format json">{`{
   "schema_version": 1,
   "command": "reload",
-  "data": [ … the rows that did reload, as shep flock prints them … ],
+  "data": [
+    {
+      "id": 1,
+      "name": "api",
+      "status": "online",
+      "pid": 63850,
+      "restarts": 0,
+      "uptime_ms": 7059,
+      "fold": null,
+      "depends_on": ["db"],
+      "out_file": "/tmp/shepdemo/logs/api-0-out.log",
+      "err_file": "/tmp/shepdemo/logs/api-0-err.log",
+      "cpu_percent": null,
+      "memory_bytes": null,
+      "dog": null,
+      "lambs": null,
+      "last_exit": null,
+      "smit": null,
+      "instance": 0,
+      "handshook": null,
+      "dog_stale": null
+    }
+  ],
   "refused": [
     { "name": "db", "reason": "db is already being reloaded" }
   ]
