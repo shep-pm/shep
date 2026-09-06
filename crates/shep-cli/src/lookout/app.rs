@@ -3523,7 +3523,6 @@ impl App {
     ///
     /// Empty for a sheep with no history yet, and for one that has left the
     /// flock: [`Self::record_cpu_samples`] drops its entry entirely.
-    #[allow(dead_code, reason = "consumed by the sparkline in a later task")]
     pub fn cpu_history(&self, id: u32) -> &[f32] {
         self.cpu_history
             .get(&id)

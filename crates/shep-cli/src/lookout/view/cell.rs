@@ -9,10 +9,6 @@
 //! string a test can assert on, which those widgets take away.
 
 /// The eight sparkline steps, low to high.
-///
-/// No non-test caller yet: `sparkline` reaches it, and `sparkline` itself
-/// has none until tasks 5 and 7 to 9 wire a caller in.
-#[allow(dead_code)]
 const STEPS: [char; 8] = [
     '\u{2581}', '\u{2582}', '\u{2583}', '\u{2584}', '\u{2585}', '\u{2586}', '\u{2587}', '\u{2588}',
 ];
@@ -25,8 +21,6 @@ const STEPS: [char; 8] = [
 /// denominator. A value above its ceiling fills the bar rather than
 /// overflowing the column.
 #[must_use]
-// No non-test caller yet: this cell's callers arrive in tasks 5 and 7 to 9.
-#[allow(dead_code)]
 pub fn gauge(value: u64, ceiling: Option<u64>, cells: usize) -> String {
     let filled = match ceiling {
         Some(ceiling) if ceiling > 0 => {
@@ -49,8 +43,6 @@ pub fn gauge(value: u64, ceiling: Option<u64>, cells: usize) -> String {
 /// No samples at all is blank rather than a flat line at the floor: a flat
 /// line reads as measured and idle, and blank reads as not measured yet.
 #[must_use]
-// No non-test caller yet: this cell's callers arrive in tasks 5 and 7 to 9.
-#[allow(dead_code)]
 pub fn sparkline(samples: &[f32], cells: usize) -> String {
     if samples.is_empty() || cells == 0 {
         return " ".repeat(cells);

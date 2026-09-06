@@ -10,8 +10,12 @@
 
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
+use shep_core::protocol::ProcessInfo;
+use shep_core::status::ProcStatus;
 
 use super::super::app::{App, GroupTotals, Row, RowKey};
+use super::super::theme::Palette;
+use super::cell;
 use crate::output::width::char_columns;
 use crate::output::{cfg_cell, exit_cell, human_bytes, human_duration};
 
@@ -73,8 +77,15 @@ pub enum Column {
     /// declares. Rendered by [`crate::output::cfg_cell`], the same function
     /// `output::rows::FlockRows`'s own CFG column calls.
     Cfg,
+    /// The last twenty seconds of tree CPU, one cell per sample. `shep flock`
+    /// draws no equivalent; a still frame has nowhere to put one.
+    CpuSpark,
     /// Tree CPU as a percentage of one core.
     Cpu,
+    /// Resident set size against [`ProcessInfo::max_memory`], as a filled
+    /// bar. `shep flock` draws no equivalent, for the same reason as
+    /// [`Self::CpuSpark`].
+    MemCeil,
     /// Tree resident set size.
     Mem,
     /// Time since its last successful start.
@@ -89,9 +100,9 @@ pub enum Column {
 }
 
 impl Column {
-    /// The header text, matching `output::rows::FlockRows::headers` exactly:
-    /// one vocabulary across both surfaces, enforced by
-    /// `the_full_column_set_matches_flock_rows_headers_exactly` below.
+    /// The header text. Every column `output::rows::FlockRows` also draws
+    /// shares its vocabulary, enforced by
+    /// `every_shared_header_still_matches_flock_rows_exactly` below.
     #[must_use]
     pub const fn header(self) -> &'static str {
         match self {
@@ -102,7 +113,9 @@ impl Column {
             Self::Restarts => "RESTARTS",
             Self::Exit => "EXIT",
             Self::Cfg => "CFG",
+            Self::CpuSpark => "CPU 20s",
             Self::Cpu => "CPU",
+            Self::MemCeil => "MEM/CEIL",
             Self::Mem => "MEM",
             Self::Uptime => "UPTIME",
             Self::Fold => "FOLD",
@@ -127,7 +140,9 @@ impl Column {
             Self::Exit => 9,
             // 4: `!12`/`*12`, a `cfg_cell`'s own longest realistic value.
             Self::Cfg => 4,
+            Self::CpuSpark => 10,
             Self::Cpu => 6,
+            Self::MemCeil => 10,
             Self::Mem => 8,
             Self::Uptime => 8,
             Self::Fold => 10,
@@ -139,7 +154,46 @@ impl Column {
     }
 }
 
+/// Every column, including the two the terminal must be widest to keep.
+///
+/// `CpuSpark` and `MemCeil` sit beside `Cpu` and `Mem`, the cells they add
+/// context to, rather than up front where the header test's ordering
+/// (`every_shared_header_still_matches_flock_rows_exactly`) would put them
+/// ahead of `Pid`/`Restarts`/`Exit`/`Cfg` and break that vocabulary check.
 const ALL: &[Column] = &[
+    Column::Id,
+    Column::Name,
+    Column::Status,
+    Column::Pid,
+    Column::Restarts,
+    Column::Exit,
+    Column::Cfg,
+    Column::CpuSpark,
+    Column::Cpu,
+    Column::MemCeil,
+    Column::Mem,
+    Column::Uptime,
+    Column::Fold,
+    Column::Smit,
+];
+/// `ALL` minus `MemCeil`, the first column a narrowing terminal sheds.
+const NO_CEIL: &[Column] = &[
+    Column::Id,
+    Column::Name,
+    Column::Status,
+    Column::Pid,
+    Column::Restarts,
+    Column::Exit,
+    Column::Cfg,
+    Column::CpuSpark,
+    Column::Cpu,
+    Column::Mem,
+    Column::Uptime,
+    Column::Fold,
+    Column::Smit,
+];
+/// `NO_CEIL` minus `CpuSpark`: today's full set, and today's threshold.
+const NO_SPARK: &[Column] = &[
     Column::Id,
     Column::Name,
     Column::Status,
@@ -153,8 +207,8 @@ const ALL: &[Column] = &[
     Column::Fold,
     Column::Smit,
 ];
-// The full set minus CFG, the first column dropped. See `TIERS`'s own doc
-// for the drop order.
+// `NO_SPARK` minus CFG, the next column dropped. See `TIERS`'s own doc for
+// the drop order.
 const NO_CFG: &[Column] = &[
     Column::Id,
     Column::Name,
@@ -253,8 +307,14 @@ pub(super) fn cfg_tier_width() -> u16 {
 /// CFG has its own drop tier, one tier before SMIT's, keeping `NO_CFG`'s
 /// threshold at 116 so a 120-column terminal, the gallery's fixture width,
 /// still shows SMIT.
+///
+/// `MemCeil` and `CpuSpark` drop first of all, ahead of `Cfg`: both restate
+/// a number another column already carries, so a terminal too narrow for
+/// them still shows the value, just not its shape over time.
 const TIERS: &[(u16, &[Column])] = &[
-    (122, ALL),
+    (146, ALL),
+    (134, NO_CEIL),
+    (122, NO_SPARK),
     (116, NO_CFG),
     (101, NO_SMIT),
     (89, NO_FOLD),
@@ -383,8 +443,9 @@ fn section_line(label: &str, width: u16, style: Style) -> Line<'static> {
 /// `output::rows::FlockRows`'s own group row so the two surfaces never
 /// disagree about what an app's instances add up to.
 ///
-/// No row style beyond STATUS, the same rule [`row_line`] follows: the
-/// selected row is shown by the marker in the gutter column ([`mark`]).
+/// No row style beyond STATUS, `CpuSpark` and `MemCeil`, the same set
+/// [`row_line`] carries: the selected row is shown by the marker in the
+/// gutter column ([`mark`]), not by a wider style here.
 fn group_line(app: &App, name: &str, columns: &[Column], width: u16) -> Line<'static> {
     let palette = app.palette();
     let totals = app.group_totals(name);
@@ -400,15 +461,13 @@ fn group_line(app: &App, name: &str, columns: &[Column], width: u16) -> Line<'st
             column.width()
         };
         let text = fit(&group_cell(app, name, *column, &totals), cell_width);
-        let style = if *column == Column::Status {
-            // `palette.status`, not `palette.reported`: a group row is
-            // always an app's own instances, never a dog, so it has nothing
-            // to be silent about.
-            app.group_uniform_status(name)
-                .map_or(Style::default(), |status| palette.status(status))
-        } else {
-            Style::default()
-        };
+        // `palette.status`, not `palette.reported`: a group row is always an
+        // app's own instances, never a dog, so it has nothing to be silent
+        // about.
+        let status_style = app
+            .group_uniform_status(name)
+            .map_or(Style::default(), |status| palette.status(status));
+        let style = cell_style(palette, *column, status_style, None);
         spans.push(Span::styled(text, style));
     }
     Line::from(spans)
@@ -418,11 +477,18 @@ fn group_line(app: &App, name: &str, columns: &[Column], width: u16) -> Line<'st
 ///
 /// ID, PID, EXIT and CFG are blank, not `-`: there is no single value for a
 /// group row to have "no honest value" about, since a load can park a
-/// different set of fields on each slot. FOLD and SMIT read the first
-/// member's, since both are per-app facts every instance shares.
+/// different set of fields on each slot. `CpuSpark` and `MemCeil` join them
+/// for the same reason: a group has no single history and no single
+/// ceiling. FOLD and SMIT read the first member's, since both are per-app
+/// facts every instance shares.
 fn group_cell(app: &App, name: &str, column: Column, totals: &GroupTotals) -> String {
     match column {
-        Column::Id | Column::Pid | Column::Exit | Column::Cfg => String::new(),
+        Column::Id
+        | Column::Pid
+        | Column::Exit
+        | Column::Cfg
+        | Column::CpuSpark
+        | Column::MemCeil => String::new(),
         Column::Name => format!("{name} \u{d7}{}", totals.count),
         Column::Status => app.group_status_text(name),
         Column::Restarts => totals.restarts.to_string(),
@@ -446,7 +512,8 @@ fn group_cell(app: &App, name: &str, column: Column, totals: &GroupTotals) -> St
     }
 }
 
-/// One sheep's line. The STATUS cell is the only one that carries colour.
+/// One sheep's line. STATUS, `CpuSpark` and `MemCeil` are the cells that
+/// carry colour.
 ///
 /// No row style beyond that: the selected row is shown by the marker in the
 /// gutter column ([`mark`]), not by a `REVERSED` modifier on the row's own
@@ -464,6 +531,8 @@ pub fn row_line(
 ) -> Line<'static> {
     let palette = app.palette();
     let name = name_width(width, columns);
+    let status_style = palette.reported(row.reported());
+    let mem_ceil_ratio = mem_ceil_ratio(&row.info);
     let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len() * 2);
     for (index, column) in columns.iter().enumerate() {
         if index > 0 {
@@ -475,11 +544,7 @@ pub fn row_line(
             column.width()
         };
         let text = fit(&cell(app, row, *column, grouped), cell_width);
-        let style = if *column == Column::Status {
-            palette.reported(row.reported())
-        } else {
-            Style::default()
-        };
+        let style = cell_style(palette, *column, status_style, mem_ceil_ratio);
         spans.push(Span::styled(text, style));
     }
     Line::from(spans)
@@ -517,9 +582,11 @@ fn cell(app: &App, row: &Row, column: Column, grouped: bool) -> String {
         // `crate::output::cfg_cell`, not a second implementation of the
         // pending-over-overridden precedence.
         Column::Cfg => cfg_cell(info.pending.as_deref(), info.overridden.as_deref()),
+        Column::CpuSpark => cpu_spark_cell(app, info),
         Column::Cpu => info
             .cpu_percent
             .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
+        Column::MemCeil => mem_ceil_cell(info),
         Column::Mem => info
             .memory_bytes
             .map_or_else(|| "-".to_string(), human_bytes),
@@ -531,6 +598,60 @@ fn cell(app: &App, row: &Row, column: Column, grouped: bool) -> String {
         Column::Fold | Column::Smit if grouped => String::new(),
         Column::Fold => info.fold.clone().unwrap_or_else(|| "-".to_string()),
         Column::Smit => info.smit.clone().unwrap_or_else(|| "-".to_string()),
+    }
+}
+
+/// The `CPU 20s` cell: [`App::cpu_history`], rendered into ten cells by
+/// [`cell::sparkline`].
+fn cpu_spark_cell(app: &App, info: &ProcessInfo) -> String {
+    cell::sparkline(app.cpu_history(info.id), 10)
+}
+
+/// The `MEM/CEIL` cell: [`ProcessInfo::memory_bytes`] against
+/// [`ProcessInfo::max_memory`], rendered into ten cells by [`cell::gauge`].
+/// A missing reading counts as `0`, matching [`cell::gauge`]'s own
+/// no-ceiling case: an idle-looking bar rather than a guessed denominator.
+fn mem_ceil_cell(info: &ProcessInfo) -> String {
+    cell::gauge(info.memory_bytes.unwrap_or(0), info.max_memory, 10)
+}
+
+/// `memory_bytes` over `max_memory`, or `None` when either is missing or the
+/// ceiling is zero. Feeds [`cell_style`]'s butter threshold; the bar itself
+/// is drawn by [`mem_ceil_cell`], which never divides.
+fn mem_ceil_ratio(info: &ProcessInfo) -> Option<f64> {
+    let value = info.memory_bytes?;
+    let ceiling = info.max_memory?;
+    if ceiling == 0 {
+        return None;
+    }
+    Some(value as f64 / ceiling as f64)
+}
+
+/// The per-column style [`row_line`] and [`group_line`] both apply, so the
+/// STATUS rule they already shared does not get a second, drifting copy now
+/// that `CpuSpark` and `MemCeil` need one too.
+///
+/// `status_style` is resolved by the caller, since a sheep and a group
+/// header read status through different paths. `mem_ceil_ratio` is `None`
+/// for a group row: it has no single ceiling to be near.
+fn cell_style(
+    palette: Palette,
+    column: Column,
+    status_style: Style,
+    mem_ceil_ratio: Option<f64>,
+) -> Style {
+    match column {
+        Column::Status => status_style,
+        // The role a healthy sheep's own STATUS cell wears.
+        Column::CpuSpark => palette.status(ProcStatus::Online),
+        Column::MemCeil => {
+            if mem_ceil_ratio.is_some_and(|ratio| ratio >= 0.9) {
+                palette.attention()
+            } else {
+                palette.sky()
+            }
+        }
+        _ => Style::default(),
     }
 }
 
@@ -561,7 +682,7 @@ mod tests {
     /// the floor.
     #[test]
     fn columns_drop_in_a_fixed_order_as_the_terminal_narrows() {
-        assert_eq!(columns_for(300).len(), 12);
+        assert_eq!(columns_for(300).len(), 14);
         assert_eq!(columns_for(122).len(), 12);
         // CFG is the first column gone, ahead of even SMIT. See `TIERS`'s
         // own doc for the reasoning.
@@ -599,14 +720,71 @@ mod tests {
         assert!(columns_for(120).contains(&Column::Smit));
     }
 
-    /// Enforces `Column::header`'s claim of one vocabulary across both
-    /// surfaces, rather than leaving it aspirational.
     #[test]
-    fn the_full_column_set_matches_flock_rows_headers_exactly() {
+    fn the_two_new_rungs_restore_todays_table_before_shedding_anything_old() {
+        assert_eq!(columns_for(146), ALL);
+        assert!(!columns_for(134).contains(&Column::MemCeil));
+        assert!(columns_for(134).contains(&Column::CpuSpark));
+        assert!(!columns_for(122).contains(&Column::CpuSpark));
+        assert_eq!(
+            columns_for(122),
+            NO_SPARK,
+            "122 is today's full set, unchanged"
+        );
+    }
+
+    /// Enforces `Column::header`'s claim of one vocabulary across both
+    /// surfaces, rather than leaving it aspirational. Replaces
+    /// `the_full_column_set_matches_flock_rows_headers_exactly`, which
+    /// compared `ALL` to `FlockRows::headers()` directly and broke the
+    /// moment `ALL` grew two headers `shep flock` cannot draw.
+    #[test]
+    fn every_shared_header_still_matches_flock_rows_exactly() {
         use crate::output::Render;
 
-        let headers: Vec<&str> = ALL.iter().map(|column| column.header()).collect();
-        assert_eq!(headers, crate::output::FlockRows::headers());
+        let shared: Vec<&str> = ALL
+            .iter()
+            .map(|column| column.header())
+            .filter(|header| crate::output::FlockRows::headers().contains(header))
+            .collect();
+        assert_eq!(shared, crate::output::FlockRows::headers());
+    }
+
+    #[test]
+    fn the_only_headers_lookout_adds_are_the_two_shep_flock_cannot_draw() {
+        use crate::output::Render;
+
+        let extra: Vec<&str> = ALL
+            .iter()
+            .map(|column| column.header())
+            .filter(|header| !crate::output::FlockRows::headers().contains(header))
+            .collect();
+        assert_eq!(extra, vec!["CPU 20s", "MEM/CEIL"]);
+    }
+
+    /// Not a "-": the column is a bar, and an all-tail bar reads as
+    /// "no ceiling set" without a second rendering to learn.
+    #[test]
+    fn a_running_sheep_with_no_ceiling_draws_an_empty_gauge() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let info = ProcessInfo::builder(1, "web", ProcStatus::Online)
+            .memory_bytes(Some(48 * 1024 * 1024))
+            .build();
+        assert_eq!(mem_ceil_cell(&info), "░░░░░░░░░░");
+    }
+
+    #[test]
+    fn a_sheep_at_its_ceiling_fills_the_gauge() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let info = ProcessInfo::builder(1, "hungry", ProcStatus::Online)
+            .memory_bytes(Some(52 * 1024 * 1024))
+            .max_memory(Some(52 * 1024 * 1024))
+            .build();
+        assert_eq!(mem_ceil_cell(&info), "██████████");
     }
 
     /// `cfg(unix)`: the fixture carries a signalled exit, which
@@ -855,7 +1033,9 @@ mod tests {
             fit("0", Column::Restarts.width()),    // RESTARTS: summed, all zero
             fit("", Column::Exit.width()),         // EXIT: blank, no single exit
             fit("", Column::Cfg.width()),          // CFG: blank, per-instance fact
+            fit("", Column::CpuSpark.width()),     // CPU 20s: blank, no single history
             fit("-", Column::Cpu.width()),         // CPU: no reading on any instance
+            fit("", Column::MemCeil.width()),      // MEM/CEIL: blank, no single ceiling
             // 100 + 150 + 50 = 300 MiB, summed rather than averaged.
             fit("300.0M", Column::Mem.width()),
             // The MINIMUM across the three instances (30s), not the first
@@ -904,7 +1084,15 @@ mod tests {
             fit("0", Column::Restarts.width()),
             fit("-", Column::Exit.width()),
             fit("-", Column::Cfg.width()),
+            // CPU 20s: one sample recorded by `app_with`'s own snapshot,
+            // 0.0 since neither member reports a reading.
+            fit("         \u{2581}", Column::CpuSpark.width()),
             fit("-", Column::Cpu.width()),
+            // MEM/CEIL: an all-tail bar, no memory reading and no ceiling.
+            fit(
+                "\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}",
+                Column::MemCeil.width(),
+            ),
             fit("-", Column::Mem.width()),
             fit("30s", Column::Uptime.width()),
             // FOLD and SMIT blank, not `-`: the group row carries both.

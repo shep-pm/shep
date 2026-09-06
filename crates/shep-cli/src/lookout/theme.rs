@@ -161,13 +161,9 @@ impl Palette {
         Self::fg(self.butter)
     }
 
-    /// The memory gauge's filled portion.
-    ///
-    /// No non-test caller yet: a later task in the landing-pane revamp
-    /// draws the gauge. `#[allow(dead_code)]` says so rather than inventing
-    /// one.
+    /// The memory gauge's filled portion, and the flock table's `MEM/CEIL`
+    /// cell when it is not near its ceiling.
     #[must_use]
-    #[allow(dead_code)]
     pub fn sky(self) -> Style {
         Self::fg(self.sky)
     }
