@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tokio::sync::watch;
 
+use shep_core::config::graph::BootPlan;
 use shep_core::config::{DeclaredApp, NormalizeError, ResolvedApp, normalize_all};
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{
@@ -32,7 +33,7 @@ use crate::bus::{Bus, TopicFilter};
 use crate::dogs::DogSpec;
 use crate::limits::stats::StatsState;
 use crate::snapshot::{FlockRegistry, SnapshotError, write_atomic};
-use crate::supervisor::{Applied, ConnId, SupervisorError, SupervisorHandle};
+use crate::supervisor::{Applied, BatchPolicy, ConnId, SupervisorError, SupervisorHandle};
 
 /// Deadline applied when a client sends none (spec §6: 5s default).
 pub(crate) const DEFAULT_DEADLINE_MS: u64 = 5_000;
@@ -339,31 +340,49 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                 message: err.to_string(),
                 daemon_version: None,
             })),
-            Ok(resolved) => {
-                ctx.registry.record(&resolved);
-                match ctx.supervisor.start(resolved).await {
-                    Ok(infos) => reply(Ok(Response::Started(infos))),
-                    Err(err) => reply(Err(rpc_error(&err))),
+            Ok(resolved) => match staged_plan(ctx, &resolved) {
+                Err(err) => reply(Err(err)),
+                Ok(plan) => {
+                    ctx.registry.record(&resolved);
+                    match crate::boot_order::start_in_stages(
+                        &plan,
+                        &resolved,
+                        &ctx.supervisor,
+                        &ctx.events,
+                        BatchPolicy::AllOrNothing,
+                    )
+                    .await
+                    {
+                        Ok(infos) => reply(Ok(Response::Started(infos))),
+                        Err(err) => reply(Err(rpc_error(&err))),
+                    }
                 }
-            }
+            },
         },
         // The membership half of `Start` with none of the spawning, and the
         // same untrusted-peer rule. Recorded in the registry as `Start` is:
         // an added app is a flock member that happens to be stopped, so a
         // `shep save` after a `shep add` has to write it.
+        //
+        // The cycle refusal is shared and the stages are not: a document that
+        // cannot be started is one to refuse at the door an operator is
+        // standing at, and `add` starts nothing to order.
         Request::Add { apps } => match normalize_all(apps) {
             Err(err) => reply(Err(RpcError {
                 code: RpcErrorCode::InvalidConfig,
                 message: err.to_string(),
                 daemon_version: None,
             })),
-            Ok(resolved) => {
-                ctx.registry.record(&resolved);
-                match ctx.supervisor.register_at_rest(resolved).await {
-                    Ok(infos) => reply(Ok(Response::Added(infos))),
-                    Err(err) => reply(Err(rpc_error(&err))),
+            Ok(resolved) => match staged_plan(ctx, &resolved) {
+                Err(err) => reply(Err(err)),
+                Ok(_) => {
+                    ctx.registry.record(&resolved);
+                    match ctx.supervisor.register_at_rest(resolved).await {
+                        Ok(infos) => reply(Ok(Response::Added(infos))),
+                        Err(err) => reply(Err(rpc_error(&err))),
+                    }
                 }
-            }
+            },
         },
         // Re-normalized for the reason `Start` is, plus one of its own: an
         // unnormalized config would report every default it did not spell out
@@ -793,6 +812,86 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
             daemon_version: None,
         })),
     }
+}
+
+/// The stages `apps` starts in, or the cycle that refuses the whole batch.
+///
+/// The graph spans the batch AND the registered flock: a cycle can close
+/// through a sheep this request does not carry, so a Flockfile naming an
+/// `api` that waits for `db` is a cycle against a flock whose `db` already
+/// waits for `api`, with neither document showing one on its own.
+///
+/// The stages it answers with cover the batch alone. Everything else in the
+/// graph is registered already and is not this request's to start; it is
+/// there to be ordered around and to close a cycle.
+///
+/// Refused rather than warned about, which is the opposite of what a boot
+/// does with the same graph in `snapshot::muster`. A boot has nobody at the
+/// keyboard and must not strand a machine over a typo; an operator typed
+/// this and is there to fix it.
+///
+/// # Errors
+///
+/// - [`RpcErrorCode::InvalidConfig`]: the graph holds a cycle, named as the
+///   path to break. The same code `normalize_all`'s own refusal carries a few
+///   lines up, so it reaches the operator as `ExitCode::InvalidConfig`.
+fn staged_plan(ctx: &RpcContext, apps: &[ResolvedApp]) -> Result<BootPlan, RpcError> {
+    let mut edges = ctx.registry.depends_on_by_name();
+    // A dog is a node with no edges of its own, so an edge naming one
+    // resolves instead of reading as a typo. `or_default` rather than
+    // `insert`, for `nodes_for_with_dogs`' reason: a sheep already holding
+    // that name is the node, and a second one would be started twice.
+    // Where the dogs sort is immaterial here, since they are running before
+    // any request arrives and the stages are filtered to the batch anyway.
+    for dog in &ctx.dog_names {
+        edges.entry(dog.clone()).or_default();
+    }
+    // The batch's own edges win over whatever the registry holds for the same
+    // name: this document is the newer statement about it.
+    for app in apps {
+        edges.insert(app.config().name.clone(), app.config().depends_on.clone());
+    }
+    let plan = crate::boot_order::plan_for_names(&edges);
+    if let Some(cycle) = plan.cycles.first() {
+        return Err(RpcError {
+            code: RpcErrorCode::InvalidConfig,
+            message: format!(
+                "dependency cycle: {}",
+                shep_core::config::graph::render_cycle(cycle)
+            ),
+            daemon_version: None,
+        });
+    }
+    let batch: BTreeSet<&str> = apps.iter().map(|app| app.config().name.as_str()).collect();
+    // Warned, not refused: a dependency on an app whose Flockfile lives in
+    // another repository is legitimate, and the boot path takes the same view
+    // in `snapshot::warn_about_the_graph`. Only edges this batch drew, so a
+    // request is never blamed for the rest of the flock's.
+    for unresolved in &plan.unresolved {
+        if batch.contains(unresolved.dependent.as_str()) {
+            tracing::warn!(
+                sheep = %unresolved.dependent,
+                missing = %unresolved.missing,
+                "a dependency names nothing this flock has; starting without it"
+            );
+        }
+    }
+    Ok(BootPlan {
+        stages: plan
+            .stages
+            .iter()
+            .map(|stage| {
+                stage
+                    .iter()
+                    .filter(|name| batch.contains(name.as_str()))
+                    .cloned()
+                    .collect::<Vec<String>>()
+            })
+            .filter(|stage| !stage.is_empty())
+            .collect(),
+        unresolved: plan.unresolved,
+        cycles: Vec::new(),
+    })
 }
 
 /// The first name two entries of an `ApplyConfig` share, if any.
@@ -1384,6 +1483,171 @@ mod tests {
             panic!("expected flock")
         };
         assert_eq!(flock.len(), 1, "one row, not two");
+    }
+
+    /// An app that waits on `depends_on`, for the staged-start cases below.
+    fn waiting_on(name: &str, depends_on: &[&str]) -> AppConfig {
+        let mut app = AppConfig::minimal(name, "./srv");
+        app.depends_on = depends_on.iter().map(|n| (*n).to_string()).collect();
+        app
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_start_runs_its_batch_in_dependency_order() {
+        // fails if `Start` hands the whole batch to one `start` call: the
+        // reply would carry the apps in the order the request listed them,
+        // which is the reverse of the order they have to come up in.
+        let h = harness(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
+        let started = reply_of(
+            dispatch(
+                envelope(
+                    1,
+                    Request::Start {
+                        apps: vec![waiting_on("api", &["db"]), waiting_on("db", &[])],
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        let Response::Started(infos) = started.result.unwrap() else {
+            panic!("expected started")
+        };
+        let order: Vec<&str> = infos.iter().map(|info| info.name.as_str()).collect();
+        assert_eq!(order, ["db", "api"], "stage order, not request order");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_cycle_closing_through_a_registered_sheep_is_refused_too() {
+        // fails if the graph spans only the incoming batch: neither document
+        // shows a cycle on its own, and the flock is where the edge back is.
+        let h = harness(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
+        let first = reply_of(
+            dispatch(
+                envelope(
+                    1,
+                    Request::Start {
+                        apps: vec![waiting_on("db", &["api"])],
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        assert!(
+            first.result.is_ok(),
+            "one app, one edge to a name nobody has"
+        );
+
+        let reply = reply_of(
+            dispatch(
+                envelope(
+                    2,
+                    Request::Start {
+                        apps: vec![waiting_on("api", &["db"])],
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        let err = reply.result.unwrap_err();
+        assert_eq!(err.code, RpcErrorCode::InvalidConfig);
+        assert!(
+            err.message.contains("api") && err.message.contains("db"),
+            "both ends of the cycle must be named: {}",
+            err.message
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_add_whose_cycle_closes_through_the_flock_is_refused_too() {
+        // fails if the cycle check rides on the spawning half: `add` and
+        // `start` are one path, and a document `add` registered would refuse
+        // the moment anything started it. `normalize_all` already catches a
+        // cycle drawn inside one document; only the flock closes this one.
+        let h = harness(vec![]);
+        let first = reply_of(
+            dispatch(
+                envelope(
+                    1,
+                    Request::Add {
+                        apps: vec![waiting_on("db", &["api"])],
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        assert!(
+            first.result.is_ok(),
+            "one app, one edge to a name nobody has"
+        );
+
+        let reply = reply_of(
+            dispatch(
+                envelope(
+                    2,
+                    Request::Add {
+                        apps: vec![waiting_on("api", &["db"])],
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        let err = reply.result.unwrap_err();
+        assert_eq!(err.code, RpcErrorCode::InvalidConfig);
+        assert!(
+            err.message.contains(" -> "),
+            "the cycle must be named as a path: {}",
+            err.message
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_stage_never_covers_a_sheep_the_request_did_not_carry() {
+        // fails if the stages are taken from the whole graph rather than
+        // filtered to the batch: `db` is already up, and a stage naming it
+        // would start it a second time.
+        let h = harness(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
+        let first = reply_of(
+            dispatch(
+                envelope(
+                    1,
+                    Request::Start {
+                        apps: vec![waiting_on("db", &[])],
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        assert!(first.result.is_ok(), "db starts on its own");
+
+        let second = reply_of(
+            dispatch(
+                envelope(
+                    2,
+                    Request::Start {
+                        apps: vec![waiting_on("api", &["db"])],
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        let Response::Started(infos) = second.result.unwrap() else {
+            panic!("expected started")
+        };
+        let order: Vec<&str> = infos.iter().map(|info| info.name.as_str()).collect();
+        assert_eq!(order, ["api"], "only what this request carried");
+
+        let listed = reply_of(dispatch(envelope(3, Request::ListFlock), &h.ctx).await);
+        let Response::Flock(flock) = listed.result.unwrap() else {
+            panic!("expected flock")
+        };
+        assert_eq!(flock.len(), 2, "one row each, not a second db");
     }
 
     /// One app as a Flockfile would declare it: the config, plus the keys

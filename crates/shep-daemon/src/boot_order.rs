@@ -20,7 +20,7 @@ use tokio::sync::broadcast::{self, error::RecvError};
 
 use crate::bus::{Bus, SharedEvent};
 use crate::snapshot::FlockRegistry;
-use crate::supervisor::{BatchPolicy, SupervisorHandle};
+use crate::supervisor::{BatchPolicy, SupervisorError, SupervisorHandle};
 
 /// How much longer than the stage's own longest `listen_timeout` the driver
 /// waits before giving up on it.
@@ -123,17 +123,24 @@ pub(crate) fn nodes_for_with_dogs(
 /// not running, whatever stage the plan gave it;
 /// `snapshot::warn_about_the_graph` reports the edge.
 /// Answers with every instance started, in stage order.
+///
+/// # Errors
+///
+/// - [`SupervisorError`]: under [`BatchPolicy::AllOrNothing`] only, the first
+///   stage that did not start. That policy is the operator's, and an operator
+///   who typed `shep start` gets the failure back rather than a warning in a
+///   log they are not reading; a later stage waits on the stage that failed,
+///   so there is nothing useful to run after it either. Under
+///   [`BatchPolicy::PerApp`], the boot's policy, a failed stage is warned
+///   about and the walk continues, for the reason `spawn_enabled_dogs` gives:
+///   a gap is better than an outage.
 pub(crate) async fn start_in_stages(
     plan: &BootPlan,
     apps: &[ResolvedApp],
     supervisor: &SupervisorHandle,
     events: &Bus,
     policy: BatchPolicy,
-) -> Vec<ProcessInfo> {
-    let by_name: BTreeMap<&str, &ResolvedApp> = apps
-        .iter()
-        .map(|app| (app.config().name.as_str(), app))
-        .collect();
+) -> Result<Vec<ProcessInfo>, SupervisorError> {
     // Every name anything in the flock waits on, read once. That is usually
     // "what follows them", since the sort puts a dependency in an earlier
     // stage than its dependants; a cycle is the exception the graph keeps,
@@ -147,9 +154,16 @@ pub(crate) async fn start_in_stages(
 
     let mut started = Vec::new();
     for (index, stage) in plan.stages.iter().enumerate() {
-        let members: Vec<ResolvedApp> = stage
+        // Walked over `apps` rather than over `stage`, so a stage keeps the
+        // order the caller handed it. A stage's names are sorted, and under
+        // `BatchPolicy::AllOrNothing` a spawn that fails ends the batch where
+        // it stands, so taking the sorted order would decide which of an
+        // operator's apps came up by how their names happen to compare.
+        let names: BTreeSet<&str> = stage.iter().map(String::as_str).collect();
+        let members: Vec<ResolvedApp> = apps
             .iter()
-            .filter_map(|name| by_name.get(name.as_str()).map(|app| (*app).clone()))
+            .filter(|app| names.contains(app.config().name.as_str()))
+            .cloned()
             .collect();
         if members.is_empty() {
             continue;
@@ -187,9 +201,7 @@ pub(crate) async fn start_in_stages(
         tracing::info!(stage = index, members = ?stage, "boot stage starting");
         match supervisor.start_staged(members, gate, policy).await {
             Ok(infos) => started.extend(infos),
-            // Never fails the boot for the reason `spawn_enabled_dogs` does
-            // not: a stage that could not start is a gap, and refusing the
-            // rest of the flock over it turns the gap into an outage.
+            Err(err) if policy == BatchPolicy::AllOrNothing => return Err(err),
             Err(err) => tracing::warn!(stage = index, %err, "a boot stage did not start"),
         }
         if waiting.is_empty() {
@@ -205,7 +217,7 @@ pub(crate) async fn start_in_stages(
             );
         }
     }
-    started
+    Ok(started)
 }
 
 /// Waits until every name in `waiting` has reached a settled answer, or until
@@ -452,12 +464,46 @@ mod tests {
             &h.ctx.events,
             BatchPolicy::PerApp,
         )
-        .await;
+        .await
+        .expect("`PerApp` never refuses a stage");
 
         assert_eq!(
             drain(&mut rx),
             vec!["Start db", "Online db", "Start api", "Online api"],
         );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn one_stage_starts_its_members_in_the_order_the_caller_handed_them() {
+        // fails if a stage is walked over its own sorted names: under
+        // `AllOrNothing` a failed spawn ends the batch where it stands, so
+        // the walk order decides which of an operator's apps come up, and
+        // deciding it by how the names compare is arbitrary
+        let h = harness(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
+        let apps = normalize_all(vec![
+            AppConfig::minimal("zulu", "./sleep"),
+            AppConfig::minimal("alpha", "./sleep"),
+        ])
+        .expect("two apps, no edges");
+        let plan = plan(&nodes_for(&apps, &[]));
+        assert_eq!(plan.stages, vec![vec!["alpha", "zulu"]], "one sorted stage");
+
+        let mut rx = h.ctx.events.subscribe();
+        start_in_stages(
+            &plan,
+            &apps,
+            &h.ctx.supervisor,
+            &h.ctx.events,
+            BatchPolicy::AllOrNothing,
+        )
+        .await
+        .expect("both scripts spawn");
+
+        let starts: Vec<String> = drain(&mut rx)
+            .into_iter()
+            .filter(|line| line.starts_with("Start "))
+            .collect();
+        assert_eq!(starts, vec!["Start zulu", "Start alpha"]);
     }
 
     #[tokio::test(start_paused = true)]
@@ -488,7 +534,8 @@ mod tests {
             ),
         )
         .await
-        .expect("a dead dependency must not hold the stage for its deadline");
+        .expect("a dead dependency must not hold the stage for its deadline")
+        .expect("`PerApp` never refuses a stage");
         assert!(started.iter().any(|info| info.name == "api"));
     }
 
@@ -518,7 +565,8 @@ mod tests {
             &h.ctx.events,
             BatchPolicy::PerApp,
         )
-        .await;
+        .await
+        .expect("`PerApp` never refuses a stage");
 
         let mut rx = h.ctx.events.subscribe();
         stop_in_reverse(&plan, &h.ctx.supervisor).await;
@@ -541,7 +589,8 @@ mod tests {
             &h.ctx.events,
             BatchPolicy::PerApp,
         )
-        .await;
+        .await
+        .expect("`PerApp` never refuses a stage");
 
         let mut rx = h.ctx.events.subscribe();
         stop_registered_in_reverse(&h.ctx.registry, &h.ctx.dog_names, &h.ctx.supervisor).await;

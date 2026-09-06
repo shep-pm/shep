@@ -450,8 +450,19 @@ pub(crate) async fn muster(
     // app whose script provably is not there is right for an operator typing
     // `shep start` and wrong at an unattended boot, where a binary missing
     // after a rebuild would cost the machine its entire flock.
-    crate::boot_order::start_in_stages(&plan, &to_start, supervisor, events, BatchPolicy::PerApp)
-        .await;
+    // `PerApp` never answers `Err`; warned rather than discarded so a later
+    // change of policy here cannot lose a failure silently.
+    if let Err(err) = crate::boot_order::start_in_stages(
+        &plan,
+        &to_start,
+        supervisor,
+        events,
+        BatchPolicy::PerApp,
+    )
+    .await
+    {
+        tracing::warn!(%err, "muster roll restore could not start one or more apps");
+    }
     Ok(restored)
 }
 
