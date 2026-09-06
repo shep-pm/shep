@@ -6633,7 +6633,7 @@ mod tests {
         });
         let pane = app.config_pane().expect("the reply opens the pane");
         assert_eq!(pane.target().name(), "web");
-        assert_eq!(pane.fields().len(), 39);
+        assert_eq!(pane.fields().len(), 40);
     }
 
     #[test]
@@ -6928,7 +6928,7 @@ mod tests {
         app.update(Msg::Key(KeyPress::SelectDown));
         assert_eq!(app.config_pane().unwrap().view().cursor(), 2);
         app.update(Msg::Key(KeyPress::SelectLast));
-        assert_eq!(app.config_pane().unwrap().view().cursor(), 38);
+        assert_eq!(app.config_pane().unwrap().view().cursor(), 39);
         app.update(Msg::Key(KeyPress::SelectFirst));
         assert_eq!(app.config_pane().unwrap().view().cursor(), 0);
     }
@@ -6950,7 +6950,7 @@ mod tests {
                 fixtures::sheep_config_view(),
             ))),
         });
-        assert_eq!(app.config_pane().unwrap().view().cursor(), 38);
+        assert_eq!(app.config_pane().unwrap().view().cursor(), 39);
     }
 
     #[test]
@@ -6994,7 +6994,7 @@ mod tests {
         let mut app = fixtures::app_in_sheep_pane();
         app.note_body_rows(20);
         app.update(Msg::Key(KeyPress::SelectLast));
-        assert_eq!(app.config_pane().unwrap().view().offset(), 39 - 19);
+        assert_eq!(app.config_pane().unwrap().view().offset(), 40 - 19);
     }
 
     /// Walks the pane's cursor onto `key`. The pane is a public type with

@@ -187,7 +187,7 @@ fn expand_paths(app: &mut AppConfig, home: Option<&Path>) -> Result<(), Normaliz
 /// - [`NormalizeError::MissingName`]: `name` is empty.
 /// - [`NormalizeError::InvalidName`]: `name` contains a path separator or a colon, or is `.`/`..`.
 /// - [`NormalizeError::InvalidEnvironment`]: `environment` is `all`, the secrets store's every-environment slot, or falls outside the store's name grammar.
-/// - [`NormalizeError::ReservedEnvVar`]: `env` sets `SHEP_INSTANCE` or `SHEP_NAME`, which shep injects itself.
+/// - [`NormalizeError::ReservedEnvVar`]: `env` sets `SHEP_INSTANCE`, `SHEP_NAME` or `SHEP_ENVIRONMENT`, which shep injects itself.
 /// - [`NormalizeError::IncrementVarRemoved`]: `increment_var` is set; removed in favour of `{{instance}}` templating.
 /// - [`NormalizeError::MissingScript`]: `script` is empty.
 /// - [`NormalizeError::ZeroInstances`]: `instances == 0`.
@@ -238,7 +238,7 @@ pub fn normalize_with_home(
             value: environment.clone(),
         });
     }
-    for var in ["SHEP_INSTANCE", "SHEP_NAME"] {
+    for var in ["SHEP_INSTANCE", "SHEP_NAME", "SHEP_ENVIRONMENT"] {
         if app.env.contains_key(var) {
             return Err(NormalizeError::ReservedEnvVar {
                 name: app.name.clone(),
@@ -955,7 +955,7 @@ mod tests {
 
     #[test]
     fn the_reserved_env_vars_are_refused_rather_than_overwritten() {
-        for var in ["SHEP_INSTANCE", "SHEP_NAME"] {
+        for var in ["SHEP_INSTANCE", "SHEP_NAME", "SHEP_ENVIRONMENT"] {
             let mut app = AppConfig::minimal("web", "./srv");
             app.env.insert(var.to_string(), "mine".to_string());
             let err = normalize(app).unwrap_err();

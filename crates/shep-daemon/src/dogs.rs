@@ -1395,7 +1395,16 @@ mod tests {
             source: DogSource::BuiltIn,
         };
         let app = dog_app(&spec, &paths).unwrap();
-        let assembled = crate::assemble::assemble(&app, 0, &paths, None);
+        // A dog's config is built by `dog_app`, never operator-templated,
+        // so an empty view resolves everything it holds.
+        let assembled = crate::assemble::assemble(
+            &app,
+            0,
+            &paths,
+            None,
+            &shep_core::secrets::SecretView::empty("production".to_string()),
+        )
+        .expect("a dog's own config carries no template to refuse");
         assert_eq!(
             assembled.env.get("SHEP_HOME"),
             Some(&paths.home.display().to_string())

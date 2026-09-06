@@ -744,6 +744,7 @@ async fn a_bare_interpreter_resolves_via_the_seeded_path() {
     // tempdir can only resolve through the seed.
     use shep_core::config::{AppConfig, normalize};
     use shep_core::paths::ShepPaths;
+    use shep_core::secrets::SecretView;
     use shep_daemon::assemble::assemble;
     use std::os::unix::fs::PermissionsExt as _;
 
@@ -783,7 +784,14 @@ async fn a_bare_interpreter_resolves_via_the_seeded_path() {
         ..Default::default()
     };
     let app = normalize(app_config).unwrap();
-    let spec = assemble(&app, 0, &paths, None);
+    let spec = assemble(
+        &app,
+        0,
+        &paths,
+        None,
+        &SecretView::empty("production".to_string()),
+    )
+    .expect("this fixture carries no secret to resolve");
     assert_eq!(
         spec.program, "shep-test-interp",
         "sanity: genuinely bare, not accidentally absolute"

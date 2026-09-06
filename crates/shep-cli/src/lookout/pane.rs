@@ -1724,9 +1724,9 @@ mod tests {
     }
 
     #[test]
-    fn a_sheep_pane_has_thirty_nine_fields_in_eight_groups() {
+    fn a_sheep_pane_has_forty_fields_in_eight_groups() {
         let pane = ConfigPane::sheep(web());
-        assert_eq!(pane.fields().len(), 39);
+        assert_eq!(pane.fields().len(), 40);
         assert!(!pane.fields().is_empty());
         let mut groups: Vec<&str> = Vec::new();
         for field in pane.fields().fields() {
@@ -1844,9 +1844,9 @@ mod tests {
         pane.move_by(-5);
         assert_eq!(pane.cursor(), Some(PaneRow::Field(0)));
         pane.move_to_last();
-        assert_eq!(pane.cursor(), Some(PaneRow::Field(38)));
+        assert_eq!(pane.cursor(), Some(PaneRow::Field(39)));
         assert_eq!(
-            pane.fields().fields()[38].key,
+            pane.fields().fields()[39].key,
             "cron_timezone",
             "the last row is the last field"
         );
@@ -1862,7 +1862,7 @@ mod tests {
         let carried = pane.view().clone();
         let mut fresh = ConfigPane::sheep(web());
         fresh.adopt_view(carried);
-        assert_eq!(fresh.cursor(), Some(PaneRow::Field(38)));
+        assert_eq!(fresh.cursor(), Some(PaneRow::Field(39)));
     }
 
     #[test]
@@ -2448,7 +2448,7 @@ mod tests {
         let pane = ConfigPane::sheep(SheepConfigView::new(config, Vec::new(), Vec::new()));
         assert_eq!(
             format!("{pane:?}"),
-            r#"ConfigPane { target: Sheep { name: "web" }, fields: 39, env_keys: 1, cursor: 0 }"#
+            r#"ConfigPane { target: Sheep { name: "web" }, fields: 40, env_keys: 1, cursor: 0 }"#
         );
     }
 

@@ -967,7 +967,7 @@ mod tests {
         };
         assert_eq!(flagged('*'), ["reuse_port", "max_restarts"]);
         assert_eq!(flagged('!'), ["kill_signal"]);
-        assert_eq!(rows_of(&text).len(), 39, "every field is drawn at 120");
+        assert_eq!(rows_of(&text).len(), 40, "every field is drawn at 120");
     }
 
     /// `=` is shep refusing the write outright; `~` is only this pane
@@ -986,7 +986,7 @@ mod tests {
         };
         assert_eq!(glyphed('='), ["instances", "name"]);
         assert_eq!(glyphed('~'), ["liveness_probe", "readiness_probe"]);
-        assert_eq!(glyphed(' ').len(), 39 - 2 - 2);
+        assert_eq!(glyphed(' ').len(), 40 - 2 - 2);
     }
 
     /// `kill_timeout` and `exp_backoff_restart_delay` default to 1600ms
