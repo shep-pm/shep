@@ -1201,7 +1201,14 @@ pub struct ActionState<'a> {
 pub const CONFIRM_EXPIRY: Duration = Duration::from_secs(10);
 
 /// The sentence `r` and the action keys both give when the link is gone.
-const LINK_GONE: &str = "the shepherd is gone — nothing left to ask";
+const LINK_GONE: &str = "the shepherd is gone: nothing left to ask";
+
+/// The redial sentence, for the status bar and for a refused action key.
+///
+/// Both render on one frame, so they must agree exactly.
+pub(super) fn retrying_sentence(attempt: u32) -> String {
+    format!("the shepherd stopped answering: reconnecting (attempt {attempt})")
+}
 
 /// The sentence every closed-gate refusal gives, dashboard and settings alike.
 const READ_ONLY_REFUSAL: &str = "read-only: from --read-only or lookout.allow_control";
@@ -3356,11 +3363,8 @@ impl App {
     /// dead link refuses the same way whichever door an operator used.
     fn link_refusal(&self) -> Option<String> {
         match self.link {
-            // Not `LINK_GONE`, which says the shepherd is gone: this is the
-            // status bar's own sentence for a redial (`view/status.rs`).
-            Link::Retrying { attempt } => Some(format!(
-                "the shepherd stopped answering \u{2014} reconnecting (attempt {attempt})"
-            )),
+            // Not `LINK_GONE`: the ladder is still running.
+            Link::Retrying { attempt } => Some(retrying_sentence(attempt)),
             // The ladder is exhausted, so the shepherd really is gone.
             Link::Lost { .. } => Some(LINK_GONE.to_string()),
             _ => None,
