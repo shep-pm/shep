@@ -636,6 +636,11 @@ pub struct ProcessInfo {
     pub uptime_ms: u64,
     /// Fold membership
     pub fold: Option<String>,
+    /// Names this sheep waits for at a staged start, from its
+    /// `depends_on`. Empty both when the sheep declares none and when the
+    /// peer daemon predates the field.
+    #[serde(default)]
+    pub depends_on: Vec<String>,
     /// Resolved stdout log path: the app's explicit
     /// [`AppConfig::out_file`] when it set one, else the daemon-derived
     /// default. `None` only when the peer daemon predates this field.
@@ -768,6 +773,7 @@ impl ProcessInfo {
                 restarts: 0,
                 uptime_ms: 0,
                 fold: None,
+                depends_on: Vec::new(),
                 out_file: None,
                 err_file: None,
                 cpu_percent: None,
@@ -822,6 +828,12 @@ impl ProcessInfoBuilder {
     /// Sets fold membership.
     pub fn fold(mut self, fold: Option<String>) -> Self {
         self.info.fold = fold;
+        self
+    }
+
+    /// Sets the names this sheep waits for at a staged start.
+    pub fn depends_on(mut self, depends_on: Vec<String>) -> Self {
+        self.info.depends_on = depends_on;
         self
     }
 
@@ -1623,6 +1635,10 @@ mod tests {
             restarts: 1,
             uptime_ms: 60_000,
             fold: Some("backend".to_string()),
+            // Left empty: this fixture feeds `reply_wire_snapshots` and
+            // `bus_event_wire_snapshots`, so a non-empty value moves pinned
+            // bytes.
+            depends_on: Vec::new(),
             out_file: Some("/home/ada/.shep/logs/web-0-out.log".to_string()),
             err_file: Some("/home/ada/.shep/logs/web-0-err.log".to_string()),
             // 12.5: an insta JSON snapshot is stable across platforms only

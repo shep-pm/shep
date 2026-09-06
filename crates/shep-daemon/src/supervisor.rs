@@ -7174,6 +7174,7 @@ fn to_info(entry: &ProcessEntry, smits: &Smits) -> ProcessInfo {
         .restarts(entry.restarts)
         .uptime_ms(uptime_ms)
         .fold(entry.spec.config().fold.clone())
+        .depends_on(entry.spec.config().depends_on.clone())
         // Lossy on purpose: a non-UTF-8 log path must not fail serialization
         // of the whole reply and blank the listing for every other sheep.
         .out_file(Some(entry.out_file.to_string_lossy().into_owned()))

@@ -60,6 +60,9 @@ pub struct SheepRow {
     pub uptime_ms: u64,
     /// Fold membership.
     pub fold: Option<String>,
+    /// Names this sheep waits for at a staged start. Empty both when the
+    /// sheep declares none and when the peer daemon predates the field.
+    pub depends_on: Vec<String>,
     /// Resolved stdout log path.
     pub out_file: Option<String>,
     /// Resolved stderr log path.
@@ -171,6 +174,7 @@ impl From<&ProcessInfo> for SheepRow {
             restarts: info.restarts,
             uptime_ms: info.uptime_ms,
             fold: info.fold.clone(),
+            depends_on: info.depends_on.clone(),
             out_file: info.out_file.clone(),
             err_file: info.err_file.clone(),
             cpu_percent: info.cpu_percent,
