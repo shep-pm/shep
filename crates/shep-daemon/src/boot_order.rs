@@ -55,10 +55,14 @@ pub(crate) fn plan_for(apps: &[ResolvedApp], dogs: &[String], boot_first: &[Stri
 /// every sheep. A dog carries no `depends_on` of its own: `dog_app` builds a
 /// dog's config from `AppConfig::minimal`, so its list is always empty.
 ///
-/// A dog sharing a sheep's name is dropped rather than added a second time.
-/// Nothing refuses that collision: `start_dog` finds the name registered and
-/// returns, so the sheep is what actually runs, and a second node would put
-/// that one sheep in two stages and start it twice.
+/// A dog sharing a sheep's name is dropped rather than added a second time: a
+/// second node would put that one sheep in two stages and start it twice.
+/// Nothing refuses the collision, and which of the two runs depends on which
+/// went first. An unpromoted dog is spawned after the flock, finds the name
+/// registered, and returns, so the sheep is what runs. A promoted one spawns
+/// before the restore against an empty flock, and the sheep is the one that
+/// never starts; `snapshot::warn_about_dogs_holding_sheep_names` is what says
+/// so.
 #[must_use]
 pub(crate) fn nodes_for_with_dogs(
     apps: &[ResolvedApp],
@@ -90,8 +94,13 @@ pub(crate) fn nodes_for_with_dogs(
 /// Starts `apps` stage by stage, holding each stage until every member a
 /// later stage waits on has settled.
 ///
-/// Dogs in `plan` are skipped: they are spawned by `dogs::spawn_enabled_dogs`,
-/// which the caller runs at the stage boundary this plan puts them in.
+/// Dogs in `plan` are skipped, and only `[daemon] boot_first_dogs` dogs are
+/// positioned by it in any real sense: `boot` runs `dogs::spawn_enabled_dogs`
+/// twice, once for the promoted ones before this driver is reached at all and
+/// once for the rest after every stage, rather than at each dog's own stage
+/// boundary. So a sheep waiting on an unpromoted dog starts while that dog is
+/// not running, whatever stage the plan gave it;
+/// `snapshot::warn_about_the_graph` reports the edge.
 /// Answers with every instance started, in stage order.
 pub(crate) async fn start_in_stages(
     plan: &BootPlan,
@@ -126,10 +135,13 @@ pub(crate) async fn start_in_stages(
         }
         // The gate rides on this one `Command::Start` and so is a property of
         // the first spawn only: `respawn` reads a sheep's own readiness
-        // source and never this set, so a depended-on app that crashes comes
-        // back `Online` at once rather than re-entering the readiness wait.
-        // That is intended. A crashed app has already settled its stage, by
-        // crashing, and no later stage is still waiting to learn its fate.
+        // source and never this set. A sheep with neither a `readiness_probe`
+        // nor `wait_ready` therefore comes back `Online` at once; one with
+        // either still parks at `Starting` and re-arms its readiness task,
+        // exactly as on the first spawn. What neither re-enters is THIS wait,
+        // which is the part that matters. A crashed app has already settled
+        // its stage, by crashing, and no later stage is still waiting to
+        // learn its fate.
         let gate: BTreeSet<String> = members
             .iter()
             .map(|app| app.config().name.clone())

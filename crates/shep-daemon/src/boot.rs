@@ -770,7 +770,7 @@ pub struct BootOptions {
     pub handover: bool,
 }
 
-/// Brings the daemon up: layout, lock, socket, restore, dogs, readiness
+/// Brings the daemon up: layout, lock, socket, dogs, restore, dogs, readiness
 ///
 /// The order is load-bearing: handlers before the socket (SIGUSR2 otherwise
 /// terminates), the pidfile lock before the bind it makes race-free,
@@ -1042,8 +1042,19 @@ fn max_cron_sleep(options: &BootOptions) -> Duration {
 /// discarded: nobody is waiting on them here.
 ///
 /// `dogs` is every dog this shepherd holds and `boot_first_dogs` the ones
-/// promoted ahead of the flock. Neither is spawned here; they are passed on so
-/// the plan positions a sheep that names a dog in its `depends_on` correctly.
+/// promoted ahead of the flock. Neither is spawned here. Only the promoted
+/// ones are running by the time a stage starts, so a sheep that names an
+/// unpromoted dog in its `depends_on` is positioned by the plan and by
+/// nothing else; both lists are passed on so the restore can warn about
+/// exactly that.
+///
+/// This is where a boot's worst case grows with the shape of the flock. Every
+/// stage holding a member something else depends on is waited for here, in
+/// turn, before the daemon serves: up to that stage's longest
+/// `listen_timeout` plus `boot_order::STAGE_SLACK`. A client connecting during
+/// the restore waits with it. The bound is limited rather than open-ended,
+/// since a stage nothing depends on is not waited for at all and a flock with
+/// no `depends_on` anywhere pays nothing.
 async fn restore_flock(
     paths: &ShepPaths,
     registry: &FlockRegistry,

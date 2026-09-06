@@ -352,6 +352,12 @@ pub(crate) fn restorable(snapshot: FlockSnapshot) -> Restorable {
 /// [`instance_slots`](crate::assemble::instance_slots) takes the lowest free
 /// slot. A missing roll is not an error; an unparseable one is reported.
 ///
+/// `dogs` names every dog this shepherd holds and `boot_first_dogs` the ones
+/// `[daemon] boot_first_dogs` promotes ahead of the flock. Neither is spawned
+/// here: they are the graph's dog nodes, and the split is what lets
+/// [`warn_about_the_graph`] tell a sheep waiting on a dog that is already up
+/// from one waiting on a dog that starts after the whole flock.
+///
 /// # Errors
 /// - [`SnapshotError`]: the roll exists but could not be read or parsed.
 pub(crate) async fn muster(
@@ -467,7 +473,10 @@ fn warn_about_dogs_holding_sheep_names(members: &[ResolvedApp], running: &[Proce
 /// Reports every way the roll's dependency graph is not what it says it is.
 ///
 /// Nothing here refuses. A restore runs on a machine nobody is watching, so
-/// each of these three brings the flock up and says what it did instead.
+/// each of these brings the flock up and says what it did instead: a
+/// dependency nothing in the roll answers to, one that opted out of
+/// `autostart`, one that is a dog starting after the flock rather than
+/// before it, and a cycle.
 fn warn_about_the_graph(
     plan: &BootPlan,
     to_start: &[ResolvedApp],
@@ -1058,12 +1067,13 @@ mod tests {
     /// whose script is gone, which at an unattended boot costs the machine its
     /// flock.
     ///
-    /// `refusing` is load-bearing: `ScriptedRunner`'s `preflight` answers
-    /// `Unknown` for everything, so the validating pass refuses nothing on its
-    /// own. `failing_to_spawn` is what makes `gone` land as a visible
-    /// `Errored` row rather than vanishing, and it names the app rather than
-    /// starving it of a script: the restore starts a stage's members in the
-    /// plan's order, not the roll's, and `gone` sorts first.
+    /// `refusing` is the preflight verdict `AllOrNothing` refuses a whole
+    /// batch over, and under `PerApp` it is only warned about, so it asserts
+    /// nothing here and stands for the input the two policies disagree on.
+    /// `failing_to_spawn` is what makes `gone` land as a visible `Errored`
+    /// row rather than vanishing, and it names the app rather than starving it
+    /// of a script: the restore starts a stage's members in the plan's order,
+    /// not the roll's, and `gone` sorts first.
     #[tokio::test(start_paused = true)]
     async fn one_unstartable_saved_app_does_not_keep_the_rest_of_the_flock_down() {
         let dir = tempfile::tempdir().unwrap();
