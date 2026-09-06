@@ -2056,12 +2056,9 @@ mod tests {
         }
     }
 
-    /// The two gallery files' text: the plain rendering, then the ANSI one.
+    /// The two gallery files' text: plain, then ANSI.
     ///
-    /// Split out of [`write_the_gallery`] so the ordinary suite can read the
-    /// same string that test writes. That test is `#[ignore]`d, so anything
-    /// asserted inside it runs only when somebody regenerates the gallery by
-    /// hand, which is the one moment an assertion is least needed.
+    /// Separate from the writer so a non-ignored test can read it.
     fn gallery_text() -> (String, String) {
         let mut plain = String::from(GALLERY_PREAMBLE);
         let mut ansi = String::from(GALLERY_PREAMBLE);
@@ -2080,14 +2077,6 @@ mod tests {
         (plain, ansi)
     }
 
-    /// IR-47 reaches `docs/lookout/`, which is published.
-    ///
-    /// Over the rendered gallery rather than the source constants: the
-    /// preamble, every scene's commentary and every banner a frame draws all
-    /// land in this one string, which is what a reader of the docs and an
-    /// operator on the dashboard actually meet. Nine other modules in this
-    /// crate carry the same pair of assertions; `lookout` carried none, and
-    /// eight dashes reached the published gallery through the gap.
     #[test]
     fn the_gallery_carries_no_dashes() {
         let (plain, ansi) = gallery_text();

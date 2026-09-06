@@ -1203,14 +1203,9 @@ pub const CONFIRM_EXPIRY: Duration = Duration::from_secs(10);
 /// The sentence `r` and the action keys both give when the link is gone.
 const LINK_GONE: &str = "the shepherd is gone: nothing left to ask";
 
-/// The sentence the status bar and a refused action key both give while
-/// the link is redialling.
+/// The redial sentence, for the status bar and for a refused action key.
 ///
-/// One constructor rather than a literal at each site: the banner and a
-/// refusal under it land on the same frame naming the same attempt, so a
-/// second copy is a contradiction waiting to be written. `frames.rs` pins
-/// that agreement by counting the sentence twice in one rendering, which
-/// catches a drift but only after both copies exist to drift apart.
+/// Both render on one frame, so they must agree exactly.
 pub(super) fn retrying_sentence(attempt: u32) -> String {
     format!("the shepherd stopped answering: reconnecting (attempt {attempt})")
 }
@@ -3368,9 +3363,7 @@ impl App {
     /// dead link refuses the same way whichever door an operator used.
     fn link_refusal(&self) -> Option<String> {
         match self.link {
-            // Not `LINK_GONE`, which says the shepherd is gone: a redial
-            // gets the status bar's own sentence, so a refusal and the
-            // banner above it agree on one frame.
+            // Not `LINK_GONE`: the ladder is still running.
             Link::Retrying { attempt } => Some(retrying_sentence(attempt)),
             // The ladder is exhausted, so the shepherd really is gone.
             Link::Lost { .. } => Some(LINK_GONE.to_string()),
