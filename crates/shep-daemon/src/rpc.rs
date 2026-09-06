@@ -834,9 +834,11 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
 ///
 /// # Errors
 ///
-/// - [`RpcErrorCode::InvalidConfig`]: the graph holds a cycle, named as the
-///   path to break. The same code `normalize_all`'s own refusal carries a few
-///   lines up, so it reaches the operator as `ExitCode::InvalidConfig`.
+/// - [`RpcErrorCode::InvalidConfig`]: the graph holds a cycle ONE OF THIS
+///   BATCH'S APPS IS IN, named as the path to break. A knot standing
+///   elsewhere in the registry is left to whichever request drew it. The
+///   same code `normalize_all`'s own refusal carries a few lines up, so it
+///   reaches the operator as `ExitCode::InvalidConfig`.
 fn staged_plan(ctx: &RpcContext, apps: &[ResolvedApp]) -> Result<BootPlan, RpcError> {
     let mut edges = ctx.registry.depends_on_by_name();
     // A dog is a node with no edges of its own, so an edge naming one
@@ -854,7 +856,20 @@ fn staged_plan(ctx: &RpcContext, apps: &[ResolvedApp]) -> Result<BootPlan, RpcEr
         edges.insert(app.config().name.clone(), app.config().depends_on.clone());
     }
     let plan = crate::boot_order::plan_for_names(&edges);
-    if let Some(cycle) = plan.cycles.first() {
+    let batch: BTreeSet<&str> = apps.iter().map(|app| app.config().name.as_str()).collect();
+    // Only a cycle this batch is in, for the reason the `unresolved` loop
+    // below gives: the graph spans the whole registry, so taking the first
+    // cycle refuses a request over a knot no app it names is part of. Two
+    // Flockfile loads, neither drawing a cycle, can leave one standing
+    // elsewhere in the flock, and `shep start` would then refuse every app
+    // in the fold with an error naming apps the operator never mentioned.
+    // A cycle that closes THROUGH the batch still has a batch member in it
+    // and is still refused.
+    let cycle = plan
+        .cycles
+        .iter()
+        .find(|cycle| cycle.iter().any(|name| batch.contains(name.as_str())));
+    if let Some(cycle) = cycle {
         return Err(RpcError {
             code: RpcErrorCode::InvalidConfig,
             message: format!(
@@ -864,7 +879,6 @@ fn staged_plan(ctx: &RpcContext, apps: &[ResolvedApp]) -> Result<BootPlan, RpcEr
             daemon_version: None,
         });
     }
-    let batch: BTreeSet<&str> = apps.iter().map(|app| app.config().name.as_str()).collect();
     // Warned, not refused: a dependency on an app whose Flockfile lives in
     // another repository is legitimate, and the boot path takes the same view
     // in `snapshot::warn_about_the_graph`. Only edges this batch drew, so a
@@ -1874,6 +1888,87 @@ mod tests {
             err.message.contains("api") && err.message.contains("db"),
             "both ends of the cycle must be named: {}",
             err.message
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_knot_no_app_in_the_batch_is_in_does_not_refuse_the_batch() {
+        // fails if the cycle check takes the first cycle in the graph: the
+        // graph spans the whole registry, so a knot two earlier Flockfile
+        // loads left standing elsewhere in the flock would wedge `shep
+        // start` and `shep add` for every app, with an error naming apps the
+        // operator never mentioned.
+        let h = harness(vec![
+            ProcScript::never_exits(),
+            ProcScript::never_exits(),
+            ProcScript::never_exits(),
+        ]);
+        let _started = reply_of(
+            dispatch(
+                envelope(
+                    1,
+                    Request::Start {
+                        apps: vec![
+                            AppConfig::minimal("api", "./srv"),
+                            AppConfig::minimal("db", "./srv"),
+                        ],
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+
+        // The production door the brief names: `load_one` sends
+        // `ApplyConfig` for every app the flock already has, and that arm
+        // records the merged config with no cycle check of its own, so two
+        // loads neither of which draws a cycle can leave one behind.
+        for (name, waits_for) in [("api", "db"), ("db", "api")] {
+            let mut config = AppConfig::minimal(name, "./srv");
+            config.depends_on = vec![waits_for.to_string()];
+            let reply = reply_of(
+                dispatch(
+                    envelope(
+                        2,
+                        Request::ApplyConfig {
+                            apps: vec![DeclaredApp {
+                                config,
+                                declared: ["depends_on"].iter().map(|k| (*k).to_string()).collect(),
+                                declared_env: BTreeSet::new(),
+                            }],
+                            reset: ResetDepth::None,
+                        },
+                    ),
+                    &h.ctx,
+                )
+                .await,
+            );
+            assert!(reply.result.is_ok(), "the load itself draws no cycle");
+        }
+        let edges = h.ctx.registry.depends_on_by_name();
+        assert_eq!(edges.get("api"), Some(&vec!["db".to_string()]));
+        assert_eq!(
+            edges.get("db"),
+            Some(&vec!["api".to_string()]),
+            "the knot is really in the registry, or this test proves nothing"
+        );
+
+        let reply = reply_of(
+            dispatch(
+                envelope(
+                    3,
+                    Request::Start {
+                        apps: vec![AppConfig::minimal("web", "./srv")],
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        assert!(
+            reply.result.is_ok(),
+            "a batch drawing no cycle must start: {:?}",
+            reply.result.unwrap_err()
         );
     }
 
