@@ -44,7 +44,9 @@ const HELP_GROUPS: &[(&str, &[&str])] = &[
     ("Talk to a sheep", &["trigger", "signal", "whisper"]),
     (
         "The shepherd",
-        &["ping", "kill", "reopen", "flush", "set", "get", "unset"],
+        &[
+            "ping", "kill", "reopen", "flush", "set", "get", "unset", "secret",
+        ],
     ),
     (
         "Dogs and agents",
@@ -77,7 +79,7 @@ Run things       start add serve stop restart reload delete stock
 See what's up    flock describe bleats lookout fold barks
 Survive reboots  save muster startup unstartup
 Talk to a sheep  trigger signal whisper
-The shepherd     ping kill reopen flush set get unset
+The shepherd     ping kill reopen flush set get unset secret
 Dogs and agents  dogs enable disable adopt rehome whistle
 Foreground runs  runtime dev
 Coming from pm2  import
@@ -481,6 +483,24 @@ pub enum Commands {
     Get(KvGetArgs),
     /// Remove one key from the store, or every key with --all.
     Unset(KvUnsetArgs),
+    /// Store the values a Flockfile refers to and never carries.
+    ///
+    /// Reads and writes `$SHEP_HOME/secrets.json` directly and never
+    /// connects to the shepherd, exactly as `shep set` does: filling the
+    /// store before the first `shep start` is the ordinary first run.
+    ///
+    /// A key holds one value per environment, so production and staging
+    /// differ without two config files. A `{{secret:NAME}}` reference in a
+    /// Flockfile resolves against the sheep's own environment and then the
+    /// `all` slot, never another named environment.
+    ///
+    /// Keys and environment names are letters, digits, `.`, `_` and `-`, up
+    /// to 128 bytes, not starting with a dot.
+    ///
+    /// Reading a value back is off until `[secrets] allow_read = true` is in
+    /// `$SHEP_HOME/shep.toml`. `secret list` needs nothing: it names keys and
+    /// the environments each has a value for, never a value.
+    Secret(SecretArgs),
     /// Check whether the shepherd answers.
     Ping,
     /// Shut the shepherd down.
@@ -959,6 +979,50 @@ pub struct KvUnsetArgs {
     /// Remove every key
     #[arg(long)]
     pub all: bool,
+}
+
+/// Arguments to `shep secret`.
+#[derive(Debug, clap::Args)]
+pub struct SecretArgs {
+    /// Which of the four things to do to the store.
+    #[command(subcommand)]
+    pub command: SecretCommand,
+}
+
+/// `shep secret`'s subcommands.
+#[derive(Debug, clap::Subcommand)]
+pub enum SecretCommand {
+    /// Store a value
+    ///
+    /// The value is an argument, so it is visible in `ps` and in this
+    /// shell's history for as long as the command runs.
+    Set {
+        /// The key
+        key: String,
+        /// The value
+        value: String,
+        /// Which environment; omit for every environment
+        #[arg(long)]
+        env: Option<String>,
+    },
+    /// Print a value back, if `[secrets] allow_read` is on
+    Get {
+        /// The key
+        key: String,
+        /// Which environment; omit to resolve the way a spawn would
+        #[arg(long)]
+        env: Option<String>,
+    },
+    /// Remove a value
+    Unset {
+        /// The key
+        key: String,
+        /// Which environment; omit for the every-environment slot
+        #[arg(long)]
+        env: Option<String>,
+    },
+    /// List keys and the environments each has a value for
+    List,
 }
 
 /// Arguments to `shep fold`.

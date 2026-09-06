@@ -156,6 +156,21 @@ pub struct WhistleSection {
     pub allow_control: bool,
 }
 
+/// The `[secrets]` section: whether the CLI will print a stored value back.
+///
+/// One key, a gate rather than a tuning knob, for [`WhistleSection`]'s
+/// reason and read the same way: `shep secret get` reads this file itself,
+/// the shepherd never reads this key, and it is declared here so an
+/// undeclared `[secrets]` section is not a refused boot.
+///
+/// `Debug` is derived rather than redacted: one boolean, no secret.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct SecretsSection {
+    /// Whether `shep secret get` prints a value. Default `false`.
+    pub allow_read: bool,
+}
+
 /// The `[style]` section: how much the CLI dresses up its output.
 ///
 /// Read by the CLI only. The daemon has no opinion about how anyone likes
@@ -186,6 +201,8 @@ pub struct DaemonConfig {
     pub daemon: DaemonSection,
     /// The `[whistle]` section
     pub whistle: WhistleSection,
+    /// The `[secrets]` section
+    pub secrets: SecretsSection,
     /// The `[style]` section
     pub style: StyleSection,
     /// The `[interpreters]` section: a script extension (no leading dot,
@@ -211,6 +228,7 @@ impl fmt::Debug for DaemonConfig {
         f.debug_struct("DaemonConfig")
             .field("daemon", &self.daemon)
             .field("whistle", &self.whistle)
+            .field("secrets", &self.secrets)
             .field("style", &self.style)
             .field("interpreters", &self.interpreters)
             .field("dog", &format_args!("<{} tables>", self.dog.len()))
@@ -223,6 +241,7 @@ impl fmt::Debug for DaemonConfig {
 struct RawDaemonConfig {
     daemon: DaemonSection,
     whistle: WhistleSection,
+    secrets: SecretsSection,
     style: StyleSection,
     interpreters: BTreeMap<String, String>,
     dog: BTreeMap<String, toml::Table>,
@@ -269,6 +288,7 @@ impl DaemonConfig {
         let mut cfg = Self {
             daemon: raw.daemon,
             whistle: raw.whistle,
+            secrets: raw.secrets,
             style: raw.style,
             interpreters: raw.interpreters,
             dog: raw.dog,
@@ -812,6 +832,37 @@ otel = "/usr/local/bin/shep-otel"
         );
     }
 
+    // fails if `[secrets]` becomes an unrecognized section, or if the gate
+    // stops defaulting shut. A misspelled key is a named error for
+    // `[whistle]`'s reason: an operator certain a value was readable and a
+    // CLI certain it was not.
+    #[test]
+    fn a_secrets_section_parses_and_defaults_to_refusing_reads() {
+        let cfg = DaemonConfig::load(Some("[secrets]\nallow_read = true\n"), &no_env).unwrap();
+        assert!(cfg.secrets.allow_read);
+
+        let absent = DaemonConfig::load(Some("[daemon]\nlog_level = \"info\"\n"), &no_env).unwrap();
+        assert!(
+            !absent.secrets.allow_read,
+            "a file with no [secrets] section leaves reads off"
+        );
+
+        let empty_table = DaemonConfig::load(Some("[secrets]\n"), &no_env).unwrap();
+        assert!(
+            !empty_table.secrets.allow_read,
+            "a [secrets] section with no keys leaves reads off"
+        );
+
+        let err = DaemonConfig::load(Some("[secrets]\nallow_reads = true\n"), &no_env).unwrap_err();
+        let DaemonConfigError::Toml(message) = err else {
+            panic!("a misspelled key is a TOML error, got {err:?}")
+        };
+        assert!(
+            message.contains("unknown field `allow_reads`"),
+            "the message quotes the key that was not understood: {message}"
+        );
+    }
+
     // fails if the section silently accepts a key it does not implement. A
     // `[whistle] allow_contro = true` typo that parsed would leave an
     // operator certain the gate was open and whistle certain it was shut,
@@ -974,7 +1025,7 @@ otel = "/usr/local/bin/shep-otel"
         let cfg = DaemonConfig::load(Some("[dog.metrics]\nport = 9615"), &no_env).unwrap();
         assert_eq!(
             format!("{cfg:?}"),
-            "DaemonConfig { daemon: DaemonSection { log_json: false, log_level: Warn, environment: \"production\", socket: None, enabled_dogs: [], adopted_dogs: {}, max_cron_sleep: None }, whistle: WhistleSection { allow_control: false }, style: StyleSection { level: None }, interpreters: {}, dog: <1 tables> }"
+            "DaemonConfig { daemon: DaemonSection { log_json: false, log_level: Warn, environment: \"production\", socket: None, enabled_dogs: [], adopted_dogs: {}, max_cron_sleep: None }, whistle: WhistleSection { allow_control: false }, secrets: SecretsSection { allow_read: false }, style: StyleSection { level: None }, interpreters: {}, dog: <1 tables> }"
         );
     }
 }

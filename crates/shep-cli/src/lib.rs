@@ -52,6 +52,7 @@ use commands::muster;
 use commands::query;
 use commands::runtime;
 use commands::schema;
+use commands::secret;
 // aliased: `commands::serve` would collide with the crate-root `serve` module
 use commands::serve::serve as serve_command;
 use commands::shep_toml::{ShepToml, ShepTomlError};
@@ -1018,6 +1019,9 @@ async fn run(
         Commands::Set(ref args) => kv::set(&mut streams, &paths, args),
         Commands::Get(ref args) => kv::get(&mut streams, &paths, args),
         Commands::Unset(ref args) => kv::unset(&mut streams, &paths, args),
+        // Same rule, same file-first reason: `shep secret set` before a
+        // first `shep start` is the ordinary first-run order.
+        Commands::Secret(ref args) => secret::secret(&mut streams, &paths, args),
         // Does its own connecting: `connect_client` reports and gives up,
         // which would leave an operator with a live daemon nothing can stop.
         Commands::Kill => admin::kill(&paths, &mut streams).await,

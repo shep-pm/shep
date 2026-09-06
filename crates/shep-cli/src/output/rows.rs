@@ -2029,6 +2029,104 @@ impl Render for KvRows {
     const PRIORITIES: &'static [u8] = &[0, 0];
 }
 
+/// One row of `shep secret list`: a key, and the environments holding a
+/// value for it.
+///
+/// No value field, and no row type in this module has one: `shep secret get`
+/// writes the value it resolved straight to stdout, so a stored value never
+/// reaches a struct a `{:?}` or a table render could leak it through
+/// (IR-41). A key name and an environment name are neither of them the
+/// secret.
+#[derive(Debug, Serialize)]
+pub struct SecretKeyRow {
+    /// The key, exactly as stored; [`shep_core::secrets`]'s grammar has
+    /// already validated it.
+    pub key: String,
+    /// The environments it has a value for, in the store's own order.
+    pub environments: Vec<String>,
+}
+
+/// `shep secret list`'s whole-store listing.
+///
+/// `transparent`, for [`KvRows`]' reason: a plain array of [`SecretKeyRow`]
+/// objects rather than the map a consumer would have to special-case. Never
+/// from a `Response`: the store never touches the wire.
+#[derive(Debug, Serialize)]
+#[serde(transparent)]
+pub struct SecretKeyRows(pub Vec<SecretKeyRow>);
+
+/// No colour: a key and the environments naming it are operator data, and
+/// shep has no opinion about either.
+impl Render for SecretKeyRows {
+    fn headers() -> &'static [&'static str] {
+        &["KEY", "ENVIRONMENTS"]
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        self.0
+            .iter()
+            .map(|row| vec![row.key.clone(), row.environments.join(", ")])
+            .collect()
+    }
+
+    /// # Panics
+    /// If `header` is not one of `Self::headers()`'s own values.
+    #[track_caller]
+    fn json_key_for(header: &str) -> &'static str {
+        match header {
+            "KEY" => "key",
+            "ENVIRONMENTS" => "environments",
+            other => panic!("SecretKeyRows::headers() does not include {other:?}"),
+        }
+    }
+
+    const JSON_ONLY: &'static [&'static str] = &[];
+
+    // Two columns: a key with no environment holds nothing and is not
+    // stored at all.
+    const PRIORITIES: &'static [u8] = &[0, 0];
+}
+
+/// The slot `shep secret set` wrote, or `shep secret unset` emptied.
+///
+/// The key and the environment, never the value: echoing a credential back
+/// would put it in the scrollback of every run that stored one, and in the
+/// output of every script that pipes shep somewhere.
+#[derive(Debug, Serialize)]
+pub struct SecretSlotRow {
+    /// The key that was written or removed.
+    pub key: String,
+    /// The environment whose slot it was.
+    pub environment: String,
+}
+
+/// No colour, for [`KvRows`]' reason: both cells are operator data.
+impl Render for SecretSlotRow {
+    fn headers() -> &'static [&'static str] {
+        &["KEY", "ENVIRONMENT"]
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        vec![vec![self.key.clone(), self.environment.clone()]]
+    }
+
+    /// # Panics
+    /// If `header` is not one of `Self::headers()`'s own values.
+    #[track_caller]
+    fn json_key_for(header: &str) -> &'static str {
+        match header {
+            "KEY" => "key",
+            "ENVIRONMENT" => "environment",
+            other => panic!("SecretSlotRow::headers() does not include {other:?}"),
+        }
+    }
+
+    const JSON_ONLY: &'static [&'static str] = &[];
+
+    // Two columns, and the pair is the slot's whole identity.
+    const PRIORITIES: &'static [u8] = &[0, 0];
+}
+
 /// `shep dogs --available`'s community-index listing.
 ///
 /// Never from a `Response`: the community index never touches the daemon
@@ -3240,6 +3338,41 @@ pub(crate) mod tests {
         assert_no_drift(&KvUnsetRow { removed: 2 }, |j| j, &[]);
     }
 
+    /// ENVIRONMENTS is a joined rendering of a JSON array, so it is
+    /// `formatted` rather than compared cell against field.
+    #[test]
+    fn secret_key_rows_do_not_drift() {
+        let rows = SecretKeyRows(vec![SecretKeyRow {
+            key: "DB_PASSWORD".to_string(),
+            environments: vec!["all".to_string(), "staging".to_string()],
+        }]);
+        assert_no_drift(&rows, |j| &j[0], &["ENVIRONMENTS"]);
+    }
+
+    #[test]
+    fn secret_slot_row_does_not_drift() {
+        let row = SecretSlotRow {
+            key: "DB_PASSWORD".to_string(),
+            environment: "staging".to_string(),
+        };
+        assert_no_drift(&row, |j| j, &[]);
+    }
+
+    /// fails if either type grows a field that carries the value itself.
+    /// Both are rendered to a terminal and to `--format json`, so a value
+    /// landing in one is a credential in a log or a pipeline.
+    #[test]
+    fn no_secret_row_type_can_carry_a_value() {
+        assert!(!SecretKeyRows::headers().contains(&"VALUE"));
+        assert!(!SecretSlotRow::headers().contains(&"VALUE"));
+        let json = serde_json::to_string(&SecretSlotRow {
+            key: "K".to_string(),
+            environment: "all".to_string(),
+        })
+        .unwrap();
+        assert!(!json.contains("value"), "{json}");
+    }
+
     /// The live index's single entry (`web/public/dogs.json`).
     fn sample_available_dog() -> AvailableDog {
         AvailableDog {
@@ -3327,6 +3460,8 @@ pub(crate) mod tests {
         assert_priorities_match_headers::<KvRows>(&["KEY", "VALUE"]);
         assert_priorities_match_headers::<KvUnsetRow>(&["REMOVED"]);
         assert_priorities_match_headers::<AvailableDogRows>(&["NAME", "PACKAGE"]);
+        assert_priorities_match_headers::<SecretKeyRows>(&["KEY", "ENVIRONMENTS"]);
+        assert_priorities_match_headers::<SecretSlotRow>(&["KEY", "ENVIRONMENT"]);
     }
 
     /// The floor-set check cannot see two non-floor columns trading numbers.
