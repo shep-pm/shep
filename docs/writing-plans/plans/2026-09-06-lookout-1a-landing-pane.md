@@ -92,7 +92,7 @@ fn a_ground_is_the_one_painted_background() {
 - [ ] **Step 2: Run them and watch them fail**
 
 ```bash
-cargo test -p shep --lib --all-features -- theme:: --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- theme:: --skip ::slow::
 ```
 
 Expected: compile failure, no method `sky` on `Palette`.
@@ -135,7 +135,7 @@ Rewrite the module doc's `--paper` paragraph to say what is painted now and why 
 - [ ] **Step 4: Run the tests**
 
 ```bash
-cargo test -p shep --lib --all-features -- theme:: --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- theme:: --skip ::slow::
 ```
 
 Expected: PASS, including the four pre-existing tests.
@@ -255,7 +255,7 @@ mod tests {
 - [ ] **Step 2: Run them and watch them fail**
 
 ```bash
-cargo test -p shep --lib --all-features -- lookout::view::cell --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- lookout::view::cell --skip ::slow::
 ```
 
 Expected: compile failure, no module `cell`.
@@ -357,7 +357,7 @@ Write `sparkline`, `rule` and `band` bodies to satisfy the tests. Measure every 
 - [ ] **Step 4: Run the tests**
 
 ```bash
-cargo test -p shep --lib --all-features -- lookout::view::cell --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- lookout::view::cell --skip ::slow::
 ```
 
 Expected: PASS, 12 tests.
@@ -430,9 +430,10 @@ Expected: compile failure, no field `max_memory`.
 /// decodes with it absent and an older client ignores it. Lookout's
 /// `MEM/CEIL` gauge is the only reader; `None` draws an all-tail bar
 /// rather than guessing a denominator.
-#[serde(default, skip_serializing_if = "Option::is_none")]
 pub max_memory: Option<u64>,
 ```
+
+No `#[serde(default)]` and no `skip_serializing_if`: not one of `ProcessInfo`'s fifteen other `Option` fields carries either, and serde already decodes a missing `Option` as `None`, which is measured rather than assumed (see the preflight ruling in the ledger). An attribute here would make this field the odd one out and change its wire shape against its siblings.
 
 Add the matching builder method, and add the field to the builder's defaults beside the other `None`s. Then populate it at the daemon's construction site from the app's `AppConfig::max_memory`, converting `MemSize` to bytes with whatever accessor that newtype already offers; grep for how the memory-limit enforcer reads it rather than inventing a conversion.
 
@@ -554,7 +555,7 @@ fn the_flock_series_is_the_sum_of_the_snapshot() {
 - [ ] **Step 2: Run them and watch them fail**
 
 ```bash
-cargo test -p shep --lib --all-features -- lookout::app --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- lookout::app --skip ::slow::
 ```
 
 Expected: compile failure, no method `cpu_history`.
@@ -579,7 +580,7 @@ A row with no `cpu_percent` pushes `0.0` rather than skipping, so the window sta
 - [ ] **Step 4: Run the tests**
 
 ```bash
-cargo test -p shep --lib --all-features -- lookout::app --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- lookout::app --skip ::slow::
 ```
 
 Expected: PASS, 5 new tests, nothing else moved.
@@ -688,7 +689,7 @@ Keep the existing `the_full_column_set_matches_flock_rows_headers_exactly` delet
 - [ ] **Step 2: Run them and watch them fail**
 
 ```bash
-cargo test -p shep --lib --all-features -- lookout::view::flock --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- lookout::view::flock --skip ::slow::
 ```
 
 Expected: compile failure, no variant `CpuSpark`.
@@ -706,7 +707,7 @@ A group row's `CpuSpark` and `MemCeil` are blank, joining ID, PID, EXIT and CFG 
 - [ ] **Step 4: Run the tests**
 
 ```bash
-cargo test -p shep --lib --all-features -- lookout::view --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- lookout::view --skip ::slow::
 ```
 
 Expected: PASS. The existing tier test at flock.rs:660, which asserts `fixed + gaps + NAME_MIN <= width` for every width from 31 to 200, must pass unedited. If it fails, a threshold is wrong; fix the threshold, never the test.
@@ -757,7 +758,7 @@ fn without_colour_the_gutter_falls_back_to_the_ascii_marker() {
 - [ ] **Step 2: Run them and watch them fail**
 
 ```bash
-cargo test -p shep --lib --all-features -- lookout::view::flock --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- lookout::view::flock --skip ::slow::
 ```
 
 Expected: compile failure, no function `gutter`.
@@ -790,7 +791,7 @@ The selected row's own cells take `palette.ground()` merged with each cell's for
 - [ ] **Step 4: Run the tests**
 
 ```bash
-cargo test -p shep --lib --all-features -- lookout::view --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- lookout::view --skip ::slow::
 ```
 
 Expected: PASS.
@@ -849,7 +850,7 @@ fn the_section_bands_name_their_section_in_words() {
 - [ ] **Step 2: Run them and watch them fail**
 
 ```bash
-cargo test -p shep --lib --all-features -- lookout::view --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- lookout::view --skip ::slow::
 ```
 
 Expected: compile failure.
@@ -863,7 +864,7 @@ The row must be padded to the full width before styling, because ratatui paints 
 - [ ] **Step 4: Run the tests**
 
 ```bash
-cargo test -p shep --lib --all-features -- lookout::view --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- lookout::view --skip ::slow::
 ```
 
 Expected: PASS.
@@ -921,7 +922,7 @@ fn the_summary_counts_errored_and_parked_sheep() {
 - [ ] **Step 2: Run them and watch them fail**
 
 ```bash
-cargo test -p shep --lib --all-features -- lookout::view::host --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- lookout::view::host --skip ::slow::
 ```
 
 - [ ] **Step 3: Write them**
@@ -931,7 +932,7 @@ The errored count filters the flock on `ProcStatus::Errored`. The parked count i
 - [ ] **Step 4: Run the tests**
 
 ```bash
-cargo test -p shep --lib --all-features -- lookout::view::host --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- lookout::view::host --skip ::slow::
 ```
 
 Expected: PASS.
@@ -1004,7 +1005,7 @@ fn the_stream_tag_is_still_muted() {
 - [ ] **Step 2: Run them and watch them fail**
 
 ```bash
-cargo test -p shep --lib --all-features -- lookout::view --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- lookout::view --skip ::slow::
 ```
 
 - [ ] **Step 3: Write them**
@@ -1014,7 +1015,7 @@ A `fs::metadata` call that fails, for a log file rotated away between the poll a
 - [ ] **Step 4: Run the tests**
 
 ```bash
-cargo test -p shep --lib --all-features -- lookout::view --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- lookout::view --skip ::slow::
 ```
 
 Expected: PASS.
@@ -1063,7 +1064,7 @@ fn the_ansi_dump_emits_a_bands_reverse_video_and_a_grounds_background() {
 - [ ] **Step 2: Run it and watch it fail**
 
 ```bash
-cargo test -p shep --lib --all-features -- lookout::frames --skip ::slow::
+cargo test -p shep --lib --bins --all-features -- lookout::frames --skip ::slow::
 ```
 
 Expected: FAIL, neither escape present.
@@ -1077,7 +1078,7 @@ Expected: FAIL, neither escape present.
 Add a `Scene` per redesigned region, following the shape every existing scene uses. The count test that pins `Scene::ALL`'s length and the gallery test that asserts the file's heading count both need their number updated to match; update the number, never the assertion.
 
 ```bash
-cargo test -p shep --lib --all-features -- --ignored write_the_gallery
+cargo test -p shep --lib --bins --all-features -- --ignored write_the_gallery
 ```
 
 Then read the diff. `git diff docs/lookout/frames.txt` should show the new scenes and the redesigned pane, and nothing surprising in the scenes that did not change.
