@@ -48,8 +48,10 @@ pub struct BootPlan {
     pub stages: Vec<Vec<String>>,
     /// Edges dropped because nothing answers to the name.
     pub unresolved: Vec<Unresolved>,
-    /// Each cycle as the path a walk found it on, first name not repeated
-    /// at the end. [`render_cycle`] closes it for display.
+    /// One cycle for every knot in the graph, as a path with the first name
+    /// not repeated at the end. [`render_cycle`] closes it for display.
+    /// Several cycles can run through the same knot; the one named here is
+    /// a representative, and breaking it is what an operator does about it.
     pub cycles: Vec<Vec<String>>,
 }
 
@@ -72,10 +74,11 @@ pub fn render_cycle(cycle: &[String]) -> String {
 /// [`BootPlan::unresolved`], because a dependency on an app whose Flockfile
 /// lives in another repository is legitimate.
 ///
-/// Nodes in a cycle are lifted out of the sort into a final unordered stage
-/// and recorded in [`BootPlan::cycles`]. Refusing here would strand an
-/// unattended boot; the caller decides whether to refuse, and only the
-/// operator-facing callers do.
+/// Nodes in a cycle are lifted out of the sort into one final unordered
+/// stage, and one cycle through each knot they form is recorded in
+/// [`BootPlan::cycles`]. Refusing here would strand an unattended boot; the
+/// caller decides whether to refuse, and only the operator-facing callers
+/// do.
 ///
 /// Dogs default to a final stage, after every sheep, so an existing install
 /// keeps the order `boot.rs` argues for. Two things move one: `boot_first`,
@@ -102,10 +105,11 @@ pub fn plan(nodes: &[BootNode]) -> BootPlan {
         }
     }
 
-    let cycles = find_cycles(&edges);
-    let in_a_cycle: BTreeSet<&str> = cycles
+    let knots = knots(&edges);
+    let in_a_cycle: BTreeSet<&str> = knots.iter().flatten().copied().collect();
+    let cycles: Vec<Vec<String>> = knots
         .iter()
-        .flat_map(|cycle| cycle.iter().map(String::as_str))
+        .map(|members| representative_cycle(&edges, members))
         .collect();
 
     let depended_on: BTreeSet<&str> = edges.values().flatten().copied().collect();
@@ -136,10 +140,10 @@ pub fn plan(nodes: &[BootNode]) -> BootPlan {
     if !last.is_empty() {
         stages.push(last.iter().map(|n| (*n).to_string()).collect());
     }
-    for cycle in &cycles {
-        let mut names: Vec<String> = cycle.clone();
-        names.sort();
-        stages.push(names);
+    if !in_a_cycle.is_empty() {
+        // One stage for every cyclic node, never one per reported cycle: a
+        // node several cycles run through is still started once.
+        stages.push(in_a_cycle.iter().map(|n| (*n).to_string()).collect());
     }
 
     BootPlan {
@@ -184,53 +188,149 @@ fn kahn(
     stages
 }
 
-/// Every cycle in `edges`, each as the path the walk closed on.
+/// Every knot in `edges`: a strongly connected component of two or more
+/// nodes, or a lone node that depends on itself. Each component's members,
+/// sorted, and the components themselves ordered by their first member.
 ///
-/// A depth-first walk rather than Kahn's leftovers: "these nodes are in a
-/// cycle" is not something an operator can act on, and the path is.
-fn find_cycles(edges: &BTreeMap<&str, BTreeSet<&str>>) -> Vec<Vec<String>> {
-    let mut done: BTreeSet<&str> = BTreeSet::new();
-    let mut found: Vec<Vec<String>> = Vec::new();
-    for start in edges.keys() {
-        let mut stack: Vec<&str> = Vec::new();
-        walk(start, edges, &mut stack, &mut done, &mut found);
+/// Tarjan's algorithm rather than a search for a back edge. A back-edge walk
+/// answers "does this one walk close on itself", and marking a node explored
+/// the first time it is reached is what makes that walk finite: a second path
+/// arriving at the same node turns back without retraversing it, so of two
+/// cycles sharing a node only one is ever seen. The question this module asks
+/// is which nodes sit in a component larger than themselves, and only a
+/// component algorithm answers it.
+///
+/// Recursive, since the depth is bounded by the size of one flock.
+fn knots<'a>(edges: &BTreeMap<&'a str, BTreeSet<&'a str>>) -> Vec<BTreeSet<&'a str>> {
+    let mut tarjan = Tarjan {
+        index: BTreeMap::new(),
+        low: BTreeMap::new(),
+        stack: Vec::new(),
+        on_stack: BTreeSet::new(),
+        next: 0,
+        components: Vec::new(),
+    };
+    for name in edges.keys().copied() {
+        if !tarjan.index.contains_key(name) {
+            tarjan.connect(name, edges);
+        }
     }
+    let mut found: Vec<BTreeSet<&str>> = tarjan
+        .components
+        .into_iter()
+        .filter(|members| {
+            members.len() > 1
+                || members
+                    .iter()
+                    .next()
+                    .is_some_and(|only| edges.get(only).is_some_and(|deps| deps.contains(only)))
+        })
+        .collect();
+    found.sort();
     found
 }
 
-fn walk<'a>(
-    name: &'a str,
-    edges: &BTreeMap<&'a str, BTreeSet<&'a str>>,
-    stack: &mut Vec<&'a str>,
-    done: &mut BTreeSet<&'a str>,
-    found: &mut Vec<Vec<String>>,
-) {
-    if let Some(at) = stack.iter().position(|seen| *seen == name) {
-        let cycle: Vec<String> = stack[at..].iter().map(|n| (*n).to_string()).collect();
-        let mut sorted = cycle.clone();
-        sorted.sort();
-        let already = found.iter().any(|other| {
-            let mut o = other.clone();
-            o.sort();
-            o == sorted
-        });
-        if !already {
-            found.push(cycle);
-        }
-        return;
-    }
-    if done.contains(name) {
-        return;
-    }
-    stack.push(name);
-    if let Some(deps) = edges.get(name) {
-        for dep in deps {
-            walk(dep, edges, stack, done, found);
-        }
-    }
-    stack.pop();
-    done.insert(name);
+/// Tarjan's bookkeeping: the visit number each node was reached at, the
+/// lowest number it can reach, and the nodes whose component is still open.
+struct Tarjan<'a> {
+    index: BTreeMap<&'a str, usize>,
+    low: BTreeMap<&'a str, usize>,
+    stack: Vec<&'a str>,
+    on_stack: BTreeSet<&'a str>,
+    next: usize,
+    components: Vec<BTreeSet<&'a str>>,
 }
+
+impl<'a> Tarjan<'a> {
+    fn connect(&mut self, name: &'a str, edges: &BTreeMap<&'a str, BTreeSet<&'a str>>) {
+        self.index.insert(name, self.next);
+        self.low.insert(name, self.next);
+        self.next += 1;
+        self.stack.push(name);
+        self.on_stack.insert(name);
+
+        if let Some(deps) = edges.get(name) {
+            for dep in deps.iter().copied() {
+                let reachable = if self.index.contains_key(dep) {
+                    // An edge into a closed component says nothing about
+                    // this one, so only a node still on the stack counts.
+                    self.on_stack.contains(dep).then(|| self.index[dep])
+                } else {
+                    self.connect(dep, edges);
+                    Some(self.low[dep])
+                };
+                if let Some(reachable) = reachable {
+                    let low = self.low.entry(name).or_insert(reachable);
+                    *low = (*low).min(reachable);
+                }
+            }
+        }
+
+        if self.low[name] == self.index[name] {
+            let mut members = BTreeSet::new();
+            while let Some(member) = self.stack.pop() {
+                self.on_stack.remove(member);
+                members.insert(member);
+                if member == name {
+                    break;
+                }
+            }
+            self.components.push(members);
+        }
+    }
+}
+
+/// One cycle through `members`, as the path a walk closed on.
+///
+/// [`BootPlan::cycles`] names a path rather than a set because
+/// [`render_cycle`] prints `a -> b -> c -> a`, and a bare set of the names
+/// involved is not something an operator can act on.
+fn representative_cycle<'a>(
+    edges: &BTreeMap<&'a str, BTreeSet<&'a str>>,
+    members: &BTreeSet<&'a str>,
+) -> Vec<String> {
+    let Some(start) = members.iter().copied().next() else {
+        return Vec::new();
+    };
+    let mut path = vec![start];
+    let mut seen: BTreeSet<&str> = BTreeSet::from([start]);
+    if !close_on(start, start, edges, members, &mut path, &mut seen) {
+        // Every member of a knot has a path back to every other, so the
+        // walk closes. Naming the node alone is the honest fallback.
+        return vec![start.to_string()];
+    }
+    path.iter().map(|n| (*n).to_string()).collect()
+}
+
+/// Walks from `at`, inside `members` only, until it finds an edge back to
+/// `start`. `path` holds the walk so far and is the cycle when this answers
+/// `true`.
+fn close_on<'a>(
+    at: &'a str,
+    start: &'a str,
+    edges: &BTreeMap<&'a str, BTreeSet<&'a str>>,
+    members: &BTreeSet<&'a str>,
+    path: &mut Vec<&'a str>,
+    seen: &mut BTreeSet<&'a str>,
+) -> bool {
+    let Some(deps) = edges.get(at) else {
+        return false;
+    };
+    for dep in deps.iter().copied().filter(|dep| members.contains(dep)) {
+        if dep == start {
+            return true;
+        }
+        if seen.insert(dep) {
+            path.push(dep);
+            if close_on(dep, start, edges, members, path, seen) {
+                return true;
+            }
+            path.pop();
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -361,6 +461,46 @@ mod tests {
         assert!(plan(&[]).stages.is_empty());
     }
 
+    #[test]
+    fn two_cycles_sharing_a_node_put_every_member_in_the_last_stage() {
+        // fails if the cycle search marks a node done the first time it is
+        // reached, which leaves the second path through it unwalked: "c" is
+        // as cyclic as "b" and used to plan into the first stage, ahead of
+        // the "d" it depends on
+        let out = plan(&[
+            sheep("a", &["b", "c"]),
+            sheep("b", &["d"]),
+            sheep("c", &["d"]),
+            sheep("d", &["a"]),
+        ]);
+        assert_eq!(
+            out.cycles.len(),
+            1,
+            "one component expected: {:?}",
+            out.cycles
+        );
+        assert_eq!(out.stages, vec![vec!["a", "b", "c", "d"]]);
+    }
+
+    #[test]
+    fn a_node_two_cycles_run_through_is_planned_into_one_stage() {
+        // fails if the final stage is built once per reported cycle rather
+        // than once from the set of cyclic nodes, which starts the shared
+        // node twice
+        let out = plan(&[
+            sheep("a", &["b", "c"]),
+            sheep("b", &["a"]),
+            sheep("c", &["a"]),
+        ]);
+        assert_eq!(
+            out.cycles.len(),
+            1,
+            "one component expected: {:?}",
+            out.cycles
+        );
+        assert_eq!(out.stages, vec![vec!["a", "b", "c"]]);
+    }
+
     proptest::proptest! {
         #[test]
         fn every_edge_is_respected_in_the_planned_order(
@@ -393,6 +533,96 @@ mod tests {
             for node in &nodes {
                 for dep in &node.depends_on {
                     proptest::prop_assert!(stage_of[dep] < stage_of[&node.name]);
+                }
+            }
+        }
+
+        #[test]
+        fn every_cyclic_node_is_reported_and_no_node_is_planned_twice(
+            edges in proptest::collection::vec((0usize..6, 0usize..6), 0..18)
+        ) {
+            // Arbitrary edges, so most draws are cyclic: the DAG-by-
+            // construction case above gives the cyclic path no coverage at
+            // all. Ground truth is a transitive closure computed here, not
+            // anything the module does, so the test cannot agree with a bug
+            // by sharing its logic.
+            const N: usize = 6;
+            let mut adjacent = [[false; N]; N];
+            for (from, to) in edges {
+                adjacent[from][to] = true;
+            }
+            let mut reaches = adjacent;
+            for k in 0..N {
+                for i in 0..N {
+                    for j in 0..N {
+                        if reaches[i][k] && reaches[k][j] {
+                            reaches[i][j] = true;
+                        }
+                    }
+                }
+            }
+            let nodes: Vec<BootNode> = (0..N)
+                .map(|i| BootNode {
+                    name: format!("n{i}"),
+                    depends_on: (0..N)
+                        .filter(|j| adjacent[i][*j])
+                        .map(|j| format!("n{j}"))
+                        .collect(),
+                    kind: NodeKind::Sheep,
+                })
+                .collect();
+            let out = plan(&nodes);
+
+            let planned: Vec<String> = out.stages.iter().flatten().cloned().collect();
+            let mut once = planned.clone();
+            once.sort();
+            once.dedup();
+            proptest::prop_assert_eq!(
+                once.len(),
+                planned.len(),
+                "a node is planned twice: {:?}",
+                out.stages
+            );
+            proptest::prop_assert_eq!(once.len(), N, "a node is planned nowhere: {:?}", out.stages);
+
+            // A node is truly cyclic when it reaches itself, and every one
+            // of them belongs in the final stage.
+            let last = out.stages.len() - 1;
+            for (i, reached) in reaches.iter().enumerate() {
+                if reached[i] {
+                    proptest::prop_assert!(
+                        out.stages[last].contains(&format!("n{i}")),
+                        "n{} is cyclic and is planned elsewhere: {:?}",
+                        i,
+                        out.stages
+                    );
+                }
+            }
+
+            // One reported path per cyclic component, and every reported
+            // path is a real cycle rather than a set of involved names.
+            let mut components: Vec<Vec<usize>> = Vec::new();
+            for (i, reached) in reaches.iter().enumerate() {
+                if reached[i] && !components.iter().any(|c| c.contains(&i)) {
+                    components.push((0..N).filter(|j| reached[*j] && reaches[*j][i]).collect());
+                }
+            }
+            proptest::prop_assert_eq!(
+                out.cycles.len(),
+                components.len(),
+                "reported {:?} for components {:?}",
+                out.cycles,
+                components
+            );
+            for cycle in &out.cycles {
+                for (at, name) in cycle.iter().enumerate() {
+                    let from: usize = name[1..].parse().unwrap();
+                    let to: usize = cycle[(at + 1) % cycle.len()][1..].parse().unwrap();
+                    proptest::prop_assert!(
+                        adjacent[from][to],
+                        "{} is not a path anything can walk",
+                        render_cycle(cycle)
+                    );
                 }
             }
         }
