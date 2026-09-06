@@ -29,8 +29,26 @@ fn warn(message: &str) {
 /// long-lived clone can sit in application state and emit from any thread.
 /// With no channel, every method is a no-op, so nothing above this needs to
 /// know whether the operator opted in.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Shepherd(Arc<Inner>);
+
+// Hand-written rather than derived, for the same reason `Dispatch` below is:
+// the derive walks `Inner` into the outbox, whose queue holds whole
+// `ChildMessage` values, so an app logging `{shepherd:?}` would print the
+// body of every reply and the name of every metric still waiting to go out,
+// plus the environment's version stamp verbatim. Names the state worth
+// seeing and no payload (IR-41).
+impl core::fmt::Debug for Shepherd {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Shepherd")
+            .field("active", &self.is_active())
+            .field("dropped_metrics", &self.dropped_metrics())
+            // Whether the shepherd stamped a version, not which one: the
+            // value comes straight from the environment.
+            .field("stamped", &self.0.version.is_some())
+            .finish()
+    }
+}
 
 // Pins the "safe to share... from any thread" claim above at compile time,
 // so a later field addition that quietly breaks it fails the build instead
@@ -373,6 +391,44 @@ mod tests {
         assert!(
             !shepherd.is_active(),
             "a handle whose shepherd went away still reads as live"
+        );
+    }
+
+    /// IR-41: pins the redacted `Debug` as an exact string, and pins that a
+    /// queued reply body does not reach it.
+    ///
+    /// The derive reached `Inner` -> `Outbox` -> the queued `ChildMessage`
+    /// values, so `{shepherd:?}` printed reply bodies and metric names. The
+    /// queue here holds a body no other test would produce, so a return to
+    /// the derive fails on the exact string AND on the containment
+    /// assertion, rather than only on a field list someone might update to
+    /// match.
+    #[test]
+    fn a_shepherds_debug_names_state_and_never_a_queued_payload() {
+        let outbox = Arc::new(Outbox::new(4));
+        outbox.push_lossy(ChildMessage::ActionReply {
+            action: "gc".into(),
+            body: "SECRET-REPLY-BODY".into(),
+            id: Some(7),
+        });
+        outbox.push_lossy(ChildMessage::Metric {
+            name: "SECRET-METRIC-NAME".into(),
+            value: 1.0,
+        });
+        let shepherd = Shepherd(Arc::new(Inner {
+            outbox: Some(Arc::clone(&outbox)),
+            dispatch: Arc::new(RwLock::new(Dispatch::default())),
+            version: Some("1".into()),
+        }));
+
+        let rendered = format!("{shepherd:?}");
+        assert_eq!(
+            rendered,
+            "Shepherd { active: true, dropped_metrics: 0, stamped: true }"
+        );
+        assert!(
+            !rendered.contains("SECRET-REPLY-BODY") && !rendered.contains("SECRET-METRIC-NAME"),
+            "a queued payload reached the Debug output: {rendered}"
         );
     }
 
