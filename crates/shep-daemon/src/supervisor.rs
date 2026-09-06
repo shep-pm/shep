@@ -2816,12 +2816,30 @@ impl<R: ProcessRunner> Actor<R> {
                 }
             };
             // Instance 0 and no credentials: neither changes which file exec
-            // names, which is all `preflight` reads, and no secret changes it
-            // either. `describe` rather than `assemble` for that last reason:
-            // an unresolvable reference refused here would report the app as
-            // impossible to start, when the spawn below is what refuses it and
-            // leaves a status behind saying so.
-            let described = describe(&app, 0, &self.paths, None, &self.secret_view(&app));
+            // names, which is all `preflight` reads.
+            let view = self.secret_view(&app);
+            let described = match assemble(&app, 0, &self.paths, None, &view) {
+                Ok(spec) => spec,
+                // A reference nobody has set is as knowable here as a missing
+                // binary is, and here is the last point at which refusing
+                // costs nothing: no app in the batch is registered yet.
+                Err(err) if !err.is_retriable() => match policy {
+                    BatchPolicy::AllOrNothing => {
+                        refusals.push(format!("{name}: {err}"));
+                        continue;
+                    }
+                    // Reported, never refused: the spawn below meets the same
+                    // error and leaves an `Errored` row an operator can read.
+                    BatchPolicy::PerApp => {
+                        tracing::warn!(sheep = %name, "{err}");
+                        describe(&app, 0, &self.paths, None, &view)
+                    }
+                },
+                // Decided nowhere but at the spawn: a provider dog that is
+                // merely late is what `spawn_fresh` routes to the ordinary
+                // backoff, per instance.
+                Err(_) => describe(&app, 0, &self.paths, None, &view),
+            };
             match self.runner.preflight(&described) {
                 Preflight::Unknown => {}
                 Preflight::Impossible(reason) if policy == BatchPolicy::AllOrNothing => {
@@ -20194,22 +20212,25 @@ mod tests {
         );
     }
 
-    /// A secret nobody has set is a person's to fix, so the sheep is
-    /// `Errored` at once and the caller is told. A restart ladder in front of
-    /// it would only postpone the same report by sixteen turns.
+    /// A secret nobody has set is a person's to fix, so a [`BatchPolicy::PerApp`]
+    /// batch leaves the sheep `Errored` at once rather than spawning it. A
+    /// restart ladder in front of it would only postpone the same report by
+    /// sixteen turns.
+    ///
+    /// `PerApp` because that is the policy under which such an app is still
+    /// registered: a boot restore, or a dog.
+    /// `a_batch_with_one_unresolvable_secret_registers_none_of_it` is the
+    /// other half.
     #[tokio::test(start_paused = true)]
     async fn a_key_nobody_has_set_errors_the_sheep_without_a_spawn() {
-        let (events, _rx) = crate::bus::test_bus(64);
-        let runner = Arc::new(ScriptedRunner::new(vec![ProcScript::never_exits()]));
         let dir = tempfile::tempdir().unwrap();
-        let handle = spawn_supervisor(SharedRunner(Arc::clone(&runner)), test_paths(&dir), events);
+        let mut actor = actor_with_an_empty_flock(&dir, vec![ProcScript::never_exits()]);
         let mut app = AppConfig::minimal("web", "./srv");
         app.env
             .insert("PW".to_string(), "{{secret:ABSENT}}".to_string());
 
-        let err = handle
-            .start(vec![normalize(app).unwrap()])
-            .await
+        let err = actor
+            .do_start(vec![normalize(app).unwrap()], None, BatchPolicy::PerApp)
             .unwrap_err();
 
         assert!(matches!(err, SupervisorError::SpawnFailed(_)), "{err:?}");
@@ -20218,8 +20239,13 @@ mod tests {
             rendered.contains("ABSENT"),
             "names the reference: {rendered}"
         );
-        assert_eq!(handle.list().await[0].status, ProcStatus::Errored);
-        assert_eq!(runner.spawn_count(), 0, "nothing may reach the runner");
+        let entry = &actor.sheep.values().next().expect("one row").entry;
+        assert_eq!(entry.status, ProcStatus::Errored);
+        assert_eq!(
+            actor.runner.spawn_count(),
+            0,
+            "nothing may reach the runner"
+        );
     }
 
     /// A namespace no provider dog has pushed to clears itself, so the sheep
@@ -20322,6 +20348,38 @@ mod tests {
         assert!(
             err.to_string().contains("production"),
             "the host default is what the second one asked for: {err}"
+        );
+    }
+    /// [`BatchPolicy::AllOrNothing`] promises to register none of a batch it
+    /// cannot start whole, and a reference nobody has set is as knowable
+    /// before the batch as a missing binary is. Refusing it only at the spawn
+    /// leaves every app ahead of it in the file running.
+    #[tokio::test(start_paused = true)]
+    async fn a_batch_with_one_unresolvable_secret_registers_none_of_it() {
+        let (events, _rx) = crate::bus::test_bus(64);
+        let runner = Arc::new(ScriptedRunner::new(vec![ProcScript::never_exits()]));
+        let dir = tempfile::tempdir().unwrap();
+        let handle = spawn_supervisor(SharedRunner(Arc::clone(&runner)), test_paths(&dir), events);
+        let sound = normalize(AppConfig::minimal("first", "./srv")).unwrap();
+        let mut broken = AppConfig::minimal("second", "./srv");
+        broken
+            .env
+            .insert("PW".to_string(), "{{secret:TYPO}}".to_string());
+
+        let err = handle
+            .start(vec![sound, normalize(broken).unwrap()])
+            .await
+            .unwrap_err();
+
+        assert!(
+            handle.list().await.is_empty(),
+            "the app ahead of the refusal must not survive the batch"
+        );
+        assert_eq!(runner.spawn_count(), 0, "nothing may reach the runner");
+        assert!(matches!(err, SupervisorError::CannotStart(_)), "{err:?}");
+        assert!(
+            err.to_string().contains("TYPO"),
+            "names the reference: {err}"
         );
     }
 }
