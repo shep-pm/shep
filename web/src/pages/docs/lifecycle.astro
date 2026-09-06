@@ -342,9 +342,15 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       <p>
         Replaces each matched sheep's instances one at a time with a fresh
         process, so a clustered app is never short more than one instance
-        mid-swap. Answers as soon as the shepherd accepts the reload,
-        printing the flock as it stands at that moment; the swaps themselves
-        land afterward and are reported on the bus.
+        mid-swap. A selector matching one app answers as soon as the
+        shepherd accepts the reload, printing the flock as it stands at that
+        moment; the swaps themselves land afterward and are reported on the
+        bus.
+      </p>
+      <p>
+        A selector matching two or more apps is walked in dependency order,
+        and the reply waits out every stage's swaps before it prints. See{" "}
+        <a href="#several-sheep-at-once">below</a>.
       </p>
     </VerbSignature>
     <p>
@@ -443,7 +449,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       actually kills versus what a sheep's process tree contains.
     </p>
 
-    <h2>Several sheep at once run in dependency order</h2>
+    <h2 id="several-sheep-at-once">Several sheep at once run in dependency order</h2>
     <p>
       Everything above describes one sheep. Once a Flockfile uses{" "}
       <code>depends_on</code>, shep sorts the flock into stages, and the
