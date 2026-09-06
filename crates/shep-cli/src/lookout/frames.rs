@@ -274,7 +274,7 @@ impl Scene {
     pub const fn caption(self) -> &'static str {
         match self {
             Self::HealthyWide => {
-                "All three panes at 120x30: the host strip under the title, the detail pane and the bleats feed under the table. `>` marks the selected sheep, and every pane below the table describes it."
+                "All three panes at 120x30: the host strip under the title, the detail pane and the bleats feed under the table. The selected row is painted, and every pane below the table describes that sheep."
             }
             Self::Errored => {
                 "One errored, one waiting to restart, one stopped, with the selection parked on the errored sheep. Each row's own STATUS cell is the only coloured cell in that row, and EXIT carries why each of the three stopped: a code for the two that crashed, a signal name for the one shep stopped itself."
@@ -316,7 +316,7 @@ impl Scene {
                 "20 rows: the detail pane is the first to go, because every number on it but the log paths is already in the row above it."
             }
             Self::TableOnly => {
-                "12 rows: no optional panes at all. This is 12a's frame, and the only thing that changed is the two-column gutter the marker sits in."
+                "12 rows: no optional panes at all. This is 12a's frame, and the only thing that changed is the two-column gutter the selection paints."
             }
             Self::FeedGap => {
                 "The feed under a burst: 3.8 megabytes were never read and some hundreds of lines were read and dropped. The pane counts both, and counts them separately, because it knows the second exactly and cannot know how many lines are in the first."

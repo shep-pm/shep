@@ -36,7 +36,7 @@ a frame of their own.
 
 
 === healthy_wide  (120x30) ===
-All three panes at 120x30: the host strip under the title, the detail pane and the bleats feed under the table. `>` marks the selected sheep, and every pane below the table describes it.
+All three panes at 120x30: the host strip under the title, the detail pane and the bleats feed under the table. The selected row is painted, and every pane below the table describes that sheep.
 
 shep lookout   /home/ada/.shep                                                                           [0m[38;5;245m 6 in the flock[0m
 [0m[38;5;245mhost  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           [0m
@@ -428,7 +428,7 @@ shep lookout   /home/ada/.shep                                                  
 
 
 === table_only  (120x12) ===
-12 rows: no optional panes at all. This is 12a's frame, and the only thing that changed is the two-column gutter the marker sits in.
+12 rows: no optional panes at all. This is 12a's frame, and the only thing that changed is the two-column gutter the selection paints.
 
 shep lookout   /home/ada/.shep                                                                           [0m[38;5;245m 6 in the flock[0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
