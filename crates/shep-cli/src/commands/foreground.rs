@@ -2,7 +2,7 @@
 //! this process, starts a flock, streams its bleats to stdout, and returns
 //! once nothing is online or a signal ends the supervisor.
 
-use shep_client::{Client, START_DEADLINE};
+use shep_client::Client;
 use shep_core::config::AppConfig;
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{Request, Response, SelectorSpec};
@@ -109,8 +109,14 @@ pub async fn run(streams: &mut Streams<'_>, quiet: bool, options: ForegroundOpti
         }
     };
 
+    // Sized to the stages this flock plans, not to a flat `START_DEADLINE`.
+    // The daemon holds each stage until its members settle, so a chained
+    // flock whose readiness waits sum past 30s answered `DeadlineExceeded`,
+    // and the arm below then kills the shepherd and exits non-zero: a
+    // container losing its whole flock over a start that was proceeding.
+    let deadline = crate::commands::lifecycle::staged_start_deadline(&apps);
     if let Err(err) = client
-        .request_with_deadline(Request::Start { apps }, Some(START_DEADLINE))
+        .request_with_deadline(Request::Start { apps }, Some(deadline))
         .await
     {
         let code = ExitCode::from(&err);

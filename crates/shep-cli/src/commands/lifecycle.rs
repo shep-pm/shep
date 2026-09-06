@@ -1280,6 +1280,10 @@ const STAGED_START_SLACK: Duration = Duration::from_secs(10);
 
 /// The deadline a staged start needs.
 ///
+/// `foreground` reaches this too, for `shep runtime` and `shep dev`: both
+/// start a whole Flockfile in one request, and a flat budget there takes a
+/// container's flock down over a chain that was doing what it was asked.
+///
 /// The daemon runs a `Request::Start` batch in dependency order and holds
 /// each stage until its members settle, so the reply lands only after the
 /// last one. The worst case is every app in its own stage, each held for its
@@ -1304,7 +1308,7 @@ const STAGED_START_SLACK: Duration = Duration::from_secs(10);
 /// Seventeen apps at the default 3s `listen_timeout` sum to 51s, which with
 /// the slack is past the ceiling, so this is an ordinary large batch rather
 /// than a pathological one.
-fn staged_start_deadline(apps: &[AppConfig]) -> Duration {
+pub(crate) fn staged_start_deadline(apps: &[AppConfig]) -> Duration {
     let stages: Duration = apps
         .iter()
         .map(|app| app.listen_timeout.as_duration())
@@ -1344,6 +1348,17 @@ pub async fn stop(client: &Client, streams: &mut Streams<'_>, args: &SelectorArg
 ///
 /// `paths` is here so a restart that names a dog is warned about before the
 /// request goes out. See [`dogs::warn_of_a_dog_a_restart_would_break`].
+///
+/// Sent with [`START_DEADLINE`] rather than the client's 5s default. A
+/// restart matching several sheep now walks the dependency stages INSIDE the
+/// request handler, and one edge routinely clears 5s: the daemon holds each
+/// stage for its members' `listen_timeout` before issuing the next, so a
+/// client on the default abandons a restart the shepherd is still doing.
+/// Not [`staged_start_deadline`], which needs the `AppConfig`s a load holds
+/// and a selector does not: nothing the CLI has says how many stages this
+/// selector spans or what their timeouts are, and asking would cost a round
+/// trip and still race the actor. The daemon clamps at its own 60s ceiling
+/// either way.
 pub async fn restart(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -1375,7 +1390,7 @@ pub async fn restart_within(
         client,
         streams,
         &selectors,
-        None,
+        Some(START_DEADLINE),
         |selector| Request::Restart { selector },
         |response| match response {
             Response::Restarted(procs) => Some(procs),
@@ -1417,9 +1432,14 @@ pub async fn restart_within(
 /// Reloads the sheep matching `args.selector`, replacing each instance with
 /// a fresh one so the app has a window in which it can hand over
 ///
-/// The client's default deadline, as `stop`/`restart`/`delete` use: the
-/// daemon answers when the reload is accepted, not when the swaps finish.
 /// The rows printed are the flock as it stood at acceptance.
+///
+/// Sent with [`START_DEADLINE`], for `restart`'s reason and then some. A
+/// reload matching several sheep no longer answers at acceptance: the staged
+/// walk runs in the request handler and holds each stage until its swaps
+/// land, so the reply waits on a drain AND a readiness wait per stage, which
+/// is the longest budget any of these verbs needs. The client's 5s default
+/// would abandon a fold with one edge as a matter of routine.
 pub async fn reload(client: &Client, streams: &mut Streams<'_>, args: &SelectorArgs) -> ExitCode {
     let selectors = match parse_selectors(streams, &args.selectors) {
         Ok(selectors) => selectors,
@@ -1429,7 +1449,7 @@ pub async fn reload(client: &Client, streams: &mut Streams<'_>, args: &SelectorA
         client,
         streams,
         &selectors,
-        None,
+        Some(START_DEADLINE),
         |selector| Request::Reload { selector },
         |response| match response {
             Response::Reloading(procs) => Some(procs),
@@ -3076,8 +3096,10 @@ mod tests {
     /// its own `Request` variant
     ///
     /// The whole `sent.body` is asserted, so a verb sending the wrong request
-    /// kind is caught. Also pins that all four pass `deadline: None`, visible
-    /// on the wire as `DEFAULT_DEADLINE`.
+    /// kind is caught. Also pins each verb's budget: `stop` and `delete`
+    /// pass `None` and reach the wire as `DEFAULT_DEADLINE`, while `restart`
+    /// and `reload` ask for `START_DEADLINE` because their staged walk runs
+    /// inside the request handler.
     #[tokio::test]
     async fn a_selector_reaches_the_wire_in_its_compiled_form() {
         let dir = tempfile::tempdir().unwrap();
@@ -3128,13 +3150,21 @@ mod tests {
                 };
                 let sent = envelopes.recv().await.unwrap();
                 assert_eq!(sent.body, expected_body, "verb={verb:?} input={input}");
-                // `request_with_deadline` fills in `DEFAULT_DEADLINE`, so
-                // an envelope carrying exactly that is the signal that the
-                // call site passed `None`.
+                // fails if a staged verb goes out on the client's 5s
+                // default: `restart` and `reload` now walk the dependency
+                // stages inside the request handler, and one edge clears 5s,
+                // so the client would abandon a walk the shepherd is still
+                // doing. `request_with_deadline` fills in `DEFAULT_DEADLINE`
+                // for a `None`, so an envelope carrying exactly that is the
+                // signal that the call site passed one.
+                let expected_deadline = match verb {
+                    Verb::Stop | Verb::Delete => DEFAULT_DEADLINE,
+                    Verb::Restart | Verb::Reload => START_DEADLINE,
+                };
                 assert_eq!(
                     sent.deadline_ms,
-                    Some(u64::try_from(DEFAULT_DEADLINE.as_millis()).unwrap()),
-                    "verb={verb:?} input={input} must defer to the client's default deadline"
+                    Some(u64::try_from(expected_deadline.as_millis()).unwrap()),
+                    "verb={verb:?} input={input} must ask for its own budget"
                 );
             }
         }
