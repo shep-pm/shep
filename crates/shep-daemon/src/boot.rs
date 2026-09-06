@@ -32,7 +32,7 @@ use shep_core::protocol::BusEvent;
 #[cfg(unix)]
 use shep_core::selector::ProcessSelector;
 
-use crate::bus::{SharedEvent, new_bus};
+use crate::bus::{Bus, SharedEvent, new_bus};
 use crate::cron::DEFAULT_MAX_CRON_SLEEP;
 use crate::dogs::{DogSpec, spawn_dog_watch};
 use crate::extras::{Extras, ExtrasReports, spawn_extras_reporter};
@@ -774,8 +774,9 @@ pub struct BootOptions {
 ///
 /// The order is load-bearing: handlers before the socket (SIGUSR2 otherwise
 /// terminates), the pidfile lock before the bind it makes race-free,
-/// `ready_fd` on the bind not the restore, dogs after the restore so a metrics
-/// dog does not answer for an empty flock, [`BootOptions::notify_socket`] last.
+/// `ready_fd` on the bind not the restore, `[daemon] boot_first_dogs` before
+/// the restore and every other dog after it so a metrics dog does not answer
+/// for an empty flock, [`BootOptions::notify_socket`] last.
 ///
 /// # Errors
 /// - [`BootError::Io`] if a boot filesystem or signal-handler step failed.
@@ -919,13 +920,34 @@ pub async fn boot<R: ProcessRunner>(
     #[cfg(windows)]
     let inherited_flock = false;
 
-    if options.restore && !inherited_flock {
-        restore_flock(&paths, &registry, &supervisor).await?;
-    }
+    // Split around the restore rather than run whole after it: a log-rotation
+    // dog has to be running before a sheep starts writing, while a metrics dog
+    // must not answer for a flock that is not up. Both are true in one flock,
+    // so `[daemon] boot_first_dogs` says which.
+    let (first, rest): (Vec<DogSpec>, Vec<DogSpec>) = options
+        .dogs
+        .iter()
+        .cloned()
+        .partition(|spec| options.boot_first_dogs.contains(&spec.name));
+    let dog_names: Vec<String> = options.dogs.iter().map(|dog| dog.name.clone()).collect();
 
     // Never fails the boot: a dog that cannot be spawned is a monitoring gap
     // rather than an outage, so `spawn_enabled_dogs` warns and carries on.
-    crate::dogs::spawn_enabled_dogs(&options.dogs, &paths, &supervisor, &events).await;
+    crate::dogs::spawn_enabled_dogs(&first, &paths, &supervisor, &events).await;
+
+    if options.restore && !inherited_flock {
+        restore_flock(
+            &paths,
+            &registry,
+            &supervisor,
+            &events,
+            &dog_names,
+            &options.boot_first_dogs,
+        )
+        .await?;
+    }
+
+    crate::dogs::spawn_enabled_dogs(&rest, &paths, &supervisor, &events).await;
 
     // Starts empty and is not carried across a handover: a successor has
     // refused nobody.
@@ -959,7 +981,7 @@ pub async fn boot<R: ProcessRunner>(
         snapshot_path: paths.snapshot.clone(),
         dogs_config: paths.dogs_config.clone(),
         known_dogs: crate::rpc::KnownDogs::new(options.known_dogs.iter().cloned().collect()),
-        dog_names: options.dogs.iter().map(|dog| dog.name.clone()).collect(),
+        dog_names,
         boot_first_dogs: options.boot_first_dogs.clone(),
         paths: paths.clone(),
         daemon_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -1012,17 +1034,33 @@ fn max_cron_sleep(options: &BootOptions) -> Duration {
     options.max_cron_sleep.unwrap_or(DEFAULT_MAX_CRON_SLEEP)
 }
 
-/// Reads the muster roll (if one exists) and starts every app it restores.
+/// Reads the muster roll (if one exists) and starts every app it restores, in
+/// dependency order.
 ///
 /// One line over [`snapshot::muster`], which holds the whole restore rule and
 /// also serves an operator's `Muster` request. The names it returns are
 /// discarded: nobody is waiting on them here.
+///
+/// `dogs` is every dog this shepherd holds and `boot_first_dogs` the ones
+/// promoted ahead of the flock. Neither is spawned here; they are passed on so
+/// the plan positions a sheep that names a dog in its `depends_on` correctly.
 async fn restore_flock(
     paths: &ShepPaths,
     registry: &FlockRegistry,
     supervisor: &SupervisorHandle,
+    events: &Bus,
+    dogs: &[String],
+    boot_first_dogs: &[String],
 ) -> Result<(), BootError> {
-    snapshot::muster(&paths.snapshot, registry, supervisor).await?;
+    snapshot::muster(
+        &paths.snapshot,
+        registry,
+        supervisor,
+        events,
+        dogs,
+        boot_first_dogs,
+    )
+    .await?;
     Ok(())
 }
 

@@ -7,13 +7,6 @@
 //! synchronous `fn` reached from the actor's own message loop, and that loop
 //! is what delivers `Msg::ReadyResult`, so a wait inside it could never end.
 
-// Nothing calls in yet: the boot sequence and the RPC start path are the two
-// callers, and both land after this module. `expect` rather than `allow`, so
-// it deletes itself the moment one does; `cfg_attr(not(test), ...)` because
-// the crate's own tests use every item here, so a bare `expect` is unfulfilled
-// in the `cfg(test)` build and `--all-targets` refuses it there instead.
-#![cfg_attr(not(test), expect(dead_code))]
-
 use core::time::Duration;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -38,6 +31,10 @@ pub(crate) const STAGE_SLACK: Duration = Duration::from_secs(5);
 
 /// Graph nodes for a flock plus its dogs, with no dog promoted ahead of the
 /// flock.
+// Only this module's own tests reach the two-argument spelling: every caller
+// so far has a promoted list to pass. `expect` rather than `allow`, so it
+// deletes itself the moment one does not.
+#[cfg_attr(not(test), expect(dead_code))]
 #[must_use]
 pub(crate) fn nodes_for(apps: &[ResolvedApp], dogs: &[String]) -> Vec<BootNode> {
     nodes_for_with_dogs(apps, dogs, &[])
@@ -57,6 +54,11 @@ pub(crate) fn plan_for(apps: &[ResolvedApp], dogs: &[String], boot_first: &[Stri
 /// `boot_first` names the dogs `[daemon] boot_first_dogs` promotes ahead of
 /// every sheep. A dog carries no `depends_on` of its own: `dog_app` builds a
 /// dog's config from `AppConfig::minimal`, so its list is always empty.
+///
+/// A dog sharing a sheep's name is dropped rather than added a second time.
+/// Nothing refuses that collision: `start_dog` finds the name registered and
+/// returns, so the sheep is what actually runs, and a second node would put
+/// that one sheep in two stages and start it twice.
 #[must_use]
 pub(crate) fn nodes_for_with_dogs(
     apps: &[ResolvedApp],
@@ -64,19 +66,24 @@ pub(crate) fn nodes_for_with_dogs(
     boot_first: &[String],
 ) -> Vec<BootNode> {
     let promoted: BTreeSet<&str> = boot_first.iter().map(String::as_str).collect();
+    let taken: BTreeSet<&str> = apps.iter().map(|app| app.config().name.as_str()).collect();
     apps.iter()
         .map(|app| BootNode {
             name: app.config().name.clone(),
             depends_on: app.config().depends_on.clone(),
             kind: NodeKind::Sheep,
         })
-        .chain(dogs.iter().map(|name| BootNode {
-            name: name.clone(),
-            depends_on: Vec::new(),
-            kind: NodeKind::Dog {
-                boot_first: promoted.contains(name.as_str()),
-            },
-        }))
+        .chain(
+            dogs.iter()
+                .filter(|name| !taken.contains(name.as_str()))
+                .map(|name| BootNode {
+                    name: name.clone(),
+                    depends_on: Vec::new(),
+                    kind: NodeKind::Dog {
+                        boot_first: promoted.contains(name.as_str()),
+                    },
+                }),
+        )
         .collect()
 }
 
@@ -270,6 +277,9 @@ async fn drop_settled(supervisor: &SupervisorHandle, waiting: &mut BTreeSet<Stri
 /// would kill the bark dog before the flock it reports on. So a plan handed
 /// here is the sheep-only one; a dog named in it would be stopped here
 /// instead.
+// The ordered shutdown is its own task and lands after this one; until it
+// does, only this module's tests call in.
+#[cfg_attr(not(test), expect(dead_code))]
 pub(crate) async fn stop_in_reverse(plan: &BootPlan, supervisor: &SupervisorHandle) {
     for stage in plan.stages.iter().rev() {
         for name in stage {
@@ -337,6 +347,19 @@ mod tests {
         let mut api = AppConfig::minimal("api", "./sleep");
         api.depends_on = vec!["db".to_string()];
         normalize_all(vec![db, api]).expect("two apps, one edge, no cycle")
+    }
+
+    /// fails if a dog sharing a sheep's name becomes a second node. The
+    /// sheep would then sit in two stages and be started twice, which is what
+    /// `boot`'s own collision test sees as a second registered entry.
+    #[test]
+    fn a_dog_named_after_a_sheep_is_not_a_node_of_its_own() {
+        let apps = normalize_all(vec![AppConfig::minimal("metrics", "./sleep")])
+            .expect("one app, no edges");
+        let nodes = nodes_for_with_dogs(&apps, &["metrics".to_string()], &[]);
+
+        assert_eq!(nodes.len(), 1, "one name is one node: {nodes:?}");
+        assert_eq!(nodes[0].kind, NodeKind::Sheep);
     }
 
     #[tokio::test]

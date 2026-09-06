@@ -728,26 +728,6 @@ impl SupervisorHandle {
             .await
     }
 
-    /// [`Self::start`], but one app that cannot run costs only itself.
-    ///
-    /// For restoring a muster roll: a saved app whose binary went missing must
-    /// not keep the rest of the flock down.
-    ///
-    /// # Errors
-    ///
-    /// - [`SupervisorError::SpawnFailed`]: at least one app could not be
-    ///   started, carrying one `"<name>: <reason>"` entry per such app joined
-    ///   by `"; "`. Every app was attempted, and every one that could not
-    ///   start is registered `Errored` and visible.
-    /// - [`SupervisorError::EngineStopped`]: the actor is gone.
-    pub(crate) async fn start_restored(
-        &self,
-        apps: Vec<ResolvedApp>,
-    ) -> Result<Vec<ProcessInfo>, SupervisorError> {
-        self.start_staged(apps, BTreeSet::new(), BatchPolicy::PerApp)
-            .await
-    }
-
     /// [`Self::start`], holding every app in `gate` at `Starting` until its
     /// readiness deadline, so a later stage can wait on it.
     ///
@@ -760,7 +740,7 @@ impl SupervisorHandle {
     /// - [`SupervisorError::SpawnFailed`]: an instance that failed to spawn.
     ///   Under `AllOrNothing` this is the first such failure, and every
     ///   already-registered app in the batch persists regardless. Under
-    ///   [`BatchPolicy::PerApp`] (`Self::start_restored`'s policy) every app
+    ///   [`BatchPolicy::PerApp`] (the muster restore's policy) every app
     ///   was attempted and this carries one `"<name>: <reason>"` entry per
     ///   app that could not start, joined by `"; "`; each such app is
     ///   registered `Errored` and visible.

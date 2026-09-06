@@ -117,10 +117,6 @@ pub struct RpcContext {
     /// reads: a later boot plan (rebuilt at shutdown, or for a staged start)
     /// needs the same spawn list `boot` used, and this is where it survives
     /// between requests.
-    ///
-    /// The `expect` goes when the staged restore reads it, and fails the
-    /// build if it is left behind once something does.
-    #[expect(dead_code, reason = "read by the staged restore, not yet written")]
     pub(crate) dog_names: Vec<String>,
     /// Which of [`Self::dog_names`] run before every sheep rather than
     /// after the flock, from `[daemon] boot_first_dogs`.
@@ -129,7 +125,6 @@ pub struct RpcContext {
     /// plan later needs to know which dogs were promoted, and this daemon
     /// has no other way to ask, since it never reads `shep.toml` itself. A
     /// name absent from [`Self::dog_names`] is inert here, not an error.
-    #[expect(dead_code, reason = "read by the staged restore, not yet written")]
     pub(crate) boot_first_dogs: Vec<String>,
     /// This daemon's `$SHEP_HOME` layout, for assembling a dog's app config.
     pub(crate) paths: ShepPaths,
@@ -515,7 +510,15 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
         // The same restore `boot` runs, called the same way
         // (`crate::snapshot::muster`).
         Request::Muster => {
-            match crate::snapshot::muster(&ctx.snapshot_path, &ctx.registry, &ctx.supervisor).await
+            match crate::snapshot::muster(
+                &ctx.snapshot_path,
+                &ctx.registry,
+                &ctx.supervisor,
+                &ctx.events,
+                &ctx.dog_names,
+                &ctx.boot_first_dogs,
+            )
+            .await
             {
                 Err(err) => reply(Err(RpcError {
                     code: RpcErrorCode::Internal,
@@ -2870,15 +2873,22 @@ mod tests {
         let cold = crate::supervisor::spawn_supervisor(
             crate::fake::ScriptedRunner::new(vec![ProcScript::never_exits()]),
             h.ctx.paths.clone(),
-            events,
+            events.clone(),
         );
         // The cold registry, not `sheep_config`: that view clears `env` on
         // its way out, and the registry is what the restored sheep was
         // started from.
         let cold_registry = crate::snapshot::FlockRegistry::new();
-        let restored = crate::snapshot::muster(&h.ctx.snapshot_path, &cold_registry, &cold)
-            .await
-            .unwrap();
+        let restored = crate::snapshot::muster(
+            &h.ctx.snapshot_path,
+            &cold_registry,
+            &cold,
+            &events,
+            &[],
+            &[],
+        )
+        .await
+        .unwrap();
         assert_eq!(restored, vec!["web".to_string()]);
 
         let listed = cold.list().await;

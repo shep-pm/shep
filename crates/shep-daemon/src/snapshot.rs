@@ -7,13 +7,17 @@
 //! since the file is human-editable.
 //!
 //! `muster` reads the roll and starts those apps, from `boot` and from the
-//! `Muster` request alike. An app restores iff it was running when the roll was
+//! `Muster` request alike, stage by stage in `depends_on` order
+//! (`crate::boot_order`). An app restores iff it was running when the roll was
 //! saved (`instances_running > 0`) and `autostart` is still true; one the flock
-//! already has is left where it stands, still reported as restored.
+//! already has is left where it stands, still reported as restored. Nothing
+//! about the graph refuses a restore: a cycle, a name nothing answers to and a
+//! dependency that opted out of `autostart` are each warned about and started
+//! around, because the machine this runs on has nobody watching it.
 
 use core::fmt;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -25,12 +29,13 @@ use tokio::sync::broadcast::{self, error::RecvError};
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, Instant, sleep_until};
 
+use shep_core::config::graph::{BootPlan, render_cycle};
 use shep_core::config::{AppConfig, NormalizeError, ResolvedApp, normalize};
 use shep_core::protocol::{BusEvent, ProcessInfo};
 use shep_core::status::ProcStatus;
 
-use crate::bus::SharedEvent;
-use crate::supervisor::SupervisorHandle;
+use crate::bus::{Bus, SharedEvent};
+use crate::supervisor::{BatchPolicy, SupervisorHandle};
 
 /// Schema version of `flock.json`
 pub(crate) const SNAPSHOT_VERSION: u32 = 1;
@@ -353,6 +358,9 @@ pub(crate) async fn muster(
     path: &Path,
     registry: &FlockRegistry,
     supervisor: &SupervisorHandle,
+    events: &Bus,
+    dogs: &[String],
+    boot_first_dogs: &[String],
 ) -> Result<Vec<String>, SnapshotError> {
     let saved = match read(path) {
         Ok(saved) => saved,
@@ -409,21 +417,84 @@ pub(crate) async fn muster(
     if to_start.is_empty() {
         return Ok(restored);
     }
-    // Recorded whether or not `start` fully succeeds: already-registered
-    // entries must persist even when a later spawn in the batch fails. Only
-    // what this call starts, so an app left where it stands keeps the config
-    // it is actually running under.
+    // Recorded whether or not the stages fully succeed: already-registered
+    // entries must persist even when a later spawn fails. Only what this call
+    // starts, so an app left where it stands keeps the config it is actually
+    // running under.
     registry.record(&to_start);
-    // `start_restored`, not `start`: `start` refuses a whole batch over an app
-    // whose script provably is not there, which is right for an operator typing
-    // `shep start` and wrong at an unattended boot, where a binary missing after
-    // a rebuild would cost the machine its entire flock.
-    if let Err(err) = supervisor.start_restored(to_start).await {
-        // One bad entry does not sink the muster; the sheep that failed to
-        // spawn is already recorded `Errored` by the supervisor.
-        tracing::warn!(%err, "muster roll restore failed to spawn one or more apps");
-    }
+
+    let plan = crate::boot_order::plan_for(&to_start, dogs, boot_first_dogs);
+    warn_about_the_graph(&plan, &to_start, &restorable.members);
+    // `BatchPolicy::PerApp`, not `AllOrNothing`: a whole-batch refusal over an
+    // app whose script provably is not there is right for an operator typing
+    // `shep start` and wrong at an unattended boot, where a binary missing
+    // after a rebuild would cost the machine its entire flock.
+    crate::boot_order::start_in_stages(&plan, &to_start, supervisor, events, BatchPolicy::PerApp)
+        .await;
     Ok(restored)
+}
+
+/// Reports every way the roll's dependency graph is not what it says it is.
+///
+/// Nothing here refuses. A restore runs on a machine nobody is watching, so
+/// each of these three brings the flock up and says what it did instead.
+fn warn_about_the_graph(plan: &BootPlan, to_start: &[ResolvedApp], members: &[ResolvedApp]) {
+    // A member the roll holds but this restore will not start. Named
+    // separately from the unresolved edges below, since "the sheep exists and
+    // opted out" is a different thing for an operator to do about than "the
+    // name is a typo".
+    let opted_out: BTreeSet<&str> = members
+        .iter()
+        .filter(|app| !app.config().autostart)
+        .map(|app| app.config().name.as_str())
+        .collect();
+
+    for unresolved in &plan.unresolved {
+        if opted_out.contains(unresolved.missing.as_str()) {
+            continue;
+        }
+        tracing::warn!(
+            sheep = %unresolved.dependent,
+            missing = %unresolved.missing,
+            "a dependency names nothing this flock has; starting without it"
+        );
+    }
+    for app in to_start {
+        for target in &app.config().depends_on {
+            if opted_out.contains(target.as_str()) {
+                tracing::warn!(
+                    sheep = %app.config().name,
+                    dependency = %target,
+                    "the dependency sets autostart = false; starting without it"
+                );
+            }
+        }
+    }
+    for cycle in &plan.cycles {
+        tracing::warn!(
+            cycle = %render_cycle(cycle),
+            "a dependency cycle; those sheep start last, in no particular order"
+        );
+    }
+    // `BootPlan::cycles` carries ONE representative path per knot, so a sheep
+    // inside the knot but off that path is just as stuck and is never named by
+    // the warning above. The cyclic stage is every one of them.
+    if let Some(stuck) = cyclic_stage(plan) {
+        let names: Vec<&str> = stuck.iter().map(String::as_str).collect();
+        tracing::warn!(
+            stuck = ?names,
+            "every sheep a dependency cycle holds; each of them starts last"
+        );
+    }
+}
+
+/// The stage the plan lifted every cyclic node into, if the graph has a cycle.
+///
+/// [`BootPlan`] does not label that stage, so it is found by the property that
+/// identifies it: a name the plan reports in a cycle appears in no other one.
+fn cyclic_stage(plan: &BootPlan) -> Option<&Vec<String>> {
+    let member = plan.cycles.first()?.first()?;
+    plan.stages.iter().find(|stage| stage.contains(member))
 }
 
 /// True for lifecycle transitions the roll cares about; false for log
@@ -806,11 +877,13 @@ mod tests {
         let handle = spawn_supervisor(
             ScriptedRunner::new(vec![ProcScript::never_exits()]),
             paths.clone(),
-            events,
+            events.clone(),
         );
         let registry = FlockRegistry::new();
 
-        let restored = muster(&paths.snapshot, &registry, &handle).await.unwrap();
+        let restored = muster(&paths.snapshot, &registry, &handle, &events, &[], &[])
+            .await
+            .unwrap();
         assert_eq!(
             restored,
             vec!["up".to_string(), "down".to_string()],
@@ -862,11 +935,13 @@ mod tests {
             // fail here for a reason of its own.
             ScriptedRunner::new(vec![ProcScript::never_exits(); 2]).failing_to_spawn(&["b-bad"]),
             paths.clone(),
-            events,
+            events.clone(),
         );
         let registry = FlockRegistry::new();
 
-        let restored = muster(&paths.snapshot, &registry, &handle).await.unwrap();
+        let restored = muster(&paths.snapshot, &registry, &handle, &events, &[], &[])
+            .await
+            .unwrap();
         assert_eq!(
             restored,
             vec![
@@ -896,14 +971,17 @@ mod tests {
     /// fails if ONE saved app that cannot start keeps the rest of the flock
     /// down at the next boot.
     ///
-    /// `muster` calls `start_restored`, not `start`, because `start`'s
-    /// pre-registration check refuses a whole batch over one app whose script
-    /// is gone, which at an unattended boot costs the machine its flock.
+    /// `muster` starts under `BatchPolicy::PerApp`, not `AllOrNothing`,
+    /// because the pre-registration check refuses a whole batch over one app
+    /// whose script is gone, which at an unattended boot costs the machine its
+    /// flock.
     ///
     /// `refusing` is load-bearing: `ScriptedRunner`'s `preflight` answers
     /// `Unknown` for everything, so the validating pass refuses nothing on its
-    /// own. One script for two apps, so `gone` also fails at its spawn and has
-    /// to land as a visible `Errored` row rather than vanishing.
+    /// own. `failing_to_spawn` is what makes `gone` land as a visible
+    /// `Errored` row rather than vanishing, and it names the app rather than
+    /// starving it of a script: the restore starts a stage's members in the
+    /// plan's order, not the roll's, and `gone` sorts first.
     #[tokio::test(start_paused = true)]
     async fn one_unstartable_saved_app_does_not_keep_the_rest_of_the_flock_down() {
         let dir = tempfile::tempdir().unwrap();
@@ -927,13 +1005,17 @@ mod tests {
 
         let (events, _rx) = crate::bus::test_bus(64);
         let handle = spawn_supervisor(
-            ScriptedRunner::new(vec![ProcScript::never_exits()]).refusing(&["gone"]),
+            ScriptedRunner::new(vec![ProcScript::never_exits()])
+                .refusing(&["gone"])
+                .failing_to_spawn(&["gone"]),
             paths.clone(),
-            events,
+            events.clone(),
         );
         let registry = FlockRegistry::new();
 
-        let restored = muster(&paths.snapshot, &registry, &handle).await.unwrap();
+        let restored = muster(&paths.snapshot, &registry, &handle, &events, &[], &[])
+            .await
+            .unwrap();
         assert_eq!(restored, vec!["good".to_string(), "gone".to_string()]);
 
         let mut listed = handle.list().await;
@@ -974,14 +1056,16 @@ mod tests {
         let handle = spawn_supervisor(
             ScriptedRunner::new(vec![ProcScript::never_exits()]),
             paths.clone(),
-            events,
+            events.clone(),
         );
         let registry = FlockRegistry::new();
         let app = normalize(AppConfig::minimal("web", "./srv")).unwrap();
         registry.record(std::slice::from_ref(&app));
         handle.start(vec![app]).await.unwrap();
 
-        let restored = muster(&paths.snapshot, &registry, &handle).await.unwrap();
+        let restored = muster(&paths.snapshot, &registry, &handle, &events, &[], &[])
+            .await
+            .unwrap();
         assert_eq!(
             restored,
             vec!["web".to_string()],
@@ -1007,12 +1091,14 @@ mod tests {
         let handle = spawn_supervisor(
             ScriptedRunner::new(vec![ProcScript::never_exits()]),
             paths.clone(),
-            events,
+            events.clone(),
         );
         let registry = FlockRegistry::new();
 
         assert_eq!(
-            muster(&paths.snapshot, &registry, &handle).await.unwrap(),
+            muster(&paths.snapshot, &registry, &handle, &events, &[], &[])
+                .await
+                .unwrap(),
             Vec::<String>::new()
         );
         assert!(handle.list().await.is_empty());
