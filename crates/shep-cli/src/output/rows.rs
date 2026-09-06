@@ -2197,13 +2197,16 @@ pub enum SecretStatus {
     /// The operator's store or a provider's namespace holds a value for
     /// this reference in this environment.
     Resolved,
-    /// The store or namespace exists but holds nothing for this key in
-    /// this environment.
+    /// The operator's store holds nothing for this key, or a provider has
+    /// pushed this namespace for this environment and that push lacks the
+    /// key.
     Missing,
-    /// This namespace is not in the local cache file this command reads.
-    /// A provider dog that pushed it with `persist = false` never reaches
-    /// that cache, so this is not proof the running shepherd lacks the
-    /// namespace too, only that this command cannot see it from here.
+    /// No push for this namespace and this environment is in the local
+    /// cache file this command reads. A provider dog that pushed with
+    /// `persist = false` never reaches that cache, and one that has pushed
+    /// another environment first has not pushed this pair yet, so this is
+    /// not proof the running shepherd lacks the value too, only that this
+    /// command cannot see it from here.
     Uncached,
 }
 

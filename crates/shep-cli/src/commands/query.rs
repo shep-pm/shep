@@ -892,6 +892,75 @@ mod tests {
         assert!(!out_contains(&json, "hunter2"), "never a value");
     }
 
+    /// The CLI reads the same pairs the shepherd resolves against, so a
+    /// namespace pushed for `production` reads as uncached for a `staging`
+    /// sheep rather than as a key the provider does not have. Reporting
+    /// `missing` here would tell an operator to go and find a value that a
+    /// dog mid-poll is about to supply.
+    #[tokio::test]
+    async fn describe_reads_a_namespace_pushed_for_another_environment_as_uncached() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, daemon) = fake_client_with_ack(&path, sample_ack()).await;
+        daemon.reply_to_describe(vec![
+            ProcessInfo::builder(1, "web", ProcStatus::Online).build(),
+        ]);
+        let home = dir.path().display().to_string();
+        let paths = ShepPaths::resolve(
+            &move |key| (key == "SHEP_HOME").then(|| home.clone()),
+            dir.path(),
+        );
+
+        let mut config = shep_core::config::AppConfig::minimal("web", "./srv");
+        config.environment = Some("staging".into());
+        config
+            .env
+            .insert("B".into(), "{{secret:vercel/API_KEY}}".into());
+        let roll = FlockSnapshot {
+            version: 1,
+            saved_at_ms: 0,
+            apps: vec![shep_daemon::snapshot::SavedApp {
+                app: config,
+                instances_running: 1,
+            }],
+        };
+        std::fs::write(&paths.snapshot, serde_json::to_vec(&roll).unwrap()).unwrap();
+        // The pair the dog has pushed is production; staging is still to come.
+        std::fs::write(
+            &paths.secrets_cache,
+            r#"{"version":2,"namespaces":{"vercel":{"API_KEY":{"production":"sk_live"}}},"pushed":{"vercel":["production"]}}"#,
+        )
+        .unwrap();
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = Streams {
+                out: &mut out,
+                err: &mut err,
+                style: crate::style::Presentation::BARE,
+                fmt: Format::Json,
+            };
+            describe(
+                &client,
+                &mut streams,
+                &paths,
+                &SelectorArgs {
+                    selectors: vec!["all".into()],
+                },
+            )
+            .await
+        };
+
+        assert_eq!(code, ExitCode::Success);
+        let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        let entries = json["secrets"].as_array().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["environment"], "staging");
+        assert_eq!(entries[0]["status"], "uncached", "{entries:?}");
+        assert!(!out_contains(&json, "sk_live"), "never a value");
+    }
+
     /// Whether `hunter2` shows up anywhere in `value`'s own JSON text, not
     /// just at the top level: a value smuggled in nested one level deeper
     /// would still be a leak.
