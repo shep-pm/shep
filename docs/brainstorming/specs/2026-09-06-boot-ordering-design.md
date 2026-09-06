@@ -393,6 +393,11 @@ Deliberately small.
 - `shep describe` lists `depends_on`, which answers "why did web start nine
   seconds in".
 - The boot logs the stage plan once, on one line.
+  **Correction, 2026-09-06.** It logs one `info` line per stage instead,
+  naming the stage's index and its members as it starts. The plan is not held
+  anywhere before the walk begins, so one line would mean building a second
+  rendering of it; a line per stage also timestamps where a slow boot is
+  actually spending its time.
 - No new `shep flock` column. That table already drops columns under pressure
   and this is not per-row status.
 - `shep lookout` gets nothing. Its panes are being redesigned separately and
