@@ -443,6 +443,24 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       actually kills versus what a sheep's process tree contains.
     </p>
 
+    <h2>Several sheep at once run in dependency order</h2>
+    <p>
+      Everything above describes one sheep. Once a Flockfile uses{" "}
+      <code>depends_on</code>, shep sorts the flock into stages, and the
+      verbs that touch more than one sheep walk those stages instead of
+      firing at everything together.
+    </p>
+    <p>
+      A shepherd going down walks them in reverse, so a worker gets its
+      SIGTERM before the database it is draining against, and each stage
+      costs its own members' <code>kill_timeout</code> rather than the whole
+      flock costing one. Dogs are held out of that walk and stopped after
+      every sheep, because monitoring should outlive what it monitors.{" "}
+      <code>restart</code> and <code>reload</code> against a selector
+      matching several sheep go the other way, dependencies first. See{" "}
+      <a href="/docs/boot-order">boot order</a>.
+    </p>
+
     <h2>Where to go next</h2>
 
     <div class="next-grid">

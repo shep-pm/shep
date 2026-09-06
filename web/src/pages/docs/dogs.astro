@@ -172,6 +172,31 @@ $ shep disable metrics`}</CodeBlock>
       <code>shep.toml</code>'s first.
     </p>
 
+    <h2>When a dog starts</h2>
+    <p>
+      After the flock, by default. A metrics dog that came up first would
+      spend the boot answering for a flock that is not running yet.
+    </p>
+    <p>
+      A log-rotation dog is the other way round, since it has to be running
+      before a sheep starts writing. Put its name in{" "}
+      <code>[daemon] boot_first_dogs</code> and it runs ahead of every
+      sheep:
+    </p>
+    <CodeBlock label="$SHEP_HOME/shep.toml">{`[daemon]
+enabled_dogs    = ["metrics", "log-rotate"]
+boot_first_dogs = ["log-rotate"]`}</CodeBlock>
+    <p class="fine">
+      A name here that is not in <code>enabled_dogs</code> is inert:
+      promoting a dog does not enable it. This is <code>shep.toml</code>{" "}
+      rather than <code>dogs.toml</code> for the same reason{" "}
+      <code>adopted_dogs</code> is: the <code>[&lt;name&gt;]</code> table in{" "}
+      <code>dogs.toml</code> is passed through to the dog itself, and a
+      shep-owned key inside it would collide with a third-party dog's own
+      schema. See <a href="/docs/boot-order">boot order</a> for the stages
+      this positions a dog in.
+    </p>
+
     <h2>Configuration lives on the socket, not the environment</h2>
     <p>
       A dog's settings live under <code>[&lt;name&gt;]</code> in{" "}

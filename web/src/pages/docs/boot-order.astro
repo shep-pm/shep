@@ -1,0 +1,473 @@
+---
+/*
+ * Boot order (crates/shep-core/src/config/graph.rs for the sort,
+ * crates/shep-daemon/src/boot_order.rs for the driver that runs it,
+ * crates/shep-core/src/config/app.rs for the depends_on field itself and
+ * crates/shep-core/src/config/daemon.rs for boot_first_dogs). Every
+ * transcript below was run against target/release/shep on 2026-09-06.
+ */
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import ReferencePills from "../../components/docs/ReferencePills.astro";
+import Callout from "../../components/docs/Callout.astro";
+import CodeBlock from "../../components/docs/CodeBlock.astro";
+
+interface GraphRow {
+  problem: string;
+  typed: string;
+  boot: string;
+}
+
+const graphRows: GraphRow[] = [
+  {
+    problem: "A cycle",
+    typed: "Refused, exit 4, naming the cycle as a path",
+    boot: "Warned about; those sheep start last, in no particular order",
+  },
+  {
+    problem: "A name the flock does not have",
+    typed: "Warned about; the edge is satisfied and the sheep starts",
+    boot: "Warned about; the edge is satisfied and the sheep starts",
+  },
+  {
+    problem: "A dependency with autostart = false",
+    typed: "Warned about; it stays stopped and the sheep starts",
+    boot: "Warned about; it stays stopped and the sheep starts",
+  },
+  {
+    problem: "A self-edge, or a name:slot target",
+    typed: "Refused, exit 4, before anything is registered",
+    boot: "Refused; the entry lands in the rejected list",
+  },
+];
+
+const stagedStart = `$ shep start Flockfile.toml
+ID  NAME  STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM   UPTIME  FOLD  SMIT
+1   api   online  21899  0         -     -    -    1.2M  3s      -     -
+0   db    online  21886  0         -     -    -    1.2M  6s      -     -
+2   web   online  21907  0         -     -    -    1.2M  0s      -     -`;
+
+const probedStart = `$ shep start probed.toml
+ID  NAME  STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM   UPTIME  FOLD  SMIT
+4   api   online  21994  0         -     -    -    1.2M  0s      -     -
+3   db    online  21993  0         -     -    -    9.5M  0s      -     -`;
+---
+
+<DocsLayout
+  title="Boot order"
+  description="depends_on names what a sheep waits for. shep sorts the flock into stages and starts them in order."
+  crumb="Concepts / Boot order"
+  activeSlug="boot-order"
+>
+  <article>
+    <h1>Boot order</h1>
+    <ReferencePills slug="boot-order" />
+    <p class="lede">
+      shep starts a flock all at once unless you tell it otherwise. Add
+      <code>depends_on</code> to an app and it sorts the flock into stages
+      instead, holding each one until its members are up. An app that would
+      have crash-looped through its restart budget waiting for a database
+      waits for the database instead.
+    </p>
+
+    <h2>Naming a dependency</h2>
+    <p>
+      <code>depends_on</code> is a list of other sheep, or of dogs. It goes
+      in the app's own Flockfile, because a requirement the app has belongs
+      in the app's own repository.
+    </p>
+    <CodeBlock label="Flockfile.toml">{`[[app]]
+name   = "db"
+script = "./db"
+
+[[app]]
+name       = "api"
+script     = "./api"
+depends_on = ["db"]
+
+[[app]]
+name       = "web"
+script     = "./web"
+depends_on = ["api"]`}</CodeBlock>
+    <p>
+      That sorts into three stages, <code>db</code>, then <code>api</code>,
+      then <code>web</code>. Names inside a stage are sorted, so one flock
+      always plans the same way. The whole start took 6.17 seconds, and the
+      <code>UPTIME</code> column is where it went:
+    </p>
+    <CodeBlock>{stagedStart}</CodeBlock>
+    <p class="fine">
+      Names only. <code>web:2</code> is refused with the app-level form
+      named, since a dependency on one instance of a load-balanced app is
+      not a claim about availability. A dependency on a multi-instance app
+      waits for every instance of it.
+    </p>
+
+    <h2>What ready means, and what it costs</h2>
+    <p>
+      A stage advances when its members have settled. An app with
+      <code>wait_ready</code> or a <code>readiness_probe</code> settles the
+      moment it says so, and an app that exits settles at once rather than
+      holding its stage for the full wait.
+    </p>
+    <p>
+      An app with neither has nothing to report. shep holds it
+      <code>starting</code> for its own <code>listen_timeout</code>, three
+      seconds by default, then calls it up and moves on. That is where the
+      6.17 seconds went: <code>db</code> cost one wait and <code>api</code>
+      cost another. <code>web</code> is last, so nothing waits on it and it
+      costs nothing. Only apps something depends on pay this.
+    </p>
+    <p>
+      Configuring a real signal takes it back off. Two apps, the database
+      behind a TCP probe polled every hundred milliseconds, and the start
+      finishes in 0.14 seconds:
+    </p>
+    <CodeBlock label="probed.toml">{`[[app]]
+name            = "db"
+script          = "./db"
+readiness_probe = { kind = "tcp", target = "127.0.0.1:5432", interval = "100ms" }
+
+[[app]]
+name       = "api"
+script     = "./api"
+depends_on = ["db"]`}</CodeBlock>
+    <CodeBlock>{probedStart}</CodeBlock>
+    <Callout variant="careful">
+      That <code>interval</code> is doing real work. A probe polls every ten
+      seconds by default and the first poll runs at spawn, so an app needing
+      fifty milliseconds to bind its port fails that first poll and has
+      nothing left to answer with before <code>listen_timeout</code>
+      elapses. Measured on the flock above: 0.14 seconds at an interval of
+      100ms, and the full 3.05 at the default. Set an interval shorter than
+      the app's own startup time or the probe buys you nothing at boot.
+    </Callout>
+
+    <h2>Dogs run last, unless you move one</h2>
+    <p>
+      A dog is a node in the same graph, and by default it lands in a final
+      stage after every sheep. That is the right place for the metrics dog:
+      it must not answer for a flock that is not up yet.
+    </p>
+    <p>
+      A log-rotation dog is the opposite case, since it has to be running
+      before a sheep starts writing. Name it in
+      <code>[daemon] boot_first_dogs</code> and it runs ahead of everything:
+    </p>
+    <CodeBlock label="$SHEP_HOME/shep.toml">{`[daemon]
+enabled_dogs    = ["metrics", "log-rotate"]
+boot_first_dogs = ["log-rotate"]`}</CodeBlock>
+    <CodeBlock label="the resulting boot">{`stage 0  log-rotate
+stage 1  db
+stage 2  api
+stage 3  web
+stage 4  metrics`}</CodeBlock>
+    <p class="fine">
+      A name here that is not in <code>enabled_dogs</code> is inert: nothing
+      enables a dog by promoting it. A sheep may also name a dog in its own
+      <code>depends_on</code>, but at a boot that does not move the dog. The
+      shepherd spawns dogs in two groups, the promoted ones before the
+      restore and the rest after it, and neither group sits at a stage
+      boundary. A sheep depending on an unpromoted dog is warned about and
+      started anyway. <code>boot_first_dogs</code> is the lever that
+      actually reorders one.
+    </p>
+
+    <h2>When the graph is wrong</h2>
+    <p>
+      What happens depends on who is watching. An operator typing
+      <code>shep start</code> or <code>shep add</code> is there to fix a
+      typo. A machine rebooting at 4am is not, and stranding its whole flock
+      over one is worse than starting it in a bad order.
+    </p>
+    <div class="field-table">
+      <div class="row header">
+        <span class="col-name">Problem</span>
+        <span class="col-does">shep start, shep add</span>
+        <span class="col-does">A boot, or shep muster</span>
+      </div>
+      {
+        graphRows.map((r) => (
+          <div class="row">
+            <span class="col-name">{r.problem}</span>
+            <span class="col-does">{r.typed}</span>
+            <span class="col-does">{r.boot}</span>
+          </div>
+        ))
+      }
+    </div>
+    <p>
+      The cycle refusal names the actual cycle, not the set of apps caught
+      in one, because a path is the thing you can break:
+    </p>
+    <CodeBlock>{`$ shep start cycle.toml
+error[invalid_config]: the daemon reported InvalidConfig: dependency cycle: api -> db -> cache -> api`}</CodeBlock>
+    <p class="fine">
+      The graph it checks spans the batch and the registered flock together,
+      so a cycle can close through a sheep the file never mentions. Only a
+      cycle this batch is part of refuses it; a knot standing elsewhere in
+      the registry is left to whichever request drew it.
+    </p>
+    <p>
+      An unknown name warns rather than refusing on both sides. A dependency
+      on an app whose Flockfile lives in another repository is legitimate,
+      and refusing it would make cross-repository dependencies unusable.
+    </p>
+    <Callout variant="note">
+      <code>autostart</code> wins. A dependency that sets
+      <code>autostart = false</code> stays stopped, and the sheep that
+      depends on it starts in its stage as though the edge were satisfied,
+      with a warning naming both. <code>depends_on</code> orders what is
+      already being started; it does not decide what gets started. An
+      explicit statement in one app's own config is not overridden by a
+      field in another app's file.
+    </Callout>
+
+    <h2>Shutdown runs backwards</h2>
+    <p>
+      A shepherd going down walks the stages in reverse, so
+      <code>web</code> gets its SIGTERM, then <code>api</code>, then
+      <code>db</code>. A worker draining its queue drains against a database
+      that is still answering. Without ordering both get signalled in the
+      same millisecond.
+    </p>
+    <p>
+      A stage's members overlap, so a stage costs the longest
+      <code>kill_timeout</code> in it rather than the sum, 1.6 seconds by
+      default. Five stages is eight seconds against systemd's default
+      <code>TimeoutStopSec</code> of ninety, so <code>shep startup</code>'s
+      unit needs nothing extra.
+    </p>
+    <p class="fine">
+      Dogs are not in the reverse stages. They stop after every sheep,
+      because monitoring should outlive what it monitors and a strict
+      reverse would kill the bark dog before the flock it reports on.
+    </p>
+    <p>
+      <code>shep restart</code> and <code>shep reload</code> against a
+      selector matching several sheep walk the stages forward instead,
+      dependencies first. Not reverse-stop then forward-start: that sounds
+      more correct and behaves worse, since it puts the whole fold down at
+      once in the middle.
+    </p>
+
+    <h2>What a staged start leaves behind</h2>
+    <p>
+      Checks shep can make in advance still refuse a batch before anything
+      is registered. Once spawning has begun there is nothing to make them
+      against: stage 0 is running by the time stage 1 proves unstartable,
+      and none of it is rolled back, because rolling back means stopping
+      apps that came up fine on a guess about what you wanted. The refusal
+      names them instead:
+    </p>
+    <CodeBlock>{`$ shep start fail.toml
+error[spawn_failed]: the daemon reported SpawnFailed: nothing in this batch was registered; 1 of 1 apps cannot start: api: no such file: /private/tmp/shepdocs-boot/app/./not-a-real-binary (this start already has children running and leaves them alone: db)`}</CodeBlock>
+    <p>
+      <code>shep stop db</code> if you want it down. Nothing after the
+      failing stage is attempted in that same invocation.
+    </p>
+
+    <h2>Two things this does not do</h2>
+    <p>
+      Ordering applies to a batch. <code>shep start api</code> on its own
+      starts <code>api</code>, immediately, whatever it depends on, because
+      there is nothing else in that request to order it against.
+    </p>
+    <p>
+      Promoting a dog fixes the boot window and only the boot window. A
+      <code>shep start web</code> typed at noon, while
+      <code>log-rotate</code> happens to be down, is a supervision problem.
+      Boot ordering has no opinion about it.
+    </p>
+
+    <h2>Reading it back</h2>
+    <p>
+      <code>shep describe</code> lists a sheep's dependencies, which is what
+      answers "why did <code>web</code> start six seconds in":
+    </p>
+    <CodeBlock>{`$ shep describe web
+ID  NAME  STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM   UPTIME  FOLD  SMIT
+2   web   online  21907  0         -     -    -    1.2M  0s      -     -
+
+Depends on for web:
+  api`}</CodeBlock>
+    <p class="fine">
+      There is no <code>shep flock</code> column for it. The field names
+      other sheep rather than saying anything about this row's own status,
+      and that table already drops columns under pressure. Under
+      <code>--format json</code> every sheep carries a
+      <code>depends_on</code> array.
+    </p>
+
+    <h2>Where to go next</h2>
+    <div class="next-grid">
+      <a href="/docs/first-flockfile" class="next-card">
+        <div class="next-title">Your first Flockfile →</div>
+        <div class="next-body">
+          <code>depends_on</code> in the full field reference, next to
+          <code>listen_timeout</code> and <code>readiness_probe</code>.
+        </div>
+      </a>
+      <a href="/docs/dogs" class="next-card">
+        <div class="next-title">Dogs →</div>
+        <div class="next-body">
+          What a dog is, how <code>shep enable</code> writes one into
+          <code>shep.toml</code>, and where <code>boot_first_dogs</code>
+          sits.
+        </div>
+      </a>
+    </div>
+  </article>
+</DocsLayout>
+
+<style>
+  h1 {
+    font-size: clamp(36px, 4.6vw, 56px);
+    line-height: 1;
+    letter-spacing: -0.04em;
+    margin: 0 0 18px;
+  }
+
+  h2 {
+    font-size: 27px;
+    letter-spacing: -0.03em;
+    margin: 40px 0 12px;
+  }
+
+  h2:first-of-type {
+    margin-top: 0;
+  }
+
+  .lede {
+    font-size: 19px;
+    line-height: 1.6;
+    color: var(--ink-2);
+    margin: 0 0 30px;
+    text-wrap: pretty;
+  }
+
+  p {
+    font-size: 16.5px;
+    line-height: 1.65;
+    color: var(--ink-2);
+    margin: 0 0 18px;
+  }
+
+  p.fine {
+    font-size: 14.5px;
+    color: var(--ink-3);
+  }
+
+  code {
+    font-family: "Space Mono", monospace;
+    font-size: 0.9em;
+    background: var(--code-bg);
+    border-radius: 5px;
+    padding: 1px 6px;
+  }
+
+  .field-table {
+    border: 3px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+    margin: 0 0 26px;
+  }
+
+  .field-table .row {
+    display: grid;
+    grid-template-columns: minmax(0, 190px) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px;
+    padding: 11px 18px;
+    align-items: start;
+  }
+
+  .field-table .row.header {
+    background: var(--ink);
+    padding: 10px 18px;
+  }
+
+  .field-table .row:not(.header) {
+    border-bottom: 2px solid var(--hair);
+    background: var(--paper-2);
+  }
+
+  .field-table .row:last-child {
+    border-bottom: none;
+  }
+
+  .field-table .row.header span {
+    font-family: "Space Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .field-table .row.header .col-name {
+    color: var(--butter);
+  }
+
+  .col-name {
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+
+  .col-does {
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+
+  @media (max-width: 640px) {
+    .field-table .row {
+      grid-template-columns: 1fr;
+      gap: 5px;
+    }
+
+    .field-table .row.header {
+      display: none;
+    }
+  }
+
+  .next-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin-top: 8px;
+  }
+
+  .next-card {
+    text-align: left;
+    background: var(--paper-2);
+    border: 3px solid var(--line);
+    border-radius: 18px;
+    box-shadow: 5px 5px 0 var(--shadow);
+    padding: 20px;
+    color: var(--ink);
+    text-decoration: none;
+    display: block;
+  }
+
+  .next-card:hover {
+    transform: translate(2px, 2px);
+    box-shadow: 3px 3px 0 var(--shadow);
+    color: var(--ink);
+  }
+
+  .next-title {
+    font-family: "Bricolage Grotesque", sans-serif;
+    font-weight: 800;
+    font-size: 17px;
+    margin-bottom: 7px;
+  }
+
+  .next-body {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--ink-2);
+  }
+
+  .next-body code {
+    font-size: 0.85em;
+  }
+</style>

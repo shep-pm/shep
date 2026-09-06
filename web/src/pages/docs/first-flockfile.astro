@@ -124,6 +124,7 @@ const fieldGroups: FieldGroup[] = [
     fields: [
       { name: "max_memory", type: "size?", default: "none", does: "Memory ceiling: the polling enforcer restarts the sheep above it." },
       { name: "fold", type: "string?", default: "none", does: "Names the fold (group) this sheep belongs to." },
+      { name: "depends_on", type: "string[]", default: "[]", does: "Sheep or dogs that must be up before this one starts, when shep is starting more than one thing at once. Names, never name:slot. Read once when a batch is ordered, so an edit reaches the next boot, muster or staged start rather than the running child." },
       { name: "user", type: "string?", default: "none", does: "Run as this user (unix)." },
       { name: "group", type: "string?", default: "none", does: "Run as this group (unix)." },
     ],
@@ -373,7 +374,7 @@ unknown field \`max_memory_restart\`, expected one of \`name\`, \`script\`, \`ar
 \`min_uptime\`, \`max_restarts\`, \`restart_delay\`, \`exp_backoff_restart_delay\`, \`kill_signal\`,
 \`kill_timeout\`, \`shutdown_with_message\`, \`listen_timeout\`, \`graceful_timeout\`,
 \`action_timeout\`, \`max_memory\`, \`watch\`, \`ignore_watch\`, \`watch_delay\`, \`cron_restart\`,
-\`fold\`, \`user\`, \`group\`, \`out_file\`, \`err_file\`, \`merge_logs\`, \`channel\`, \`stdin\`,
+\`fold\`, \`depends_on\`, \`user\`, \`group\`, \`out_file\`, \`err_file\`, \`merge_logs\`, \`channel\`, \`stdin\`,
 \`wait_ready\`, \`reuse_port\`, \`readiness_probe\`, \`liveness_probe\`, \`watch_options\`,
 \`cron_timezone\`, \`increment_var\`
 `}</CodeBlock>
@@ -477,7 +478,8 @@ Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
       a nested object: <code>kind</code> (<code>http</code>/<code
       >tcp</code>/<code>exec</code>), <code>target</code>, and optional
       <code>interval</code> (10s), <code>timeout</code> (5s), and
-      <code>failure_threshold</code> (3).
+      <code>failure_threshold</code> (3). <code>depends_on</code> has a page
+      of its own: see <a href="/docs/boot-order">boot order</a>.
     </p>
     {
       fieldGroups.map((group) => (
