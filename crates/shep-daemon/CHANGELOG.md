@@ -25,6 +25,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   asked for it are ever written. The file is derived: one that will not read
   is skipped rather than refused.
 
+### Changed
+
+- `assemble` takes a `shep_core::secrets::SecretView` and returns
+  `Result<SpawnSpec, AssembleError>`, so a spawn refuses on a
+  `{{secret:...}}` it cannot resolve rather than handing the child the
+  reference as literal text. A caller reading a spec it will not spawn wants
+  the crate-private `describe` instead, which leaves an unresolvable
+  reference as written.
+- `BootOptions` grows an `environment` field, the environment a sheep naming
+  none of its own resolves its references in. The struct is not
+  `#[non_exhaustive]`, so an out-of-tree literal that named every field no
+  longer compiles; `..Default::default()` is the shape that survives the
+  next one.
+
 ## [0.4.4] - 2026-09-06
 
 ### Changed
