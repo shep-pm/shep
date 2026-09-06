@@ -1,7 +1,7 @@
 # Design: boot ordering with dependency trees
 
-Status: implemented on feat/boot-ordering, 2026-09-06. Two decisions carry dated
-corrections below where what shipped differs from what was designed.
+Status: implemented on feat/boot-ordering, 2026-09-06. Three decisions carry
+dated corrections below where what shipped differs from what was designed.
 
 Four questions from the maintainer, and this spec answers each of them by
 name:
@@ -228,8 +228,8 @@ The split follows the `start` versus `start_restored` precedent quoted above.
 | case | `shep start`, `shep add` | boot, `shep muster` |
 |---|---|---|
 | cycle | refuse, exit 4, name the cycle | warn, name it, run those nodes in a final unordered stage |
-| unknown name | warn, edge satisfied | warn, edge satisfied |
-| dependency has `autostart = false` | warn, edge satisfied | warn, edge satisfied |
+| unknown name | warn in the shepherd's log, edge satisfied | warn in the shepherd's log, edge satisfied |
+| dependency has `autostart = false` | not reported, edge satisfied | warn in the shepherd's log, edge satisfied |
 | never ready | not reachable: `Online` at its own deadline | advance, warn |
 | self-edge, `name:slot` | refused in `normalize` | refused on re-validation, entry lands in `rejected` |
 
@@ -244,6 +244,17 @@ means a DFS rather than reading off what Kahn's algorithm failed to emit.
 At boot nothing refuses, because a machine rebooting with nobody watching must
 not be stranded by a typo. The worst case is a flock that is up and a log that
 names every problem.
+
+**Correction, 2026-09-06.** The table said "warn" and meant an operator would
+read it. Every warning in it is a `tracing::warn!` in the shepherd's own log,
+never a notice in the reply, so `shep start` and `shep add` print nothing and
+exit 0 on a graph they warned about. The `autostart = false` row is worse than
+imprecise: that warning lives in `snapshot::warn_about_the_graph`, which the
+boot and `shep muster` reach and `Request::Start` does not, so the typed path
+does not report it at all. `staged_plan` warns about unresolved names and
+about nothing else. Both cells are corrected above. Carrying either one back
+to the operator means a notice on the reply, which is a wire change and its
+own task.
 
 ### 6. `autostart` wins over `depends_on`
 

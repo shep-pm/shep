@@ -25,13 +25,13 @@ const graphRows: GraphRow[] = [
   },
   {
     problem: "A name the flock does not have",
-    typed: "Warned about; the edge is satisfied and the sheep starts",
-    boot: "Warned about; the edge is satisfied and the sheep starts",
+    typed: "Warned in the shepherd's log; the edge is satisfied and the sheep starts",
+    boot: "Warned in the shepherd's log; the edge is satisfied and the sheep starts",
   },
   {
     problem: "A dependency with autostart = false",
-    typed: "Warned about; it stays stopped and the sheep starts",
-    boot: "Warned about; it stays stopped and the sheep starts",
+    typed: "Not reported; it stays stopped and the sheep starts",
+    boot: "Warned in the shepherd's log; it stays stopped and the sheep starts",
   },
   {
     problem: "A self-edge, or a name:slot target",
@@ -195,6 +195,14 @@ stage 2  web
         ))
       }
     </div>
+    <p class="fine">
+      Every "warned" above is a line in the shepherd's own log, not a notice
+      on the reply, so <code>shep start</code> and <code>shep add</code>
+      print nothing about the graph and exit 0. They are in{" "}
+      <code>$SHEP_HOME/logs/shepd.err.log</code>. The{" "}
+      <code>autostart = false</code> warning is narrower still: it lives on
+      the boot path, so a typed start does not report that case at all.
+    </p>
     <p>
       The cycle refusal names the actual cycle, not the set of apps caught
       in one, because a path is the thing you can break:
@@ -215,8 +223,9 @@ error[invalid_config]: the daemon reported InvalidConfig: dependency cycle: api 
     <Callout variant="note">
       <code>autostart</code> wins. A dependency that sets
       <code>autostart = false</code> stays stopped, and the sheep that
-      depends on it starts in its stage as though the edge were satisfied,
-      with a warning naming both. <code>depends_on</code> orders what is
+      depends on it starts in its stage as though the edge were satisfied.
+      A boot writes a warning naming both to the shepherd's log; a typed{" "}
+      <code>shep start</code> writes nothing. <code>depends_on</code> orders what is
       already being started; it does not decide what gets started. An
       explicit statement in one app's own config is not overridden by a
       field in another app's file.
