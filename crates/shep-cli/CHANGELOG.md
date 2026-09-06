@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-09-06
+
+### Fixed
+
+- Kill the dog probe's process group, not just its leader ([#159](https://github.com/shep-pm/shep/pull/159))
+
+
 ## [0.4.2] - 2026-09-06
 
 ### Changed
