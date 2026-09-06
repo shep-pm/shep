@@ -275,6 +275,7 @@ pub fn boot_options(
             .chain(config.daemon.adopted_dogs.keys().cloned())
             .chain(config.daemon.enabled_dogs.iter().cloned())
             .collect(),
+        boot_first_dogs: config.daemon.boot_first_dogs.clone(),
         // Overwritten by `boot_supervisor`, the only caller that ever wants
         // `true`.
         delete_flock_on_shutdown: false,
@@ -994,6 +995,32 @@ otel = "/usr/local/bin/shep-otel"
                 },
             ]
         );
+    }
+
+    // fails if the key parses but never reaches the daemon, which would
+    // leave log-rotate starting after the flock it exists to serve
+    #[test]
+    fn boot_options_carries_the_promoted_dogs() {
+        let src = r#"
+[daemon]
+enabled_dogs = ["metrics", "log-rotate"]
+boot_first_dogs = ["log-rotate"]
+"#;
+        let config = DaemonConfig::load(Some(src), &|_| None).unwrap();
+        let opts = boot_options(
+            &config,
+            &DaemonArgs {
+                cmd: None,
+                no_restore: false,
+                foreground: false,
+                log_json: None,
+                log_level: None,
+                socket: None,
+                max_cron_sleep: None,
+            },
+            None,
+        );
+        assert_eq!(opts.boot_first_dogs, vec!["log-rotate".to_string()]);
     }
 
     #[test]

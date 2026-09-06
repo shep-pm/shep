@@ -745,6 +745,13 @@ pub struct BootOptions {
     /// never started, and a guard on the running set refuses exactly that
     /// dog.
     pub known_dogs: Vec<String>,
+    /// Which of [`Self::dogs`] run before every sheep rather than after the
+    /// flock, from `[daemon] boot_first_dogs`.
+    ///
+    /// Assembled by the caller from the same file [`Self::dogs`] comes out
+    /// of, and for the same reason: shep-daemon never reads `shep.toml`
+    /// itself.
+    pub boot_first_dogs: Vec<String>,
     /// Wipe the in-memory flock registry before [`RunningDaemon::run`]'s
     /// teardown writes the final muster roll, so that roll describes an empty
     /// flock however the session ended.
@@ -952,6 +959,8 @@ pub async fn boot<R: ProcessRunner>(
         snapshot_path: paths.snapshot.clone(),
         dogs_config: paths.dogs_config.clone(),
         known_dogs: crate::rpc::KnownDogs::new(options.known_dogs.iter().cloned().collect()),
+        dog_names: options.dogs.iter().map(|dog| dog.name.clone()).collect(),
+        boot_first_dogs: options.boot_first_dogs.clone(),
         paths: paths.clone(),
         daemon_version: env!("CARGO_PKG_VERSION").to_string(),
         dog_refusals,

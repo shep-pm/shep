@@ -33,6 +33,22 @@ pub struct DaemonSection {
     /// and a shep-owned key inside it would collide with a third-party
     /// dog's schema.
     pub adopted_dogs: BTreeMap<String, PathBuf>,
+    /// Dogs that run before every sheep, rather than after the flock.
+    ///
+    /// The default position for a dog is a final stage, for the reason
+    /// `boot.rs` gives: a metrics dog must not answer for a flock that is not
+    /// up yet. A log-rotation dog is the opposite case, since it has to be
+    /// running before a sheep starts writing. shep cannot tell which is
+    /// which, because an adopted dog is a third-party binary, so the
+    /// operator says.
+    ///
+    /// Here rather than in `dogs.toml` for the reason [`Self::adopted_dogs`]
+    /// gives: that file's `[<name>]` table is the dog's own opaque
+    /// configuration and a shep-owned key inside it would collide with a
+    /// third-party dog's schema.
+    ///
+    /// A name absent from [`Self::enabled_dogs`] is inert here.
+    pub boot_first_dogs: Vec<String>,
     /// Longest a cron worker sleeps before re-deriving its next occurrence.
     ///
     /// Shorter recovers faster from a suspended laptop or an NTP step and
@@ -597,6 +613,27 @@ otel = "/usr/local/bin/shep-otel"
         );
     }
 
+    // fails if the key is unknown, which deny_unknown_fields turns into a
+    // startup error, or if it is not defaulted
+    #[test]
+    fn boot_first_dogs_parses_and_defaults_empty() {
+        let config = DaemonConfig::load(
+            Some(
+                r#"
+[daemon]
+enabled_dogs = ["metrics"]
+boot_first_dogs = ["log-rotate"]
+"#,
+            ),
+            &no_env,
+        )
+        .expect("boot_first_dogs is a known key");
+        assert_eq!(config.daemon.boot_first_dogs, vec!["log-rotate".to_string()]);
+
+        let bare = DaemonConfig::load(Some("[daemon]\n"), &no_env).expect("an empty section parses");
+        assert!(bare.daemon.boot_first_dogs.is_empty());
+    }
+
     #[test]
     fn env_overrides_file() {
         let env = |k: &str| (k == "SHEP_LOG_JSON").then(|| "true".to_string());
@@ -895,7 +932,7 @@ otel = "/usr/local/bin/shep-otel"
         let cfg = DaemonConfig::load(Some("[dog.metrics]\nport = 9615"), &no_env).unwrap();
         assert_eq!(
             format!("{cfg:?}"),
-            "DaemonConfig { daemon: DaemonSection { log_json: false, log_level: Warn, socket: None, enabled_dogs: [], adopted_dogs: {}, max_cron_sleep: None }, whistle: WhistleSection { allow_control: false }, style: StyleSection { level: None }, interpreters: {}, dog: <1 tables> }"
+            "DaemonConfig { daemon: DaemonSection { log_json: false, log_level: Warn, socket: None, enabled_dogs: [], adopted_dogs: {}, boot_first_dogs: [], max_cron_sleep: None }, whistle: WhistleSection { allow_control: false }, style: StyleSection { level: None }, interpreters: {}, dog: <1 tables> }"
         );
     }
 }

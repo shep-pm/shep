@@ -467,6 +467,8 @@ pub(crate) fn harness_with_runner(
                     .into_iter()
                     .collect(),
             ),
+            dog_names: Vec::new(),
+            boot_first_dogs: Vec::new(),
             paths: paths.clone(),
             daemon_version: "0.1.0".to_string(),
             dog_refusals: crate::dogs::DogRefusals::new(),

@@ -109,6 +109,23 @@ pub struct RpcContext {
     /// Every dog name this shepherd may hold a section for, running or
     /// not. See [`KnownDogs`].
     pub(crate) known_dogs: KnownDogs,
+    /// Names from [`crate::boot::BootOptions::dogs`], the spawn list this
+    /// daemon booted with, rather than [`Self::known_dogs`]' wider set of
+    /// dogs that merely exist.
+    ///
+    /// Held rather than re-read from `shep.toml`, which this daemon never
+    /// reads: a later boot plan (rebuilt at shutdown, or for a staged start)
+    /// needs the same spawn list `boot` used, and this is where it survives
+    /// between requests.
+    pub(crate) dog_names: Vec<String>,
+    /// Which of [`Self::dog_names`] run before every sheep rather than
+    /// after the flock, from `[daemon] boot_first_dogs`.
+    ///
+    /// Held for the same reason as [`Self::dog_names`]: rebuilding the boot
+    /// plan later needs to know which dogs were promoted, and this daemon
+    /// has no other way to ask, since it never reads `shep.toml` itself. A
+    /// name absent from [`Self::dog_names`] is inert here, not an error.
+    pub(crate) boot_first_dogs: Vec<String>,
     /// This daemon's `$SHEP_HOME` layout, for assembling a dog's app config.
     pub(crate) paths: ShepPaths,
     /// This daemon's crate version, echoed in the handshake.
