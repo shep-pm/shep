@@ -37,8 +37,15 @@ pub const START_DEADLINE: Duration = Duration::from_secs(30);
 /// [`START_DEADLINE`]. A client that gave up there would drop the walk with
 /// its later stages never issued and hand the operator a timeout over a
 /// half-reloaded fold. This asks for the daemon's whole `MAX_DEADLINE_MS`
-/// (60s), which is the most it will honour, so a deeper fold is bounded by
-/// the shepherd rather than by the client.
+/// (60s), which is the most it will honour, so the client is no longer the
+/// one that gives up first.
+///
+/// It does not make the budget big enough, and no client-side value can. A
+/// reload stage is bounded by `max(listen_timeout + graceful_timeout) *
+/// swaps + STAGE_SLACK`, 16s per single-instance stage at the defaults: four
+/// such stages is 64s, and two stages of a three-instance app is 76s. Both
+/// are past the daemon's own 60s clamp, where the shepherd drops the walk
+/// exactly as the client used to.
 pub const RELOAD_DEADLINE: Duration = Duration::from_secs(60);
 
 /// Budget for the log-plane verbs that walk the flock file by file:
