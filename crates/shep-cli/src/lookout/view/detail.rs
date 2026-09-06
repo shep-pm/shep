@@ -5,8 +5,10 @@
 //! `Request::Describe` fetched on selection change and on `r`, never on the
 //! poll, since `ListFlock` never populates `ProcessInfo::lambs`.
 //!
-//! Adds over the row above it: the untruncated name, both log paths, the
-//! lamb line, and whichever fields the current width tier dropped.
+//! Adds over the row above it: the untruncated name, the merged log-path
+//! row, the lamb line, and whichever fields the current width tier dropped.
+
+use std::fs;
 
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -14,8 +16,11 @@ use shep_core::protocol::DogSource;
 
 use super::super::app::{App, LambWalk, RowKey};
 use super::super::theme::Palette;
+use super::cell;
 use super::flock::fit;
+use crate::output::width::char_columns;
 use crate::output::{human_bytes, human_duration};
+use crate::vocabulary::Role;
 
 /// The pane's four content lines. Its rule is [`super::draw`]'s.
 #[must_use]
@@ -98,9 +103,11 @@ fn sheep_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
     };
     let info = &row.info;
 
-    // Everything except the status word, which is the one coloured cell,
-    // same as the table.
-    let head = format!("sheep {}  {}   ", info.id, info.name);
+    // The `SHEEP N` chip, meadow like the flock band, then the name and the
+    // rest of the row. Everything after the chip is raw except the status
+    // word, which is the one coloured cell, same as the table.
+    let chip = chip_text(&format!("SHEEP {}", info.id));
+    let facts = format!("  {}   ", info.name);
     // `Row::reported`, not `info.status.to_string()`: this pane must agree
     // with the flock table's own STATUS cell for the same row, and a dog
     // that has never handshook reads `silent` there.
@@ -129,11 +136,12 @@ fn sheep_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
             _ => "   dog (unrecognised source)".to_string(),
         }
     );
-    let used = head.chars().count() + status.chars().count();
+    let used = chip.chars().count() + facts.chars().count() + status.chars().count();
 
     vec![
         Line::from(vec![
-            Span::raw(head),
+            Span::styled(chip, palette.band(Role::Meadow)),
+            Span::raw(facts),
             Span::styled(status, palette.reported(row.reported())),
             Span::raw(fit(
                 &rest,
@@ -141,8 +149,11 @@ fn sheep_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
             )),
         ]),
         lamb_line(app, info.id, width, palette),
-        path_line("out", info.out_file.as_deref(), width, palette),
-        path_line("err", info.err_file.as_deref(), width, palette),
+        log_row(app, width),
+        // The two path lines merged into `log_row`, one slot narrower than
+        // before; this keeps the pane's line count agreeing with
+        // `DETAIL_ROWS` without inventing a fifth field to fill it.
+        Line::from(Span::raw(String::new())),
     ]
 }
 
@@ -191,22 +202,125 @@ fn lamb_line(
     Line::from(Span::styled(fit(&text, width), palette.muted()))
 }
 
-/// One log-path line, or a sentence saying why there is none.
+/// `cell::band`'s own two-block marker and label, sized to its own text
+/// rather than padded to a pane's full width: a compact chip an inline
+/// header can prefix, not a full-width band.
 ///
-/// `None` means the shepherd predates the field, a fact about the peer, not
-/// about this sheep. The sentence says so rather than leaving a bare `-`
-/// that reads like a missing file.
-fn path_line(
-    label: &str,
-    path: Option<&str>,
-    width: u16,
-    palette: super::super::theme::Palette,
-) -> Line<'static> {
-    let text = match path {
-        Some(path) => format!("{label}  {path}"),
-        None => format!("{label}  this shepherd did not report a path"),
-    };
-    Line::from(Span::styled(fit(&text, width), palette.muted()))
+/// `pub(crate)`, not private: `view::bleats`'s own header chip shares this
+/// rather than re-deriving the same natural-width computation.
+pub(crate) fn chip_text(label: &str) -> String {
+    let natural = format!(" \u{2588}\u{2588} {label}");
+    let cells: usize = natural.chars().map(char_columns).sum();
+    cell::band(label, cells)
+}
+
+/// The merged log-path row: `out` and `err`, a `\u{2502}` divider, and the
+/// size on disk when [`fs::metadata`] can read both files. Replaces the two
+/// one-path-per-line calls the row used to draw one above the other.
+///
+/// When the row does not fit, the size drops first, then each path
+/// truncates from its head: a log path's tail is the half that identifies
+/// it, and the head is a directory prefix every sheep shares. A
+/// [`fs::metadata`] call that fails, for a log rotated away between the poll
+/// and the draw, drops the size rather than the row.
+fn log_row(app: &App, width: u16) -> Line<'static> {
+    const OUT_LABEL: &str = "out  ";
+    const ERR_LABEL: &str = "err  ";
+    const DIVIDER: &str = "   \u{2502}   ";
+
+    let palette = app.palette();
+    let info = &app
+        .selected_row()
+        .expect("a selected sheep is in the flock")
+        .info;
+    let out_path = info.out_file.as_deref();
+    let err_path = info.err_file.as_deref();
+    let out_full = out_path.unwrap_or("not reported");
+    let err_full = err_path.unwrap_or("not reported");
+
+    let sizes: Vec<u64> = [out_path, err_path]
+        .into_iter()
+        .flatten()
+        .filter_map(|path| fs::metadata(path).ok())
+        .map(|meta| meta.len())
+        .collect();
+    let size_text =
+        (!sizes.is_empty()).then(|| format!("   {} on disk", human_bytes(sizes.iter().sum())));
+
+    let overhead = columns(OUT_LABEL) + columns(DIVIDER) + columns(ERR_LABEL);
+    let width_usize = usize::from(width);
+    let paths_len = overhead + columns(out_full) + columns(err_full);
+
+    let (out_val, err_val, size_val) =
+        if paths_len + size_text.as_deref().map_or(0, columns) <= width_usize {
+            (out_full.to_string(), err_full.to_string(), size_text)
+        } else if paths_len <= width_usize {
+            (out_full.to_string(), err_full.to_string(), None)
+        } else {
+            // The size already dropped and the untruncated paths still do not
+            // fit: split what is left evenly and take each path's tail, since
+            // that is the half that identifies it.
+            let budget = width_usize.saturating_sub(overhead);
+            let out_budget = budget / 2;
+            let err_budget = budget - out_budget;
+            (
+                truncate_from_left(out_full, out_budget),
+                truncate_from_left(err_full, err_budget),
+                None,
+            )
+        };
+
+    let mut spans = vec![
+        Span::styled(format!("{OUT_LABEL}{out_val}"), palette.muted()),
+        // `line`, not `muted`: the divider is chrome between two facts, the
+        // same role the flock table's own rules draw in.
+        Span::styled(DIVIDER, palette.line()),
+        Span::styled(
+            format!("{ERR_LABEL}{err_val}{}", size_val.unwrap_or_default()),
+            palette.muted(),
+        ),
+    ];
+    let used: usize = spans
+        .iter()
+        .map(|span| columns(span.content.as_ref()))
+        .sum();
+    if used < width_usize {
+        spans.push(Span::styled(
+            " ".repeat(width_usize - used),
+            palette.muted(),
+        ));
+    }
+    Line::from(spans)
+}
+
+/// Keeps `path`'s tail, the half that identifies the file, marking the drop
+/// with a leading `\u{2026}` when it does not fit `budget` columns.
+fn truncate_from_left(path: &str, budget: usize) -> String {
+    if columns(path) <= budget {
+        return path.to_string();
+    }
+    if budget == 0 {
+        return String::new();
+    }
+    let keep = budget - 1;
+    let mut kept: Vec<char> = Vec::new();
+    let mut used = 0;
+    for c in path.chars().rev() {
+        let width = char_columns(c);
+        if used + width > keep {
+            break;
+        }
+        used += width;
+        kept.push(c);
+    }
+    kept.reverse();
+    format!("\u{2026}{}", kept.into_iter().collect::<String>())
+}
+
+/// The display-column width of a whole string, the same measure
+/// [`super::flock::fit`] uses.
+fn columns(text: &str) -> usize {
+    text.chars().map(char_columns).sum()
 }
 
 #[cfg(test)]
@@ -217,8 +331,8 @@ mod tests {
     use shep_core::status::ProcStatus;
 
     use super::super::fixtures::{
-        app_with, app_with_lamb_reading_at, coloured, lamb_line_of, plain, render_all, rendered,
-        sheep_with_lambs, with_lamb_reading, with_lamb_reading_for, with_selection,
+        app_fixture, app_with, app_with_lamb_reading_at, coloured, lamb_line_of, plain, render_all,
+        rendered, sheep_with_lambs, with_lamb_reading, with_lamb_reading_for, with_selection,
         with_selection_and_palette,
     };
     use super::*;
@@ -457,5 +571,40 @@ mod tests {
             .find(|span| span.content.as_ref() == "silent")
             .map(|span| span.style.fg);
         assert_eq!(detail_colour, Some(palette.attention().fg));
+    }
+
+    #[test]
+    fn the_log_row_carries_both_paths_and_the_size() {
+        let line = log_row(&app_fixture(), 160);
+        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(text.contains("out"));
+        assert!(text.contains("err"));
+        assert!(text.contains('\u{2502}'), "a divider between the two");
+    }
+
+    #[test]
+    fn a_narrow_log_row_drops_the_size_before_it_truncates_a_path() {
+        let wide: String = log_row(&app_fixture(), 160)
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        let narrow: String = log_row(&app_fixture(), 70)
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(wide.contains("on disk"));
+        assert!(!narrow.contains("on disk"));
+    }
+
+    #[test]
+    fn a_path_truncates_from_the_left_so_its_filename_survives() {
+        let narrow: String = log_row(&app_fixture(), 60)
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(narrow.contains("-out.log"), "the tail identifies the file");
     }
 }

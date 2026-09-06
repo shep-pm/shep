@@ -168,11 +168,9 @@ impl Palette {
         Self::fg(self.sky)
     }
 
-    /// Box-drawing lines: pane borders, the flock table's rules.
-    ///
-    /// No non-test caller yet; see [`Self::sky`].
+    /// Box-drawing lines: pane borders, the flock table's rules, and the
+    /// detail band's `\u{2502}` divider between the two log paths.
     #[must_use]
-    #[allow(dead_code)]
     pub fn line(self) -> Style {
         Self::fg(self.line)
     }

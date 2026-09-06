@@ -1018,12 +1018,14 @@ mod tests {
                     );
                 }
                 if panes.detail {
-                    // The path prefix, not a bare `out  `: the feed's own
-                    // body lines are tagged `out  ` too.
+                    // The `\u{2502}` divider, not a bare `out  `: the feed's
+                    // own body lines are tagged `out  ` too, and the merged
+                    // log row's own path can truncate away at a narrow
+                    // width, but its divider never does.
                     let positions: Vec<usize> = lines
                         .iter()
                         .enumerate()
-                        .filter(|(_, l)| l.starts_with("out  /home/ada/.shep/logs/"))
+                        .filter(|(_, l)| l.starts_with("out  ") && l.contains('\u{2502}'))
                         .map(|(i, _)| i)
                         .collect();
                     assert_eq!(
