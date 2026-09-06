@@ -140,8 +140,8 @@ pub enum Scene {
     /// built-in dog and a silent adopted one under Dogs.
     WithDogs,
     /// The `MEM/CEIL` gauge's three states in one frame: comfortably under
-    /// a configured ceiling, at 94% of one in the butter warning colour,
-    /// and no ceiling configured at all.
+    /// a configured ceiling, at 94% of one (the butter warning role, where
+    /// there is colour to carry it), and no ceiling configured at all.
     MemCeiling,
     /// The `CFG` column's `!N` and `*N` markers, one sheep each, plus a CPU
     /// history long enough that the `CpuSpark` column draws a shape rather
@@ -307,7 +307,7 @@ impl Scene {
     pub const fn caption(self) -> &'static str {
         match self {
             Self::HealthyWide => {
-                "All three panes at 120x30: the host strip under the title, the detail pane and the bleats feed under the table. The selected row is marked, painted where the palette has a ground to paint with and shown with a `>` where it does not, and every pane below the table describes that sheep."
+                "All three panes at 120x30: the host strip under the title, the detail pane and the bleats feed under the table. The selected row is marked, painted where the palette has a ground to paint with and shown with a `>` where it does not, and every pane below the table describes that sheep, whose log row reads a real size off disk rather than the placeholder every other scene's fictional path leaves blank."
             }
             Self::Errored => {
                 "One errored, one waiting to restart, one stopped, with the selection parked on the errored sheep. Each row's own STATUS cell is the only coloured cell in that row, and EXIT carries why each of the three stopped: a code for the two that crashed, a signal name for the one shep stopped itself."
@@ -319,7 +319,7 @@ impl Scene {
                 "Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it."
             }
             Self::MemCeiling => {
-                "Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a quarter of its limit and draws its MEM/CEIL gauge in the ordinary fill colour, web-hot sits at 94 percent of its own limit and turns butter, and batch-worker has no ceiling at all, so its gauge reads the same muted bar a stopped sheep's does. The cursor is parked on web-hot, the row this frame exists to show."
+                "Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a quarter of its limit and its MEM/CEIL gauge fills a little, web-hot sits at 94 percent of its own limit and its gauge fills almost all the way, and where there is colour the fuller gauge also switches to the butter warning role. batch-worker has no ceiling at all, so its gauge reads the same muted bar a stopped sheep's does. The cursor is parked on web-hot, the row this frame exists to show."
             }
             Self::CfgDrift => {
                 "140 columns: wide enough for the CFG and CPU 20s columns beside the ones every other scene shows. web has two fields parked for the next spawn and reads !2, api has one field an operator set that its Flockfile does not declare and reads *1, and cron has neither and reads a bare -. The status bar's own legend explains both glyphs; this is where they actually appear in a cell. web's CPU history carries ten distinct samples, so its sparkline draws a shape over time rather than one static bar, and the cursor is parked on web so the detail pane's own cfg !2 pending cell is on screen too."
@@ -570,7 +570,7 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
     let t0 = Instant::now();
     let mut app = App::new(palette, which.control(), "/home/ada/.shep".to_string(), t0);
 
-    let flock = match which {
+    let mut flock = match which {
         Scene::Empty => Vec::new(),
         // The only flock in the gallery whose rows carry a slot, and so the
         // only one that draws a group header at all. `api` is here so the
@@ -829,6 +829,34 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
             ),
         ],
     };
+
+    // Round 2, finding 2: `log_row`'s on-disk size had never rendered
+    // anywhere in the gallery, because every fixture's `out_file`/
+    // `err_file` name a path (`/home/ada/.shep/logs/...`) that never
+    // exists on the machine running the test, so `fs::metadata` always
+    // failed silently. `HealthyWide`'s selected sheep, `api`, points at
+    // two real files instead, committed under
+    // `crates/shep-cli/tests/fixtures/gallery-logs/`, fixed at 1024 bytes
+    // each so the rendered size (`2.0K`) is the same on every machine and
+    // every run.
+    //
+    // The path is relative rather than the fictional absolute shape every
+    // other fixture uses: cargo sets a test binary's cwd to its own
+    // crate's manifest directory on every platform, so `fs::metadata`
+    // resolves this same string against the same real file wherever the
+    // gallery is regenerated. An absolute path would either stay
+    // fictional (the `/home/ada/...` shape, never real) or, made real,
+    // would have to embed either a random tempdir name (breaking
+    // `write_the_gallery`'s idempotency: it must diff clean run twice) or
+    // the actual checkout's home directory, which must never land in a
+    // file this repository commits.
+    if which == Scene::HealthyWide
+        && let Some(api) = flock.iter_mut().find(|sheep| sheep.id == 2)
+    {
+        api.out_file = Some("tests/fixtures/gallery-logs/api-out.log".to_string());
+        api.err_file = Some("tests/fixtures/gallery-logs/api-err.log".to_string());
+    }
+
     app.update(Msg::Snapshot {
         rows: flock,
         at: t0,
@@ -1681,6 +1709,10 @@ mod tests {
         assert!(
             wide.contains("bleats  api"),
             "and the feed, on the same one"
+        );
+        assert!(
+            wide.contains("2.0K on disk"),
+            "api's log row points at real, fixed-size fixture files, so the size renders: {wide:?}"
         );
         // `coloured_palette` paints a real ground, so the selected row's
         // gutter is a painted space rather than a `>` glyph

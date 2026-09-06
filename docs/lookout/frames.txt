@@ -40,7 +40,7 @@ a frame of their own.
 
 
 === healthy_wide  (120x30) ===
-All three panes at 120x30: the host strip under the title, the detail pane and the bleats feed under the table. The selected row is marked, painted where the palette has a ground to paint with and shown with a `>` where it does not, and every pane below the table describes that sheep.
+All three panes at 120x30: the host strip under the title, the detail pane and the bleats feed under the table. The selected row is marked, painted where the palette has a ground to paint with and shown with a `>` where it does not, and every pane below the table describes that sheep, whose log row reads a real size off disk rather than the placeholder every other scene's fictional path leaves blank.
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
 host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  ████░░░░░░ 12.4G / 32.0G     floc…
@@ -62,7 +62,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 error
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                  
 lambs  not read yet                                                                                                     
-out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                   
+out  tests/fixtures/gallery-logs/api-out.log   │   err  tests/fixtures/gallery-logs/api-err.log   2.0K on disk          
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  ██ BLEATS bleats  api  … 1 earlier line not shown                                                                      
@@ -176,7 +176,7 @@ out  next rotation in 6h
 q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
 
 === mem_ceiling  (150x30) ===
-Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a quarter of its limit and draws its MEM/CEIL gauge in the ordinary fill colour, web-hot sits at 94 percent of its own limit and turns butter, and batch-worker has no ceiling at all, so its gauge reads the same muted bar a stopped sheep's does. The cursor is parked on web-hot, the row this frame exists to show.
+Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a quarter of its limit and its MEM/CEIL gauge fills a little, web-hot sits at 94 percent of its own limit and its gauge fills almost all the way, and where there is colour the fuller gauge also switches to the butter warning role. batch-worker has no ceiling at all, so its gauge reads the same muted bar a stopped sheep's does. The cursor is parked on web-hot, the row this frame exists to show.
 
 shep lookout   /home/ada/.shep                                                                                                          3 in the flock
 host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  ████░░░░░░ 12.4G / 32.0G     flock cpu 5.0%        █   flock me…
