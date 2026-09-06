@@ -74,8 +74,8 @@ impl Shepherd {
     /// shepherd goes away. [`Shepherd::dropped_metrics`] never freezes
     /// silently as a result.
     ///
-    /// Checking this is optional: with no channel opened, every method
-    /// already does nothing.
+    /// Checking this is optional. Without a channel nothing is sent and no
+    /// handler runs, though registering one still succeeds.
     #[must_use]
     pub fn is_active(&self) -> bool {
         self.0

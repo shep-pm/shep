@@ -1,7 +1,8 @@
 //! Speak the shep shepherd channel: signal readiness, emit a metric,
 //! answer an action. `docs/shepherd-channel.md` has the contract.
 //!
-//! When no channel was opened, every call on the handle below is a no-op.
+//! With no channel, nothing is sent and no handler runs. Registering one
+//! still succeeds, so an app needs no branch at its call sites.
 //!
 //! ```
 //! let shepherd = shep_channel::serve();
