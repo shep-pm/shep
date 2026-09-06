@@ -1795,8 +1795,7 @@ otel = "/usr/local/bin/shep-otel"
             "the refusal must say the flock is still supervised: {message}"
         );
 
-        let (booting, _) =
-            refusal_after_teardown_budget(Ok(Shepherd::Booting)).expect("a refusal");
+        let (booting, _) = refusal_after_teardown_budget(Ok(Shepherd::Booting)).expect("a refusal");
         assert_eq!(booting, ExitCode::DeadlineExceeded);
     }
 
