@@ -17,7 +17,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier};
+use ratatui::style::{Color, Modifier, Style};
 
 use shep_client::RequestError;
 use shep_core::protocol::{
@@ -61,7 +61,10 @@ pub fn render_text(buffer: &Buffer) -> String {
 /// The same buffer with SGR escapes, for reading through `less -R`.
 ///
 /// Every line ends with a reset before its newline, so an unreset colour
-/// does not bleed into the rest of the file.
+/// does not bleed into the rest of the file. Reset is unconditional per
+/// cell change, not incremental: a cell that sets nothing still clears
+/// whatever the previous cell set, so a band or a painted ground cannot
+/// bleed along the rest of the row.
 #[must_use]
 pub fn render_ansi(buffer: &Buffer) -> String {
     let area = buffer.area;
@@ -70,7 +73,7 @@ pub fn render_ansi(buffer: &Buffer) -> String {
         let mut current = String::new();
         for col in 0..area.width {
             let cell = &buffer[(area.x + col, area.y + row)];
-            let wanted = sgr(cell.fg);
+            let wanted = sgr(cell.fg, cell.bg, cell.modifier);
             if wanted != current {
                 out.push_str("\u{1b}[0m");
                 out.push_str(&wanted);
@@ -84,15 +87,20 @@ pub fn render_ansi(buffer: &Buffer) -> String {
     out
 }
 
-/// The SGR sequence for one cell's foreground.
+/// The SGR sequence for one cell's foreground, background and reverse
+/// video.
 ///
-/// Foreground only. The selected row's painted ground and the title and
-/// section bands' `REVERSED` modifier are both real styles this renderer
-/// does not draw yet; `no_scene_uses_a_modifier_the_ansi_renderer_cannot_render`
-/// tolerates `REVERSED` rather than forbidding it, since task 10 owns
-/// teaching this function to emit it.
-fn sgr(fg: Color) -> String {
+/// Foreground, background and `REVERSED` are the only styles any scene
+/// uses (`no_scene_uses_a_modifier_the_ansi_renderer_cannot_render` still
+/// guards against a scene reaching for one this function does not draw).
+/// This is what makes the selected row's painted ground and the title and
+/// section bands' reverse video visible in `docs/lookout/frames.ansi`
+/// rather than under-representing both.
+fn sgr(fg: Color, bg: Color, modifier: Modifier) -> String {
     let mut out = String::new();
+    if modifier.contains(Modifier::REVERSED) {
+        out.push_str("\u{1b}[7m");
+    }
     match fg {
         Color::Reset => {}
         Color::Indexed(index) => {
@@ -102,6 +110,17 @@ fn sgr(fg: Color) -> String {
         Color::Green => out.push_str("\u{1b}[32m"),
         Color::Yellow => out.push_str("\u{1b}[33m"),
         Color::DarkGray => out.push_str("\u{1b}[90m"),
+        _ => {}
+    }
+    match bg {
+        Color::Reset => {}
+        Color::Indexed(index) => {
+            let _ = write!(out, "\u{1b}[48;5;{index}m");
+        }
+        Color::Red => out.push_str("\u{1b}[41m"),
+        Color::Green => out.push_str("\u{1b}[42m"),
+        Color::Yellow => out.push_str("\u{1b}[43m"),
+        Color::DarkGray => out.push_str("\u{1b}[100m"),
         _ => {}
     }
     out
@@ -120,6 +139,10 @@ pub enum Scene {
     /// Both sections at once: several sheep under Flock, a healthy
     /// built-in dog and a silent adopted one under Dogs.
     WithDogs,
+    /// The `MEM/CEIL` gauge's three states in one frame: comfortably under
+    /// a configured ceiling, at 94% of one in the butter warning colour,
+    /// and no ceiling configured at all.
+    MemCeiling,
     /// Nothing registered.
     Empty,
     /// A narrow terminal: four columns dropped.
@@ -196,6 +219,7 @@ impl Scene {
         Self::Errored,
         Self::Grouped,
         Self::WithDogs,
+        Self::MemCeiling,
         Self::Empty,
         Self::Narrow,
         Self::TooNarrow,
@@ -235,6 +259,7 @@ impl Scene {
             Self::Errored => "errored",
             Self::Grouped => "grouped",
             Self::WithDogs => "with_dogs",
+            Self::MemCeiling => "mem_ceiling",
             Self::Empty => "empty",
             Self::Narrow => "narrow",
             Self::TooNarrow => "too_narrow",
@@ -287,11 +312,14 @@ impl Scene {
             Self::WithDogs => {
                 "Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it."
             }
+            Self::MemCeiling => {
+                "Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a quarter of its limit and draws its MEM/CEIL gauge in the ordinary fill colour, web-hot sits at 94 percent of its own limit and turns butter, and batch-worker has no ceiling at all, so its gauge reads the same muted bar a stopped sheep's does. The cursor is parked on web-hot, the row this frame exists to show."
+            }
             Self::Empty => {
                 "No sheep registered. Each of the three panes says why it is empty, and the three sentences are different because the three reasons are."
             }
             Self::Narrow => {
-                "51 columns: FOLD, EXIT, RESTARTS, PID and MEM are gone, in that order. CPU and UPTIME survive because they explain WHY a RUNNING sheep is behaving badly, a question EXIT cannot even ask. The host strip fits; the detail pane and the feed do not, at 14 rows."
+                "51 columns: FOLD, EXIT, RESTARTS, PID and MEM are gone, in that order. CPU and UPTIME survive because they explain WHY a RUNNING sheep is behaving badly, a question EXIT cannot even ask. The host strip truncates with an ellipsis rather than disappearing; the detail pane and the feed do not fit at all, at 14 rows."
             }
             Self::TooNarrow => {
                 "28 columns: below the floor, the pane refuses rather than drawing overlapping garbage. Two short lines, so the refusal still fits the terminal it is refusing about."
@@ -395,6 +423,10 @@ impl Scene {
     pub const fn size(self) -> (u16, u16) {
         match self {
             Self::Empty => (100, 28),
+            // 150: `columns_for` runs on `width - GUTTER`, so 150 - GUTTER =
+            // 148, past `ALL`'s 146 threshold: the one scene that needs
+            // both `CpuSpark` and `MemCeil` drawn, not dropped for width.
+            Self::MemCeiling => (150, 30),
             // 51: `columns_for` runs on `width - GUTTER` (the two-column
             // selection marker), so 51 - GUTTER = 49, the `NO_MEM` tier:
             // four columns gone, CPU and UPTIME still there.
@@ -430,13 +462,35 @@ impl Scene {
     }
 }
 
+/// The gallery's own coloured palette (`xterm-256color`, the deep tier).
+/// Every pinned `.snap` test and `docs/lookout/frames.ansi` render through
+/// this one, so a real terminal at that tier sees exactly what they pin.
+#[must_use]
+fn coloured_palette() -> Palette {
+    Palette::detect(None, Some(std::ffi::OsStr::new("xterm-256color")), None)
+}
+
+/// The flattened `NO_COLOR` palette. `docs/lookout/frames.txt` renders
+/// through this one, not the coloured one: a plain-text gallery cannot
+/// carry a painted background, so rendering it through the palette an
+/// operator with `$NO_COLOR` set actually gets is what makes it an honest
+/// picture rather than a coloured frame with the color silently missing.
+#[must_use]
+fn no_color_palette() -> Palette {
+    Palette::detect(Some(std::ffi::OsStr::new("1")), None, None)
+}
+
 /// Builds one scene and returns its label with the buffer it drew into.
 ///
 /// Renders at ten minutes of dashboard age, the same age the pinned
-/// snapshots and `docs/lookout/frames.txt` use.
+/// snapshots and `docs/lookout/frames.ansi` use, through
+/// [`coloured_palette`].
 #[must_use]
 pub fn scene(which: Scene) -> (&'static str, Buffer) {
-    (which.label(), scene_with(which, Duration::from_secs(600)))
+    (
+        which.label(),
+        scene_with(which, Duration::from_secs(600), coloured_palette()),
+    )
 }
 
 /// Parks the gallery's cursor on the sheep with id `id`.
@@ -482,21 +536,23 @@ fn select_row(app: &mut App, key: &RowKey) {
     panic!("the gallery cannot park its cursor on {key:?}");
 }
 
-/// One scene, `age` after its opening snapshot.
+/// One scene, `age` after its opening snapshot, drawn through `palette`.
 ///
 /// Deterministic: a forced palette, an explicit `Instant` advanced by exact
 /// `Duration`s, and a literal frozen timestamp, so the gallery never
 /// depends on this machine's clock or environment.
+///
+/// `palette` exists so the gallery can render the same scene twice: once
+/// through [`coloured_palette`] for `docs/lookout/frames.ansi` and the
+/// pinned snapshots, and once through [`no_color_palette`] for
+/// `docs/lookout/frames.txt`.
 ///
 /// `age` exists for
 /// `the_frozen_frame_does_not_move_however_long_the_link_stays_gone`,
 /// which renders the frozen scene at two ages and checks for identical
 /// frames.
 #[must_use]
-fn scene_with(which: Scene, age: Duration) -> Buffer {
-    use std::ffi::OsStr;
-
-    let palette = Palette::detect(None, Some(OsStr::new("xterm-256color")), None);
+fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
     let t0 = Instant::now();
     let mut app = App::new(palette, which.control(), "/home/ada/.shep".to_string(), t0);
 
@@ -626,6 +682,23 @@ fn scene_with(which: Scene, age: Duration) -> Buffer {
                 Some(false),
             ),
         ],
+        // Decision 7's three MEM/CEIL states, which no other scene's
+        // fixtures exercise: every other call to `sheep` leaves
+        // `max_memory` at the wire default, `None`.
+        Scene::MemCeiling => vec![
+            sheep_with_ceiling(0, "web-headroom", 128 << 20, 512 << 20),
+            sheep_with_ceiling(1, "web-hot", 480 << 20, 512 << 20),
+            sheep(
+                2,
+                "batch-worker",
+                ProcStatus::Online,
+                Some(48_303),
+                0,
+                Some(1.0),
+                Some(64 << 20),
+                None,
+            ),
+        ],
         _ => vec![
             sheep(
                 0,
@@ -709,6 +782,7 @@ fn scene_with(which: Scene, age: Duration) -> Buffer {
             | Scene::TableOnly
             | Scene::Grouped
             | Scene::WithDogs
+            | Scene::MemCeiling
             | Scene::SettingsDogs
             | Scene::SettingsNarrow
             | Scene::SettingsShort
@@ -733,6 +807,12 @@ fn scene_with(which: Scene, age: Duration) -> Buffer {
     // scene exists to show.
     if which == Scene::WithDogs {
         select_id(&mut app, 91);
+    }
+
+    // `MemCeiling` parks on `web-hot`, id 1, the row at 94% of its
+    // ceiling: the butter warning this scene exists to show.
+    if which == Scene::MemCeiling {
+        select_id(&mut app, 1);
     }
 
     match which {
@@ -1097,6 +1177,25 @@ fn sheep(
         .build()
 }
 
+/// An online sheep with `max_memory` set, [`sheep`]'s own default. Only
+/// `Scene::MemCeiling` needs one, so this stays a thin wrapper rather than
+/// a ninth parameter on `sheep` every other caller would have to pass
+/// `None` for.
+fn sheep_with_ceiling(id: u32, name: &str, memory: u64, ceiling: u64) -> ProcessInfo {
+    let mut info = sheep(
+        id,
+        name,
+        ProcStatus::Online,
+        Some(48_300 + id),
+        0,
+        Some(2.0),
+        Some(memory),
+        Some("edge"),
+    );
+    info.max_memory = Some(ceiling);
+    info
+}
+
 /// One instance of a clustered app: the row a shepherd reports for slot
 /// `slot` of `name`.
 ///
@@ -1314,14 +1413,18 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi is the same thirty-three frames with colour; read it with `less -R`.
+frames.ansi renders all thirty-four scenes through the same coloured
+palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
+renders the same thirty-four scenes through the flattened NO_COLOR palette
+instead, the one an operator with $NO_COLOR set or a 16-colour terminal
+actually gets. The two files are deliberately different pictures of the
+same dashboard, not one file with the colour removed.
 
 All four panes are here: the flock table (the spine), the host-usage strip,
-the sheep detail pane and the bleats feed. The selected sheep's row is
-painted (see frames.ansi for the colour; frames.txt carries none, so the
-row reads as a blank gutter there) rather than marked with `>`, which is
-only the fallback for a terminal with no ground to paint with. Every pane
-below the table describes that one sheep.
+the sheep detail pane and the bleats feed. The selected sheep's row is a
+painted gutter in frames.ansi; in frames.txt it falls back to a `>` marker,
+since the NO_COLOR palette has no ground to paint with. Every pane below
+the table describes that one sheep.
 
 The feed reads the selected sheep's log files from disk and re-reads them with
 each flock listing. It is not a live subscription, and it says so on its own
@@ -1345,6 +1448,18 @@ a frame of their own.
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `sgr`/`render_ansi` were foreground-only before this task: a band's
+    /// reverse video and a painted background both came out unstyled.
+    #[test]
+    fn the_ansi_dump_emits_a_bands_reverse_video_and_a_grounds_background() {
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 4, 1));
+        buffer[(0, 0)].set_style(Style::default().add_modifier(Modifier::REVERSED));
+        buffer[(1, 0)].set_style(Style::default().bg(Color::Indexed(235)));
+        let dump = render_ansi(&buffer);
+        assert!(dump.contains("\u{1b}[7m"), "reverse video");
+        assert!(dump.contains("\u{1b}[48;5;235m"), "an indexed background");
+    }
 
     /// Nine other tests read frames through this renderer: a regression
     /// here silently changes what they assert.
@@ -1391,16 +1506,14 @@ mod tests {
         })
     }
 
-    /// The gallery's own palette (`xterm-256color`, deep) always paints a
-    /// ground, so every scene's selected row is a painted gutter rather
-    /// than a `>` glyph ([`super::super::view::flock::gutter`]).
-    /// Constructed the same way [`scene_with`] builds its palette, so the
-    /// two never drift apart.
+    /// [`coloured_palette`] always paints a ground, so every pinned
+    /// snapshot's selected row is a painted gutter rather than a `>` glyph
+    /// ([`super::super::view::flock::gutter`]).
     fn gallery_ground() -> ratatui::style::Color {
-        Palette::detect(None, Some(std::ffi::OsStr::new("xterm-256color")), None)
+        coloured_palette()
             .ground()
             .bg
-            .expect("the gallery's own palette always paints a ground")
+            .expect("the gallery's coloured palette always paints a ground")
     }
 
     /// Whether row `y` of `buffer` is the selected one: its gutter cell
@@ -1473,7 +1586,7 @@ mod tests {
     /// artifacts under `docs/lookout/` are unix renderings for the same
     /// reason.
     #[cfg(unix)]
-    #[allow(clippy::too_many_lines)] // thirty-three captions, each pinned clause by clause
+    #[allow(clippy::too_many_lines)] // thirty-four captions, each pinned clause by clause
     fn every_scene_shows_the_thing_it_is_named_for() {
         // HealthyWide: all three panes at 120x30.
         let wide_buffer = scene(Scene::HealthyWide).1;
@@ -1494,17 +1607,16 @@ mod tests {
             wide.contains("bleats  api"),
             "and the feed, on the same one"
         );
-        // The gallery's palette (`xterm-256color`) paints a real ground, so
-        // the selected row's gutter is now a painted space rather than a
-        // `>` glyph (`view::flock::gutter`); checked on the buffer's own
-        // background rather than the rendered text, which cannot see one.
-        // Two rows carry it now, not one: the selected row's gutter, and
-        // the status bar this task painted at the foot of the pane.
-        use std::ffi::OsStr;
-        let ground = Palette::detect(None, Some(OsStr::new("xterm-256color")), None)
+        // `coloured_palette` paints a real ground, so the selected row's
+        // gutter is a painted space rather than a `>` glyph
+        // (`view::flock::gutter`); checked on the buffer's own background
+        // rather than the rendered text, which cannot see one. Two rows
+        // carry it, not one: the selected row's gutter, and the status bar
+        // painted at the foot of the pane.
+        let ground = coloured_palette()
             .ground()
             .bg
-            .expect("the gallery's own palette always paints a ground");
+            .expect("the gallery's coloured palette always paints a ground");
         let painted_rows = (0..wide_buffer.area.height)
             .filter(|&y| {
                 wide_buffer
@@ -1591,6 +1703,26 @@ mod tests {
         assert!(
             with_dogs.contains("dog adopted"),
             "the detail pane names it adopted, not built-in: {with_dogs:?}"
+        );
+
+        // MemCeiling: the MEM/CEIL gauge's three states in one frame.
+        let ceiling_buffer = scene(Scene::MemCeiling).1;
+        let ceiling = render_text(&ceiling_buffer);
+        assert!(
+            row_for(&ceiling, "batch-wor…").is_some_and(|row| row.contains("░░░░░░░░░░")),
+            "no ceiling configured draws an empty bar: {ceiling:?}"
+        );
+        assert!(
+            row_for(&ceiling, "web-headr…").is_some_and(|row| row.contains("███░░░░░░░")),
+            "a quarter of the ceiling fills three of ten cells: {ceiling:?}"
+        );
+        assert!(
+            row_for(&ceiling, "web-hot").is_some_and(|row| row.contains("█████████░")),
+            "94 percent of the ceiling fills nine of ten cells: {ceiling:?}"
+        );
+        assert!(
+            marked_row_name_starts_with(&ceiling, &ceiling_buffer, "web-hot"),
+            "the cursor is parked on the row at 94 percent: {ceiling:?}"
         );
 
         // Empty: each of the three panes gives its own reason.
@@ -2024,11 +2156,9 @@ mod tests {
     /// exactly on the last row.
     #[test]
     fn the_cursor_walk_budgets_by_visible_rows_not_by_sheep() {
-        use std::ffi::OsStr;
-
         let t0 = Instant::now();
         let mut app = App::new(
-            Palette::detect(None, Some(OsStr::new("xterm-256color")), None),
+            coloured_palette(),
             Control::ReadOnly,
             "/home/ada/.shep".to_string(),
             t0,
@@ -2073,21 +2203,18 @@ mod tests {
                 which.label()
             );
         }
-        // The literal 33 catches a scene added to the enum but not to
+        // The literal 34 catches a scene added to the enum but not to
         // `ALL`, or the reverse; `labels.len()` would not, since `insert`
         // above already guarantees it.
-        assert_eq!(Scene::ALL.len(), 33);
+        assert_eq!(Scene::ALL.len(), 34);
     }
 
-    /// `sgr` renders foregrounds only, so a modifier still comes out
-    /// unstyled in `frames.ansi` today. The title and section bands now
-    /// carry `Modifier::REVERSED` on purpose (the design's own acceptance
-    /// criterion), so this no longer forbids every modifier outright — only
-    /// one the renderer cannot yet draw. Making `sgr` actually emit
-    /// `REVERSED` (and a background) is task 10's own brief, at
-    /// `frames.rs`'s `sgr` and `render_ansi`; until then `frames.ansi`
-    /// under-represents a band the same way it already under-represents
-    /// the selected row's painted ground.
+    /// `sgr` now draws a foreground, a background and `REVERSED`, so the
+    /// title and section bands' reverse video and the selected row's
+    /// painted ground both reach `frames.ansi`. This test still forbids
+    /// any modifier beyond `REVERSED`: nothing in the dashboard uses one
+    /// today, and a scene that started would render unstyled without this
+    /// guard noticing.
     #[test]
     fn no_scene_uses_a_modifier_the_ansi_renderer_cannot_render() {
         for which in Scene::ALL {
@@ -2112,8 +2239,16 @@ mod tests {
     /// that drops the uptime column entirely.
     #[test]
     fn the_frozen_frame_does_not_move_however_long_the_link_stays_gone() {
-        let ten_minutes = render_text(&scene_with(Scene::Frozen, Duration::from_secs(600)));
-        let sixteen_hours = render_text(&scene_with(Scene::Frozen, Duration::from_secs(60_000)));
+        let ten_minutes = render_text(&scene_with(
+            Scene::Frozen,
+            Duration::from_secs(600),
+            coloured_palette(),
+        ));
+        let sixteen_hours = render_text(&scene_with(
+            Scene::Frozen,
+            Duration::from_secs(60_000),
+            coloured_palette(),
+        ));
         assert_eq!(
             ten_minutes, sixteen_hours,
             "the frozen frame's uptime column advanced after the link was lost"
@@ -2123,9 +2258,16 @@ mod tests {
             "the frozen frame has a lamb line for the comparison above to cover"
         );
 
-        let live_ten = render_text(&scene_with(Scene::HealthyWide, Duration::from_secs(600)));
-        let live_sixteen =
-            render_text(&scene_with(Scene::HealthyWide, Duration::from_secs(60_000)));
+        let live_ten = render_text(&scene_with(
+            Scene::HealthyWide,
+            Duration::from_secs(600),
+            coloured_palette(),
+        ));
+        let live_sixteen = render_text(&scene_with(
+            Scene::HealthyWide,
+            Duration::from_secs(60_000),
+            coloured_palette(),
+        ));
         assert_ne!(
             live_ten, live_sixteen,
             "a LIVE frame's uptime column must advance, or the assertion above passes for the wrong reason"
@@ -2157,16 +2299,22 @@ mod tests {
         let mut plain = String::from(GALLERY_PREAMBLE);
         let mut ansi = String::from(GALLERY_PREAMBLE);
         for which in Scene::ALL {
-            let (label, buffer) = scene(*which);
             let (width, height) = which.size();
             let heading = format!(
-                "\n\n=== {label}  ({width}x{height}) ===\n{}\n\n",
+                "\n\n=== {}  ({width}x{height}) ===\n{}\n\n",
+                which.label(),
                 which.caption()
             );
+            // Two separate renders, not one buffer read twice: `frames.txt`
+            // is what a `NO_COLOR` operator sees, and that palette has no
+            // painted ground for the gutter to fall back from, so the
+            // buffer itself differs, not just how it prints.
+            let plain_buffer = scene_with(*which, Duration::from_secs(600), no_color_palette());
             plain.push_str(&heading);
-            plain.push_str(&render_text(&buffer));
+            plain.push_str(&render_text(&plain_buffer));
+            let ansi_buffer = scene_with(*which, Duration::from_secs(600), coloured_palette());
             ansi.push_str(&heading);
-            ansi.push_str(&render_ansi(&buffer));
+            ansi.push_str(&render_ansi(&ansi_buffer));
         }
         (plain, ansi)
     }
