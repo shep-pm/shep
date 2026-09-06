@@ -27,7 +27,7 @@ use std::collections::BTreeSet;
 use std::io;
 
 use serde::Serialize;
-use shep_core::protocol::ProcessInfo;
+use shep_core::protocol::{ProcessInfo, SheepRefusal};
 
 use crate::exit::ExitCode;
 
@@ -469,6 +469,68 @@ pub fn emit_described(
             Ok(())
         }
     }
+}
+
+/// The `--format json` envelope for a verb that did part of what it was
+/// asked and was refused the rest: [`OutputEnvelope`] plus a `refused` key
+/// beside `data`.
+///
+/// One object, because `cli.rs` publishes `--format json` as one object per
+/// invocation and a staged reload has two halves to report. A key added
+/// beside `data` is additive, so it does not move [`SCHEMA_VERSION`], whose
+/// rule is a rename, a removal or a retype of `data` itself.
+///
+/// `refused` is dropped when empty rather than rendered as `[]`: a reload
+/// that refused nothing is every reload bar the staged walk, and those keep
+/// the exact three fields every other verb prints.
+#[derive(Debug, Serialize)]
+#[cfg_attr(windows, allow(dead_code))]
+struct PartialEnvelope<'a, T> {
+    /// [`SCHEMA_VERSION`] at the time this envelope was produced.
+    schema_version: u32,
+    /// The verb that produced this envelope.
+    command: &'a str,
+    /// What the verb did: the same payload [`OutputEnvelope`] carries.
+    data: T,
+    /// What it did not do, one entry per app the shepherd refused.
+    #[serde(skip_serializing_if = "no_refusals")]
+    refused: &'a [SheepRefusal],
+}
+
+/// Whether `refused` is empty, for [`PartialEnvelope`]'s
+/// `skip_serializing_if`.
+///
+/// Takes a double reference because serde hands the attribute a reference
+/// to the field, and the field is itself a slice reference.
+#[cfg_attr(windows, allow(dead_code))]
+fn no_refusals(refused: &&[SheepRefusal]) -> bool {
+    refused.is_empty()
+}
+
+/// Renders `data` and `refused` to `out` as one `--format json` envelope.
+///
+/// JSON only, and the caller checks that: the table rendering of a partial
+/// answer is a fresh flock listing plus a line on stderr, which
+/// `commands::lifecycle` composes itself out of [`emit_flock`] and
+/// [`Streams::fail`].
+///
+/// # Errors
+/// The underlying write failed.
+#[cfg_attr(windows, allow(dead_code))]
+pub fn emit_partial<T: Render>(
+    out: &mut dyn io::Write,
+    command: &str,
+    data: T,
+    refused: &[SheepRefusal],
+) -> io::Result<()> {
+    let envelope = PartialEnvelope {
+        schema_version: SCHEMA_VERSION,
+        command,
+        data,
+        refused,
+    };
+    serde_json::to_writer(&mut *out, &envelope)?;
+    writeln!(out)
 }
 
 /// The `--format json` shape of a failure: `{"schema_version", "error":

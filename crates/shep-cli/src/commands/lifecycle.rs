@@ -27,7 +27,9 @@ use crate::commands::bounded::{Bounded, run_bounded};
 use crate::commands::dogs;
 use crate::commands::selector::parse_selector;
 use crate::exit::ExitCode;
-use crate::output::{DeletedIds, FlockRows, Render, Streams, emit, emit_flock, write_outcome};
+use crate::output::{
+    DeletedIds, FlockRows, Render, Streams, emit, emit_flock, emit_partial, write_outcome,
+};
 
 /// What [`resolve_target`] can fail with
 ///
@@ -1491,14 +1493,50 @@ pub async fn reload(client: &Client, streams: &mut Streams<'_>, args: &SelectorA
     // Printed whenever the verb did its work; see `load`. The refused apps
     // are named after it, not instead of it: what did reload is still the
     // answer to the question the operator asked.
-    if !procs.is_empty() || failure.is_none() {
-        let wrote = render_outcome(client, streams, "reload", FlockRows(procs)).await;
+    let carried = !procs.is_empty() || failure.is_none();
+    if carried {
+        let wrote = render_reload(client, streams, procs, &refused).await;
         if wrote != ExitCode::Success {
             return wrote;
         }
     }
-    let refusal = refused_line(&refused).map(|message| streams.fail(RELOAD_REFUSED_EXIT, &message));
+    // Under `--format json` the refusals rode out in the envelope above, so
+    // saying them again on stderr is the second top-level object this guard
+    // exists to stop. `carried` is the condition and not the format alone:
+    // an envelope that never printed took the names with it, and stderr is
+    // the only stream left to name them on.
+    let refusal = refused_line(&refused).map(|message| {
+        if streams.fmt == Format::Json && carried {
+            RELOAD_REFUSED_EXIT
+        } else {
+            streams.fail(RELOAD_REFUSED_EXIT, &message)
+        }
+    });
     failure.or(refusal).unwrap_or(ExitCode::Success)
+}
+
+/// [`render_outcome`] for a reload, which can have both halves of an answer
+/// to render at once.
+///
+/// The table half is [`render_outcome`] unchanged: a fresh flock listing,
+/// with the refused apps named on stderr by the caller. The JSON half is one
+/// envelope carrying both, since `cli.rs` publishes `--format json` as one
+/// object per invocation.
+async fn render_reload(
+    client: &Client,
+    streams: &mut Streams<'_>,
+    accepted: Vec<ProcessInfo>,
+    refused: &[SheepRefusal],
+) -> ExitCode {
+    if streams.fmt == Format::Json {
+        return write_outcome(emit_partial(
+            &mut *streams.out,
+            "reload",
+            FlockRows(accepted),
+            refused,
+        ));
+    }
+    render_outcome(client, streams, "reload", FlockRows(accepted)).await
 }
 
 /// What a refused app inside an otherwise successful reload exits with
@@ -2843,6 +2881,102 @@ mod tests {
         assert!(said.is_empty(), "nothing to say: {said}");
     }
 
+    /// fails if a partially-refused reload prints two top-level JSON
+    /// objects for one invocation: `cli.rs` publishes `--format json` as
+    /// one object per invocation, and a consumer piping the run through
+    /// `jq` either takes a parse error or reads the first object and
+    /// believes the whole fold reloaded.
+    #[tokio::test]
+    async fn a_partly_refused_reload_prints_one_json_envelope_carrying_both_halves() {
+        use shep_client::testing::fake_client_answering;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) = fake_client_answering(&path, move |request| match request {
+            Request::Reload { .. } => Response::Reloading {
+                accepted: vec![reloaded_api()],
+                refused: vec![SheepRefusal::new("db", "db is already being reloaded")],
+            },
+            Request::ListFlock => Response::Flock(vec![reloaded_api()]),
+            _ => Response::Pong,
+        })
+        .await;
+
+        let (code, printed, said) = reload_against_in(&client, "all", Format::Json).await;
+
+        assert_eq!(
+            code,
+            ExitCode::Failure,
+            "the exit code is unchanged: {said}"
+        );
+        assert_eq!(
+            objects_in(&printed),
+            1,
+            "one envelope per invocation, refusal or no refusal: {printed}"
+        );
+        assert!(
+            said.is_empty(),
+            "and no second object beside it on stderr: {said}"
+        );
+
+        let envelope: serde_json::Value = serde_json::from_str(&printed).unwrap();
+        assert_eq!(envelope["command"], "reload", "{envelope}");
+        assert_eq!(
+            envelope["schema_version"], 1,
+            "a key added beside `data` is additive: {envelope}"
+        );
+        assert_eq!(
+            envelope["data"][0]["name"], "api",
+            "what reloaded is still the answer: {envelope}"
+        );
+        assert_eq!(
+            envelope["refused"][0]["name"], "db",
+            "and what did not is named in the same object: {envelope}"
+        );
+        assert_eq!(
+            envelope["refused"][0]["reason"], "db is already being reloaded",
+            "with the shepherd's own reason: {envelope}"
+        );
+    }
+
+    /// fails if an ordinary reload's envelope grows a key: `refused` is
+    /// carried only by a run that had something to refuse, so every
+    /// existing consumer reads the same three fields it always did.
+    #[tokio::test]
+    async fn a_reload_that_refused_nothing_carries_no_refused_key() {
+        use shep_client::testing::fake_client_answering;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) = fake_client_answering(&path, move |request| match request {
+            Request::Reload { .. } => Response::Reloading {
+                accepted: vec![reloaded_api()],
+                refused: Vec::new(),
+            },
+            Request::ListFlock => Response::Flock(vec![reloaded_api()]),
+            _ => Response::Pong,
+        })
+        .await;
+
+        let (code, printed, said) = reload_against_in(&client, "all", Format::Json).await;
+
+        assert_eq!(code, ExitCode::Success, "{said}");
+        let envelope: serde_json::Value = serde_json::from_str(&printed).unwrap();
+        assert!(
+            envelope.get("refused").is_none(),
+            "nothing was refused, so nothing says so: {envelope}"
+        );
+    }
+
+    /// How many top-level JSON values `text` holds. Counted rather than
+    /// parsed whole: `serde_json::from_str` refuses trailing input, so it
+    /// reports two objects and forty as the same failure.
+    fn objects_in(text: &str) -> usize {
+        serde_json::Deserializer::from_str(text)
+            .into_iter::<serde_json::Value>()
+            .count()
+    }
+
     /// The one sheep the two reload tests reload.
     fn reloaded_api() -> ProcessInfo {
         ProcessInfo::builder(1, "api", shep_core::status::ProcStatus::Online).build()
@@ -2851,6 +2985,16 @@ mod tests {
     /// Runs `shep reload <selector>` against `client`, handing back its code
     /// and both streams.
     async fn reload_against(client: &Client, selector: &str) -> (ExitCode, String, String) {
+        reload_against_in(client, selector, Format::Table).await
+    }
+
+    /// [`reload_against`] under a caller-chosen `--format`, so the JSON
+    /// shape can be asserted on the bytes a consumer actually reads.
+    async fn reload_against_in(
+        client: &Client,
+        selector: &str,
+        fmt: Format,
+    ) -> (ExitCode, String, String) {
         let mut out = Vec::new();
         let mut err = Vec::new();
         let code = {
@@ -2858,7 +3002,7 @@ mod tests {
                 out: &mut out,
                 err: &mut err,
                 style: crate::style::Presentation::BARE,
-                fmt: Format::Table,
+                fmt,
             };
             reload(
                 client,
