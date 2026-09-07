@@ -7,13 +7,17 @@
 //! since the file is human-editable.
 //!
 //! `muster` reads the roll and starts those apps, from `boot` and from the
-//! `Muster` request alike. An app restores iff it was running when the roll was
+//! `Muster` request alike, stage by stage in `depends_on` order
+//! (`crate::boot_order`). An app restores iff it was running when the roll was
 //! saved (`instances_running > 0`) and `autostart` is still true; one the flock
-//! already has is left where it stands, still reported as restored.
+//! already has is left where it stands, still reported as restored. Nothing
+//! about the graph refuses a restore: a cycle, a name nothing answers to and a
+//! dependency that opted out of `autostart` are each warned about and started
+//! around, because the machine this runs on has nobody watching it.
 
 use core::fmt;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -25,12 +29,13 @@ use tokio::sync::broadcast::{self, error::RecvError};
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, Instant, sleep_until};
 
+use shep_core::config::graph::{BootPlan, render_cycle};
 use shep_core::config::{AppConfig, NormalizeError, ResolvedApp, normalize};
 use shep_core::protocol::{BusEvent, ProcessInfo};
 use shep_core::status::ProcStatus;
 
-use crate::bus::SharedEvent;
-use crate::supervisor::SupervisorHandle;
+use crate::bus::{Bus, SharedEvent};
+use crate::supervisor::{BatchPolicy, SupervisorHandle};
 
 /// Schema version of `flock.json`
 pub(crate) const SNAPSHOT_VERSION: u32 = 1;
@@ -129,6 +134,39 @@ impl FlockRegistry {
             .unwrap_or_else(PoisonError::into_inner)
             .clear();
         self.dirty.notify_one();
+    }
+
+    /// Every registered sheep's name, with the names it says it waits for.
+    ///
+    /// Infallible, one lock and no normalize: the teardown builds its stop
+    /// plan from this, and a fallible step on the one path that always runs
+    /// would silently skip the staged stop instead of failing loudly.
+    pub(crate) fn depends_on_by_name(&self) -> BTreeMap<String, Vec<String>> {
+        self.apps
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .map(|(name, app)| (name.clone(), app.depends_on.clone()))
+            .collect()
+    }
+
+    /// `name`'s `listen_timeout` and `graceful_timeout`, in that order, or
+    /// `None` when no registered sheep has that name.
+    ///
+    /// The pair an ordered restart or reload bounds a stage's wait by. Read
+    /// here because a `ProcessInfo` carries no timeout at all, and the
+    /// alternative is a round trip to the actor per member of a stage.
+    pub(crate) fn timeouts_of(&self, name: &str) -> Option<(Duration, Duration)> {
+        self.apps
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(name)
+            .map(|app| {
+                (
+                    app.listen_timeout.as_duration(),
+                    app.graceful_timeout.as_duration(),
+                )
+            })
     }
 
     /// Builds the roll from the live listing, pruning names the flock no
@@ -347,12 +385,22 @@ pub(crate) fn restorable(snapshot: FlockSnapshot) -> Restorable {
 /// [`instance_slots`](crate::assemble::instance_slots) takes the lowest free
 /// slot. A missing roll is not an error; an unparseable one is reported.
 ///
+/// `dogs` names every dog this shepherd holds and `boot_first_dogs` the ones
+/// `[daemon] boot_first_dogs` promotes ahead of the flock. Neither is spawned
+/// here: they are the graph's dog nodes, and the split is what positions a
+/// dog in the plan. Which of them [`warn_about_the_graph`] reports on is
+/// decided by the live flock as well, since an unpromoted dog is already up
+/// on every restore but the boot's own.
+///
 /// # Errors
 /// - [`SnapshotError`]: the roll exists but could not be read or parsed.
 pub(crate) async fn muster(
     path: &Path,
     registry: &FlockRegistry,
     supervisor: &SupervisorHandle,
+    events: &Bus,
+    dogs: &[String],
+    boot_first_dogs: &[String],
 ) -> Result<Vec<String>, SnapshotError> {
     let saved = match read(path) {
         Ok(saved) => saved,
@@ -378,6 +426,7 @@ pub(crate) async fn muster(
     // and the `start` below announces its own failure.
     let running = supervisor.list_checked().await.unwrap_or_default();
     let known = |app: &ResolvedApp| running.iter().any(|info| info.name == app.config().name);
+    warn_about_dogs_holding_sheep_names(&restorable.members, &running);
 
     // Membership for every entry `start` will not bring up, so a sheep saved
     // while stopped comes back listed. The ones being started are excluded:
@@ -409,21 +458,211 @@ pub(crate) async fn muster(
     if to_start.is_empty() {
         return Ok(restored);
     }
-    // Recorded whether or not `start` fully succeeds: already-registered
-    // entries must persist even when a later spawn in the batch fails. Only
-    // what this call starts, so an app left where it stands keeps the config
-    // it is actually running under.
+    // Recorded whether or not the stages fully succeed: already-registered
+    // entries must persist even when a later spawn fails. Only what this call
+    // starts, so an app left where it stands keeps the config it is actually
+    // running under.
     registry.record(&to_start);
-    // `start_restored`, not `start`: `start` refuses a whole batch over an app
-    // whose script provably is not there, which is right for an operator typing
-    // `shep start` and wrong at an unattended boot, where a binary missing after
-    // a rebuild would cost the machine its entire flock.
-    if let Err(err) = supervisor.start_restored(to_start).await {
-        // One bad entry does not sink the muster; the sheep that failed to
-        // spawn is already recorded `Errored` by the supervisor.
-        tracing::warn!(%err, "muster roll restore failed to spawn one or more apps");
+
+    let plan = crate::boot_order::plan_for(&to_start, dogs, boot_first_dogs);
+    warn_about_the_graph(
+        &plan,
+        &to_start,
+        &restorable.members,
+        &running,
+        dogs,
+        boot_first_dogs,
+    );
+    // `BatchPolicy::PerApp`, not `AllOrNothing`: a whole-batch refusal over an
+    // app whose script provably is not there is right for an operator typing
+    // `shep start` and wrong at an unattended boot, where a binary missing
+    // after a rebuild would cost the machine its entire flock.
+    // `PerApp` never answers `Err`; warned rather than discarded so a later
+    // change of policy here cannot lose a failure silently.
+    if let Err(err) = crate::boot_order::start_in_stages(
+        &plan,
+        &to_start,
+        supervisor,
+        events,
+        BatchPolicy::PerApp,
+    )
+    .await
+    {
+        tracing::warn!(%err, "muster roll restore could not start one or more apps");
     }
     Ok(restored)
+}
+
+/// Warns for every saved sheep whose name a running dog has taken.
+///
+/// A `[daemon] boot_first_dogs` dog spawns before this restore and registers
+/// under its own name against an empty flock, so [`muster`]'s `known` finds
+/// the name running and filters the roll's sheep of that name out of both the
+/// membership pass and the start. Nothing refuses that collision, and without
+/// this line an operator loses a sheep in silence.
+///
+/// The name stays in the restored list. It really is in the flock, and
+/// dropping it would report the loss as an absence on a terminal that has no
+/// room to say why; the reply carries no per-app note to put the reason in.
+fn warn_about_dogs_holding_sheep_names(members: &[ResolvedApp], running: &[ProcessInfo]) {
+    for app in members {
+        let name = app.config().name.as_str();
+        let Some(source) = running
+            .iter()
+            .find(|info| info.name == name)
+            .and_then(|info| info.dog.as_ref())
+        else {
+            continue;
+        };
+        tracing::warn!(
+            name,
+            dog = ?source,
+            "a dog holds this name, so the roll's sheep of that name is not restored"
+        );
+    }
+}
+
+/// Whether `running` holds an entry of this name that has been spawned and
+/// not given up on.
+///
+/// `Stopped` and `Errored` are the two that answer `false`: a dog registered
+/// under either has no process behind it, so a sheep that waits for it really
+/// does start without it. Every other status covers a live child, a
+/// `WaitingRestart` gap between two of them included.
+fn is_up(running: &[ProcessInfo], name: &str) -> bool {
+    running.iter().any(|info| {
+        info.name == name && !matches!(info.status, ProcStatus::Stopped | ProcStatus::Errored)
+    })
+}
+
+/// Reports every way the roll's dependency graph is not what it says it is.
+///
+/// Nothing here refuses. A restore runs on a machine nobody is watching, so
+/// each of these brings the flock up and says what it did instead: a
+/// dependency nothing in the roll answers to, one that opted out of
+/// `autostart`, one that is a dog starting after the flock rather than
+/// before it, and a cycle.
+///
+/// `running` is the flock as it stands, which is what keeps the dog warning
+/// from firing on a dog that is already up: this runs at an operator's
+/// `shep muster` as well as at boot.
+fn warn_about_the_graph(
+    plan: &BootPlan,
+    to_start: &[ResolvedApp],
+    members: &[ResolvedApp],
+    running: &[ProcessInfo],
+    dogs: &[String],
+    boot_first_dogs: &[String],
+) {
+    // A member the roll holds but this restore will not start. Named
+    // separately from the unresolved edges below, since "the sheep exists and
+    // opted out" is a different thing for an operator to do about than "the
+    // name is a typo".
+    let opted_out: BTreeSet<&str> = members
+        .iter()
+        .filter(|app| !app.config().autostart)
+        .map(|app| app.config().name.as_str())
+        .collect();
+    // Every name the roll can put back, whether or not this restore starts
+    // it. The plan is built from `to_start` alone, so a dependency already
+    // running, saved stopped, or opted out is absent from the graph and reads
+    // as unresolved. On `shep muster` against a live flock that is the whole
+    // flock, and the warning below would fire on the commonest path there is.
+    let restorable: BTreeSet<&str> = members
+        .iter()
+        .map(|app| app.config().name.as_str())
+        .collect();
+
+    for unresolved in &plan.unresolved {
+        // `opted_out` is a subset of this, and has its own warning below.
+        if restorable.contains(unresolved.missing.as_str()) {
+            continue;
+        }
+        tracing::warn!(
+            sheep = %unresolved.dependent,
+            missing = %unresolved.missing,
+            "a dependency names nothing this flock has; starting without it"
+        );
+    }
+    for app in to_start {
+        for target in &app.config().depends_on {
+            if opted_out.contains(target.as_str()) {
+                tracing::warn!(
+                    sheep = %app.config().name,
+                    dependency = %target,
+                    "the dependency sets autostart = false; starting without it"
+                );
+            }
+        }
+    }
+    // A dog gets an ordinary graph position, but `boot` spawns dogs in two
+    // groups and neither is at a stage boundary: the promoted ones before
+    // this restore, the rest after every stage. So a dependency on an
+    // unpromoted dog is ordered by the plan and by nothing else, and the
+    // sheep starts while the dog is not running.
+    let unpromoted: BTreeSet<&str> = dogs
+        .iter()
+        .map(String::as_str)
+        .filter(|dog| !boot_first_dogs.iter().any(|first| first == dog))
+        // A dog that is already up is not one this restore starts after the
+        // flock, whatever the promotion list says. `muster` is the handler for
+        // an operator's `Request::Muster` as well as the boot's restore, and
+        // there both dog groups have been running for hours, so reading the
+        // list alone would warn about every such edge on every `shep muster`.
+        // The live flock, read the way `warn_about_dogs_holding_sheep_names`
+        // reads it, is what tells the two apart.
+        .filter(|dog| !is_up(running, dog))
+        // A dog whose name a started sheep already holds is not a node at
+        // all; the sheep is, and it is ordered properly. `plan_for` drops it
+        // against exactly this list.
+        .filter(|dog| !to_start.iter().any(|app| app.config().name == *dog))
+        .collect();
+    for app in to_start {
+        for target in &app.config().depends_on {
+            if unpromoted.contains(target.as_str()) {
+                tracing::warn!(
+                    sheep = %app.config().name,
+                    dog = %target,
+                    "the dependency is a dog outside [daemon] boot_first_dogs, \
+                     which starts after the whole flock; starting without it"
+                );
+            }
+        }
+    }
+    for cycle in &plan.cycles {
+        tracing::warn!(
+            cycle = %render_cycle(cycle),
+            "a dependency cycle; those sheep start last, in no particular order"
+        );
+    }
+    // `BootPlan::cycles` carries ONE representative path per knot, so a sheep
+    // inside the knot but off that path is just as stuck and is never named by
+    // the warning above. The cyclic stage is every one of them.
+    //
+    // Silent when the paths already named everybody, which is the plain
+    // two-node cycle: `plan` puts every knot in one stage, so this line is
+    // flock-wide and would otherwise repeat the line above verbatim.
+    // `BootPlan::knots` carries the membership per knot; this line wants the
+    // flock-wide set, which the cyclic stage already is.
+    if let Some(stuck) = cyclic_stage(plan) {
+        let named: BTreeSet<&str> = plan.cycles.iter().flatten().map(String::as_str).collect();
+        if stuck.iter().any(|name| !named.contains(name.as_str())) {
+            let names: Vec<&str> = stuck.iter().map(String::as_str).collect();
+            tracing::warn!(
+                stuck = ?names,
+                "every sheep a dependency cycle holds; each of them starts last"
+            );
+        }
+    }
+}
+
+/// The stage the plan lifted every cyclic node into, if the graph has a cycle.
+///
+/// [`BootPlan`] does not label that stage, so it is found by the property that
+/// identifies it: a name the plan reports in a cycle appears in no other one.
+fn cyclic_stage(plan: &BootPlan) -> Option<&Vec<String>> {
+    let member = plan.cycles.first()?.first()?;
+    plan.stages.iter().find(|stage| stage.contains(member))
 }
 
 /// True for lifecycle transitions the roll cares about; false for log
@@ -556,10 +795,12 @@ mod tests {
     use super::*;
     use crate::fake::{ProcScript, ScriptedRunner};
     use crate::supervisor::spawn_supervisor;
-    use crate::testing::test_paths;
+    use crate::testing::{capture_logs, test_paths};
+    use shep_core::config::graph::{BootNode, NodeKind, plan};
     use shep_core::config::{AppConfig, normalize};
-    use shep_core::protocol::{BusEvent, ProcessEventKind, ProcessInfo};
+    use shep_core::protocol::{BusEvent, DogSource, ProcessEventKind, ProcessInfo};
     use shep_core::status::ProcStatus;
+    use shep_core::values::UpDuration;
     use std::time::Duration;
 
     fn info(id: u32, name: &str, status: ProcStatus) -> ProcessInfo {
@@ -806,11 +1047,13 @@ mod tests {
         let handle = spawn_supervisor(
             ScriptedRunner::new(vec![ProcScript::never_exits()]),
             paths.clone(),
-            events,
+            events.clone(),
         );
         let registry = FlockRegistry::new();
 
-        let restored = muster(&paths.snapshot, &registry, &handle).await.unwrap();
+        let restored = muster(&paths.snapshot, &registry, &handle, &events, &[], &[])
+            .await
+            .unwrap();
         assert_eq!(
             restored,
             vec!["up".to_string(), "down".to_string()],
@@ -862,11 +1105,13 @@ mod tests {
             // fail here for a reason of its own.
             ScriptedRunner::new(vec![ProcScript::never_exits(); 2]).failing_to_spawn(&["b-bad"]),
             paths.clone(),
-            events,
+            events.clone(),
         );
         let registry = FlockRegistry::new();
 
-        let restored = muster(&paths.snapshot, &registry, &handle).await.unwrap();
+        let restored = muster(&paths.snapshot, &registry, &handle, &events, &[], &[])
+            .await
+            .unwrap();
         assert_eq!(
             restored,
             vec![
@@ -896,14 +1141,18 @@ mod tests {
     /// fails if ONE saved app that cannot start keeps the rest of the flock
     /// down at the next boot.
     ///
-    /// `muster` calls `start_restored`, not `start`, because `start`'s
-    /// pre-registration check refuses a whole batch over one app whose script
-    /// is gone, which at an unattended boot costs the machine its flock.
+    /// `muster` starts under `BatchPolicy::PerApp`, not `AllOrNothing`,
+    /// because the pre-registration check refuses a whole batch over one app
+    /// whose script is gone, which at an unattended boot costs the machine its
+    /// flock.
     ///
-    /// `refusing` is load-bearing: `ScriptedRunner`'s `preflight` answers
-    /// `Unknown` for everything, so the validating pass refuses nothing on its
-    /// own. One script for two apps, so `gone` also fails at its spawn and has
-    /// to land as a visible `Errored` row rather than vanishing.
+    /// `refusing` is the preflight verdict `AllOrNothing` refuses a whole
+    /// batch over, and under `PerApp` it is only warned about, so it asserts
+    /// nothing here and stands for the input the two policies disagree on.
+    /// `failing_to_spawn` is what makes `gone` land as a visible `Errored`
+    /// row rather than vanishing, and it names the app rather than starving it
+    /// of a script: the restore starts a stage's members in the plan's order,
+    /// not the roll's, and `gone` sorts first.
     #[tokio::test(start_paused = true)]
     async fn one_unstartable_saved_app_does_not_keep_the_rest_of_the_flock_down() {
         let dir = tempfile::tempdir().unwrap();
@@ -927,13 +1176,17 @@ mod tests {
 
         let (events, _rx) = crate::bus::test_bus(64);
         let handle = spawn_supervisor(
-            ScriptedRunner::new(vec![ProcScript::never_exits()]).refusing(&["gone"]),
+            ScriptedRunner::new(vec![ProcScript::never_exits()])
+                .refusing(&["gone"])
+                .failing_to_spawn(&["gone"]),
             paths.clone(),
-            events,
+            events.clone(),
         );
         let registry = FlockRegistry::new();
 
-        let restored = muster(&paths.snapshot, &registry, &handle).await.unwrap();
+        let restored = muster(&paths.snapshot, &registry, &handle, &events, &[], &[])
+            .await
+            .unwrap();
         assert_eq!(restored, vec!["good".to_string(), "gone".to_string()]);
 
         let mut listed = handle.list().await;
@@ -974,14 +1227,16 @@ mod tests {
         let handle = spawn_supervisor(
             ScriptedRunner::new(vec![ProcScript::never_exits()]),
             paths.clone(),
-            events,
+            events.clone(),
         );
         let registry = FlockRegistry::new();
         let app = normalize(AppConfig::minimal("web", "./srv")).unwrap();
         registry.record(std::slice::from_ref(&app));
         handle.start(vec![app]).await.unwrap();
 
-        let restored = muster(&paths.snapshot, &registry, &handle).await.unwrap();
+        let restored = muster(&paths.snapshot, &registry, &handle, &events, &[], &[])
+            .await
+            .unwrap();
         assert_eq!(
             restored,
             vec!["web".to_string()],
@@ -991,6 +1246,367 @@ mod tests {
         assert_eq!(listed.len(), 1, "one instance of a one-instance app");
         assert_eq!(listed[0].status, ProcStatus::Online);
         handle.shutdown().await;
+    }
+
+    /// A muster roll holding `apps`, every one of them recorded as running.
+    fn roll_of(apps: Vec<AppConfig>) -> FlockSnapshot {
+        FlockSnapshot {
+            version: SNAPSHOT_VERSION,
+            saved_at_ms: 0,
+            apps: apps
+                .into_iter()
+                .map(|app| SavedApp {
+                    app,
+                    instances_running: 1,
+                })
+                .collect(),
+        }
+    }
+
+    /// Every `process.start` name waiting on `rx`, in the order the bus
+    /// carried them.
+    fn start_order(rx: &mut broadcast::Receiver<SharedEvent>) -> Vec<String> {
+        let mut order = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            if let BusEvent::Process {
+                event: ProcessEventKind::Start,
+                info,
+                ..
+            } = &*event
+            {
+                order.push(info.name.clone());
+            }
+        }
+        order
+    }
+
+    /// fails if the restore still hands the whole roll over as one batch. The
+    /// roll is written `api` first, which is the order that starts a sheep
+    /// before the one it waits for.
+    #[tokio::test(start_paused = true)]
+    async fn a_restore_starts_the_roll_in_dependency_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(&dir);
+        std::fs::create_dir_all(paths.snapshot.parent().unwrap()).unwrap();
+        let mut db = AppConfig::minimal("db", "./srv");
+        db.listen_timeout = UpDuration::from_millis(50);
+        let mut api = AppConfig::minimal("api", "./srv");
+        api.depends_on = vec!["db".to_string()];
+        write_atomic(&paths.snapshot, &roll_of(vec![api, db])).unwrap();
+
+        let (events, _rx) = crate::bus::test_bus(64);
+        let handle = spawn_supervisor(
+            ScriptedRunner::new(vec![ProcScript::never_exits(); 2]),
+            paths.clone(),
+            events.clone(),
+        );
+        let registry = FlockRegistry::new();
+        let mut seen = events.subscribe();
+
+        muster(&paths.snapshot, &registry, &handle, &events, &[], &[])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            start_order(&mut seen),
+            vec!["db", "api"],
+            "the roll's order must not decide boot order"
+        );
+        handle.shutdown().await;
+    }
+
+    /// fails if a cycle refuses the restore, which would strand an unattended
+    /// boot on a typo nobody is there to read.
+    #[tokio::test(start_paused = true)]
+    async fn a_cyclic_roll_still_brings_the_flock_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(&dir);
+        std::fs::create_dir_all(paths.snapshot.parent().unwrap()).unwrap();
+        let mut a = AppConfig::minimal("a", "./srv");
+        a.depends_on = vec!["b".to_string()];
+        let mut b = AppConfig::minimal("b", "./srv");
+        b.depends_on = vec!["a".to_string()];
+        write_atomic(&paths.snapshot, &roll_of(vec![a, b])).unwrap();
+
+        let (events, _rx) = crate::bus::test_bus(64);
+        let handle = spawn_supervisor(
+            ScriptedRunner::new(vec![ProcScript::never_exits(); 2]),
+            paths.clone(),
+            events.clone(),
+        );
+        let registry = FlockRegistry::new();
+
+        let restored = muster(&paths.snapshot, &registry, &handle, &events, &[], &[])
+            .await
+            .expect("a cycle must not refuse the restore");
+
+        assert_eq!(restored, vec!["a".to_string(), "b".to_string()]);
+        let mut listed = handle.list().await;
+        listed.sort_by(|left, right| left.name.cmp(&right.name));
+        let seen: Vec<(&str, ProcStatus)> = listed
+            .iter()
+            .map(|info| (info.name.as_str(), info.status))
+            .collect();
+        assert_eq!(
+            seen,
+            vec![("a", ProcStatus::Online), ("b", ProcStatus::Online)],
+            "both members of the knot run; neither waits for the other"
+        );
+        handle.shutdown().await;
+    }
+
+    /// fails if `depends_on` overrides `autostart`, which would let one app's
+    /// file start a sheep another app's file said not to start.
+    #[tokio::test(start_paused = true)]
+    async fn a_dependency_with_autostart_off_is_warned_about_and_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(&dir);
+        std::fs::create_dir_all(paths.snapshot.parent().unwrap()).unwrap();
+        let mut db = AppConfig::minimal("db", "./srv");
+        db.autostart = false;
+        let mut api = AppConfig::minimal("api", "./srv");
+        api.depends_on = vec!["db".to_string()];
+        write_atomic(&paths.snapshot, &roll_of(vec![db, api])).unwrap();
+
+        let (events, _rx) = crate::bus::test_bus(64);
+        let handle = spawn_supervisor(
+            ScriptedRunner::new(vec![ProcScript::never_exits()]),
+            paths.clone(),
+            events.clone(),
+        );
+        let registry = FlockRegistry::new();
+        let mut seen = events.subscribe();
+
+        muster(&paths.snapshot, &registry, &handle, &events, &[], &[])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            start_order(&mut seen),
+            vec!["api"],
+            "db opted out; api starts without it"
+        );
+        handle.shutdown().await;
+    }
+
+    /// An app named `name` that waits for `deps`, normalized.
+    fn dependant(name: &str, deps: &[&str]) -> ResolvedApp {
+        let mut app = AppConfig::minimal(name, "./srv");
+        app.depends_on = deps.iter().map(|dep| (*dep).to_string()).collect();
+        normalize(app).expect("a minimal app with edges normalizes")
+    }
+
+    /// fails if a dependency the roll still holds is reported as naming
+    /// nothing this flock has. The plan is built from `to_start` alone, so on
+    /// `shep muster` against a live flock every already-running dependency is
+    /// unresolved, and this warning fired on the commonest path there is.
+    ///
+    /// The second half is the control: a name the roll does not hold either
+    /// really is missing, and must still be said out loud.
+    #[test]
+    fn a_dependency_the_roll_still_holds_is_not_called_missing() {
+        let api = dependant("api", &["db"]);
+        let db = normalize(AppConfig::minimal("db", "./srv")).expect("a minimal app normalizes");
+        let to_start = vec![api.clone()];
+        let plan = crate::boot_order::plan_for(&to_start, &[], &[]);
+        assert_eq!(
+            plan.unresolved.len(),
+            1,
+            "the plan only ever sees what this restore starts"
+        );
+
+        let held = capture_logs(|| {
+            warn_about_the_graph(&plan, &to_start, &[db, api.clone()], &[], &[], &[])
+        });
+        assert!(!held.contains("names nothing this flock has"), "{held}");
+
+        let absent = capture_logs(|| warn_about_the_graph(&plan, &to_start, &[api], &[], &[], &[]));
+        assert!(absent.contains("names nothing this flock has"), "{absent}");
+    }
+
+    /// fails if a sheep that waits for an unpromoted dog is ordered behind it
+    /// in silence. `boot` spawns dogs in two groups, promoted before the
+    /// restore and the rest after every stage, so only a promoted dog is
+    /// running by the time a sheep that names it starts.
+    ///
+    /// The control is the same graph with the dog promoted: there the wait is
+    /// honoured and there is nothing to say.
+    #[test]
+    fn a_dependency_on_a_dog_the_boot_never_promotes_is_warned_about() {
+        let to_start = vec![dependant("api", &["metrics"])];
+        let dogs = ["metrics".to_string()];
+
+        let late = capture_logs(|| {
+            let plan = crate::boot_order::plan_for(&to_start, &dogs, &[]);
+            warn_about_the_graph(&plan, &to_start, &to_start, &[], &dogs, &[]);
+        });
+        assert!(late.contains("starts after the whole flock"), "{late}");
+
+        let promoted = capture_logs(|| {
+            let plan = crate::boot_order::plan_for(&to_start, &dogs, &dogs);
+            warn_about_the_graph(&plan, &to_start, &to_start, &[], &dogs, &dogs);
+        });
+        assert!(
+            !promoted.contains("starts after the whole flock"),
+            "{promoted}"
+        );
+    }
+
+    /// fails if the unpromoted-dog warning reads the promotion list alone.
+    /// [`muster`] is also the handler for an operator's `Request::Muster`,
+    /// reached long after boot with both dog groups up, so a sheep waiting on
+    /// an unpromoted but LIVE dog would be warned about on every
+    /// `shep muster`. That is the same false-positive class `restorable`
+    /// closes for a sheep-to-sheep edge.
+    ///
+    /// Driven through `muster` rather than through `warn_about_the_graph`
+    /// with a synthetic list: the sibling cases all hand it their own
+    /// arguments, so none of them can see a flock at all. The control is the
+    /// same roll against a shepherd holding no dog, which is boot's case and
+    /// must still warn.
+    ///
+    /// `#[test]` with a `block_on` of its own, not `#[tokio::test]`:
+    /// `capture_logs` scopes its subscriber to a synchronous closure.
+    #[test]
+    fn a_dependency_on_an_unpromoted_dog_that_is_already_running_is_not_warned_about() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        // `metrics` is a dog this shepherd holds and does not promote, and
+        // `api` waits for it.
+        let dogs = ["metrics".to_string()];
+        let restore = |dog_running: bool| {
+            let dir = tempfile::tempdir().unwrap();
+            let paths = test_paths(&dir);
+            std::fs::create_dir_all(paths.snapshot.parent().unwrap()).unwrap();
+            let mut api = AppConfig::minimal("api", "./srv");
+            api.depends_on = vec!["metrics".to_string()];
+            let roll = FlockSnapshot {
+                version: SNAPSHOT_VERSION,
+                saved_at_ms: 0,
+                apps: vec![SavedApp {
+                    app: api,
+                    instances_running: 1,
+                }],
+            };
+            write_atomic(&paths.snapshot, &roll).unwrap();
+
+            capture_logs(|| {
+                rt.block_on(async {
+                    let (events, _rx) = crate::bus::test_bus(64);
+                    let handle = spawn_supervisor(
+                        ScriptedRunner::new(vec![
+                            ProcScript::never_exits(),
+                            ProcScript::never_exits(),
+                        ]),
+                        paths.clone(),
+                        events.clone(),
+                    );
+                    if dog_running {
+                        let dog = normalize(AppConfig::minimal("metrics", "./srv"))
+                            .expect("a minimal dog normalizes");
+                        handle
+                            .start_dog(dog, DogSource::BuiltIn)
+                            .await
+                            .expect("a scripted dog that never exits starts");
+                    }
+                    muster(
+                        &paths.snapshot,
+                        &FlockRegistry::new(),
+                        &handle,
+                        &events,
+                        &dogs,
+                        &[],
+                    )
+                    .await
+                    .expect("the roll parses");
+                });
+            })
+        };
+
+        let live = restore(true);
+        assert!(!live.contains("starts after the whole flock"), "{live}");
+
+        let at_boot = restore(false);
+        assert!(
+            at_boot.contains("starts after the whole flock"),
+            "{at_boot}"
+        );
+    }
+
+    /// fails if a promoted dog takes a saved sheep's name in silence. It
+    /// registers against an empty flock before the restore, so `muster` reads
+    /// the name as already running and drops the sheep from both the
+    /// membership pass and the start while still reporting it restored.
+    ///
+    /// The control is the same name running as an ordinary sheep, which is
+    /// the idempotent restore this must not start warning about.
+    #[test]
+    fn a_dog_holding_a_saved_sheeps_name_is_warned_about() {
+        let members = vec![normalize(AppConfig::minimal("metrics", "./srv")).expect("normalizes")];
+        let as_dog = [ProcessInfo::builder(0, "metrics", ProcStatus::Online)
+            .dog(Some(DogSource::BuiltIn))
+            .build()];
+        let as_sheep = [ProcessInfo::builder(0, "metrics", ProcStatus::Online).build()];
+
+        let collided = capture_logs(|| warn_about_dogs_holding_sheep_names(&members, &as_dog));
+        assert!(collided.contains("is not restored"), "{collided}");
+
+        let plain = capture_logs(|| warn_about_dogs_holding_sheep_names(&members, &as_sheep));
+        assert!(!plain.contains("is not restored"), "{plain}");
+    }
+
+    /// fails if a plain two-node cycle prints its membership twice. `plan`
+    /// puts every knot into one stage, so the membership line is flock-wide,
+    /// and on two nodes it repeats the representative path verbatim.
+    ///
+    /// The three-node knot is the control: there the path names two of the
+    /// three, so the membership line is the only thing that names the third.
+    #[test]
+    fn a_two_node_knot_is_not_reported_twice_over() {
+        let pair = vec![dependant("a", &["b"]), dependant("b", &["a"])];
+        let plan = crate::boot_order::plan_for(&pair, &[], &[]);
+
+        let two = capture_logs(|| warn_about_the_graph(&plan, &pair, &pair, &[], &[], &[]));
+        assert!(
+            !two.contains("every sheep a dependency cycle holds"),
+            "{two}"
+        );
+
+        let trio = vec![
+            dependant("a", &["b"]),
+            dependant("b", &["a", "c"]),
+            dependant("c", &["b"]),
+        ];
+        let plan = crate::boot_order::plan_for(&trio, &[], &[]);
+        let three = capture_logs(|| warn_about_the_graph(&plan, &trio, &trio, &[], &[], &[]));
+        assert!(
+            three.contains("every sheep a dependency cycle holds"),
+            "{three}"
+        );
+    }
+
+    /// fails if the cycle warning names only the representative path. Every
+    /// one of these three is stuck, and the path through the knot names two.
+    #[test]
+    fn the_cyclic_stage_names_every_sheep_in_the_knot() {
+        let node = |name: &str, deps: &[&str]| BootNode {
+            name: name.to_string(),
+            depends_on: deps.iter().map(|dep| (*dep).to_string()).collect(),
+            kind: NodeKind::Sheep,
+        };
+        let plan = plan(&[node("a", &["b"]), node("b", &["a", "c"]), node("c", &["b"])]);
+        assert_eq!(plan.cycles.len(), 1, "one knot, one representative path");
+        assert!(
+            plan.cycles[0].len() < 3,
+            "the point of the extra report is a member the path leaves out"
+        );
+
+        assert_eq!(
+            cyclic_stage(&plan),
+            Some(&vec!["a".to_string(), "b".to_string(), "c".to_string()]),
+        );
     }
 
     /// fails if a missing roll becomes an error. A fresh `$SHEP_HOME` has
@@ -1007,12 +1623,14 @@ mod tests {
         let handle = spawn_supervisor(
             ScriptedRunner::new(vec![ProcScript::never_exits()]),
             paths.clone(),
-            events,
+            events.clone(),
         );
         let registry = FlockRegistry::new();
 
         assert_eq!(
-            muster(&paths.snapshot, &registry, &handle).await.unwrap(),
+            muster(&paths.snapshot, &registry, &handle, &events, &[], &[])
+                .await
+                .unwrap(),
             Vec::<String>::new()
         );
         assert!(handle.list().await.is_empty());

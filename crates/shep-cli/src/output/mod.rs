@@ -27,7 +27,7 @@ use std::collections::BTreeSet;
 use std::io;
 
 use serde::Serialize;
-use shep_core::protocol::ProcessInfo;
+use shep_core::protocol::{ProcessInfo, SheepRefusal};
 
 use crate::exit::ExitCode;
 
@@ -381,10 +381,12 @@ fn silence_pointer(dogs: &[ProcessInfo]) -> Option<String> {
 ///
 /// A silent row also gets a paragraph from
 /// [`crate::vocabulary::silence_note`] (what [`silence_pointer`] points
-/// at). Pending and Overridden headings follow, once per name, naming
-/// `shep reload <name>` as what promotes a parked config. Never shorten
-/// the caption to "process tree": the walk follows parent-pid links
-/// while the stop ladder acts on the process group, and the two diverge.
+/// at). A "Depends on" heading follows, once per name, naming the sheep this
+/// one waits for at a staged start; then Pending and Overridden headings,
+/// same once-per-name rule, naming `shep reload <name>` as what promotes a
+/// parked config. Never shorten the caption to "process tree": the walk
+/// follows parent-pid links while the stop ladder acts on the process group,
+/// and the two diverge.
 ///
 /// # Errors
 /// The underlying write failed.
@@ -437,6 +439,12 @@ pub fn emit_described(
                 if !said.insert(sheep.name.as_str()) {
                     continue;
                 }
+                if !sheep.depends_on.is_empty() {
+                    writeln!(out, "\nDepends on for {}:", sheep.name)?;
+                    for name in &sheep.depends_on {
+                        writeln!(out, "  {name}")?;
+                    }
+                }
                 if let Some(fields) = sheep.pending.as_deref().filter(|f| !f.is_empty()) {
                     writeln!(
                         out,
@@ -461,6 +469,68 @@ pub fn emit_described(
             Ok(())
         }
     }
+}
+
+/// The `--format json` envelope for a verb that did part of what it was
+/// asked and was refused the rest: [`OutputEnvelope`] plus a `refused` key
+/// beside `data`.
+///
+/// One object, because `cli.rs` publishes `--format json` as one object per
+/// invocation and a staged reload has two halves to report. A key added
+/// beside `data` is additive, so it does not move [`SCHEMA_VERSION`], whose
+/// rule is a rename, a removal or a retype of `data` itself.
+///
+/// `refused` is dropped when empty rather than rendered as `[]`: a reload
+/// that refused nothing is every reload bar the staged walk, and those keep
+/// the exact three fields every other verb prints.
+#[derive(Debug, Serialize)]
+#[cfg_attr(windows, allow(dead_code))]
+struct PartialEnvelope<'a, T> {
+    /// [`SCHEMA_VERSION`] at the time this envelope was produced.
+    schema_version: u32,
+    /// The verb that produced this envelope.
+    command: &'a str,
+    /// What the verb did: the same payload [`OutputEnvelope`] carries.
+    data: T,
+    /// What it did not do, one entry per app the shepherd refused.
+    #[serde(skip_serializing_if = "no_refusals")]
+    refused: &'a [SheepRefusal],
+}
+
+/// Whether `refused` is empty, for [`PartialEnvelope`]'s
+/// `skip_serializing_if`.
+///
+/// Takes a double reference because serde hands the attribute a reference
+/// to the field, and the field is itself a slice reference.
+#[cfg_attr(windows, allow(dead_code))]
+fn no_refusals(refused: &&[SheepRefusal]) -> bool {
+    refused.is_empty()
+}
+
+/// Renders `data` and `refused` to `out` as one `--format json` envelope.
+///
+/// JSON only, and the caller checks that: the table rendering of a partial
+/// answer is a fresh flock listing plus a line on stderr, which
+/// `commands::lifecycle` composes itself out of [`emit_flock`] and
+/// [`Streams::fail`].
+///
+/// # Errors
+/// The underlying write failed.
+#[cfg_attr(windows, allow(dead_code))]
+pub fn emit_partial<T: Render>(
+    out: &mut dyn io::Write,
+    command: &str,
+    data: T,
+    refused: &[SheepRefusal],
+) -> io::Result<()> {
+    let envelope = PartialEnvelope {
+        schema_version: SCHEMA_VERSION,
+        command,
+        data,
+        refused,
+    };
+    serde_json::to_writer(&mut *out, &envelope)?;
+    writeln!(out)
 }
 
 /// The `--format json` shape of a failure: `{"schema_version", "error":
@@ -1023,6 +1093,45 @@ mod tests {
             let rendered = String::from_utf8(out).unwrap();
             assert!(!rendered.contains("Lambs of"), "{rendered}");
         }
+    }
+
+    #[test]
+    fn describe_lists_a_sheep_s_dependencies() {
+        // fails if depends_on never reaches the operator, which leaves "why did
+        // web start nine seconds in" unanswerable
+        let info = ProcessInfo::builder(1, "web", ProcStatus::Online)
+            .depends_on(vec!["api".to_string(), "db".to_string()])
+            .build();
+        let mut out = Vec::new();
+        emit_described(
+            &mut out,
+            Format::Table,
+            "describe",
+            vec![info],
+            Presentation::BARE,
+        )
+        .unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(rendered.contains("api"), "{rendered}");
+        assert!(rendered.contains("db"), "{rendered}");
+    }
+
+    #[test]
+    fn describe_says_nothing_about_dependencies_when_there_are_none() {
+        // fails if an empty list prints a bare header, which every sheep in a
+        // flock without ordering would then carry
+        let info = ProcessInfo::builder(1, "web", ProcStatus::Online).build();
+        let mut out = Vec::new();
+        emit_described(
+            &mut out,
+            Format::Table,
+            "describe",
+            vec![info],
+            Presentation::BARE,
+        )
+        .unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(!rendered.to_lowercase().contains("depends"), "{rendered}");
     }
 
     /// The same rule `emit_flock`'s JSON arm follows for dogs.

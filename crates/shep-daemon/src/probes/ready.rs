@@ -2,9 +2,11 @@
 //! `online` (spec §7).
 //!
 //! A sheep whose app configures `wait_ready` or `readiness_probe` holds at
-//! `starting` until [`await_ready`] resolves. `ReadinessSource::Heuristic`
-//! is fully implemented here but reachable only from reload's `AwaitReady`
-//! state, not from `start`.
+//! `starting` until [`await_ready`] resolves. `ReadinessSource::Heuristic` is
+//! reachable from reload's `AwaitReady` state, and from an ordinary `start`
+//! too when the app's name is in a boot stage's gate set even though it
+//! configures no signal of its own: the wait then costs `listen_timeout`
+//! rather than nothing.
 //!
 //! ## Reference
 //!

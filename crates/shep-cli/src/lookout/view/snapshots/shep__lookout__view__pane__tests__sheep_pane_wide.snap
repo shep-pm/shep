@@ -1,10 +1,12 @@
 ---
 source: crates/shep-cli/src/lookout/view/pane.rs
+assertion_line: 860
 expression: "text_of(&lines).join(\"\\n\")"
 ---
   web  (sheep config)                                                                                                   
   process
 >  cwd                        (unset)                                                                         respawn   
+   depends_on                 []                                                                              next start
    fold                       (unset)                                                                         now       
    group                      (unset)                                                                         respawn   
  = instances                  3                                                                               read-only 

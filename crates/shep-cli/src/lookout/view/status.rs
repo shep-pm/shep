@@ -10,33 +10,9 @@ use super::super::app::{
     ActionState, App, Control, InputMode, Link, RowKey, Settings, SettingsPrompt, retrying_sentence,
 };
 use super::super::pane::{ConfigPane, PanePending};
+use super::cell;
 use super::flock::fit;
 use super::settings::field_label;
-
-/// The title: what this is, where it points, and how big the flock is.
-///
-/// `right` carries a leading space: `fit` truncates `left` to exactly the
-/// budget `right`'s length reserves, so without that space a truncated
-/// `left`'s `…` would land flush against the flock count.
-#[must_use]
-pub fn title_line(app: &App, home: &str, width: u16) -> Line<'static> {
-    let palette = app.palette();
-    let left = format!("shep lookout   {home}");
-    let visible = app.rows().len();
-    let total = app.flock_len();
-    let right = if app.filter().is_empty() {
-        format!(" {total} in the flock")
-    } else {
-        format!(" {visible} of {total} in the flock")
-    };
-    Line::from(vec![
-        Span::raw(fit(
-            &left,
-            width.saturating_sub(u16::try_from(right.chars().count()).unwrap_or(0)),
-        )),
-        Span::styled(right, palette.muted()),
-    ])
-}
 
 /// The banner, when there is one. `None` while the link is live.
 ///
@@ -157,9 +133,13 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // either dashboard hint is true while it is up. Its own form: a
         // hint naming `x stop` beside a pane where `x` does nothing is
         // the asterisk this file's standing rule forbids.
+        //
+        // Butter, not muted: this is a key hint, same as the dashboard's own
+        // below, and the redesign paints the keys butter over the bar's
+        // ground.
         (
             pane_hint(app.control(), pane_screen(pane)).to_string(),
-            palette.muted(),
+            palette.attention(),
         )
     } else if app.settings().is_none() && !app.filter().is_empty() {
         // Gated on the screen being closed: the filter survives the swap
@@ -171,9 +151,10 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             palette.muted(),
         )
     } else {
+        // Butter: the keys, same rule as the pane's own hint above.
         (
             hint_for(app.control(), app.settings().is_some()),
-            palette.muted(),
+            palette.attention(),
         )
     };
     // Always rendered, in both states. An operator who does not know whether
@@ -188,9 +169,16 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
     // butts against the label. The gap rides inside the right span, styled
     // like the label, keeping the line two spans rather than three.
     let left_width = width.saturating_sub(right_len).saturating_sub(1);
+    // `patch`, not a fresh `Style`: `ground` sets only the background, so
+    // patching it onto each span's own foreground paints the bar's ground
+    // ([`Palette::ground`]) without disturbing what the span already means.
+    // `fit` already pads `left` to `left_width`, so the background reaches
+    // every column the label does not, the same reasoning `flock::pad_ground`
+    // uses for the selected row.
+    let ground = palette.ground();
     Line::from(vec![
-        Span::styled(fit(&left, left_width), left_style),
-        Span::styled(format!(" {right}"), palette.muted()),
+        Span::styled(fit(&left, left_width), left_style.patch(ground)),
+        Span::styled(format!(" {right}"), palette.muted().patch(ground)),
     ])
 }
 
@@ -373,7 +361,7 @@ fn hint_for(control: Control, settings_open: bool) -> String {
 /// and two rows of the thing they are trying to read.
 #[must_use]
 pub fn rule_line(style: Style, width: u16) -> Line<'static> {
-    Line::from(Span::styled("─".repeat(usize::from(width)), style))
+    Line::from(Span::styled(cell::rule(usize::from(width)), style))
 }
 
 #[cfg(test)]
@@ -485,24 +473,6 @@ mod tests {
 
         assert_eq!(rendered.chars().count(), 120);
         assert!(rendered.ends_with(" control enabled"));
-    }
-
-    #[test]
-    fn the_title_counts_both_numbers_while_a_filter_is_on() {
-        let app = filtered_app("web");
-        let title = rendered(&title_line(&app, "/home/ada/.shep", 120));
-        assert!(title.contains("2 of 4 in the flock"), "got {title:?}");
-    }
-
-    #[test]
-    fn the_unfiltered_title_is_unchanged() {
-        let app = filtered_app("");
-        let title = rendered(&title_line(&app, "/home/ada/.shep", 120));
-        assert!(title.contains("4 in the flock"), "got {title:?}");
-        assert!(
-            !title.contains(" of "),
-            "no second number when nothing is hidden"
-        );
     }
 
     #[test]

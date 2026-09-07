@@ -60,6 +60,9 @@ pub struct SheepRow {
     pub uptime_ms: u64,
     /// Fold membership.
     pub fold: Option<String>,
+    /// Names this sheep waits for at a staged start. Empty both when the
+    /// sheep declares none and when the peer daemon predates the field.
+    pub depends_on: Vec<String>,
     /// Resolved stdout log path.
     pub out_file: Option<String>,
     /// Resolved stderr log path.
@@ -118,6 +121,11 @@ pub struct SheepRow {
     /// `skip_serializing_if`, for the same reason `Self::pending` carries it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub overridden: Option<Vec<String>>,
+    /// The sheep's `max_memory` ceiling in bytes; `null` when it has none, or
+    /// when the peer daemon predates the field. No `skip_serializing_if`,
+    /// unlike the two fields above, because `ProcessInfo` carries it without
+    /// one and this type's doc promises byte-identical JSON.
+    pub max_memory: Option<u64>,
 }
 
 /// Where a dog came from. Mirrors `DogSource`'s tagged wire shape exactly.
@@ -171,6 +179,7 @@ impl From<&ProcessInfo> for SheepRow {
             restarts: info.restarts,
             uptime_ms: info.uptime_ms,
             fold: info.fold.clone(),
+            depends_on: info.depends_on.clone(),
             out_file: info.out_file.clone(),
             err_file: info.err_file.clone(),
             cpu_percent: info.cpu_percent,
@@ -187,6 +196,7 @@ impl From<&ProcessInfo> for SheepRow {
             dog_stale: info.dog_stale,
             pending: info.pending.clone(),
             overridden: info.overridden.clone(),
+            max_memory: info.max_memory,
         }
     }
 }
@@ -353,6 +363,7 @@ mod tests {
             .err_file(Some("/tmp/api-err.log".to_string()))
             .cpu_percent(Some(12.5))
             .memory_bytes(Some(1024 * 1024))
+            .max_memory(Some(64 * 1024 * 1024))
             .dog(Some(DogSource::Adopted {
                 path: "/usr/local/bin/dog".to_string(),
             }))

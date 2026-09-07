@@ -147,8 +147,11 @@ impl Whistle {
     ) -> Result<Json<FlockListing>, CallToolResult> {
         let selector = SelectorSpec::Name(name);
         match self.shepherd.call(Request::Reload { selector }).await? {
-            Response::Reloading(flock) => Ok(Json(FlockListing {
-                flock: flock.iter().map(SheepRow::from).collect(),
+            // One name, so the shepherd refuses it whole through the error
+            // arm and the reply's `refused` list is always empty; only a
+            // multi-sheep walk fills it.
+            Response::Reloading { accepted, .. } => Ok(Json(FlockListing {
+                flock: accepted.iter().map(SheepRow::from).collect(),
             })),
             _ => Err(unexpected_response()),
         }

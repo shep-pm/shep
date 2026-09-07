@@ -1,0 +1,220 @@
+//! The shared cells the redesigned panes draw magnitude with.
+//!
+//! Every one returns a `String` rather than a `Line` or a `Span`: the
+//! caller owns the styling, and a pure string is testable against a
+//! literal the way `flock::mark` already is.
+//!
+//! Deliberately not `ratatui::widgets::Sparkline` or `Gauge`. This module
+//! builds its rows by hand so column widths stay fixed and a row stays a
+//! string a test can assert on, which those widgets take away.
+
+/// The eight sparkline steps, low to high.
+const STEPS: [char; 8] = [
+    '\u{2581}', '\u{2582}', '\u{2583}', '\u{2584}', '\u{2585}', '\u{2586}', '\u{2587}', '\u{2588}',
+];
+
+/// How many of `cells` a `gauge`'d bar fills, given `value` over `ceiling`.
+///
+/// Shared by [`gauge`] and by callers that draw the fill and the tail as two
+/// separately-styled spans and so need the split point without re-deriving
+/// it. `None`, zero, and any ceiling a value cannot be measured against give
+/// zero: the bar says "no ceiling set" rather than guessing a denominator. A
+/// value above its ceiling saturates at `cells` rather than overflowing it.
+#[must_use]
+pub fn gauge_fill(value: u64, ceiling: Option<u64>, cells: usize) -> usize {
+    match ceiling {
+        Some(ceiling) if ceiling > 0 => {
+            let scaled = (value as f64 / ceiling as f64 * cells as f64).round();
+            (scaled as usize).min(cells)
+        }
+        _ => 0,
+    }
+}
+
+/// A horizontal bar of `cells`, filled in proportion to `value` over
+/// `ceiling` and padded with the light shade.
+///
+/// See [`gauge_fill`] for the no-ceiling and overflow cases.
+#[must_use]
+pub fn gauge(value: u64, ceiling: Option<u64>, cells: usize) -> String {
+    let filled = gauge_fill(value, ceiling, cells);
+    let mut out = String::with_capacity(cells * 3);
+    out.extend(std::iter::repeat_n('\u{2588}', filled));
+    out.extend(std::iter::repeat_n('\u{2591}', cells - filled));
+    out
+}
+
+/// The newest `cells` samples, one cell each, scaled against `ceiling`.
+///
+/// Padded on the left with spaces when there are fewer samples than cells,
+/// so the line grows into the column from the right as history arrives.
+/// No samples at all is blank rather than a flat line at the floor: a flat
+/// line reads as measured and idle, and blank reads as not measured yet.
+/// A sample above `ceiling` saturates at the tallest step rather than
+/// overflowing it, the same way [`gauge_fill`] saturates a value above its
+/// own ceiling.
+///
+/// `ceiling` is the caller's to choose, and the choice is the whole design
+/// of this cell. Scaling each row to its OWN peak makes every row fill its
+/// column, so an idle sheep and a busy one look identical, which is the
+/// discontinuity the design's opening problem statement exists to fix.
+/// Scaling every row to a fixed 100% of a core makes an ordinary flock draw
+/// ten flat lines, since real processes mostly sit near zero. What works for
+/// a table is one ceiling shared by every row and set by the data: see
+/// [`super::super::app::App::cpu_ceiling`], which takes the busiest sheep in
+/// the window and floors it so an idle flock's rounding noise is not
+/// amplified into a shape.
+#[must_use]
+pub fn sparkline(samples: &[f32], cells: usize, ceiling: f32) -> String {
+    if samples.is_empty() || cells == 0 {
+        return " ".repeat(cells);
+    }
+    let window = &samples[samples.len().saturating_sub(cells)..];
+    let mut out = String::with_capacity(cells * 3);
+    for _ in window.len()..cells {
+        out.push(' ');
+    }
+    let ceiling = if ceiling > 0.0 { ceiling } else { 1.0 };
+    for sample in window {
+        let clamped = sample.clamp(0.0, ceiling);
+        let scaled = (clamped / ceiling * (STEPS.len() - 1) as f32).round();
+        let step = (scaled as usize).min(STEPS.len() - 1);
+        out.push(STEPS[step]);
+    }
+    out
+}
+
+/// A rule of exactly `cells` box-drawing horizontals.
+///
+/// `status::rule_line` is its only non-test caller today.
+#[must_use]
+pub fn rule(cells: usize) -> String {
+    "\u{2500}".repeat(cells)
+}
+
+/// A section band: the two-block marker, the label, and padding to `cells`.
+///
+/// The caller styles it; this only lays it out. Truncates rather than
+/// overflowing, since a band that runs past its `Rect` shifts the row.
+#[must_use]
+// Called by `view::mod`'s `section_band`.
+pub fn band(label: &str, cells: usize) -> String {
+    let head = format!(" \u{2588}\u{2588} {label}");
+    let drawn: usize = head.chars().map(crate::output::width::char_columns).sum();
+    if drawn >= cells {
+        return super::flock::fit(&head, cells as u16);
+    }
+    let mut out = head;
+    out.extend(std::iter::repeat_n(' ', cells - drawn));
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_gauge_fills_from_the_left_and_pads_with_the_light_shade() {
+        assert_eq!(gauge(0, Some(100), 10), "░░░░░░░░░░");
+        assert_eq!(gauge(50, Some(100), 10), "█████░░░░░");
+        assert_eq!(gauge(100, Some(100), 10), "██████████");
+    }
+
+    #[test]
+    fn a_gauge_over_its_ceiling_is_full_rather_than_wider() {
+        assert_eq!(gauge(250, Some(100), 10), "██████████");
+    }
+
+    #[test]
+    fn a_gauge_with_no_ceiling_is_all_tail() {
+        assert_eq!(gauge(48, None, 10), "░░░░░░░░░░");
+    }
+
+    #[test]
+    fn a_zero_ceiling_is_all_tail_rather_than_a_division_by_zero() {
+        assert_eq!(gauge(48, Some(0), 10), "░░░░░░░░░░");
+    }
+
+    #[test]
+    fn a_gauge_rounds_to_the_nearest_cell() {
+        // 4 of 10 cells: 44% rounds down, 45% rounds up.
+        assert_eq!(gauge(44, Some(100), 10), "████░░░░░░");
+        assert_eq!(gauge(45, Some(100), 10), "█████░░░░░");
+    }
+
+    #[test]
+    fn a_sparkline_is_one_cell_per_sample_scaled_to_a_fixed_ceiling() {
+        assert_eq!(sparkline(&[0.0, 50.0, 100.0], 3, 100.0), "▁▅█");
+    }
+
+    #[test]
+    fn a_sparkline_over_its_ceiling_is_full_rather_than_wider() {
+        assert_eq!(sparkline(&[250.0], 4, 100.0), "   █");
+    }
+
+    #[test]
+    fn a_sparkline_shorter_than_its_cells_pads_on_the_left() {
+        assert_eq!(sparkline(&[100.0], 4, 100.0), "   █");
+    }
+
+    #[test]
+    fn a_sparkline_longer_than_its_cells_keeps_the_newest() {
+        assert_eq!(sparkline(&[100.0, 0.0, 0.0], 2, 100.0), "▁▁");
+    }
+
+    #[test]
+    fn an_empty_sparkline_is_blank_rather_than_a_flat_line() {
+        // A flat line at the floor reads as measured-and-idle. Blank reads
+        // as no data yet, which is what twenty seconds after start is.
+        assert_eq!(sparkline(&[], 4, 100.0), "    ");
+    }
+
+    #[test]
+    fn a_flat_sparkline_sits_at_the_floor() {
+        assert_eq!(sparkline(&[0.0, 0.0, 0.0], 3, 100.0), "▁▁▁");
+    }
+
+    #[test]
+    fn two_rows_at_different_loads_render_differently() {
+        // The bug this fix closes: scaling each row to its own peak made an
+        // idle sheep and a busy one both fill their column, so a reader
+        // could not tell them apart. Scaling both to the same ceiling means
+        // an idle row and a busy row read as idle and busy.
+        let idle = sparkline(&[0.5, 0.5, 0.5], 3, 100.0);
+        let busy = sparkline(&[80.0, 80.0, 80.0], 3, 100.0);
+        assert_ne!(idle, busy);
+        assert_eq!(idle, "▁▁▁");
+    }
+
+    #[test]
+    fn a_shared_ceiling_keeps_a_busy_row_taller_than_a_quiet_one() {
+        // The point of taking the ceiling from the caller: both rows are
+        // scaled by the same number, so their heights can be compared with
+        // each other. Scaled to their own peaks these two would be
+        // identical, which is the failure this replaced.
+        let ceiling = 40.0;
+        assert_eq!(sparkline(&[4.0, 4.0, 4.0], 3, ceiling), "▂▂▂");
+        assert_eq!(sparkline(&[40.0, 40.0, 40.0], 3, ceiling), "███");
+    }
+
+    #[test]
+    fn a_ceiling_of_zero_does_not_divide_by_zero() {
+        assert_eq!(sparkline(&[0.0, 1.0], 2, 0.0), "▁█");
+    }
+
+    #[test]
+    fn a_rule_is_exactly_its_cells() {
+        assert_eq!(rule(4), "────");
+        assert_eq!(rule(0), "");
+    }
+
+    #[test]
+    fn a_band_marks_its_label_and_pads_to_width() {
+        assert_eq!(band("FLOCK", 20), " ██ FLOCK           ");
+    }
+
+    #[test]
+    fn a_band_narrower_than_its_label_truncates_rather_than_overflowing() {
+        assert_eq!(band("FLOCK", 6), " ██ F…");
+    }
+}

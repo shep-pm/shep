@@ -567,9 +567,16 @@ An overlap is not zero downtime either. The old listener's queue of connections 
 yet is dropped when it closes, so an app that does not stop accepting and finish what it has in hand
 before graceful_timeout runs out loses whatever was waiting there.
 
-Exits as soon as the shepherd accepts the reload, printing the flock as it stood at that moment — a
-clustered app takes longer to swap than any answer can wait for. The swaps themselves are reported
-on the bus, under process.reload, process.reloaded and process.reload_abandoned.
+A selector matching one app exits as soon as the shepherd accepts the reload, printing the flock as
+it stood at that moment. A clustered app takes longer to swap than any answer can wait for.
+
+A selector matching two or more apps is walked in dependency order instead, and the reply waits:
+each stage is held until the apps a later stage depends on are back and ready, so the wait is the
+sum of the stages rather than the longest swap in the fold. The rows printed are what the walk
+finished with, and an app it could not reload is named, with a non-zero exit.
+
+The swaps themselves are reported on the bus either way, under process.reload, process.reloaded and
+process.reload_abandoned.
 
 Usage: shep reload [OPTIONS] <SELECTORS>...
 

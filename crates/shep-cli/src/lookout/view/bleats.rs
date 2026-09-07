@@ -1,12 +1,16 @@
 //! The bleats feed: the selected sheep's newest output, re-read from its log
 //! files on every listing rather than a live subscription to `log.*`.
 
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use super::super::app::{App, RowKey};
 use super::super::tail::Stream;
+use super::super::theme::Palette;
+use super::detail::chip_text;
 use super::flock::fit;
 use crate::output::human_bytes;
+use crate::vocabulary::Role;
 
 /// The feed's lines: one header, then the newest lines that fit.
 ///
@@ -26,22 +30,18 @@ pub fn feed_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
     let lost_lines = feed.missed_lines + feed.lines.len().saturating_sub(body);
 
     let header = match app.selected() {
-        None => Line::from(Span::styled(
-            fit("bleats  no sheep is selected", width),
-            palette.muted(),
-        )),
+        None => header_line(palette, "no sheep is selected", palette.muted(), width),
         // A group has no single log to re-read, so the header replaces "no
         // sheep is selected" rather than falling through to stale lines
         // from the previously selected sheep. Only visible while frozen,
         // since selecting a group otherwise triggers a refresh.
         Some(RowKey::Group(name)) => {
-            out.push(Line::from(Span::styled(
-                fit(
-                    &format!("bleats  {name}  follows one instance; select one to see its log"),
-                    width,
-                ),
+            out.push(header_line(
+                palette,
+                &format!("{name}  follows one instance; select one to see its log"),
                 palette.muted(),
-            )));
+                width,
+            ));
             return out;
         }
         Some(RowKey::Section(_)) => unreachable!("a header is never selectable"),
@@ -50,26 +50,27 @@ pub fn feed_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
                 .selected_row()
                 .expect("a selected sheep is in the flock");
             match gap_notice(lost_lines, feed.missed_bytes) {
-                Some(notice) => Line::from(Span::styled(
-                    fit(&format!("bleats  {}  {notice}", row.info.name), width),
+                Some(notice) => header_line(
+                    palette,
+                    &format!("{}  {notice}", row.info.name),
                     // Attention, not alarm: a sheep writing faster than a
                     // two-second poll is busy, not broken. `--bark` means
                     // errored, refused and destructive.
                     palette.attention(),
-                )),
+                    width,
+                ),
                 // `out then err`, not `out+err`: a log line carries no
                 // timestamp, so there is no key to interleave the two files
                 // on.
-                None => Line::from(Span::styled(
-                    fit(
-                        &format!(
-                            "bleats  {}  out then err  from the log files, re-read with each listing",
-                            row.info.name
-                        ),
-                        width,
+                None => header_line(
+                    palette,
+                    &format!(
+                        "{}  out then err  from the log files, re-read with each listing",
+                        row.info.name
                     ),
                     palette.muted(),
-                )),
+                    width,
+                ),
             }
         }
     };
@@ -97,6 +98,22 @@ pub fn feed_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
         ]));
     }
     out
+}
+
+/// The feed's header, with its `BLEATS` chip: butter, same as the design's
+/// other chips, ahead of `text` in `style`.
+///
+/// Shared by every branch [`feed_lines`] can take, so the chip is drawn
+/// once rather than at four call sites.
+fn header_line(palette: Palette, text: &str, style: Style, width: u16) -> Line<'static> {
+    let chip = chip_text("BLEATS");
+    let chip_width = u16::try_from(chip.chars().count() + 1).unwrap_or(width);
+    let budget = width.saturating_sub(chip_width);
+    Line::from(vec![
+        Span::styled(chip, palette.band(Role::Butter)),
+        Span::raw(" "),
+        Span::styled(fit(text, budget), style),
+    ])
 }
 
 /// What the header says about what is not on screen, or `None` when
@@ -141,7 +158,7 @@ mod tests {
     use super::super::super::app::{KeyPress, Msg, RowKey};
     use super::super::super::tail::{Stream, Tail};
     use super::super::fixtures::{
-        app_with, coloured, line, plain, render_all, with_feed, with_feed_and_palette,
+        app_fixture, app_with, coloured, line, plain, render_all, with_feed, with_feed_and_palette,
         with_feed_and_selection, with_no_selection,
     };
     use super::feed_lines;
@@ -269,7 +286,7 @@ mod tests {
             1,
         );
         let rendered = render_all(&feed_lines(&app, 120, 6));
-        assert!(rendered.contains("bleats  sheep-1"), "got {rendered:?}");
+        assert!(rendered.contains("sheep-1"), "got {rendered:?}");
         assert!(rendered.contains("out then err"), "got {rendered:?}");
         assert!(
             !rendered.contains("out+err"),
@@ -360,5 +377,13 @@ mod tests {
             rendered.contains("no sheep is selected"),
             "got {rendered:?}"
         );
+    }
+
+    /// bleats.rs:93 argues a coloured `err` says a stderr line is damage.
+    /// The redesign colours gauges, not this.
+    #[test]
+    fn the_stream_tag_is_still_muted() {
+        let line = feed_lines(&app_fixture(), 80, 4).remove(1);
+        assert_eq!(line.spans[0].style, app_fixture().palette().muted());
     }
 }

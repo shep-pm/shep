@@ -123,11 +123,13 @@ const polyglotRows: ExampleRow[] = [
       Unix, not just cargo. Six of the seven build and run anywhere Rust
       does, but <code>stubborn</code> traps <code>SIGTERM</code> with a
       Unix signal mask — on any other platform it prints why and exits 1
-      instead of running at all. <code>shep start</code> processes a
-      Flockfile top to bottom and stops at the first app that fails to
-      spawn (see <a href="#polyglot">the polyglot layer</a> below for the
-      same rule hitting a missing runtime), so on a non-Unix host this file
-      does not run straight through as shown. Comment out
+      instead of running at all. <code>shep start</code> works through a
+      Flockfile in stage order, and top to bottom inside a stage, stopping
+      at the first app that fails to spawn (see <a href="#polyglot">the
+      polyglot layer</a> below for the same rule hitting a missing
+      runtime). This file declares no <code>depends_on</code>, so it is one
+      stage in file order, and on a non-Unix host it does not run straight
+      through as shown. Comment out
       <code>stubborn</code>'s <code>[[app]]</code> block to run the other
       six.
     </Callout>
@@ -253,17 +255,20 @@ timeout  = "1s"`}</CodeBlock>
 
     <Callout variant="careful">
       A missing runtime does not sink the whole file, but it does sink
-      everything listed AFTER it. <code>shep start</code> processes a
-      Flockfile's apps top to bottom and stops at the first one that fails
-      to spawn (<code>shep start --help</code>: "Several are started in
-      turn, not atomically") — every app already online stays online, and
-      the failing app reports why
-      (<code>SpawnFailed: No such file or directory</code>), but nothing
-      below it in the file is even attempted in that same invocation.
-      Missing <code>bun</code> would silently keep <code>python-app</code>
-      and <code>go-http</code> from starting too, not just
-      <code>bun-http</code>. If a runtime isn't installed, comment out that
-      app's <code>[[app]]</code> block rather than leaving it in.
+      everything ordered after it. <code>shep start</code> works through a
+      Flockfile's apps in stage order, and in the file's own order inside a
+      stage, stopping at the first one that fails to spawn. This file
+      declares no <code>depends_on</code>, so every app is in one stage and
+      that is the file's order top to bottom. Everything already online
+      stays online, and the failure names it
+      (<code>this start already has children running and leaves them
+      alone: node-http, node-http-cluster</code>), but nothing after it is
+      even attempted in that same invocation. Missing <code>bun</code> would silently keep
+      <code>python-app</code> and <code>go-http</code> from starting too,
+      not just <code>bun-http</code>. If a runtime isn't installed, comment
+      out that app's <code>[[app]]</code> block rather than leaving it in.
+      See <a href="/docs/boot-order">boot order</a> for what a staged start
+      leaves running.
     </Callout>
 
     <h3>One file, two runtimes</h3>

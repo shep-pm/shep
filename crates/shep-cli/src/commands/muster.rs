@@ -6,7 +6,7 @@
 //! sites, each inlining its own match rather than sharing
 //! `commands::query`'s `request_and_render`.
 
-use shep_client::{Client, START_DEADLINE};
+use shep_client::{Client, RELOAD_DEADLINE};
 use shep_core::protocol::{Request, Response};
 use shep_core::status::ProcStatus;
 
@@ -42,16 +42,24 @@ pub async fn save(client: &Client, streams: &mut Streams<'_>) -> ExitCode {
 /// `connect_or_spawn_client`; boot already restores the roll by then, so
 /// this spawns nothing new.
 ///
-/// Sent with `START_DEADLINE`: a cold restore routinely outruns the client's
-/// 5s default, and abandoning it would report failure for a flock that came
-/// up fine.
+/// Sent with [`RELOAD_DEADLINE`], which is 60s, the daemon's own
+/// `MAX_DEADLINE_MS` and the most it will honour. A cold restore already
+/// outran the client's 5s default, and `Request::Muster` now runs the staged
+/// walk inside the request handler: it holds each stage until its members
+/// settle, so the reply costs the SUM of the stages rather than the longest
+/// spawn in the roll. `START_DEADLINE`'s 30s is the budget `shep reload` was
+/// moved off for the same reason, and this walk is the largest of them, since
+/// a muster spans the whole roll rather than a selector. `with_deadline`
+/// DROPS the work future when the budget expires, so a short one abandons a
+/// restore mid-walk with its later stages never issued and reports failure
+/// for a flock that was coming up.
 ///
 /// `Response::Mustered` names every sheep the roll restored, not only the
 /// ones this call spawned, so the verb is safe to run twice. An empty
 /// `Mustered` gets a stderr notice beside the empty table.
 pub async fn muster(client: &Client, streams: &mut Streams<'_>) -> ExitCode {
     match client
-        .request_with_deadline(Request::Muster, Some(START_DEADLINE))
+        .request_with_deadline(Request::Muster, Some(RELOAD_DEADLINE))
         .await
     {
         Ok(Response::Mustered(procs)) => {
@@ -150,8 +158,12 @@ mod tests {
         assert!(String::from_utf8(err).unwrap().contains("engine"));
     }
 
+    /// fails if the verb goes back to a budget that predates the staged
+    /// walk. `Request::Muster` runs the walk inside the request handler and
+    /// `with_deadline` drops the work future, so a short budget abandons a
+    /// restore that is proceeding and reports it as a failure.
     #[tokio::test]
-    async fn muster_sends_muster_with_the_start_deadline() {
+    async fn muster_asks_for_the_daemons_whole_budget_because_it_walks_stages() {
         let dir = tempfile::tempdir().unwrap();
         let path = shep_client::testing::control_address(dir.path());
         let (client, mut envelopes) = fake_client_capturing_envelopes(&path).await;
@@ -172,7 +184,7 @@ mod tests {
         assert_eq!(envelope.body, Request::Muster);
         assert_eq!(
             envelope.deadline_ms,
-            Some(u64::try_from(START_DEADLINE.as_millis()).unwrap())
+            Some(u64::try_from(RELOAD_DEADLINE.as_millis()).unwrap())
         );
     }
 

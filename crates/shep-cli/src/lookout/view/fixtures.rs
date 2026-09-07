@@ -306,6 +306,59 @@ pub fn full_app() -> App {
     app
 }
 
+/// One sheep, `catcher`, selected, with a two-line feed applied and its log
+/// paths pointing at real files in a leaked tempdir, so `fs::metadata` in
+/// [`super::detail::log_row`] succeeds the way it would against a live
+/// sheep's own logs.
+///
+/// The tempdir is whatever [`tempfile`] resolves for the host: no attempt is
+/// made here to force it short. A prior version tried, picking `/tmp` on
+/// unix and `RUNNER_TEMP` on Windows, because `log_row`'s own tests once
+/// asserted against hardcoded widths (160/70/60) that only produced the
+/// intended three-tier behaviour when the path was short. `RUNNER_TEMP` is
+/// unset outside GitHub Actions, so a real Windows box fell to the OS
+/// default there — a ~35-column prefix under the user profile — and failed
+/// the width-160 test for a reason that had nothing to do with the code
+/// under test. Those tests now derive their widths from this fixture's own
+/// rendered path lengths (see `detail::tests::log_row_thresholds`), so no
+/// path-length assumption belongs here any more.
+///
+/// The tempdir is leaked (`TempDir::keep`) rather than dropped: dropping it
+/// would delete the files before the test that calls this reads them, and
+/// the OS reclaims a leaked temp directory on its own schedule regardless.
+pub fn app_fixture() -> App {
+    let dir = tempfile::Builder::new()
+        .prefix("shep-fx-")
+        .tempdir()
+        .expect("a tempdir for the fixture's logs");
+    let out_path = dir.path().join("catcher-out.log");
+    let err_path = dir.path().join("catcher-err.log");
+    std::fs::write(&out_path, b"listening on :8080\n").expect("write the out log");
+    std::fs::write(&err_path, b"warn: retrying upstream\n").expect("write the err log");
+    let _ = dir.keep();
+
+    let info = ProcessInfo::builder(7, "catcher", ProcStatus::Online)
+        .pid(Some(48_107))
+        .uptime_ms(4_512_000)
+        .out_file(Some(out_path.display().to_string()))
+        .err_file(Some(err_path.display().to_string()))
+        .build();
+    let mut app = with_selection(info);
+    app.update(Msg::Bleats {
+        tail: Tail {
+            lines: vec![
+                line(Stream::Out, "listening on :8080"),
+                line(Stream::Err, "warn: retrying upstream"),
+            ],
+            missed_lines: 0,
+            missed_bytes: 0,
+            read_bytes: 1_024,
+            note: None,
+        },
+    });
+    app
+}
+
 /// One tail line, tagged with the stream it came from.
 pub fn line(stream: Stream, text: &str) -> TailLine {
     TailLine {

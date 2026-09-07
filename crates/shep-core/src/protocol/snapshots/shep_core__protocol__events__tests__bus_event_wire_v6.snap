@@ -15,6 +15,7 @@ expression: events
         "restarts": 2,
         "uptime_ms": 500,
         "fold": null,
+        "depends_on": [],
         "out_file": "/home/ada/.shep/logs/web-0-out.log",
         "err_file": "/home/ada/.shep/logs/web-0-err.log",
         "cpu_percent": null,
@@ -28,7 +29,8 @@ expression: events
         "smit": "▲ main@a1b2c3",
         "instance": null,
         "handshook": null,
-        "dog_stale": null
+        "dog_stale": null,
+        "max_memory": null
       },
       "manually": false,
       "at_ms": 1700000000000
@@ -59,6 +61,7 @@ expression: events
         "restarts": 0,
         "uptime_ms": 0,
         "fold": null,
+        "depends_on": [],
         "out_file": null,
         "err_file": null,
         "cpu_percent": null,
@@ -69,7 +72,8 @@ expression: events
         "smit": null,
         "instance": 2,
         "handshook": null,
-        "dog_stale": null
+        "dog_stale": null,
+        "max_memory": null
       },
       "manually": false,
       "at_ms": 1700000000000
@@ -87,6 +91,7 @@ expression: events
         "restarts": 2,
         "uptime_ms": 500,
         "fold": null,
+        "depends_on": [],
         "out_file": "/home/ada/.shep/logs/web-0-out.log",
         "err_file": "/home/ada/.shep/logs/web-0-err.log",
         "cpu_percent": null,
@@ -100,7 +105,8 @@ expression: events
         "smit": null,
         "instance": null,
         "handshook": null,
-        "dog_stale": null
+        "dog_stale": null,
+        "max_memory": null
       },
       "manually": false,
       "at_ms": 1700000000000
@@ -118,6 +124,7 @@ expression: events
         "restarts": 2,
         "uptime_ms": 500,
         "fold": null,
+        "depends_on": [],
         "out_file": "/home/ada/.shep/logs/web-0-out.log",
         "err_file": "/home/ada/.shep/logs/web-0-err.log",
         "cpu_percent": null,
@@ -131,7 +138,8 @@ expression: events
         "smit": null,
         "instance": null,
         "handshook": null,
-        "dog_stale": null
+        "dog_stale": null,
+        "max_memory": null
       },
       "manually": false,
       "at_ms": 1700000000000
@@ -149,6 +157,7 @@ expression: events
         "restarts": 2,
         "uptime_ms": 500,
         "fold": null,
+        "depends_on": [],
         "out_file": "/home/ada/.shep/logs/web-0-out.log",
         "err_file": "/home/ada/.shep/logs/web-0-err.log",
         "cpu_percent": null,
@@ -162,7 +171,8 @@ expression: events
         "smit": null,
         "instance": null,
         "handshook": null,
-        "dog_stale": null
+        "dog_stale": null,
+        "max_memory": null
       },
       "manually": false,
       "at_ms": 1700000000000
@@ -180,6 +190,7 @@ expression: events
         "restarts": 2,
         "uptime_ms": 500,
         "fold": null,
+        "depends_on": [],
         "out_file": "/home/ada/.shep/logs/web-0-out.log",
         "err_file": "/home/ada/.shep/logs/web-0-err.log",
         "cpu_percent": null,
@@ -193,7 +204,8 @@ expression: events
         "smit": null,
         "instance": null,
         "handshook": null,
-        "dog_stale": null
+        "dog_stale": null,
+        "max_memory": null
       },
       "manually": false,
       "at_ms": 1700000000000
@@ -211,6 +223,7 @@ expression: events
         "restarts": 2,
         "uptime_ms": 500,
         "fold": null,
+        "depends_on": [],
         "out_file": "/home/ada/.shep/logs/web-0-out.log",
         "err_file": "/home/ada/.shep/logs/web-0-err.log",
         "cpu_percent": null,
@@ -224,7 +237,8 @@ expression: events
         "smit": null,
         "instance": null,
         "handshook": null,
-        "dog_stale": null
+        "dog_stale": null,
+        "max_memory": null
       },
       "manually": false,
       "at_ms": 1700000000000
@@ -242,6 +256,7 @@ expression: events
         "restarts": 2,
         "uptime_ms": 500,
         "fold": null,
+        "depends_on": [],
         "out_file": "/home/ada/.shep/logs/web-0-out.log",
         "err_file": "/home/ada/.shep/logs/web-0-err.log",
         "cpu_percent": null,
@@ -255,7 +270,8 @@ expression: events
         "smit": null,
         "instance": null,
         "handshook": null,
-        "dog_stale": null
+        "dog_stale": null,
+        "max_memory": null
       },
       "manually": false,
       "at_ms": 1700000000000

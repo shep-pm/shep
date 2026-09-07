@@ -24,6 +24,9 @@ pub(crate) enum Role {
     Bark,
     /// Quiet: stopped, stopping, and every muted chrome element.
     Ink3,
+    /// Lookout-only: the memory gauge's filled portion. No `ProcStatus`
+    /// wears it, since `shep flock` has no gauge to colour.
+    Sky,
 }
 
 /// Which role a status wears.

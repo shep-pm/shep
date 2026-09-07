@@ -1,13 +1,14 @@
 ---
 source: crates/shep-cli/src/lookout/frames.rs
+assertion_line: 2430
 expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                                            6 in the flock
-host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7%   flock mem 716.0M   up 6d 3h           
-  ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   floc…
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Flock ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-> 2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
+  ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
+   ██ FLOCK                                                                                                             
+  2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -            
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -            
   4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -            
   5     metrics     online           48240    0         -          0.4%    11.0M     1h 32m    -           -            
@@ -15,7 +16,7 @@ host  load 2.31 4.10 3.88 / 10 cores   host mem 12.4G / 32.0G   flock cpu 14.7% 
   1     web         online           48212    0         -          2.9%    178.0M    1h 26m    edge        -            
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-bleats  api  … 1 earlier line not shown                                                                                 
+ ██ BLEATS api  … 1 earlier line not shown                                                                              
 out  GET /healthz 200 3ms                                                                                               
 out  GET /v1/orders 200 44ms                                                                                            
 out  POST /v1/orders 201 88ms                                                                                           
