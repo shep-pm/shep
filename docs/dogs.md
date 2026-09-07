@@ -467,7 +467,7 @@ The format is line-oriented text:
 
 ```
 shep-log-rotate 0.1.3
-shep-protocol: 7
+shep-protocol: 8
 ```
 
 - Line 1 is `<name> <version>`. Shep takes the last whitespace-separated
@@ -503,7 +503,7 @@ The refusal names both numbers and both ways out:
 
 ```
 /usr/local/bin/shep-otel: this dog was built for shep protocol 6, and this
-shep needs 7 or newer; reinstall the dog without --locked so it builds
+shep needs 8 or newer; reinstall the dog without --locked so it builds
 against the current shep-core, or run a shep that accepts protocol 6
 ```
 
@@ -565,9 +565,9 @@ the upgrade.
 
 ```
 notice[dog_binary_skew]: `log-rotate`'s binary at /usr/local/bin/shep-log-rotate
-was built for shep protocol 6, and this shep needs 7 or newer; restarting it
+was built for shep protocol 6, and this shep needs 8 or newer; restarting it
 brings it back on that binary, unable to connect. Run a shep that accepts
-protocol 6, or reinstall the dog against protocol 7, and restart it again
+protocol 6, or reinstall the dog against protocol 8, and restart it again
 ```
 
 Then it restarts the dog. This is a warning and never a refusal: the
@@ -646,10 +646,10 @@ question here for a contract to answer:
 ```
 $ shep --version
 shep 0.1.24
-speaks protocol 7, accepts 7 and newer
+speaks protocol 8, accepts 8 and newer
 $ shep dog metrics --version
 shep-dog 0.1.24
-speaks protocol 7, accepts 7 and newer
+speaks protocol 8, accepts 8 and newer
 ```
 
 Neither prints the `shep-protocol:` line an external dog's probe answers
@@ -793,7 +793,7 @@ Shep now writes its own account into the dog's log as well, marked
 
 ```
 2026-09-02T14:22:31.412+02:00 [shep] shep started this dog; its process is pid 5512
-2026-09-02T14:22:31.480+02:00 [shep] shep accepted this dog's handshake; it is registered with this shepherd as `log-rotate`, on protocol 7
+2026-09-02T14:22:31.480+02:00 [shep] shep accepted this dog's handshake; it is registered with this shepherd as `log-rotate`, on protocol 8
 2026-09-02T14:22:31.492+02:00 rotating web-0-out.log (12.4 MiB)
 ```
 

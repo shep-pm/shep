@@ -1146,6 +1146,36 @@ otel = "/usr/local/bin/shep-otel"
     }
 
     #[test]
+    fn boot_options_carry_the_configured_environment_and_default_to_production() {
+        // The host default every sheep naming no `environment` of its own
+        // resolves its `{{secret:...}}` references in, so an unset file
+        // reaching the supervisor as anything but `production` would move
+        // every such sheep to a different slot of the store.
+        let args = || DaemonArgs {
+            cmd: None,
+            no_restore: false,
+            foreground: false,
+            log_json: None,
+            log_level: None,
+            socket: None,
+            max_cron_sleep: None,
+        };
+
+        let configured =
+            DaemonConfig::load(Some("[daemon]\nenvironment = \"staging\"\n"), &|_| None).unwrap();
+        assert_eq!(
+            boot_options(&configured, &args(), None).environment,
+            Some("staging".to_string())
+        );
+
+        let unset = DaemonConfig::load(None, &|_| None).unwrap();
+        assert_eq!(
+            boot_options(&unset, &args(), None).environment,
+            Some("production".to_string())
+        );
+    }
+
+    #[test]
     fn no_restore_boots_without_the_muster_roll() {
         let config = DaemonConfig::load(None, &|_| None).unwrap();
         let opts = boot_options(
