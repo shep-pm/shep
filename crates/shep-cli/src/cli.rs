@@ -9,6 +9,7 @@
 //! command is not wired up yet — the whole parse surface lives in one
 //! portable file rather than accreting piecemeal as each verb lands.
 
+use core::fmt;
 use std::net::IpAddr;
 use std::path::PathBuf;
 
@@ -982,15 +983,32 @@ pub struct KvUnsetArgs {
 }
 
 /// Arguments to `shep secret`.
-#[derive(Debug, clap::Args)]
+///
+/// `Debug` is written out rather than derived (IR-41) so a field added here
+/// cannot print in the clear by default; the value itself is redacted by
+/// [`SecretCommand`]'s own impl.
+#[derive(clap::Args)]
 pub struct SecretArgs {
     /// Which of the four things to do to the store.
     #[command(subcommand)]
     pub command: SecretCommand,
 }
 
+impl fmt::Debug for SecretArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SecretArgs")
+            .field("command", &self.command)
+            .finish()
+    }
+}
+
 /// `shep secret`'s subcommands.
-#[derive(Debug, clap::Subcommand)]
+///
+/// `Set` carries the operator's own plaintext value, so `Debug` prints its
+/// length and never the value (IR-41). Exact-string-tested below
+/// (`secret_command_debug_does_not_leak`), so restoring the derive fails
+/// that test instead of silently reopening the leak.
+#[derive(clap::Subcommand)]
 pub enum SecretCommand {
     /// Store a value
     ///
@@ -1030,6 +1048,41 @@ pub enum SecretCommand {
     },
     /// List keys and the environments each has a value for
     List,
+}
+
+impl fmt::Debug for SecretCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Set {
+                key,
+                value,
+                env,
+                stdin,
+            } => {
+                let value = value.as_ref().map_or_else(
+                    || "None".to_string(),
+                    |value| format!("Some(<{} bytes>)", value.len()),
+                );
+                f.debug_struct("Set")
+                    .field("key", key)
+                    .field("value", &format_args!("{value}"))
+                    .field("env", env)
+                    .field("stdin", stdin)
+                    .finish()
+            }
+            Self::Get { key, env } => f
+                .debug_struct("Get")
+                .field("key", key)
+                .field("env", env)
+                .finish(),
+            Self::Unset { key, env } => f
+                .debug_struct("Unset")
+                .field("key", key)
+                .field("env", env)
+                .finish(),
+            Self::List => f.write_str("List"),
+        }
+    }
 }
 
 /// Arguments to `shep fold`.
@@ -2500,6 +2553,40 @@ mod tests {
             Cli::try_parse_from(["shep", "whistle", "--allow-control"]).is_err(),
             "whistle's gate is `[whistle] allow_control` in shep.toml, and a flag would \
              let an agent host's own config open it in the same line that adds the server"
+        );
+    }
+
+    /// fails if the derive comes back on either type: `shep secret set`
+    /// carries the operator's plaintext value, and a `{:?}` anywhere in the
+    /// binary would print it (IR-41). Exact strings, not a `contains`, so a
+    /// derive cannot pass by happening to omit this one value.
+    #[test]
+    fn secret_command_debug_does_not_leak() {
+        use clap::Parser;
+        let Commands::Secret(args) = Cli::try_parse_from([
+            "shep",
+            "secret",
+            "set",
+            "DB_PASSWORD",
+            "hunter2",
+            "--env",
+            "staging",
+        ])
+        .unwrap()
+        .command
+        else {
+            panic!("secret parses to its own variant")
+        };
+
+        assert_eq!(
+            format!("{args:?}"),
+            "SecretArgs { command: Set { key: \"DB_PASSWORD\", value: Some(<7 bytes>), \
+             env: Some(\"staging\"), stdin: false } }"
+        );
+        assert_eq!(
+            format!("{:?}", SecretCommand::List),
+            "List",
+            "a variant carrying no value still has to render"
         );
     }
 }
