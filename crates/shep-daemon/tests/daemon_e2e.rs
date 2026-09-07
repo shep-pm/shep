@@ -2039,6 +2039,11 @@ async fn an_unrecognized_request_is_refused_and_the_connection_survives() {
         panic!("an unknown request must be refused");
     };
     assert_eq!(err.code, RpcErrorCode::Unsupported);
+    assert_eq!(
+        err.daemon_version, None,
+        "daemon_version is reserved for a ProtocolMismatch refusal; this \
+         client already has it from HelloAck"
+    );
 
     let pong = conn.request(Request::Ping).await;
     assert!(

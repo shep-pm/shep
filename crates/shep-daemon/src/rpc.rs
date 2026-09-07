@@ -810,17 +810,22 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
         // The catch-all `#[serde(other)]` lands on the wire, not a panic:
         // a client newer than this daemon gets a named refusal instead of
         // a dropped connection, and the connection keeps serving requests
-        // this daemon does know.
+        // this daemon does know. `daemon_version` stays `None` here: that
+        // field is reserved for a `ProtocolMismatch` refusal, the only point
+        // where `HelloAck::daemon_version` never reaches the client, and this
+        // reply follows a successful handshake that already delivered it.
         Request::Unrecognized => reply(Err(RpcError {
             code: RpcErrorCode::Unsupported,
             message: format!(
                 "this shepherd speaks protocol {PROTOCOL_VERSION} and does not \
                  implement the request the client sent"
             ),
-            daemon_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            daemon_version: None,
         })),
-        // `Request` is #[non_exhaustive]: a verb from a newer client that this
-        // daemon has never heard of is an error, not a panic.
+        // A `Request` variant this crate added but this match forgot to wire
+        // up: `Request::Unrecognized` above already answers a verb this
+        // daemon has never heard of, so reaching this arm is our own bug,
+        // not a hostile or newer client (IR-47).
         _ => reply(Err(RpcError {
             code: RpcErrorCode::Internal,
             message: "this daemon does not implement that request".to_string(),
