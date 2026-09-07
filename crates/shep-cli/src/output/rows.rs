@@ -2147,9 +2147,10 @@ impl Render for SecretSlotRow {
 /// which means `Debug` needs its own redaction (IR-41): `derive(Debug)`
 /// would print the value in a panic message, a test failure, or a `dbg!`.
 ///
-/// `Serialize` is the one place the plaintext is meant to travel, and it is
-/// reached only through a `secret get` that `[secrets] allow_read` has
-/// already let through. `Debug` prints `<redacted>` everywhere else.
+/// `Serialize` is this type's only path to a plaintext value, and both it
+/// and the table form above are reached only through a `secret get` that
+/// `[secrets] allow_read` has already let through. `Debug` prints
+/// `<redacted>` instead of the value.
 #[derive(Serialize)]
 pub struct SecretValueRow {
     /// The key, exactly as stored.
