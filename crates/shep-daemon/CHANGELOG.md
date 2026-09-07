@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-07
+
+### Added
+
+- Name the apps a staged restart could not restart **(BREAKING)**
+- Refuse an unrecognized request by id instead of ending the connection
+- Accept any peer at or above a protocol floor **(BREAKING)**
+- A protocol floor, tolerant decode, and refusals a staged restart can name ([#173](https://github.com/shep-pm/shep/pull/173)) **(BREAKING)**
+
+### Fixed
+
+- Don't publish daemon_version on an Unsupported refusal
+
+
 ## [0.5.1] - 2026-09-07
 
 
