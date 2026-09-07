@@ -26,6 +26,9 @@ struct Field {
     ident: &'static str,
     ty: &'static str,
     tag: &'static str,
+    /// The wire kinds that carry this field. The guard holds each sample
+    /// against exactly the fields its kind claims.
+    kinds: &'static [&'static str],
 }
 
 /// The Go constant for a child message's kind.
@@ -103,22 +106,22 @@ fn shepherd_samples() -> Vec<ShepherdMessage> {
 /// metric of zero and an id of zero.
 #[rustfmt::skip]
 const CHILD_FIELDS: &[Field] = &[
-    Field { ident: "Kind",   ty: "string",   tag: "kind" },
-    Field { ident: "Name",   ty: "*string",  tag: "name,omitempty" },
-    Field { ident: "Value",  ty: "*float64", tag: "value,omitempty" },
-    Field { ident: "Action", ty: "*string",  tag: "action,omitempty" },
-    Field { ident: "Body",   ty: "*string",  tag: "body,omitempty" },
-    Field { ident: "ID",     ty: "*uint64",  tag: "id,omitempty" },
+    Field { ident: "Kind",   ty: "string",   tag: "kind",             kinds: &["ready", "metric", "action-reply"] },
+    Field { ident: "Name",   ty: "*string",  tag: "name,omitempty",   kinds: &["metric"] },
+    Field { ident: "Value",  ty: "*float64", tag: "value,omitempty",  kinds: &["metric"] },
+    Field { ident: "Action", ty: "*string",  tag: "action,omitempty", kinds: &["action-reply"] },
+    Field { ident: "Body",   ty: "*string",  tag: "body,omitempty",   kinds: &["action-reply"] },
+    Field { ident: "ID",     ty: "*uint64",  tag: "id,omitempty",     kinds: &["action-reply"] },
 ];
 
 /// `Params` is a pointer because an absent one and an empty one are
 /// different messages.
 #[rustfmt::skip]
 const SHEPHERD_FIELDS: &[Field] = &[
-    Field { ident: "Kind",   ty: "string",  tag: "kind" },
-    Field { ident: "Name",   ty: "*string", tag: "name,omitempty" },
-    Field { ident: "Params", ty: "*string", tag: "params,omitempty" },
-    Field { ident: "ID",     ty: "*uint64", tag: "id,omitempty" },
+    Field { ident: "Kind",   ty: "string",  tag: "kind",              kinds: &["shutdown", "action"] },
+    Field { ident: "Name",   ty: "*string", tag: "name,omitempty",    kinds: &["action"] },
+    Field { ident: "Params", ty: "*string", tag: "params,omitempty",  kinds: &["action"] },
+    Field { ident: "ID",     ty: "*uint64", tag: "id,omitempty",      kinds: &["action"] },
 ];
 
 const CHILD_DOC: &str = "\
@@ -174,11 +177,17 @@ fn emit() -> String {
     out.push_str("const (\n");
     let child = child_samples();
     let shepherd = shepherd_samples();
+    // Two samples of one variant would declare the same constant twice,
+    // and Go refuses a redeclaration.
+    let mut declared: BTreeSet<&'static str> = BTreeSet::new();
     for kind in child
         .iter()
         .map(child_kind)
         .chain(shepherd.iter().map(shepherd_kind))
     {
+        if !declared.insert(kind.ident) {
+            continue;
+        }
         writeln!(out, "\t// {}", kind.doc).expect("write to a String");
         writeln!(out, "\t{} = {:?}", kind.ident, kind.wire).expect("write to a String");
     }
@@ -201,45 +210,85 @@ fn json_name(field: &Field) -> &'static str {
     field.tag.split(',').next().expect("a tag names a key")
 }
 
+/// The JSON value kind a declared Go type has to decode as.
+///
+/// Signedness and width are past what a JSON number can say, so `*uint64`
+/// and `*float64` answer the same.
+fn declared_json_kind(ty: &str) -> &'static str {
+    match ty {
+        "string" | "*string" => "string",
+        "*float64" | "*uint64" => "number",
+        other => panic!("no JSON kind is declared for the Go type {other}"),
+    }
+}
+
+/// The JSON value kind a sample actually encoded.
+fn encoded_json_kind(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "bool",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
+}
+
 /// Checks one enum's encodings against the Go table it emits.
 ///
-/// Every key reaches a field, every field is reached, and both agree on
-/// order. Go emits struct fields in declaration order, and the corpus
-/// compares key order.
+/// Each sample carries exactly the fields its kind claims, in declaration
+/// order, and each value decodes as the kind its Go type declares. Go emits
+/// struct fields in declaration order, and the corpus compares key order.
 fn check_keys<'a>(samples: impl Iterator<Item = (String, &'a str)>, fields: &[Field]) {
-    let known: BTreeSet<String> = fields
-        .iter()
-        .map(|field| json_name(field).to_owned())
-        .collect();
-    let mut seen: BTreeSet<String> = BTreeSet::new();
-    for (encoded, kind) in samples {
+    let samples: Vec<(String, &str)> = samples.collect();
+    let sampled: BTreeSet<&str> = samples.iter().map(|(_, kind)| *kind).collect();
+    for field in fields {
+        for kind in field.kinds {
+            assert!(
+                sampled.contains(kind),
+                "{} is declared on {kind}, which no sample carries",
+                field.ident
+            );
+        }
+    }
+
+    for (encoded, kind) in &samples {
         assert!(
             encoded.starts_with(&format!(r#"{{"kind":"{kind}""#)),
             "the emitter and serde disagree about a kind: {encoded}"
         );
+        let carried: Vec<&Field> = fields
+            .iter()
+            .filter(|field| field.kinds.contains(kind))
+            .collect();
+        let decoded = serde_json::from_str::<serde_json::Value>(encoded).expect("decode");
+        let object = decoded.as_object().expect("a message encodes as an object");
+
+        let keys: BTreeSet<&str> = object.keys().map(String::as_str).collect();
+        let declared: BTreeSet<&str> = carried.iter().copied().map(json_name).collect();
+        assert_eq!(
+            keys, declared,
+            "{kind} and its Go field table disagree: {encoded}"
+        );
+
         let mut previous = 0;
-        for field in fields {
+        for field in carried {
             let key = json_name(field);
-            let Some(at) = encoded.find(&format!(r#""{key}":"#)) else {
-                continue;
-            };
+            let at = encoded
+                .find(&format!(r#""{key}":"#))
+                .expect("a checked key is on the wire");
             assert!(at >= previous, "{key} is out of order in {encoded}");
             previous = at;
-            seen.insert(key.to_owned());
+            let value = &object[key];
+            assert_eq!(
+                encoded_json_kind(value),
+                declared_json_kind(field.ty),
+                "{} is {} in Go and {kind} encodes {key} as {value}",
+                field.ident,
+                field.ty
+            );
         }
-        let keys: BTreeSet<String> = serde_json::from_str::<serde_json::Value>(&encoded)
-            .expect("decode")
-            .as_object()
-            .expect("a message encodes as an object")
-            .keys()
-            .cloned()
-            .collect();
-        assert!(
-            keys.is_subset(&known),
-            "a wire key has no Go field: {encoded}"
-        );
     }
-    assert_eq!(seen, known, "a Go field is not on the wire any more");
 }
 
 #[test]
@@ -263,6 +312,29 @@ fn the_committed_go_file_is_what_the_emitter_writes() {
         "{} is stale. github.com/shep-pm/shep-go/channel vendors these bytes as channel/wire.go.",
         path.display()
     );
+}
+
+/// Go refuses a redeclared constant, and no Go compiler runs in this gate.
+#[test]
+fn the_const_block_declares_each_identifier_once() {
+    let emitted = emit();
+    let block = emitted
+        .split("const (\n")
+        .nth(1)
+        .expect("a const block")
+        .split("\n)\n")
+        .next()
+        .expect("the const block closes");
+    let mut declared: BTreeSet<&str> = BTreeSet::new();
+    for line in block.lines() {
+        let Some((ident, _)) = line.trim().split_once(" = ") else {
+            continue;
+        };
+        assert!(
+            declared.insert(ident),
+            "{ident} is declared twice in the const block"
+        );
+    }
 }
 
 #[test]
