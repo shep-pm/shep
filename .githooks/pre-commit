@@ -20,6 +20,7 @@ config=$(git rev-parse --show-toplevel)/_typos.toml
 # typos' own filters: `[files] extend-exclude` in _typos.toml, and the binary
 # sniff that keeps it from reading a PNG as prose. Handed a directory it walks
 # it and applies both, which is what the `typos` job in test.yml does. Walking
-# skips dotfiles unless asked, and the staged set holds `.github/` more weeks
-# than not, so `--hidden` is what keeps this the same gate as CI's.
+# skips dotfiles by default; `_typos.toml` sets `files.ignore-hidden = false`
+# so the staged set's `.github/` is scanned both here and by CI. `--hidden`
+# stays as a belt-and-suspenders match for that same config key.
 cd "$staged" && typos --config "$config" --hidden .
