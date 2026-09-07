@@ -9,7 +9,7 @@
 //! [`HelloAck`](shep_core::protocol::HelloAck) [`Client::daemon`] holds. It
 //! still issues `Request::Ping` as the liveness check.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use shep_client::Client;
 use shep_core::paths::ShepPaths;
@@ -95,7 +95,17 @@ async fn describe_selector(
     match client.request(Request::Describe { selector }).await {
         Ok(Response::Described(procs)) => {
             let secrets = if include_secrets {
-                gather_secrets(paths, &procs)
+                let (rows, unreadable) = gather_secrets(paths, &procs);
+                if let Some(error) = unreadable {
+                    let message = format!(
+                        "the secret store at {} could not be read ({error}), so every \
+                         reference below reads as missing whether or not the store holds \
+                         a value for it",
+                        paths.secrets.display()
+                    );
+                    streams.aside(SECRET_STORE_UNREADABLE_NOTICE, &message);
+                }
+                rows
             } else {
                 Vec::new()
             };
@@ -159,9 +169,22 @@ fn render_describe_secrets(entries: &[(&str, &str, Resolution<'_>)]) -> String {
 /// A name the roll does not know, or one with no `{{secret:...}}` at all,
 /// contributes nothing: this reports references that exist, not a claim
 /// that every sheep has one.
-fn gather_secrets(paths: &ShepPaths, procs: &[ProcessInfo]) -> Vec<DescribedSecret> {
+///
+/// The second half of the answer is why the operator's own store is empty,
+/// when it is empty because it would not read. Folding that into an empty
+/// store on its own would print `missing` beside every bare reference and
+/// send the operator to `shep secret set` for values the store may already
+/// hold. Rows are still produced, so a sheep needing nothing still
+/// describes; the caller has the [`Streams`] to say so on.
+fn gather_secrets(
+    paths: &ShepPaths,
+    procs: &[ProcessInfo],
+) -> (Vec<DescribedSecret>, Option<secrets::SecretError>) {
     let roll = read_roll(paths);
-    let store = secrets::all(&paths.secrets).unwrap_or_default();
+    let (store, unreadable) = match secrets::all(&paths.secrets) {
+        Ok(store) => (store, None),
+        Err(error) => (BTreeMap::new(), Some(error)),
+    };
     let providers = secrets::provider_cache_on_disk(&paths.secrets_cache);
     let host_environment = daemon_config(paths).daemon.environment;
 
@@ -202,8 +225,13 @@ fn gather_secrets(paths: &ShepPaths, procs: &[ProcessInfo]) -> Vec<DescribedSecr
             });
         }
     }
-    json
+    (json, unreadable)
 }
+
+/// [`emit_notice`](crate::output::emit_notice) code for the warning
+/// `describe` prints when the operator's secret store will not read. Not a
+/// failure: the sheep still describes.
+const SECRET_STORE_UNREADABLE_NOTICE: &str = "secret_store_unreadable";
 
 /// Whatever `flock.json` currently holds, or nothing when it is missing or
 /// will not parse.
@@ -959,6 +987,73 @@ mod tests {
         assert_eq!(entries[0]["environment"], "staging");
         assert_eq!(entries[0]["status"], "uncached", "{entries:?}");
         assert!(!out_contains(&json, "sk_live"), "never a value");
+    }
+
+    /// A store that will not parse is not a store with nothing in it. The
+    /// verdicts still say `missing`, since nothing local can say otherwise,
+    /// but the operator is told why before being sent to `shep secret set`
+    /// for a value the store may already hold.
+    #[tokio::test]
+    async fn describe_says_the_store_would_not_read_rather_than_calling_keys_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, daemon) = fake_client_with_ack(&path, sample_ack()).await;
+        daemon.reply_to_describe(vec![
+            ProcessInfo::builder(1, "web", ProcStatus::Online).build(),
+        ]);
+        let home = dir.path().display().to_string();
+        let paths = ShepPaths::resolve(
+            &move |key| (key == "SHEP_HOME").then(|| home.clone()),
+            dir.path(),
+        );
+
+        let mut config = shep_core::config::AppConfig::minimal("web", "./srv");
+        config
+            .env
+            .insert("A".into(), "{{secret:DB_PASSWORD}}".into());
+        let roll = FlockSnapshot {
+            version: 1,
+            saved_at_ms: 0,
+            apps: vec![shep_daemon::snapshot::SavedApp {
+                app: config,
+                instances_running: 1,
+            }],
+        };
+        std::fs::write(&paths.snapshot, serde_json::to_vec(&roll).unwrap()).unwrap();
+        std::fs::write(&paths.secrets, b"{not json").unwrap();
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = Streams {
+                out: &mut out,
+                err: &mut err,
+                style: crate::style::Presentation::BARE,
+                fmt: Format::Table,
+            };
+            describe(
+                &client,
+                &mut streams,
+                &paths,
+                &SelectorArgs {
+                    selectors: vec!["all".into()],
+                },
+            )
+            .await
+        };
+
+        assert_eq!(code, ExitCode::Success);
+        let warning = String::from_utf8(err).unwrap();
+        assert!(
+            warning.contains("could not be read"),
+            "the notice has to say the store failed: {warning}"
+        );
+        assert!(
+            warning.contains(&paths.secrets.display().to_string()),
+            "and name the file: {warning}"
+        );
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(rendered.contains("DB_PASSWORD"), "{rendered}");
     }
 
     /// Whether `hunter2` shows up anywhere in `value`'s own JSON text, not
