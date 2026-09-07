@@ -2404,6 +2404,17 @@ mod tests {
     fn scene_all_lists_every_variant_the_compiler_can_see() {
         let mut walked = vec![Scene::HealthyWide];
         while let Some(next) = scene_after(*walked.last().unwrap()) {
+            // Bounded, because `scene_after` is a hand-kept chain and a
+            // variant wired back at an earlier one would otherwise spin here
+            // forever. Nextest has no per-test timeout, so an unbounded walk
+            // fails as a twenty-minute job timeout with no named test rather
+            // than as an assertion.
+            assert!(
+                walked.len() < Scene::ALL.len(),
+                "scene_after cycles: walked {} scenes without reaching the end of {}",
+                walked.len(),
+                Scene::ALL.len()
+            );
             walked.push(next);
         }
         assert_eq!(walked.as_slice(), Scene::ALL);
