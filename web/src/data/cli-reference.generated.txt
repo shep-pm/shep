@@ -474,7 +474,26 @@ Options:
   -V, --version
           Print version
 @@VERB:restart@@
-Restart one or more sheep
+Restart one or more sheep.
+
+The running process is killed and a new one spawned in its place, so there is a window with nothing
+serving. `shep reload` is the verb that closes that window, at the cost of caring how the app is
+configured.
+
+A selector matching one sheep is answered as soon as the respawn is issued, printing the flock as it
+stood at that moment.
+
+A selector matching two or more is walked in dependency order instead, and the reply waits: each
+stage is held until the apps a later stage depends on are back, so a fold comes back in the order
+its depends_on lines describe rather than all at once. The wait is the sum of the stages.
+
+That walk asks the shepherd once per app, so an app it could not restart is refused on its own and
+the rest of the fold restarts anyway. The rows printed are what the walk finished with, the app it
+went around is named on stderr, and the exit is non-zero. Under `--format json` the same names come
+back under refused in the one envelope.
+
+A sheep that came back errored is a different failure and is reported separately: that one was
+reached, and it is the child that could not start.
 
 Usage: shep restart [OPTIONS] <SELECTORS>...
 

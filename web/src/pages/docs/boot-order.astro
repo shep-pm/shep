@@ -282,13 +282,20 @@ error[invalid_config]: the daemon reported InvalidConfig: dependency cycle: api 
       once in the middle.
     </p>
     <p>
-      A reload asks the shepherd once per app, so an app already being
-      reloaded is refused on its own and the rest of the fold reloads
-      anyway. <code>shep reload</code> names the app it went around on
-      stderr and exits non-zero, and under <code>--format json</code> the
-      same names come back under <code>refused</code> in the one envelope:
-      a row missing from the table is not something a deploy script can
-      read.
+      Both verbs ask the shepherd once per app, so an app already being
+      reloaded, or one that left the flock after the walk was planned, is
+      refused on its own and the rest of the fold goes ahead.
+      <code>shep reload</code> and <code>shep restart</code> name the app
+      they went around on stderr and exit non-zero, and under{" "}
+      <code>--format json</code> the same names come back under{" "}
+      <code>refused</code> in the one envelope: a row missing from the table
+      is not something a deploy script can read.
+    </p>
+    <p class="fine">
+      A restart that came back <code>errored</code> is a different failure
+      and is reported separately, with its own exit code. That sheep was
+      reached and the restart was not refused; it is the child that could
+      not start.
     </p>
 
     <h2>What a staged start leaves behind</h2>
