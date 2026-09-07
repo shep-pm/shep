@@ -74,11 +74,18 @@ stays silent. `is_active()` is there for anyone who wants to branch anyway.
 
 **D4. Metrics are droppable. Readiness and replies are not.** One writer
 thread behind a bounded queue, 1024 messages by default. `metric` never
-blocks and never fails; on a full queue it drops the oldest and increments a
-counter the app can read. `ready` and action replies block until queued,
-because a lost `ready` hangs the `wait_ready` gate and a lost reply costs an
-operator the full `action_timeout`. The daemon logs metrics at debug level
-and nothing else reads them yet, so dropping one costs nothing today.
+blocks and never fails; on a full queue it drops a sample and increments a
+counter the app can read. The counter is the shared contract. Which sample
+goes is each language's own call: Rust evicts the oldest to make room, and
+Go drops the one being emitted, because evicting the oldest there needs a
+second `select` racing the writer for a queue it does not own. A value the
+wire cannot carry counts against the same counter, so Go drops a
+non-finite float rather than queueing a line that will not encode, where
+Rust writes `null` and lets the shepherd skip it. `ready` and action
+replies block until queued, because a lost `ready` hangs the `wait_ready`
+gate and a lost reply costs an operator the full `action_timeout`. The
+daemon logs metrics at debug level and nothing else reads them yet, so
+dropping one costs nothing today.
 
 **D5. A shutdown with no handler warns and does nothing.** The library never
 terminates an app that did not ask it to. It names the missing handler and
@@ -230,10 +237,13 @@ nothing and a pointer there would buy a nil check and no information.
 **The outbox is a buffered channel of 1024.** D4's split falls out of the
 language: a metric is a `select` with a `default` that counts a drop, and
 readiness and a reply are a blocking send raced against a closed channel.
-This differs from the Rust crate in one way worth knowing. Rust evicts an
+This differs from the Rust crate in two ways worth knowing. Rust evicts an
 already queued metric to admit a readiness message sooner, and Go makes
-readiness wait for the writer to drain one instead. The observable contract
-is the same and the Go version is a third of the code.
+readiness wait for the writer to drain one instead. A full queue also loses
+a different sample: Rust drops the oldest, and Go's `default` arm drops the
+one being emitted. The observable contract is the same, since what D4
+promises is the counter rather than the eviction order, and the Go version
+is a third of the code.
 
 **The type is `Shepherd`, matching Rust.** `channel.Serve()` returning
 `*channel.Channel` would stutter.
