@@ -159,16 +159,28 @@ async fn send_request(
 /// daemon may emit a [`BusEvent`] for a request before that request's own
 /// reply.
 ///
-/// A [`Reply`] whose id has no entry in `pending`, or a frame that fails
-/// to decode, is dropped silently: there is nobody left to tell, and no
-/// better recovery is available at this layer than to keep reading.
+/// A [`Reply`] whose id has no entry in `pending` is dropped silently:
+/// there is nobody left to tell. A frame that fails to decode is handled
+/// by id: if it names a pending request, that caller is failed with
+/// [`RequestError::Undecodable`] instead of waiting out its deadline for
+/// an answer that already arrived; an undecodable frame with no id (an
+/// event) is dropped, since nothing is waiting on it and a subscriber
+/// that cannot name it cannot act on it.
 fn route_frame(
     bytes: &[u8],
     pending: &mut HashMap<u64, oneshot::Sender<Result<Response, RequestError>>>,
     events: &broadcast::Sender<BusEvent>,
 ) {
-    let Ok(frame) = decode_frame::<ServerFrame>(bytes) else {
-        return;
+    let frame = match decode_frame::<ServerFrame>(bytes) {
+        Ok(frame) => frame,
+        Err(err) => {
+            if let Ok(ReplyIdOnly { id }) = decode_frame::<ReplyIdOnly>(bytes)
+                && let Some(reply_to) = pending.remove(&id)
+            {
+                let _ = reply_to.send(Err(RequestError::Undecodable(err)));
+            }
+            return;
+        }
     };
     match frame {
         ServerFrame::Reply(Reply { id, result }) => {
@@ -181,5 +193,57 @@ fn route_frame(
         }
         // `ServerFrame` is `#[non_exhaustive]`: an unknown variant is ignored, not fatal.
         _ => {}
+    }
+}
+
+/// Enough of a `Reply` to recover its id when the `Response` payload
+/// itself does not decode. `result` is deliberately not a field: this
+/// exists to name a waiting caller, not to recover the payload it wanted.
+#[derive(serde::Deserialize)]
+struct ReplyIdOnly {
+    id: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use futures_util::FutureExt;
+
+    use super::*;
+    use crate::client::RequestError;
+
+    /// A reply this build cannot decode used to be dropped, leaving the
+    /// caller to wait out its deadline for an answer that had already
+    /// arrived. It must fail the caller by id instead.
+    #[test]
+    fn an_undecodable_reply_fails_its_caller_by_id_rather_than_hanging() {
+        let (tx, rx) = oneshot::channel();
+        let mut pending = HashMap::from([(7_u64, tx)]);
+        let (events, _) = broadcast::channel(4);
+
+        route_frame(
+            br#"{"id":7,"result":{"Ok":{"kind":"from_the_future","data":{"a":1}}}}"#,
+            &mut pending,
+            &events,
+        );
+
+        let got = rx.now_or_never().expect("the caller must be answered now");
+        assert!(matches!(got, Ok(Err(RequestError::Undecodable(_)))));
+        assert!(pending.is_empty(), "the pending entry must be cleared");
+    }
+
+    /// An event this build cannot decode is still just dropped. Nothing is
+    /// waiting on it, and a subscriber that cannot name it cannot act on it.
+    #[test]
+    fn an_undecodable_event_is_dropped_without_disturbing_the_connection() {
+        let mut pending = HashMap::new();
+        let (events, mut sub) = broadcast::channel(4);
+
+        route_frame(
+            br#"{"event":"from_the_future","data":{"a":1}}"#,
+            &mut pending,
+            &events,
+        );
+
+        assert!(sub.try_recv().is_err(), "nothing decodable to deliver");
     }
 }
