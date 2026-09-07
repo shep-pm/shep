@@ -579,21 +579,30 @@ pub(crate) fn create_default_home(
     Ok(())
 }
 
-/// Parses, resolves `$SHEP_HOME` for the verbs that need it, and dispatches
-/// to the verb's own module.
+/// Resolves command paths and dispatches the parsed command to its handler.
 ///
-/// Every command receives an already-connected client; no verb module
-/// connects or autostarts. `Start` and `Muster` are the only two arms that
-/// bring a shepherd up, through [`connect_or_spawn_client`].
+/// Commands that require a home are given the resolved paths, while commands
+/// with independent path or lifecycle handling are dispatched directly. Command
+/// handlers receive an existing client when one is required; only commands that
+/// explicitly start or restore a shepherd may autostart it.
 ///
-/// `Startup` and `Unstartup` skip the shared `$SHEP_HOME` gate below: with
-/// no `--home`/`$SHEP_HOME` the unit's home is the TARGET user's passwd
-/// home, which the gate would get wrong under `sudo`, and a named one goes
-/// through [`ensure_home`] inside the `Startup` arm. `unstartup` ignores
-/// `--home` entirely, since a removal is addressed by the unit's path and
-/// label alone. `style` is already forced to [`style::StyleLevel::Bare`] if
-/// the hard rule applies; `resolved_style` is the unforced pair
-/// `Commands::Style` and the lookout settings screen read.
+/// # Examples
+///
+/// ```no_run
+/// # let cli: Cli = todo!();
+/// # let style: style::Presentation = todo!();
+/// # let resolved_style: (style::StyleLevel, style::StyleSource) = todo!();
+/// let _exit_code = run(cli, style, resolved_style).await;
+/// ```
+///
+/// # Parameters
+///
+/// * `resolved_style` — The configured style and its source before any
+///   command-specific rendering override is applied.
+///
+/// # Returns
+///
+/// The exit code produced by the selected command.
 async fn run(
     cli: Cli,
     style: style::Presentation,

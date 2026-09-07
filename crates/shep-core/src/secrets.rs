@@ -105,6 +105,14 @@ pub enum SecretError {
 }
 
 impl fmt::Display for SecretError {
+    /// Formats the secret storage error as a user-facing message.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let error = SecretError::InvalidKey("bad key".to_owned());
+    /// assert_eq!(error.to_string(), "`bad key` is not a valid secret key");
+    /// ```
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Io(err) => write!(f, "secret store I/O failed: {err}"),
@@ -126,6 +134,18 @@ impl fmt::Display for SecretError {
 }
 
 impl core::error::Error for SecretError {
+    /// Exposes the underlying error for I/O and decoding failures.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let error = SecretError::InvalidKey("invalid name".to_owned());
+    /// assert!(std::error::Error::source(&error).is_none());
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// `Some` for errors with an underlying cause, or `None` when the error is self-contained.
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
             Self::Io(err) => Some(err),
@@ -183,11 +203,20 @@ fn check_key(key: &str) -> Result<(), SecretError> {
     }
 }
 
-/// Checks one environment name against the grammar.
+/// Validates an environment name.
 ///
 /// # Errors
-/// [`SecretError::InvalidEnvironment`]: the same conditions [`check_key`]
-/// refuses, so a name can never contain a `/`.
+///
+/// Returns [`SecretError::InvalidEnvironment`] if the name is empty, exceeds
+/// the allowed length, starts with a dot, or contains a character outside
+/// `[A-Za-z0-9._-]`.
+///
+/// # Examples
+///
+/// ```
+/// assert!(check_environment("production").is_ok());
+/// assert!(check_environment("invalid/name").is_err());
+/// ```
 fn check_environment(environment: &str) -> Result<(), SecretError> {
     if is_name(environment) {
         Ok(())
@@ -196,14 +225,16 @@ fn check_environment(environment: &str) -> Result<(), SecretError> {
     }
 }
 
-/// The lock file that guards `path`: its own name with `.lock` appended, so
-/// it sits in `$SHEP_HOME` next to the store and inherits that directory's
-/// `0700`.
+/// Returns the sibling lock-file path by appending `.lock` to the store filename.
 ///
-/// `cfg(any(unix, windows))` alongside its two callers: [`SecretLock::acquire`]
-/// names a real lock file on both platforms, unix through `flock(2)` and
-/// windows through an exclusive `share_mode(0)` open.
-#[cfg(any(unix, windows))]
+/// # Examples
+///
+/// ```
+/// use std::path::{Path, PathBuf};
+///
+/// let path = Path::new("secrets.json");
+/// assert_eq!(lock_path(path), PathBuf::from("secrets.json.lock"));
+/// ```
 fn lock_path(path: &Path) -> PathBuf {
     let mut name = path
         .file_name()
@@ -301,11 +332,21 @@ impl SecretLock {
     }
 }
 
-/// Reads whichever version of the store `path` currently names.
+/// Reads the secret store at `path`, treating a missing file as an empty store.
 ///
-/// A missing file reads as an empty, current-version store: reading against
-/// a fresh `$SHEP_HOME` should not fail with `ENOENT`. Any other
-/// `io::Error` propagates.
+/// Files with a version newer than `SECRETS_VERSION` are rejected. Other I/O
+/// and JSON decoding errors are returned to the caller.
+///
+/// # Examples
+///
+/// ```
+/// let path = std::env::temp_dir().join("shep-read-file-example.json");
+/// let _ = std::fs::remove_file(&path);
+///
+/// let store = read_file(&path)?;
+/// assert_eq!(store.version, SECRETS_VERSION);
+/// # Ok::<(), SecretError>(())
+/// ```
 fn read_file(path: &Path) -> Result<SecretFile, SecretError> {
     let raw = match std::fs::read_to_string(path) {
         Ok(raw) => raw,
@@ -319,8 +360,15 @@ fn read_file(path: &Path) -> Result<SecretFile, SecretError> {
     Ok(file)
 }
 
-/// Rewrites `path` to hold exactly `file`, atomically: staged through a
-/// temp file, then renamed over the original.
+/// Replaces `path` with the serialized secret file using an atomic update.
+///
+/// # Examples
+///
+/// ```no_run
+/// let file = SecretFile::default();
+/// write_file(Path::new("secrets.json"), &file)?;
+/// # Ok::<(), SecretError>(())
+/// ```
 fn write_file(path: &Path, file: &SecretFile) -> Result<(), SecretError> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let mut tmp = crate::atomic_file::create_staging_file(parent, "secrets", ".tmp")?;
@@ -342,40 +390,53 @@ fn write_file(path: &Path, file: &SecretFile) -> Result<(), SecretError> {
     Ok(())
 }
 
-/// Every key in the store with its per-environment values, in key order.
+/// Reads all stored secrets, preserving their key and environment ordering.
 ///
-/// Takes no lock, so a caller that must not block never does: the daemon
-/// reads this from inside its actor loop, once per spawn, once per app at
-/// preflight, and once more each time a sheep's extras arm on the way to
-/// `Online`. That is safe because a writer publishes by renaming a fully
-/// written file over this one, so a reader sees the whole store either
-/// before or after a `set`/`unset`, never a fragment of one. The lock
-/// [`set`] and [`unset`] take is what orders those read-modify-writes
-/// against each other.
+/// A missing store is treated as empty. The store is read without acquiring the
+/// write lock.
 ///
 /// # Errors
 ///
-/// - [`SecretError::Io`]: the store could not be opened or read. A store
-///   that is simply absent is not an error: it reads as empty.
-/// - [`SecretError::Decode`]: the file is not the JSON this module writes.
-/// - [`SecretError::FutureVersion`]: the file's `version` is newer than
-///   [`SECRETS_VERSION`]. Nothing is read and nothing is written.
+/// Returns [`SecretError::Io`] for read failures, [`SecretError::Decode`] for
+/// invalid store contents, or [`SecretError::FutureVersion`] for unsupported
+/// future versions.
+///
+/// # Examples
+///
+/// ```
+/// # use std::path::Path;
+/// # use tempfile::tempdir;
+/// #
+/// let directory = tempdir()?;
+/// let entries = all(&directory.path().join("secrets.json"))?;
+/// assert!(entries.is_empty());
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub fn all(path: &Path) -> Result<BTreeMap<String, BTreeMap<String, String>>, SecretError> {
     Ok(read_file(path)?.entries)
 }
 
-/// The value stored under `key` for exactly `environment`, if there is one.
+/// Retrieves the value stored for an exact key and environment.
 ///
-/// The stored slot, not the resolved value: there is no fallback to
-/// [`ALL_ENVIRONMENTS`] here. [`SecretView::resolve`] is what a config
-/// reference goes through.
+/// The stored slot is returned directly; the [`ALL_ENVIRONMENTS`] fallback is
+/// not applied. Configuration references should use [`SecretView::resolve`].
 ///
 /// # Errors
 ///
-/// [`SecretError::InvalidKey`] and [`SecretError::InvalidEnvironment`] for
-/// names outside the grammar (refused before the file is opened, so a
-/// malformed name never creates one), plus `Io`, `Decode` and
-/// `FutureVersion` exactly as [`all`] returns them.
+/// Returns [`SecretError::InvalidKey`] or [`SecretError::InvalidEnvironment`]
+/// for invalid names, or the same I/O, decoding, and future-version errors as
+/// [`all`].
+///
+/// # Examples
+///
+/// ```
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// use std::path::Path;
+///
+/// let value = get(Path::new("secrets.json"), "API_KEY", "production")?;
+/// # Ok(())
+/// # }
+/// ```
 pub fn get(path: &Path, key: &str, environment: &str) -> Result<Option<String>, SecretError> {
     check_key(key)?;
     check_environment(environment)?;
@@ -418,15 +479,28 @@ pub fn set(path: &Path, key: &str, environment: &str, value: &str) -> Result<(),
     write_file(path, &file)
 }
 
-/// Removes `key`'s value for `environment`, returning whether it was there.
+/// Removes a secret value for an environment and reports whether it existed.
 ///
-/// A key whose last environment this removes goes with it, so the store
-/// never accumulates keys that hold nothing.
+/// If the removed value was the key's last environment-specific value, the key is
+/// removed from the store.
 ///
 /// # Errors
 ///
-/// The same set [`set`] returns, minus [`SecretError::ValueTooLong`]:
-/// `InvalidKey`, `InvalidEnvironment`, `FutureVersion`, `Decode`, `Io`.
+/// Returns [`SecretError::InvalidKey`] or [`SecretError::InvalidEnvironment`] for
+/// invalid names, [`SecretError::FutureVersion`] for an unsupported store version,
+/// [`SecretError::Decode`] for malformed store data, or [`SecretError::Io`] for
+/// filesystem errors.
+///
+/// # Examples
+///
+/// ```
+/// # use std::fs;
+/// # let path = std::env::temp_dir().join(format!("secrets-{}.json", std::process::id()));
+/// set(&path, "API_KEY", "production", "secret").unwrap();
+/// assert!(unset(&path, "API_KEY", "production").unwrap());
+/// assert!(!unset(&path, "API_KEY", "production").unwrap());
+/// # fs::remove_file(path).ok();
+/// ```
 pub fn unset(path: &Path, key: &str, environment: &str) -> Result<bool, SecretError> {
     check_key(key)?;
     check_environment(environment)?;
@@ -460,11 +534,15 @@ pub struct SecretRef<'a> {
 }
 
 impl<'a> SecretRef<'a> {
-    /// Parses the body of a `{{secret:...}}` token, braces and prefix
-    /// already stripped.
+    /// Parses a secret reference body into an optional namespace and key.
     ///
-    /// Returns `None` for anything outside the grammar, which is how a
-    /// config refuses a bad reference before a sheep ever starts.
+    /// # Examples
+    ///
+    /// ```
+    /// let reference = SecretRef::parse("production/API_KEY").unwrap();
+    /// assert_eq!(reference.namespace, Some("production"));
+    /// assert_eq!(reference.key, "API_KEY");
+    /// ```
     #[must_use]
     pub fn parse(body: &'a str) -> Option<Self> {
         match body.split_once('/') {
@@ -482,6 +560,14 @@ impl<'a> SecretRef<'a> {
 }
 
 impl fmt::Display for SecretRef<'_> {
+    /// Formats the secret reference using its optional namespace and key.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let reference = SecretRef::parse("production/API_KEY").unwrap();
+    /// assert_eq!(reference.to_string(), "{{secret:production/API_KEY}}");
+    /// ```
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("{{secret:")?;
         if let Some(namespace) = self.namespace {
@@ -532,11 +618,14 @@ pub fn references(config: &AppConfig) -> BTreeSet<String> {
     found
 }
 
-/// The provider namespaces [`references`] names, derived with
-/// [`SecretRef::parse`] and kept to the namespaced half.
+/// Collects the provider namespaces referenced by an application configuration.
 ///
-/// No I/O of its own: the seam boot-dependency ordering asks "which
-/// provider namespaces does this sheep depend on" through.
+/// # Examples
+///
+/// ```
+/// let config = AppConfig::default();
+/// assert!(namespaces_of(&config).is_empty());
+/// ```
 #[must_use]
 pub fn namespaces_of(config: &AppConfig) -> BTreeSet<String> {
     references(config)
@@ -623,16 +712,20 @@ impl fmt::Debug for ProviderCacheFile {
 /// on the other into an empty cache, with nothing to say why.
 pub const PROVIDER_CACHE_VERSION: u32 = 2;
 
-/// The provider cache as `secrets-cache.json` currently holds it on disk,
-/// or nothing when the file is missing, will not parse, or is a version
-/// this build does not understand.
+/// Loads the persisted provider cache from a JSON file.
 ///
-/// Best-effort, more so than [`all`]: a namespace whose provider pushed
-/// with `persist = false` never reaches this file at all, so a caller here
-/// can under-report `MissingNamespace` for a pair the running shepherd
-/// currently holds in memory. A caller that needs the shepherd's live
-/// answer has to ask it directly rather than read this file.
-#[must_use]
+/// Returns an empty cache when the file is missing, malformed, or uses an
+/// unsupported version. The persisted cache may omit values held only in
+/// memory.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::Path;
+///
+/// let cache = provider_cache_on_disk(Path::new("secrets-cache.json"));
+/// assert!(cache.values.is_empty());
+/// ```
 pub fn provider_cache_on_disk(path: &Path) -> ProviderCache {
     let Ok(raw) = std::fs::read_to_string(path) else {
         return ProviderCache::default();
@@ -671,8 +764,18 @@ impl fmt::Debug for SecretView {
 }
 
 impl SecretView {
-    /// A view over `store` and `providers`, resolved for `environment`.
-    #[must_use]
+    /// Creates a secret-resolution view for a specific environment.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let view = SecretView::new(
+    ///     "production".to_owned(),
+    ///     BTreeMap::new(),
+    ///     ProviderCache::default(),
+    /// );
+    /// assert_eq!(view.environment(), "production");
+    /// ```
     pub fn new(
         environment: String,
         store: BTreeMap<String, BTreeMap<String, String>>,
@@ -685,9 +788,14 @@ impl SecretView {
         }
     }
 
-    /// A view holding nothing, so a bare reference resolves to
-    /// [`Resolution::MissingKey`] and a namespaced one to
-    /// [`Resolution::MissingNamespace`].
+    /// Creates a secret view with no operator or provider values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let view = SecretView::empty("production".to_owned());
+    /// assert_eq!(view.environment(), "production");
+    /// ```
     #[must_use]
     pub fn empty(environment: String) -> Self {
         Self::new(environment, BTreeMap::new(), ProviderCache::default())
@@ -699,20 +807,24 @@ impl SecretView {
         &self.environment
     }
 
-    /// The value `reference` resolves to in this view's environment.
+    /// Resolves a secret reference for this view's environment.
     ///
-    /// Exact environment, then [`ALL_ENVIRONMENTS`], then nothing. There is
-    /// deliberately no fallback to another named environment: filling an
-    /// empty `staging` slot from `production` would hand a live credential
-    /// to staging the first time somebody forgot to set one.
+    /// The exact environment is checked first, followed by [`ALL_ENVIRONMENTS`].
+    /// Named environments are never used as fallbacks. A namespaced reference
+    /// reports [`Resolution::MissingNamespace`] until its provider has pushed the
+    /// view's environment for that namespace.
     ///
-    /// A miss on a namespaced reference is [`Resolution::MissingNamespace`]
-    /// unless a provider has pushed this view's own environment for that
-    /// namespace: a push carries one `(namespace, environment)` pair, so a
-    /// dog part way through `production` then `staging` has said nothing
-    /// about staging yet, and calling that a missing key would `Errored` a
-    /// staging sheep permanently for a value arriving a second later.
-    #[must_use]
+    /// # Examples
+    ///
+    /// ```
+    /// let view = SecretView::empty("production");
+    /// let reference = SecretRef::parse("API_KEY").unwrap();
+    ///
+    /// assert!(matches!(
+    ///     view.resolve(&reference),
+    ///     Resolution::MissingKey
+    /// ));
+    /// ```
     pub fn resolve(&self, reference: &SecretRef<'_>) -> Resolution<'_> {
         let table = match reference.namespace {
             None => Some(&self.store),
@@ -736,15 +848,16 @@ impl SecretView {
         }
     }
 
-    /// Whether a provider has pushed `namespace` for this view's own
-    /// environment or for [`ALL_ENVIRONMENTS`].
+    /// Reports whether a provider namespace has been pushed for this environment or for [`ALL_ENVIRONMENTS`].
     ///
-    /// A push to [`ALL_ENVIRONMENTS`] populates the namespace for every
-    /// environment, [`resolve`](Self::resolve)'s value lookup included, so
-    /// the pair check has to agree: a namespace pushed only under `all`
-    /// counts as pushed here too, or a key genuinely absent from that push
-    /// would read as the transient `MissingNamespace` instead of the
-    /// permanent `MissingKey` it actually is.
+    /// A push for [`ALL_ENVIRONMENTS`] applies to every environment.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # let pushed = true;
+    /// assert!(pushed);
+    /// ```
     fn is_pushed(&self, namespace: &str) -> bool {
         self.providers
             .pushed

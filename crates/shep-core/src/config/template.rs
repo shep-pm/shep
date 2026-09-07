@@ -25,14 +25,17 @@ const TOKENS: &[&str] = &["instance", "name"];
 /// The prefix marking a store lookup, as it appears inside the braces.
 const SECRET_PREFIX: &str = "secret:";
 
-/// The store reference `token` names, or `None` when it is not a well-formed
-/// `{{secret:...}}` body.
+/// Parses a `secret:` token into a secret reference.
 ///
-/// [`SecretRef::parse`] is the only grammar for a reference, so a token
-/// [`validate`] accepts is one [`render`] can parse.
+/// Returns `None` when the token does not use the `secret:` prefix or contains
+/// an invalid secret reference.
 ///
-/// `pub(crate)`: [`crate::secrets::references`] shares this rather than
-/// re-deriving what a `secret:` body is.
+/// # Examples
+///
+/// ```
+/// assert!(secret_reference("secret:KEY").is_some());
+/// assert!(secret_reference("secret:").is_none());
+/// ```
 pub(crate) fn secret_reference(token: &str) -> Option<SecretRef<'_>> {
     token.strip_prefix(SECRET_PREFIX).and_then(SecretRef::parse)
 }
@@ -54,6 +57,14 @@ pub(crate) enum TemplateError {
 }
 
 impl fmt::Display for TemplateError {
+    /// Formats the template error as a user-facing validation message.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let error = TemplateError::Unclosed;
+    /// assert_eq!(error.to_string(), "a `{{` in this value is never closed by a `}}`");
+    /// ```
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnknownToken { token } if token.starts_with(SECRET_PREFIX) => write!(
@@ -113,11 +124,17 @@ pub enum RenderError {
 }
 
 impl RenderError {
-    /// Whether waiting could make this reference resolve.
+    /// Determines whether retrying may allow the render to succeed.
     ///
-    /// `true` for [`Self::NamespaceUnready`] alone: a provider dog that has
-    /// not pushed this environment yet is the one failure a later attempt
-    /// can clear. An [`Self::Unresolved`] waits on a person instead.
+    /// Returns `true` only for [`Self::NamespaceUnready`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// fn should_retry(error: &RenderError) -> bool {
+    ///     error.is_retriable()
+    /// }
+    /// ```
     #[must_use]
     pub fn is_retriable(&self) -> bool {
         matches!(self, Self::NamespaceUnready { .. })
@@ -169,22 +186,27 @@ pub(crate) enum Completion {
     Unclosed,
 }
 
-/// Walks `value`, calling `on_segment` for each literal run and each token.
+/// Visits each literal segment and template token in `value`.
 ///
-/// One walker, one closure, so [`validate`], [`render`], [`render_positional`]
-/// and [`crate::secrets::references`] can never disagree about what a token
-/// is.
-///
-/// Generic over the closure's error so each caller keeps its own, with an
-/// unclosed `{{` reported through [`Completion`] rather than as an error
-/// every caller would have to be able to spell.
-///
-/// `pub(crate)`: [`crate::secrets::references`] walks a config's own values
-/// for `{{secret:...}}` tokens rather than parsing them a second way.
+/// Escaped double braces are reported as literal braces. Scanning stops with
+/// [`Completion::Unclosed`] when an opening `{{` has no matching `}}`.
 ///
 /// # Errors
 ///
-/// Whatever `on_segment` returns, at the first segment it refuses.
+/// Returns the first error produced by `on_segment`.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let mut segments = Vec::new();
+/// let completion = walk("hello {{name}}", |segment| {
+///     segments.push(segment);
+///     Ok::<(), ()>(())
+/// })?;
+///
+/// assert_eq!(completion, Completion::Complete);
+/// # Ok::<(), ()>(())
+/// ```
 pub(crate) fn walk<E>(
     value: &str,
     mut on_segment: impl FnMut(Segment<'_>) -> Result<(), E>,
@@ -220,20 +242,38 @@ pub(crate) fn walk<E>(
     Ok(Completion::Complete)
 }
 
-/// Writes `token` back with its braces, for a token the caller leaves alone.
+/// Appends a token enclosed in double braces to the output string.
+///
+/// # Examples
+///
+/// ```
+/// let mut output = String::from("Value: ");
+/// push_token(&mut output, "name");
+/// assert_eq!(output, "Value: {{name}}");
+/// ```
 fn push_token(out: &mut String, token: &str) {
     out.push_str("{{");
     out.push_str(token);
     out.push_str("}}");
 }
 
-/// The value `reference` names in `secrets`.
+/// Resolves a secret reference against the available secrets.
 ///
 /// # Errors
 ///
-/// - [`RenderError::NamespaceUnready`]: the reference names a namespace no
-///   provider has pushed for this view's environment.
-/// - [`RenderError::Unresolved`]: every other miss.
+/// Returns [`RenderError::NamespaceUnready`] when the reference targets a
+/// namespace that has not provided secrets for the view's environment.
+/// Returns [`RenderError::Unresolved`] when the reference cannot be resolved
+/// to a secret value.
+///
+/// # Examples
+///
+/// ```ignore
+/// let reference = SecretRef::parse("secret:API_KEY").unwrap();
+/// let value = resolve_secret(&reference, &secrets)?;
+/// assert_eq!(value, "secret-value");
+/// # Ok::<(), RenderError>(())
+/// ```
 fn resolve_secret<'a>(
     reference: &SecretRef<'_>,
     secrets: &'a SecretView,
@@ -254,12 +294,18 @@ fn resolve_secret<'a>(
     }
 }
 
-/// Whether `value` carries a `{{secret:...}}` this grammar would resolve.
+/// Determines whether a value contains a secret reference recognized by the template grammar.
 ///
-/// `pub(crate)`: `normalize` asks it of the two log-path fields, which may
-/// not hold a secret. Walks the same tokenizer [`render`] resolves against,
-/// so a reference this misses is one `render` would not have substituted
-/// either.
+/// # Examples
+///
+/// ```
+/// assert!(holds_secret("path/{{secret:API_KEY}}"));
+/// assert!(!holds_secret("path/{{name}}"));
+/// ```
+///
+/// # Returns
+///
+/// `true` if the value contains a valid secret reference, `false` otherwise.
 pub(crate) fn holds_secret(value: &str) -> bool {
     let mut found = false;
     let _ = walk::<Infallible>(value, |segment| {
@@ -273,15 +319,20 @@ pub(crate) fn holds_secret(value: &str) -> bool {
     found
 }
 
-/// Checks that every `{{...}}` in `value` names a token this grammar defines.
-///
-/// `pub(crate)`: only `normalize` asks this, at config time. [`render`] stays
-/// public since shep-daemon's `assemble` runs it on already-validated values.
+/// Validates that every `{{...}}` expression in `value` is a supported positional token or secret reference.
 ///
 /// # Errors
 ///
-/// - [`TemplateError::UnknownToken`]: a token this grammar does not define.
-/// - [`TemplateError::Unclosed`]: a `{{` with no closing `}}`.
+/// Returns [`TemplateError::UnknownToken`] for unsupported or malformed tokens, or
+/// [`TemplateError::Unclosed`] when an opening `{{` has no closing `}}`.
+///
+/// # Examples
+///
+/// ```
+/// assert!(validate("{{name}}/{{secret:API_KEY}}").is_ok());
+/// assert!(validate("{{unknown}}").is_err());
+/// ```
+pub(crate) fn validate(value: &str) -> Result<(), TemplateError> {
 pub(crate) fn validate(value: &str) -> Result<(), TemplateError> {
     let completion = walk(value, |segment| match segment {
         Segment::Literal(_) => Ok(()),
@@ -298,15 +349,18 @@ pub(crate) fn validate(value: &str) -> Result<(), TemplateError> {
     }
 }
 
-/// Substitutes `{{instance}}` and `{{name}}` only, leaving every other
-/// token, `{{secret:...}}` included, exactly as written.
+/// Substitutes the `{{instance}}` and `{{name}}` tokens while preserving all other content.
 ///
-/// For callers that have no store to consult. `normalize` uses it to compare
-/// two instances' log paths, where a secret resolves to the same value for
-/// both instances and so cannot tell them apart anyway.
+/// # Examples
 ///
-/// Call `validate` first: an unclosed `{{` renders truncated at that
-/// point.
+/// ```
+/// let rendered = render_positional(
+///     "logs/{{name}}/{{instance}}/{{secret:API_KEY}}",
+///     "web",
+///     3,
+/// );
+/// assert_eq!(rendered, "logs/web/3/{{secret:API_KEY}}");
+/// ```
 #[must_use]
 pub fn render_positional(value: &str, name: &str, instance: u32) -> String {
     let mut out = String::with_capacity(value.len());
@@ -323,20 +377,25 @@ pub fn render_positional(value: &str, name: &str, instance: u32) -> String {
     out
 }
 
-/// Substitutes every token in `value`, resolving `{{secret:...}}` against
-/// `secrets`.
+/// Renders positional tokens and resolves secret references in `value`.
 ///
-/// Call `validate` first: this assumes the grammar already passed, so a
-/// token this grammar does not define is written back as it was, and an
-/// unclosed `{{` renders truncated at that point.
+/// Unknown tokens are preserved with their braces. An unclosed token renders
+/// only the content preceding it.
 ///
 /// # Errors
 ///
-/// - [`RenderError::Unresolved`]: a reference the store has no value for in
-///   this view's environment. Nothing but a person will supply it.
-/// - [`RenderError::NamespaceUnready`]: a namespace no provider dog has
-///   pushed to for this view's environment yet.
-///   [`RenderError::is_retriable`] is `true` for this one alone.
+/// Returns [`RenderError::Unresolved`] when a secret has no value in the
+/// target environment, or [`RenderError::NamespaceUnready`] when its
+/// namespace is not yet available. Only the latter is retriable.
+///
+/// # Examples
+///
+/// ```no_run
+/// # let secrets: &SecretView = todo!();
+/// let rendered = render("deploy-{{name}}-{{instance}}", "api", 3, secrets)?;
+/// assert_eq!(rendered, "deploy-api-3");
+/// # Ok::<(), RenderError>(())
+/// ```
 pub fn render(
     value: &str,
     name: &str,

@@ -135,10 +135,23 @@ impl ShepPaths {
         format!(r"\\.\pipe\shep-{stem}-{digest:016x}")
     }
 
-    /// Resolves the layout from an environment lookup and the user's home dir
+    /// Resolves the Shep directory layout from the environment and the user's home directory.
     ///
-    /// [`Self::socket`] resolves per-platform: a socket file under `run/` on
-    /// unix, [`Self::pipe_name`] on Windows. Everything else is identical.
+    /// Uses `SHEP_HOME` when set, or `<home_dir>/.shep` otherwise. Platform-specific
+    /// control addresses are derived for Unix and Windows.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// let paths = ShepPaths::resolve(
+    ///     &|name| (name == "SHEP_HOME").then(|| "/tmp/shep".to_owned()),
+    ///     Path::new("/home/user"),
+    /// );
+    ///
+    /// assert_eq!(paths.home, Path::new("/tmp/shep"));
+    /// ```
     #[must_use]
     pub fn resolve(env: &dyn Fn(&str) -> Option<String>, home_dir: &Path) -> Self {
         let home = env("SHEP_HOME")

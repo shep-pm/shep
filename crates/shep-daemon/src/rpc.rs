@@ -296,6 +296,17 @@ async fn with_deadline<F: Future<Output = Outcome> + Send>(
     }
 }
 
+/// Dispatches an RPC request using the daemon context and produces the connection-layer outcome.
+///
+/// Requests may produce a normal reply, establish an event subscription, or initiate shutdown.
+/// Invalid and unsupported requests are represented as protocol errors in the returned outcome.
+///
+/// # Examples
+///
+/// ```ignore
+/// let outcome = run(request_id, connection_id, Request::Ping, &context).await;
+/// assert!(matches!(outcome, Outcome::Reply(_)));
+/// ```
 async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outcome {
     let reply = |result| Outcome::Reply(Reply { id, result });
     match request {
@@ -922,17 +933,17 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
     }
 }
 
-/// Whether `namespace`'s push may reach the cache file: the `persist` key
-/// of its own `[<namespace>]` table in `dogs.toml`, or `true`.
+/// Determines whether pushed secrets for a namespace should be persisted.
 ///
-/// Read per push rather than at boot, so an operator who edits the file
-/// does not have to restart the shepherd for it to take.
+/// Reads the namespace's `persist` setting from `dogs.toml` on each call. Missing,
+/// invalid, or non-boolean settings default to persistence being enabled.
 ///
-/// Every way of not finding a boolean answers `true`: no file, no section,
-/// no key, a key of some other type, or a file that will not parse. The
-/// cache is what makes a pushed value survive a restart, and a dog whose
-/// config says nothing about it wants one. An operator who does not says
-/// so explicitly.
+/// # Examples
+///
+/// ```
+/// # use std::path::Path;
+/// assert!(persists(Path::new("/path/that/does/not/exist"), "example"));
+/// ```
 fn persists(dogs_config: &Path, namespace: &str) -> bool {
     let Ok(source) = std::fs::read_to_string(dogs_config) else {
         return true;

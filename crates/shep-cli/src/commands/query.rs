@@ -71,19 +71,30 @@ where
     }
 }
 
-/// `describe` and `fold`'s shared body: one `Request::Describe` against
-/// `selector`, rendered through [`emit_described`] as the sheep table and
-/// each sheep's lamb tree beneath it. `command` is the verb name the output
-/// envelope reports.
+/// Describes a selector and renders its sheep and lamb details.
 ///
-/// `include_secrets` alone gates [`gather_secrets`]: `fold` passes `false`
-/// and stays byte-identical to before this section existed, because `fold`
-/// is a group view across a selector's sheep, not the single-sheep
-/// diagnostic this feature was built for.
+/// When enabled, local secret references are included in the output; otherwise,
+/// secret information is omitted. Reports daemon and rendering failures through
+/// the command's exit code.
 ///
-/// Not routed through [`request_and_render`]: `emit_described` renders one
-/// `Vec<ProcessInfo>` into two tables, which no single [`Render`] impl can
-/// express.
+/// # Examples
+///
+/// ```ignore
+/// #[tokio::test]
+/// async fn describes_a_selector() {
+///     let exit_code = describe_selector(
+///         &client,
+///         &mut streams,
+///         &paths,
+///         "describe",
+///         true,
+///         selector,
+///     )
+///     .await;
+///
+///     assert_eq!(exit_code, ExitCode::Success);
+/// }
+/// ```
 async fn describe_selector(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -130,19 +141,15 @@ async fn describe_selector(
     }
 }
 
-/// Renders one sheep's secret references the way `describe`'s table form
-/// would: one line per reference, the reference as written, the environment
-/// it resolved in, and a verdict. Never a value: `Resolution::Found`'s
-/// payload is read only to tell it apart from a miss.
+/// Formats secret-reference resolutions for table output without exposing secret values.
 ///
-/// The verdict word comes from [`SecretStatus::from_resolution`], the same
-/// classifier [`gather_secrets`] uses for the JSON form, so the two can
-/// never name a different verdict for the same reference.
+/// # Examples
 ///
-/// Test-only: `emit_described` renders the actual table now, so this exists
-/// to exercise [`SecretStatus::from_resolution`]'s three verdicts in
-/// isolation, without a fake daemon connection.
-#[cfg(test)]
+/// ```
+/// assert_eq!(render_describe_secrets(&[]), "");
+/// ```
+///
+/// #[cfg(test)]
 fn render_describe_secrets(entries: &[(&str, &str, Resolution<'_>)]) -> String {
     let mut rendered = String::new();
     for (reference, environment, resolution) in entries {
@@ -152,30 +159,30 @@ fn render_describe_secrets(entries: &[(&str, &str, Resolution<'_>)]) -> String {
     rendered
 }
 
-/// `describe`'s secrets section for `procs`, once per distinct sheep name:
-/// the JSON-safe rows [`emit_described`] both serializes beside `data` and
-/// renders as the table's own "Secrets for `<name>`:" block.
+/// Gathers local secret-reference statuses for the distinct sheep represented by `procs`.
 ///
-/// Reads three local files rather than asking the shepherd: the muster roll
-/// for each name's [`shep_core::config::AppConfig`] (which can trail a
-/// config change that has not yet reached disk by
-/// `shep_daemon::snapshot`'s debounce window), the operator's own secret
-/// store, and the provider cache [`secrets::provider_cache_on_disk`]
-/// reads. A namespace whose provider pushed with `persist = false` never
-/// reaches that cache, so this can call a namespace uncached when the
-/// running shepherd already has it in memory; only the shepherd itself can
-/// answer that half.
+/// References are resolved using the saved flock configuration, local secret store, provider
+/// cache, and each sheep's configured environment. Unknown sheep and malformed references are
+/// skipped. If the local secret store cannot be read, rows are still returned and the error is
+/// included separately.
 ///
-/// A name the roll does not know, or one with no `{{secret:...}}` at all,
-/// contributes nothing: this reports references that exist, not a claim
-/// that every sheep has one.
+/// # Examples
 ///
-/// The second half of the answer is why the operator's own store is empty,
-/// when it is empty because it would not read. Folding that into an empty
-/// store on its own would print `missing` beside every bare reference and
-/// send the operator to `shep secret set` for values the store may already
-/// hold. Rows are still produced, so a sheep needing nothing still
-/// describes; the caller has the [`Streams`] to say so on.
+/// ```ignore
+/// let (secrets, store_error) = gather_secrets(&paths, &processes);
+/// assert!(store_error.is_none() || !secrets.is_empty());
+/// ```
+///
+/// # Returns
+///
+/// A tuple containing the resolved secret rows and an optional error from reading the local
+/// secret store.
+///
+/// # Parameters
+///
+/// * `paths` — Local paths used to read the flock configuration, secret store, provider cache,
+///   and daemon configuration.
+/// * `procs` — Processes whose distinct sheep names determine which secret references to report.
 fn gather_secrets(
     paths: &ShepPaths,
     procs: &[ProcessInfo],
@@ -233,24 +240,38 @@ fn gather_secrets(
 /// failure: the sheep still describes.
 const SECRET_STORE_UNREADABLE_NOTICE: &str = "secret_store_unreadable";
 
-/// Whatever `flock.json` currently holds, or nothing when it is missing or
-/// will not parse.
+/// Loads the saved flock snapshot when it exists and contains valid data.
 ///
-/// Shared by [`flock_from_roll`] and [`gather_secrets`]: both read the
-/// muster roll as the best local answer to "what does this app's config
-/// look like right now", tolerant of a file this daemon has never written
-/// or has fallen behind the live registry by a debounce window.
+/// # Examples
+///
+/// ```rust,ignore
+/// let snapshot = read_roll(&paths);
+/// assert!(snapshot.is_some());
+/// ```
+///
+/// `None` is returned when the snapshot is missing or cannot be parsed.
+///
+/// # Arguments
+///
+/// * `paths` - Paths containing the location of the saved flock snapshot.
 fn read_roll(paths: &ShepPaths) -> Option<FlockSnapshot> {
     std::fs::read(&paths.snapshot)
         .ok()
         .and_then(|bytes| serde_json::from_slice::<FlockSnapshot>(&bytes).ok())
 }
 
-/// `shep flock` when no shepherd answers: the muster roll, marked stopped
+/// Renders the saved muster roll when the shepherd is unreachable.
 ///
-/// The exit code stays [`ExitCode::DaemonUnreachable`] even though the table
-/// looks successful: a monitoring script must not read a dead supervisor as
-/// a healthy empty flock. A missing or unreadable roll is not an error.
+/// Applications from the saved roll are shown as stopped and sorted by name.
+/// Missing or unreadable rolls produce an empty result without an additional
+/// error, while the function always returns [`ExitCode::DaemonUnreachable`].
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let exit_code = flock_from_roll(&mut streams, &paths);
+/// assert_eq!(exit_code, ExitCode::DaemonUnreachable);
+/// ```
 pub fn flock_from_roll(streams: &mut Streams<'_>, paths: &ShepPaths) -> ExitCode {
     let saved = read_roll(paths);
 
@@ -527,13 +548,24 @@ fn install_line(source: &DogSourceKind, package: &str) -> String {
     }
 }
 
-/// The `$ shep adopt ...` line [`render_detail`] prints
+/// Builds the `shep adopt` command for a dog source.
 ///
-/// Built from `adopt_as`, never `name` or `package`: a wrong name ships a
-/// command that silently discards the dog's whole config section.
-/// [`DogSourceKind::Manual`] has no predictable install path, so its line
-/// names the placeholder literally. `--name` is always spelled, since
-/// nothing enforces the naming convention on a user-contributed `package`.
+/// The command uses `adopt_as` for the dog name and derives the executable
+/// path from the source type. Manual sources use a placeholder path.
+///
+/// # Examples
+///
+/// ```
+/// let command = adopt_line(
+///     &DogSourceKind::Manual {},
+///     "my-dog",
+///     "my-dog",
+/// );
+/// assert_eq!(
+///     command,
+///     "  $ shep adopt <path to the binary> --name my-dog"
+/// );
+/// ```
 fn adopt_line(source: &DogSourceKind, adopt_as: &str, package: &str) -> String {
     match source {
         DogSourceKind::Cargo { .. } | DogSourceKind::CargoGit { .. } => {
@@ -548,7 +580,18 @@ fn adopt_line(source: &DogSourceKind, adopt_as: &str, package: &str) -> String {
     }
 }
 
-/// Describes the sheep matching `args.selector` in detail.
+/// Describes each selected sheep in its own detailed view.
+///
+/// Selector syntax errors return immediately. Other failures are recorded while
+/// remaining valid selectors are processed, and the first recorded failure is
+/// returned after all selectors have been handled.
+///
+/// # Examples
+///
+/// ```text
+/// shep describe my-sheep
+/// ```
+pub async fn describe(
 pub async fn describe(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -571,8 +614,13 @@ pub async fn describe(
     failure.unwrap_or(ExitCode::Success)
 }
 
-/// Lists one fold: `Request::Describe` with `SelectorSpec::Fold(args.name)`,
-/// delegating to [`describe_selector`].
+/// Describes a fold selector without gathering local secret references.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let status = fold(&client, &mut streams, &paths, &args).await;
+/// ```
 pub async fn fold(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -1056,9 +1104,15 @@ mod tests {
         assert!(rendered.contains("DB_PASSWORD"), "{rendered}");
     }
 
-    /// Whether `hunter2` shows up anywhere in `value`'s own JSON text, not
-    /// just at the top level: a value smuggled in nested one level deeper
-    /// would still be a leak.
+    /// Checks whether a substring occurs anywhere in a JSON value's serialized representation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let value = serde_json::json!({"nested": {"message": "hello"}});
+    /// assert!(out_contains(&value, "hello"));
+    /// assert!(!out_contains(&value, "goodbye"));
+    /// ```
     fn out_contains(value: &serde_json::Value, needle: &str) -> bool {
         value.to_string().contains(needle)
     }

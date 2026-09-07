@@ -217,19 +217,24 @@ pub fn daemon_overrides(args: &DaemonArgs) -> DaemonOverrides {
         .max_cron_sleep(args.max_cron_sleep)
 }
 
-/// Builds [`BootOptions`] from `config`, the `daemon` subcommand's own
-/// flags, and whatever `$NOTIFY_SOCKET` held.
+/// Constructs supervisor boot options from daemon configuration, command-line flags,
+/// and an optional notification socket.
 ///
-/// `ready_fd` stays `None`: readiness is a completed handshake, and this crate
-/// forbids unsafe code. `max_cron_sleep` stays an `Option`, so the daemon
-/// applies its own default and nothing here invents a value. `notify_socket`
-/// is a parameter rather than an environment read, since `std::env::set_var`
-/// is `unsafe` in edition 2024; `--foreground` gates it.
+/// Enabled dogs are preserved in configured startup order. Adopted dogs use their
+/// configured paths; all other enabled dogs use the built-in source.
 ///
-/// `[daemon] enabled_dogs` names each dog to start, in the order an operator
-/// wrote it; `[daemon] adopted_dogs` says which of those names is a
-/// third-party binary, and a name absent from it is [`DogSource::BuiltIn`].
-#[must_use]
+/// # Examples
+///
+/// ```
+/// let config = DaemonConfig::default();
+/// let args = DaemonArgs::default();
+/// let options = boot_options(&config, &args, None);
+///
+/// assert!(options.ready_fd.is_none());
+/// ```
+///
+/// The notification socket is used only when `--foreground` is enabled. Readiness
+/// is reported through the supervisor handshake rather than a file descriptor.
 pub fn boot_options(
     config: &DaemonConfig,
     args: &DaemonArgs,

@@ -2075,10 +2075,35 @@ pub struct SecretKeyRows(pub Vec<SecretKeyRow>);
 /// No colour: a key and the environments naming it are operator data, and
 /// shep has no opinion about either.
 impl Render for SecretKeyRows {
+    /// Provides the column headers for secret-key rows.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// assert_eq!(headers(), &["KEY", "ENVIRONMENTS"]);
+    /// ```
     fn headers() -> &'static [&'static str] {
         &["KEY", "ENVIRONMENTS"]
     }
 
+    /// Formats secret keys and their environments as table rows.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let rows = SecretKeyRows(vec![SecretKeyRow {
+    ///     key: "database_url".into(),
+    ///     environments: vec!["production".into(), "staging".into()],
+    /// }])
+    /// .rows();
+    ///
+    /// assert_eq!(
+    ///     rows,
+    ///     vec![vec!["database_url".into(), "production, staging".into()]]
+    /// );
+    /// ```
+    ///
+    /// Returns one row for each secret key.
     fn rows(&self) -> Vec<Vec<String>> {
         self.0
             .iter()
@@ -2086,8 +2111,18 @@ impl Render for SecretKeyRows {
             .collect()
     }
 
+    /// Maps a table header to its JSON field name.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// assert_eq!(SecretKeyRows::json_key_for("KEY"), "key");
+    /// assert_eq!(SecretKeyRows::json_key_for("ENVIRONMENTS"), "environments");
+    /// ```
+    ///
     /// # Panics
-    /// If `header` is not one of `Self::headers()`'s own values.
+    ///
+    /// Panics if `header` is not a header returned by `Self::headers()`.
     #[track_caller]
     fn json_key_for(header: &str) -> &'static str {
         match header {
@@ -2119,17 +2154,41 @@ pub struct SecretSlotRow {
 
 /// No colour, for [`KvRows`]' reason: both cells are operator data.
 impl Render for SecretSlotRow {
+    /// Provides the column headers for secret slot output.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// assert_eq!(SecretSlotRow::headers(), &["KEY", "ENVIRONMENT"]);
+    /// ```
     fn headers() -> &'static [&'static str] {
         &["KEY", "ENVIRONMENT"]
     }
 
+    /// Builds a table row containing the secret key and environment.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let row = vec!["api-token".to_owned(), "production".to_owned()];
+    /// assert_eq!(row, vec!["api-token", "production"]);
+    /// ```
     fn rows(&self) -> Vec<Vec<String>> {
         vec![vec![self.key.clone(), self.environment.clone()]]
     }
 
+    /// Maps a table header to its corresponding JSON key.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// assert_eq!(SecretSlotRow::json_key_for("KEY"), "key");
+    /// assert_eq!(SecretSlotRow::json_key_for("ENVIRONMENT"), "environment");
+    /// ```
+    ///
     /// # Panics
-    /// If `header` is not one of `Self::headers()`'s own values.
-    #[track_caller]
+    ///
+    /// Panics if `header` is not a header returned by `Self::headers()`.
     fn json_key_for(header: &str) -> &'static str {
         match header {
             "KEY" => "key",
@@ -2169,6 +2228,21 @@ pub struct SecretValueRow {
 
 /// Redacted (IR-41): `value` is a credential.
 impl std::fmt::Debug for SecretValueRow {
+    /// Formats the row for debugging without exposing its secret value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let row = SecretValueRow {
+    ///     key: "api-token".into(),
+    ///     value: "sensitive-value".into(),
+    /// };
+    ///
+    /// assert_eq!(
+    ///     format!("{row:?}"),
+    ///     r#"SecretValueRow { key: "api-token", value: "<redacted>" }"#
+    /// );
+    /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SecretValueRow")
             .field("key", &self.key)
@@ -2179,17 +2253,47 @@ impl std::fmt::Debug for SecretValueRow {
 
 /// No colour, for [`KvRows`]' reason: both cells are operator data.
 impl Render for SecretValueRow {
+    /// Provides the column headers for key-value output.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// assert_eq!(headers(), &["KEY", "VALUE"]);
+    /// ```
+    ///
+    /// Returns the `KEY` and `VALUE` column names.
     fn headers() -> &'static [&'static str] {
         &["KEY", "VALUE"]
     }
 
+    /// Renders the secret key and value as a single table row.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let row = SecretValueRow {
+    ///     key: "api_key".to_owned(),
+    ///     value: "secret".to_owned(),
+    /// };
+    /// assert_eq!(row.rows(), vec![vec!["api_key".to_owned(), "secret".to_owned()]]);
+    /// ```
     fn rows(&self) -> Vec<Vec<String>> {
         vec![vec![self.key.clone(), self.value.clone()]]
     }
 
+    /// Maps a table header to its corresponding JSON key.
+    ///
     /// # Panics
-    /// If `header` is not one of `Self::headers()`'s own values.
-    #[track_caller]
+    ///
+    /// Panics if `header` is not a supported header.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// assert_eq!(json_key_for("KEY"), "key");
+    /// assert_eq!(json_key_for("VALUE"), "value");
+    /// ```
+    ///
     fn json_key_for(header: &str) -> &'static str {
         match header {
             "KEY" => "key",
@@ -2233,10 +2337,16 @@ pub enum SecretStatus {
 }
 
 impl SecretStatus {
-    /// Classifies a live [`shep_core::secrets::Resolution`] the same way
-    /// everywhere this crate reports one, so the table and JSON forms of
-    /// `describe`'s secrets section can never disagree about a verdict.
-    #[must_use]
+    /// Classifies a secret resolution as resolved, missing, or uncached.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let status = SecretStatus::from_resolution(
+    ///     &shep_core::secrets::Resolution::MissingKey,
+    /// );
+    /// assert_eq!(status, SecretStatus::Missing);
+    /// ```
     pub fn from_resolution(resolution: &shep_core::secrets::Resolution<'_>) -> Self {
         match resolution {
             shep_core::secrets::Resolution::Found(_) => Self::Resolved,
@@ -2245,7 +2355,16 @@ impl SecretStatus {
         }
     }
 
-    /// The word `describe`'s table prints for this verdict.
+    /// Converts the secret resolution status to its table display word.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// assert_eq!(SecretStatus::Resolved.as_table_word(), "resolved");
+    /// assert_eq!(SecretStatus::Missing.as_table_word(), "missing");
+    /// ```
+    ///
+    /// [`SecretStatus::Uncached`] produces `"not cached; a provider may still have it"`.
     #[must_use]
     pub fn as_table_word(self) -> &'static str {
         match self {

@@ -84,11 +84,17 @@ impl fmt::Debug for ProviderSecrets {
 }
 
 impl ProviderSecrets {
-    /// Reads `cache`, or starts empty when there is nothing readable there.
+    /// Loads provider secrets from a cache file, or initializes an empty store when the file is missing or unreadable.
     ///
-    /// Everything loaded counts as persisting: it came off disk, so the
-    /// setting that put it there was `persist = true` and stays so until a
-    /// push says otherwise.
+    /// Loaded namespaces are marked for persistence until a later push changes that setting.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// let secrets = ProviderSecrets::load(Path::new("secrets.json"));
+    /// ```
     pub fn load(cache: &Path) -> Self {
         let cached = read_cache(cache);
         let persisted = cached.values.keys().cloned().collect();
@@ -103,24 +109,28 @@ impl ProviderSecrets {
         }
     }
 
-    /// Replaces `namespace`'s values for `environment` with `entries`,
-    /// returning how many are stored for that pair.
+    /// Replaces all values for a namespace and environment, preserving other environments.
     ///
-    /// Replaces rather than merges: a key the provider has deleted is
-    /// absent from the push, and must be absent here too. Other
-    /// environments of the same namespace are untouched.
-    ///
-    /// `persist` decides whether the namespace may reach `cache`, and it is
-    /// read per push rather than settled once: a push that turns it off
-    /// takes the namespace out of the file on the spot. An empty `entries`
-    /// still registers the namespace, because "the dog has nothing" and "no
-    /// dog has pushed" send an operator to different places.
+    /// An empty `entries` map still records the push. The namespace is marked for
+    /// persistence when `persist` is `true` and removed from persistence when it is
+    /// `false`. In-memory state is updated before any cache write.
     ///
     /// # Errors
-    /// [`std::io::Error`] if the cache had to be rewritten and the staging
-    /// file, the `fsync` or the `rename` failed. The in-memory values are
-    /// already updated in that case: a spawn resolves against them, and
-    /// only a restart loses them.
+    ///
+    /// Returns an [`std::io::Error`] if persisting the updated cache fails. The
+    /// in-memory state remains updated when an error occurs.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::collections::BTreeMap;
+    /// use std::path::Path;
+    ///
+    /// let secrets = ProviderSecrets::load(Path::new("provider-secrets.json"));
+    /// let count = secrets.put("payments", "production", BTreeMap::new(), false)?;
+    /// assert_eq!(count, 0);
+    /// # Ok::<(), std::io::Error>(())
+    /// ```
     pub fn put(
         &self,
         namespace: &str,
@@ -173,14 +183,22 @@ impl ProviderSecrets {
         Ok(accepted)
     }
 
-    /// Every namespace's values and every pair pushed for them, in the
-    /// shape [`shep_core::secrets::SecretView::new`] takes.
+    /// Creates a consistent, owned snapshot of all cached values and pushed namespace-environment pairs.
     ///
-    /// Cloned rather than borrowed: the supervisor holds the result across
-    /// a whole resolution pass, and a guard held that long would be the
-    /// thing a push waits on. Both halves come out under one lock, so a
-    /// resolution never reads values from before a push beside the pairs
-    /// from after it.
+    /// The values and pushed-pair metadata are cloned while holding a single state lock, so both
+    /// parts represent the same point in time.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use shep_daemon::secrets::ProviderSecrets;
+    /// use std::path::Path;
+    ///
+    /// let cache = ProviderSecrets::load(Path::new("missing-cache.json"));
+    /// let snapshot = cache.snapshot();
+    /// assert!(snapshot.values.is_empty());
+    /// assert!(snapshot.pushed.is_empty());
+    /// ```
     pub fn snapshot(&self) -> ProviderCache {
         let state = self.state();
         ProviderCache {
@@ -189,22 +207,46 @@ impl ProviderSecrets {
         }
     }
 
-    /// Every `(namespace, environment)` pair a dog has pushed, values not
-    /// included.
+    /// Lists every namespace and environment pair that has been pushed, regardless of whether values were included.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// let secrets = ProviderSecrets::load(Path::new("/tmp/provider-secrets-example.json"));
+    /// assert!(secrets.pushed().is_empty());
+    /// ```
+    ///
+    /// The returned pairs are cloned and can be inspected independently of the provider state.
     pub fn pushed(&self) -> PushedPairs {
         self.state().pushed.clone()
     }
 
-    /// A poisoned lock is recovered rather than propagated, as
-    /// [`crate::rpc::KnownDogs`] does: a panic mid-push can leave a
-    /// namespace half replaced, and the next push replaces it whole.
+    /// Returns a guard for the provider state, recovering the state even if the mutex is poisoned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let state = provider_secrets.state();
+    /// ```
     fn state(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
-/// The cache file `state` should hold: its persisting namespaces and no
-/// others.
+/// Builds the cache-file representation containing only namespaces marked for persistence.
+///
+/// # Examples
+///
+/// ```
+/// let state = State::default();
+/// let cache = persisted_view(&state);
+///
+/// assert_eq!(cache.version, PROVIDER_CACHE_VERSION);
+/// assert!(cache.namespaces.is_empty());
+/// assert!(cache.pushed.is_empty());
+/// ```
 fn persisted_view(state: &State) -> CacheFile {
     CacheFile {
         version: PROVIDER_CACHE_VERSION,
@@ -231,7 +273,20 @@ fn persisted_view(state: &State) -> CacheFile {
     }
 }
 
-/// Whatever `path` holds, or nothing.
+/// Loads a provider cache from a JSON file.
+///
+/// Returns an empty cache when the file cannot be read, is invalid, or contains
+/// an unsupported cache version.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::Path;
+///
+/// let cache = read_cache(Path::new("missing-cache.json"));
+/// assert!(cache.values.is_empty());
+/// assert!(cache.pushed.is_empty());
+/// ```
 fn read_cache(path: &Path) -> ProviderCache {
     let Ok(raw) = std::fs::read_to_string(path) else {
         return ProviderCache::default();
@@ -245,13 +300,23 @@ fn read_cache(path: &Path) -> ProviderCache {
     }
 }
 
-/// Rewrites `path` to hold exactly `file`: staged owner-only beside it,
-/// `fsync`ed, then renamed over the original.
+/// Rewrites `path` with the serialized cache file using an owner-only staging file
+/// and an atomic replacement.
 ///
 /// # Errors
-/// [`std::io::Error`] from the staging file, the write, either `fsync`, or
-/// the `rename`. A failed rename leaves `path` as it was and removes the
-/// staging file.
+///
+/// Returns [`std::io::Error`] if serialization, staging-file creation or writing,
+/// synchronization, renaming, or parent-directory synchronization fails. A failed
+/// rename leaves the original file unchanged and removes the staging file.
+///
+/// # Examples
+///
+/// ```no_run
+/// # let file: CacheFile = todo!();
+/// let path = std::path::Path::new("secrets-cache.json");
+/// write_cache(path, &file)?;
+/// # Ok::<(), std::io::Error>(())
+/// ```
 fn write_cache(path: &Path, file: &CacheFile) -> std::io::Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let mut tmp = shep_core::atomic_file::create_staging_file(parent, "secrets-cache", ".tmp")?;

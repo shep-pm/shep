@@ -1713,6 +1713,13 @@ mod tests {
         SheepConfigView::new(config, vec!["max_restarts".into()], vec!["env".into()])
     }
 
+    /// Builds a configuration view for the `web` sheep with the specified arguments.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let view = web_with_args(&["--port", "8080"]);
+    /// ```
     fn web_with_args(args: &[&str]) -> SheepConfigView {
         let config = AppConfig {
             name: "web".into(),

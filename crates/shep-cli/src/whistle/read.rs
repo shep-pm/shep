@@ -227,8 +227,20 @@ mod tests {
         }
     }
 
-    /// A `ShepPaths` naming only the two fields any test here reads: the
-    /// socket and the barks file. The rest carry an empty placeholder.
+    /// Constructs a `ShepPaths` value for tests with the supplied socket and barks paths.
+    ///
+    /// All other paths are initialized as empty placeholders.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let paths = test_paths(
+    ///     std::path::PathBuf::from("/run/shepherd.sock"),
+    ///     std::path::PathBuf::from("/var/log/shepherd.barks"),
+    /// );
+    /// assert_eq!(paths.socket, std::path::PathBuf::from("/run/shepherd.sock"));
+    /// assert_eq!(paths.barks, std::path::PathBuf::from("/var/log/shepherd.barks"));
+    /// ```
     fn test_paths(socket: std::path::PathBuf, barks: std::path::PathBuf) -> ShepPaths {
         ShepPaths {
             home: std::path::PathBuf::new(),

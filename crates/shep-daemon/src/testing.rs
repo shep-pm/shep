@@ -449,10 +449,19 @@ pub(crate) fn harness_with_extras(
     harness_with_runner(ScriptedRunner::new(scripts), build_extras)
 }
 
-/// [`harness`], over a [`ScriptedRunner`] the caller built.
+/// Builds a supervisor test harness around a caller-provided scripted runner.
 ///
-/// A `Vec<ProcScript>` cannot say anything about the runner itself: which pid
-/// its spawns report, which sheep it refuses.
+/// The runner controls reported PIDs, spawn failures, and refusal behavior. The
+/// `build_extras` closure receives channels for breach and liveness reports.
+///
+/// # Examples
+///
+/// ```no_run
+/// let harness = harness_with_runner(
+///     ScriptedRunner::default(),
+///     |reports| Extras::new(reports),
+/// );
+/// ```
 pub(crate) fn harness_with_runner(
     runner: ScriptedRunner,
     build_extras: impl FnOnce(ExtrasReports) -> Extras,
@@ -529,10 +538,18 @@ pub(crate) fn app_with(name: &str, mutate: impl FnOnce(&mut AppConfig)) -> Resol
     normalize(app).expect("the fixture app must normalize")
 }
 
-/// An `Online` [`ProcessEntry`] shaped like one the actor really registered.
+/// Creates an online [`ProcessEntry`] representing a registered process.
 ///
-/// Its two log paths come from [`assemble`] rather than being invented, so a
-/// registry-tier test's entry cannot drift from what a spawn produces.
+/// The entry includes log paths assembled from the application and supplied paths.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let entry = armed_entry(id, instance, pid, app, &paths);
+///
+/// assert_eq!(entry.status, ProcStatus::Online);
+/// assert_eq!(entry.pid, Some(pid));
+/// ```
 pub(crate) fn armed_entry(
     id: u32,
     instance: u32,

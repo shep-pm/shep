@@ -124,9 +124,21 @@ pub enum Stability {
 }
 
 impl RestartBudget {
-    /// Record an exit and classify it as stable or unstable.
+    /// Records an exit and classifies it according to whether it met the minimum uptime.
     ///
-    /// Stable exits reset the counter to 0; unstable exits increment it.
+    /// Stable exits reset the consecutive unstable-exit count. Unstable exits increment it.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    ///
+    /// let mut budget = RestartBudget::default();
+    /// let stability = budget.note_exit(Duration::from_secs(10), Duration::from_secs(5));
+    ///
+    /// assert_eq!(stability, Stability::Stable);
+    /// ```
+    pub fn note_exit(&mut self, uptime: Duration, min_uptime: Duration) -> Stability
     pub fn note_exit(&mut self, uptime: Duration, min_uptime: Duration) -> Stability {
         if uptime >= min_uptime {
             self.unstable_count = 0;
@@ -137,17 +149,39 @@ impl RestartBudget {
         }
     }
 
-    /// Record a spawn that never produced a process.
+    /// Records a start attempt that ended before a process was created.
     ///
-    /// Always unstable, since there is no uptime to classify: an app with
-    /// `min_uptime = 0` put through `note_exit` with a zero uptime would be
-    /// called stable, and a stable count buys an immediate retry, which for
-    /// a failure that repeats is a loop with nothing between its turns.
+    /// Failed starts count as unstable regardless of the configured minimum uptime.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    ///
+    /// let mut budget = RestartBudget::new(3, Duration::from_secs(1));
+    /// budget.note_failed_start();
+    /// assert_eq!(budget.unstable_count(), 1);
+    /// ```
     pub fn note_failed_start(&mut self) {
         self.unstable_count += 1;
     }
 
-    /// Get the current consecutive-unstable-exit count
+    /// Reports the number of consecutive unstable exits recorded by the restart budget.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    ///
+    /// let budget = RestartBudget::new(Duration::from_secs(60), 3);
+    /// assert_eq!(budget.unstable_count(), 0);
+    /// ```
+    ///
+    /// The count is reset after a stable exit.
+    ///
+    /// # Returns
+    ///
+    /// The consecutive unstable-exit count.
     pub fn unstable_count(&self) -> u32 {
         self.unstable_count
     }

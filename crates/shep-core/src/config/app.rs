@@ -505,6 +505,16 @@ impl fmt::Debug for AppConfig {
 }
 
 impl Default for AppConfig {
+    /// Creates an application configuration with the standard default values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let config = AppConfig::default();
+    /// assert_eq!(config.instances, 1);
+    /// assert!(config.autostart);
+    /// assert!(config.autorestart);
+    /// ```
     fn default() -> Self {
         Self {
             name: String::new(),

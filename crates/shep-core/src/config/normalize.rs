@@ -213,16 +213,21 @@ pub fn normalize(app: AppConfig) -> Result<ResolvedApp, NormalizeError> {
     normalize_with_home(app, std::env::home_dir().as_deref())
 }
 
-/// [`normalize`], with the home directory supplied rather than read.
-///
-/// A parameter so the `~/` expansion above is testable without mutating the
-/// process environment, which is racy under a parallel `cargo test`. This is
-/// also the seam that matters for correctness rather than only for tests:
-/// the daemon may run as a different user than the CLI, so `~` has to be
-/// resolved where the config is normalised, not where it is executed.
+/// Validates and normalizes an application configuration using the supplied home directory for tilde expansion.
 ///
 /// # Errors
-/// The same set [`normalize`] documents.
+///
+/// Returns [`NormalizeError`] when the configuration is invalid or a path requiring home-directory expansion
+/// cannot be resolved.
+///
+/// # Examples
+///
+/// ```
+/// let result = normalize_with_home(AppConfig::default(), None);
+/// assert!(result.is_err());
+/// ```
+///
+/// The supplied home directory determines how `~` and `~/...` paths are expanded.
 pub fn normalize_with_home(
     mut app: AppConfig,
     home: Option<&Path>,

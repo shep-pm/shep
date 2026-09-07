@@ -143,12 +143,19 @@ pub enum AssembleError {
 }
 
 impl AssembleError {
-    /// Whether waiting could make this spec assemble.
+    /// Determines whether retrying assembly may succeed later.
     ///
-    /// `true` only for a namespace no provider dog has pushed to yet; see
-    /// [`RenderError::is_retriable`]. A caller that calls every refusal
-    /// retriable turns a key nobody has set into a crash loop.
-    #[must_use]
+    /// # Examples
+    ///
+    /// ```
+    /// # fn check(error: &AssembleError) {
+    /// let may_resolve = error.is_retriable();
+    /// assert!(matches!(may_resolve, true | false));
+    /// # }
+    /// ```
+    ///
+    /// Returns `true` when waiting for a provider may resolve the underlying error, and `false` otherwise.
+    pub fn is_retriable(&self) -> bool {
     pub fn is_retriable(&self) -> bool {
         match self {
             Self::Template { source, .. } => source.is_retriable(),
@@ -165,6 +172,17 @@ impl fmt::Display for AssembleError {
 }
 
 impl core::error::Error for AssembleError {
+    /// Provides the underlying template rendering error.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::error::Error;
+    ///
+    /// fn inspect(error: &(dyn Error + 'static)) {
+    ///     let _source = error.source();
+    /// }
+    /// ```
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
             Self::Template { source, .. } => Some(source),
@@ -172,30 +190,24 @@ impl core::error::Error for AssembleError {
     }
 }
 
-/// Assembles a [`SpawnSpec`] from a validated app config and instance slot.
+/// Builds a spawnable [`SpawnSpec`] from a validated app configuration and instance slot.
 ///
-/// `credentials` and `secrets` are both resolved by the caller, since a
-/// passwd lookup and a store read are real I/O and this function otherwise
-/// stays pure. `interpreter = None` or `Some("none")` runs the script
-/// directly; `Some(path)` runs `path` with `[script, ...args]`.
-///
-/// Explicit `out_file`/`err_file` win over the default log path and render
-/// `{{instance}}` and `{{name}}` the way `env` and `args` do; normalize
-/// refuses a `{{secret:...}}` in either, and a path that collides across
-/// instances unless `merge_logs` asked for it.
-/// `SpawnSpec::stdin` carries `config.stdin` straight through: unlike
-/// `channel`, nothing else turns it on.
-///
-/// The spec a child is spawned from, and the only one that may be: every
-/// `{{secret:...}}` in it resolved. The crate-private `describe` is for a
-/// caller reading a spec it will not spawn.
+/// Secret references in arguments and environment values must resolve through `secrets`.
+/// The returned specification includes the configured credentials and rendered child
+/// settings.
 ///
 /// # Errors
 ///
-/// - [`AssembleError::Template`]: an `env` value or an arg names a secret
-///   this view cannot resolve. [`AssembleError::is_retriable`] says whether
-///   waiting would help. A log path cannot reach here: normalize refuses a
-///   secret in one.
+/// Returns [`AssembleError::Template`] when an argument or environment value contains
+/// a secret reference that cannot be resolved. Use [`AssembleError::is_retriable`] to
+/// determine whether waiting for a provider may resolve the error.
+///
+/// # Examples
+///
+/// ```no_run
+/// let spec = assemble(&app, 0, &paths, None, &secrets)?;
+/// # Ok::<(), AssembleError>(())
+/// ```
 pub fn assemble(
     app: &ResolvedApp,
     instance: u32,
@@ -221,26 +233,18 @@ pub fn assemble(
     )
 }
 
-/// [`assemble`] for a caller reading a spec rather than spawning one: a
-/// value holding a `{{secret:...}}` this view cannot resolve keeps its
-/// references as written instead of refusing.
+/// Builds a descriptive spawn specification while preserving unresolved secret references.
 ///
-/// Never spawn this sheep's own program from what this returns. Its callers
-/// name a sheep's log files, preflight the program exec will find, or build
-/// a prober, and a refusal there would cost an operator the sheep itself:
-/// `shep add` exists to register a template whose secrets nobody has filled
-/// in yet, and an adoption that refused one would strand a running flock.
+/// Resolved templates are rendered normally. If a secret-containing value cannot be
+/// resolved, the entire value is rendered positionally so unresolved references remain
+/// visible instead of causing an error.
 ///
-/// A prober is the caller that does spawn something. `OsProber` runs an
-/// exec probe's own command in this spec's `cwd` with this spec's `env`, so
-/// a value that fell back reaches that command as the reference itself:
-/// `PW={{secret:KEY}}`, not the value and not an empty string. Only a sheep
-/// that already spawned is armed with a probe, so the fallback is reachable
-/// there just while the store has stopped answering something it answered
-/// at the spawn.
+/// # Examples
 ///
-/// The whole value falls back, not the one reference in it that missed, so a
-/// caller cannot read a half-resolved value as a resolved one.
+/// ```rust,ignore
+/// let spec = describe(&app, 0, &paths, credentials, &secrets);
+/// assert_eq!(spec.environment().get("PASSWORD"), Some("{{secret:PASSWORD}}"));
+/// ```
 #[must_use]
 pub(crate) fn describe(
     app: &ResolvedApp,
@@ -267,13 +271,24 @@ pub(crate) fn describe(
     }
 }
 
-/// [`assemble`] and [`describe`] over one body: `render` is handed each
-/// templated value with the field name to blame, and decides what an
-/// unresolvable `{{secret:...}}` costs.
+/// Builds a spawn specification from resolved application configuration.
+///
+/// Rendering is applied to arguments, environment values, and explicit log
+/// paths. The supplied renderer determines how unresolved templates are
+/// handled and whose error type is returned.
 ///
 /// # Errors
 ///
-/// Whatever `render` returns, at the first value it refuses.
+/// Returns the first error produced while rendering a templated value.
+///
+/// # Examples
+///
+/// ```ignore
+/// let spec = build(app, instance, paths, credentials, environment, |value, _| {
+///     Ok::<_, std::convert::Infallible>(value.to_owned())
+/// })?;
+/// # Ok::<(), std::convert::Infallible>(())
+/// ```
 fn build<E>(
     app: &ResolvedApp,
     instance: u32,
@@ -377,7 +392,13 @@ mod tests {
         }
     }
 
-    /// A view holding nothing, in the environment a host defaults to.
+    /// Creates an empty secret view for the production environment.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let secrets = no_secrets();
+    /// ```
     fn no_secrets() -> SecretView {
         SecretView::empty("production".to_string())
     }

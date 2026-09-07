@@ -34,12 +34,18 @@ use crate::output::{
 const HOW_TO_ALLOW_READ: &str = "printing a stored secret back is off; add `[secrets]` with \
      `allow_read = true` to $SHEP_HOME/shep.toml";
 
-/// The exit code each [`SecretError`] maps to.
+/// Maps a secret operation error to the corresponding CLI exit code.
 ///
-/// `InvalidKey`/`InvalidEnvironment`/`ValueTooLong` are `Usage`: the
-/// operator typed it. `FutureVersion`/`Decode` are `InvalidConfig`: the file
-/// on disk is the problem. `SecretError` is `#[non_exhaustive]`, so a future
-/// variant falls through to [`ExitCode::Failure`].
+/// Invalid input errors map to [`ExitCode::Usage`], configuration errors map to
+/// [`ExitCode::InvalidConfig`], and I/O or otherwise unrecognized errors map to
+/// [`ExitCode::Failure`].
+///
+/// # Examples
+///
+/// ```
+/// let code = exit_code_for(&SecretError::InvalidKey("bad key".into()));
+/// assert_eq!(code, ExitCode::Usage);
+/// ```
 fn exit_code_for(err: &SecretError) -> ExitCode {
     match err {
         SecretError::InvalidKey(_)
@@ -51,16 +57,32 @@ fn exit_code_for(err: &SecretError) -> ExitCode {
     }
 }
 
-/// Renders `err` to `streams.err` and returns the code [`exit_code_for`]
-/// maps it to.
+/// Reports a secret-operation error and returns its corresponding exit code.
 ///
-/// No variant of [`SecretError`] carries a value, so this cannot print one.
+/// The error message is written to the error stream without exposing secret values.
+///
+/// # Examples
+///
+/// ```ignore
+/// let code = fail(&mut streams, &err);
+/// assert_eq!(code, exit_code_for(&err));
+/// ```
 fn fail(streams: &mut Streams<'_>, err: &SecretError) -> ExitCode {
     let code = exit_code_for(err);
     streams.fail(code, &err.to_string())
 }
 
-/// `shep secret`, dispatched to one of its four subcommands.
+/// Dispatches `shep secret` to the selected subcommand.
+///
+/// # Examples
+///
+/// ```text
+/// shep secret list
+/// ```
+///
+/// # Returns
+///
+/// The exit code produced by the selected subcommand.
 pub fn secret(streams: &mut Streams<'_>, paths: &ShepPaths, args: &SecretArgs) -> ExitCode {
     match &args.command {
         SecretCommand::Set {
@@ -98,45 +120,43 @@ pub fn secret(streams: &mut Streams<'_>, paths: &ShepPaths, args: &SecretArgs) -
     }
 }
 
-/// `shep.toml` as this verb reads it, or the defaults when there is no file
-/// or it will not parse.
+/// Loads the daemon configuration used by the secret command.
 ///
-/// A broken file leaves the gate shut and the host environment at its
-/// default, matching [`crate::whistle::gate::resolve_control`]: a config
-/// nobody can parse is the worst moment for a gate to disappear. None of
-/// `DaemonConfig`'s environment overrides touch either field, so the
-/// closure is always `&|_| None`.
+/// Missing or invalid configuration files produce the default configuration,
+/// keeping secret reads disabled and using the default host environment.
 ///
-/// `pub(crate)`: `commands::query`'s `describe` reads the same default
-/// host environment this verb's `get` falls back to, for the same reason.
+/// # Examples
+///
+/// ```no_run
+/// # let paths: &ShepPaths = unimplemented!();
+/// let config = daemon_config(paths);
+/// ```
+pub(crate) fn daemon_config(paths: &ShepPaths) -> DaemonConfig
 pub(crate) fn daemon_config(paths: &ShepPaths) -> DaemonConfig {
     let text = std::fs::read_to_string(&paths.daemon_config).ok();
     DaemonConfig::load(text.as_deref(), &|_| None).unwrap_or_default()
 }
 
-/// `--stdin`'s value: `reader`'s bytes, with at most one trailing `\n`
-/// stripped, and one `\r` immediately before it if present, then decoded as
-/// UTF-8.
+/// Reads a secret value from `reader`, removing at most one trailing newline
+/// and its preceding carriage return before decoding it as UTF-8.
 ///
-/// Only that one newline is trimmed. Leading and interior whitespace can be
-/// part of a credential, so `echo "$PW" | shep secret set KEY --stdin` and
-/// `printf %s "$PW" | shep secret set KEY --stdin` both store exactly what
-/// was piped, and nothing wider is touched.
-///
-/// Bounded at [`STDIN_READ_CAP`] rather than read whole: nothing over
-/// [`secrets::MAX_VALUE_BYTES`] can be stored, so buffering a stream that
-/// size just to refuse it lets whatever is on the other end of the pipe
-/// decide how much memory this process takes.
-///
-/// `reader` rather than reading `std::io::stdin()` directly keeps this
-/// testable without touching the test process's real stdin; [`secret`]
-/// passes the real one.
+/// Leading, interior, and other trailing whitespace is preserved. Values
+/// exceeding [`secrets::MAX_VALUE_BYTES`] are rejected.
 ///
 /// # Errors
-/// The read failed, the value is over [`secrets::MAX_VALUE_BYTES`], or the
-/// trimmed bytes are not valid UTF-8. Each failure carries the code it exits
-/// with, so this verb's two ways of supplying a value refuse the same input
-/// with the same code.
+///
+/// Returns an exit code and message when reading fails, the value exceeds the
+/// size limit, or the value is not valid UTF-8.
+///
+/// # Examples
+///
+/// ```
+/// use std::io::Cursor;
+///
+/// let value = resolve_stdin_value(&mut Cursor::new(b"secret\n".to_vec()))
+///     .expect("valid secret");
+/// assert_eq!(value, "secret");
+/// ```
 fn resolve_stdin_value(reader: &mut dyn Read) -> Result<String, (ExitCode, String)> {
     let mut bytes = Vec::new();
     reader
@@ -178,10 +198,27 @@ fn resolve_stdin_value(reader: &mut dyn Read) -> Result<String, (ExitCode, Strin
 /// anything longer is over the cap after the trim rather than exactly on it.
 const STDIN_READ_CAP: usize = secrets::MAX_VALUE_BYTES + 3;
 
-/// `shep secret set <key> (<value> | --stdin) [--env <environment>]`.
+/// Stores a secret value for the specified key and environment.
 ///
-/// No `--env` means [`ALL_ENVIRONMENTS`], the slot every environment falls
-/// back to.
+/// When no environment is provided, the value is stored in the shared
+/// [`ALL_ENVIRONMENTS`] slot used as the fallback for every environment.
+///
+/// # Arguments
+///
+/// * `key` - The secret key to store.
+/// * `environment` - The environment-specific slot, or the shared slot when
+///   omitted.
+/// * `value` - The secret value to store.
+///
+/// # Returns
+///
+/// The command exit code.
+///
+/// # Examples
+///
+/// ```text
+/// shep secret set API_TOKEN "secret-value" --env production
+/// ```
 fn set(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
@@ -196,30 +233,32 @@ fn set(
     }
 }
 
-/// `shep secret get <key> [--env <environment>]`.
+/// Reads a secret value from the requested environment and writes it in the selected output format.
 ///
-/// `Format::Table` writes the value and a newline to `streams.out` and
-/// nothing else: the whole point is
-/// `DB_PASSWORD=$(shep secret get DB_PASSWORD)`, and a table with a KEY
-/// column would give the substitution something to strip. `Format::Json`
-/// wraps the same value in the standard envelope instead, through
-/// [`SecretValueRow`], the same shape [`crate::commands::kv`]'s own
-/// single-key `get` wraps a value in: `--format json` has to answer the
-/// contract every command but `bleats` does
-/// (`web/src/pages/docs/json-output.astro`), and a bare credential like
-/// `hunter2` is not even valid JSON.
+/// When `environment` is omitted, resolves the value using `host_environment` and the shared
+/// environment fallback. Reads are refused when `allow_read` is `false`.
 ///
-/// `--env` reads that slot exactly. Without it the value resolves against
-/// `host_environment`, [`daemon_config`]'s `[daemon] environment` default:
-/// this verb takes no sheep name, so it cannot read a Flockfile's own
-/// `environment` override, and an app that sets one may resolve
-/// differently. `--env` is how to check exactly what a given environment
-/// holds.
+/// # Examples
 ///
-/// Exits [`ExitCode::NotFound`] for a key with no value, writing nothing to
-/// `streams.out`, so `shep secret get k || echo default` works in a script.
-/// The gate is read before the store is, so a refusal cannot say whether
-/// the key exists.
+/// ```rust,no_run
+/// # let mut streams = todo!();
+/// # let paths = todo!();
+/// # let args = todo!();
+/// let exit_code = secret(&mut streams, &paths, &args);
+/// assert!(exit_code.success());
+/// ```
+///
+/// # Arguments
+///
+/// * `key` — The secret key to read.
+/// * `environment` — An environment slot to read exactly.
+/// * `allow_read` — Whether secret reads are permitted.
+/// * `host_environment` — The environment used when no slot is specified.
+///
+/// # Returns
+///
+/// The command exit code. `ExitCode::NotFound` indicates that no value exists, while
+/// `ExitCode::InvalidConfig` indicates that reads are disabled.
 fn get(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
@@ -266,23 +305,20 @@ fn get(
     }
 }
 
-/// What `key` resolves to in `host_environment`: that environment's own
-/// slot, then [`ALL_ENVIRONMENTS`].
+/// Resolves an operator-managed secret for a host environment, falling back to the shared environment slot.
 ///
-/// `host_environment` is [`get`]'s own parameter, not a sheep's actual
-/// environment: this verb takes no sheep name, so it cannot tell whether
-/// some app's Flockfile sets its own `environment` and would resolve a
-/// value differently.
-///
-/// The operator's own store alone. A provider dog's namespace is not
-/// reachable from here: those values live in the shepherd's memory, are not
-/// an operator's to edit, and reading one through this verb would say they
-/// are.
+/// Provider namespaces are not accessible. Unnamespaced keys are validated before the local secret store is read.
 ///
 /// # Errors
-/// [`SecretError::InvalidKey`] for a key outside the grammar, which
-/// includes any `namespace/key` reference, plus `Io`, `Decode` and
-/// `FutureVersion` exactly as [`secrets::all`] returns them.
+///
+/// Returns [`SecretError::InvalidKey`] for invalid or namespaced keys, or propagates errors from loading the secret store.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let value = resolve(&paths, "database-url", "production")?;
+/// # Ok::<(), SecretError>(())
+/// ```
 fn resolve(
     paths: &ShepPaths,
     key: &str,
@@ -329,8 +365,19 @@ fn unset(
     }
 }
 
-/// `shep secret list`: every key and the environments it has a value for,
-/// in [`secrets::all`]'s `BTreeMap` order.
+/// Lists each stored secret key and the environments containing a value, preserving the store's key order.
+///
+/// Secret values are not included in the output.
+///
+/// # Examples
+///
+/// ```text
+/// shep secret list
+/// ```
+///
+/// # Returns
+///
+/// The command's exit status.
 fn list(streams: &mut Streams<'_>, paths: &ShepPaths) -> ExitCode {
     match secrets::all(&paths.secrets) {
         Ok(entries) => {
@@ -355,8 +402,23 @@ fn list(streams: &mut Streams<'_>, paths: &ShepPaths) -> ExitCode {
     }
 }
 
-/// The one report `set` and `unset` share: which slot changed, never what
-/// is in it.
+/// Reports the key and environment of a changed secret slot without exposing its value.
+///
+/// # Arguments
+///
+/// * `key` - The secret key whose slot changed.
+/// * `environment` - The environment of the changed slot.
+///
+/// # Returns
+///
+/// The exit code produced while writing the report.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let exit_code = emit_slot(&mut streams, "API_KEY", "production");
+/// assert!(exit_code.success());
+/// ```
 fn emit_slot(streams: &mut Streams<'_>, key: &str, environment: &str) -> ExitCode {
     let row = SecretSlotRow {
         key: key.to_string(),
@@ -384,6 +446,15 @@ mod tests {
     use crate::exit::ExitCode;
     use crate::output::Streams;
 
+    /// Creates a bare-output stream configuration using the specified format.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut output = Vec::new();
+    /// let mut error = Vec::new();
+    /// let _streams = streams_with(&mut output, &mut error, Format::Table);
+    /// ```
     fn streams_with<'a>(out: &'a mut Vec<u8>, err: &'a mut Vec<u8>, fmt: Format) -> Streams<'a> {
         Streams {
             out,
@@ -393,12 +464,27 @@ mod tests {
         }
     }
 
+    /// Creates output streams configured for JSON formatting.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut out = Vec::new();
+    /// let mut err = Vec::new();
+    /// let _streams = streams(&mut out, &mut err);
+    /// ```
     fn streams<'a>(out: &'a mut Vec<u8>, err: &'a mut Vec<u8>) -> Streams<'a> {
         streams_with(out, err, Format::Json)
     }
 
-    /// `$SHEP_HOME` is `dir` itself, so `paths.secrets`' parent exists:
-    /// `secrets::set` stages via `tempfile_in`, which creates no parent.
+    /// Resolves Shepherd paths with `dir` as the `SHEP_HOME` directory.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let paths = paths_in(std::path::Path::new("/tmp/shep"));
+    /// assert_eq!(paths.home, std::path::Path::new("/tmp/shep"));
+    /// ```
     fn paths_in(dir: &Path) -> ShepPaths {
         let home = dir.display().to_string();
         ShepPaths::resolve(&move |key| (key == "SHEP_HOME").then(|| home.clone()), dir)
@@ -437,8 +523,21 @@ mod tests {
         }
     }
 
-    /// `shep secret get` against a store whose host environment is
-    /// `production`: the code, then stdout, then stderr.
+    /// Runs `shep secret get` with `production` as the host environment and captures its results.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let (code, stdout, stderr) = run_get(
+    ///     &paths,
+    ///     "api-key",
+    ///     None,
+    ///     true,
+    ///     Format::Table,
+    /// );
+    /// ```
+    ///
+    /// The returned tuple contains the exit code, standard output, and standard error.
     fn run_get(
         paths: &ShepPaths,
         key: &str,
@@ -463,8 +562,15 @@ mod tests {
         )
     }
 
-    /// [`run_get`]'s stderr half, under [`Format::Table`]: every caller
-    /// below is after the refusal text, not the envelope shape.
+    /// Captures the stderr output from a table-formatted secret lookup.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let (code, stderr) = run_get_capturing(paths, "API_KEY", None, true);
+    /// assert!(code.success());
+    /// assert!(stderr.is_empty());
+    /// ```
     fn run_get_capturing(
         paths: &ShepPaths,
         key: &str,
@@ -475,11 +581,15 @@ mod tests {
         (code, err)
     }
 
-    /// [`run_get`]'s stdout half, under [`Format::Table`]: the bare-value
-    /// contract `shep secret get k || echo default` and
-    /// `DB_PASSWORD=$(shep secret get DB_PASSWORD)` depend on.
-    /// [`get_under_json_wraps_the_value_in_the_standard_envelope`] covers
-    /// the other format.
+    /// Captures the exit code and standard output produced by a table-formatted secret lookup.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let (code, output) = run_get_capturing_out(&paths, "DB_PASSWORD", None, true);
+    /// assert!(code.success());
+    /// assert_eq!(output, "secret-value\n");
+    /// ```
     fn run_get_capturing_out(
         paths: &ShepPaths,
         key: &str,

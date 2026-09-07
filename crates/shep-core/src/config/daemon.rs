@@ -68,6 +68,15 @@ pub struct DaemonSection {
 /// Not derived: [`DaemonSection::environment`] defaults to `"production"`,
 /// which `String`'s own `Default` cannot express.
 impl Default for DaemonSection {
+    /// Creates daemon settings with production environment defaults.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let section = DaemonSection::default();
+    /// assert_eq!(section.environment, "production");
+    /// assert!(!section.log_json);
+    /// ```
     fn default() -> Self {
         Self {
             log_json: false,
@@ -265,16 +274,22 @@ struct RawDaemonConfig {
 }
 
 impl DaemonConfig {
-    /// Builds config from optional file source + environment overrides.
+    /// Loads daemon configuration from an optional TOML source and environment overrides.
     ///
-    /// `file < env`, validated. Equivalent to [`Self::load_layered`] with
-    /// an empty [`DaemonOverrides`].
+    /// File values take precedence over defaults, while environment values override file values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let result = DaemonConfig::load(None, &|_| None);
+    /// assert!(result.is_ok());
+    /// ```
     ///
     /// # Errors
-    /// - [`DaemonConfigError::Toml`]: the file source is invalid TOML.
-    /// - [`DaemonConfigError::BadEnvValue`]: a `SHEP_*` value is not parseable.
-    /// - [`DaemonConfigError::BelowMinimum`]: the effective `max_cron_sleep` is below the floor.
-    /// - [`DaemonConfigError::InvalidEnvironment`]: the effective `environment` is `all` or falls outside the secrets store's name grammar.
+    ///
+    /// Returns an error if the file contains invalid TOML, an environment override cannot be
+    /// parsed, the effective `max_cron_sleep` is below the minimum, or the effective environment
+    /// name is invalid.
     pub fn load(
         file_source: Option<&str>,
         env: &dyn Fn(&str) -> Option<String>,
@@ -282,17 +297,29 @@ impl DaemonConfig {
         Self::load_layered(file_source, env, &DaemonOverrides::new())
     }
 
-    /// Builds config from optional file source + environment + CLI-flag
-    /// overrides.
+    /// Builds daemon configuration from an optional TOML source, environment variables, and CLI overrides.
     ///
-    /// `file < env < flags` (spec §5), validated exactly once, at the end,
-    /// so a later layer can rescue a value an earlier one would reject.
+    /// Configuration layers have file < environment < CLI precedence. Values are validated after
+    /// all layers are applied, allowing a later layer to replace an invalid earlier value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let config = DaemonConfig::load_layered(
+    ///     None,
+    ///     &|_| None,
+    ///     &DaemonOverrides::default(),
+    /// ).unwrap();
+    ///
+    /// assert_eq!(config.daemon.environment, "production");
+    /// ```
     ///
     /// # Errors
-    /// - [`DaemonConfigError::Toml`]: the file source is invalid TOML.
-    /// - [`DaemonConfigError::BadEnvValue`]: a `SHEP_*` value is not parseable.
-    /// - [`DaemonConfigError::BelowMinimum`]: the effective `max_cron_sleep` is below the floor.
-    /// - [`DaemonConfigError::InvalidEnvironment`]: the effective `environment` is `all` or falls outside the secrets store's name grammar.
+    ///
+    /// Returns [`DaemonConfigError::Toml`] for invalid TOML, [`DaemonConfigError::BadEnvValue`]
+    /// for unparseable `SHEP_*` values, [`DaemonConfigError::BelowMinimum`] when the effective
+    /// `max_cron_sleep` is below the minimum, or [`DaemonConfigError::InvalidEnvironment`] when
+    /// the effective environment is invalid.
     pub fn load_layered(
         file_source: Option<&str>,
         env: &dyn Fn(&str) -> Option<String>,
@@ -354,18 +381,25 @@ impl DaemonConfig {
         Ok(cfg)
     }
 
-    /// Checks every invariant a `DaemonConfig` carries, whatever layers
-    /// produced it. One call site, at the bottom of [`Self::load_layered`]: validating
-    /// per layer would stop a good `--max-cron-sleep` from rescuing a
-    /// broken `shep.toml`.
+    /// Validates the configuration against all daemon invariants.
     ///
-    /// `key` is provenance: the spelling the operator actually set, so the
-    /// refusal names the thing they can edit. Private; guards construction,
-    /// not a later mutation of a `pub` field.
+    /// The `key` identifies the configuration layer that supplied `max_cron_sleep`,
+    /// so errors can name the value to edit.
     ///
     /// # Errors
-    /// - [`DaemonConfigError::BelowMinimum`]: `max_cron_sleep` is under the floor.
-    /// - [`DaemonConfigError::InvalidEnvironment`]: `environment` is `all` or falls outside the secrets store's name grammar.
+    ///
+    /// Returns [`DaemonConfigError::InvalidEnvironment`] when the environment is
+    /// `all` or does not match the secrets-store name grammar.
+    ///
+    /// Returns [`DaemonConfigError::BelowMinimum`] when `max_cron_sleep` is less
+    /// than the minimum allowed duration.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// config.validate("SHEP_MAX_CRON_SLEEP")?;
+    /// # Ok::<(), DaemonConfigError>(())
+    /// ```
     fn validate(&self, key: &'static str) -> Result<(), DaemonConfigError> {
         if self.daemon.environment == secrets::ALL_ENVIRONMENTS
             || !secrets::is_name(&self.daemon.environment)
@@ -497,6 +531,14 @@ pub enum DaemonConfigError {
 }
 
 impl fmt::Display for DaemonConfigError {
+    /// Formats the configuration error as a user-facing message.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let error = DaemonConfigError::InvalidEnvironment("staging".to_owned());
+    /// assert!(error.to_string().contains("staging"));
+    /// ```
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Toml(m) => write!(f, "invalid shep.toml: {m}"),

@@ -1111,6 +1111,16 @@ pub enum SecretCommand {
 }
 
 impl fmt::Debug for SecretCommand {
+    /// Formats the secret command for debugging without exposing secret values.
+    ///
+    /// Secret values are represented by their byte length when present.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let command = SecretCommand::List;
+    /// assert_eq!(format!("{command:?}"), "List");
+    /// ```
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Set {

@@ -778,19 +778,28 @@ pub struct BootOptions {
     pub environment: Option<String>,
 }
 
-/// Brings the daemon up: layout, lock, socket, dogs, restore, dogs, readiness
+/// Starts the daemon and prepares it to serve requests.
 ///
-/// The order is load-bearing: handlers before the socket (SIGUSR2 otherwise
-/// terminates), the pidfile lock before the bind it makes race-free,
-/// `ready_fd` on the bind not the restore, `[daemon] boot_first_dogs` before
-/// the restore and every other dog after it so a metrics dog does not answer
-/// for an empty flock, [`BootOptions::notify_socket`] last.
+/// The daemon claims its pidfile lock before binding the control socket, reports
+/// readiness after the socket is bound, restores the saved flock when requested,
+/// and starts configured dogs before and after restoration according to
+/// `boot_first_dogs`. Systemd-style readiness notification is sent after
+/// restoration when configured.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let daemon = boot(runner, paths, options).await?;
+/// daemon.run().await?;
+/// # Ok::<(), BootError>(())
+/// ```
 ///
 /// # Errors
-/// - [`BootError::Io`] if a boot filesystem or signal-handler step failed.
-/// - [`BootError::AlreadyRunning`] if another daemon holds the lock or answered.
-/// - [`BootError::ReadyWrite`] if the readiness line could not be written.
-/// - [`BootError::Snapshot`] if a roll exists and could not be read or parsed.
+///
+/// Returns [`BootError::Io`] for filesystem or signal-handler failures,
+/// [`BootError::AlreadyRunning`] when another daemon owns the lock or socket,
+/// [`BootError::ReadyWrite`] when readiness cannot be reported, and
+/// [`BootError::Snapshot`] when the saved muster roll cannot be read or parsed.
 pub async fn boot<R: ProcessRunner>(
     runner: R,
     paths: ShepPaths,

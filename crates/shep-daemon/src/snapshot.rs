@@ -803,6 +803,15 @@ mod tests {
     use shep_core::values::UpDuration;
     use std::time::Duration;
 
+    /// Builds process information with a deterministic process ID and log file paths.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let process = info(7, "worker", ProcStatus::Online);
+    /// assert_eq!(process.pid, Some(1007));
+    /// assert_eq!(process.name, "worker");
+    /// ```
     fn info(id: u32, name: &str, status: ProcStatus) -> ProcessInfo {
         ProcessInfo::builder(id, name, status)
             .pid(Some(1000 + id))

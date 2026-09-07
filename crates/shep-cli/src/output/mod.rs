@@ -347,15 +347,16 @@ pub fn emit_flock(
     }
 }
 
-/// The one line under the dogs table that says where `silent` is
-/// explained, or nothing at all when no dog is silent.
+/// Creates a pointer to the `shep describe` command for silent dogs.
 ///
-/// A pointer, not the explanation: that runs to a paragraph per dog
-/// (`vocabulary::silence_note`), too much for a table an operator leaves
-/// running in a loop. Rendered after the table, outside it, so a long
-/// list of names wraps in the terminal rather than squeezing STATUS off
-/// the side of it. Named rather than counted, since the names are what
-/// the operator types into the next command.
+/// The pointer names one silent dog individually or lists multiple silent dogs.
+/// Returns `None` when every dog has responded.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(silence_pointer(&[]), None);
+/// ```
 fn silence_pointer(dogs: &[ProcessInfo]) -> Option<String> {
     let silent: Vec<&str> = dogs
         .iter()
@@ -400,25 +401,30 @@ struct DescribedEnvelope<'a> {
     secrets: &'a [rows::DescribedSecret],
 }
 
-/// Renders one `describe` answer: the sheep table, then each sheep's lamb
-/// tree beneath it when the reply walked and found any.
+/// Renders a `describe` response as JSON or a table, including process details and per-sheep diagnostics.
 ///
-/// A silent row also gets a paragraph from
-/// [`crate::vocabulary::silence_note`] (what [`silence_pointer`] points
-/// at). A "Depends on" heading follows, once per name, naming the sheep this
-/// one waits for at a staged start; then Pending and Overridden headings,
-/// same once-per-name rule, naming `shep reload <name>` as what promotes a
-/// parked config. Never shorten the caption to "process tree": the walk
-/// follows parent-pid links while the stop ladder acts on the process group,
-/// and the two diverge.
-///
-/// `secrets` is `describe`'s own local read of this machine's secret
-/// stores, keyed by sheep name; pass an empty slice for a reply (`fold`,
-/// today) that never computes one. Printed once per name, right after
-/// Overridden, in the same "prose under the table" shape.
+/// Table output includes silence notes, lamb process trees, dependencies, pending and overridden
+/// fields, and matching secret statuses. JSON output includes the flock data and nonempty secret
+/// entries.
 ///
 /// # Errors
-/// The underlying write failed.
+///
+/// Returns an error if writing the response fails.
+///
+/// # Examples
+///
+/// ```
+/// let mut output = Vec::new();
+/// emit_described(
+///     &mut output,
+///     Format::Json,
+///     "describe",
+///     Vec::new(),
+///     Presentation::Plain,
+///     &[],
+/// )?;
+/// # Ok::<(), std::io::Error>(())
+/// ```
 #[cfg_attr(windows, allow(dead_code))]
 pub fn emit_described(
     out: &mut dyn io::Write,

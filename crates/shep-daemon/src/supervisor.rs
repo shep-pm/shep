@@ -1415,9 +1415,16 @@ pub(crate) struct SupervisorBuilder<R: ProcessRunner> {
 }
 
 impl<R: ProcessRunner> SupervisorBuilder<R> {
-    /// A builder with no lifecycle extras: the engine spawns, restarts and
-    /// kills, and nothing watches, schedules or probes. `events` receives
-    /// [`BusEvent::Process`] plus logs forwarded from each sheep.
+    /// Creates a supervisor builder with lifecycle extras disabled.
+    ///
+    /// The builder uses the production environment and has no provider secrets configured.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let builder = SupervisorBuilder::new(runner, paths, events);
+    /// ```
+    pub(crate) fn new<R>(runner: R, paths: ShepPaths, events: Bus) -> Self
     pub(crate) fn new(runner: R, paths: ShepPaths, events: Bus) -> Self {
         Self {
             runner,
@@ -1429,32 +1436,50 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
         }
     }
 
-    /// Wires in the lifecycle extras.
+    /// Configures the builder with lifecycle extras.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let builder = SupervisorBuilder::new().extras(extras);
+    /// ```
+    ///
     #[must_use]
     pub(crate) fn extras(mut self, extras: Extras) -> Self {
         self.extras = Some(extras);
         self
     }
 
-    /// The environment a sheep that names none of its own resolves its
-    /// secrets in, from `[daemon] environment`.
+    /// Sets the environment used to resolve secrets for sheep that do not specify one.
     ///
-    /// Left at [`DEFAULT_ENVIRONMENT`] when unset, which is what
-    /// `DaemonSection` itself defaults to, so a builder nobody told and a
-    /// file that says nothing agree.
-    #[must_use]
+    /// Defaults to [`DEFAULT_ENVIRONMENT`] when no environment is configured.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let builder = SupervisorBuilder::default().environment("staging".to_owned());
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// The builder with the configured environment.
+    ///
+    /// #[must_use]
     pub(crate) fn environment(mut self, environment: String) -> Self {
         self.environment = environment;
         self
     }
 
-    /// The registry a provider dog pushes into, shared with the connection
-    /// tasks that serve `Request::PutSecrets`.
+    /// Configures the shared provider-secret registry used by spawned actors and
+    
+    /// the tasks that handle provider secret updates.
+    
     ///
-    /// Left unset, the actor loads one of its own from
-    /// [`ShepPaths::secrets_cache`], which is what a cold boot with no dog
-    /// yet running resolves against anyway. `boot` passes the shared one
-    /// so a push reaches the next spawn.
+    
+    /// When unset, the supervisor creates its own registry from the secrets cache.
+    
+    ///
+    
     #[must_use]
     pub(crate) fn provider_secrets(mut self, secrets: Arc<ProviderSecrets>) -> Self {
         self.provider_secrets = Some(secrets);
@@ -1512,7 +1537,14 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
         Ok(SupervisorHandle { tx })
     }
 
-    /// The actor both spawn paths start from: no sheep, counters at zero.
+    /// Constructs an actor with its configured runtime dependencies and initial empty state.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let actor = builder.build(tx);
+    /// assert!(actor.sheep.is_empty());
+    /// ```
     fn build(self, tx: mpsc::Sender<Msg>) -> Actor<R> {
         let provider_secrets = self
             .provider_secrets
@@ -1585,6 +1617,17 @@ impl fmt::Display for AdoptError {
 
 #[cfg(unix)]
 impl core::error::Error for AdoptError {
+    /// Gets the underlying cause of a specification or runner error.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// if let Some(source) = error.source() {
+    ///     println!("caused by: {source}");
+    /// }
+    /// ```
+    ///
+    /// Returns the underlying error when one is present.
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
             Self::Spec { source, .. } => Some(source),
@@ -2800,16 +2843,25 @@ impl<R: ProcessRunner> Actor<R> {
             .ok_or_else(|| SupervisorError::SpawnFailed("the dog registered no instance".into()))
     }
 
-    /// Expands each app through `instance_slots` + `assemble`, spawning one
-    /// instance per slot, after checking every app in the batch.
+    /// Starts the requested application instances after validating their credentials and executable configuration.
     ///
-    /// Under [`BatchPolicy::AllOrNothing`] nothing is registered if any app
-    /// fails that check, and the error names every one that did. A spawn that
-    /// fails anyway still leaves the batch part-registered: only exec knows
-    /// for certain.
+    /// Under [`BatchPolicy::AllOrNothing`], any refusal prevents the batch from being registered. Under
+    /// [`BatchPolicy::PerApp`], failures are recorded per application while other applications continue.
+    /// A spawn failure may leave earlier instances registered.
     ///
-    /// `dog` is written onto every entry this registers, and is `None` for
-    /// every caller but [`Self::do_start_dog`]; see [`ProcessEntry::dog`].
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let started = supervisor.do_start(apps, None, BatchPolicy::PerApp, &gate)?;
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the batch cannot start, including the applications that were refused or
+    /// whose instances failed to spawn.
+    ///
+    /// `dog` is attached to every registered process and is `None` except when starting the supervisor's
+    /// dog process.
     fn do_start(
         &mut self,
         apps: Vec<ResolvedApp>,
@@ -2982,35 +3034,34 @@ impl<R: ProcessRunner> Actor<R> {
         }
     }
 
-    /// Registers one app as a member of the flock without spawning anything.
+    /// Registers an application as a stopped flock member without spawning it.
     ///
-    /// The flock is a membership list, not a list of live processes: `stop`
-    /// leaves a sheep registered and `Stopped`, `delete` ends membership.
+    /// Membership is tracked per application name and remains after the application
+    /// is stopped. Registration is idempotent; the first start uses instance `0`.
     ///
-    /// One entry per app rather than one per configured instance, at
-    /// `instance: 0`, the slot `start` fills first, so a later `restart` lands
-    /// where it would have. Idempotent by name.
+    /// # Examples
+    ///
+    /// ```ignore
+    /// supervisor.register_at_rest(&app);
+    /// ```
     fn register_at_rest(&mut self, app: &ResolvedApp) -> ProcessInfo {
         self.register_without_spawning(app, ProcStatus::Stopped, None)
             .into_info()
     }
 
-    /// The secret view one spawn of `app` resolves against.
+    /// Creates the per-spawn view used to resolve an application's secrets.
     ///
-    /// The store is read here rather than inside [`assemble`], the same way
-    /// `credentials` is resolved by the caller: real I/O belongs to the
-    /// caller so the assembler stays a pure function of its arguments. Read
-    /// per spawn rather than cached, so a `shep secret set` between two
-    /// spawns reaches the second without a daemon restart.
+    /// The view uses the application's configured environment, the host environment
+    /// as a fallback, the local secret store, and provider-supplied secrets. If the
+    /// local store cannot be read, the view is empty and secret references resolve
+    /// as unavailable.
     ///
-    /// A store that cannot be read yields an empty view rather than failing
-    /// here, and logs why. A sheep that needs nothing from it still spawns,
-    /// and one that does gets the ordinary refusal naming its own reference,
-    /// which on its own would send an operator to `shep secret set` for a
-    /// store that is corrupt or newer than this build.
+    /// # Examples
     ///
-    /// The namespaced half comes from [`ProviderSecrets`], in memory, so
-    /// this reads the file for the operator's own store and nothing else.
+    /// ```rust,ignore
+    /// let view = supervisor.secret_view(&app);
+    /// assert!(view.resolve("DATABASE_URL").is_some());
+    /// ```
     fn secret_view(&self, app: &ResolvedApp) -> SecretView {
         let environment = app
             .config()
@@ -3149,15 +3200,35 @@ impl<R: ProcessRunner> Actor<R> {
             .collect()
     }
 
-    /// Registers + spawns one brand-new instance (a fresh id, `restarts: 0`).
+    /// Registers and spawns a new application instance with a fresh identifier.
     ///
-    /// Always inserts a [`SheepSlot`] before returning: on success `Starting`
-    /// with a readiness task armed when the app configures `wait_ready` or
-    /// `readiness_probe`, `Starting` with a readiness task armed on its
-    /// `listen_timeout` fallback when the app's name is in `gate` even though
-    /// it configures no signal of its own, and `Online` otherwise. `Errored`
-    /// with no task on failure. `dog` lands on the entry either way, so a dog
-    /// whose binary cannot be spawned still shows up in the dogs table.
+    /// The instance is recorded even when assembly or process spawning fails. Successful
+    /// instances start online or await readiness according to their readiness configuration
+    /// and the supplied gate. Retriable assembly failures leave the instance registered for
+    /// a later retry.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let info = supervisor.spawn_fresh(&app, 1, None, None, &gate)?;
+    /// # Ok::<(), String>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the instance cannot be assembled because of a permanent
+    /// failure or when its process cannot be spawned.
+    ///
+    /// # Parameters
+    ///
+    /// * `app` - The resolved application configuration.
+    /// * `instance` - The instance number to assign.
+    /// * `gate` - Application names that must await readiness even without an explicit
+    ///   readiness signal.
+    ///
+    /// # Returns
+    ///
+    /// Information about the registered instance.
     fn spawn_fresh(
         &mut self,
         app: &ResolvedApp,
@@ -3384,18 +3455,25 @@ impl<R: ProcessRunner> Actor<R> {
         }
     }
 
-    /// Installs one sheep this image inherited rather than started.
+    /// Registers a sheep inherited from a predecessor daemon and restores its
+    /// process, configuration, lifecycle state, and runtime handles.
     ///
-    /// Nothing here spawns, signals or reopens anything, and nothing is
-    /// emitted on the bus: the sheep never transitioned. `started_at` cannot
-    /// cross the handover, since a `tokio::time::Instant` means nothing
-    /// outside the runtime that read it, so it is re-derived via
-    /// [`handover::uptime`](crate::handover::uptime).
+    /// Running processes are adopted without emitting a transition event. Their
+    /// start time is reconstructed from the operating system because
+    /// `tokio::time::Instant` values cannot cross the handover.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// supervisor.install_adopted(adopted_sheep, &reaper)?;
+    /// # Ok::<(), AdoptError>(())
+    /// ```
     ///
     /// # Errors
     ///
-    /// - [`AdoptError::Spec`] if the carried config does not normalize.
-    /// - [`AdoptError::Runner`] if the runner refused the inherited handles.
+    /// Returns [`AdoptError::Spec`] when the inherited configuration cannot be
+    /// normalized, or [`AdoptError::Runner`] when the runner cannot adopt the
+    /// inherited process handles.
     #[cfg(unix)]
     fn install_adopted(
         &mut self,
@@ -3775,13 +3853,20 @@ impl<R: ProcessRunner> Actor<R> {
         slot.entry.spec = pending;
     }
 
-    /// Respawns an already-registered id in place: reassembles from its stored
-    /// spec + instance, bumps `restarts` and resets timing on success, or marks
-    /// the entry `Errored` on failure.
+    /// Respawns a registered process using its stored specification and instance.
     ///
-    /// `manually` is narrower than "forced": `true` only for an operator's
-    /// `Restart`, `false` for the crash loop and every restart the daemon
-    /// raised itself. Callers pass `origin == CommandOrigin::Operator`.
+    /// On success, replaces the process, increments its restart count, resets its
+    /// timing state, and returns the updated process information. On failure, marks
+    /// the entry as errored and returns its resulting process information.
+    ///
+    /// `manually` identifies operator-initiated restarts.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let info = supervisor.respawn(id, true);
+    /// assert_eq!(info.id, id);
+    /// ```
     fn respawn(&mut self, id: u32, manually: bool) -> ProcessInfo {
         // Before the identity below is read, since a promoted `user` or `group`
         // is what clears it. Here rather than in the `Restart` arms: every door
@@ -3882,14 +3967,24 @@ impl<R: ProcessRunner> Actor<R> {
         }
     }
 
-    /// Lands `id` in the terminal state a respawn that could not start
-    /// reaches: `Errored`, every handle cleared, its lifecycle extras
-    /// disarmed.
+    /// Marks a respawn that could not start as errored and disarms its lifecycle extras.
     ///
-    /// `reason` is logged here rather than by the caller. The `Errored` event
-    /// carries no reason and the deferred aggregation reply has no per-id error
-    /// slot, so this log line is the only place an operator learns why a
-    /// restart produced no process.
+    /// # Arguments
+    ///
+    /// * `id` - Identifier of the process whose respawn failed.
+    /// * `manually` - Whether the respawn was manually requested.
+    /// * `reason` - Explanation recorded for the failed respawn.
+    ///
+    /// # Returns
+    ///
+    /// A snapshot of the process in its errored state.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let info = supervisor.respawn_failed(id, false, &"secret unavailable");
+    /// assert_eq!(info.status, ProcStatus::Errored);
+    /// ```
     fn respawn_failed(
         &mut self,
         id: u32,
@@ -3924,18 +4019,30 @@ impl<R: ProcessRunner> Actor<R> {
         info
     }
 
-    /// A spawn that never happened because a `{{secret:...}}` would not
-    /// resolve, routed to the status its refusal deserves.
+    /// Records a refused spawn and determines whether it should be retried or marked failed.
     ///
-    /// The two shapes must not collapse into one. A namespace no provider
-    /// dog has pushed to yet clears itself without anybody doing anything,
-    /// so the sheep waits on the same budget a crash loop spends and errors
-    /// when that runs out. A key nobody has set waits on a person instead,
-    /// and a ladder in front of it would only postpone the report by
-    /// sixteen turns.
+    /// Permanent assembly errors fail the process immediately. Retriable errors consume the
+    /// restart budget and schedule another attempt when capacity remains.
     ///
-    /// The slot must already exist: `spawn_fresh` registers before it calls
-    /// this, so the sheep is visible whichever way the refusal goes.
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let info = supervisor.refuse_spawn(id, false, &error);
+    /// assert!(matches!(
+    ///     info.status,
+    ///     ProcStatus::WaitingRestart | ProcStatus::Errored
+    /// ));
+    /// ```
+    ///
+    /// # Parameters
+    ///
+    /// * `id` - Identifier of the registered process.
+    /// * `manually` - Whether the refusal resulted from a manual operation.
+    /// * `err` - Error that prevented the spawn.
+    ///
+    /// # Returns
+    ///
+    /// Current process information after the refusal is recorded.
     fn refuse_spawn(&mut self, id: u32, manually: bool, err: &AssembleError) -> ProcessInfo {
         if !err.is_retriable() {
             return self.respawn_failed(id, manually, err);
@@ -5245,18 +5352,17 @@ impl<R: ProcessRunner> Actor<R> {
         }
     }
 
-    /// Rebuilds every lifecycle extra armed for `name`, so a changed
-    /// [`EXTRAS_FIELDS`] value reaches the worker enforcing it.
+    /// Rebuilds the lifecycle extras for active instances with the specified name.
     ///
-    /// [`ExtrasRegistry::rearm_name`] rather than [`Self::arm_extras`] per id:
-    /// `arm` preserves a live cron or watch task, which is right for a reload's
-    /// overlap and wrong here.
+    /// Only online instances with live process IDs are rearmed. If no matching
+    /// instance is currently eligible, the existing group for the name is still
+    /// rebuilt so stale configuration is removed.
     ///
-    /// Gated on `Online` with a live pid, as every other arming site is:
-    /// [`ExtrasRegistry::arm`] decides group membership from the configuration,
-    /// so arming a stopped instance puts it in a group whose cron occurrence
-    /// would start a process the operator had stopped. One prober per instance,
-    /// since [`describe`] bakes `SHEP_INSTANCE` into a prober's environment.
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// supervisor.rearm_name("worker");
+    /// ```
     fn rearm_name(&mut self, name: &str) {
         let Some(extras) = self.extras.as_ref() else {
             return;
@@ -5298,17 +5404,25 @@ impl<R: ProcessRunner> Actor<R> {
         );
     }
 
-    /// The [`SpawnSpec`] each armable entry's prober is built from, by id.
+    /// Builds the spawn specifications used to rearm the provided process entries.
     ///
-    /// One [`SecretView`] per distinct environment across `entries`, not one
-    /// for the group: `environment` is a `NeedsRespawn` field and
-    /// [`Self::promote_pending`] rewrites a single slot, so two instances of
-    /// a name can hold different environments at once and each resolves
-    /// against its own.
+    /// Each distinct environment is resolved through its own secret view, and the
+    /// resulting specifications are keyed by process entry ID.
     ///
-    /// [`describe`] rather than [`assemble`]: this sheep is up, and a probe
-    /// it can no longer build an environment for must not cost it its watch
-    /// and its cron worker too.
+    /// # Arguments
+    ///
+    /// * `entries` — The process entries for which to build spawn specifications.
+    ///
+    /// # Returns
+    ///
+    /// A map from process entry IDs to their spawn specifications.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let specs = supervisor.rearm_specs(&entries);
+    /// assert_eq!(specs.len(), entries.len());
+    /// ```
     fn rearm_specs(&self, entries: &[&ProcessEntry]) -> HashMap<u32, SpawnSpec> {
         let mut views: HashMap<&str, SecretView> = HashMap::new();
         let mut specs = HashMap::with_capacity(entries.len());
@@ -5573,18 +5687,22 @@ impl<R: ProcessRunner> Actor<R> {
         );
     }
 
-    /// `SpawnNew`: spawns a replacement in `old_id`'s instance slot under a
-    /// new id, and returns that id.
+    /// Replaces an instance with a newly spawned process in the same instance slot.
     ///
-    /// Same slot, so `SHEP_INSTANCE`, templated env and log paths follow the
-    /// drainee; new id, since two live processes per id breaks the property
-    /// test; readiness gated even for `Heuristic`, or `DrainOld` would kill the
-    /// drainee at once. `restarts` carries over, the budget does not.
+    /// The replacement receives a new process ID while preserving the instance's restart
+    /// count and reload metadata. It must become ready before the replaced process is
+    /// retired.
     ///
-    /// Marks the drainee `Stopping` before spawning, or `handle_extra_restart`
-    /// would restart a drainee mid-`AwaitReady`. Under [`ReloadMode::Serial`]
-    /// the drainee is already dead, so the `Reload` event and restore-on-failure
-    /// are skipped, and this must run before `deregister_on_exit`.
+    /// # Errors
+    ///
+    /// Returns an error if the intended credentials or application specification cannot
+    /// be resolved, or if the replacement process cannot be spawned.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let replacement_id = supervisor.spawn_replacement(old_id, ReloadMode::Overlap)?;
+    /// ```
     fn spawn_replacement(&mut self, old_id: u32, mode: ReloadMode) -> Result<u32, String> {
         // `Credentials` is `Copy`; reused, and re-resolved only when the config
         // being promoted is what changed `user` or `group`. A drainee is
@@ -7298,13 +7416,13 @@ impl<R: ProcessRunner> Actor<R> {
         shutdown_completed
     }
 
-    /// One sheep's transition to `Online`: emits the event, then arms every
-    /// lifecycle extra its configuration asks for.
+    /// Marks a sheep as online, emits the online event, and arms its configured lifecycle extras.
     ///
-    /// The single arming site, reached by all three transitions. Arming
-    /// happens at the transition, not the spawn: a liveness probe armed
-    /// against an app that has not finished starting fails its threshold and
-    /// restarts the app before it ever comes up.
+    /// # Examples
+    ///
+    /// ```ignore
+    /// supervisor.went_online(id, process_info, false);
+    /// ```
     fn went_online(&mut self, id: u32, info: ProcessInfo, manually: bool) {
         // Whatever an earlier reload concluded about this instance, it is
         // serving now. See `SheepSlot::ready_failed`.
@@ -7315,14 +7433,20 @@ impl<R: ProcessRunner> Actor<R> {
         self.arm_extras(id);
     }
 
-    /// Arms `id`'s lifecycle extras, rebuilding the spec the running process
-    /// was spawned from.
+    /// Arms the configured lifecycle extras for the sheep identified by `id`.
     ///
-    /// Rebuilding is what makes one arming site possible:
-    /// `handle_ready_result` holds an id and nothing else, and `describe` is
-    /// pure over a `spec`, `instance` and `credentials` that never change.
-    /// The store it reads can move under a running sheep, which is why this
-    /// is [`describe`] and not [`assemble`].
+    /// Does nothing when lifecycle extras are not configured or the sheep cannot be
+    /// found.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Identifier of the sheep whose lifecycle extras should be armed.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// supervisor.arm_extras(sheep_id);
+    /// ```
     fn arm_extras(&mut self, id: u32) {
         let Some(extras) = self.extras.as_ref() else {
             return;
@@ -10504,9 +10628,26 @@ mod tests {
         actor_with_one_online_sheep_of(dir, AppConfig::minimal("web", "./srv"), scripts)
     }
 
-    /// [`actor_with_one_online_sheep`] for a case that needs a particular app:
-    /// a `readiness_probe`, a `reuse_port`, or both, which between them decide
-    /// which reload the instance gets.
+    /// Creates an actor with one armed, online sheep for the specified application.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let (actor, messages) = actor_with_one_online_sheep_of(&dir, app, scripts);
+    /// ```
+    ///
+    /// `readiness_probe` and `reuse_port` settings on `app` determine the reload
+    /// assigned to the sheep.
+    ///
+    /// # Parameters
+    ///
+    /// * `dir` - Temporary directory used for the actor's paths and secret cache.
+    /// * `app` - Application configuration for the sheep.
+    /// * `scripts` - Process scripts used by the actor's scripted runner.
+    ///
+    /// # Returns
+    ///
+    /// The initialized actor and a receiver for messages sent to it.
     fn actor_with_one_online_sheep_of(
         dir: &tempfile::TempDir,
         app: AppConfig,
@@ -10742,9 +10883,20 @@ mod tests {
         assert!(settled.is_ok(), "{name} never settled to {count} instances");
     }
 
-    /// A bare actor holding `instances` online instances of one app, all
-    /// carrying the same normalized spec. The stored-count cases need it,
-    /// since that field reaches no reply.
+    /// Creates an actor containing the requested number of online instances of a normalized app.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let actor = actor_with_a_scaled_app(&dir, 2, Vec::new());
+    /// assert_eq!(actor.sheep.len(), 2);
+    /// ```
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - Temporary directory used for the actor's test paths.
+    /// * `instances` - Number of online app instances to create.
+    /// * `scripts` - Process scripts used by the actor's scripted runner.
     fn actor_with_a_scaled_app(
         dir: &tempfile::TempDir,
         instances: u32,
@@ -15270,9 +15422,23 @@ mod tests {
     // Nothing on the wire reports the uid a child comes up under, so the cases
     // below read it off the `SpawnSpec` through `ScriptedRunner::spawned_as`.
 
-    /// A bare actor holding nothing at all, for the cases that drive
-    /// registration and respawn directly. Direct because
-    /// [`ProcessEntry::credentials`] is crate-internal.
+    /// Creates an actor with no registered processes for testing registration and respawn behavior.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let actor = actor_with_an_empty_flock(&tempfile::tempdir()?, scripts);
+    /// assert!(actor.sheep.is_empty());
+    /// ```
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - Temporary directory used to initialize the actor's paths.
+    /// * `scripts` - Scripts supplied to the actor's test runner.
+    ///
+    /// # Returns
+    ///
+    /// An actor with an empty process registry and a scripted runner.
     fn actor_with_an_empty_flock(
         dir: &tempfile::TempDir,
         scripts: Vec<ProcScript>,
