@@ -493,7 +493,9 @@ went around is named on stderr, and the exit is non-zero. Under `--format json` 
 back under refused in the one envelope.
 
 A sheep that came back errored is a different failure and is reported separately: that one was
-reached, and it is the child that could not start.
+reached, and it is the child that could not start. That failure empties stdout, the way every verb's
+does, so a restart that BOTH refused an app and brought one back errored prints no envelope at all.
+The refused names ride the stderr sentence in that case, which is the only place left for them.
 
 Usage: shep restart [OPTIONS] <SELECTORS>...
 

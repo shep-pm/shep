@@ -273,7 +273,10 @@ pub enum Commands {
     ///
     /// A sheep that came back errored is a different failure and is reported
     /// separately: that one was reached, and it is the child that could not
-    /// start.
+    /// start. That failure empties stdout, the way every verb's does, so a
+    /// restart that BOTH refused an app and brought one back errored prints
+    /// no envelope at all. The refused names ride the stderr sentence in
+    /// that case, which is the only place left for them.
     Restart(SelectorArgs),
     /// Reload one or more sheep, one instance at a time.
     ///

@@ -295,7 +295,11 @@ error[invalid_config]: the daemon reported InvalidConfig: dependency cycle: api 
       A restart that came back <code>errored</code> is a different failure
       and is reported separately, with its own exit code. That sheep was
       reached and the restart was not refused; it is the child that could
-      not start.
+      not start. It also empties stdout, as every verb's failure does, so a
+      restart that hits both at once prints no envelope: the refused names
+      are appended to that error's own sentence on stderr instead, and the
+      <code>refused</code> key above is what a run reports when nothing came
+      back errored.
     </p>
 
     <h2>What a staged start leaves behind</h2>
