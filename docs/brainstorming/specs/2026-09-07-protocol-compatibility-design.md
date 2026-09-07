@@ -131,7 +131,7 @@ needs a wrapper. All three were measured on this tree.
 |---|---|---|---|
 | `Request` | internally tagged | `#[serde(other)] Unrecognized` unit variant | absorbs unknown kinds carrying payloads, and `Envelope.id` survives |
 | `RpcErrorCode`, `ProcessEventKind` | bare strings | the same `#[serde(other)]`, derive kept | unknown spelling lands on `Unrecognized`, and a number is still an error |
-| `Response`, `BusEvent` | adjacently tagged | `#[serde(untagged)]` wrapper at the decode site | `other` absorbs only a payload-free unknown here, so the wrapper carries the rest |
+| `Response`, `BusEvent` | adjacently tagged | fail the caller by id, not a wrapper | see "Corrected 2026-09-07" below |
 
 **Corrected 2026-09-07, after this spec was approved.** The row above for bare
 strings first said `#[serde(other)]` was not allowed on them at all, and
@@ -149,6 +149,23 @@ request decodes, arrives with its id intact, and is answered
 `RpcError { code: Unsupported }` while the connection keeps serving. That
 single change is what makes additive free, and its absence is what caused the
 3 to 4 bump.
+
+**Corrected 2026-09-07, after this spec was approved.** The `Response`/
+`BusEvent` row above prescribed an `#[serde(untagged)]` wrapper at the decode
+site. No such wrapper was built, and what shipped instead does not need one.
+`shep-client`'s `route_frame` already decodes every server frame through
+`ServerFrame`, itself `#[serde(untagged)]` over `Reply`/`Event` and marked
+`#[non_exhaustive]` for exactly this growth. A frame this build cannot decode
+is handled by id instead: `reply_id` reads the id straight off the raw bytes,
+without decoding the frame's own type, and if that id names a pending request,
+that caller fails now with `RequestError::Undecodable` rather than waiting out
+its deadline for an answer that already arrived. An undecodable frame with no
+id, an event nobody can name, is dropped. Neither path adds a wrapper type;
+both live in `route_frame` and `reply_id` (`crates/shep-client/src/actor.rs`,
+`crates/shep-core/src/protocol/wire.rs`). It is the better design: a wrapper
+would still need to fail the caller by id on decode failure, so `route_frame`
+would have needed writing either way, and the wrapper would have added a type
+with no job beyond deciding what `route_frame` already decides.
 
 **Ordering constraint for the implementation plan.** `RpcErrorCode`'s tolerant
 `Deserialize` has to land before anything that emits the new `Unsupported`
@@ -216,8 +233,12 @@ A "frames from the future" module feeding each wire type something this build
 cannot know:
 
 - a request with an invented kind carrying a payload, absorbed and answered
-- a response with an invented kind carrying a payload, absorbed
-- a bus event with an invented kind carrying a payload, absorbed
+- a response with an invented kind carrying a payload, fails its caller by id
+  with `RequestError::Undecodable` rather than absorbing it (**corrected
+  2026-09-07**: see the note above)
+- a bus event with an invented kind carrying a payload, dropped rather than
+  absorbed, since nothing is waiting on an event nobody can name (**corrected
+  2026-09-07**)
 - an unknown `RpcErrorCode` spelling, absorbed
 - an unknown `ProcessEventKind` spelling, absorbed
 - a wrong type where a code belongs, still an error
