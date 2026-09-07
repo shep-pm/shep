@@ -69,7 +69,7 @@ const fieldGroups: FieldGroup[] = [
     fields: [
       { name: "name", type: "string", default: "required", does: "Unique sheep name. May not contain a path separator or a colon: a colon is the name:slot selector's own separator, and also illegal in a log filename on Windows." },
       { name: "script", type: "string", default: "required", does: "Executable or script path." },
-      { name: "args", type: "string[]", default: "[]", does: "Arguments passed to the script; supports {{instance}} and {{name}}." },
+      { name: "args", type: "string[]", default: "[]", does: "Arguments passed to the script; supports {{instance}}, {{name}} and {{secret:...}}. A resolved secret in an argument is visible in ps; see Secrets." },
       { name: "cwd", type: "string?", default: "the Flockfile's own directory", does: "Working directory at spawn. Unset, an app in a Flockfile runs where that Flockfile lives, so a relative script resolves the way you would read it." },
       { name: "interpreter", type: "string?", default: "none", does: "Interpreter override; \"none\" runs the script directly." },
       { name: "env", type: "map<string,string>", default: "{}", does: "Merged over the daemon's filtered environment; values support {{instance}}, {{name}} and {{secret:...}}. SHEP_INSTANCE, SHEP_NAME and SHEP_ENVIRONMENT are always set and may not be set here." },
