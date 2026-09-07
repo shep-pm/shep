@@ -256,14 +256,16 @@ fn log_row(app: &App, width: u16) -> Line<'static> {
     let out_full = out_path.unwrap_or("not reported");
     let err_full = err_path.unwrap_or("not reported");
 
-    let sizes: Vec<u64> = [out_path, err_path]
-        .into_iter()
-        .flatten()
-        .filter_map(|path| fs::metadata(path).ok())
-        .map(|meta| meta.len())
-        .collect();
-    let size_text =
-        (!sizes.is_empty()).then(|| format!("   {} on disk", human_bytes(sizes.iter().sum())));
+    let size_text = match (out_path, err_path) {
+        (Some(out), Some(err)) => match (fs::metadata(out), fs::metadata(err)) {
+            (Ok(out_meta), Ok(err_meta)) => Some(format!(
+                "   {} on disk",
+                human_bytes(out_meta.len() + err_meta.len())
+            )),
+            _ => None,
+        },
+        _ => None,
+    };
 
     let overhead = columns(OUT_LABEL) + columns(DIVIDER) + columns(ERR_LABEL);
     let width_usize = usize::from(width);
@@ -712,6 +714,38 @@ mod tests {
         assert!(
             narrow_text.contains("-out.log"),
             "the tail identifies the file"
+        );
+    }
+
+    /// A log rotated away between the poll and the draw leaves exactly one
+    /// of the two `fs::metadata` calls failing. The doc on [`log_row`]
+    /// promises the size only when both succeed, so a lone size covering one
+    /// file must not appear labelled as though it covered both.
+    #[test]
+    fn a_missing_log_drops_the_size_rather_than_report_one_file() {
+        let dir = tempfile::Builder::new()
+            .prefix("shep-fx-")
+            .tempdir()
+            .expect("a tempdir for the fixture's logs");
+        let out_path = dir.path().join("only-out.log");
+        std::fs::write(&out_path, b"listening on :8080\n").expect("write the out log");
+        let missing_err = dir.path().join("rotated-away-err.log");
+
+        let info = ProcessInfo::builder(11, "half-rotated", ProcStatus::Online)
+            .pid(Some(48_111))
+            .out_file(Some(out_path.display().to_string()))
+            .err_file(Some(missing_err.display().to_string()))
+            .build();
+        let app = with_selection(info);
+
+        let text: String = log_row(&app, 200)
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(
+            !text.contains("on disk"),
+            "one file's metadata failed, so no size is honest: {text:?}"
         );
     }
 
