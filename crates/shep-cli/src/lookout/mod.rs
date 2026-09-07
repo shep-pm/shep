@@ -1126,14 +1126,25 @@ mod tests {
         // the loop leaving. `spawn_blocking` runs its closure to completion
         // whatever happens to the handle, so releasing the lock here lets it
         // land. Polled, with a ceiling so a failure reports rather than hangs.
+        //
+        // The ceiling is thirty seconds and is NOT a claim about speed. What
+        // is being asserted is that the write happens at all; how long the
+        // blocking pool takes to get to it is the runner's business, and a
+        // one-second ceiling made this the assertion that failed on
+        // `test (ubuntu-latest, stable)` at 0998ca35 while every other
+        // platform passed. Raising it rather than moving the test to
+        // `mod slow` on purpose: the `slow` tier is for a test that asserts a
+        // duration, and once the ceiling stops being an assertion this one is
+        // not that. A real regression, a write that never lands, still fails
+        // here, thirty seconds later, with the same message.
         drop(held);
         let mut written = false;
-        for _ in 0..500 {
+        for _ in 0..3_000 {
             if std::fs::read_to_string(&config).unwrap().contains("debug") {
                 written = true;
                 break;
             }
-            std::thread::sleep(Duration::from_millis(2));
+            std::thread::sleep(Duration::from_millis(10));
         }
         assert!(written, "the write that was in flight still landed");
     }
