@@ -30,7 +30,7 @@ pub use request::{
     SheepDrift, SheepRefusal, SignalOutcome, SignalReply, Smit, SmitError, sort_flock,
 };
 pub use shep_channel::{CHANNEL_VERSION, ChildMessage, ShepherdMessage};
-pub use wire::{MAX_FRAME_BYTES, WireError, codec, decode_frame, encode_frame};
+pub use wire::{MAX_FRAME_BYTES, WireError, codec, decode_frame, encode_frame, reply_id};
 
 /// The shepherd channel's wire types. Moved to the `shep-channel` crate;
 /// this path is kept so consumers of 0.1.x do not break. Use

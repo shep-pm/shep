@@ -14,7 +14,7 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 use shep_core::protocol::{
-    BusEvent, Envelope, Reply, Request, Response, ServerFrame, decode_frame, encode_frame,
+    BusEvent, Envelope, Reply, Request, Response, ServerFrame, decode_frame, encode_frame, reply_id,
 };
 
 use crate::client::RequestError;
@@ -174,7 +174,7 @@ fn route_frame(
     let frame = match decode_frame::<ServerFrame>(bytes) {
         Ok(frame) => frame,
         Err(err) => {
-            if let Ok(ReplyIdOnly { id }) = decode_frame::<ReplyIdOnly>(bytes)
+            if let Some(id) = reply_id(bytes)
                 && let Some(reply_to) = pending.remove(&id)
             {
                 let _ = reply_to.send(Err(RequestError::Undecodable(err)));
@@ -194,14 +194,6 @@ fn route_frame(
         // `ServerFrame` is `#[non_exhaustive]`: an unknown variant is ignored, not fatal.
         _ => {}
     }
-}
-
-/// Enough of a `Reply` to recover its id when the `Response` payload
-/// itself does not decode. `result` is deliberately not a field: this
-/// exists to name a waiting caller, not to recover the payload it wanted.
-#[derive(serde::Deserialize)]
-struct ReplyIdOnly {
-    id: u64,
 }
 
 #[cfg(test)]

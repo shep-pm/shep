@@ -54,10 +54,6 @@ required-features = ["test-support"]
 
 [dependencies]
 shep-core.workspace = true
-# Just the derive, for the actor's own `ReplyIdOnly`: recovering a reply's
-# id when the full `Response` fails to decode. Everything else on the wire
-# decodes through `shep_core::protocol`, which carries the real dependency.
-serde = { workspace = true, default-features = false, features = ["derive"] }
 # The `DogConfig` derive, re-exported from `dogs` next to the trait it
 # implements so a dog author takes one dependency and never names this crate.
 # Not optional: the derive is what stops `x-shep-secret` being a string a dog
