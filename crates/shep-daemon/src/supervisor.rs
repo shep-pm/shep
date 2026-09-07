@@ -32,12 +32,14 @@ use shep_core::protocol::{
     ProcessEventKind, ProcessInfo, SheepConfigView, SheepDrift, SignalOutcome, SignalReply, Smit,
     sort_flock,
 };
+use shep_core::secrets::SecretView;
 use shep_core::selector::ProcessSelector;
 use shep_core::signals::OperatorSignal;
 use shep_core::status::ProcStatus;
 use shep_core::values::MemSize;
 
-use crate::assemble::{assemble, instance_slots};
+use crate::assemble::{AssembleError, assemble, describe, instance_slots};
+use crate::backoff::restart_delay;
 use crate::brain::{Decision, decide_on_exit};
 use crate::bus::{Bus, SharedEvent};
 use crate::channel::{ChildMessage, ShepherdMessage};
@@ -63,6 +65,7 @@ use crate::runner::{
     ExitOutcome, FlushError, LogCtl, Preflight, ProcIo, ProcessRunner, ReopenError, RunnerError,
     RunningProcess, SpawnSpec, StdinWrite, check_log_ancestry, open_log_path,
 };
+use crate::secrets::ProviderSecrets;
 
 /// Capacity of the actor's own mailbox (commands + internal events).
 const MAILBOX_CAPACITY: usize = 256;
@@ -1393,6 +1396,8 @@ pub(crate) struct SupervisorBuilder<R: ProcessRunner> {
     paths: ShepPaths,
     events: Bus,
     extras: Option<Extras>,
+    environment: String,
+    provider_secrets: Option<Arc<ProviderSecrets>>,
 }
 
 impl<R: ProcessRunner> SupervisorBuilder<R> {
@@ -1405,6 +1410,8 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
             paths,
             events,
             extras: None,
+            environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets: None,
         }
     }
 
@@ -1412,6 +1419,31 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
     #[must_use]
     pub(crate) fn extras(mut self, extras: Extras) -> Self {
         self.extras = Some(extras);
+        self
+    }
+
+    /// The environment a sheep that names none of its own resolves its
+    /// secrets in, from `[daemon] environment`.
+    ///
+    /// Left at [`DEFAULT_ENVIRONMENT`] when unset, which is what
+    /// `DaemonSection` itself defaults to, so a builder nobody told and a
+    /// file that says nothing agree.
+    #[must_use]
+    pub(crate) fn environment(mut self, environment: String) -> Self {
+        self.environment = environment;
+        self
+    }
+
+    /// The registry a provider dog pushes into, shared with the connection
+    /// tasks that serve `Request::PutSecrets`.
+    ///
+    /// Left unset, the actor loads one of its own from
+    /// [`ShepPaths::secrets_cache`], which is what a cold boot with no dog
+    /// yet running resolves against anyway. `boot` passes the shared one
+    /// so a push reaches the next spawn.
+    #[must_use]
+    pub(crate) fn provider_secrets(mut self, secrets: Arc<ProviderSecrets>) -> Self {
+        self.provider_secrets = Some(secrets);
         self
     }
 
@@ -1468,10 +1500,15 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
 
     /// The actor both spawn paths start from: no sheep, counters at zero.
     fn build(self, tx: mpsc::Sender<Msg>) -> Actor<R> {
+        let provider_secrets = self
+            .provider_secrets
+            .unwrap_or_else(|| Arc::new(ProviderSecrets::load(&self.paths.secrets_cache)));
         Actor {
             runner: self.runner,
             paths: self.paths,
             events: self.events,
+            host_environment: self.environment,
+            provider_secrets,
             tx,
             sheep: HashMap::new(),
             next_id: 0,
@@ -1541,6 +1578,10 @@ impl core::error::Error for AdoptError {
         }
     }
 }
+
+/// The environment a shepherd resolves secrets in when nothing says
+/// otherwise, matching `DaemonSection`'s own default.
+pub(crate) const DEFAULT_ENVIRONMENT: &str = "production";
 
 /// Spawns the actor with no lifecycle extras: shorthand for
 /// `SupervisorBuilder::new(runner, paths, events).spawn()`.
@@ -2417,6 +2458,13 @@ struct Actor<R: ProcessRunner> {
     runner: R,
     /// `$SHEP_HOME` layout, for assembling spawn specs.
     paths: ShepPaths,
+    /// The environment a sheep that sets no `environment` of its own
+    /// resolves its `{{secret:...}}` references in; see [`Self::secret_view`].
+    host_environment: String,
+    /// What provider dogs have pushed, the namespaced half of every
+    /// [`SecretView`] this actor builds. Shared with the connection tasks
+    /// that write it; see [`ProviderSecrets`].
+    provider_secrets: Arc<ProviderSecrets>,
     /// Bus: process lifecycle events + forwarded logs.
     events: Bus,
     /// Clone handed to sheep tasks and restart timers so they can report
@@ -2793,7 +2841,30 @@ impl<R: ProcessRunner> Actor<R> {
             };
             // Instance 0 and no credentials: neither changes which file exec
             // names, which is all `preflight` reads.
-            match self.runner.preflight(&assemble(&app, 0, &self.paths, None)) {
+            let view = self.secret_view(&app);
+            let described = match assemble(&app, 0, &self.paths, None, &view) {
+                Ok(spec) => spec,
+                // A reference nobody has set is as knowable here as a missing
+                // binary is, and here is the last point at which refusing
+                // costs nothing: no app in the batch is registered yet.
+                Err(err) if !err.is_retriable() => match policy {
+                    BatchPolicy::AllOrNothing => {
+                        refusals.push(format!("{name}: {err}"));
+                        continue;
+                    }
+                    // Reported, never refused: the spawn below meets the same
+                    // error and leaves an `Errored` row an operator can read.
+                    BatchPolicy::PerApp => {
+                        tracing::warn!(sheep = %name, "{err}");
+                        describe(&app, 0, &self.paths, None, &view)
+                    }
+                },
+                // Decided nowhere but at the spawn: a provider dog that is
+                // merely late is what `spawn_fresh` routes to the ordinary
+                // backoff, per instance.
+                Err(_) => describe(&app, 0, &self.paths, None, &view),
+            };
+            match self.runner.preflight(&described) {
                 Preflight::Unknown => {}
                 Preflight::Impossible(reason) if policy == BatchPolicy::AllOrNothing => {
                     refusals.push(format!("{name}: {reason}"));
@@ -2903,6 +2974,39 @@ impl<R: ProcessRunner> Actor<R> {
             .into_info()
     }
 
+    /// The secret view one spawn of `app` resolves against.
+    ///
+    /// The store is read here rather than inside [`assemble`], the same way
+    /// `credentials` is resolved by the caller: real I/O belongs to the
+    /// caller so the assembler stays a pure function of its arguments. Read
+    /// per spawn rather than cached, so a `shep secret set` between two
+    /// spawns reaches the second without a daemon restart.
+    ///
+    /// A store that cannot be read yields an empty view rather than failing
+    /// here, and logs why. A sheep that needs nothing from it still spawns,
+    /// and one that does gets the ordinary refusal naming its own reference,
+    /// which on its own would send an operator to `shep secret set` for a
+    /// store that is corrupt or newer than this build.
+    ///
+    /// The namespaced half comes from [`ProviderSecrets`], in memory, so
+    /// this reads the file for the operator's own store and nothing else.
+    fn secret_view(&self, app: &ResolvedApp) -> SecretView {
+        let environment = app
+            .config()
+            .environment
+            .clone()
+            .unwrap_or_else(|| self.host_environment.clone());
+        let store = shep_core::secrets::all(&self.paths.secrets).unwrap_or_else(|error| {
+            tracing::warn!(
+                path = %self.paths.secrets.display(),
+                %error,
+                "the secret store could not be read; every reference will refuse"
+            );
+            BTreeMap::new()
+        });
+        SecretView::new(environment, store, self.provider_secrets.snapshot())
+    }
+
     /// The field names an operator has overridden for `name`, for a
     /// [`ProcessEntry`] about to be built from scratch.
     ///
@@ -2954,8 +3058,10 @@ impl<R: ProcessRunner> Actor<R> {
         let id = self.next_id;
         self.next_id += 1;
         // Assembled for its log paths only: nothing is spawned, but the entry
-        // has to name the files a later `restart` will append to.
-        let spec = assemble(app, 0, &self.paths, None);
+        // has to name the files a later `restart` will append to. `describe`,
+        // so an unresolvable `{{secret:...}}` still registers: `shep add`
+        // exists to land a template whose secrets nobody has filled in yet.
+        let described = describe(app, 0, &self.paths, None, &self.secret_view(app));
         let entry = ProcessEntry {
             id,
             spec: app.clone(),
@@ -2972,8 +3078,8 @@ impl<R: ProcessRunner> Actor<R> {
             // `respawn` resolves it, so a restored app comes up under its
             // configured `user`.
             credentials: SpawnIdentity::Unresolved,
-            out_file: spec.out_file.clone(),
-            err_file: spec.err_file.clone(),
+            out_file: described.out_file,
+            err_file: described.err_file,
             dog,
             last_exit: None,
         };
@@ -3039,9 +3145,68 @@ impl<R: ProcessRunner> Actor<R> {
         // Read before the spawn: a scale-up's new instance must show the same
         // overrides its siblings do, not a blank cell until the next load.
         let overridden = self.overridden_for(&app.config().name);
-        let spec = assemble(app, instance, &self.paths, credentials);
+        let secrets = self.secret_view(app);
         let id = self.next_id;
         self.next_id += 1;
+        let spec = match assemble(app, instance, &self.paths, credentials, &secrets) {
+            Ok(spec) => spec,
+            Err(err) => {
+                // Registered before the refusal is routed: a sheep that never
+                // spawned still has to be visible, and `refuse_spawn` reads
+                // the slot it lands in. Its log paths come from `describe`,
+                // since `assemble` is what just refused. The `Errored` here
+                // is never published: `refuse_spawn` decides the status this
+                // sheep is first seen in, and emits that one.
+                let described = describe(app, instance, &self.paths, credentials, &secrets);
+                let entry = ProcessEntry {
+                    id,
+                    spec: app.clone(),
+                    pending: None,
+                    pending_reidentifies: false,
+                    overridden,
+                    instance,
+                    status: ProcStatus::Errored,
+                    pid: None,
+                    restarts: 0,
+                    started_at: None,
+                    budget: RestartBudget::default(),
+                    reload: ReloadState::None,
+                    credentials: SpawnIdentity::Resolved(credentials),
+                    out_file: described.out_file,
+                    err_file: described.err_file,
+                    dog,
+                    last_exit: None,
+                };
+                self.sheep.insert(
+                    id,
+                    SheepSlot {
+                        entry,
+                        ctl: None,
+                        log_ctl: None,
+                        to_child: None,
+                        signals: None,
+                        to_stdin: None,
+                        manual: None,
+                        pending_delete: false,
+                        epoch: 0,
+                        ready_tx: None,
+                        actions: ActionWaits::default(),
+                        ready_failed: false,
+                        restart_due: None,
+                    },
+                );
+                let info = self.refuse_spawn(id, true, &err);
+                // A retriable refusal is not a failed start: the sheep is
+                // registered, waiting, and comes up on its own once the
+                // namespace does, so the batch above must not tear down for
+                // it. Only a key nobody has set is reported as a failure.
+                return if err.is_retriable() {
+                    Ok(info)
+                } else {
+                    Err(err.to_string())
+                };
+            }
+        };
 
         // Cloned off the spec, which is the only place that knows whether the
         // app set an explicit `out_file`/`err_file` or takes the `merge_logs`
@@ -3231,7 +3396,15 @@ impl<R: ProcessRunner> Actor<R> {
         };
         // Assembled for its log paths only: the entry has to name the files
         // this sheep is writing to, and a later rotation reopens them by path.
-        let spec = assemble(&app, carried.instance(), &self.paths, credentials);
+        // `describe`, so a store that moved under a running flock costs a log
+        // path its rendering rather than costing the adoption a live sheep.
+        let described = describe(
+            &app,
+            carried.instance(),
+            &self.paths,
+            credentials,
+            &self.secret_view(&app),
+        );
         let id = carried.id();
         let status = carried.status();
         // `None` for a blob written before this daemon carried a swap; see
@@ -3286,8 +3459,8 @@ impl<R: ProcessRunner> Actor<R> {
             // `decide_on_exit`.
             reload,
             credentials: carried.credentials(),
-            out_file: spec.out_file.clone(),
-            err_file: spec.err_file.clone(),
+            out_file: described.out_file.clone(),
+            err_file: described.err_file.clone(),
             // Restored: it is the marker that keeps a dog out of the flock.
             // `matching_ids` passes a marked entry over for every selector but
             // an exact one, so dropping it would put the dog in `shep flock`.
@@ -3349,8 +3522,8 @@ impl<R: ProcessRunner> Actor<R> {
             .runner
             .adopt(AdoptSpec {
                 pid,
-                out_file: spec.out_file.clone(),
-                err_file: spec.err_file.clone(),
+                out_file: described.out_file.clone(),
+                err_file: described.err_file.clone(),
                 out_pipe,
                 err_pipe,
                 out_log,
@@ -3388,7 +3561,7 @@ impl<R: ProcessRunner> Actor<R> {
                 manually,
                 source,
                 app.config().listen_timeout.as_duration(),
-                spec_prober(&spec),
+                spec_prober(&described),
                 self.tx.clone(),
             )
         });
@@ -3599,7 +3772,16 @@ impl<R: ProcessRunner> Actor<R> {
         let instance = slot.entry.instance;
         // Computed ahead of the mutable borrow below.
         let next_epoch = slot.epoch + 1;
-        let spec = assemble(&app, instance, &self.paths, credentials);
+        let spec = match assemble(
+            &app,
+            instance,
+            &self.paths,
+            credentials,
+            &self.secret_view(&app),
+        ) {
+            Ok(spec) => spec,
+            Err(err) => return self.refuse_spawn(id, manually, &err),
+        };
         let source = ReadinessSource::of(app.config())
             .expect("ResolvedApp already passed ProbeTarget::parse in normalize");
         let gated = !matches!(source, ReadinessSource::Heuristic);
@@ -3686,7 +3868,7 @@ impl<R: ProcessRunner> Actor<R> {
         manually: bool,
         reason: &dyn fmt::Display,
     ) -> ProcessInfo {
-        tracing::warn!(id, %reason, "restart did not start a process");
+        tracing::warn!(id, %reason, "no process was started");
         let slot = self
             .sheep
             .get_mut(&id)
@@ -3711,6 +3893,65 @@ impl<R: ProcessRunner> Actor<R> {
         // the same disarm: otherwise the name-group's cron worker and watch
         // stay live, and the enforcer stays armed against a dead pid.
         self.disarm_extras(id, &info.name);
+        info
+    }
+
+    /// A spawn that never happened because a `{{secret:...}}` would not
+    /// resolve, routed to the status its refusal deserves.
+    ///
+    /// The two shapes must not collapse into one. A namespace no provider
+    /// dog has pushed to yet clears itself without anybody doing anything,
+    /// so the sheep waits on the same budget a crash loop spends and errors
+    /// when that runs out. A key nobody has set waits on a person instead,
+    /// and a ladder in front of it would only postpone the report by
+    /// sixteen turns.
+    ///
+    /// The slot must already exist: `spawn_fresh` registers before it calls
+    /// this, so the sheep is visible whichever way the refusal goes.
+    fn refuse_spawn(&mut self, id: u32, manually: bool, err: &AssembleError) -> ProcessInfo {
+        if !err.is_retriable() {
+            return self.respawn_failed(id, manually, err);
+        }
+        let slot = self
+            .sheep
+            .get_mut(&id)
+            .expect("refuse_spawn: the slot was registered a moment ago");
+        slot.entry.budget.note_failed_start();
+        // Read before the entry is written to, so the config borrow ends.
+        let (max_restarts, delay) = {
+            let config = slot.entry.spec.config();
+            (
+                config.max_restarts,
+                restart_delay(config, slot.entry.budget.unstable_count()),
+            )
+        };
+        if slot.entry.budget.exhausted(max_restarts) {
+            return self.respawn_failed(id, manually, err);
+        }
+        tracing::warn!(id, %err, "spawn refused; waiting to try again");
+        let epoch = slot.epoch;
+        slot.entry.status = ProcStatus::WaitingRestart;
+        slot.entry.pid = None;
+        slot.entry.started_at = None;
+        // Nothing exited here, so the previous process's code would read as
+        // a crash this sheep is still repeating; `respawn_failed` clears it
+        // for the same reason.
+        slot.entry.last_exit = None;
+        slot.ctl = None;
+        slot.to_child = None;
+        slot.signals = None;
+        slot.to_stdin = None;
+        slot.ready_tx = None;
+        // The wall-clock half of the timer below, which is what a handover
+        // successor re-arms from.
+        slot.restart_due = SystemTime::now()
+            .checked_add(delay.unwrap_or(Duration::ZERO))
+            .filter(|due| due.duration_since(SystemTime::UNIX_EPOCH).is_ok());
+        let info = to_info(&slot.entry, &self.smits);
+        // The event every `WaitingRestart` transition is published as, so a
+        // subscriber reads the status rather than inferring it from the kind.
+        self.emit(ProcessEventKind::Exit, info.clone(), manually);
+        self.schedule_restart(id, epoch, delay);
         info
     }
 
@@ -4981,7 +5222,7 @@ impl<R: ProcessRunner> Actor<R> {
     /// [`ExtrasRegistry::arm`] decides group membership from the configuration,
     /// so arming a stopped instance puts it in a group whose cron occurrence
     /// would start a process the operator had stopped. One prober per instance,
-    /// since [`assemble`] bakes `SHEP_INSTANCE` into a prober's environment.
+    /// since [`describe`] bakes `SHEP_INSTANCE` into a prober's environment.
     fn rearm_name(&mut self, name: &str) {
         let Some(extras) = self.extras.as_ref() else {
             return;
@@ -5007,23 +5248,65 @@ impl<R: ProcessRunner> Actor<R> {
         // order does not depend on a `HashMap`'s iteration order.
         armable.sort_unstable_by_key(|(id, _)| *id);
         let entries: Vec<&ProcessEntry> = armable.into_iter().map(|(_, entry)| entry).collect();
-        let paths = &self.paths;
+        let specs = self.rearm_specs(&entries);
         self.registry.rearm_name(
             name,
             &entries,
             |entry| {
-                // `Credentials` is `Copy`, so this needs no clone. The
-                // unresolved arm costs nothing: an entry reached here is
-                // running and resolved its identity before it started.
-                let credentials = match entry.credentials {
-                    SpawnIdentity::Resolved(credentials) => credentials,
-                    SpawnIdentity::Unresolved => None,
-                };
-                spec_prober(&assemble(&entry.spec, entry.instance, paths, credentials))
+                spec_prober(
+                    specs
+                        .get(&entry.id)
+                        .expect("rearm_name: `rearm_specs` described every entry passed to it"),
+                )
             },
             extras,
             &supervisor,
         );
+    }
+
+    /// The [`SpawnSpec`] each armable entry's prober is built from, by id.
+    ///
+    /// One [`SecretView`] per distinct environment across `entries`, not one
+    /// for the group: `environment` is a `NeedsRespawn` field and
+    /// [`Self::promote_pending`] rewrites a single slot, so two instances of
+    /// a name can hold different environments at once and each resolves
+    /// against its own.
+    ///
+    /// [`describe`] rather than [`assemble`]: this sheep is up, and a probe
+    /// it can no longer build an environment for must not cost it its watch
+    /// and its cron worker too.
+    fn rearm_specs(&self, entries: &[&ProcessEntry]) -> HashMap<u32, SpawnSpec> {
+        let mut views: HashMap<&str, SecretView> = HashMap::new();
+        let mut specs = HashMap::with_capacity(entries.len());
+        for entry in entries {
+            let environment = entry
+                .spec
+                .config()
+                .environment
+                .as_deref()
+                .unwrap_or(&self.host_environment);
+            let secrets = views
+                .entry(environment)
+                .or_insert_with(|| self.secret_view(&entry.spec));
+            // `Credentials` is `Copy`, so this needs no clone. The unresolved
+            // arm costs nothing: an entry reached here is running and
+            // resolved its identity before it started.
+            let credentials = match entry.credentials {
+                SpawnIdentity::Resolved(credentials) => credentials,
+                SpawnIdentity::Unresolved => None,
+            };
+            specs.insert(
+                entry.id,
+                describe(
+                    &entry.spec,
+                    entry.instance,
+                    &self.paths,
+                    credentials,
+                    secrets,
+                ),
+            );
+        }
+        specs
     }
 
     /// Accepts a reload: answers the caller at once, then starts one swap per
@@ -5294,7 +5577,18 @@ impl<R: ProcessRunner> Actor<R> {
         let new_id = self.next_id;
         self.next_id += 1;
 
-        let spec = assemble(&app, instance, &self.paths, credentials);
+        // Before the drainee is marked `Stopping` below, and refusing here
+        // abandons the reload rather than reaching for a restart ladder: the
+        // drainee is still up and still serving, which beats either status
+        // `refuse_spawn` could leave behind.
+        let spec = assemble(
+            &app,
+            instance,
+            &self.paths,
+            credentials,
+            &self.secret_view(&app),
+        )
+        .map_err(|err| err.to_string())?;
         let out_file = spec.out_file.clone();
         let err_file = spec.err_file.clone();
         let source = ReadinessSource::of(app.config())
@@ -5595,20 +5889,22 @@ impl<R: ProcessRunner> Actor<R> {
             .get(&new_id)
             .expect("spawn_verify_task: the replacement was read a moment ago");
         let deadline = slot.entry.spec.config().listen_timeout.as_duration();
-        // Re-assembled for the prober's sake alone, as `arm_extras` does:
-        // `spec`, `instance` and `credentials` never change after
-        // registration, so `assemble` returns this instance's own spawn spec.
+        // Rebuilt for the prober's sake alone, as `arm_extras` does: `spec`,
+        // `instance` and `credentials` never change after registration, so
+        // this is the instance's own spawn spec, bar a reference the store
+        // has stopped answering.
         let credentials = match slot.entry.credentials {
             SpawnIdentity::Resolved(creds) => creds,
             SpawnIdentity::Unresolved => None,
         };
-        let spec = assemble(
+        let described = describe(
             &slot.entry.spec,
             slot.entry.instance,
             &self.paths,
             credentials,
+            &self.secret_view(&slot.entry.spec),
         );
-        let prober = spec_prober(&spec);
+        let prober = spec_prober(&described);
 
         // `await_ready` wants a channel receiver and its `Probe` arm never
         // reads one, which is the only arm reachable here. Dropping the sender
@@ -6980,12 +7276,14 @@ impl<R: ProcessRunner> Actor<R> {
         self.arm_extras(id);
     }
 
-    /// Arms `id`'s lifecycle extras, re-assembling the spec the running
-    /// process was spawned from.
+    /// Arms `id`'s lifecycle extras, rebuilding the spec the running process
+    /// was spawned from.
     ///
-    /// Re-assembly is what makes one arming site possible:
-    /// `handle_ready_result` holds an id and nothing else, and `assemble` is
+    /// Rebuilding is what makes one arming site possible:
+    /// `handle_ready_result` holds an id and nothing else, and `describe` is
     /// pure over a `spec`, `instance` and `credentials` that never change.
+    /// The store it reads can move under a running sheep, which is why this
+    /// is [`describe`] and not [`assemble`].
     fn arm_extras(&mut self, id: u32) {
         let Some(extras) = self.extras.as_ref() else {
             return;
@@ -6996,21 +7294,23 @@ impl<R: ProcessRunner> Actor<R> {
         let supervisor = SupervisorHandle {
             tx: self.tx.clone(),
         };
-        // This spec is assembled for `spec_prober` alone and never spawned, so
-        // the unresolved arm costs nothing: extras are armed only for a
-        // process already running, which resolved its identity to start.
+        // Rebuilt for the prober's sake alone, as `spawn_verify_task` does:
+        // nothing spawns this sheep's own program from it. Extras are armed
+        // only for a process already running, which resolved its identity to
+        // start, so the unresolved arm below cannot be reached from here.
         let credentials = match slot.entry.credentials {
             SpawnIdentity::Resolved(creds) => creds,
             SpawnIdentity::Unresolved => None,
         };
-        let spec = assemble(
+        let described = describe(
             &slot.entry.spec,
             slot.entry.instance,
             &self.paths,
             credentials,
+            &self.secret_view(&slot.entry.spec),
         );
         self.registry
-            .arm(&slot.entry, spec_prober(&spec), extras, &supervisor);
+            .arm(&slot.entry, spec_prober(&described), extras, &supervisor);
     }
 
     /// Disarms `id`'s lifecycle extras, and its name-group's cron worker and
@@ -7018,8 +7318,10 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// Called from every terminal transition: `respawn_failed`,
     /// `apply_immediate`'s Stop and Delete arms, and each of `handle_exited`'s
-    /// four. `spawn_fresh`'s `Err` arm is the one terminal `Errored` that does
-    /// not disarm, its id fresh from `next_id` and never armed. A sheep on its
+    /// four. `spawn_fresh`'s runner-`Err` arm is the one terminal `Errored`
+    /// that does not disarm, its id fresh from `next_id` and never armed; its
+    /// refused-assembly arm reaches `respawn_failed` and so does disarm, which
+    /// on a never-armed id is the no-op below. A sheep on its
     /// way to `WaitingRestart` keeps its arming, the respawn replacing its
     /// liveness loop.
     ///
@@ -7972,13 +8274,11 @@ mod tests {
     use crate::extras::{ExtrasReports, spawn_extras_reporter};
     use crate::fake::{ProcScript, ScriptedRunner};
     use crate::limits::LimitEnforcer;
+    use crate::testing::capture_logs;
     use crate::testing::{
         Harness, RecordingEnforcer, ScriptedProber, SharedRunner, app_with, armed_entry, harness,
         idle_stats, probe_config, test_paths,
     };
-    // unix only: its one caller drives an unresolvable `user`.
-    #[cfg(unix)]
-    use crate::testing::capture_logs;
     #[cfg(unix)]
     use crate::tokio_runner::TokioRunner;
     use tokio::sync::watch;
@@ -9426,10 +9726,13 @@ mod tests {
         sheep.insert(0, slot);
         let (events, _events_rx) = crate::bus::test_bus(16);
         let (tx, _rx) = mpsc::channel(16);
+        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
         let actor = Actor {
             runner: ScriptedRunner::new(vec![]),
             paths,
             events,
+            host_environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets,
             tx,
             sheep,
             next_id: 1,
@@ -9532,10 +9835,13 @@ mod tests {
         );
         let (events, _events_rx) = crate::bus::test_bus(16);
         let (tx, _mailbox) = mpsc::channel(16);
+        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
         let mut actor = Actor {
             runner: ScriptedRunner::new(vec![]),
             paths,
             events,
+            host_environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets,
             tx,
             sheep,
             next_id: 1,
@@ -10188,10 +10494,13 @@ mod tests {
         );
         let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, rx) = mpsc::channel(MAILBOX_CAPACITY);
+        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
         let actor = Actor {
             runner: ScriptedRunner::new(scripts),
             paths,
             events,
+            host_environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets,
             tx,
             sheep,
             next_id: 1,
@@ -10248,10 +10557,13 @@ mod tests {
         }
         let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, rx) = mpsc::channel(MAILBOX_CAPACITY);
+        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
         let actor = Actor {
             runner: ScriptedRunner::new(Vec::new()),
             paths,
             events,
+            host_environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets,
             tx,
             sheep,
             next_id: DOG_ID + 1,
@@ -10426,10 +10738,13 @@ mod tests {
         }
         let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, _rx) = mpsc::channel(MAILBOX_CAPACITY);
+        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
         Actor {
             runner: ScriptedRunner::new(scripts),
             paths,
             events,
+            host_environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets,
             tx,
             sheep,
             next_id: instances,
@@ -14875,10 +15190,14 @@ mod tests {
     ) -> Actor<ScriptedRunner> {
         let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, _rx) = mpsc::channel(MAILBOX_CAPACITY);
+        let paths = test_paths(dir);
+        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
         Actor {
             runner: ScriptedRunner::new(scripts),
-            paths: test_paths(dir),
+            paths,
             events,
+            host_environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets,
             tx,
             sheep: HashMap::new(),
             next_id: 0,
@@ -17560,12 +17879,15 @@ mod tests {
         };
         let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, _rx) = mpsc::channel(MAILBOX_CAPACITY);
+        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
         let actor = Actor {
             // Enough scripts for a scale-up to come up: without them a case
             // that scales would assert on a shortfall rather than the apply.
             runner: ScriptedRunner::new(vec![ProcScript::never_exits(); 4]),
             paths,
             events,
+            host_environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets,
             tx,
             sheep,
             next_id,
@@ -19993,6 +20315,316 @@ mod tests {
             actor.sheep[&7].entry.spec.config().user,
             Some(own_user_name()),
             "and the promoted config is what the successor now records"
+        );
+    }
+
+    /// A secret nobody has set is a person's to fix, so a [`BatchPolicy::PerApp`]
+    /// batch leaves the sheep `Errored` at once rather than spawning it. A
+    /// restart ladder in front of it would only postpone the same report by
+    /// sixteen turns.
+    ///
+    /// `PerApp` because that is the policy under which such an app is still
+    /// registered: a boot restore, or a dog.
+    /// `a_batch_with_one_unresolvable_secret_registers_none_of_it` is the
+    /// other half.
+    #[tokio::test(start_paused = true)]
+    async fn a_key_nobody_has_set_errors_the_sheep_without_a_spawn() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut actor = actor_with_an_empty_flock(&dir, vec![ProcScript::never_exits()]);
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.env
+            .insert("PW".to_string(), "{{secret:ABSENT}}".to_string());
+
+        let err = actor
+            .do_start(vec![normalize(app).unwrap()], None, BatchPolicy::PerApp)
+            .unwrap_err();
+
+        assert!(matches!(err, SupervisorError::SpawnFailed(_)), "{err:?}");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("ABSENT"),
+            "names the reference: {rendered}"
+        );
+        let entry = &actor.sheep.values().next().expect("one row").entry;
+        assert_eq!(entry.status, ProcStatus::Errored);
+        assert_eq!(
+            actor.runner.spawn_count(),
+            0,
+            "nothing may reach the runner"
+        );
+    }
+
+    /// A store this build cannot read refuses every reference with the same
+    /// words a key nobody set does, which sends an operator to `shep secret
+    /// set` for a file that is corrupt or newer than this build. The empty
+    /// view it falls back to has to say so on its way past.
+    #[test]
+    fn an_unreadable_store_warns_before_it_falls_back_to_an_empty_view() {
+        let dir = tempfile::tempdir().unwrap();
+        let actor = actor_with_an_empty_flock(&dir, vec![]);
+        std::fs::write(&actor.paths.secrets, "{ not json").unwrap();
+        let app = normalize(AppConfig::minimal("web", "./srv")).unwrap();
+
+        let logs = capture_logs(|| {
+            let view = actor.secret_view(&app);
+            let reference = shep_core::secrets::SecretRef {
+                namespace: None,
+                key: "K",
+            };
+            assert!(
+                matches!(
+                    view.resolve(&reference),
+                    shep_core::secrets::Resolution::MissingKey
+                ),
+                "the fallback is an empty view, not a failed spawn"
+            );
+        });
+
+        assert!(logs.contains("WARN"), "loud enough to read: {logs}");
+        assert!(logs.contains("secrets.json"), "names the file: {logs}");
+    }
+
+    /// A namespace no provider dog has pushed to clears itself, so the sheep
+    /// waits on the ordinary ladder instead of erroring. Collapsing this into
+    /// the case above would strand an app whose provider is merely late.
+    #[tokio::test(start_paused = true)]
+    async fn a_namespace_no_dog_has_pushed_to_leaves_the_sheep_waiting() {
+        let (events, _rx) = crate::bus::test_bus(64);
+        let runner = Arc::new(ScriptedRunner::new(vec![ProcScript::never_exits()]));
+        let dir = tempfile::tempdir().unwrap();
+        let handle = spawn_supervisor(SharedRunner(Arc::clone(&runner)), test_paths(&dir), events);
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.env
+            .insert("PW".to_string(), "{{secret:vault/K}}".to_string());
+
+        let started = handle
+            .start(vec![normalize(app).unwrap()])
+            .await
+            .expect("a provider that has not reported yet is not a failed start");
+
+        assert_eq!(started[0].status, ProcStatus::WaitingRestart);
+        assert_eq!(handle.list().await[0].status, ProcStatus::WaitingRestart);
+        assert_eq!(runner.spawn_count(), 0, "nothing may reach the runner");
+    }
+
+    /// A push carries one `(namespace, environment)` pair, so a provider
+    /// that has done `production` and not yet `staging` has said nothing
+    /// about staging. Keying the refusal on the namespace alone `Errored`s
+    /// a staging sheep permanently the moment the first push lands, which is
+    /// the ordinary shape for a provider dog polling one environment at a
+    /// time, and the cache makes it survive a reboot.
+    #[tokio::test(start_paused = true)]
+    async fn a_namespace_pushed_for_another_environment_leaves_the_sheep_waiting() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut actor = actor_with_an_empty_flock(&dir, vec![ProcScript::never_exits()]);
+        actor
+            .provider_secrets
+            .put(
+                "vercel",
+                "production",
+                BTreeMap::from([("API_KEY".to_string(), "sk_live".to_string())]),
+                false,
+            )
+            .expect("no cache is written with persist off");
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.environment = Some("staging".to_string());
+        app.env
+            .insert("K".to_string(), "{{secret:vercel/API_KEY}}".to_string());
+
+        actor
+            .do_start(vec![normalize(app).unwrap()], None, BatchPolicy::PerApp)
+            .expect("a provider that has not pushed staging yet is not a failed start");
+
+        let entry = &actor.sheep.values().next().expect("one row").entry;
+        assert_eq!(entry.status, ProcStatus::WaitingRestart);
+        assert_eq!(
+            actor.runner.spawn_count(),
+            0,
+            "nothing may reach the runner"
+        );
+    }
+
+    /// The other half, which must stay permanent: the pair has been pushed
+    /// and the key is not in it, so the provider genuinely does not have it
+    /// and sixteen retries would report the same thing sixteen turns later.
+    #[tokio::test(start_paused = true)]
+    async fn a_key_absent_from_a_pushed_pair_errors_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut actor = actor_with_an_empty_flock(&dir, vec![ProcScript::never_exits()]);
+        actor
+            .provider_secrets
+            .put(
+                "vercel",
+                "production",
+                BTreeMap::from([("OTHER".to_string(), "1".to_string())]),
+                false,
+            )
+            .expect("no cache is written with persist off");
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.env
+            .insert("K".to_string(), "{{secret:vercel/API_KEY}}".to_string());
+
+        let err = actor
+            .do_start(vec![normalize(app).unwrap()], None, BatchPolicy::PerApp)
+            .unwrap_err();
+
+        assert!(matches!(err, SupervisorError::SpawnFailed(_)), "{err:?}");
+        let entry = &actor.sheep.values().next().expect("one row").entry;
+        assert_eq!(entry.status, ProcStatus::Errored);
+        assert_eq!(
+            actor.runner.spawn_count(),
+            0,
+            "nothing may reach the runner"
+        );
+    }
+
+    /// The ladder is bounded by the same budget a crash loop spends, so a
+    /// provider that never arrives ends as an error rather than retrying for
+    /// the daemon's life.
+    #[tokio::test(start_paused = true)]
+    async fn a_namespace_that_never_arrives_errors_once_the_budget_runs_out() {
+        let (events, _rx) = crate::bus::test_bus(64);
+        let runner = ScriptedRunner::new(vec![]);
+        let dir = tempfile::tempdir().unwrap();
+        let handle = spawn_supervisor(runner, test_paths(&dir), events);
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.env
+            .insert("PW".to_string(), "{{secret:vault/K}}".to_string());
+        // Two turns, and a fixed wait so the clock below knows what to skip.
+        app.max_restarts = 2;
+        app.restart_delay = Some(UpDuration::from_millis(100));
+
+        handle.start(vec![normalize(app).unwrap()]).await.unwrap();
+        assert_eq!(handle.list().await[0].status, ProcStatus::WaitingRestart);
+
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        assert_eq!(
+            handle.list().await[0].status,
+            ProcStatus::Errored,
+            "the second refusal exhausts the budget"
+        );
+    }
+
+    /// The store is read from disk at the spawn, so a value set before the
+    /// start reaches the child without a daemon restart.
+    #[tokio::test(start_paused = true)]
+    async fn a_value_in_the_store_lets_the_sheep_start() {
+        let (events, _rx) = crate::bus::test_bus(64);
+        let runner = Arc::new(ScriptedRunner::new(vec![ProcScript::never_exits()]));
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(&dir);
+        shep_core::secrets::set(&paths.secrets, "DB_PASSWORD", "production", "hunter2").unwrap();
+        let handle = spawn_supervisor(SharedRunner(Arc::clone(&runner)), paths, events);
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.env
+            .insert("PW".to_string(), "{{secret:DB_PASSWORD}}".to_string());
+
+        handle.start(vec![normalize(app).unwrap()]).await.unwrap();
+
+        assert_eq!(handle.list().await[0].status, ProcStatus::Online);
+        assert_eq!(runner.spawn_count(), 1);
+    }
+
+    /// A sheep's own `environment` picks which slot it reads, and there is no
+    /// fallback to another named one: a `staging` value must not answer for a
+    /// `production` sheep.
+    #[tokio::test(start_paused = true)]
+    async fn a_sheeps_environment_decides_which_value_it_reads() {
+        let (events, _rx) = crate::bus::test_bus(64);
+        let runner = ScriptedRunner::new(vec![ProcScript::never_exits()]);
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(&dir);
+        shep_core::secrets::set(&paths.secrets, "K", "staging", "v").unwrap();
+        let handle = spawn_supervisor(runner, paths, events);
+        let templated = |name: &str, environment: Option<&str>| {
+            let mut app = AppConfig::minimal(name, "./srv");
+            app.environment = environment.map(str::to_string);
+            app.env.insert("K".to_string(), "{{secret:K}}".to_string());
+            normalize(app).unwrap()
+        };
+
+        handle
+            .start(vec![templated("staged", Some("staging"))])
+            .await
+            .expect("the staging slot holds a value");
+        let err = handle
+            .start(vec![templated("live", None)])
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string().contains("production"),
+            "the host default is what the second one asked for: {err}"
+        );
+    }
+
+    /// `environment` is a `NeedsRespawn` field and a promotion rewrites one
+    /// slot at a time, so two instances of a name can hold different
+    /// environments at once. Each prober resolves against its own slot.
+    #[test]
+    fn a_rearm_resolves_each_instance_against_its_own_environment() {
+        let dir = tempfile::tempdir().unwrap();
+        let actor = actor_with_an_empty_flock(&dir, vec![]);
+        shep_core::secrets::set(&actor.paths.secrets, "K", "production", "live").unwrap();
+        shep_core::secrets::set(&actor.paths.secrets, "K", "staging", "rehearsal").unwrap();
+        // `armed_entry` assembles against an empty view, which a templated
+        // app cannot resolve, so the reference goes on afterwards.
+        let entry_of = |id: u32, environment: &str| {
+            let mut entry = armed_entry(id, id, 4300 + id, app_with("web", |_| {}), &actor.paths);
+            entry.spec = app_with("web", |app| {
+                app.environment = Some(environment.to_string());
+                app.env.insert("K".to_string(), "{{secret:K}}".to_string());
+            });
+            entry
+        };
+        let promoted = entry_of(0, "staging");
+        let waiting = entry_of(1, "production");
+
+        let specs = actor.rearm_specs(&[&promoted, &waiting]);
+
+        assert_eq!(
+            specs[&0].env.get("K").map(String::as_str),
+            Some("rehearsal"),
+            "the promoted instance reads its own staging slot: {:?}",
+            specs[&0]
+        );
+        assert_eq!(
+            specs[&1].env.get("K").map(String::as_str),
+            Some("live"),
+            "the instance still on the old config keeps production: {:?}",
+            specs[&1]
+        );
+    }
+    /// [`BatchPolicy::AllOrNothing`] promises to register none of a batch it
+    /// cannot start whole, and a reference nobody has set is as knowable
+    /// before the batch as a missing binary is. Refusing it only at the spawn
+    /// leaves every app ahead of it in the file running.
+    #[tokio::test(start_paused = true)]
+    async fn a_batch_with_one_unresolvable_secret_registers_none_of_it() {
+        let (events, _rx) = crate::bus::test_bus(64);
+        let runner = Arc::new(ScriptedRunner::new(vec![ProcScript::never_exits()]));
+        let dir = tempfile::tempdir().unwrap();
+        let handle = spawn_supervisor(SharedRunner(Arc::clone(&runner)), test_paths(&dir), events);
+        let sound = normalize(AppConfig::minimal("first", "./srv")).unwrap();
+        let mut broken = AppConfig::minimal("second", "./srv");
+        broken
+            .env
+            .insert("PW".to_string(), "{{secret:TYPO}}".to_string());
+
+        let err = handle
+            .start(vec![sound, normalize(broken).unwrap()])
+            .await
+            .unwrap_err();
+
+        assert!(
+            handle.list().await.is_empty(),
+            "the app ahead of the refusal must not survive the batch"
+        );
+        assert_eq!(runner.spawn_count(), 0, "nothing may reach the runner");
+        assert!(matches!(err, SupervisorError::CannotStart(_)), "{err:?}");
+        assert!(
+            err.to_string().contains("TYPO"),
+            "names the reference: {err}"
         );
     }
 }

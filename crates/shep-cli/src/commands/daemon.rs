@@ -239,6 +239,7 @@ pub fn boot_options(
         socket: config.daemon.socket.clone(),
         ready_fd: None,
         restore: !args.no_restore,
+        environment: Some(config.daemon.environment.clone()),
         max_cron_sleep: config.daemon.max_cron_sleep.map(UpDuration::as_duration),
         notify_socket: notify_socket
             .filter(|_| args.foreground)

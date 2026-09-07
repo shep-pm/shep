@@ -69,10 +69,11 @@ const fieldGroups: FieldGroup[] = [
     fields: [
       { name: "name", type: "string", default: "required", does: "Unique sheep name. May not contain a path separator or a colon: a colon is the name:slot selector's own separator, and also illegal in a log filename on Windows." },
       { name: "script", type: "string", default: "required", does: "Executable or script path." },
-      { name: "args", type: "string[]", default: "[]", does: "Arguments passed to the script; supports {{instance}} and {{name}}." },
+      { name: "args", type: "string[]", default: "[]", does: "Arguments passed to the script; supports {{instance}}, {{name}} and {{secret:...}}. A resolved secret in an argument is visible in ps; see Secrets." },
       { name: "cwd", type: "string?", default: "the Flockfile's own directory", does: "Working directory at spawn. Unset, an app in a Flockfile runs where that Flockfile lives, so a relative script resolves the way you would read it." },
       { name: "interpreter", type: "string?", default: "none", does: "Interpreter override; \"none\" runs the script directly." },
-      { name: "env", type: "map<string,string>", default: "{}", does: "Merged over the daemon's filtered environment; values support {{instance}} and {{name}}. SHEP_INSTANCE and SHEP_NAME are always set and may not be set here." },
+      { name: "env", type: "map<string,string>", default: "{}", does: "Merged over the daemon's filtered environment; values support {{instance}}, {{name}} and {{secret:...}}. SHEP_INSTANCE, SHEP_NAME and SHEP_ENVIRONMENT are always set and may not be set here." },
+      { name: "environment", type: "string?", default: "[daemon] environment, \"production\" by default", does: "Which environment a {{secret:...}} reference resolves against on this sheep. May not be \"all\", the secrets store's own every-environment slot; see Secrets." },
       { name: "instances", type: "integer", default: "1", does: "How many separate copies of this app to run, each its own process; shep does not share a socket between them (see reuse_port if the app does that itself). SHEP_INSTANCE and SHEP_NAME are always set on every instance; other env values, args, out_file and err_file may use {{instance}} and {{name}} templates." },
       { name: "increment_var", type: "string?", default: "removed", does: "Refused at normalize with the replacement named: set env.YOUR_VAR = \"{{instance}}\" instead." },
     ],
@@ -369,7 +370,7 @@ error[invalid_config]: invalid TOML Flockfile: TOML parse error at line 4, colum
 4 | max_memory_restart = "1G"
   | ^^^^^^^^^^^^^^^^^^
 unknown field \`max_memory_restart\`, expected one of \`name\`, \`script\`, \`args\`, \`cwd\`,
-\`interpreter\`, \`env\`, \`instances\`, \`autorestart\`, \`autostart\`, \`stop_exit_codes\`,
+\`interpreter\`, \`env\`, \`environment\`, \`instances\`, \`autorestart\`, \`autostart\`, \`stop_exit_codes\`,
 \`min_uptime\`, \`max_restarts\`, \`restart_delay\`, \`exp_backoff_restart_delay\`, \`kill_signal\`,
 \`kill_timeout\`, \`shutdown_with_message\`, \`listen_timeout\`, \`graceful_timeout\`,
 \`action_timeout\`, \`max_memory\`, \`watch\`, \`ignore_watch\`, \`watch_delay\`, \`cron_restart\`,
@@ -402,11 +403,12 @@ unknown field \`max_memory_restart\`, expected one of \`name\`, \`script\`, \`ar
       good answer to that.
     </p>
 
-    <h2>Templates: <code>{'{{instance}}'}</code> and <code>{'{{name}}'}</code></h2>
+    <h2>Templates: <code>{'{{instance}}'}</code>, <code>{'{{name}}'}</code> and <code>{'{{secret:...}}'}</code></h2>
     <p>
-      <code>env</code> values, <code>args</code>, <code>out_file</code> and
-      <code>err_file</code> all accept two tokens, doubled-brace, filled in
-      at spawn time with the app's own name and the instance's own slot:
+      <code>env</code> values, <code>args</code>, <code>out_file</code> and{" "}
+      <code>err_file</code> all accept doubled-brace tokens. Two are
+      positional, filled in at spawn time with the app's own name and the
+      instance's own slot, and every one of the four takes them:
     </p>
     <CodeBlock label="Flockfile.toml">{`[[app]]
 name = "z-worker"
@@ -418,10 +420,22 @@ args = ["--metrics-port", "91{{instance}}"]
 Z_WORKER_ID = "z-{{instance}}"
 Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
     <p>
+      The third reads a value rather than the app's own identity:{" "}
+      <code>{'{{secret:NAME}}'}</code> looks up <code>NAME</code> in the{" "}
+      <a href="/docs/secrets">secrets store</a> instead of putting a live
+      value in the Flockfile at all. This one is for <code>env</code> values
+      and <code>args</code> only: <code>out_file</code> and{" "}
+      <code>err_file</code> refuse it, because a resolved log path becomes a
+      filename on disk and is reported by <code>shep flock</code> and{" "}
+      <code>shep describe</code>.
+    </p>
+    <CodeBlock label="Flockfile.toml">{`[app.env]
+DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>
+    <p>
       Any other <code>{'{{...}}'}</code> is refused at <code>shep start</code>,
       not left to reach the child as a literal string:
     </p>
-    <CodeBlock label="a typo'd token">{`error[invalid_config]: the daemon reported InvalidConfig: sheep \`z-worker\`, env.WORKER: \`{{instnace}}\` is not a template token: valid tokens are \`{{instance}}\` and \`{{name}}\``}</CodeBlock>
+    <CodeBlock label="a typo'd token">{`error[invalid_config]: the daemon reported InvalidConfig: sheep \`z-worker\`, env.WORKER: \`{{instnace}}\` is not a template token: valid tokens are \`{{instance}}\`, \`{{name}}\`, \`{{secret:...}}\``}</CodeBlock>
     <p>
       An opening <code>{'{{'}</code> that is never closed is refused the same
       way, rather than passed through as a literal:
@@ -436,10 +450,11 @@ Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
       arg all survive untouched.
     </p>
     <p>
-      <code>SHEP_INSTANCE</code> and <code>SHEP_NAME</code> are set on every
-      sheep's environment automatically, whether or not the Flockfile uses
-      either template. Setting either one yourself under <code>env</code> is
-      refused rather than silently overwritten:
+      <code>SHEP_INSTANCE</code>, <code>SHEP_NAME</code> and{" "}
+      <code>SHEP_ENVIRONMENT</code> are set on every sheep's environment
+      automatically, whether or not the Flockfile uses any template at all.
+      Setting one yourself under <code>env</code> is refused rather than
+      silently overwritten:
     </p>
     <CodeBlock label="env sets a reserved variable">{`error[invalid_config]: the daemon reported InvalidConfig: sheep \`z-worker\` sets \`SHEP_INSTANCE\` in env, but shep injects it: use a different name, or \`{{instance}}\` in your own variable`}</CodeBlock>
 

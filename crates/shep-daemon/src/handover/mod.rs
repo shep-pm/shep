@@ -1406,6 +1406,54 @@ mod tests {
         );
     }
 
+    /// The other file a resolved value could reach, and the same claim the
+    /// muster roll's own case makes: a blob carries the `AppConfig` a sheep
+    /// was registered with, references and all, never the `SpawnSpec` a
+    /// spawn assembled from it. Reachable without a real handover because a
+    /// blob is built from the entries, and an entry holds the config.
+    ///
+    /// Assembles first, so the fixture is one that really resolves.
+    #[test]
+    fn a_resolved_secret_never_reaches_the_blob() {
+        const SENTINEL: &str = "hunter2-that-must-never-reach-disk";
+
+        let entry = entry_fixture(|app| {
+            app.env
+                .insert("PW".to_owned(), "{{secret:DB_PASSWORD}}".to_owned());
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let view = shep_core::secrets::SecretView::new(
+            "production".to_string(),
+            std::collections::BTreeMap::from([(
+                "DB_PASSWORD".to_string(),
+                std::collections::BTreeMap::from([(
+                    "production".to_string(),
+                    SENTINEL.to_string(),
+                )]),
+            )]),
+            shep_core::secrets::ProviderCache::default(),
+        );
+        let spec = crate::assemble::assemble(
+            &entry.spec,
+            entry.instance,
+            &crate::testing::test_paths(&dir),
+            None,
+            &view,
+        )
+        .unwrap();
+        assert_eq!(
+            spec.env["PW"], SENTINEL,
+            "the fixture must really resolve, or this case proves nothing"
+        );
+
+        let text = serde_json::to_string(&handover_over(&entry)).unwrap();
+        assert!(!text.contains(SENTINEL), "the blob carries a value: {text}");
+        assert!(
+            text.contains("{{secret:DB_PASSWORD}}"),
+            "the reference is what it carries instead: {text}"
+        );
+    }
+
     #[test]
     fn debug_redacts_a_carried_sheeps_environment() {
         // An exact string, not a `contains`: a field added later that prints

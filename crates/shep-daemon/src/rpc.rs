@@ -14,7 +14,7 @@ use core::future::Future;
 use core::time::Duration;
 
 use std::collections::{BTreeSet, HashMap};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tokio::sync::watch;
@@ -31,6 +31,7 @@ use shep_core::signals::OperatorSignal;
 use crate::bus::{Bus, TopicFilter};
 use crate::dogs::DogSpec;
 use crate::limits::stats::StatsState;
+use crate::secrets::ProviderSecrets;
 use crate::snapshot::{FlockRegistry, SnapshotError, write_atomic};
 use crate::supervisor::{Applied, ConnId, SupervisorError, SupervisorHandle};
 
@@ -136,6 +137,10 @@ pub struct RpcContext {
     /// is watched and record the periodic CPU baseline, and this side reads
     /// against it.
     pub(crate) stats: Arc<StatsState>,
+    /// What provider dogs have pushed, written by `PutSecrets` here and
+    /// read per spawn by the supervisor actor. One registry, two owners,
+    /// for the reason `stats` above gives.
+    pub(crate) provider_secrets: Arc<ProviderSecrets>,
 }
 
 /// Where a muster roll landed and what it recorded.
@@ -760,6 +765,89 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                 })),
             }
         }
+        // A provider dog's push. Unguarded by design, for the reason the
+        // variant's own doc gives.
+        //
+        // Both NAMES and every entry KEY are checked against the store's own
+        // grammar: one outside it is a name no `{{secret:...}}` reference
+        // could reach, so storing under it would answer `accepted` and
+        // resolve nothing. Values are capped at the same `MAX_VALUE_BYTES`
+        // the operator's own store enforces, since without it a socket peer
+        // sets the shepherd's memory and, with `persist`, rewrites and
+        // fsyncs whatever it sent on every later push.
+        //
+        // One offender refuses the whole push, as the namespace check
+        // already does: a partial store is one a dog would report `accepted`
+        // for and a spawn would refuse on, and the dog has the whole set to
+        // send again.
+        //
+        // Handled here rather than through the supervisor: the registry is
+        // not supervisor state, and this arm writes the cache file, which
+        // the actor must never wait on. See `crate::secrets`.
+        Request::PutSecrets {
+            namespace,
+            environment,
+            entries,
+        } => {
+            let refused = [
+                ("namespace", namespace.as_str()),
+                ("environment", environment.as_str()),
+            ]
+            .into_iter()
+            .chain(entries.keys().map(|key| ("key", key.as_str())))
+            .find(|(_, value)| !shep_core::secrets::is_name(value));
+            if let Some((field, value)) = refused {
+                return reply(Err(RpcError {
+                    code: RpcErrorCode::InvalidConfig,
+                    message: format!(
+                        "`{value}` is not a valid {field}: a name is 1 to \
+                         {max} bytes of `[A-Za-z0-9._-]` and may not start with `.`",
+                        max = shep_core::secrets::MAX_KEY_BYTES
+                    ),
+                    daemon_version: None,
+                }));
+            }
+            // The key, never the value: an error message is the one place a
+            // pushed value must not turn up (IR-41).
+            let oversized = entries
+                .iter()
+                .map(|(key, value)| (key, value.as_str().len()))
+                .find(|(_, len)| *len > shep_core::secrets::MAX_VALUE_BYTES);
+            if let Some((key, len)) = oversized {
+                return reply(Err(RpcError {
+                    code: RpcErrorCode::InvalidConfig,
+                    message: format!(
+                        "the value for `{key}` is {len} bytes, over the {max}-byte limit",
+                        max = shep_core::secrets::MAX_VALUE_BYTES
+                    ),
+                    daemon_version: None,
+                }));
+            }
+            let values = entries
+                .into_iter()
+                .map(|(key, value)| (key, value.as_str().to_owned()))
+                .collect();
+            match ctx.provider_secrets.put(
+                &namespace,
+                &environment,
+                values,
+                persists(&ctx.dogs_config, &namespace),
+            ) {
+                Ok(accepted) => reply(Ok(Response::SecretsPut { accepted })),
+                // The values are already in memory and already resolvable;
+                // what failed is only their surviving a restart. Reported
+                // rather than swallowed, so a dog whose operator asked for
+                // a cache learns it is not getting one.
+                Err(err) => reply(Err(RpcError {
+                    code: RpcErrorCode::Internal,
+                    message: format!(
+                        "{namespace}/{environment} is stored, but the cache could not be \
+                         written: {err}"
+                    ),
+                    daemon_version: None,
+                })),
+            }
+        }
         // `Request` is #[non_exhaustive]: a verb from a newer client that this
         // daemon has never heard of is an error, not a panic.
         _ => reply(Err(RpcError {
@@ -768,6 +856,32 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
             daemon_version: None,
         })),
     }
+}
+
+/// Whether `namespace`'s push may reach the cache file: the `persist` key
+/// of its own `[<namespace>]` table in `dogs.toml`, or `true`.
+///
+/// Read per push rather than at boot, so an operator who edits the file
+/// does not have to restart the shepherd for it to take.
+///
+/// Every way of not finding a boolean answers `true`: no file, no section,
+/// no key, a key of some other type, or a file that will not parse. The
+/// cache is what makes a pushed value survive a restart, and a dog whose
+/// config says nothing about it wants one. An operator who does not says
+/// so explicitly.
+fn persists(dogs_config: &Path, namespace: &str) -> bool {
+    let Ok(source) = std::fs::read_to_string(dogs_config) else {
+        return true;
+    };
+    let Ok(config) = shep_core::config::DogsConfig::load(Some(&source)) else {
+        return true;
+    };
+    config
+        .dog
+        .get(namespace)
+        .and_then(|table| table.get("persist"))
+        .and_then(toml::Value::as_bool)
+        .unwrap_or(true)
 }
 
 /// The first name two entries of an `ApplyConfig` share, if any.
@@ -1158,7 +1272,7 @@ mod tests {
     };
     use shep_core::status::ProcStatus;
     use shep_core::values::UpDuration;
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
     use tokio::time::Instant;
 
     /// Dispatches on a connection of its own, shadowing [`super::dispatch`]
@@ -3423,12 +3537,18 @@ mod tests {
                 name: "ghost".to_string(),
                 toml: String::new().into(),
             },
+            Request::PutSecrets {
+                namespace: "ghost".to_string(),
+                environment: "production".to_string(),
+                entries: BTreeMap::new(),
+            },
         ];
         for (id, request) in requests.into_iter().enumerate() {
+            let named = format!("{request:?}");
             let reply = reply_of(
                 dispatch(
                     envelope(
-                        u64::try_from(id).expect("three requests fit a u64"),
+                        u64::try_from(id).expect("an index into `requests` fits a u64"),
                         request,
                     ),
                     &h.ctx,
@@ -3440,7 +3560,7 @@ mod tests {
             };
             assert_ne!(
                 err.message, "this daemon does not implement that request",
-                "a config-pane variant fell through to the wildcard"
+                "{named} fell through to the wildcard"
             );
         }
     }
@@ -3778,6 +3898,176 @@ mod tests {
             panic!("otel is not a known dog and must be refused")
         };
         assert_eq!(err.code, RpcErrorCode::NotFound, "{err:?}");
+    }
+
+    /// Sends `entries` for `namespace` in `production` and returns the reply.
+    async fn push(ctx: &RpcContext, id: u64, namespace: &str, entries: &[(&str, &str)]) -> Reply {
+        reply_of(
+            dispatch(
+                envelope(
+                    id,
+                    Request::PutSecrets {
+                        namespace: namespace.to_string(),
+                        environment: "production".to_string(),
+                        entries: entries
+                            .iter()
+                            .map(|(key, value)| ((*key).to_string(), (*value).to_string().into()))
+                            .collect(),
+                    },
+                ),
+                ctx,
+            )
+            .await,
+        )
+    }
+
+    /// The registry the arm writes is the one the supervisor resolves
+    /// against, so this asserts on the shared handle and not on the count
+    /// alone: an arm that answered `accepted` off its own request without
+    /// storing anything would pass on the reply and fail here.
+    #[tokio::test(start_paused = true)]
+    async fn a_push_lands_in_the_registry_the_supervisor_reads() {
+        let h = harness(vec![]);
+        let reply = push(&h.ctx, 1, "vercel", &[("API_KEY", "sk_live"), ("B", "2")]).await;
+        assert_eq!(reply.result.unwrap(), Response::SecretsPut { accepted: 2 });
+
+        let snapshot = h.ctx.provider_secrets.snapshot();
+        assert_eq!(
+            snapshot.values["vercel"]["API_KEY"]["production"],
+            "sk_live"
+        );
+        assert!(snapshot.pushed["vercel"].contains("production"));
+    }
+
+    /// A namespace with a `/` in it is the exact shape `SecretRef::parse`
+    /// splits on, so storing under it would answer `accepted` for values
+    /// no `{{secret:...}}` reference could ever name.
+    #[tokio::test(start_paused = true)]
+    async fn a_namespace_outside_the_grammar_is_refused_and_stores_nothing() {
+        let h = harness(vec![]);
+        let reply = push(&h.ctx, 1, "ver/cel", &[("A", "1")]).await;
+
+        let Err(err) = reply.result else {
+            panic!("a namespace carrying a separator must be refused")
+        };
+        assert_eq!(err.code, RpcErrorCode::InvalidConfig, "{err:?}");
+        assert!(h.ctx.provider_secrets.pushed().is_empty());
+    }
+
+    /// A key with a `/` in it is as unreachable as a namespace with one:
+    /// `SecretRef::parse` splits on the separator, so `{{secret:ns/A/B}}`
+    /// names a namespace `ns` and a key `A/B` that `parse` refuses. The two
+    /// names were checked and the keys were not.
+    #[tokio::test(start_paused = true)]
+    async fn an_entry_key_outside_the_grammar_refuses_the_whole_push() {
+        let h = harness(vec![]);
+        let reply = push(&h.ctx, 1, "vercel", &[("GOOD", "1"), ("A/B", "2")]).await;
+
+        let Err(err) = reply.result else {
+            panic!("a key carrying a separator must be refused")
+        };
+        assert_eq!(err.code, RpcErrorCode::InvalidConfig, "{err:?}");
+        assert!(err.message.contains("A/B"), "names the key: {err:?}");
+        assert!(
+            h.ctx.provider_secrets.pushed().is_empty(),
+            "the whole push is refused, not the one key"
+        );
+    }
+
+    /// `MAX_VALUE_BYTES` guards `secrets::set`, so an operator cannot put a
+    /// blob in the store. Without the same cap here a socket peer sets the
+    /// shepherd's memory, and with `persist` on, what it sent is
+    /// re-serialized and fsynced whole on every later push.
+    #[tokio::test(start_paused = true)]
+    async fn an_oversized_value_refuses_the_whole_push_without_quoting_it() {
+        let h = harness(vec![]);
+        let huge = "x".repeat(shep_core::secrets::MAX_VALUE_BYTES + 1);
+        let reply = push(&h.ctx, 1, "vercel", &[("BIG", &huge)]).await;
+
+        let Err(err) = reply.result else {
+            panic!("a value over the cap must be refused")
+        };
+        assert_eq!(err.code, RpcErrorCode::InvalidConfig, "{err:?}");
+        assert!(err.message.contains("BIG"), "names the key: {err:?}");
+        assert!(
+            !err.message.contains("xxxx"),
+            "never the value itself: {err:?}"
+        );
+        assert!(h.ctx.provider_secrets.pushed().is_empty());
+    }
+
+    /// The cap is a ceiling, not a refusal of anything long: a 4096-bit RSA
+    /// key in PEM is 3272 bytes, which is what the limit was sized for.
+    #[tokio::test(start_paused = true)]
+    async fn a_value_at_the_cap_is_accepted() {
+        let h = harness(vec![]);
+        let big = "x".repeat(shep_core::secrets::MAX_VALUE_BYTES);
+        assert!(
+            push(&h.ctx, 1, "vercel", &[("BIG", &big)])
+                .await
+                .result
+                .is_ok()
+        );
+    }
+
+    /// The same refusal for the other name, since an environment outside
+    /// the grammar is just as unreachable as a namespace.
+    #[tokio::test(start_paused = true)]
+    async fn an_environment_outside_the_grammar_is_refused() {
+        let h = harness(vec![]);
+        let reply = reply_of(
+            dispatch(
+                envelope(
+                    1,
+                    Request::PutSecrets {
+                        namespace: "vercel".to_string(),
+                        environment: String::new(),
+                        entries: BTreeMap::new(),
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+
+        let Err(err) = reply.result else {
+            panic!("an empty environment must be refused")
+        };
+        assert_eq!(err.code, RpcErrorCode::InvalidConfig, "{err:?}");
+    }
+
+    /// The arm reads `persist` from the file on every push, so a dog whose
+    /// operator turned it off never has its values written to disk. Asserts
+    /// on the file rather than on the reply: the push succeeds either way,
+    /// and the whole point of the setting is what is NOT there.
+    #[tokio::test(start_paused = true)]
+    async fn persist_false_in_dogs_toml_keeps_the_values_off_disk() {
+        let h = harness(vec![]);
+        std::fs::write(&h.ctx.dogs_config, "[vercel]\npersist = false\n").unwrap();
+
+        assert!(
+            push(&h.ctx, 1, "vercel", &[("A", "1")])
+                .await
+                .result
+                .is_ok()
+        );
+
+        assert!(!h.ctx.paths.secrets_cache.exists());
+        assert!(h.ctx.provider_secrets.pushed().contains_key("vercel"));
+    }
+
+    /// The default, and the half the test above cannot prove: a dog whose
+    /// section says nothing gets a cache.
+    #[tokio::test(start_paused = true)]
+    async fn a_dog_that_says_nothing_about_persist_gets_a_cache() {
+        let h = harness(vec![]);
+        assert!(
+            push(&h.ctx, 1, "vercel", &[("A", "1")])
+                .await
+                .result
+                .is_ok()
+        );
+        assert!(h.ctx.paths.secrets_cache.exists());
     }
 
     /// Both halves: a filter that excluded dogs outright would leave `shep

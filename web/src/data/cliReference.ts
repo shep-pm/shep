@@ -80,6 +80,7 @@ const VERB_NAMES = [
   "set",
   "get",
   "unset",
+  "secret",
   "ping",
   "kill",
   "save",

@@ -676,6 +676,18 @@ where an operator reads. `every_exempt_verb_is_one_of_the_documented_recovery_ve
 pins `add` at `Enforce`, since it reaches that through the `_` arm rather
 than by being named.
 
+**`PROTOCOL_VERSION` moved to 5 on 2026-09-06, for `Request::PutSecrets`
+and `Response::SecretsPut`.** Both are additive: a provider dog's push is
+a request no daemon before this shipped could ever receive, and no
+existing traffic changes shape. By the rule the paragraph below states,
+that is exactly the case that should not move the number. It bumped
+anyway, for the same reason `docs/decisions.md` records for the move to
+4: an unbumped addition hands a version-matched, not-yet-restarted
+daemon a dead connection on an envelope it cannot decode, rather than a
+named `protocol_mismatch` refusal naming both numbers and the remedy.
+`shep daemon reload` is the fix here too. The paragraph below is about
+the 4.
+
 **`PROTOCOL_VERSION` moved to 4 on 2026-09-04.** It went to 3 first, for
 `ApplyConfig`'s payload rename described below, and then to 4 for the four
 requests the lookout config panes needed. The second move is argued in
@@ -701,12 +713,13 @@ which this said until 2026-09-04: `refuse_version_skew` runs only after
 so it returns `Err` and that check is never reached. `docs/decisions.md`'s entry on this reverses the
 "`PROTOCOL_VERSION` stayed 2" ruling that predates it.
 
-**Verb count: 41 generated, 42 listed, and the difference is `help`.**
+**Verb count: 42 generated, 43 listed, and the difference is still `help`.**
 `./web/scripts/generate-cli-reference.sh` prints its own number every time it
-runs, and its `VERBS` array holds 41 because it does not generate a page for
-`help`. `shep --help`'s grouped listing shows 42 because it does. Both are
-right about different questions, so neither is a bug to fix; check which one is
-being asked before changing either. README.md deliberately quotes the grouping
+runs, and its `VERBS` array holds 42, `secret` joined it once the secret
+store shipped, because it does not generate a page for `help`. `shep
+--help`'s grouped listing shows 43 because it does. Both are right about
+different questions, so neither is a bug to fix; check which one is being
+asked before changing either. README.md deliberately quotes the grouping
 without a count, so there is no third number to keep in step.
 
 What's built vs. deferred to v1.1+: [docs/specs/deferred.md](docs/specs/deferred.md).

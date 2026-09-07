@@ -36,10 +36,11 @@ use crate::exit::ExitCode;
 // nothing names them and `unused_imports` still flags it there.
 #[cfg_attr(windows, allow(unused_imports))]
 pub use rows::{
-    AvailableDogRows, BarkRows, DeletedIds, DogAdoptedRow, DogDisabledRow, DogEnabledRow,
-    DogRehomedRow, DogRows, EmptiedFile, EmptiedFiles, FlockRows, FlushedRows, ImportRow,
-    ImportRows, KillRow, KvEntry, KvRows, KvUnsetRow, LambRows, RolledSheep, RolledSheepRows,
-    SavedRollRow, SentLineRows, SignalledRows, StartupStep, StartupSteps, TriggeredRows,
+    AvailableDogRows, BarkRows, DeletedIds, DescribedSecret, DogAdoptedRow, DogDisabledRow,
+    DogEnabledRow, DogRehomedRow, DogRows, EmptiedFile, EmptiedFiles, FlockRows, FlushedRows,
+    ImportRow, ImportRows, KillRow, KvEntry, KvRows, KvUnsetRow, LambRows, RolledSheep,
+    RolledSheepRows, SavedRollRow, SecretKeyRow, SecretKeyRows, SecretSlotRow, SecretStatus,
+    SecretValueRow, SentLineRows, SignalledRows, StartupStep, StartupSteps, TriggeredRows,
 };
 pub use table::{human_bytes, human_duration, local_timestamp, render_table};
 
@@ -376,6 +377,29 @@ fn silence_pointer(dogs: &[ProcessInfo]) -> Option<String> {
     }
 }
 
+/// The `--format json` shape [`emit_described`] writes: [`OutputEnvelope`]'s
+/// own three fields, plus `secrets` riding beside `data` rather than inside
+/// it.
+///
+/// A sibling field rather than a new column on [`ProcessInfo`]: `secrets`
+/// is derived by the client from local files, never a fact the shepherd
+/// reports, and `data` stays exactly the array it always was, so an
+/// existing `data[0].name` script sees no shape change. Empty skips the
+/// field entirely, matching a `fold` reply, which never computes one.
+///
+/// Only ever constructed by [`emit_described`]. `#[cfg_attr(windows,
+/// allow(dead_code))]` for [`NoticeEnvelope`]'s reason: every caller lives
+/// in `commands/` or `lib.rs`'s `#[cfg(unix)]` arms.
+#[derive(Serialize)]
+#[cfg_attr(windows, allow(dead_code))]
+struct DescribedEnvelope<'a> {
+    schema_version: u32,
+    command: &'a str,
+    data: FlockRows,
+    #[serde(skip_serializing_if = "<[rows::DescribedSecret]>::is_empty")]
+    secrets: &'a [rows::DescribedSecret],
+}
+
 /// Renders one `describe` answer: the sheep table, then each sheep's lamb
 /// tree beneath it when the reply walked and found any.
 ///
@@ -386,6 +410,11 @@ fn silence_pointer(dogs: &[ProcessInfo]) -> Option<String> {
 /// the caption to "process tree": the walk follows parent-pid links
 /// while the stop ladder acts on the process group, and the two diverge.
 ///
+/// `secrets` is `describe`'s own local read of this machine's secret
+/// stores, keyed by sheep name; pass an empty slice for a reply (`fold`,
+/// today) that never computes one. Printed once per name, right after
+/// Overridden, in the same "prose under the table" shape.
+///
 /// # Errors
 /// The underlying write failed.
 #[cfg_attr(windows, allow(dead_code))]
@@ -395,9 +424,19 @@ pub fn emit_described(
     command: &str,
     listing: Vec<ProcessInfo>,
     style: Presentation,
+    secrets: &[rows::DescribedSecret],
 ) -> io::Result<()> {
     match fmt {
-        Format::Json => emit(out, fmt, command, FlockRows(listing), style),
+        Format::Json => {
+            let envelope = DescribedEnvelope {
+                schema_version: SCHEMA_VERSION,
+                command,
+                data: FlockRows(listing),
+                secrets,
+            };
+            serde_json::to_writer(&mut *out, &envelope)?;
+            writeln!(out)
+        }
         Format::Table => {
             let flock = FlockRows(listing);
             write!(out, "{}", table_of(&flock, style))?;
@@ -455,6 +494,22 @@ pub fn emit_described(
                     )?;
                     for field in fields {
                         writeln!(out, "  {field}")?;
+                    }
+                }
+                let mine: Vec<&rows::DescribedSecret> = secrets
+                    .iter()
+                    .filter(|entry| entry.name == sheep.name)
+                    .collect();
+                if !mine.is_empty() {
+                    writeln!(out, "\nSecrets for {}:", sheep.name)?;
+                    for entry in mine {
+                        writeln!(
+                            out,
+                            "  {} ({}): {}",
+                            entry.reference,
+                            entry.environment,
+                            entry.status.as_table_word()
+                        )?;
                     }
                 }
             }
@@ -877,6 +932,7 @@ mod tests {
                 "describe",
                 vec![info],
                 Presentation::BARE,
+                &[],
             )
             .unwrap();
             String::from_utf8(out).unwrap()
@@ -927,6 +983,7 @@ mod tests {
                 "describe",
                 vec![info],
                 Presentation::BARE,
+                &[],
             )
             .unwrap();
             let rendered = String::from_utf8(out).unwrap();
@@ -984,6 +1041,7 @@ mod tests {
             "describe",
             vec![info],
             Presentation::BARE,
+            &[],
         )
         .unwrap();
         let rendered = String::from_utf8(out).unwrap();
@@ -1018,6 +1076,7 @@ mod tests {
                 "describe",
                 vec![info.clone()],
                 Presentation::BARE,
+                &[],
             )
             .unwrap();
             let rendered = String::from_utf8(out).unwrap();
@@ -1039,6 +1098,7 @@ mod tests {
             "describe",
             vec![info],
             Presentation::BARE,
+            &[],
         )
         .unwrap();
         let value: serde_json::Value = serde_json::from_slice(&out).unwrap();
@@ -1063,6 +1123,7 @@ mod tests {
             "describe",
             vec![info],
             Presentation::BARE,
+            &[],
         )
         .unwrap();
         let rendered = String::from_utf8(out).unwrap();
@@ -1102,6 +1163,7 @@ mod tests {
                 "describe",
                 vec![info],
                 Presentation::BARE,
+                &[],
             )
             .unwrap();
             let rendered = String::from_utf8(out).unwrap();
@@ -1138,6 +1200,7 @@ mod tests {
             "describe",
             rows,
             Presentation::BARE,
+            &[],
         )
         .unwrap();
         let rendered = String::from_utf8(out).unwrap();
@@ -1166,6 +1229,7 @@ mod tests {
             "describe",
             vec![info],
             Presentation::BARE,
+            &[],
         )
         .unwrap();
         let value: serde_json::Value = serde_json::from_slice(&out).unwrap();

@@ -9,21 +9,27 @@
 //! [`HelloAck`](shep_core::protocol::HelloAck) [`Client::daemon`] holds. It
 //! still issues `Request::Ping` as the liveness check.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use shep_client::Client;
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{ProcessInfo, Request, Response, SelectorSpec};
+#[cfg(test)]
+use shep_core::secrets::Resolution;
+use shep_core::secrets::{self, SecretRef, SecretView};
 use shep_core::status::ProcStatus;
 use shep_daemon::snapshot::FlockSnapshot;
 
 use crate::cli::{DogsArgs, FoldArgs, Format, SelectorArgs};
+use crate::commands::secret::daemon_config;
 use crate::commands::selector::parse_selector;
 use crate::dog_index::{self, AvailableDog, DogSourceKind};
 use crate::exit::ExitCode;
 use crate::fetch;
 use crate::flourish;
 use crate::output::{
-    AvailableDogRows, DogRows, Render, RolledSheep, RolledSheepRows, Streams, emit, emit_described,
-    emit_flock, write_outcome,
+    AvailableDogRows, DescribedSecret, DogRows, Render, RolledSheep, RolledSheepRows, SecretStatus,
+    Streams, emit, emit_described, emit_flock, write_outcome,
 };
 
 /// Sends `body`, renders whatever the daemon answers through [`emit`], and
@@ -70,23 +76,49 @@ where
 /// each sheep's lamb tree beneath it. `command` is the verb name the output
 /// envelope reports.
 ///
+/// `include_secrets` alone gates [`gather_secrets`]: `fold` passes `false`
+/// and stays byte-identical to before this section existed, because `fold`
+/// is a group view across a selector's sheep, not the single-sheep
+/// diagnostic this feature was built for.
+///
 /// Not routed through [`request_and_render`]: `emit_described` renders one
 /// `Vec<ProcessInfo>` into two tables, which no single [`Render`] impl can
 /// express.
 async fn describe_selector(
     client: &Client,
     streams: &mut Streams<'_>,
+    paths: &ShepPaths,
     command: &str,
+    include_secrets: bool,
     selector: SelectorSpec,
 ) -> ExitCode {
     match client.request(Request::Describe { selector }).await {
-        Ok(Response::Described(procs)) => write_outcome(emit_described(
-            &mut *streams.out,
-            streams.fmt,
-            command,
-            procs,
-            streams.style,
-        )),
+        Ok(Response::Described(procs)) => {
+            let secrets = if include_secrets {
+                let (rows, unreadable) = gather_secrets(paths, &procs);
+                if let Some(error) = unreadable {
+                    let message = format!(
+                        "the secret store at {} could not be read ({error}), so every \
+                         reference below reads as missing whether or not the store holds \
+                         a value for it",
+                        paths.secrets.display()
+                    );
+                    streams.aside(SECRET_STORE_UNREADABLE_NOTICE, &message);
+                }
+                rows
+            } else {
+                Vec::new()
+            };
+            let result = emit_described(
+                &mut *streams.out,
+                streams.fmt,
+                command,
+                procs,
+                streams.style,
+                &secrets,
+            );
+            write_outcome(result)
+        }
         Ok(_) => {
             let message = "the daemon answered with a response this client does not understand";
             streams.fail(ExitCode::Internal, message)
@@ -98,15 +130,129 @@ async fn describe_selector(
     }
 }
 
+/// Renders one sheep's secret references the way `describe`'s table form
+/// would: one line per reference, the reference as written, the environment
+/// it resolved in, and a verdict. Never a value: `Resolution::Found`'s
+/// payload is read only to tell it apart from a miss.
+///
+/// The verdict word comes from [`SecretStatus::from_resolution`], the same
+/// classifier [`gather_secrets`] uses for the JSON form, so the two can
+/// never name a different verdict for the same reference.
+///
+/// Test-only: `emit_described` renders the actual table now, so this exists
+/// to exercise [`SecretStatus::from_resolution`]'s three verdicts in
+/// isolation, without a fake daemon connection.
+#[cfg(test)]
+fn render_describe_secrets(entries: &[(&str, &str, Resolution<'_>)]) -> String {
+    let mut rendered = String::new();
+    for (reference, environment, resolution) in entries {
+        let verdict = SecretStatus::from_resolution(resolution).as_table_word();
+        rendered.push_str(&format!("  {reference} ({environment}): {verdict}\n"));
+    }
+    rendered
+}
+
+/// `describe`'s secrets section for `procs`, once per distinct sheep name:
+/// the JSON-safe rows [`emit_described`] both serializes beside `data` and
+/// renders as the table's own "Secrets for `<name>`:" block.
+///
+/// Reads three local files rather than asking the shepherd: the muster roll
+/// for each name's [`shep_core::config::AppConfig`] (which can trail a
+/// config change that has not yet reached disk by
+/// `shep_daemon::snapshot`'s debounce window), the operator's own secret
+/// store, and the provider cache [`secrets::provider_cache_on_disk`]
+/// reads. A namespace whose provider pushed with `persist = false` never
+/// reaches that cache, so this can call a namespace uncached when the
+/// running shepherd already has it in memory; only the shepherd itself can
+/// answer that half.
+///
+/// A name the roll does not know, or one with no `{{secret:...}}` at all,
+/// contributes nothing: this reports references that exist, not a claim
+/// that every sheep has one.
+///
+/// The second half of the answer is why the operator's own store is empty,
+/// when it is empty because it would not read. Folding that into an empty
+/// store on its own would print `missing` beside every bare reference and
+/// send the operator to `shep secret set` for values the store may already
+/// hold. Rows are still produced, so a sheep needing nothing still
+/// describes; the caller has the [`Streams`] to say so on.
+fn gather_secrets(
+    paths: &ShepPaths,
+    procs: &[ProcessInfo],
+) -> (Vec<DescribedSecret>, Option<secrets::SecretError>) {
+    let roll = read_roll(paths);
+    let (store, unreadable) = match secrets::all(&paths.secrets) {
+        Ok(store) => (store, None),
+        Err(error) => (BTreeMap::new(), Some(error)),
+    };
+    let providers = secrets::provider_cache_on_disk(&paths.secrets_cache);
+    let host_environment = daemon_config(paths).daemon.environment;
+
+    let mut json = Vec::new();
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for proc in procs {
+        if !seen.insert(proc.name.as_str()) {
+            continue;
+        }
+        let Some(config) = roll
+            .as_ref()
+            .and_then(|roll| roll.apps.iter().find(|app| app.app.name == proc.name))
+            .map(|app| &app.app)
+        else {
+            continue;
+        };
+        let refs = secrets::references(config);
+        if refs.is_empty() {
+            continue;
+        }
+        let environment = config
+            .environment
+            .clone()
+            .unwrap_or_else(|| host_environment.clone());
+        let view = SecretView::new(environment.clone(), store.clone(), providers.clone());
+
+        for reference in &refs {
+            let Some(parsed) = SecretRef::parse(reference) else {
+                continue;
+            };
+            let resolution = view.resolve(&parsed);
+            let status = SecretStatus::from_resolution(&resolution);
+            json.push(DescribedSecret {
+                name: proc.name.clone(),
+                reference: reference.clone(),
+                environment: environment.clone(),
+                status,
+            });
+        }
+    }
+    (json, unreadable)
+}
+
+/// [`emit_notice`](crate::output::emit_notice) code for the warning
+/// `describe` prints when the operator's secret store will not read. Not a
+/// failure: the sheep still describes.
+const SECRET_STORE_UNREADABLE_NOTICE: &str = "secret_store_unreadable";
+
+/// Whatever `flock.json` currently holds, or nothing when it is missing or
+/// will not parse.
+///
+/// Shared by [`flock_from_roll`] and [`gather_secrets`]: both read the
+/// muster roll as the best local answer to "what does this app's config
+/// look like right now", tolerant of a file this daemon has never written
+/// or has fallen behind the live registry by a debounce window.
+fn read_roll(paths: &ShepPaths) -> Option<FlockSnapshot> {
+    std::fs::read(&paths.snapshot)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<FlockSnapshot>(&bytes).ok())
+}
+
 /// `shep flock` when no shepherd answers: the muster roll, marked stopped
 ///
 /// The exit code stays [`ExitCode::DaemonUnreachable`] even though the table
 /// looks successful: a monitoring script must not read a dead supervisor as
 /// a healthy empty flock. A missing or unreadable roll is not an error.
 pub fn flock_from_roll(streams: &mut Streams<'_>, paths: &ShepPaths) -> ExitCode {
-    let saved = std::fs::read(&paths.snapshot)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<FlockSnapshot>(&bytes).ok());
+    let saved = read_roll(paths);
 
     let mut sheep: Vec<RolledSheep> = saved
         .map(|roll| {
@@ -403,7 +549,12 @@ fn adopt_line(source: &DogSourceKind, adopt_as: &str, package: &str) -> String {
 }
 
 /// Describes the sheep matching `args.selector` in detail.
-pub async fn describe(client: &Client, streams: &mut Streams<'_>, args: &SelectorArgs) -> ExitCode {
+pub async fn describe(
+    client: &Client,
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    args: &SelectorArgs,
+) -> ExitCode {
     // One pass per target, each its own detail view: `describe` answers with
     // a tree per sheep, so merging them would lose that shape.
     let mut failure: Option<ExitCode> = None;
@@ -412,7 +563,7 @@ pub async fn describe(client: &Client, streams: &mut Streams<'_>, args: &Selecto
             Ok(selector) => SelectorSpec::from(&selector),
             Err(code) => return code,
         };
-        let code = describe_selector(client, streams, "describe", selector).await;
+        let code = describe_selector(client, streams, paths, "describe", true, selector).await;
         if code != ExitCode::Success {
             failure = failure.or(Some(code));
         }
@@ -422,11 +573,18 @@ pub async fn describe(client: &Client, streams: &mut Streams<'_>, args: &Selecto
 
 /// Lists one fold: `Request::Describe` with `SelectorSpec::Fold(args.name)`,
 /// delegating to [`describe_selector`].
-pub async fn fold(client: &Client, streams: &mut Streams<'_>, args: &FoldArgs) -> ExitCode {
+pub async fn fold(
+    client: &Client,
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    args: &FoldArgs,
+) -> ExitCode {
     describe_selector(
         client,
         streams,
+        paths,
         "fold",
+        false,
         SelectorSpec::Fold(args.name.clone()),
     )
     .await
@@ -474,6 +632,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = shep_client::testing::control_address(dir.path());
         let (client, mut envelopes) = fake_client_capturing_envelopes(&path).await;
+        let paths = ShepPaths::resolve(&|_| None, dir.path());
 
         for (input, expected) in [
             ("all", SelectorSpec::All),
@@ -493,7 +652,7 @@ mod tests {
             let args = SelectorArgs {
                 selectors: vec![input.into()],
             };
-            let _ = describe(&client, &mut streams, &args).await;
+            let _ = describe(&client, &mut streams, &paths, &args).await;
             let sent = tokio::time::timeout(RECV_TIMEOUT, envelopes.recv())
                 .await
                 .unwrap_or_else(|_| {
@@ -515,6 +674,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = shep_client::testing::control_address(dir.path());
         let (client, mut envelopes) = fake_client_capturing_envelopes(&path).await;
+        let paths = ShepPaths::resolve(&|_| None, dir.path());
         let mut out = Vec::new();
         let mut err = Vec::new();
         let code = {
@@ -527,6 +687,7 @@ mod tests {
             describe(
                 &client,
                 &mut streams,
+                &paths,
                 &SelectorArgs {
                     selectors: vec!["/[/".into()],
                 },
@@ -545,6 +706,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = shep_client::testing::control_address(dir.path());
         let (client, mut envelopes) = fake_client_capturing_envelopes(&path).await;
+        let paths = ShepPaths::resolve(&|_| None, dir.path());
         let mut out = Vec::new();
         let mut err = Vec::new();
         let mut streams = Streams {
@@ -553,7 +715,13 @@ mod tests {
             style: crate::style::Presentation::BARE,
             fmt: Format::Table,
         };
-        let _ = fold(&client, &mut streams, &FoldArgs { name: "api".into() }).await;
+        let _ = fold(
+            &client,
+            &mut streams,
+            &paths,
+            &FoldArgs { name: "api".into() },
+        )
+        .await;
         let sent = tokio::time::timeout(RECV_TIMEOUT, envelopes.recv())
             .await
             .expect("fold must reach the wire; it hung instead of sending a request")
@@ -600,6 +768,7 @@ mod tests {
         let path = shep_client::testing::control_address(dir.path());
         let (client, daemon) = fake_client_with_ack(&path, sample_ack()).await;
         daemon.reply_to_describe(vec![sample_info()]);
+        let paths = ShepPaths::resolve(&|_| None, dir.path());
 
         let mut out = Vec::new();
         let mut err = Vec::new();
@@ -613,6 +782,7 @@ mod tests {
             describe(
                 &client,
                 &mut streams,
+                &paths,
                 &SelectorArgs {
                     selectors: vec!["all".into()],
                 },
@@ -624,6 +794,309 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
         assert_eq!(json["command"], "describe");
         assert_eq!(json["data"][0]["name"], "web");
+    }
+
+    #[test]
+    fn describe_lists_secret_references_with_a_verdict_and_no_values() {
+        let rendered = render_describe_secrets(&[
+            ("DB_PASSWORD", "production", Resolution::Found("hunter2")),
+            ("vercel/API_KEY", "production", Resolution::MissingNamespace),
+            ("ABSENT", "production", Resolution::MissingKey),
+        ]);
+        assert!(rendered.contains("DB_PASSWORD"));
+        assert!(rendered.contains("vercel/API_KEY"));
+        assert!(!rendered.contains("hunter2"), "never a value");
+    }
+
+    /// A roll entry, an operator store entry and no provider cache at all:
+    /// the three verdicts `gather_secrets` can produce from local files
+    /// alone, exercised through the real `describe` verb rather than
+    /// `render_describe_secrets` in isolation.
+    async fn describe_with_a_seeded_web(
+        fmt: Format,
+    ) -> (ExitCode, shep_core::paths::ShepPaths, Vec<u8>) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, daemon) = fake_client_with_ack(&path, sample_ack()).await;
+        daemon.reply_to_describe(vec![
+            ProcessInfo::builder(1, "web", ProcStatus::Online).build(),
+        ]);
+
+        // `SHEP_HOME` pinned to `dir` itself, not its `.shep` default: this
+        // test writes `paths.snapshot`/`paths.secrets` directly, and the
+        // default subdirectory is never created outside a real boot.
+        let home = dir.path().display().to_string();
+        let paths = ShepPaths::resolve(
+            &move |key| (key == "SHEP_HOME").then(|| home.clone()),
+            dir.path(),
+        );
+
+        let mut config = shep_core::config::AppConfig::minimal("web", "./srv");
+        config
+            .env
+            .insert("A".into(), "{{secret:DB_PASSWORD}}".into());
+        config
+            .env
+            .insert("B".into(), "{{secret:vercel/API_KEY}}".into());
+        let roll = FlockSnapshot {
+            version: 1,
+            saved_at_ms: 0,
+            apps: vec![shep_daemon::snapshot::SavedApp {
+                app: config,
+                instances_running: 1,
+            }],
+        };
+        std::fs::write(&paths.snapshot, serde_json::to_vec(&roll).unwrap()).unwrap();
+        secrets::set(&paths.secrets, "DB_PASSWORD", "production", "hunter2").unwrap();
+        // No provider cache written: `vercel` has never pushed anything.
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = Streams {
+                out: &mut out,
+                err: &mut err,
+                style: crate::style::Presentation::BARE,
+                fmt,
+            };
+            describe(
+                &client,
+                &mut streams,
+                &paths,
+                &SelectorArgs {
+                    selectors: vec!["all".into()],
+                },
+            )
+            .await
+        };
+        (code, paths, out)
+    }
+
+    #[tokio::test]
+    async fn describe_prints_real_secret_verdicts_in_the_table() {
+        let (code, _paths, out) = describe_with_a_seeded_web(Format::Table).await;
+        assert_eq!(code, ExitCode::Success);
+        let rendered = String::from_utf8(out).unwrap();
+        // `emit_described` places this block once, right after Overridden.
+        // A second renderer writing the same block again is the exact bug
+        // this pins: `.contains()` alone is true whether it printed once
+        // or twice.
+        assert_eq!(rendered.matches("Secrets for web").count(), 1, "{rendered}");
+        assert!(
+            rendered.contains("DB_PASSWORD (production): resolved"),
+            "{rendered}"
+        );
+        assert!(
+            rendered
+                .contains("vercel/API_KEY (production): not cached; a provider may still have it"),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("hunter2"), "never a value: {rendered}");
+    }
+
+    #[tokio::test]
+    async fn describe_json_carries_the_same_verdicts_as_an_additive_field() {
+        let (code, _paths, out) = describe_with_a_seeded_web(Format::Json).await;
+        assert_eq!(code, ExitCode::Success);
+        let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(json["command"], "describe");
+        assert_eq!(json["schema_version"], 1, "SCHEMA_VERSION must not move");
+        // `data` stays exactly what it always was: an array of ProcessInfo.
+        assert_eq!(json["data"][0]["name"], "web");
+        let entries = json["secrets"].as_array().unwrap();
+        assert_eq!(entries.len(), 2);
+        assert!(
+            entries
+                .iter()
+                .any(|e| e["reference"] == "DB_PASSWORD" && e["status"] == "resolved"),
+            "{entries:?}"
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|e| e["reference"] == "vercel/API_KEY" && e["status"] == "uncached"),
+            "{entries:?}"
+        );
+        assert!(!out_contains(&json, "hunter2"), "never a value");
+    }
+
+    /// The CLI reads the same pairs the shepherd resolves against, so a
+    /// namespace pushed for `production` reads as uncached for a `staging`
+    /// sheep rather than as a key the provider does not have. Reporting
+    /// `missing` here would tell an operator to go and find a value that a
+    /// dog mid-poll is about to supply.
+    #[tokio::test]
+    async fn describe_reads_a_namespace_pushed_for_another_environment_as_uncached() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, daemon) = fake_client_with_ack(&path, sample_ack()).await;
+        daemon.reply_to_describe(vec![
+            ProcessInfo::builder(1, "web", ProcStatus::Online).build(),
+        ]);
+        let home = dir.path().display().to_string();
+        let paths = ShepPaths::resolve(
+            &move |key| (key == "SHEP_HOME").then(|| home.clone()),
+            dir.path(),
+        );
+
+        let mut config = shep_core::config::AppConfig::minimal("web", "./srv");
+        config.environment = Some("staging".into());
+        config
+            .env
+            .insert("B".into(), "{{secret:vercel/API_KEY}}".into());
+        let roll = FlockSnapshot {
+            version: 1,
+            saved_at_ms: 0,
+            apps: vec![shep_daemon::snapshot::SavedApp {
+                app: config,
+                instances_running: 1,
+            }],
+        };
+        std::fs::write(&paths.snapshot, serde_json::to_vec(&roll).unwrap()).unwrap();
+        // The pair the dog has pushed is production; staging is still to come.
+        std::fs::write(
+            &paths.secrets_cache,
+            r#"{"version":2,"namespaces":{"vercel":{"API_KEY":{"production":"sk_live"}}},"pushed":{"vercel":["production"]}}"#,
+        )
+        .unwrap();
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = Streams {
+                out: &mut out,
+                err: &mut err,
+                style: crate::style::Presentation::BARE,
+                fmt: Format::Json,
+            };
+            describe(
+                &client,
+                &mut streams,
+                &paths,
+                &SelectorArgs {
+                    selectors: vec!["all".into()],
+                },
+            )
+            .await
+        };
+
+        assert_eq!(code, ExitCode::Success);
+        let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        let entries = json["secrets"].as_array().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["environment"], "staging");
+        assert_eq!(entries[0]["status"], "uncached", "{entries:?}");
+        assert!(!out_contains(&json, "sk_live"), "never a value");
+    }
+
+    /// A store that will not parse is not a store with nothing in it. The
+    /// verdicts still say `missing`, since nothing local can say otherwise,
+    /// but the operator is told why before being sent to `shep secret set`
+    /// for a value the store may already hold.
+    #[tokio::test]
+    async fn describe_says_the_store_would_not_read_rather_than_calling_keys_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, daemon) = fake_client_with_ack(&path, sample_ack()).await;
+        daemon.reply_to_describe(vec![
+            ProcessInfo::builder(1, "web", ProcStatus::Online).build(),
+        ]);
+        let home = dir.path().display().to_string();
+        let paths = ShepPaths::resolve(
+            &move |key| (key == "SHEP_HOME").then(|| home.clone()),
+            dir.path(),
+        );
+
+        let mut config = shep_core::config::AppConfig::minimal("web", "./srv");
+        config
+            .env
+            .insert("A".into(), "{{secret:DB_PASSWORD}}".into());
+        let roll = FlockSnapshot {
+            version: 1,
+            saved_at_ms: 0,
+            apps: vec![shep_daemon::snapshot::SavedApp {
+                app: config,
+                instances_running: 1,
+            }],
+        };
+        std::fs::write(&paths.snapshot, serde_json::to_vec(&roll).unwrap()).unwrap();
+        std::fs::write(&paths.secrets, b"{not json").unwrap();
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = Streams {
+                out: &mut out,
+                err: &mut err,
+                style: crate::style::Presentation::BARE,
+                fmt: Format::Table,
+            };
+            describe(
+                &client,
+                &mut streams,
+                &paths,
+                &SelectorArgs {
+                    selectors: vec!["all".into()],
+                },
+            )
+            .await
+        };
+
+        assert_eq!(code, ExitCode::Success);
+        let warning = String::from_utf8(err).unwrap();
+        assert!(
+            warning.contains("could not be read"),
+            "the notice has to say the store failed: {warning}"
+        );
+        assert!(
+            warning.contains(&paths.secrets.display().to_string()),
+            "and name the file: {warning}"
+        );
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(rendered.contains("DB_PASSWORD"), "{rendered}");
+    }
+
+    /// Whether `hunter2` shows up anywhere in `value`'s own JSON text, not
+    /// just at the top level: a value smuggled in nested one level deeper
+    /// would still be a leak.
+    fn out_contains(value: &serde_json::Value, needle: &str) -> bool {
+        value.to_string().contains(needle)
+    }
+
+    /// `fold` shares `describe_selector` but must stay byte-identical to
+    /// before this feature existed: no local file I/O, no `secrets` field.
+    #[tokio::test]
+    async fn fold_never_computes_or_prints_a_secrets_section() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, daemon) = fake_client_with_ack(&path, sample_ack()).await;
+        daemon.reply_to_describe(vec![
+            ProcessInfo::builder(1, "web", ProcStatus::Online).build(),
+        ]);
+        // Deliberately no `paths.snapshot` on disk: if `fold` ever reads it,
+        // the missing file is tolerated (`read_roll`), which would hide the
+        // bug this test exists to catch. The real guard is the assertion
+        // below, on `command == "fold"` never entering `gather_secrets`.
+        let paths = ShepPaths::resolve(&|_| None, dir.path());
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let mut streams = Streams {
+            out: &mut out,
+            err: &mut err,
+            style: crate::style::Presentation::BARE,
+            fmt: Format::Json,
+        };
+        let code = fold(
+            &client,
+            &mut streams,
+            &paths,
+            &FoldArgs { name: "api".into() },
+        )
+        .await;
+        assert_eq!(code, ExitCode::Success);
+        let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert!(json.get("secrets").is_none(), "{json}");
     }
 
     // --- sheep_flourish ---

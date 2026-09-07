@@ -9,6 +9,7 @@
 //! command is not wired up yet — the whole parse surface lives in one
 //! portable file rather than accreting piecemeal as each verb lands.
 
+use core::fmt;
 use std::net::IpAddr;
 use std::path::PathBuf;
 
@@ -44,7 +45,9 @@ const HELP_GROUPS: &[(&str, &[&str])] = &[
     ("Talk to a sheep", &["trigger", "signal", "whisper"]),
     (
         "The shepherd",
-        &["ping", "kill", "reopen", "flush", "set", "get", "unset"],
+        &[
+            "ping", "kill", "reopen", "flush", "set", "get", "unset", "secret",
+        ],
     ),
     (
         "Dogs and agents",
@@ -77,7 +80,7 @@ Run things       start add serve stop restart reload delete stock
 See what's up    flock describe bleats lookout fold barks
 Survive reboots  save muster startup unstartup
 Talk to a sheep  trigger signal whisper
-The shepherd     ping kill reopen flush set get unset
+The shepherd     ping kill reopen flush set get unset secret
 Dogs and agents  dogs enable disable adopt rehome whistle
 Foreground runs  runtime dev
 Coming from pm2  import
@@ -481,6 +484,24 @@ pub enum Commands {
     Get(KvGetArgs),
     /// Remove one key from the store, or every key with --all.
     Unset(KvUnsetArgs),
+    /// Store the values a Flockfile refers to and never carries.
+    ///
+    /// Reads and writes `$SHEP_HOME/secrets.json` directly and never
+    /// connects to the shepherd, exactly as `shep set` does: filling the
+    /// store before the first `shep start` is the ordinary first run.
+    ///
+    /// A key holds one value per environment, so production and staging
+    /// differ without two config files. A `{{secret:NAME}}` reference in a
+    /// Flockfile resolves against the sheep's own environment and then the
+    /// `all` slot, never another named environment.
+    ///
+    /// Keys and environment names are letters, digits, `.`, `_` and `-`, up
+    /// to 128 bytes, not starting with a dot.
+    ///
+    /// Reading a value back is off until `[secrets] allow_read = true` is in
+    /// `$SHEP_HOME/shep.toml`. `secret list` needs nothing: it names keys and
+    /// the environments each has a value for, never a value.
+    Secret(SecretArgs),
     /// Check whether the shepherd answers.
     Ping,
     /// Shut the shepherd down.
@@ -959,6 +980,109 @@ pub struct KvUnsetArgs {
     /// Remove every key
     #[arg(long)]
     pub all: bool,
+}
+
+/// Arguments to `shep secret`.
+///
+/// `Debug` is written out rather than derived (IR-41) so a field added here
+/// cannot print in the clear by default; the value itself is redacted by
+/// [`SecretCommand`]'s own impl.
+#[derive(clap::Args)]
+pub struct SecretArgs {
+    /// Which of the four things to do to the store.
+    #[command(subcommand)]
+    pub command: SecretCommand,
+}
+
+impl fmt::Debug for SecretArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SecretArgs")
+            .field("command", &self.command)
+            .finish()
+    }
+}
+
+/// `shep secret`'s subcommands.
+///
+/// `Set` carries the operator's own plaintext value, so `Debug` prints its
+/// length and never the value (IR-41). Exact-string-tested below
+/// (`secret_command_debug_does_not_leak`), so restoring the derive fails
+/// that test instead of silently reopening the leak.
+#[derive(clap::Subcommand)]
+pub enum SecretCommand {
+    /// Store a value
+    ///
+    /// The value is a positional argument by default, so it is visible in
+    /// `ps` and in this shell's history for as long as the command runs.
+    /// Pass `--stdin` to keep it out of both.
+    Set {
+        /// The key
+        key: String,
+        /// The value; required unless --stdin is given
+        #[arg(required_unless_present = "stdin", conflicts_with = "stdin")]
+        value: Option<String>,
+        /// Which environment; omit for every environment
+        #[arg(long)]
+        env: Option<String>,
+        /// Read the value from stdin; the positional form is visible in
+        /// `ps` and in shell history
+        #[arg(long)]
+        stdin: bool,
+    },
+    /// Print a value back, if `[secrets] allow_read` is on
+    Get {
+        /// The key
+        key: String,
+        /// Which environment; omit to use `[daemon] environment`'s
+        /// default, which an app's own environment may override
+        #[arg(long)]
+        env: Option<String>,
+    },
+    /// Remove a value
+    Unset {
+        /// The key
+        key: String,
+        /// Which environment; omit for the every-environment slot
+        #[arg(long)]
+        env: Option<String>,
+    },
+    /// List keys and the environments each has a value for
+    List,
+}
+
+impl fmt::Debug for SecretCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Set {
+                key,
+                value,
+                env,
+                stdin,
+            } => {
+                let value = value.as_ref().map_or_else(
+                    || "None".to_string(),
+                    |value| format!("Some(<{} bytes>)", value.len()),
+                );
+                f.debug_struct("Set")
+                    .field("key", key)
+                    .field("value", &format_args!("{value}"))
+                    .field("env", env)
+                    .field("stdin", stdin)
+                    .finish()
+            }
+            Self::Get { key, env } => f
+                .debug_struct("Get")
+                .field("key", key)
+                .field("env", env)
+                .finish(),
+            Self::Unset { key, env } => f
+                .debug_struct("Unset")
+                .field("key", key)
+                .field("env", env)
+                .finish(),
+            Self::List => f.write_str("List"),
+        }
+    }
 }
 
 /// Arguments to `shep fold`.
@@ -2429,6 +2553,40 @@ mod tests {
             Cli::try_parse_from(["shep", "whistle", "--allow-control"]).is_err(),
             "whistle's gate is `[whistle] allow_control` in shep.toml, and a flag would \
              let an agent host's own config open it in the same line that adds the server"
+        );
+    }
+
+    /// fails if the derive comes back on either type: `shep secret set`
+    /// carries the operator's plaintext value, and a `{:?}` anywhere in the
+    /// binary would print it (IR-41). Exact strings, not a `contains`, so a
+    /// derive cannot pass by happening to omit this one value.
+    #[test]
+    fn secret_command_debug_does_not_leak() {
+        use clap::Parser;
+        let Commands::Secret(args) = Cli::try_parse_from([
+            "shep",
+            "secret",
+            "set",
+            "DB_PASSWORD",
+            "hunter2",
+            "--env",
+            "staging",
+        ])
+        .unwrap()
+        .command
+        else {
+            panic!("secret parses to its own variant")
+        };
+
+        assert_eq!(
+            format!("{args:?}"),
+            "SecretArgs { command: Set { key: \"DB_PASSWORD\", value: Some(<7 bytes>), \
+             env: Some(\"staging\"), stdin: false } }"
+        );
+        assert_eq!(
+            format!("{:?}", SecretCommand::List),
+            "List",
+            "a variant carrying no value still has to render"
         );
     }
 }

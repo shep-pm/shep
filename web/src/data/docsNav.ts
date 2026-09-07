@@ -117,6 +117,19 @@ export const docsNav: DocsNavGroup[] = [
         },
       },
       {
+        slug: "secrets",
+        label: "Secrets",
+        built: true,
+        source: [
+          "crates/shep-core/src/secrets.rs",
+          "crates/shep-cli/src/commands/secret.rs",
+        ],
+        api: {
+          path: "secrets/struct.SecretView.html",
+          label: "shep_core::secrets::SecretView",
+        },
+      },
+      {
         slug: "shepherd-channel",
         label: "The shepherd channel",
         built: true,

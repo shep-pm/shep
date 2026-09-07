@@ -2,6 +2,8 @@
 
 use core::fmt;
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::config::{AppConfig, DeclaredApp, ResetDepth};
@@ -59,7 +61,7 @@ pub enum SelectorSpec {
     Regex(String),
     /// By fold name
     Fold(String),
-    // Both field names are wire contract, pinned by `request_wire_v4`.
+    // Both field names are wire contract, pinned by `request_wire_v5`.
     /// By app name and instance slot
     ///
     /// On the wire: `{"kind":"instance","value":{"name":"web","slot":2}}`.
@@ -376,6 +378,33 @@ pub enum Request {
         /// type's own doc gives: a section can hold a dog's credentials and
         /// this is what keeps them out of a `{:?}` (IR-41).
         toml: DogSectionToml,
+    },
+    /// A provider dog's values for one namespace and one environment.
+    ///
+    /// Replaces that pair rather than merging into it, so a key deleted at
+    /// the provider disappears here on the next push instead of lingering.
+    ///
+    /// `namespace` is the dog's own registered name. It is bookkeeping, not
+    /// authorization: `Hello::dog_name` is self-declared and nothing checks
+    /// it against the spawn. The boundary is the socket itself, which lives
+    /// under `$SHEP_HOME` at `0700`.
+    ///
+    /// The two names and every entry key are checked against
+    /// [`crate::secrets::is_name`], and a value against
+    /// [`crate::secrets::MAX_VALUE_BYTES`], the same cap the operator's own
+    /// store enforces. One offender refuses the whole push rather than
+    /// dropping its own entry, so a dog never reads `accepted` for a set
+    /// that was stored in part.
+    ///
+    /// Answers [`Response::SecretsPut`].
+    PutSecrets {
+        /// The dog's registered name.
+        namespace: String,
+        /// Which environment these values are for.
+        environment: String,
+        /// The values, keyed by secret name. [`EnvValue`] so a `{:?}` of
+        /// this request cannot print them.
+        entries: BTreeMap<String, EnvValue>,
     },
     /// Stop matching sheep (stay registered)
     Stop {
@@ -1408,6 +1437,11 @@ pub enum Response {
         /// The dog.
         name: String,
     },
+    /// Answer to [`Request::PutSecrets`]: how many entries were stored.
+    SecretsPut {
+        /// Entry count, after the namespace and environment were replaced.
+        accepted: u32,
+    },
     /// Answer to `Stop`
     Stopped(Vec<ProcessInfo>),
     /// Answer to `Restart`
@@ -1998,6 +2032,29 @@ mod tests {
         assert_eq!(serde_json::from_str::<Request>(&json).unwrap(), request);
     }
 
+    /// The exact `Debug` string, not the absence of one value: `entries` is
+    /// a map of [`EnvValue`], so what is actually under test is that the
+    /// nested redaction renders, and a `contains` check would pass just as
+    /// well against a map that printed nothing at all.
+    #[test]
+    fn put_secrets_round_trips_and_hides_its_values() {
+        let request = Request::PutSecrets {
+            namespace: "vercel".into(),
+            environment: "production".into(),
+            entries: BTreeMap::from([(
+                "API_KEY".to_string(),
+                EnvValue::from("sk_live".to_string()),
+            )]),
+        };
+        let encoded = serde_json::to_string(&request).unwrap();
+        assert_eq!(serde_json::from_str::<Request>(&encoded).unwrap(), request);
+        assert_eq!(
+            format!("{request:?}"),
+            "PutSecrets { namespace: \"vercel\", environment: \"production\", \
+             entries: {\"API_KEY\": EnvValue(<7 bytes>)} }"
+        );
+    }
+
     /// The pane edits everything else about a sheep, so the config itself
     /// has to travel; `env` is the one map in it that holds secrets, and
     /// the keys travel while the values never do (IR-41).
@@ -2316,8 +2373,24 @@ mod tests {
                     toml: "debounce = \"30s\"\n".to_string().into(),
                 },
             },
+            // The one request a provider dog sends, and the row that pins
+            // what `EnvValue` costs the wire: `entries` is a plain object
+            // of strings, so a dog written against this fixture in another
+            // language needs no newtype of its own.
+            Envelope {
+                id: 32,
+                deadline_ms: None,
+                body: Request::PutSecrets {
+                    namespace: "vercel".to_string(),
+                    environment: "production".to_string(),
+                    entries: BTreeMap::from([(
+                        "API_KEY".to_string(),
+                        EnvValue::from("sk_live_placeholder".to_string()),
+                    )]),
+                },
+            },
         ];
-        insta::assert_json_snapshot!("request_wire_v4", requests);
+        insta::assert_json_snapshot!("request_wire_v5", requests);
     }
 
     #[test]
@@ -2675,8 +2748,15 @@ mod tests {
                     name: "bark".to_string(),
                 }),
             },
+            // A count and not the entries: a dog already knows what it
+            // pushed, and echoing the map back would put every value it
+            // sent on the wire a second time for no reader (IR-41).
+            Reply {
+                id: 38,
+                result: Ok(Response::SecretsPut { accepted: 2 }),
+            },
         ];
-        insta::assert_json_snapshot!("reply_wire_v4", replies);
+        insta::assert_json_snapshot!("reply_wire_v5", replies);
     }
 
     /// Asserts on the JSON, not the struct: a `Vec<String>` cannot say which
@@ -2826,7 +2906,7 @@ mod tests {
             dog_name: None,
         };
         let json = serde_json::to_string(&hello).unwrap();
-        assert_eq!(json, r#"{"client_version":"0.1.0","protocol":4}"#);
+        assert_eq!(json, r#"{"client_version":"0.1.0","protocol":5}"#);
     }
 
     #[test]
@@ -2839,7 +2919,7 @@ mod tests {
         let json = serde_json::to_string(&dog).unwrap();
         assert_eq!(
             json,
-            r#"{"client_version":"0.1.0","protocol":4,"dog_name":"metrics"}"#
+            r#"{"client_version":"0.1.0","protocol":5,"dog_name":"metrics"}"#
         );
         assert_eq!(serde_json::from_str::<Hello>(&json).unwrap(), dog);
     }

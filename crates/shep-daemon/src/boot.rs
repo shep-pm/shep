@@ -761,6 +761,14 @@ pub struct BootOptions {
     /// boot that has not opted in answers SIGHUP with the graceful stop, as
     /// does a handover that cannot proceed. Unix only in effect.
     pub handover: bool,
+    /// The environment a sheep that names none of its own resolves its
+    /// `{{secret:...}}` references in, from `[daemon] environment`.
+    ///
+    /// Assembled by the caller from the same file every other field here
+    /// comes out of: shep-daemon never reads `shep.toml` itself. `None`
+    /// takes the supervisor's own default, which is the one
+    /// `DaemonSection` applies when the file says nothing.
+    pub environment: Option<String>,
 }
 
 /// Brings the daemon up: layout, lock, socket, restore, dogs, readiness
@@ -852,7 +860,25 @@ pub async fn boot<R: ProcessRunner>(
     // baseline and the RPC layer reads a live sample against it, so a second
     // state would leave one of them on an empty watch set.
     let stats = Arc::clone(&extras.stats);
-    let builder = SupervisorBuilder::new(runner, paths.clone(), events.clone()).extras(extras);
+    // One registry, two owners, as `stats` above: the connection tasks
+    // serving `Request::PutSecrets` write it and the actor reads a view out
+    // of it per spawn, so a second one would leave a dog pushing into a
+    // registry no spawn ever consults.
+    let provider_secrets = Arc::new(crate::secrets::ProviderSecrets::load(&paths.secrets_cache));
+    // Names and environments, never values (IR-41). This is the line that
+    // separates "the dog has not polled since the restart" from "the operator
+    // turned the cache off", which a sheep held back by a `MissingNamespace`
+    // cannot say.
+    tracing::debug!(
+        pushed = ?provider_secrets.pushed(),
+        "provider namespaces restored from the secrets cache"
+    );
+    let mut builder = SupervisorBuilder::new(runner, paths.clone(), events.clone())
+        .extras(extras)
+        .provider_secrets(Arc::clone(&provider_secrets));
+    if let Some(environment) = options.environment.take() {
+        builder = builder.environment(environment);
+    }
     // A successor installs the flock it inherited rather than spawning one:
     // every sheep keeps its pid, id, epoch and history, and nothing here
     // signals, spawns or reopens.
@@ -959,6 +985,7 @@ pub async fn boot<R: ProcessRunner>(
         pid,
         shutdown,
         stats,
+        provider_secrets,
     };
 
     // 5. A failure is a `warn!` and the boot continues: only systemd's view

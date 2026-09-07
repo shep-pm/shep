@@ -686,6 +686,7 @@ expression: replies
             "cwd": null,
             "interpreter": null,
             "env": {},
+            "environment": null,
             "instances": 1,
             "autorestart": true,
             "autostart": true,
@@ -766,6 +767,17 @@ expression: replies
         "kind": "dog_config_set",
         "data": {
           "name": "bark"
+        }
+      }
+    }
+  },
+  {
+    "id": 38,
+    "result": {
+      "Ok": {
+        "kind": "secrets_put",
+        "data": {
+          "accepted": 2
         }
       }
     }

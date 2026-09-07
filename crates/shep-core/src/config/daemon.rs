@@ -10,16 +10,22 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
+use crate::secrets;
 use crate::values::UpDuration;
 
 /// The `[daemon]` section
-#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct DaemonSection {
     /// Emit the daemon's own logs as JSON lines
     pub log_json: bool,
     /// Lowest severity of the daemon's own records that reaches its log
     pub log_level: LogLevel,
+    /// The environment every sheep resolves in unless it sets its own.
+    ///
+    /// A shepherd supervising real processes on a host is production unless
+    /// somebody says otherwise.
+    pub environment: String,
     /// Control-socket path override (default: `$SHEP_HOME/run/shep.sock`)
     pub socket: Option<std::path::PathBuf>,
     /// Dogs to autostart with the daemon (`shep enable` writes this)
@@ -41,6 +47,22 @@ pub struct DaemonSection {
     /// There is no upper bound: a very long value only degrades to sleeping
     /// straight through to the occurrence, which still fires.
     pub max_cron_sleep: Option<UpDuration>,
+}
+
+/// Not derived: [`DaemonSection::environment`] defaults to `"production"`,
+/// which `String`'s own `Default` cannot express.
+impl Default for DaemonSection {
+    fn default() -> Self {
+        Self {
+            log_json: false,
+            log_level: LogLevel::default(),
+            environment: "production".to_string(),
+            socket: None,
+            enabled_dogs: Vec::new(),
+            adopted_dogs: BTreeMap::new(),
+            max_cron_sleep: None,
+        }
+    }
 }
 
 /// How much of the daemon's own diagnostics reaches its log.
@@ -134,6 +156,21 @@ pub struct WhistleSection {
     pub allow_control: bool,
 }
 
+/// The `[secrets]` section: whether the CLI will print a stored value back.
+///
+/// One key, a gate rather than a tuning knob, for [`WhistleSection`]'s
+/// reason and read the same way: `shep secret get` reads this file itself,
+/// the shepherd never reads this key, and it is declared here so an
+/// undeclared `[secrets]` section is not a refused boot.
+///
+/// `Debug` is derived rather than redacted: one boolean, no secret.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct SecretsSection {
+    /// Whether `shep secret get` prints a value. Default `false`.
+    pub allow_read: bool,
+}
+
 /// The `[style]` section: how much the CLI dresses up its output.
 ///
 /// Read by the CLI only. The daemon has no opinion about how anyone likes
@@ -164,6 +201,8 @@ pub struct DaemonConfig {
     pub daemon: DaemonSection,
     /// The `[whistle]` section
     pub whistle: WhistleSection,
+    /// The `[secrets]` section
+    pub secrets: SecretsSection,
     /// The `[style]` section
     pub style: StyleSection,
     /// The `[interpreters]` section: a script extension (no leading dot,
@@ -189,6 +228,7 @@ impl fmt::Debug for DaemonConfig {
         f.debug_struct("DaemonConfig")
             .field("daemon", &self.daemon)
             .field("whistle", &self.whistle)
+            .field("secrets", &self.secrets)
             .field("style", &self.style)
             .field("interpreters", &self.interpreters)
             .field("dog", &format_args!("<{} tables>", self.dog.len()))
@@ -201,6 +241,7 @@ impl fmt::Debug for DaemonConfig {
 struct RawDaemonConfig {
     daemon: DaemonSection,
     whistle: WhistleSection,
+    secrets: SecretsSection,
     style: StyleSection,
     interpreters: BTreeMap<String, String>,
     dog: BTreeMap<String, toml::Table>,
@@ -216,6 +257,7 @@ impl DaemonConfig {
     /// - [`DaemonConfigError::Toml`]: the file source is invalid TOML.
     /// - [`DaemonConfigError::BadEnvValue`]: a `SHEP_*` value is not parseable.
     /// - [`DaemonConfigError::BelowMinimum`]: the effective `max_cron_sleep` is below the floor.
+    /// - [`DaemonConfigError::InvalidEnvironment`]: the effective `environment` is `all` or falls outside the secrets store's name grammar.
     pub fn load(
         file_source: Option<&str>,
         env: &dyn Fn(&str) -> Option<String>,
@@ -233,6 +275,7 @@ impl DaemonConfig {
     /// - [`DaemonConfigError::Toml`]: the file source is invalid TOML.
     /// - [`DaemonConfigError::BadEnvValue`]: a `SHEP_*` value is not parseable.
     /// - [`DaemonConfigError::BelowMinimum`]: the effective `max_cron_sleep` is below the floor.
+    /// - [`DaemonConfigError::InvalidEnvironment`]: the effective `environment` is `all` or falls outside the secrets store's name grammar.
     pub fn load_layered(
         file_source: Option<&str>,
         env: &dyn Fn(&str) -> Option<String>,
@@ -245,6 +288,7 @@ impl DaemonConfig {
         let mut cfg = Self {
             daemon: raw.daemon,
             whistle: raw.whistle,
+            secrets: raw.secrets,
             style: raw.style,
             interpreters: raw.interpreters,
             dog: raw.dog,
@@ -304,7 +348,15 @@ impl DaemonConfig {
     ///
     /// # Errors
     /// - [`DaemonConfigError::BelowMinimum`]: `max_cron_sleep` is under the floor.
+    /// - [`DaemonConfigError::InvalidEnvironment`]: `environment` is `all` or falls outside the secrets store's name grammar.
     fn validate(&self, key: &'static str) -> Result<(), DaemonConfigError> {
+        if self.daemon.environment == secrets::ALL_ENVIRONMENTS
+            || !secrets::is_name(&self.daemon.environment)
+        {
+            return Err(DaemonConfigError::InvalidEnvironment(
+                self.daemon.environment.clone(),
+            ));
+        }
         if let Some(value) = self.daemon.max_cron_sleep
             && value < MIN_CRON_SLEEP
         {
@@ -420,6 +472,11 @@ pub enum DaemonConfigError {
         /// The floor it failed.
         min: UpDuration,
     },
+    /// `[daemon] environment` is [`crate::secrets::ALL_ENVIRONMENTS`], the
+    /// secrets store's every-environment slot, or falls outside the grammar
+    /// [`crate::secrets`] keys and environment names share. Carries the
+    /// value as written.
+    InvalidEnvironment(String),
 }
 
 impl fmt::Display for DaemonConfigError {
@@ -433,6 +490,14 @@ impl fmt::Display for DaemonConfigError {
                     "invalid value `{value}` for {key}: must be at least {min}"
                 )
             }
+            Self::InvalidEnvironment(value) => write!(
+                f,
+                "invalid value `{value}` for environment: must be 1-{} bytes of \
+                 `[A-Za-z0-9._-]` not starting with `.`, and not `{}` (the secrets \
+                 store's every-environment slot)",
+                secrets::MAX_KEY_BYTES,
+                secrets::ALL_ENVIRONMENTS
+            ),
         }
     }
 }
@@ -615,6 +680,47 @@ otel = "/usr/local/bin/shep-otel"
         );
     }
 
+    #[test]
+    fn the_host_environment_defaults_to_production() {
+        let cfg = DaemonConfig::load(None, &|_| None).unwrap();
+        assert_eq!(cfg.daemon.environment, "production");
+    }
+
+    #[test]
+    fn the_host_environment_reads_from_the_file() {
+        let cfg =
+            DaemonConfig::load(Some("[daemon]\nenvironment = \"staging\"\n"), &|_| None).unwrap();
+        assert_eq!(cfg.daemon.environment, "staging");
+    }
+
+    #[test]
+    fn the_host_environment_cannot_be_all() {
+        // `all` is the secrets store's every-environment slot. A host
+        // default of `all` would put every sheep with no environment of
+        // its own there, bypassing the same refusal `normalize.rs` gives a
+        // sheep that names `all` directly.
+        let err =
+            DaemonConfig::load(Some("[daemon]\nenvironment = \"all\"\n"), &|_| None).unwrap_err();
+        // The variant and the value it carries, not the rendered text: the
+        // message interpolates `ALL_ENVIRONMENTS` whatever it refused, so its
+        // words cannot say which check fired.
+        assert_eq!(
+            err,
+            DaemonConfigError::InvalidEnvironment(secrets::ALL_ENVIRONMENTS.to_string())
+        );
+    }
+
+    #[test]
+    fn a_host_environment_outside_the_grammar_is_refused() {
+        for bad in ["", "has space", "has/slash"] {
+            let source = format!("[daemon]\nenvironment = \"{bad}\"\n");
+            assert!(
+                DaemonConfig::load(Some(&source), &|_| None).is_err(),
+                "{bad:?} must be refused"
+            );
+        }
+    }
+
     // `as_str`, `from_name` and serde's `rename_all` are three separate
     // spellings of the same mapping; nothing else keeps them in agreement.
     // fails if any one drifts from the other two.
@@ -730,6 +836,37 @@ otel = "/usr/local/bin/shep-otel"
         assert!(
             !empty_table.whistle.allow_control,
             "a [whistle] section with no keys leaves control off"
+        );
+    }
+
+    // fails if `[secrets]` becomes an unrecognized section, or if the gate
+    // stops defaulting shut. A misspelled key is a named error for
+    // `[whistle]`'s reason: an operator certain a value was readable and a
+    // CLI certain it was not.
+    #[test]
+    fn a_secrets_section_parses_and_defaults_to_refusing_reads() {
+        let cfg = DaemonConfig::load(Some("[secrets]\nallow_read = true\n"), &no_env).unwrap();
+        assert!(cfg.secrets.allow_read);
+
+        let absent = DaemonConfig::load(Some("[daemon]\nlog_level = \"info\"\n"), &no_env).unwrap();
+        assert!(
+            !absent.secrets.allow_read,
+            "a file with no [secrets] section leaves reads off"
+        );
+
+        let empty_table = DaemonConfig::load(Some("[secrets]\n"), &no_env).unwrap();
+        assert!(
+            !empty_table.secrets.allow_read,
+            "a [secrets] section with no keys leaves reads off"
+        );
+
+        let err = DaemonConfig::load(Some("[secrets]\nallow_reads = true\n"), &no_env).unwrap_err();
+        let DaemonConfigError::Toml(message) = err else {
+            panic!("a misspelled key is a TOML error, got {err:?}")
+        };
+        assert!(
+            message.contains("unknown field `allow_reads`"),
+            "the message quotes the key that was not understood: {message}"
         );
     }
 
@@ -895,7 +1032,7 @@ otel = "/usr/local/bin/shep-otel"
         let cfg = DaemonConfig::load(Some("[dog.metrics]\nport = 9615"), &no_env).unwrap();
         assert_eq!(
             format!("{cfg:?}"),
-            "DaemonConfig { daemon: DaemonSection { log_json: false, log_level: Warn, socket: None, enabled_dogs: [], adopted_dogs: {}, max_cron_sleep: None }, whistle: WhistleSection { allow_control: false }, style: StyleSection { level: None }, interpreters: {}, dog: <1 tables> }"
+            "DaemonConfig { daemon: DaemonSection { log_json: false, log_level: Warn, environment: \"production\", socket: None, enabled_dogs: [], adopted_dogs: {}, max_cron_sleep: None }, whistle: WhistleSection { allow_control: false }, secrets: SecretsSection { allow_read: false }, style: StyleSection { level: None }, interpreters: {}, dog: <1 tables> }"
         );
     }
 }

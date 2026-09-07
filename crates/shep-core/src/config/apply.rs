@@ -75,6 +75,9 @@ const FIELDS: &[(&str, ApplyGroup)] = &[
     ("cwd", ApplyGroup::NeedsRespawn),
     ("interpreter", ApplyGroup::NeedsRespawn),
     ("env", ApplyGroup::NeedsRespawn),
+    // Decides what every `{{secret:...}}` in this child's env resolved to,
+    // and those are baked in at exec like the rest of the environment.
+    ("environment", ApplyGroup::NeedsRespawn),
     ("user", ApplyGroup::NeedsRespawn),
     ("group", ApplyGroup::NeedsRespawn),
     ("out_file", ApplyGroup::NeedsRespawn),
@@ -207,7 +210,7 @@ mod tests {
 
     /// fails if the split drifts from what the spec recorded.
     #[test]
-    fn the_split_is_nineteen_four_fourteen_three() {
+    fn the_split_is_nineteen_four_fifteen_three() {
         let serde_json::Value::Object(fields) = serde_json::to_value(AppConfig::default()).unwrap()
         else {
             panic!("AppConfig must serialize as an object");
@@ -215,7 +218,7 @@ mod tests {
         let count = |want: ApplyGroup| fields.keys().filter(|k| apply_group(k) == want).count();
         assert_eq!(count(ApplyGroup::Live), 19, "Live");
         assert_eq!(count(ApplyGroup::NextSpawn), 4, "NextSpawn");
-        assert_eq!(count(ApplyGroup::NeedsRespawn), 14, "NeedsRespawn");
+        assert_eq!(count(ApplyGroup::NeedsRespawn), 15, "NeedsRespawn");
         assert_eq!(count(ApplyGroup::Structural), 3, "Structural");
     }
 }

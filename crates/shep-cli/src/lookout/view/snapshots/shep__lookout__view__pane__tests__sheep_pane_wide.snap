@@ -23,6 +23,7 @@ expression: "text_of(&lines).join(\"\\n\")"
    args                       ["--port","8080"]                                                               respawn   
    channel                    false                                                                           respawn   
    env                        2 keys                                                                          respawn   
+   environment                (unset)                                                                         respawn   
    stdin                      false                                                                           respawn   
 
   restart

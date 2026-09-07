@@ -139,6 +139,19 @@
             "group": "inputs"
           }
         },
+        "environment": {
+          "description": "Which environment this sheep resolves `{{secret:...}}` in.\n\nAbsent falls back to `[daemon] environment` in `shep.toml`, which\nitself defaults to `production`. Never `all`: that is the store's\nevery-environment slot, and a sheep claiming it would read that slot\ntwice and never one of its own.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "init": {
+            "blurb": "Which environment this app resolves secrets in",
+            "example": "staging",
+            "group": "inputs"
+          }
+        },
         "err_file": {
           "description": "Stderr log file (default: `$SHEP_HOME/logs/<name>-<instance>-err.log`; `merge_logs` collapses to `<name>-err.log`)",
           "type": [

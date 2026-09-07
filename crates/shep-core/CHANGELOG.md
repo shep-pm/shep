@@ -10,6 +10,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A third Flockfile template token, `{{secret:KEY}}` and
+  `{{secret:namespace/KEY}}`, resolved against the secret store. A malformed
+  reference is refused at config time, by the same grammar
+  `secrets::SecretRef::parse` enforces, so no second parser can drift from it.
+- `Request::PutSecrets` and `Response::SecretsPut`: a provider dog's values
+  for one namespace and one environment. The push replaces that pair rather
+  than merging into it, so a key deleted at the provider disappears on the
+  next push. `entries` carries `EnvValue`, so a `{:?}` of the request cannot
+  print a value.
+- `secrets::is_name` is public. The daemon checks a peer's namespace and
+  environment against the store's own grammar before storing anything under
+  either, and a second copy of that grammar is what would drift.
+- `secrets::ProviderCache`, with `secrets::NamespaceValues` and
+  `secrets::PushedPairs`: what provider dogs have pushed, both the values and
+  the `(namespace, environment)` pairs a push has landed for.
+  `secrets::provider_cache_on_disk` reads one back from `secrets-cache.json`,
+  and `secrets::SecretView::new` resolves against one. A namespaced reference
+  is retriable while no provider has pushed that namespace for the
+  environment being resolved, rather than while the namespace is absent
+  altogether: a push carries one pair, so a dog part way through `production`
+  then `staging` would otherwise leave a staging sheep `Errored` for good.
+
+### Changed
+
+- `PROTOCOL_VERSION` is 5. `Request::PutSecrets` and `Response::SecretsPut`
+  are additive, and the rule keeps the version for an addition, but the move
+  to 4 already settled that an unbumped addition fails the operator: a newer
+  client passes the handshake and the daemon then drops the connection on an
+  envelope it cannot decode. A named `protocol_mismatch` refusal is better.
+  Run `shep daemon reload` after upgrading.
+- `config::template::render` now takes a `secrets::SecretView` and returns
+  `Result<String, RenderError>`, so a spawn can refuse on a secret it cannot
+  resolve. Callers that have no store use the new `render_positional`, which
+  substitutes `{{instance}}` and `{{name}}` and leaves `{{secret:...}}` alone.
+  `RenderError::is_retriable` separates a namespace no provider dog has pushed
+  to for that environment yet, which a later attempt can clear, from a value
+  only a person will supply.
 ## [0.4.6] - 2026-09-07
 
 ### Added

@@ -14,6 +14,7 @@ use globset::Glob;
 use crate::config::{
     AppConfig, CronParseError, CronSchedule, KillSignal, ProbeConfig, ProbeTarget,
 };
+use crate::secrets;
 use crate::values::UpDuration;
 
 /// Shortest `interval` a `liveness_probe` may name.
@@ -185,7 +186,8 @@ fn expand_paths(app: &mut AppConfig, home: Option<&Path>) -> Result<(), Normaliz
 ///
 /// - [`NormalizeError::MissingName`]: `name` is empty.
 /// - [`NormalizeError::InvalidName`]: `name` contains a path separator or a colon, or is `.`/`..`.
-/// - [`NormalizeError::ReservedEnvVar`]: `env` sets `SHEP_INSTANCE` or `SHEP_NAME`, which shep injects itself.
+/// - [`NormalizeError::InvalidEnvironment`]: `environment` is `all`, the secrets store's every-environment slot, or falls outside the store's name grammar.
+/// - [`NormalizeError::ReservedEnvVar`]: `env` sets `SHEP_INSTANCE`, `SHEP_NAME` or `SHEP_ENVIRONMENT`, which shep injects itself.
 /// - [`NormalizeError::IncrementVarRemoved`]: `increment_var` is set; removed in favour of `{{instance}}` templating.
 /// - [`NormalizeError::MissingScript`]: `script` is empty.
 /// - [`NormalizeError::ZeroInstances`]: `instances == 0`.
@@ -201,6 +203,7 @@ fn expand_paths(app: &mut AppConfig, home: Option<&Path>) -> Result<(), Normaliz
 /// - [`NormalizeError::ZeroWatchDelay`]: `watch_delay` is `0`.
 /// - [`NormalizeError::InvalidWatchGlob`]: a `watch_options` or `ignore_watch` pattern globset will not compile.
 /// - [`NormalizeError::BadTemplate`]: an `env`/`args`/log-path value carries an undefined or unclosed `{{...}}` token.
+/// - [`NormalizeError::SecretInLogPath`]: `out_file` or `err_file` carries a `{{secret:...}}`.
 /// - [`NormalizeError::SharedLogPath`]: `out_file` or `err_file` renders to the same path for two instances.
 /// - [`NormalizeError::TildeUser`]: a path field names another user's `~user` home.
 /// - [`NormalizeError::NoHomeForTilde`]: a path field expands `~/` but no home directory could be found.
@@ -228,7 +231,15 @@ pub fn normalize_with_home(
     if app.name.contains(['/', '\\', ':']) || app.name == "." || app.name == ".." {
         return Err(NormalizeError::InvalidName(app.name));
     }
-    for var in ["SHEP_INSTANCE", "SHEP_NAME"] {
+    if let Some(environment) = &app.environment
+        && (environment == secrets::ALL_ENVIRONMENTS || !secrets::is_name(environment))
+    {
+        return Err(NormalizeError::InvalidEnvironment {
+            name: app.name.clone(),
+            value: environment.clone(),
+        });
+    }
+    for var in ["SHEP_INSTANCE", "SHEP_NAME", "SHEP_ENVIRONMENT"] {
         if app.env.contains_key(var) {
             return Err(NormalizeError::ReservedEnvVar {
                 name: app.name.clone(),
@@ -251,6 +262,12 @@ pub fn normalize_with_home(
     for (field, value) in [("out_file", &app.out_file), ("err_file", &app.err_file)] {
         if let Some(value) = value {
             validate_template(&app.name, field, value)?;
+            if crate::config::template::holds_secret(value) {
+                return Err(NormalizeError::SecretInLogPath {
+                    name: app.name.clone(),
+                    field,
+                });
+            }
         }
     }
     if app.script.is_empty() {
@@ -272,8 +289,8 @@ pub fn normalize_with_home(
             // one literal path for every instance, which is exactly the
             // collision this refuses. Two slots that render alike collide.
             if let Some(path) = path
-                && crate::config::template::render(path, &app.name, 0)
-                    == crate::config::template::render(path, &app.name, 1)
+                && crate::config::template::render_positional(path, &app.name, 0)
+                    == crate::config::template::render_positional(path, &app.name, 1)
             {
                 return Err(NormalizeError::SharedLogPath {
                     name: app.name.clone(),
@@ -466,6 +483,16 @@ pub enum NormalizeError {
     /// Windows filename, which a sheep name becomes part of. Carries the
     /// name.
     InvalidName(String),
+    /// `environment` is [`crate::secrets::ALL_ENVIRONMENTS`], the secrets
+    /// store's every-environment slot, or falls outside the grammar
+    /// [`crate::secrets`] keys and environment names share. Carries the
+    /// sheep name and the value as written.
+    InvalidEnvironment {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+        /// The value as the user wrote it.
+        value: String,
+    },
     /// An app's `env` sets a variable shep injects itself. Carries the sheep
     /// name and the variable, so the error names the entry to edit.
     ReservedEnvVar {
@@ -614,6 +641,19 @@ pub enum NormalizeError {
         /// variant does not have to restate the grammar's own copy
         reason: String,
     },
+    /// An explicit `out_file` or `err_file` carries a `{{secret:...}}`.
+    ///
+    /// A resolved log path is not contained the way a resolved `env` value
+    /// is: it reaches `ProcessInfo`, every bus event carrying one,
+    /// `shep flock`, `shep describe`, `shep lookout`, and a filename on disk
+    /// under `$SHEP_HOME/logs`. `{{instance}}` and `{{name}}` still render
+    /// there; only a secret is refused.
+    SecretInLogPath {
+        /// The sheep name
+        name: String,
+        /// `out_file` or `err_file`
+        field: &'static str,
+    },
     /// An explicit log path renders to the same string for two different
     /// slots, the app runs more than one instance, and `merge_logs` is off,
     /// so every instance would write to one file without having asked to.
@@ -637,6 +677,13 @@ impl fmt::Display for NormalizeError {
                     "sheep name `{n}` may not contain a path separator or a colon, or be `.` or `..`; use `-` in place of a colon"
                 )
             }
+            Self::InvalidEnvironment { name, value } => write!(
+                f,
+                "sheep `{name}` has environment = `{value}`: must be 1-128 bytes of \
+                 `[A-Za-z0-9._-]` not starting with `.`, and not `{}` (the secrets \
+                 store's every-environment slot)",
+                secrets::ALL_ENVIRONMENTS
+            ),
             Self::ReservedEnvVar { name, var } => write!(
                 f,
                 "sheep `{name}` sets `{var}` in env, but shep injects it: use a different name, or `{{{{instance}}}}` in your own variable"
@@ -715,6 +762,10 @@ impl fmt::Display for NormalizeError {
                 field,
                 reason,
             } => write!(f, "sheep `{name}`, {field}: {reason}"),
+            Self::SecretInLogPath { name, field } => write!(
+                f,
+                "sheep `{name}` puts a `{{{{secret:...}}}}` in `{field}`: a log path may not hold a secret, since it becomes a filename on disk and is reported by `shep flock` and `shep describe`"
+            ),
             Self::SharedLogPath { name, field } => write!(
                 f,
                 "sheep `{name}` runs several instances and sets `{field}` to one path: put `{{{{instance}}}}` in it, or set `merge_logs = true` to share it on purpose"
@@ -928,7 +979,7 @@ mod tests {
 
     #[test]
     fn the_reserved_env_vars_are_refused_rather_than_overwritten() {
-        for var in ["SHEP_INSTANCE", "SHEP_NAME"] {
+        for var in ["SHEP_INSTANCE", "SHEP_NAME", "SHEP_ENVIRONMENT"] {
             let mut app = AppConfig::minimal("web", "./srv");
             app.env.insert(var.to_string(), "mine".to_string());
             let err = normalize(app).unwrap_err();
@@ -1267,6 +1318,25 @@ mod tests {
     }
 
     #[test]
+    fn a_sheep_cannot_claim_the_all_environment() {
+        // `all` is the store's every-environment slot. A sheep resolving in
+        // it would read that slot twice and never its own.
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.environment = Some("all".to_string());
+        let err = normalize(app).unwrap_err();
+        assert!(err.to_string().contains("all"), "{err}");
+    }
+
+    #[test]
+    fn an_environment_outside_the_grammar_is_refused() {
+        for bad in ["", "has space", "has/slash"] {
+            let mut app = AppConfig::minimal("web", "./srv");
+            app.environment = Some(bad.to_string());
+            assert!(normalize(app).is_err(), "{bad:?} must be refused");
+        }
+    }
+
+    #[test]
     fn action_timeout_past_the_ceiling_is_rejected() {
         // fails if `action_timeout` is never inspected. One millisecond over
         // the ceiling is deliberate: a test at a round number like 60s could
@@ -1554,6 +1624,56 @@ target = "http://127.0.0.1:8080/healthz"
         app.instances = 3;
         app.out_file = Some("/var/log/{{name}}.log".to_string());
         assert!(normalize(app).is_err());
+    }
+
+    /// A resolved `env` value reaches the child and nothing else. A
+    /// resolved log path reaches `ProcessInfo`, every bus event carrying
+    /// one, `shep flock`, `shep describe`, `shep lookout` and a filename
+    /// under `$SHEP_HOME/logs`, which is four more places than the design
+    /// says a plaintext secret ever lives.
+    #[test]
+    fn a_secret_in_a_log_path_is_refused() {
+        for field in ["out_file", "err_file"] {
+            let mut app = AppConfig::minimal("web", "./srv");
+            let path = Some("/var/log/{{secret:TOKEN}}.log".to_string());
+            if field == "out_file" {
+                app.out_file = path;
+            } else {
+                app.err_file = path;
+            }
+            match normalize(app).unwrap_err() {
+                NormalizeError::SecretInLogPath { name, field: got } => {
+                    assert_eq!(name, "web");
+                    assert_eq!(got, field);
+                }
+                other => panic!("expected SecretInLogPath for {field}, got {other:?}"),
+            }
+        }
+    }
+
+    /// The refusal is the `secret:` prefix alone: a multi-instance app
+    /// needs `{{instance}}` in its log paths, and `{{name}}` is how the
+    /// other two path fields are written.
+    #[test]
+    fn the_positional_tokens_still_render_in_a_log_path() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.instances = 2;
+        app.out_file = Some("/var/log/{{name}}-{{instance}}.out".to_string());
+        app.err_file = Some("/var/log/{{name}}-{{instance}}.err".to_string());
+        assert!(normalize(app).is_ok());
+    }
+
+    /// A namespaced reference is the same refusal: `SecretRef::parse` reads
+    /// both shapes, and only one of them being refused would be a hole
+    /// nobody could guess at.
+    #[test]
+    fn a_namespaced_secret_in_a_log_path_is_refused_too() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.err_file = Some("/var/log/{{secret:vercel/TOKEN}}.log".to_string());
+        assert!(matches!(
+            normalize(app).unwrap_err(),
+            NormalizeError::SecretInLogPath { .. }
+        ));
     }
 
     #[test]
