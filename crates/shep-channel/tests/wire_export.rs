@@ -354,6 +354,38 @@ fn every_go_field_names_at_least_one_kind() {
 }
 
 #[test]
+fn an_absent_params_and_an_empty_one_encode_differently() {
+    let absent = ShepherdMessage::Action {
+        name: "gc".into(),
+        params: None,
+        id: 7,
+    };
+    let empty = ShepherdMessage::Action {
+        name: "gc".into(),
+        params: Some(String::new()),
+        id: 7,
+    };
+    let absent_encoded = serde_json::to_string(&absent).expect("encode");
+    let empty_encoded = serde_json::to_string(&empty).expect("encode");
+    assert!(
+        !absent_encoded.contains(r#""params""#),
+        "an absent params key was still on the wire: {absent_encoded}"
+    );
+    assert!(
+        empty_encoded.contains(r#""params":"""#),
+        "an empty params value did not round-trip: {empty_encoded}"
+    );
+    let params_field = SHEPHERD_FIELDS
+        .iter()
+        .find(|field| field.ident == "Params")
+        .expect("Params is declared");
+    assert_eq!(
+        params_field.ty, "*string",
+        "a plain string would collapse the two encodings above into one Go value"
+    );
+}
+
+#[test]
 fn every_wire_key_reaches_a_go_field_in_the_same_order() {
     check_keys(
         child_samples().iter().map(|sample| {
