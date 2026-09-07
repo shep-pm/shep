@@ -38,7 +38,7 @@ pub const NAME_MIN: u16 = 8;
 /// The ceiling on the NAME column.
 ///
 /// NAME takes the remainder, which is right up to a point and absurd past
-/// it: on a 224-column terminal the remainder is 86 cells for names that
+/// it: on a 224-column terminal the remainder is 84 cells for names that
 /// are rarely longer than twenty, so the table becomes a field of
 /// whitespace with the numbers pushed to the far right, where they are
 /// harder to read against each other than they were before. Past this

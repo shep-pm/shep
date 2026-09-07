@@ -106,7 +106,7 @@ than letting it grow unbounded: `NAME_MAX` is 32. The 160-column example
 below still lands on 20 cells, since 20 is under the cap, but a wider
 terminal stops `NAME` at 32 and leaves the rest of the row empty rather than
 handing it all to the name. A 224-column terminal, for instance, would leave
-86 cells for a column whose contents are rarely longer than twenty.
+84 cells for a column whose contents are rarely longer than twenty.
 
 | Column | Width | |
 |---|---|---|
