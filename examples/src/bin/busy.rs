@@ -67,7 +67,7 @@ fn main() {
 /// A `peak` above 100 would ask one thread for more than it has, so it is
 /// clamped rather than refused: the point of this app is to be easy to run.
 fn parse_percent(arg: Option<&str>) -> u8 {
-    arg.and_then(|value| value.parse::<u16>().ok())
+    arg.and_then(|value| value.parse::<u64>().ok())
         .map_or(40, |value| u8::try_from(value.min(100)).unwrap_or(100))
 }
 
@@ -77,4 +77,36 @@ fn parse_period(arg: Option<&str>) -> Duration {
         .unwrap_or(30)
         .max(1);
     Duration::from_secs(secs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_percent;
+
+    /// The doc comment promises a clamp to 100 for anything above it.
+    /// Parsing into `u16` first broke that promise for an argument that
+    /// overflows `u16` (65536 and up): the parse itself failed, and the
+    /// value silently fell through to the 40 default instead of clamping.
+    #[test]
+    fn a_value_that_overflows_u16_still_clamps_to_100() {
+        assert_eq!(parse_percent(Some("65536")), 100);
+        assert_eq!(parse_percent(Some("999999999999")), 100);
+    }
+
+    #[test]
+    fn an_ordinary_value_passes_through_unclamped() {
+        assert_eq!(parse_percent(Some("40")), 40);
+    }
+
+    #[test]
+    fn a_value_at_or_below_100_is_unaffected() {
+        assert_eq!(parse_percent(Some("100")), 100);
+        assert_eq!(parse_percent(Some("101")), 100);
+    }
+
+    #[test]
+    fn a_missing_or_unparsable_argument_defaults_to_40() {
+        assert_eq!(parse_percent(None), 40);
+        assert_eq!(parse_percent(Some("not-a-number")), 40);
+    }
 }
