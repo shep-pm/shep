@@ -142,9 +142,9 @@ debt.
 ## What 1a settled
 
 - **The flock table grew two columns.** `CPU 20s` is a ten-cell sparkline of
-  the sheep's own CPU history, scaled to one ceiling shared by every row —
+  the sheep's own CPU history, scaled to one ceiling shared by every row:
   the busiest sample any sheep has posted in the retained window, floored at
-  2% — so rows read against each other instead of each filling its own
+  2%, so rows read against each other instead of each filling its own
   column. `MEM/CEIL` is a ten-cell gauge of RSS against the sheep's
   `max_memory`, when it has one. Fourteen columns total, with `NAME` capped
   at 32 (`NAME_MAX`): past that width the table ends and the row stays
@@ -165,7 +165,7 @@ debt.
   scaled to its own window peak rather than the table's ceiling, since it
   plots a sum across the whole flock. The strip reads machine then flock,
   left to right: load, host memory, the `N errored · N parked` summary,
-  then flock CPU and memory — so the two host readings survive a narrow
+  then flock CPU and memory, so the two host readings survive a narrow
   terminal together, and the summary is what falls off next.
 - **The detail pane's two log-path lines became one.** `out` and `err` now
   share a single row with a divider between them and the pair's combined
