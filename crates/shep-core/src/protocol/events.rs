@@ -10,9 +10,10 @@ use crate::protocol::request::ProcessInfo;
 /// What happened to a sheep
 // wire format: changing existing variants is a breaking change
 //
-// A new variant is not free here: there is no `#[serde(other)]` fallback,
-// so an old subscriber is sent a frame under `process.*` it cannot decode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+// A new variant is free for a subscriber built from this point on: an
+// unrecognized string decodes as `Unrecognized` instead of failing the
+// whole frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ProcessEventKind {
@@ -45,6 +46,55 @@ pub enum ProcessEventKind {
     Delete,
     /// Restart budget exhausted
     Errored,
+    /// An event kind this build has not been taught.
+    ///
+    /// Only ever produced by decoding. Never serialized, so it cannot
+    /// reach a peer and cannot be mistaken for a real event shep emits.
+    Unrecognized,
+}
+
+// A future variant is added in three places, and only three: the `Known`
+// enum below, the match in `deserialize`, and the round-trip test list in
+// `mod tests`. Nothing else needs to change for a new event kind to decode.
+impl<'de> serde::Deserialize<'de> for ProcessEventKind {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "snake_case")]
+        enum Known {
+            Start,
+            Online,
+            Exit,
+            Restart,
+            Reload,
+            Reloaded,
+            ReloadAbandoned,
+            Stop,
+            Delete,
+            Errored,
+        }
+        #[derive(serde::Deserialize)]
+        #[serde(untagged)]
+        enum Wire {
+            Known(Known),
+            // The string itself is never read: its only job is to prove
+            // `Known` did not match, not to be inspected.
+            #[allow(dead_code)]
+            Unknown(String),
+        }
+        Ok(match Wire::deserialize(d)? {
+            Wire::Known(Known::Start) => Self::Start,
+            Wire::Known(Known::Online) => Self::Online,
+            Wire::Known(Known::Exit) => Self::Exit,
+            Wire::Known(Known::Restart) => Self::Restart,
+            Wire::Known(Known::Reload) => Self::Reload,
+            Wire::Known(Known::Reloaded) => Self::Reloaded,
+            Wire::Known(Known::ReloadAbandoned) => Self::ReloadAbandoned,
+            Wire::Known(Known::Stop) => Self::Stop,
+            Wire::Known(Known::Delete) => Self::Delete,
+            Wire::Known(Known::Errored) => Self::Errored,
+            Wire::Unknown(_) => Self::Unrecognized,
+        })
+    }
 }
 
 /// One event on the daemon bus
@@ -151,6 +201,12 @@ impl BusEvent {
                 ProcessEventKind::Stop => "process.stop",
                 ProcessEventKind::Delete => "process.delete",
                 ProcessEventKind::Errored => "process.errored",
+                // Decode-only, never emitted by this build. Given its own
+                // topic rather than acted on: a subscriber sees it pass
+                // through like any other kind it does not specifically
+                // filter for, instead of the daemon treating it as a real
+                // lifecycle transition.
+                ProcessEventKind::Unrecognized => "process.unrecognized",
             },
             Self::LogOut { .. } => "log.out",
             Self::LogErr { .. } => "log.err",
@@ -178,6 +234,43 @@ mod tests {
     use super::*;
     use crate::protocol::request::{ExitInfo, ProcessInfo};
     use crate::status::ProcStatus;
+
+    /// The comment above this enum said a new variant is not free because
+    /// there is no fallback. This is the fallback.
+    #[test]
+    fn an_unknown_process_event_decodes_as_unrecognized() {
+        assert_eq!(
+            serde_json::from_str::<ProcessEventKind>(r#""invented_next_year""#).unwrap(),
+            ProcessEventKind::Unrecognized
+        );
+    }
+
+    #[test]
+    fn every_known_process_event_still_round_trips() {
+        for kind in [
+            ProcessEventKind::Start,
+            ProcessEventKind::Online,
+            ProcessEventKind::Exit,
+            ProcessEventKind::Restart,
+            ProcessEventKind::Reload,
+            ProcessEventKind::Reloaded,
+            ProcessEventKind::ReloadAbandoned,
+            ProcessEventKind::Stop,
+            ProcessEventKind::Delete,
+            ProcessEventKind::Errored,
+        ] {
+            let json = serde_json::to_string(&kind).unwrap();
+            assert_eq!(
+                serde_json::from_str::<ProcessEventKind>(&json).unwrap(),
+                kind
+            );
+        }
+    }
+
+    #[test]
+    fn a_non_string_process_event_is_still_an_error() {
+        assert!(serde_json::from_str::<ProcessEventKind>("42").is_err());
+    }
 
     #[test]
     fn bus_event_wire_snapshots() {

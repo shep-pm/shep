@@ -1658,7 +1658,7 @@ pub struct RpcError {
 
 /// Machine-readable RPC error codes
 // wire format: changing existing variants is a breaking change
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum RpcErrorCode {
@@ -1674,6 +1674,47 @@ pub enum RpcErrorCode {
     Internal,
     /// The request's deadline expired before the daemon finished it
     DeadlineExceeded,
+    /// A code this build has not been taught.
+    ///
+    /// Only ever produced by decoding. Never serialized, so it cannot
+    /// reach a peer and cannot be mistaken for a real code shep emits.
+    Unrecognized,
+}
+
+// A future variant is added in three places, and only three: the `Known`
+// enum below, the match in `deserialize`, and the round-trip test list in
+// `mod tests`. Nothing else needs to change for a new code to decode.
+impl<'de> serde::Deserialize<'de> for RpcErrorCode {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "snake_case")]
+        enum Known {
+            NotFound,
+            InvalidConfig,
+            SpawnFailed,
+            ProtocolMismatch,
+            Internal,
+            DeadlineExceeded,
+        }
+        #[derive(serde::Deserialize)]
+        #[serde(untagged)]
+        enum Wire {
+            Known(Known),
+            // The string itself is never read: its only job is to prove
+            // `Known` did not match, not to be inspected.
+            #[allow(dead_code)]
+            Unknown(String),
+        }
+        Ok(match Wire::deserialize(d)? {
+            Wire::Known(Known::NotFound) => Self::NotFound,
+            Wire::Known(Known::InvalidConfig) => Self::InvalidConfig,
+            Wire::Known(Known::SpawnFailed) => Self::SpawnFailed,
+            Wire::Known(Known::ProtocolMismatch) => Self::ProtocolMismatch,
+            Wire::Known(Known::Internal) => Self::Internal,
+            Wire::Known(Known::DeadlineExceeded) => Self::DeadlineExceeded,
+            Wire::Unknown(_) => Self::Unrecognized,
+        })
+    }
 }
 
 impl RpcErrorCode {
@@ -1707,6 +1748,9 @@ impl RpcErrorCode {
             Self::ProtocolMismatch => Self::ALL[3],
             Self::Internal => Self::ALL[4],
             Self::DeadlineExceeded => Self::ALL[5],
+            // `Unrecognized` is decode-only and never appears in `ALL`;
+            // treat it as `Internal` would be treated.
+            Self::Unrecognized => Self::ALL[4],
         }
     }
 }
@@ -1717,6 +1761,38 @@ mod tests {
     use crate::config::AppConfig;
     use crate::protocol::PROTOCOL_VERSION;
     use crate::status::ProcStatus;
+
+    /// A code this build has never heard of must decode, not fail. Without
+    /// this, adding any error code is a breaking change for every peer.
+    #[test]
+    fn an_unknown_error_code_decodes_as_unrecognized() {
+        assert_eq!(
+            serde_json::from_str::<RpcErrorCode>(r#""invented_next_year""#).unwrap(),
+            RpcErrorCode::Unrecognized
+        );
+    }
+
+    #[test]
+    fn every_known_error_code_still_round_trips() {
+        for code in [
+            RpcErrorCode::NotFound,
+            RpcErrorCode::InvalidConfig,
+            RpcErrorCode::SpawnFailed,
+            RpcErrorCode::ProtocolMismatch,
+            RpcErrorCode::Internal,
+            RpcErrorCode::DeadlineExceeded,
+        ] {
+            let json = serde_json::to_string(&code).unwrap();
+            assert_eq!(serde_json::from_str::<RpcErrorCode>(&json).unwrap(), code);
+        }
+    }
+
+    /// The fallback absorbs an unknown STRING, not an unknown TYPE. A number
+    /// where a code belongs is still a defect worth reporting.
+    #[test]
+    fn a_non_string_error_code_is_still_an_error() {
+        assert!(serde_json::from_str::<RpcErrorCode>("42").is_err());
+    }
 
     fn sample_info() -> ProcessInfo {
         ProcessInfo {
