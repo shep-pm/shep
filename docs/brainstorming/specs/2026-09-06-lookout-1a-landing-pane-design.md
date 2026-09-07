@@ -101,11 +101,18 @@ data.
 CFG and SMIT stay. `NAME` keeps taking the remainder, so the frames' fixed
 24-cell name column and their 33-cell right margin both go.
 
+Shipped code clamps that remainder between `NAME_MIN` and `NAME_MAX` rather
+than letting it grow unbounded: `NAME_MAX` is 32. The 160-column example
+below still lands on 20 cells, since 20 is under the cap, but a wider
+terminal stops `NAME` at 32 and leaves the rest of the row empty rather than
+handing it all to the name. A 224-column terminal, for instance, would leave
+86 cells for a column whose contents are rarely longer than twenty.
+
 | Column | Width | |
 |---|---|---|
 | gutter | 2 | |
 | ID | 4 | unchanged |
-| NAME | remainder | 20 cells at 160, against 44 today |
+| NAME | remainder, clamped to 8-32 | 20 cells at 160, against 44 today |
 | STATUS | 15 | unchanged |
 | CPU 20s | 10 | new |
 | CPU | 6 | unchanged |
@@ -289,8 +296,15 @@ control indicator, reusing the read-only string status.rs already carries.
 ## New code
 
 `view/cell.rs`, four pure functions returning `String`, no ratatui types:
-`gauge(value, ceiling, cells)`, `sparkline(&[f32], cells)`, `rule(cells)` and
-`band(label, cells)`. They follow the module's existing convention of building
+`gauge(value, ceiling, cells)`, `sparkline(samples, cells, ceiling)`,
+`rule(cells)` and `band(label, cells)`. `sparkline`'s ceiling is shared: every
+row draws against the busiest sheep in the retained window, floored at 2
+percent so an idle flock doesn't divide by zero. Two earlier attempts got
+dropped for the reasons the third one fixes. Scaling each row to its own peak
+made every row fill its column, which reads as every sheep running equally
+hot. A fixed ceiling of one core's 100 percent made an ordinary flock draw
+flat, near-empty lines instead. They follow the module's existing convention
+of building
 text by hand rather than reaching for `Sparkline` or `Gauge`, both of which
 ratatui 0.30.2 offers and this module deliberately never uses.
 
