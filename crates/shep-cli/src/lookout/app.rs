@@ -2385,8 +2385,9 @@ impl App {
     }
 
     /// `b`: opens the full-screen bleats pane on the selected sheep. A
-    /// group or an empty selection asks for nothing, the same shape
-    /// [`Self::ask_for_config`] follows.
+    /// group row or an empty selection is refused rather than opening on a
+    /// stand-in: the pane is pinned to one sheep for its whole lifetime
+    /// ([`BleatsPane`]), and a group has no single sheep to pin it to.
     fn ask_for_bleats(&mut self) -> Effect {
         if let Some(sheep @ RowKey::Sheep(_)) = self.selected() {
             self.body = Body::Bleats(BleatsPane::new(sheep));
