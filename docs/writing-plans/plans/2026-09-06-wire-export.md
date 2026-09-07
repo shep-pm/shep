@@ -189,7 +189,7 @@ This has to happen first, because git decides a file's line endings when it is a
 
 `.gitattributes` opens with `* text=auto`, so a `.go` file is a text file and a Windows client with `core.autocrlf=true`, which is what Git for Windows installs by default and what the `windows-latest` runners have, checks it out with CRLF. `fs::read_to_string` then reads CRLF, the emitter writes LF, and the byte comparison fails on every Windows leg with a diff on all 48 lines and nothing to do with the code under test.
 
-That trap is already documented twice in `.gitattributes`, across five path entries, and its second paragraph says how it was found: once a Windows host actually ran the suite. The JSON corpus escapes it only because each fixture is one line with no trailing newline, so there is no LF to convert. This file has 49 of them.
+That trap is already documented twice in `.gitattributes`, across five path entries, and its second paragraph says how it was found: once a Windows host actually ran the suite. The JSON corpus escapes it only because each fixture is one line with no trailing newline, so there is no LF to convert. This file has 48 of them.
 
 Add at the end of `.gitattributes`:
 
