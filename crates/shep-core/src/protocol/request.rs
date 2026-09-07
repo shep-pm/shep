@@ -737,6 +737,14 @@ pub struct ProcessInfo {
     /// [`crate::overrides::AppOverrides::fields`] can hold an `env` value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub overridden: Option<Vec<String>>,
+    /// The sheep's `max_memory` ceiling in bytes, when it has one.
+    ///
+    /// Additive, like [`Self::instance`] and [`Self::handshook`] before it, so
+    /// neither `PROTOCOL_VERSION` nor `SCHEMA_VERSION` moves: an older payload
+    /// decodes with it absent and an older client ignores it. Lookout's
+    /// `MEM/CEIL` gauge is the only reader; `None` draws an all-tail bar
+    /// rather than guessing a denominator.
+    pub max_memory: Option<u64>,
 }
 
 /// Orders one flock listing the way every operator-facing surface presents
@@ -787,6 +795,7 @@ impl ProcessInfo {
                 dog_stale: None,
                 pending: None,
                 overridden: None,
+                max_memory: None,
             },
         }
     }
@@ -917,6 +926,13 @@ impl ProcessInfoBuilder {
     /// `None` when there is nothing to report.
     pub fn overridden(mut self, overridden: Option<Vec<String>>) -> Self {
         self.info.overridden = overridden;
+        self
+    }
+
+    /// Sets the sheep's `max_memory` ceiling in bytes; `None` when it has no
+    /// ceiling configured.
+    pub fn max_memory(mut self, max_memory: Option<u64>) -> Self {
+        self.info.max_memory = max_memory;
         self
     }
 
@@ -1712,6 +1728,7 @@ mod tests {
             // `Some(..)` moves pinned bytes.
             pending: None,
             overridden: None,
+            max_memory: Some(512 * 1024 * 1024),
         }
     }
 
@@ -1753,6 +1770,7 @@ mod tests {
                 code: Some(1),
                 signal: None,
             }))
+            .max_memory(Some(512 * 1024 * 1024))
             .build();
 
         // `sample_info()` is a struct literal on purpose: it is the one
@@ -2786,6 +2804,29 @@ mod tests {
         let info: ProcessInfo = serde_json::from_str(fixture).unwrap();
         assert_eq!(info.dog_stale, None);
         assert_eq!(info.handshook, Some(false));
+    }
+
+    #[test]
+    fn a_process_info_carries_its_memory_ceiling_and_defaults_to_none() {
+        let plain = ProcessInfo::builder(1, "web", ProcStatus::Online).build();
+        assert_eq!(
+            plain.max_memory, None,
+            "a sheep with no ceiling reports none"
+        );
+
+        let capped = ProcessInfo::builder(2, "hungry", ProcStatus::Online)
+            .max_memory(Some(52 * 1024 * 1024))
+            .build();
+        assert_eq!(capped.max_memory, Some(54_525_952));
+    }
+
+    #[test]
+    fn an_older_daemons_process_info_still_decodes() {
+        // The field is additive, so a payload written before it existed has to
+        // decode with the ceiling absent rather than fail the whole envelope.
+        let older = r#"{"id":1,"name":"web","status":"online","restarts":0,"uptime_ms":0}"#;
+        let info: ProcessInfo = serde_json::from_str(older).expect("an older payload decodes");
+        assert_eq!(info.max_memory, None);
     }
 
     /// A dog written in another language speaks this wire directly and never

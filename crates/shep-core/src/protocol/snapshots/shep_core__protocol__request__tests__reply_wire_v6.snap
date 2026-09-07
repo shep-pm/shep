@@ -39,7 +39,8 @@ expression: replies
             "smit": null,
             "instance": null,
             "handshook": null,
-            "dog_stale": null
+            "dog_stale": null,
+            "max_memory": 536870912
           }
         ]
       }
@@ -115,7 +116,8 @@ expression: replies
             "smit": null,
             "instance": null,
             "handshook": null,
-            "dog_stale": null
+            "dog_stale": null,
+            "max_memory": 536870912
           }
         ]
       }
@@ -161,7 +163,8 @@ expression: replies
           "smit": null,
           "instance": null,
           "handshook": null,
-          "dog_stale": null
+          "dog_stale": null,
+          "max_memory": 536870912
         }
       }
     }
@@ -334,7 +337,8 @@ expression: replies
             "smit": null,
             "instance": null,
             "handshook": null,
-            "dog_stale": null
+            "dog_stale": null,
+            "max_memory": 536870912
           }
         ]
       }
@@ -406,7 +410,8 @@ expression: replies
             "smit": null,
             "instance": null,
             "handshook": null,
-            "dog_stale": null
+            "dog_stale": null,
+            "max_memory": null
           }
         ]
       }
@@ -440,7 +445,8 @@ expression: replies
             "smit": null,
             "instance": null,
             "handshook": null,
-            "dog_stale": null
+            "dog_stale": null,
+            "max_memory": null
           }
         ]
       }
@@ -471,7 +477,8 @@ expression: replies
             "smit": "▲ main@a1b2c3",
             "instance": null,
             "handshook": null,
-            "dog_stale": null
+            "dog_stale": null,
+            "max_memory": null
           }
         ]
       }
@@ -526,7 +533,8 @@ expression: replies
             "smit": null,
             "instance": 2,
             "handshook": null,
-            "dog_stale": null
+            "dog_stale": null,
+            "max_memory": null
           }
         ]
       }
@@ -598,7 +606,8 @@ expression: replies
             "smit": null,
             "instance": null,
             "handshook": false,
-            "dog_stale": false
+            "dog_stale": false,
+            "max_memory": null
           }
         ]
       }
@@ -632,7 +641,8 @@ expression: replies
             "smit": null,
             "instance": null,
             "handshook": false,
-            "dog_stale": true
+            "dog_stale": true,
+            "max_memory": null
           }
         ]
       }

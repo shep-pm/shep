@@ -142,6 +142,9 @@ impl Render for FlockRows {
         // this row's own status, and the table already drops columns under
         // pressure.
         "depends_on",
+        // MEM already reports the raw reading; a gauge against this ceiling
+        // is lookout's, not this table's.
+        "max_memory",
     ];
 
     // Parallel to `headers()`. The rest survive in ascending order. CFG ties
@@ -795,6 +798,9 @@ impl Render for DogRows {
         "overridden",
         // A sheep concept: a dog is never staged behind a start order.
         "depends_on",
+        // A sheep concept: a dog has no `AppConfig` and so no ceiling to
+        // report; always `null` here.
+        "max_memory",
     ];
 
     // Parallel to `headers()`. The nine shared columns carry the numbers
@@ -1203,6 +1209,9 @@ impl Render for FlushedRows {
         "overridden",
         // Nothing a flush reads or changes.
         "depends_on",
+        // A ceiling is a resource reading, the same reason `memory_bytes`
+        // rides here.
+        "max_memory",
     ];
 
     // Parallel to `headers()`. ERR_FILE survives one round longer than
@@ -2696,6 +2705,7 @@ pub(crate) mod tests {
             &RowKey::Group("web".to_string()),
             columns_for(200),
             200,
+            false,
         )
         .spans
         .iter()

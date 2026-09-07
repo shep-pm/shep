@@ -26,7 +26,8 @@
       "smit": null,
       "instance": 0,
       "handshook": null,
-      "dog_stale": null
+      "dog_stale": null,
+      "max_memory": null
     }
   ]
 }

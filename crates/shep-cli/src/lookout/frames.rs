@@ -17,7 +17,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier, Style};
 
 use shep_client::RequestError;
 use shep_core::protocol::{
@@ -61,7 +61,10 @@ pub fn render_text(buffer: &Buffer) -> String {
 /// The same buffer with SGR escapes, for reading through `less -R`.
 ///
 /// Every line ends with a reset before its newline, so an unreset colour
-/// does not bleed into the rest of the file.
+/// does not bleed into the rest of the file. Reset is unconditional per
+/// cell change, not incremental: a cell that sets nothing still clears
+/// whatever the previous cell set, so a band or a painted ground cannot
+/// bleed along the rest of the row.
 #[must_use]
 pub fn render_ansi(buffer: &Buffer) -> String {
     let area = buffer.area;
@@ -70,7 +73,7 @@ pub fn render_ansi(buffer: &Buffer) -> String {
         let mut current = String::new();
         for col in 0..area.width {
             let cell = &buffer[(area.x + col, area.y + row)];
-            let wanted = sgr(cell.fg);
+            let wanted = sgr(cell.fg, cell.bg, cell.modifier);
             if wanted != current {
                 out.push_str("\u{1b}[0m");
                 out.push_str(&wanted);
@@ -84,13 +87,20 @@ pub fn render_ansi(buffer: &Buffer) -> String {
     out
 }
 
-/// The SGR sequence for one cell's foreground.
+/// The SGR sequence for one cell's foreground, background and reverse
+/// video.
 ///
-/// Foreground only: no pane uses bold, reverse, or any other modifier, since
-/// the selected row is a marker character rather than a style.
-/// `no_scene_uses_a_modifier_the_ansi_renderer_would_drop` pins it.
-fn sgr(fg: Color) -> String {
+/// Foreground, background and `REVERSED` are the only styles any scene
+/// uses (`no_scene_uses_a_modifier_the_ansi_renderer_cannot_render` still
+/// guards against a scene reaching for one this function does not draw).
+/// This is what makes the selected row's painted ground and the title and
+/// section bands' reverse video visible in `docs/lookout/frames.ansi`
+/// rather than under-representing both.
+fn sgr(fg: Color, bg: Color, modifier: Modifier) -> String {
     let mut out = String::new();
+    if modifier.contains(Modifier::REVERSED) {
+        out.push_str("\u{1b}[7m");
+    }
     match fg {
         Color::Reset => {}
         Color::Indexed(index) => {
@@ -100,6 +110,17 @@ fn sgr(fg: Color) -> String {
         Color::Green => out.push_str("\u{1b}[32m"),
         Color::Yellow => out.push_str("\u{1b}[33m"),
         Color::DarkGray => out.push_str("\u{1b}[90m"),
+        _ => {}
+    }
+    match bg {
+        Color::Reset => {}
+        Color::Indexed(index) => {
+            let _ = write!(out, "\u{1b}[48;5;{index}m");
+        }
+        Color::Red => out.push_str("\u{1b}[41m"),
+        Color::Green => out.push_str("\u{1b}[42m"),
+        Color::Yellow => out.push_str("\u{1b}[43m"),
+        Color::DarkGray => out.push_str("\u{1b}[100m"),
         _ => {}
     }
     out
@@ -118,6 +139,14 @@ pub enum Scene {
     /// Both sections at once: several sheep under Flock, a healthy
     /// built-in dog and a silent adopted one under Dogs.
     WithDogs,
+    /// The `MEM/CEIL` gauge's three states in one frame: comfortably under
+    /// a configured ceiling, at 94% of one (the butter warning role, where
+    /// there is colour to carry it), and no ceiling configured at all.
+    MemCeiling,
+    /// The `CFG` column's `!N` and `*N` markers, one sheep each, plus a CPU
+    /// history long enough that the `CpuSpark` column draws a shape rather
+    /// than a single bar.
+    CfgDrift,
     /// Nothing registered.
     Empty,
     /// A narrow terminal: four columns dropped.
@@ -194,6 +223,8 @@ impl Scene {
         Self::Errored,
         Self::Grouped,
         Self::WithDogs,
+        Self::MemCeiling,
+        Self::CfgDrift,
         Self::Empty,
         Self::Narrow,
         Self::TooNarrow,
@@ -233,6 +264,8 @@ impl Scene {
             Self::Errored => "errored",
             Self::Grouped => "grouped",
             Self::WithDogs => "with_dogs",
+            Self::MemCeiling => "mem_ceiling",
+            Self::CfgDrift => "cfg_drift",
             Self::Empty => "empty",
             Self::Narrow => "narrow",
             Self::TooNarrow => "too_narrow",
@@ -274,7 +307,7 @@ impl Scene {
     pub const fn caption(self) -> &'static str {
         match self {
             Self::HealthyWide => {
-                "All three panes at 120x30: the host strip under the title, the detail pane and the bleats feed under the table. `>` marks the selected sheep, and every pane below the table describes it."
+                "All three panes at 120x30: the host strip under the title, the detail pane and the bleats feed under the table. The selected row is marked, painted where the palette has a ground to paint with and shown with a `>` where it does not, and every pane below the table describes that sheep, whose log row reads a real size off disk rather than the placeholder every other scene's fictional path leaves blank."
             }
             Self::Errored => {
                 "One errored, one waiting to restart, one stopped, with the selection parked on the errored sheep. Each row's own STATUS cell is the only coloured cell in that row, and EXIT carries why each of the three stopped: a code for the two that crashed, a signal name for the one shep stopped itself."
@@ -283,13 +316,19 @@ impl Scene {
                 "Three instances of one app under a group header, with the cursor parked on the header. The header sums their restarts, CPU and memory and takes the SHORTEST of their uptimes, so a group reads as time since the app was last disturbed rather than as the age of its luckiest instance. The detail pane repeats that rollup and says lambs are per-instance; the feed will not guess which instance to tail."
             }
             Self::WithDogs => {
-                "Three sheep under a Flock header and two dogs under a Dogs header: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it."
+                "Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it."
+            }
+            Self::MemCeiling => {
+                "Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a quarter of its limit and its MEM/CEIL gauge fills a little, web-hot sits at 94 percent of its own limit and its gauge fills almost all the way, and where there is colour the fuller gauge also switches to the butter warning role. batch-worker has no ceiling at all, so its gauge reads the same muted bar a stopped sheep's does. The cursor is parked on web-hot, the row this frame exists to show."
+            }
+            Self::CfgDrift => {
+                "140 columns: wide enough for the CFG and CPU 20s columns beside the ones every other scene shows. web has two fields parked for the next spawn and reads !2, api has one field an operator set that its Flockfile does not declare and reads *1, and cron has neither and reads a bare -. The status bar's own legend explains both glyphs; this is where they actually appear in a cell. web's CPU history carries ten distinct samples, so its sparkline draws a shape over time rather than one static bar, and the cursor is parked on web so the detail pane's own cfg !2 pending cell is on screen too."
             }
             Self::Empty => {
                 "No sheep registered. Each of the three panes says why it is empty, and the three sentences are different because the three reasons are."
             }
             Self::Narrow => {
-                "51 columns: FOLD, EXIT, RESTARTS, PID and MEM are gone, in that order. CPU and UPTIME survive because they explain WHY a RUNNING sheep is behaving badly, a question EXIT cannot even ask. The host strip fits; the detail pane and the feed do not, at 14 rows."
+                "51 columns: FOLD, EXIT, RESTARTS, PID and MEM are gone, in that order. CPU and UPTIME survive because they explain WHY a RUNNING sheep is behaving badly, a question EXIT cannot even ask. The host strip truncates with an ellipsis rather than disappearing; the detail pane and the feed do not fit at all, at 14 rows."
             }
             Self::TooNarrow => {
                 "28 columns: below the floor, the pane refuses rather than drawing overlapping garbage. Two short lines, so the refusal still fits the terminal it is refusing about."
@@ -316,7 +355,7 @@ impl Scene {
                 "20 rows: the detail pane is the first to go, because every number on it but the log paths is already in the row above it."
             }
             Self::TableOnly => {
-                "12 rows: no optional panes at all. This is 12a's frame, and the only thing that changed is the two-column gutter the marker sits in."
+                "12 rows: no optional panes at all. This is 12a's frame, and the only thing that changed is the two-column gutter that marks the selection, painted where there is a ground to paint with and shown with `>` where there is not."
             }
             Self::FeedGap => {
                 "The feed under a burst: 3.8 megabytes were never read and some hundreds of lines were read and dropped. The pane counts both, and counts them separately, because it knows the second exactly and cannot know how many lines are in the first."
@@ -393,6 +432,15 @@ impl Scene {
     pub const fn size(self) -> (u16, u16) {
         match self {
             Self::Empty => (100, 28),
+            // 150: `columns_for` runs on `width - GUTTER`, so 150 - GUTTER =
+            // 148, past `ALL`'s 146 threshold: the one scene that needs
+            // both `CpuSpark` and `MemCeil` drawn, not dropped for width.
+            Self::MemCeiling => (150, 30),
+            // 140: `columns_for` runs on `width - GUTTER`, so 140 - GUTTER =
+            // 138, past `NO_CEIL`'s 134 threshold and short of `ALL`'s 146:
+            // `CpuSpark` and `Cfg` both draw, `MemCeil` does not (it has its
+            // own scene above).
+            Self::CfgDrift => (140, 30),
             // 51: `columns_for` runs on `width - GUTTER` (the two-column
             // selection marker), so 51 - GUTTER = 49, the `NO_MEM` tier:
             // four columns gone, CPU and UPTIME still there.
@@ -428,13 +476,35 @@ impl Scene {
     }
 }
 
+/// The gallery's own coloured palette (`xterm-256color`, the deep tier).
+/// Every pinned `.snap` test and `docs/lookout/frames.ansi` render through
+/// this one, so a real terminal at that tier sees exactly what they pin.
+#[must_use]
+fn coloured_palette() -> Palette {
+    Palette::detect(None, Some(std::ffi::OsStr::new("xterm-256color")), None)
+}
+
+/// The flattened `NO_COLOR` palette. `docs/lookout/frames.txt` renders
+/// through this one, not the coloured one: a plain-text gallery cannot
+/// carry a painted background, so rendering it through the palette an
+/// operator with `$NO_COLOR` set actually gets is what makes it an honest
+/// picture rather than a coloured frame with the color silently missing.
+#[must_use]
+fn no_color_palette() -> Palette {
+    Palette::detect(Some(std::ffi::OsStr::new("1")), None, None)
+}
+
 /// Builds one scene and returns its label with the buffer it drew into.
 ///
 /// Renders at ten minutes of dashboard age, the same age the pinned
-/// snapshots and `docs/lookout/frames.txt` use.
+/// snapshots and `docs/lookout/frames.ansi` use, through
+/// [`coloured_palette`].
 #[must_use]
 pub fn scene(which: Scene) -> (&'static str, Buffer) {
-    (which.label(), scene_with(which, Duration::from_secs(600)))
+    (
+        which.label(),
+        scene_with(which, Duration::from_secs(600), coloured_palette()),
+    )
 }
 
 /// Parks the gallery's cursor on the sheep with id `id`.
@@ -480,25 +550,27 @@ fn select_row(app: &mut App, key: &RowKey) {
     panic!("the gallery cannot park its cursor on {key:?}");
 }
 
-/// One scene, `age` after its opening snapshot.
+/// One scene, `age` after its opening snapshot, drawn through `palette`.
 ///
 /// Deterministic: a forced palette, an explicit `Instant` advanced by exact
 /// `Duration`s, and a literal frozen timestamp, so the gallery never
 /// depends on this machine's clock or environment.
+///
+/// `palette` exists so the gallery can render the same scene twice: once
+/// through [`coloured_palette`] for `docs/lookout/frames.ansi` and the
+/// pinned snapshots, and once through [`no_color_palette`] for
+/// `docs/lookout/frames.txt`.
 ///
 /// `age` exists for
 /// `the_frozen_frame_does_not_move_however_long_the_link_stays_gone`,
 /// which renders the frozen scene at two ages and checks for identical
 /// frames.
 #[must_use]
-fn scene_with(which: Scene, age: Duration) -> Buffer {
-    use std::ffi::OsStr;
-
-    let palette = Palette::detect(None, Some(OsStr::new("xterm-256color")), None);
+fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
     let t0 = Instant::now();
     let mut app = App::new(palette, which.control(), "/home/ada/.shep".to_string(), t0);
 
-    let flock = match which {
+    let mut flock = match which {
         Scene::Empty => Vec::new(),
         // The only flock in the gallery whose rows carry a slot, and so the
         // only one that draws a group header at all. `api` is here so the
@@ -624,6 +696,76 @@ fn scene_with(which: Scene, age: Duration) -> Buffer {
                 Some(false),
             ),
         ],
+        // Decision 7's three MEM/CEIL states, which no other scene's
+        // fixtures exercise: every other call to `sheep` leaves
+        // `max_memory` at the wire default, `None`.
+        Scene::MemCeiling => vec![
+            sheep_with_ceiling(0, "web-headroom", 128 << 20, 512 << 20),
+            sheep_with_ceiling(1, "web-hot", 480 << 20, 512 << 20),
+            sheep(
+                2,
+                "batch-worker",
+                ProcStatus::Online,
+                Some(48_303),
+                0,
+                Some(1.0),
+                Some(64 << 20),
+                None,
+            ),
+        ],
+        // The CFG column's two markers, `!N` and `*N`, plus a CPU history
+        // long enough that `CpuSpark` draws a shape rather than one bar.
+        // Neither has a fixture anywhere else in the gallery: no other
+        // scene sets `pending` or `overridden`, and every other scene's
+        // flock is built by one `Msg::Snapshot`, giving each sheep exactly
+        // one CPU sample.
+        Scene::CfgDrift => {
+            let mut pending_row = sheep(
+                10,
+                "web",
+                ProcStatus::Online,
+                Some(48_410),
+                0,
+                Some(4.0),
+                Some(64 << 20),
+                Some("edge"),
+            );
+            pending_row.pending = Some(vec!["env".to_string(), "port".to_string()]);
+            let mut overridden_row = sheep(
+                11,
+                "api",
+                ProcStatus::Online,
+                Some(48_411),
+                0,
+                Some(3.0),
+                Some(96 << 20),
+                Some("edge"),
+            );
+            overridden_row.overridden = Some(vec!["instances".to_string()]);
+            let plain_row = sheep(
+                12,
+                "cron",
+                ProcStatus::Online,
+                Some(48_412),
+                0,
+                Some(0.5),
+                Some(8 << 20),
+                None,
+            );
+            // Nine snapshots ahead of the shared one below, each moving
+            // only `web`'s CPU reading, so its history holds ten distinct
+            // samples by the time the frame renders: a full, varying
+            // sparkline rather than a single bar padded with blanks.
+            for cpu in [1.0_f32, 6.0, 2.5, 8.0, 3.5, 7.0, 2.0, 5.0, 6.5] {
+                let mut warming_up = pending_row.clone();
+                warming_up.cpu_percent = Some(cpu);
+                app.update(Msg::Snapshot {
+                    rows: vec![warming_up, overridden_row.clone(), plain_row.clone()],
+                    at: t0,
+                });
+            }
+            vec![pending_row, overridden_row, plain_row]
+        }
         _ => vec![
             sheep(
                 0,
@@ -687,6 +829,34 @@ fn scene_with(which: Scene, age: Duration) -> Buffer {
             ),
         ],
     };
+
+    // Round 2, finding 2: `log_row`'s on-disk size had never rendered
+    // anywhere in the gallery, because every fixture's `out_file`/
+    // `err_file` name a path (`/home/ada/.shep/logs/...`) that never
+    // exists on the machine running the test, so `fs::metadata` always
+    // failed silently. `HealthyWide`'s selected sheep, `api`, points at
+    // two real files instead, committed under
+    // `crates/shep-cli/tests/fixtures/gallery-logs/`, fixed at 1024 bytes
+    // each so the rendered size (`2.0K`) is the same on every machine and
+    // every run.
+    //
+    // The path is relative rather than the fictional absolute shape every
+    // other fixture uses: cargo sets a test binary's cwd to its own
+    // crate's manifest directory on every platform, so `fs::metadata`
+    // resolves this same string against the same real file wherever the
+    // gallery is regenerated. An absolute path would either stay
+    // fictional (the `/home/ada/...` shape, never real) or, made real,
+    // would have to embed either a random tempdir name (breaking
+    // `write_the_gallery`'s idempotency: it must diff clean run twice) or
+    // the actual checkout's home directory, which must never land in a
+    // file this repository commits.
+    if which == Scene::HealthyWide
+        && let Some(api) = flock.iter_mut().find(|sheep| sheep.id == 2)
+    {
+        api.out_file = Some("tests/fixtures/gallery-logs/api-out.log".to_string());
+        api.err_file = Some("tests/fixtures/gallery-logs/api-err.log".to_string());
+    }
+
     app.update(Msg::Snapshot {
         rows: flock,
         at: t0,
@@ -707,6 +877,8 @@ fn scene_with(which: Scene, age: Duration) -> Buffer {
             | Scene::TableOnly
             | Scene::Grouped
             | Scene::WithDogs
+            | Scene::MemCeiling
+            | Scene::CfgDrift
             | Scene::SettingsDogs
             | Scene::SettingsNarrow
             | Scene::SettingsShort
@@ -731,6 +903,19 @@ fn scene_with(which: Scene, age: Duration) -> Buffer {
     // scene exists to show.
     if which == Scene::WithDogs {
         select_id(&mut app, 91);
+    }
+
+    // `MemCeiling` parks on `web-hot`, id 1, the row at 94% of its
+    // ceiling: the butter warning this scene exists to show.
+    if which == Scene::MemCeiling {
+        select_id(&mut app, 1);
+    }
+
+    // `CfgDrift` parks on `web`, id 10, the row carrying the pending
+    // fields: the detail pane's own `cfg !2 pending` cell only renders
+    // for the selected sheep.
+    if which == Scene::CfgDrift {
+        select_id(&mut app, 10);
     }
 
     match which {
@@ -1095,6 +1280,25 @@ fn sheep(
         .build()
 }
 
+/// An online sheep with `max_memory` set, [`sheep`]'s own default. Only
+/// `Scene::MemCeiling` needs one, so this stays a thin wrapper rather than
+/// a ninth parameter on `sheep` every other caller would have to pass
+/// `None` for.
+fn sheep_with_ceiling(id: u32, name: &str, memory: u64, ceiling: u64) -> ProcessInfo {
+    let mut info = sheep(
+        id,
+        name,
+        ProcStatus::Online,
+        Some(48_300 + id),
+        0,
+        Some(2.0),
+        Some(memory),
+        Some("edge"),
+    );
+    info.max_memory = Some(ceiling);
+    info
+}
+
 /// One instance of a clustered app: the row a shepherd reports for slot
 /// `slot` of `name`.
 ///
@@ -1312,11 +1516,18 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi is the same thirty-three frames with colour; read it with `less -R`.
+frames.ansi renders all thirty-five scenes through the same coloured
+palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
+renders the same thirty-five scenes through the flattened NO_COLOR palette
+instead, the one an operator with $NO_COLOR set or a 16-colour terminal
+actually gets. The two files are deliberately different pictures of the
+same dashboard, not one file with the colour removed.
 
 All four panes are here: the flock table (the spine), the host-usage strip,
-the sheep detail pane and the bleats feed. `>` marks the selected sheep, and
-every pane below the table describes that one sheep.
+the sheep detail pane and the bleats feed. The selected sheep's row is a
+painted gutter in frames.ansi; in frames.txt it falls back to a `>` marker,
+since the NO_COLOR palette has no ground to paint with. Every pane below
+the table describes that one sheep.
 
 The feed reads the selected sheep's log files from disk and re-reads them with
 each flock listing. It is not a live subscription, and it says so on its own
@@ -1340,6 +1551,18 @@ a frame of their own.
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `sgr`/`render_ansi` were foreground-only before this task: a band's
+    /// reverse video and a painted background both came out unstyled.
+    #[test]
+    fn the_ansi_dump_emits_a_bands_reverse_video_and_a_grounds_background() {
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 4, 1));
+        buffer[(0, 0)].set_style(Style::default().add_modifier(Modifier::REVERSED));
+        buffer[(1, 0)].set_style(Style::default().bg(Color::Indexed(235)));
+        let dump = render_ansi(&buffer);
+        assert!(dump.contains("\u{1b}[7m"), "reverse video");
+        assert!(dump.contains("\u{1b}[48;5;235m"), "an indexed background");
+    }
 
     /// Nine other tests read frames through this renderer: a regression
     /// here silently changes what they assert.
@@ -1386,6 +1609,48 @@ mod tests {
         })
     }
 
+    /// [`coloured_palette`] always paints a ground, so every pinned
+    /// snapshot's selected row is a painted gutter rather than a `>` glyph
+    /// ([`super::super::view::flock::gutter`]).
+    fn gallery_ground() -> ratatui::style::Color {
+        coloured_palette()
+            .ground()
+            .bg
+            .expect("the gallery's coloured palette always paints a ground")
+    }
+
+    /// Whether row `y` of `buffer` is the selected one: its gutter cell
+    /// (column 0) carries [`gallery_ground`].
+    fn row_is_selected(buffer: &Buffer, y: u16) -> bool {
+        buffer
+            .cell((0, y))
+            .is_some_and(|cell| cell.bg == gallery_ground())
+    }
+
+    /// The rendered text of whichever row of `buffer` is selected, or
+    /// `None` if none is (a section header, for instance, is never
+    /// selected).
+    #[cfg_attr(windows, allow(dead_code))]
+    fn selected_line<'a>(text: &'a str, buffer: &Buffer) -> Option<&'a str> {
+        (0..buffer.area.height)
+            .find(|&y| row_is_selected(buffer, y))
+            .and_then(|y| text.lines().nth(usize::from(y)))
+    }
+
+    /// How many rows of `buffer`, EXCLUDING the status bar, are painted as
+    /// selected: a scene invariant is exactly one, the same invariant a `>`
+    /// glyph count used to check.
+    ///
+    /// The status bar is always the buffer's last row and now carries the
+    /// same [`gallery_ground`] the selected row's gutter does
+    /// (`Palette::ground`, painted by `view::status` in this task); it is
+    /// chrome, not a candidate row, so it is excluded rather than counted.
+    fn selected_row_count(buffer: &Buffer) -> usize {
+        (0..buffer.area.height.saturating_sub(1))
+            .filter(|&y| row_is_selected(buffer, y))
+            .count()
+    }
+
     /// The dogs table's own row lookup: unlike [`row_for`], a dog row opens
     /// with `mark` and a name, never a numeric id, so the same "first two
     /// tokens" shape does not apply.
@@ -1395,20 +1660,20 @@ mod tests {
             .find(|line| line.trim_start_matches('>').split_whitespace().next() == Some(name))
     }
 
-    /// Whether the marked row's name starts with `prefix`.
+    /// Whether the selected row's name starts with `prefix`.
     ///
     /// Handles truncation: the NAME column's truncated string depends on
     /// terminal width, so `prefix` only needs to fit the eight-column
-    /// floor `name_width` never shrinks below.
+    /// floor `name_width` never shrinks below. Selection is read off
+    /// `buffer`'s own painted gutter ([`row_is_selected`]), not a `>`
+    /// glyph the gallery's palette no longer draws.
     #[cfg_attr(windows, allow(dead_code))]
-    fn marked_row_name_starts_with(frame: &str, prefix: &str) -> bool {
-        frame.lines().any(|line| {
-            line.starts_with('>')
-                && line
-                    .trim_start_matches('>')
-                    .split_whitespace()
-                    .nth(1)
-                    .is_some_and(|name| name.starts_with(prefix))
+    fn marked_row_name_starts_with(text: &str, buffer: &Buffer, prefix: &str) -> bool {
+        selected_line(text, buffer).is_some_and(|line| {
+            line.trim_start_matches('>')
+                .split_whitespace()
+                .nth(1)
+                .is_some_and(|name| name.starts_with(prefix))
         })
     }
 
@@ -1424,35 +1689,54 @@ mod tests {
     /// artifacts under `docs/lookout/` are unix renderings for the same
     /// reason.
     #[cfg(unix)]
-    #[allow(clippy::too_many_lines)] // thirty-three captions, each pinned clause by clause
+    #[allow(clippy::too_many_lines)] // thirty-five captions, each pinned clause by clause
     fn every_scene_shows_the_thing_it_is_named_for() {
         // HealthyWide: all three panes at 120x30.
-        let wide = render_text(&scene(Scene::HealthyWide).1);
+        let wide_buffer = scene(Scene::HealthyWide).1;
+        let wide = render_text(&wide_buffer);
         assert!(
             wide.contains("FOLD") && wide.contains("EXIT"),
             "every column fits at 120 columns"
         );
         assert!(
-            wide.contains("host  load 2.31 4.10 3.88 / 10 cores"),
+            wide.contains("host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores"),
             "the host strip"
         );
         assert!(
-            wide.contains("sheep 2  api"),
-            "the detail pane, on the selected sheep"
+            wide.contains("SHEEP 2  api"),
+            "the detail pane, on the selected sheep, behind its own chip"
         );
+        assert!(wide.contains("BLEATS api"), "and the feed, on the same one");
         assert!(
-            wide.contains("bleats  api"),
-            "and the feed, on the same one"
+            wide.contains("2.0K on disk"),
+            "api's log row points at real, fixed-size fixture files, so the size renders: {wide:?}"
         );
+        // `coloured_palette` paints a real ground, so the selected row's
+        // gutter is a painted space rather than a `>` glyph
+        // (`view::flock::gutter`); checked on the buffer's own background
+        // rather than the rendered text, which cannot see one. Two rows
+        // carry it, not one: the selected row's gutter, and the status bar
+        // painted at the foot of the pane.
+        let ground = coloured_palette()
+            .ground()
+            .bg
+            .expect("the gallery's coloured palette always paints a ground");
+        let painted_rows = (0..wide_buffer.area.height)
+            .filter(|&y| {
+                wide_buffer
+                    .cell((0, y))
+                    .is_some_and(|cell| cell.bg == ground)
+            })
+            .count();
         assert_eq!(
-            wide.lines().filter(|line| line.starts_with('>')).count(),
-            1,
-            "exactly one selection marker"
+            painted_rows, 2,
+            "the selected row's gutter and the status bar"
         );
 
         // Grouped: cursor on the group header, which rolls up restarts,
         // CPU and memory and takes the shortest uptime.
-        let grouped = render_text(&scene(Scene::Grouped).1);
+        let grouped_buffer = scene(Scene::Grouped).1;
+        let grouped = render_text(&grouped_buffer);
         assert!(
             grouped.contains("web \u{d7}3"),
             "the group header names the app and how many instances it has: {grouped:?}"
@@ -1466,9 +1750,8 @@ mod tests {
             "one in the table, one in the detail pane, and nowhere else"
         );
         assert!(
-            grouped
-                .lines()
-                .any(|line| line.starts_with('>') && line.contains("web \u{d7}3")),
+            selected_line(&grouped, &grouped_buffer)
+                .is_some_and(|line| line.contains("web \u{d7}3")),
             "the cursor is on the header, not on one of its slots: {grouped:?}"
         );
         assert!(
@@ -1494,7 +1777,7 @@ mod tests {
             "the detail pane says lambs are per-instance: {grouped:?}"
         );
         assert!(
-            grouped.contains("bleats  web  follows one instance; select one to see its log"),
+            grouped.contains("BLEATS web  follows one instance; select one to see its log"),
             "and the feed will not guess which instance to tail: {grouped:?}"
         );
         assert!(
@@ -1503,10 +1786,11 @@ mod tests {
         );
 
         // WithDogs: the flock table's two sections, sheep then dogs.
-        let with_dogs = render_text(&scene(Scene::WithDogs).1);
+        let with_dogs_buffer = scene(Scene::WithDogs).1;
+        let with_dogs = render_text(&with_dogs_buffer);
         assert!(
-            with_dogs.contains("Flock ") && with_dogs.contains("Dogs "),
-            "both section headers are drawn: {with_dogs:?}"
+            with_dogs.contains("FLOCK") && with_dogs.contains("DOGS"),
+            "both section bands are drawn: {with_dogs:?}"
         );
         assert!(
             row_for(&with_dogs, "bark").is_some_and(|row| row.contains("online")),
@@ -1517,12 +1801,62 @@ mod tests {
             "the adopted dog has never handshaken, so it reads silent: {with_dogs:?}"
         );
         assert!(
-            marked_row_name_starts_with(&with_dogs, "log-rotate"),
+            marked_row_name_starts_with(&with_dogs, &with_dogs_buffer, "log-rotate"),
             "the cursor is parked on the silent dog: {with_dogs:?}"
         );
         assert!(
-            with_dogs.contains("dog adopted /usr/local/"),
+            with_dogs.contains("dog adopted"),
             "the detail pane names it adopted, not built-in: {with_dogs:?}"
+        );
+
+        // MemCeiling: the MEM/CEIL gauge's three states in one frame.
+        let ceiling_buffer = scene(Scene::MemCeiling).1;
+        let ceiling = render_text(&ceiling_buffer);
+        assert!(
+            row_for(&ceiling, "batch-wor…").is_some_and(|row| row.contains("░░░░░░░░░░")),
+            "no ceiling configured draws an empty bar: {ceiling:?}"
+        );
+        assert!(
+            row_for(&ceiling, "web-headr…").is_some_and(|row| row.contains("███░░░░░░░")),
+            "a quarter of the ceiling fills three of ten cells: {ceiling:?}"
+        );
+        assert!(
+            row_for(&ceiling, "web-hot").is_some_and(|row| row.contains("█████████░")),
+            "94 percent of the ceiling fills nine of ten cells: {ceiling:?}"
+        );
+        assert!(
+            marked_row_name_starts_with(&ceiling, &ceiling_buffer, "web-hot"),
+            "the cursor is parked on the row at 94 percent: {ceiling:?}"
+        );
+
+        // CfgDrift: the CFG column's two markers, plus a CPU history long
+        // enough to draw a shape rather than one bar.
+        let drift_buffer = scene(Scene::CfgDrift).1;
+        let drift = render_text(&drift_buffer);
+        assert!(
+            row_for(&drift, "web").is_some_and(|row| row.contains("!2")),
+            "two fields parked for the next spawn: {drift:?}"
+        );
+        assert!(
+            row_for(&drift, "api").is_some_and(|row| row.contains("*1")),
+            "one field an operator set outside the Flockfile: {drift:?}"
+        );
+        assert!(
+            row_for(&drift, "cron").is_some_and(|row| row.contains(" - ")),
+            "neither pending nor overridden: {drift:?}"
+        );
+        let web_row = row_for(&drift, "web").expect("web's own row");
+        let spark: std::collections::HashSet<char> = web_row
+            .chars()
+            .filter(|glyph| ('\u{2581}'..='\u{2588}').contains(glyph))
+            .collect();
+        assert!(
+            spark.len() > 1,
+            "ten distinct CPU samples draw more than one sparkline step, not a single repeated bar: {web_row:?}"
+        );
+        assert!(
+            drift.contains("cfg !2 pending"),
+            "the detail pane's own cell, for the selected sheep: {drift:?}"
         );
 
         // Empty: each of the three panes gives its own reason.
@@ -1535,10 +1869,17 @@ mod tests {
             empty.contains("no sheep selected: the flock is empty"),
             "the detail pane's"
         );
-        assert!(empty.contains("bleats  no sheep is selected"), "the feed's");
+        assert!(empty.contains("BLEATS no sheep is selected"), "the feed's");
+        // The summary sits after both host readings now, which puts it past
+        // the cut at this scene's 100 columns. Asserted as absent rather
+        // than dropped: this is the visible cost of grouping the machine's
+        // two numbers together, and a later reorder that brings it back
+        // should have to come through here and say so. The empty-flock
+        // behaviour it used to check is pinned at the unit level, in
+        // `host::tests::a_flock_with_no_readings_shows_a_dash_and_not_a_zero`.
         assert!(
-            empty.contains("flock cpu -"),
-            "and the strip shows no reading, not zero"
+            !empty.contains("errored"),
+            "the summary is past a 100-column cut once host memory precedes it"
         );
 
         // Narrow: 51 columns drops FOLD, EXIT, RESTARTS, PID and MEM but
@@ -1549,9 +1890,9 @@ mod tests {
             assert!(!narrow.contains(gone), "the narrow tier dropped {gone}");
         }
         assert!(narrow.contains("host  load"), "the strip is up at 14 rows");
-        assert!(!narrow.contains("bleats  "), "the feed is not");
+        assert!(!narrow.contains("BLEATS"), "the feed is not");
         assert!(
-            !narrow.contains("sheep 0  "),
+            !narrow.contains("SHEEP 0  "),
             "and neither is the detail pane"
         );
 
@@ -1581,7 +1922,7 @@ mod tests {
         // NoDetail: the detail pane is the first to go at 20 rows.
         let no_detail = render_text(&scene(Scene::NoDetail).1);
         assert!(
-            no_detail.contains("bleats  api"),
+            no_detail.contains("BLEATS api"),
             "the feed stayed, on the selection"
         );
         assert!(no_detail.contains("host  load"), "and so did the strip");
@@ -1595,7 +1936,7 @@ mod tests {
         // TableOnly: 12 rows, no optional panes.
         let table_only = render_text(&scene(Scene::TableOnly).1);
         assert!(!table_only.contains("host  load"));
-        assert!(!table_only.contains("bleats  "));
+        assert!(!table_only.contains("BLEATS"));
         assert!(table_only.contains("STATUS"), "the table is still there");
 
         // Cramped: 33 columns, the narrowest terminal that draws.
@@ -1603,16 +1944,27 @@ mod tests {
         assert!(cramped.contains('…'), "something truncated, visibly");
         // Not a row-width check, which `render_text` satisfies trivially:
         // "nothing overlaps" means each pane's marker appears exactly once.
-        for marker in ["host  ", "bleats  ", "out  /home/ada/.shep/logs/"] {
+        // `contains`, not `starts_with`: the `BLEATS` chip now leads that
+        // row.
+        for marker in ["host  ", "BLEATS"] {
             assert_eq!(
-                cramped
-                    .lines()
-                    .filter(|line| line.starts_with(marker))
-                    .count(),
+                cramped.lines().filter(|line| line.contains(marker)).count(),
                 1,
                 "{marker:?} appears once at 33 columns"
             );
         }
+        // The detail pane's merged log row carries no chip of its own, so
+        // `starts_with` still works, but the path itself can truncate away
+        // at 33 columns; the divider is what survives to identify the row
+        // instead.
+        assert_eq!(
+            cramped
+                .lines()
+                .filter(|line| line.starts_with("out  ") && line.contains('\u{2502}'))
+                .count(),
+            1,
+            "the detail pane's merged log row appears once at 33 columns"
+        );
         assert!(
             cramped.lines().last().unwrap().contains("control enabled"),
             "and the status bar is still the last row"
@@ -1622,7 +1974,7 @@ mod tests {
         let retrying = render_text(&scene(Scene::Retrying).1);
         assert!(retrying.contains("reconnecting"));
         assert!(
-            retrying.contains("sheep 2  api"),
+            retrying.contains("SHEEP 2  api"),
             "the detail pane is still up"
         );
         assert!(retrying.contains("host  load"), "and so is the strip");
@@ -1631,21 +1983,22 @@ mod tests {
         let frozen = render_text(&scene(Scene::Frozen).1);
         assert!(frozen.contains("the shepherd has died"));
         assert!(
-            frozen.contains("host  load 2.31 4.10 3.88 / 10 cores"),
+            frozen.contains("host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores"),
             "the strip kept its LAST values rather than blanking"
         );
 
         // Errored: selection parked on the errored sheep.
-        let errored = render_text(&scene(Scene::Errored).1);
+        let errored_buffer = scene(Scene::Errored).1;
+        let errored = render_text(&errored_buffer);
         assert!(errored.contains("errored"));
         assert!(
-            errored.contains("sheep 2  api"),
+            errored.contains("SHEEP 2  api"),
             "the selection is on the errored sheep"
         );
         assert_eq!(
-            errored.lines().filter(|line| line.starts_with('>')).count(),
+            selected_row_count(&errored_buffer),
             1,
-            "exactly one marker, on that row"
+            "exactly one row's gutter is painted, on that row"
         );
         // Only the ANSI rendering carries colour to check STATUS against.
         //
@@ -1702,7 +2055,7 @@ mod tests {
         let refused = render_text(&scene(Scene::Refused).1);
         assert!(refused.contains("--read-only"), "{refused}");
         assert!(
-            refused.contains("bleats  api"),
+            refused.contains("BLEATS api"),
             "a refusal does not blank the screen"
         );
 
@@ -1767,7 +2120,7 @@ mod tests {
             !unknown.contains("none found"),
             "which is the other sentence"
         );
-        assert!(unknown.contains("sheep 4  cron"), "on the stopped sheep");
+        assert!(unknown.contains("SHEEP 4  cron"), "on the stopped sheep");
 
         // Confirm: `R` pressed, nothing sent yet.
         let confirm = render_text(&scene(Scene::Confirm).1);
@@ -1779,11 +2132,12 @@ mod tests {
         );
 
         // Acting: request out, table unchanged.
-        let acting = render_text(&scene(Scene::Acting).1);
+        let acting_buffer = scene(Scene::Acting).1;
+        let acting = render_text(&acting_buffer);
         assert!(acting.contains("restart api (id 2): sent, waiting for the shepherd"));
         assert!(
-            row_for(&acting, "api").is_some_and(|row| row.starts_with('>')),
-            "the table is untouched: the marker is still on api"
+            selected_line(&acting, &acting_buffer).is_some_and(|line| line.contains("api")),
+            "the table is untouched: the selection is still on api"
         );
         assert!(
             row_for(&acting, "api").is_some_and(|row| row.contains("online")),
@@ -1799,7 +2153,8 @@ mod tests {
         );
 
         // ActionRefused: the shepherd's own sentence is forwarded as is.
-        let refused = render_text(&scene(Scene::ActionRefused).1);
+        let action_refused_buffer = scene(Scene::ActionRefused).1;
+        let refused = render_text(&action_refused_buffer);
         assert!(refused.contains("restart api (id 2): selector matched no registered sheep"));
         assert!(
             !refused.contains("NotFound"),
@@ -1811,7 +2166,7 @@ mod tests {
             "api is the row that went"
         );
         assert!(
-            marked_row_name_starts_with(&refused, "billing"),
+            marked_row_name_starts_with(&refused, &action_refused_buffer, "billing"),
             "and the cursor has moved to the row below: {refused:?}"
         );
 
@@ -1937,11 +2292,9 @@ mod tests {
     /// exactly on the last row.
     #[test]
     fn the_cursor_walk_budgets_by_visible_rows_not_by_sheep() {
-        use std::ffi::OsStr;
-
         let t0 = Instant::now();
         let mut app = App::new(
-            Palette::detect(None, Some(OsStr::new("xterm-256color")), None),
+            coloured_palette(),
             Control::ReadOnly,
             "/home/ada/.shep".to_string(),
             t0,
@@ -1986,26 +2339,30 @@ mod tests {
                 which.label()
             );
         }
-        // The literal 33 catches a scene added to the enum but not to
+        // The literal 34 catches a scene added to the enum but not to
         // `ALL`, or the reverse; `labels.len()` would not, since `insert`
         // above already guarantees it.
-        assert_eq!(Scene::ALL.len(), 33);
+        assert_eq!(Scene::ALL.len(), 35);
     }
 
-    /// `sgr` renders foregrounds only, so a modifier would come out
-    /// unstyled. The selection marker is a character rather than a
-    /// reversed row for exactly this reason.
+    /// `sgr` now draws a foreground, a background and `REVERSED`, so the
+    /// title and section bands' reverse video and the selected row's
+    /// painted ground both reach `frames.ansi`. This test still forbids
+    /// any modifier beyond `REVERSED`: nothing in the dashboard uses one
+    /// today, and a scene that started would render unstyled without this
+    /// guard noticing.
     #[test]
-    fn no_scene_uses_a_modifier_the_ansi_renderer_would_drop() {
+    fn no_scene_uses_a_modifier_the_ansi_renderer_cannot_render() {
         for which in Scene::ALL {
             let buffer = scene(*which).1;
             for y in 0..buffer.area.height {
                 for x in 0..buffer.area.width {
                     let cell = &buffer[(buffer.area.x + x, buffer.area.y + y)];
                     assert!(
-                        cell.modifier.is_empty(),
-                        "{} has a modifier at {x},{y}",
-                        which.label()
+                        cell.modifier.is_empty() || cell.modifier == Modifier::REVERSED,
+                        "{} has an unrendered modifier at {x},{y}: {:?}",
+                        which.label(),
+                        cell.modifier
                     );
                 }
             }
@@ -2018,8 +2375,16 @@ mod tests {
     /// that drops the uptime column entirely.
     #[test]
     fn the_frozen_frame_does_not_move_however_long_the_link_stays_gone() {
-        let ten_minutes = render_text(&scene_with(Scene::Frozen, Duration::from_secs(600)));
-        let sixteen_hours = render_text(&scene_with(Scene::Frozen, Duration::from_secs(60_000)));
+        let ten_minutes = render_text(&scene_with(
+            Scene::Frozen,
+            Duration::from_secs(600),
+            coloured_palette(),
+        ));
+        let sixteen_hours = render_text(&scene_with(
+            Scene::Frozen,
+            Duration::from_secs(60_000),
+            coloured_palette(),
+        ));
         assert_eq!(
             ten_minutes, sixteen_hours,
             "the frozen frame's uptime column advanced after the link was lost"
@@ -2029,9 +2394,16 @@ mod tests {
             "the frozen frame has a lamb line for the comparison above to cover"
         );
 
-        let live_ten = render_text(&scene_with(Scene::HealthyWide, Duration::from_secs(600)));
-        let live_sixteen =
-            render_text(&scene_with(Scene::HealthyWide, Duration::from_secs(60_000)));
+        let live_ten = render_text(&scene_with(
+            Scene::HealthyWide,
+            Duration::from_secs(600),
+            coloured_palette(),
+        ));
+        let live_sixteen = render_text(&scene_with(
+            Scene::HealthyWide,
+            Duration::from_secs(60_000),
+            coloured_palette(),
+        ));
         assert_ne!(
             live_ten, live_sixteen,
             "a LIVE frame's uptime column must advance, or the assertion above passes for the wrong reason"
@@ -2063,16 +2435,22 @@ mod tests {
         let mut plain = String::from(GALLERY_PREAMBLE);
         let mut ansi = String::from(GALLERY_PREAMBLE);
         for which in Scene::ALL {
-            let (label, buffer) = scene(*which);
             let (width, height) = which.size();
             let heading = format!(
-                "\n\n=== {label}  ({width}x{height}) ===\n{}\n\n",
+                "\n\n=== {}  ({width}x{height}) ===\n{}\n\n",
+                which.label(),
                 which.caption()
             );
+            // Two separate renders, not one buffer read twice: `frames.txt`
+            // is what a `NO_COLOR` operator sees, and that palette has no
+            // painted ground for the gutter to fall back from, so the
+            // buffer itself differs, not just how it prints.
+            let plain_buffer = scene_with(*which, Duration::from_secs(600), no_color_palette());
             plain.push_str(&heading);
-            plain.push_str(&render_text(&buffer));
+            plain.push_str(&render_text(&plain_buffer));
+            let ansi_buffer = scene_with(*which, Duration::from_secs(600), coloured_palette());
             ansi.push_str(&heading);
-            ansi.push_str(&render_ansi(&buffer));
+            ansi.push_str(&render_ansi(&ansi_buffer));
         }
         (plain, ansi)
     }

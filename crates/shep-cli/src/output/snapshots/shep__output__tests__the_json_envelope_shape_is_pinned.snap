@@ -34,7 +34,8 @@ expression: out
       ],
       "overridden": [
         "cwd"
-      ]
+      ],
+      "max_memory": null
     },
     {
       "id": 2,
@@ -64,7 +65,8 @@ expression: out
       ],
       "overridden": [
         "cwd"
-      ]
+      ],
+      "max_memory": null
     },
     {
       "id": 3,
@@ -94,7 +96,8 @@ expression: out
       ],
       "overridden": [
         "cwd"
-      ]
+      ],
+      "max_memory": null
     }
   ]
 }

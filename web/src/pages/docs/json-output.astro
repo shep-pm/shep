@@ -232,6 +232,13 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
         reports the string verbatim, and never parses it — see
         <a href="/docs/terminology">terminology</a>.
       </li>
+      <li>
+        <code>max_memory</code> is the sheep's memory ceiling in bytes, or
+        <code>null</code> when it has none configured. It's the same number
+        <code>--format table</code> and lookout's <code>MEM/CEIL</code> gauge
+        divide against; a <code>null</code> here is why that gauge draws an
+        all-tail bar instead of a fraction.
+      </li>
     </ul>
 
     <Callout variant="note">

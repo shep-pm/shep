@@ -31,3 +31,9 @@ docs/lookout/frames.ansi text eol=lf
 # Written by `web/scripts/generate-cli-reference.sh` with `\n`; a CRLF
 # checkout makes every regeneration look like a whole-file diff.
 web/src/data/cli-reference.generated.txt text eol=lf
+# Fixed at 1024 bytes each so the gallery's detail band renders
+# `2.0K on disk`, an exact-string assertion `frames_are_pinned` also pins.
+# A CRLF checkout inflates every LF to two bytes, changing the byte count
+# and the rendered figure -- force LF the same way the snapshots above do.
+crates/shep-cli/tests/fixtures/gallery-logs/api-out.log text eol=lf
+crates/shep-cli/tests/fixtures/gallery-logs/api-err.log text eol=lf
