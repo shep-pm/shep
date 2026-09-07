@@ -1274,9 +1274,10 @@ impl SheepApplied {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SheepRefusal {
-    /// The app's name, as the walk that planned the reload spelled it.
+    /// The app's name, as the walk that planned the reload or the restart
+    /// spelled it.
     pub name: String,
-    /// Why the reload was refused, in the daemon's own words.
+    /// Why that app was refused, in the daemon's own words.
     pub reason: String,
 }
 
