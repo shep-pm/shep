@@ -15,7 +15,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 # 1.88: serde-saphyr's let-chains need it; also the floor ratatui, sysinfo
 # and rmcp require.
@@ -33,11 +33,11 @@ license = "MIT OR Apache-2.0"
 # turn an inherited dependency's default features back on but never off, so the
 # floor is set off here. shep-core wants the wire types without the client
 # feature; a future consumer that wants the client opts back in.
-shep-channel = { path = "crates/shep-channel", version = "0.5.0", default-features = false }
-shep-core = { path = "crates/shep-core", version = "0.5.0" }
-shep-daemon = { path = "crates/shep-daemon", version = "0.5.0" }
-shep-client = { path = "crates/shep-client", version = "0.5.0" }
-shep-macros = { path = "crates/shep-macros", version = "0.5.0" }
+shep-channel = { path = "crates/shep-channel", version = "0.5.1", default-features = false }
+shep-core = { path = "crates/shep-core", version = "0.5.1" }
+shep-daemon = { path = "crates/shep-daemon", version = "0.5.1" }
+shep-client = { path = "crates/shep-client", version = "0.5.1" }
+shep-macros = { path = "crates/shep-macros", version = "0.5.1" }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1", default-features = false, features = ["std"] }
 toml = { version = "0.8", default-features = false, features = ["parse", "display"] }
