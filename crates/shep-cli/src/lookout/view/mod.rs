@@ -6,6 +6,7 @@
 //! both testable and cheap to keep working across a ratatui release.
 
 pub mod bleats;
+pub mod bleats_full;
 pub mod cell;
 pub mod detail;
 pub mod flock;
@@ -243,6 +244,17 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
                 height: body_rows(area),
             };
             settings::draw_settings(app, settings, body, buffer);
+            buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
+            return;
+        }
+        Body::Bleats(pane) => {
+            let body = Rect {
+                x: area.x,
+                y,
+                width,
+                height: body_rows(area),
+            };
+            bleats_full::draw(app, pane, body, buffer);
             buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
             return;
         }

@@ -24,6 +24,7 @@ use shep_core::status::ProcStatus;
 
 use super::field::{FieldKind, FieldSet};
 use super::pane::{ConfigPane, FieldValue, Lock, PaneEdit, PanePending, PaneTarget, ReloadKind};
+use super::pane_bleats::BleatsPane;
 use super::theme::Palette;
 use super::viewport::Viewport;
 use crate::commands::settings::{SettingEdit, SettingField, SettingsSnapshot, settings_field_set};
@@ -114,6 +115,9 @@ pub enum KeyPress {
     ListMoveUp,
     /// `J`: the same, moving down.
     ListMoveDown,
+    /// `b`: opens the full-screen bleats pane on the selected sheep. Does
+    /// nothing with no sheep selected, the way `e` does.
+    Bleats,
 }
 
 /// Everything that can change the dashboard.
@@ -1256,6 +1260,9 @@ pub(crate) enum Body {
     /// An open config pane, for a sheep or a dog, opened by
     /// [`KeyPress::Edit`].
     ConfigPane(ConfigPane),
+    /// The bleats feed given the whole screen, opened by
+    /// [`KeyPress::Bleats`].
+    Bleats(BleatsPane),
 }
 
 /// The whole dashboard's state.
@@ -2286,6 +2293,11 @@ impl App {
         if self.settings().is_some() {
             return self.on_settings_key(key);
         }
+        // The bleats pane owns the keyboard while it is open, the same as
+        // the other two full-screen panes above.
+        if self.bleats_pane().is_some() {
+            return self.on_bleats_key(key);
+        }
         // A cancelling keypress is consumed: a stray `j` cancels the confirm
         // and does not also move the selection, or the next reflexive Enter
         // acts on a target the operator lost track of. Cancelling is silent.
@@ -2366,6 +2378,52 @@ impl App {
             // `h` names a field's help text, and the dashboard has no
             // field selected.
             KeyPress::Help => Effect::None,
+            // Opens on the selected sheep, or does nothing without one, the
+            // same shape `KeyPress::Edit` follows above.
+            KeyPress::Bleats => self.ask_for_bleats(),
+        }
+    }
+
+    /// `b`: opens the full-screen bleats pane on the selected sheep. A
+    /// group or an empty selection asks for nothing, the same shape
+    /// [`Self::ask_for_config`] follows.
+    fn ask_for_bleats(&mut self) -> Effect {
+        if let Some(sheep @ RowKey::Sheep(_)) = self.selected() {
+            self.body = Body::Bleats(BleatsPane::new(sheep));
+        }
+        Effect::None
+    }
+
+    /// The bleats pane's own keymap, in force while [`Self::bleats_pane`] is
+    /// `Some`. There is nothing on this screen to move or edit: `Escape`
+    /// closes it, and everything else is inert.
+    fn on_bleats_key(&mut self, key: KeyPress) -> Effect {
+        match key {
+            KeyPress::Quit => Effect::Quit,
+            KeyPress::Escape => {
+                self.close_pane();
+                Effect::None
+            }
+            KeyPress::SelectUp
+            | KeyPress::SelectDown
+            | KeyPress::SelectFirst
+            | KeyPress::SelectLast
+            | KeyPress::Refresh
+            | KeyPress::Action(_)
+            | KeyPress::Confirm
+            | KeyPress::FilterStart
+            | KeyPress::TextChar(_)
+            | KeyPress::TextBackspace
+            | KeyPress::TextApply
+            | KeyPress::TextAbandon
+            | KeyPress::Settings
+            | KeyPress::Cycle
+            | KeyPress::Edit
+            | KeyPress::Help
+            | KeyPress::ListRemove
+            | KeyPress::ListMoveUp
+            | KeyPress::ListMoveDown
+            | KeyPress::Bleats => Effect::None,
         }
     }
 
@@ -2445,7 +2503,8 @@ impl App {
             | KeyPress::Help
             | KeyPress::ListRemove
             | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown => {}
+            | KeyPress::ListMoveDown
+            | KeyPress::Bleats => {}
         }
         Effect::None
     }
@@ -2627,7 +2686,8 @@ impl App {
             | KeyPress::TextAbandon
             | KeyPress::ListRemove
             | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown => {}
+            | KeyPress::ListMoveDown
+            | KeyPress::Bleats => {}
         }
         Effect::None
     }
@@ -2721,7 +2781,8 @@ impl App {
             | KeyPress::TextAbandon
             | KeyPress::ListRemove
             | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown => Effect::None,
+            | KeyPress::ListMoveDown
+            | KeyPress::Bleats => Effect::None,
         }
     }
 
@@ -2885,7 +2946,7 @@ impl App {
         // scope.
         let Some(pane) = (match &mut self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) => None,
         }) else {
             return Effect::None;
         };
@@ -3098,7 +3159,8 @@ impl App {
             | KeyPress::TextBackspace
             | KeyPress::TextApply
             | KeyPress::TextAbandon
-            | KeyPress::Help => {}
+            | KeyPress::Help
+            | KeyPress::Bleats => {}
         }
         Effect::None
     }
@@ -3178,7 +3240,8 @@ impl App {
             | KeyPress::Help
             | KeyPress::ListRemove
             | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown => {}
+            | KeyPress::ListMoveDown
+            | KeyPress::Bleats => {}
         }
         Effect::None
     }
@@ -3239,7 +3302,7 @@ impl App {
         // `Self::config_pane_mut`, so `self.mode` stays reachable below.
         let Some(pane) = (match &mut self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) => None,
         }) else {
             return Effect::None;
         };
@@ -3277,7 +3340,7 @@ impl App {
         // `Self::config_pane_mut`, so `self.mode` stays reachable below.
         let Some(pane) = (match &mut self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) => None,
         }) else {
             return Effect::None;
         };
@@ -3342,7 +3405,7 @@ impl App {
         // `Self::settings_mut`, so `self.now` stays reachable below.
         let Some(settings) = (match &mut self.body {
             Body::Settings(settings) => Some(settings),
-            Body::FlockTable | Body::ConfigPane(_) => None,
+            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) => None,
         }) else {
             return Effect::None;
         };
@@ -3376,7 +3439,7 @@ impl App {
         // `Self::settings_mut`, so `self.now` stays reachable below.
         let Some(settings) = (match &mut self.body {
             Body::Settings(settings) => Some(settings),
-            Body::FlockTable | Body::ConfigPane(_) => None,
+            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) => None,
         }) else {
             return Effect::None;
         };
@@ -4205,7 +4268,7 @@ impl App {
     pub fn settings(&self) -> Option<&Settings> {
         match &self.body {
             Body::Settings(settings) => Some(settings),
-            Body::FlockTable | Body::ConfigPane(_) => None,
+            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) => None,
         }
     }
 
@@ -4214,7 +4277,7 @@ impl App {
     fn settings_mut(&mut self) -> Option<&mut Settings> {
         match &mut self.body {
             Body::Settings(settings) => Some(settings),
-            Body::FlockTable | Body::ConfigPane(_) => None,
+            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) => None,
         }
     }
 
@@ -4247,7 +4310,7 @@ impl App {
     pub fn config_pane(&self) -> Option<&ConfigPane> {
         match &self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) => None,
         }
     }
 
@@ -4256,7 +4319,16 @@ impl App {
     fn config_pane_mut(&mut self) -> Option<&mut ConfigPane> {
         match &mut self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) => None,
+        }
+    }
+
+    /// The open bleats pane, or `None` on any other screen.
+    #[must_use]
+    pub fn bleats_pane(&self) -> Option<&BleatsPane> {
+        match &self.body {
+            Body::Bleats(pane) => Some(pane),
+            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) => None,
         }
     }
 
@@ -7022,6 +7094,36 @@ mod tests {
         let mut app = fixtures::app_with(Vec::new(), fixtures::plain());
         assert_eq!(app.update(Msg::Key(KeyPress::Edit)), Effect::None);
         assert!(app.config_pane().is_none());
+    }
+
+    /// The pane opens on whatever was selected and pins it: full screen
+    /// leaves no table to change a selection with.
+    #[test]
+    fn b_opens_the_pane_on_the_selected_sheep() {
+        let mut app =
+            fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let pane = app.bleats_pane().expect("the pane is open");
+        assert!(matches!(pane.sheep(), RowKey::Sheep(id) if *id == 9));
+    }
+
+    /// `close_pane` always lands on the dashboard, never on whatever screen
+    /// preceded the pane. Same rule the config pane follows.
+    #[test]
+    fn esc_from_the_bleats_pane_lands_on_the_dashboard() {
+        let mut app =
+            fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(matches!(app.body(), Body::FlockTable));
+    }
+
+    /// `b` with nothing selected asks for nothing, the way `e` does.
+    #[test]
+    fn b_with_nothing_selected_opens_no_pane() {
+        let mut app = fixtures::app_with(Vec::new(), fixtures::plain());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        assert!(app.bleats_pane().is_none());
     }
 
     /// A group has no single sheep, so `selected_row` answers `None` for

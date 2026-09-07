@@ -59,6 +59,7 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char('d') => Some(KeyPress::ListRemove),
         KeyCode::Char('K') => Some(KeyPress::ListMoveUp),
         KeyCode::Char('J') => Some(KeyPress::ListMoveDown),
+        KeyCode::Char('b') => Some(KeyPress::Bleats),
         KeyCode::Enter => Some(KeyPress::Confirm),
         _ => None,
     }
@@ -157,6 +158,17 @@ mod tests {
             Some(KeyPress::ListMoveDown)
         );
         assert_eq!(map_key(&key(KeyCode::Char('z')), InputMode::Normal), None);
+    }
+
+    /// `b` opens the full-screen bleats pane. Pinned because `map_key`
+    /// dispatches on mode rather than pane, so a key taken here is taken
+    /// everywhere in `Normal`.
+    #[test]
+    fn b_opens_the_bleats_pane() {
+        assert_eq!(
+            map_key(&key(KeyCode::Char('b')), InputMode::Normal),
+            Some(KeyPress::Bleats)
+        );
     }
 
     #[test]
