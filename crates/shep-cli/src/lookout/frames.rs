@@ -1873,14 +1873,16 @@ mod tests {
             "the detail pane's"
         );
         assert!(empty.contains("bleats  no sheep is selected"), "the feed's");
-        // The summary now sits second on the strip (right after the load
-        // segment, ahead of host memory), which is a wider budget than
-        // `flock cpu -` survives at this scene's 100 columns; the
-        // dash-not-zero invariant itself is pinned at the unit level in
+        // The summary sits after both host readings now, which puts it past
+        // the cut at this scene's 100 columns. Asserted as absent rather
+        // than dropped: this is the visible cost of grouping the machine's
+        // two numbers together, and a later reorder that brings it back
+        // should have to come through here and say so. The empty-flock
+        // behaviour it used to check is pinned at the unit level, in
         // `host::tests::a_flock_with_no_readings_shows_a_dash_and_not_a_zero`.
         assert!(
-            empty.contains("0 errored · 0 parked"),
-            "and the summary reflects the empty flock"
+            !empty.contains("errored"),
+            "the summary is past a 100-column cut once host memory precedes it"
         );
 
         // Narrow: 51 columns drops FOLD, EXIT, RESTARTS, PID and MEM but

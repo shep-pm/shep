@@ -175,11 +175,6 @@ fn runs(app: &App) -> Vec<Run> {
             });
             out.push(sep());
             out.push(Run {
-                text: summary(app),
-                ink: Ink::Muted,
-            });
-            out.push(sep());
-            out.push(Run {
                 text: "host mem  ".to_string(),
                 ink: Ink::Muted,
             });
@@ -193,6 +188,16 @@ fn runs(app: &App) -> Vec<Run> {
                     human_bytes(host.memory_used_bytes),
                     human_bytes(host.memory_total_bytes)
                 ),
+                ink: Ink::Muted,
+            });
+            // The two host readings sit together, then the flock's own
+            // numbers: the line reads left to right as machine, then flock,
+            // rather than interleaving them. The cost is that the summary
+            // is no longer the segment most likely to survive a narrow
+            // terminal; the test named for it pins where it now falls off.
+            out.push(sep());
+            out.push(Run {
+                text: summary(app),
                 ink: Ink::Muted,
             });
         }
@@ -417,22 +422,32 @@ mod tests {
         );
     }
 
-    /// `N errored · N parked` is the segment that answers "is anything wrong
-    /// right now", so it sits second, right after the load segment, ahead of
-    /// host memory. At an ordinary 120-column terminal that means it survives
-    /// the cut even though later segments (the flock sparkline, `flock mem`,
-    /// `up`) do not.
+    /// The strip reads machine, then flock: load and host memory together,
+    /// then `N errored · N parked` and the flock's own numbers.
+    ///
+    /// The summary used to sit second, ahead of host memory, so that it was
+    /// the segment most likely to survive a cut. Grouping the two host
+    /// readings costs it that, and how much it costs is not a property of
+    /// this code: the strip's length depends on the machine's own numbers,
+    /// so a host with fourteen cores and a 48G total pushes the summary
+    /// right by a dozen columns against one with ten and 32G. Only the order
+    /// is invariant, so only the order is asserted here.
     #[test]
-    fn the_summary_survives_a_120_column_cut() {
+    fn host_memory_comes_before_the_flock_summary() {
         let app = with_host(sample(), flock_of(4, 1));
-        let line = rendered(&strip_line(&app, 120));
+        let line = rendered(&strip_line(&app, 200));
+
         assert!(
             line.contains("0 errored · 0 parked"),
-            "summary dropped at 120 columns: {line:?}"
+            "summary dropped even at 200 columns: {line:?}"
         );
         assert!(
-            line.find("errored").unwrap() < line.find("host mem").unwrap(),
-            "summary must come before host mem: {line:?}"
+            line.find("host mem").unwrap() < line.find("errored").unwrap(),
+            "the line reads machine, then flock: {line:?}"
+        );
+        assert!(
+            line.find("errored").unwrap() < line.find("flock cpu").unwrap(),
+            "the summary still leads the flock's own numbers: {line:?}"
         );
     }
 }

@@ -4,7 +4,7 @@ expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                                            6 in the flock
                                                                                                                         
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     1 errored · 0 parked   host mem  ████░░░░░░ 12.4G / 32.0G     floc…
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     1 errored · 0 parked   floc…
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
                                                                                                                         
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
