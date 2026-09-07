@@ -126,8 +126,41 @@ fn sgr(fg: Color, bg: Color, modifier: Modifier) -> String {
     out
 }
 
+/// Declares `Scene` and its `ALL` listing from one variant list, so the two
+/// cannot diverge by construction: a variant left out of the macro call
+/// simply does not exist, and one included is in both the enum and `ALL` by
+/// the same repetition. `scene_after`, below, still has to be kept in step
+/// by hand — its own doc explains what it catches that this macro does not.
+macro_rules! scenes {
+    (
+        $(#[$enum_doc:meta])*
+        pub enum Scene {
+            $(
+                $(#[$variant_doc:meta])*
+                $variant:ident,
+            )*
+        }
+    ) => {
+        $(#[$enum_doc])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum Scene {
+            $(
+                $(#[$variant_doc])*
+                $variant,
+            )*
+        }
+
+        impl Scene {
+            /// Every scene, in the order they appear in the gallery.
+            pub const ALL: &'static [Self] = &[
+                $(Self::$variant,)*
+            ];
+        }
+    };
+}
+
+scenes! {
 /// The scenes the frame snapshots pin and the gallery renders.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scene {
     /// A healthy flock at a comfortable width, all three panes up.
     HealthyWide,
@@ -215,47 +248,9 @@ pub enum Scene {
     /// the cursor on the last one, so the view has scrolled.
     SettingsShort,
 }
+}
 
 impl Scene {
-    /// Every scene, in the order they appear in the gallery.
-    pub const ALL: &'static [Self] = &[
-        Self::HealthyWide,
-        Self::Errored,
-        Self::Grouped,
-        Self::WithDogs,
-        Self::MemCeiling,
-        Self::CfgDrift,
-        Self::Empty,
-        Self::Narrow,
-        Self::TooNarrow,
-        Self::Retrying,
-        Self::Frozen,
-        Self::Refused,
-        Self::FilterEditing,
-        Self::FilterActive,
-        Self::FilterNoMatch,
-        Self::NoDetail,
-        Self::TableOnly,
-        Self::FeedGap,
-        Self::FeedMissing,
-        Self::Cramped,
-        Self::HostUnknown,
-        Self::Lambs,
-        Self::LambsUnknown,
-        Self::Confirm,
-        Self::Acting,
-        Self::ActionRefused,
-        Self::ActionAccepted,
-        Self::ActionRefusedOffline,
-        Self::SettingsFresh,
-        Self::SettingsSet,
-        Self::SettingsConfirm,
-        Self::SettingsTyping,
-        Self::SettingsDogs,
-        Self::SettingsNarrow,
-        Self::SettingsShort,
-    ];
-
     /// The snapshot name and the gallery heading.
     #[must_use]
     pub const fn label(self) -> &'static str {
@@ -2339,10 +2334,90 @@ mod tests {
                 which.label()
             );
         }
-        // The literal 34 catches a scene added to the enum but not to
-        // `ALL`, or the reverse; `labels.len()` would not, since `insert`
-        // above already guarantees it.
-        assert_eq!(Scene::ALL.len(), 35);
+    }
+
+    /// The scene that follows `scene` in gallery order, or `None` after the
+    /// last one. Mirrors `Scene::ALL`'s own order.
+    ///
+    /// Exhaustive over [`Scene`], with no wildcard arm: a variant added to
+    /// the enum without an arm here fails to compile. `scene_all_lists_every_variant_the_compiler_can_see`
+    /// below walks this chain and checks it against `ALL`, which a
+    /// hand-counted length could not: a forgotten scene just left the count
+    /// honest at the old number.
+    ///
+    /// The `scenes!` macro that declares `Scene` keeps a variant from being
+    /// left out of `ALL` outright — the two are generated from one list, so
+    /// they cannot disagree on membership. What that macro cannot catch is
+    /// this chain: a variant could still get an arm here that loops back on
+    /// itself or points somewhere unreachable from `HealthyWide`, compiling
+    /// fine while never being walked. That is exactly what this test's own
+    /// walk-and-compare catches, so the two mechanisms are covering
+    /// different halves of the same failure, not one covering the other.
+    fn scene_after(scene: Scene) -> Option<Scene> {
+        match scene {
+            Scene::HealthyWide => Some(Scene::Errored),
+            Scene::Errored => Some(Scene::Grouped),
+            Scene::Grouped => Some(Scene::WithDogs),
+            Scene::WithDogs => Some(Scene::MemCeiling),
+            Scene::MemCeiling => Some(Scene::CfgDrift),
+            Scene::CfgDrift => Some(Scene::Empty),
+            Scene::Empty => Some(Scene::Narrow),
+            Scene::Narrow => Some(Scene::TooNarrow),
+            Scene::TooNarrow => Some(Scene::Retrying),
+            Scene::Retrying => Some(Scene::Frozen),
+            Scene::Frozen => Some(Scene::Refused),
+            Scene::Refused => Some(Scene::FilterEditing),
+            Scene::FilterEditing => Some(Scene::FilterActive),
+            Scene::FilterActive => Some(Scene::FilterNoMatch),
+            Scene::FilterNoMatch => Some(Scene::NoDetail),
+            Scene::NoDetail => Some(Scene::TableOnly),
+            Scene::TableOnly => Some(Scene::FeedGap),
+            Scene::FeedGap => Some(Scene::FeedMissing),
+            Scene::FeedMissing => Some(Scene::Cramped),
+            Scene::Cramped => Some(Scene::HostUnknown),
+            Scene::HostUnknown => Some(Scene::Lambs),
+            Scene::Lambs => Some(Scene::LambsUnknown),
+            Scene::LambsUnknown => Some(Scene::Confirm),
+            Scene::Confirm => Some(Scene::Acting),
+            Scene::Acting => Some(Scene::ActionRefused),
+            Scene::ActionRefused => Some(Scene::ActionAccepted),
+            Scene::ActionAccepted => Some(Scene::ActionRefusedOffline),
+            Scene::ActionRefusedOffline => Some(Scene::SettingsFresh),
+            Scene::SettingsFresh => Some(Scene::SettingsSet),
+            Scene::SettingsSet => Some(Scene::SettingsConfirm),
+            Scene::SettingsConfirm => Some(Scene::SettingsTyping),
+            Scene::SettingsTyping => Some(Scene::SettingsDogs),
+            Scene::SettingsDogs => Some(Scene::SettingsNarrow),
+            Scene::SettingsNarrow => Some(Scene::SettingsShort),
+            Scene::SettingsShort => None,
+        }
+    }
+
+    /// Walks [`scene_after`] from the first scene and checks the walk names
+    /// exactly `Scene::ALL`, in the same order.
+    ///
+    /// The walk can only see variants `scene_after` was taught about, and
+    /// that match cannot compile with one missing, so a scene left out of
+    /// `ALL` shows up here as a length or order mismatch rather than as
+    /// nothing at all.
+    #[test]
+    fn scene_all_lists_every_variant_the_compiler_can_see() {
+        let mut walked = vec![Scene::HealthyWide];
+        while let Some(next) = scene_after(*walked.last().unwrap()) {
+            // Bounded, because `scene_after` is a hand-kept chain and a
+            // variant wired back at an earlier one would otherwise spin here
+            // forever. Nextest has no per-test timeout, so an unbounded walk
+            // fails as a twenty-minute job timeout with no named test rather
+            // than as an assertion.
+            assert!(
+                walked.len() < Scene::ALL.len(),
+                "scene_after cycles: walked {} scenes without reaching the end of {}",
+                walked.len(),
+                Scene::ALL.len()
+            );
+            walked.push(next);
+        }
+        assert_eq!(walked.as_slice(), Scene::ALL);
     }
 
     /// `sgr` now draws a foreground, a background and `REVERSED`, so the
