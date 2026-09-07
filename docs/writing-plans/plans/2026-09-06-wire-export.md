@@ -382,11 +382,17 @@ fn emit() -> String {
     out.push_str("const (\n");
     let child = child_samples();
     let shepherd = shepherd_samples();
+    // Two samples of one variant would declare the same constant twice,
+    // and Go refuses a redeclaration.
+    let mut declared: BTreeSet<&'static str> = BTreeSet::new();
     for kind in child
         .iter()
         .map(child_kind)
         .chain(shepherd.iter().map(shepherd_kind))
     {
+        if !declared.insert(kind.ident) {
+            continue;
+        }
         writeln!(out, "\t// {}", kind.doc).expect("write to a String");
         writeln!(out, "\t{} = {:?}", kind.ident, kind.wire).expect("write to a String");
     }
