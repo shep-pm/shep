@@ -13,6 +13,7 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 
 use shep_core::config::ResetDepth;
+use shep_core::protocol::{MIN_SUPPORTED, PROTOCOL_VERSION};
 
 /// The verb groups [`HELP_TEMPLATE`] renders, and the source of truth the
 /// drift test checks the real command tree against.
@@ -88,6 +89,27 @@ Upgrading        cargo install shep replaces the binary, not the running shepher
 
 {options}{after-help}";
 
+/// `shep --version`'s extra line, naming the protocol this build speaks and
+/// how far back it reaches.
+///
+/// `-V` still prints the bare crate version (clap's `version` attribute
+/// covers that); this is `--version`'s `long_version`, which clap falls
+/// back to `version` for when unset, so this is purely additive.
+///
+/// `clap::Command::long_version` wants `&'static str` in the clap version
+/// this workspace pins, not `String`, and the text is built once per
+/// process, so leaking it is cheaper than threading a `OnceLock` through a
+/// derive attribute.
+fn version_text() -> &'static str {
+    Box::leak(
+        format!(
+            "{}\nspeaks protocol {PROTOCOL_VERSION}, accepts {MIN_SUPPORTED} and newer",
+            env!("CARGO_PKG_VERSION")
+        )
+        .into_boxed_str(),
+    )
+}
+
 /// The `shep` command line.
 // `bin_name = "shep"` below is load-bearing, not decoration. Without it, clap
 // renders every `Usage:` line from `argv[0]` rather than from `name` — so
@@ -108,6 +130,7 @@ Upgrading        cargo install shep replaces the binary, not the running shepher
     name = "shep",
     bin_name = "shep",
     version,
+    long_version = version_text(),
     about = "A process manager for your flock",
     propagate_version = true,
     help_template = HELP_TEMPLATE,
@@ -1352,6 +1375,21 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::*;
+
+    /// An operator asking what a build speaks should not have to read
+    /// source to learn how far back it reaches.
+    #[test]
+    fn version_output_names_both_the_protocol_and_the_floor() {
+        let text = version_text();
+        assert!(
+            text.contains(&format!("protocol {PROTOCOL_VERSION}")),
+            "got {text}"
+        );
+        assert!(
+            text.contains(&format!("accepts {MIN_SUPPORTED}")),
+            "got {text}"
+        );
+    }
 
     /// `web/`, three directories above this file, only when it actually
     /// exists.
