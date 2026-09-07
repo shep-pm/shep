@@ -118,8 +118,10 @@ pub struct SheepRow {
     /// `skip_serializing_if`, for the same reason `Self::pending` carries it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub overridden: Option<Vec<String>>,
-    /// The sheep's `max_memory` ceiling in bytes; absent when it has none, or
-    /// when the peer daemon predates the field.
+    /// The sheep's `max_memory` ceiling in bytes; `null` when it has none, or
+    /// when the peer daemon predates the field. No `skip_serializing_if`,
+    /// unlike the two fields above, because `ProcessInfo` carries it without
+    /// one and this type's doc promises byte-identical JSON.
     pub max_memory: Option<u64>,
 }
 
