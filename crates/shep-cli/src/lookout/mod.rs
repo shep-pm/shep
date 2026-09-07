@@ -18,6 +18,7 @@ pub mod field;
 #[cfg(test)]
 pub mod frames;
 pub mod input;
+pub mod level;
 pub mod link;
 pub mod pane;
 pub mod pane_bleats;
