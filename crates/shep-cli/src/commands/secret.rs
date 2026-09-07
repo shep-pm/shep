@@ -72,7 +72,7 @@ pub fn secret(streams: &mut Streams<'_>, paths: &ShepPaths, args: &SecretArgs) -
             let value = if *stdin {
                 match resolve_stdin_value(&mut std::io::stdin().lock()) {
                     Ok(value) => value,
-                    Err(message) => return streams.fail(ExitCode::Failure, &message),
+                    Err((code, message)) => return streams.fail(code, &message),
                 }
             } else {
                 // clap's `required_unless_present = "stdin"` guarantees this.
@@ -123,26 +123,60 @@ pub(crate) fn daemon_config(paths: &ShepPaths) -> DaemonConfig {
 /// `printf %s "$PW" | shep secret set KEY --stdin` both store exactly what
 /// was piped, and nothing wider is touched.
 ///
+/// Bounded at [`STDIN_READ_CAP`] rather than read whole: nothing over
+/// [`secrets::MAX_VALUE_BYTES`] can be stored, so buffering a stream that
+/// size just to refuse it lets whatever is on the other end of the pipe
+/// decide how much memory this process takes.
+///
 /// `reader` rather than reading `std::io::stdin()` directly keeps this
 /// testable without touching the test process's real stdin; [`secret`]
 /// passes the real one.
 ///
 /// # Errors
-/// The read failed, or the trimmed bytes are not valid UTF-8.
-fn resolve_stdin_value(reader: &mut dyn Read) -> Result<String, String> {
+/// The read failed, the value is over [`secrets::MAX_VALUE_BYTES`], or the
+/// trimmed bytes are not valid UTF-8. Each failure carries the code it exits
+/// with, so this verb's two ways of supplying a value refuse the same input
+/// with the same code.
+fn resolve_stdin_value(reader: &mut dyn Read) -> Result<String, (ExitCode, String)> {
     let mut bytes = Vec::new();
     reader
+        .take(STDIN_READ_CAP as u64)
         .read_to_end(&mut bytes)
-        .map_err(|err| format!("could not read the value from stdin: {err}"))?;
+        .map_err(|err| {
+            (
+                ExitCode::Failure,
+                format!("could not read the value from stdin: {err}"),
+            )
+        })?;
     if bytes.last() == Some(&b'\n') {
         bytes.pop();
         if bytes.last() == Some(&b'\r') {
             bytes.pop();
         }
     }
-    String::from_utf8(bytes)
-        .map_err(|_utf8_error| "the value read from stdin is not valid UTF-8".to_string())
+    if bytes.len() > secrets::MAX_VALUE_BYTES {
+        return Err((
+            ExitCode::Usage,
+            format!(
+                "the value read from stdin is over the {}-byte limit",
+                secrets::MAX_VALUE_BYTES
+            ),
+        ));
+    }
+    String::from_utf8(bytes).map_err(|_utf8_error| {
+        (
+            ExitCode::Failure,
+            "the value read from stdin is not valid UTF-8".to_string(),
+        )
+    })
 }
+
+/// How much of stdin `--stdin` will pull before refusing.
+///
+/// Two bytes over [`secrets::MAX_VALUE_BYTES`] so a value at exactly the cap
+/// followed by `\r\n` still trims to something storable, and one more so
+/// anything longer is over the cap after the trim rather than exactly on it.
+const STDIN_READ_CAP: usize = secrets::MAX_VALUE_BYTES + 3;
 
 /// `shep secret set <key> (<value> | --stdin) [--env <environment>]`.
 ///
@@ -684,6 +718,61 @@ mod tests {
     fn stdin_value_trims_nothing_else() {
         let mut input = std::io::Cursor::new(b" hunter2 \r more\n".to_vec());
         assert_eq!(resolve_stdin_value(&mut input).unwrap(), " hunter2 \r more");
+    }
+
+    /// A reader holding `left` bytes of `x`, counting what was pulled out
+    /// of it.
+    struct Oversized {
+        left: usize,
+        pulled: usize,
+    }
+
+    impl Read for Oversized {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let taken = buf.len().min(self.left);
+            buf[..taken].fill(b'x');
+            self.left -= taken;
+            self.pulled += taken;
+            Ok(taken)
+        }
+    }
+
+    /// fails if the read is unbounded: an input nothing will accept must be
+    /// refused off the front of the stream rather than buffered whole and
+    /// then handed to `secrets::set` to reject. The code has to stay
+    /// `Usage`, which is what the positional form's `ValueTooLong` exits.
+    #[test]
+    fn stdin_value_refuses_an_oversized_reader_without_buffering_it() {
+        let mut input = Oversized {
+            left: secrets::MAX_VALUE_BYTES * 4,
+            pulled: 0,
+        };
+
+        let (code, message) = resolve_stdin_value(&mut input).unwrap_err();
+
+        assert_eq!(code, ExitCode::Usage);
+        assert!(
+            message.contains(&secrets::MAX_VALUE_BYTES.to_string()),
+            "the refusal names the limit: {message}"
+        );
+        assert!(
+            input.pulled <= secrets::MAX_VALUE_BYTES + 8,
+            "only a little past the cap may be read, not the whole stream: {}",
+            input.pulled
+        );
+    }
+
+    /// fails if the bound is drawn so tight that a value at exactly the cap
+    /// stops fitting: `echo` appends a newline, so the longest storable
+    /// value arrives as `MAX_VALUE_BYTES` plus `\r\n`.
+    #[test]
+    fn stdin_value_accepts_a_value_at_the_cap_with_a_newline_after_it() {
+        let mut at_cap =
+            std::io::Cursor::new([vec![b'x'; secrets::MAX_VALUE_BYTES], b"\r\n".to_vec()].concat());
+        assert_eq!(
+            resolve_stdin_value(&mut at_cap).unwrap().len(),
+            secrets::MAX_VALUE_BYTES
+        );
     }
 
     /// fails if `set K --stdin` stops parsing with no positional value: the
