@@ -319,44 +319,27 @@ fn parse_raw_denying_unknown(
     Ok(raw)
 }
 
-// Generic over the target type so the same four backends serve both
-// `RawFlockfile` (validation) and `serde_json::Value` (recovering the
-// document's literal keys), the one place that knows all four.
+// Its one caller deserializes into `serde_json::Value`, which claims every
+// key, so `parse_into_ignoring`'s callback never fires here; delegating
+// costs nothing behaviorally and drops a second four-arm format dispatch.
 fn parse_into<T: serde::de::DeserializeOwned>(
     source: &str,
     format: FlockFormat,
 ) -> Result<T, FlockfileError> {
-    match format {
-        FlockFormat::Toml => {
-            toml::from_str(source).map_err(|e| FlockfileError::Toml(e.to_string()))
-        }
-        FlockFormat::Yaml => {
-            serde_saphyr::from_str(source).map_err(|e| FlockfileError::Yaml(e.to_string()))
-        }
-        FlockFormat::Json => {
-            serde_json::from_str(source).map_err(|e| FlockfileError::Json(e.to_string()))
-        }
-        FlockFormat::Json5 => {
-            if json5_nesting_depth(source) > MAX_JSON5_NESTING_DEPTH {
-                return Err(FlockfileError::Json5(
-                    "nesting depth exceeds 64".to_string(),
-                ));
-            }
-            json5::from_str(source).map_err(|e| FlockfileError::Json5(e.to_string()))
-        }
-    }
+    parse_into_ignoring(source, format, |_| {})
 }
 
-// Same per-format dispatch as `parse_into`, but additionally routes each
-// format's `Deserializer` through `serde_ignored::deserialize`, calling
+// The one four-arm format dispatch, shared by `parse_into` (an empty
+// `on_ignored`) and `parse_raw_denying_unknown` (a real one). Each format's
+// `Deserializer` routes through `serde_ignored::deserialize`, calling
 // `on_ignored` once per key the target type did not claim, recursing into
 // nested structs (a Flockfile's `readiness_probe`/`liveness_probe` tables
-// included). Used only by `Flockfile::parse` and `parse_declared`: those are
-// the two places a document really is a hand-written file, where an
-// unrecognized key means a typo. Everywhere else the same `AppConfig`/
-// `ProbeConfig` shape rides the wire, where it means a newer peer instead,
-// which is why the two types dropped `deny_unknown_fields` rather than this
-// function replacing it everywhere.
+// included). The real callback is used only by `Flockfile::parse` and
+// `parse_declared`: those are the two places a document really is a
+// hand-written file, where an unrecognized key means a typo. Everywhere else
+// the same `AppConfig`/`ProbeConfig` shape rides the wire, where it means a
+// newer peer instead, which is why the two types dropped
+// `deny_unknown_fields` rather than this function replacing it everywhere.
 fn parse_into_ignoring<T: serde::de::DeserializeOwned>(
     source: &str,
     format: FlockFormat,
