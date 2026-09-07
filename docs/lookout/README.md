@@ -81,10 +81,12 @@ cargo test -p shep --lib --all-features -- --ignored write_the_gallery
   carries: the gauge repeats `MEM`, the sparkline repeats `CPU`. `SMIT`
   still goes next for being much the widest of what is left, and `EXIT`
   early after it because it renders `-` for every sheep that is still
-  running, which is what the pane shows most of the time. Below 31 columns
+  running, which is what the pane shows most of the time. Below 33 columns
   or 6 rows the pane refuses outright rather than draw overlapping garbage,
   with a two-line message short enough to survive the narrowest terminal it
-  is warning about. The table draws inside a two-column border, so seeing
+  is warning about. The 33 is the table's own 31-column floor plus the
+  2-column gutter the selection marker needs; the table draws inside a
+  two-column border, so seeing
   `MEM/CEIL` at all takes a terminal at least 148 columns wide, and
   `CPU 20s` at least 136.
 
@@ -165,8 +167,9 @@ debt.
   scaled to its own window peak rather than the table's ceiling, since it
   plots a sum across the whole flock. The strip reads machine then flock,
   left to right: load, host memory, the `N errored · N parked` summary,
-  then flock CPU and memory, so the two host readings survive a narrow
-  terminal together, and the summary is what falls off next.
+  flock CPU and memory, then the machine's own uptime, so the two host
+  readings survive a narrow terminal together, and the summary is what
+  falls off next.
 - **The detail pane's two log-path lines became one.** `out` and `err` now
   share a single row with a divider between them and the pair's combined
   size on disk after it, and the pane gained a `cfg !N pending` cell for a
