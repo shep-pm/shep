@@ -457,7 +457,7 @@ reach processes the operator never named.
 | 3 | not found | A selector matched no registered sheep. |
 | 4 | invalid config | A Flockfile or daemon config failed validation. |
 | 5 | daemon unreachable | No daemon answered, and none could be started. |
-| 6 | protocol mismatch | The daemon's protocol is outside this client's supported range: older than its floor, or newer than the daemon can step down to. |
+| 6 | protocol mismatch | The daemon refused this client's `Hello`: its protocol version is below the daemon's `MIN_SUPPORTED` floor. |
 | 7 | spawn failed | The daemon could not spawn a sheep. |
 | 8 | deadline exceeded | The request outlived its deadline. |
 | 9 | internal | An unexpected daemon-side failure. |

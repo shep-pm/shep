@@ -22,7 +22,8 @@ pub enum ExitCode {
     /// No daemon answered, and none could be started.
     #[cfg_attr(windows, allow(dead_code))]
     DaemonUnreachable = 5,
-    /// Client and daemon speak different wire versions.
+    /// The daemon refused this client's handshake: its protocol version is
+    /// below the daemon's `MIN_SUPPORTED` floor.
     ProtocolMismatch = 6,
     /// The daemon could not spawn a sheep.
     SpawnFailed = 7,
