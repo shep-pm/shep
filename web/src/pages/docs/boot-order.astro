@@ -171,6 +171,15 @@ stage 2  web
       started anyway. <code>boot_first_dogs</code> is the lever that
       actually reorders one.
     </p>
+    <Callout variant="careful">
+      Promotion moves the spawn, not the link. The shepherd binds its socket
+      before the restore and starts answering on it after, so a promoted dog
+      whose restore runs past five seconds times out its handshake, exits,
+      and comes back on a restart once the shepherd is serving. The 6.17
+      second flock above is enough to do it. A dog that has to be working
+      before the first sheep writes needs a flock that restores inside five
+      seconds.
+    </Callout>
 
     <h2>When the graph is wrong</h2>
     <p>

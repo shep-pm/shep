@@ -495,6 +495,61 @@ guess entirely rather than asking the operator to guess better. Left for its
 own task because it is a new notify-protocol call, not a fix to anything
 built on this branch.
 
+### A promoted dog cannot handshake during the restore, open, 2026-09-06
+
+`[daemon] boot_first_dogs` spawns a dog ahead of the muster restore, so a
+log-rotation dog is running before a sheep starts writing. The spawn happens
+there, and the link does not. `boot` binds the control socket and hands back a
+`RunningDaemon` without serving it: `RpcServer::serve` runs inside
+`RunningDaemon::run`, after `boot` returns and so after the restore. A dog
+connecting during the restore sits in the listen backlog with nothing
+accepting behind it.
+
+`shep-client`'s `HANDSHAKE_TIMEOUT` is five seconds, and
+`ReconnectingClient`'s first connection is not supervised, on its own rule
+that a socket nobody answers is the caller's error rather than a handover.
+So `DogRuntime::start` returns `ConnectError::HandshakeTimeout`, the dog
+exits `daemon_unreachable`, and the shepherd restarts it. Driven against a
+live daemon, on the boot-order page's own worked example, a three-app
+unprobed chain that costs 6.17 seconds:
+
+```
+20:44:31.584 [shep] shep started this dog; its process is pid 43781
+20:44:36.594 shep dog metrics: no shepherd answered at the socket: the handshake did not complete within 5s
+20:44:36.595 [shep] this dog's process exited with code 5
+20:44:37.589 [shep] shep accepted this dog's handshake; it is registered with this shepherd as `metrics`, on protocol 6
+```
+
+The dog heals itself the moment serving starts, and `shep flock` then shows
+a restart it did not earn. What it does not do is rotate a log during the
+restore, which is the window the promotion exists to cover. A longer restore
+costs one more cycle every five seconds, and no cycle is ever fatal: a
+five-second run is a stable exit against the 1s `min_uptime` default, so the
+`max_restarts` budget resets each time and the dog never errors.
+
+It is not `DOG_SILENCE_BUDGET`, which is also five seconds and reads like the
+culprit. `spawn_silent_dog_watch` is spawned after the restore, and its
+`PeerContacts` starts warming there too, so its earliest verdict lands about
+ten seconds after the restore ends, by which time the dog has handshaken.
+The two budgets carry the same number and answer different questions.
+
+The options, none of them free:
+
+1. Retry the first connect inside `DogRuntime::start`. That reverses what
+   `ReconnectingClient::connect` documents, and it needs a bound, since a dog
+   retrying forever can no longer report a socket nothing is ever going to
+   answer. Any bound is a guess at the length of a restore nobody knows in
+   advance. Every third-party dog on the same SDK inherits whichever answer.
+2. Serve before the restore. `boot`'s rustdoc argues the current order one
+   invariant at a time: readiness reported after the restore is the honest
+   answer to `Type=notify`, and a client connecting during the restore waits
+   with it instead of reading a half-restored flock. Serving first gives up
+   both.
+3. Accept it, and say so where an operator reads it. Promotion buys a dog a
+   spawn that runs first, not a link that works first, and it only holds for
+   a flock that restores inside five seconds. `boot-order.astro` now says
+   that much either way.
+
 ## Ideas, recorded but not designed
 
 Not debt, not deferred spec surface, and not promised to anybody. Things worth
