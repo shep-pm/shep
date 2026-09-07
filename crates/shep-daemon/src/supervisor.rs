@@ -5248,40 +5248,65 @@ impl<R: ProcessRunner> Actor<R> {
         // order does not depend on a `HashMap`'s iteration order.
         armable.sort_unstable_by_key(|(id, _)| *id);
         let entries: Vec<&ProcessEntry> = armable.into_iter().map(|(_, entry)| entry).collect();
-        let paths = &self.paths;
-        // One view for the whole group: every instance of a name shares its
-        // config, so they resolve in the same environment against the same
-        // store. Empty for a group with nothing armable, where the closure
-        // below never runs.
-        let secrets = entries.first().map_or_else(
-            || SecretView::empty(self.host_environment.clone()),
-            |entry| self.secret_view(&entry.spec),
-        );
+        let specs = self.rearm_specs(&entries);
         self.registry.rearm_name(
             name,
             &entries,
             |entry| {
-                // `Credentials` is `Copy`, so this needs no clone. The
-                // unresolved arm costs nothing: an entry reached here is
-                // running and resolved its identity before it started.
-                let credentials = match entry.credentials {
-                    SpawnIdentity::Resolved(credentials) => credentials,
-                    SpawnIdentity::Unresolved => None,
-                };
-                // `describe`: this sheep is up, and a probe it can no longer
-                // build an environment for must not cost it its watch and its
-                // cron worker too.
-                spec_prober(&describe(
-                    &entry.spec,
-                    entry.instance,
-                    paths,
-                    credentials,
-                    &secrets,
-                ))
+                spec_prober(
+                    specs
+                        .get(&entry.id)
+                        .expect("rearm_name: `rearm_specs` described every entry passed to it"),
+                )
             },
             extras,
             &supervisor,
         );
+    }
+
+    /// The [`SpawnSpec`] each armable entry's prober is built from, by id.
+    ///
+    /// One [`SecretView`] per distinct environment across `entries`, not one
+    /// for the group: `environment` is a `NeedsRespawn` field and
+    /// [`Self::promote_pending`] rewrites a single slot, so two instances of
+    /// a name can hold different environments at once and each resolves
+    /// against its own.
+    ///
+    /// [`describe`] rather than [`assemble`]: this sheep is up, and a probe
+    /// it can no longer build an environment for must not cost it its watch
+    /// and its cron worker too.
+    fn rearm_specs(&self, entries: &[&ProcessEntry]) -> HashMap<u32, SpawnSpec> {
+        let mut views: HashMap<&str, SecretView> = HashMap::new();
+        let mut specs = HashMap::with_capacity(entries.len());
+        for entry in entries {
+            let environment = entry
+                .spec
+                .config()
+                .environment
+                .as_deref()
+                .unwrap_or(&self.host_environment);
+            let secrets = views
+                .entry(environment)
+                .or_insert_with(|| self.secret_view(&entry.spec));
+            // `Credentials` is `Copy`, so this needs no clone. The unresolved
+            // arm costs nothing: an entry reached here is running and
+            // resolved its identity before it started.
+            let credentials = match entry.credentials {
+                SpawnIdentity::Resolved(credentials) => credentials,
+                SpawnIdentity::Unresolved => None,
+            };
+            specs.insert(
+                entry.id,
+                describe(
+                    &entry.spec,
+                    entry.instance,
+                    &self.paths,
+                    credentials,
+                    secrets,
+                ),
+            );
+        }
+        specs
     }
 
     /// Accepts a reload: answers the caller at once, then starts one swap per
@@ -20497,6 +20522,44 @@ mod tests {
         assert!(
             err.to_string().contains("production"),
             "the host default is what the second one asked for: {err}"
+        );
+    }
+
+    /// `environment` is a `NeedsRespawn` field and a promotion rewrites one
+    /// slot at a time, so two instances of a name can hold different
+    /// environments at once. Each prober resolves against its own slot.
+    #[test]
+    fn a_rearm_resolves_each_instance_against_its_own_environment() {
+        let dir = tempfile::tempdir().unwrap();
+        let actor = actor_with_an_empty_flock(&dir, vec![]);
+        shep_core::secrets::set(&actor.paths.secrets, "K", "production", "live").unwrap();
+        shep_core::secrets::set(&actor.paths.secrets, "K", "staging", "rehearsal").unwrap();
+        // `armed_entry` assembles against an empty view, which a templated
+        // app cannot resolve, so the reference goes on afterwards.
+        let entry_of = |id: u32, environment: &str| {
+            let mut entry = armed_entry(id, id, 4300 + id, app_with("web", |_| {}), &actor.paths);
+            entry.spec = app_with("web", |app| {
+                app.environment = Some(environment.to_string());
+                app.env.insert("K".to_string(), "{{secret:K}}".to_string());
+            });
+            entry
+        };
+        let promoted = entry_of(0, "staging");
+        let waiting = entry_of(1, "production");
+
+        let specs = actor.rearm_specs(&[&promoted, &waiting]);
+
+        assert_eq!(
+            specs[&0].env.get("K").map(String::as_str),
+            Some("rehearsal"),
+            "the promoted instance reads its own staging slot: {:?}",
+            specs[&0]
+        );
+        assert_eq!(
+            specs[&1].env.get("K").map(String::as_str),
+            Some("live"),
+            "the instance still on the old config keeps production: {:?}",
+            specs[&1]
         );
     }
     /// [`BatchPolicy::AllOrNothing`] promises to register none of a batch it
