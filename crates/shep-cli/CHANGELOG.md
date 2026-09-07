@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-07
+
+### Changed
+
+- Merge settings/config_pane into one Body enum
+- Let the compiler catch a scene missing from Scene::ALL
+- Generate Scene::ALL from the same list as the enum
+
+### Fixed
+
+- Pin dashboard-not-settings on esc from a raced config pane
+- Ignore a settings read that lands after a config pane opened
+- Arm text mode only when the settings editor is really back up
+
+
 ## [0.5.0] - 2026-09-07
 
 ### Added
