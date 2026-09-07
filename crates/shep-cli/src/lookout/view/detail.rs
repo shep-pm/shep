@@ -778,12 +778,20 @@ mod tests {
     fn a_wide_character_group_name_does_not_push_the_first_line_past_width() {
         let app = app_with(
             vec![
-                ProcessInfo::builder(1, "\u{7f8a}\u{7f8a}\u{7f8a}\u{7f8a}\u{7f8a}", ProcStatus::Online)
-                    .instance(Some(0))
-                    .build(),
-                ProcessInfo::builder(2, "\u{7f8a}\u{7f8a}\u{7f8a}\u{7f8a}\u{7f8a}", ProcStatus::Online)
-                    .instance(Some(1))
-                    .build(),
+                ProcessInfo::builder(
+                    1,
+                    "\u{7f8a}\u{7f8a}\u{7f8a}\u{7f8a}\u{7f8a}",
+                    ProcStatus::Online,
+                )
+                .instance(Some(0))
+                .build(),
+                ProcessInfo::builder(
+                    2,
+                    "\u{7f8a}\u{7f8a}\u{7f8a}\u{7f8a}\u{7f8a}",
+                    ProcStatus::Online,
+                )
+                .instance(Some(1))
+                .build(),
             ],
             plain(),
         );
