@@ -1378,6 +1378,25 @@ pub struct App {
 /// slot, id, and whether it names a dog.
 type RowEntry<'a> = (&'a str, Option<u32>, u32, bool);
 
+/// Splits `entries` into contiguous runs sharing a name, in the order they
+/// already sit in (name-sorted, so a run is always one unbroken slice).
+/// [`App::push_fold_group_rows`] and [`App::push_grouped_rows`] walk the same
+/// runs and then disagree on what to do with one, which is the two-levels
+/// rule itself and stays out of this helper.
+fn name_runs<'a>(entries: &'a [RowEntry<'a>]) -> impl Iterator<Item = &'a [RowEntry<'a>]> {
+    let mut rest = entries;
+    std::iter::from_fn(move || {
+        let name = rest.first()?.0;
+        let end = rest
+            .iter()
+            .position(|entry| entry.0 != name)
+            .unwrap_or(rest.len());
+        let (run, tail) = rest.split_at(end);
+        rest = tail;
+        Some(run)
+    })
+}
+
 impl App {
     /// A dashboard with an empty flock, a live link, and no notice.
     #[must_use]
@@ -3904,39 +3923,25 @@ impl App {
     /// levels deep (fold, app, instance). An app with no group still gets
     /// its ordinary sheep row, exactly as the flat path would draw it.
     fn push_fold_group_rows(&self, entries: &[RowEntry<'_>], out: &mut Vec<RowKey>) {
-        let mut at = 0;
-        while at < entries.len() {
-            let name = entries[at].0;
-            let end = entries[at..]
-                .iter()
-                .position(|entry| entry.0 != name)
-                .map_or(entries.len(), |offset| at + offset);
-            let group = &entries[at..end];
+        for run in name_runs(entries) {
+            let name = run[0].0;
             if self.is_grouped(name) {
                 out.push(RowKey::Group(name.to_string()));
             } else {
-                out.extend(group.iter().map(|entry| RowKey::Sheep(entry.2)));
+                out.extend(run.iter().map(|entry| RowKey::Sheep(entry.2)));
             }
-            at = end;
         }
     }
 
     /// Appends `entries`' rows to `out`, splicing a [`RowKey::Group`] header
     /// before a grouped app's instances.
     fn push_grouped_rows(&self, entries: &[RowEntry<'_>], out: &mut Vec<RowKey>) {
-        let mut at = 0;
-        while at < entries.len() {
-            let name = entries[at].0;
-            let end = entries[at..]
-                .iter()
-                .position(|entry| entry.0 != name)
-                .map_or(entries.len(), |offset| at + offset);
-            let group = &entries[at..end];
+        for run in name_runs(entries) {
+            let name = run[0].0;
             if self.is_grouped(name) {
                 out.push(RowKey::Group(name.to_string()));
             }
-            out.extend(group.iter().map(|entry| RowKey::Sheep(entry.2)));
-            at = end;
+            out.extend(run.iter().map(|entry| RowKey::Sheep(entry.2)));
         }
     }
 
