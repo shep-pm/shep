@@ -1609,6 +1609,17 @@ impl App {
             Msg::Settings { result } => {
                 let opening = self.settings().is_none();
                 match result {
+                    // A config pane opened while this read was in flight, so
+                    // the operator asked for the pane AFTER asking for
+                    // settings and this reply is the stale one. Adopting it
+                    // would replace the pane with a settings screen the
+                    // operator has moved on from, and leave `config_target`
+                    // and `pane_menu` describing a screen that is no longer
+                    // up. The `Body` enum stops the two coexisting; it does
+                    // not stop this handler overwriting one with the other,
+                    // which is the same race `on_sheep_config` had in the
+                    // opposite direction.
+                    Ok(_) if self.config_pane().is_some() => {}
                     Ok(snapshot) => {
                         // An action armed while the read was in flight: once
                         // the screen is up, `on_settings_key` no-ops `Confirm`
@@ -6930,6 +6941,40 @@ mod tests {
         assert!(
             matches!(app.body(), Body::FlockTable),
             "esc from the pane goes to the dashboard, not back to settings"
+        );
+        assert!(app.settings().is_none());
+    }
+
+    /// The sibling above pins the order where the settings read wins. This
+    /// is the other one, and it is the order that used to corrupt state:
+    /// the pane's own reply lands first, and the settings read arrives with
+    /// the operator two actions past caring about it. `Msg::Settings` wrote
+    /// `body` unconditionally, so the reply replaced the pane, reset the
+    /// cursor as if opening, and forced `InputMode::Normal` while
+    /// `config_target` and `pane_menu` went on describing a pane that was
+    /// no longer on screen.
+    #[test]
+    fn a_settings_read_landing_after_a_config_pane_leaves_the_pane_up() {
+        let mut app =
+            fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Settings));
+        let _ = app.update(Msg::Key(KeyPress::Edit));
+        app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "web".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(
+                fixtures::sheep_config_view(),
+            ))),
+        });
+        assert!(app.config_pane().is_some(), "the pane reply lands first");
+
+        let _ = app.update(Msg::Settings {
+            result: Ok(fixtures::settings_snapshot()),
+        });
+        assert!(
+            app.config_pane().is_some(),
+            "the stale settings reply leaves the pane alone"
         );
         assert!(app.settings().is_none());
     }
