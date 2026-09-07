@@ -3047,6 +3047,50 @@ mod tests {
     }
 
     #[test]
+    fn hello_ack_handshake_shape() {
+        let ack = HelloAck {
+            daemon_version: "0.5.0".to_string(),
+            protocol: PROTOCOL_VERSION,
+            pid: 1234,
+            min_supported: Some(crate::protocol::MIN_SUPPORTED),
+        };
+        let json = serde_json::to_string(&ack).unwrap();
+        assert_eq!(
+            json,
+            r#"{"daemon_version":"0.5.0","protocol":7,"pid":1234,"min_supported":7}"#
+        );
+        assert_eq!(serde_json::from_str::<HelloAck>(&json).unwrap(), ack);
+    }
+
+    /// `min_supported` is `None` from a daemon predating the floor, and the
+    /// omission has to be a missing key rather than `null`, or it would move
+    /// `PROTOCOL_VERSION` for every daemon that already ships one.
+    #[test]
+    fn hello_ack_without_min_supported_omits_the_key_not_nulls_it() {
+        let ack = HelloAck {
+            daemon_version: "0.5.0".to_string(),
+            protocol: PROTOCOL_VERSION,
+            pid: 1234,
+            min_supported: None,
+        };
+        let json = serde_json::to_string(&ack).unwrap();
+        assert_eq!(
+            json,
+            r#"{"daemon_version":"0.5.0","protocol":7,"pid":1234}"#
+        );
+        assert!(!json.contains("min_supported"));
+    }
+
+    /// An old daemon fixture, from before the floor existed, still decodes.
+    #[test]
+    fn an_old_hello_ack_without_min_supported_still_parses() {
+        let fixture = r#"{"daemon_version":"0.1.14","protocol":2,"pid":9}"#;
+        let ack: HelloAck = serde_json::from_str(fixture).unwrap();
+        assert_eq!(ack.protocol, 2);
+        assert_eq!(ack.min_supported, None);
+    }
+
+    #[test]
     fn hello_reply_carries_typed_skew_error() {
         let refusal: HelloReply = Err(RpcError {
             code: RpcErrorCode::ProtocolMismatch,
