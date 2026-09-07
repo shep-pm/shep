@@ -85,6 +85,12 @@ impl core::error::Error for TemplateError {}
 /// Redacted by construction (IR-41): a variant carries the reference as the
 /// operator wrote it, the namespace and the environment, and no field can
 /// hold a value.
+///
+/// `#[non_exhaustive]`: shep-core is published, so a new way for a
+/// reference to fail must not break an out-of-tree `match`. It costs
+/// in-tree callers nothing, since [`Self::is_retriable`] already gives them
+/// the one classification they act on.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RenderError {
     /// The store holds no value for this reference in this environment
