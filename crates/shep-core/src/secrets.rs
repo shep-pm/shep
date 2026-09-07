@@ -1319,18 +1319,33 @@ mod tests {
         );
     }
 
+    /// Exact strings for both renderings (IR-41): every variant is meant to
+    /// carry a name and never a value, and a substring check cannot see a
+    /// field it was never told to look for.
     #[test]
     fn error_messages_name_the_key_and_never_a_value() {
-        let err = SecretError::ValueTooLong {
+        let too_long = SecretError::ValueTooLong {
             key: "K".to_string(),
             len: 9999,
         };
-        let rendered = err.to_string();
-        assert!(rendered.contains('K'), "{rendered}");
-        assert!(rendered.contains("9999"), "{rendered}");
-        assert!(
-            !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
-            "no em or en dash in copy a user reads: {rendered}"
+        assert_eq!(
+            too_long.to_string(),
+            format!("value for `K` is 9999 bytes, over the {MAX_VALUE_BYTES}-byte limit")
         );
+        assert_eq!(
+            format!("{too_long:?}"),
+            "ValueTooLong { key: \"K\", len: 9999 }"
+        );
+
+        let bad_key = SecretError::InvalidKey("has space".to_string());
+        assert_eq!(bad_key.to_string(), "`has space` is not a valid secret key");
+        assert_eq!(format!("{bad_key:?}"), "InvalidKey(\"has space\")");
+
+        for rendered in [too_long.to_string(), bad_key.to_string()] {
+            assert!(
+                !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
+                "no em or en dash in copy a user reads: {rendered}"
+            );
+        }
     }
 }

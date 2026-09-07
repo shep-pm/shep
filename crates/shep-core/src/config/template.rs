@@ -542,21 +542,39 @@ mod tests {
         assert!(!err.is_retriable());
     }
 
+    /// Every variant, both renderings, as exact strings (IR-41): a field
+    /// added later that captured a resolved value would leak through the
+    /// derived `Debug`, and a `contains` check cannot see a field it was
+    /// never told to look for.
     #[test]
     fn no_render_error_ever_prints_a_value() {
-        // Every variant, checked against the one value the fixture holds.
-        // Debug as well as Display: a field added later that captured a
-        // resolved value would leak through the derive.
-        for value in ["{{secret:ABSENT}}", "{{secret:vault/ANY}}"] {
-            let err = render(value, "web", 0, &view("production")).unwrap_err();
-            for rendered in [err.to_string(), format!("{err:?}")] {
-                assert!(!rendered.contains("hunter2"), "{rendered}");
-                assert!(!rendered.contains("sk_live"), "{rendered}");
-                assert!(
-                    !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
-                    "no em or en dash in copy a user reads: {rendered}"
-                );
-            }
+        let unresolved = render("{{secret:ABSENT}}", "web", 0, &view("production")).unwrap_err();
+        assert_eq!(
+            unresolved.to_string(),
+            "`{{secret:ABSENT}}` has no value in the `production` environment"
+        );
+        assert_eq!(
+            format!("{unresolved:?}"),
+            "Unresolved { reference: \"{{secret:ABSENT}}\", environment: \"production\" }"
+        );
+
+        let unready = render("{{secret:vault/ANY}}", "web", 0, &view("production")).unwrap_err();
+        assert_eq!(
+            unready.to_string(),
+            "`{{secret:vault/ANY}}` reads the `vault` namespace, which no provider dog \
+             has pushed to for the `production` environment yet"
+        );
+        assert_eq!(
+            format!("{unready:?}"),
+            "NamespaceUnready { namespace: \"vault\", reference: \"{{secret:vault/ANY}}\", \
+             environment: \"production\" }"
+        );
+
+        for rendered in [unresolved.to_string(), unready.to_string()] {
+            assert!(
+                !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
+                "no em or en dash in copy a user reads: {rendered}"
+            );
         }
     }
 

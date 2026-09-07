@@ -818,9 +818,19 @@ mod tests {
         )
         .unwrap_err();
         assert!(!err.is_retriable());
+        // Exact strings for both renderings (IR-41): the type is meant to
+        // carry a field name and a reference and never a value, and a
+        // substring check cannot see a field it was never told about.
+        assert_eq!(
+            err.to_string(),
+            "`PW`: `{{secret:ABSENT}}` has no value in the `production` environment"
+        );
+        assert_eq!(
+            format!("{err:?}"),
+            "Template { field: \"PW\", source: Unresolved { reference: \"{{secret:ABSENT}}\", \
+             environment: \"production\" } }"
+        );
         let rendered = err.to_string();
-        assert!(rendered.contains("PW"), "names the env key: {rendered}");
-        assert!(rendered.contains("ABSENT"), "{rendered}");
         assert!(
             !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
             "no em or en dash in copy a user reads: {rendered}"
