@@ -142,11 +142,15 @@ debt.
 ## What 1a settled
 
 - **The flock table grew two columns.** `CPU 20s` is a ten-cell sparkline of
-  the sheep's own CPU history; `MEM/CEIL` is a ten-cell gauge of RSS against
-  the sheep's `max_memory`, when it has one. Fourteen columns total, with
-  `NAME` still taking whatever width is left over. Both are read
-  restatements of `CPU` and `MEM`, which is why the drop ladder above sheds
-  them first.
+  the sheep's own CPU history, scaled to one ceiling shared by every row —
+  the busiest sample any sheep has posted in the retained window, floored at
+  2% — so rows read against each other instead of each filling its own
+  column. `MEM/CEIL` is a ten-cell gauge of RSS against the sheep's
+  `max_memory`, when it has one. Fourteen columns total, with `NAME` capped
+  at 32 (`NAME_MAX`): past that width the table ends and the row stays
+  empty, rather than `NAME` swallowing the rest of a wide terminal. Both new
+  columns are read restatements of `CPU` and `MEM`, which is why the drop
+  ladder above sheds them first.
 - **The title, the two section bands, and the selected row all paint now.**
   The title and the `FLOCK`/`DOGS` bands are reverse video: meadow for the
   flock band, sky for dogs, and the title turns bark when the link to the
@@ -157,10 +161,12 @@ debt.
   text, and the selected row falls back to the `>` gutter it always had.
 - **The host strip gained two gauges and a sparkline.** A ten-cell load
   gauge and a ten-cell memory gauge sit next to the numbers they used to
-  print alone, and an eight-cell sparkline now rides beside `flock cpu`. The
-  `N errored · N parked` summary moved to sit right after the load segment,
-  so it is one of the first things left when a narrow terminal starts
-  truncating the strip from the right.
+  print alone, and an eight-cell sparkline now rides beside `flock cpu`,
+  scaled to its own window peak rather than the table's ceiling, since it
+  plots a sum across the whole flock. The strip reads machine then flock,
+  left to right: load, host memory, the `N errored · N parked` summary,
+  then flock CPU and memory — so the two host readings survive a narrow
+  terminal together, and the summary is what falls off next.
 - **The detail pane's two log-path lines became one.** `out` and `err` now
   share a single row with a divider between them and the pair's combined
   size on disk after it, and the pane gained a `cfg !N pending` cell for a
