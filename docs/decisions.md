@@ -617,13 +617,13 @@ ProcessEntry gains dog: Option<DogSource>; ProcessInfo carries it onto the wire,
 
 `docs/writing-plans/plans/2026-08-12-shep-phase9-dogs.md:95`
 
-### A reload's own deadline is exposed per-instance on ProcessInfo, not as a sibling field on Response::Reloading - *unverified*
+### A reload's own deadline is exposed per-instance on ProcessInfo, not as a sibling field on Response::Reloading - *unverified* - **superseded**
 
 An external ledger recorded the maintainer's decision as "the reload deadline rides the reload response, as an additive field, no PROTOCOL_VERSION bump needed" - re-deriving from the actual wire shape found that premise WRONG and switched the design to a new ProcessInfo::reload_deadline_ms: Option<u64> field instead, still additive, still version 1.
 
 **Why:** Response::Reloading(Vec<ProcessInfo>) is a tuple variant under #[serde(tag="kind", content="data")]; giving it a sibling field would turn `data` from a JSON array into an object, which shep's own documented wire-evolution rule classifies as a retype requiring a PROTOCOL_VERSION bump - and since the handshake compares versions for strict equality, that would stop every published client talking to every published daemon over one advisory number. Putting the deadline on ProcessInfo instead is strictly better, not merely a workaround: it's computed per-replacement-instance from that instance's own registered listen_timeout+graceful_timeout+slack (exactly what arm_reload_deadline already computes internally), so it hands a dog the real per-instance number rather than one it would otherwise have to infer from a possibly-stale Flockfile copy, and it closes the instance-counting gap too since one field appears per ProcessInfo already returned.
 
-`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:1261 (NOT yet shipped - no reload_deadline_ms field exists on ProcessInfo in the current tree)`
+`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:1261 (NOT yet shipped - no reload_deadline_ms field exists on ProcessInfo in the current tree)`. Replaced by: "The handshake takes a floor, not a strict match" below, for the "since the handshake compares versions for strict equality" clause in the Why. Everything else about this entry, the retype-forces-a-bump reasoning and the choice to put the deadline on ProcessInfo, still holds.
 
 ### A running dog does not see a config change until disable+enable
 
@@ -1960,6 +1960,32 @@ older client cannot parse.
 
 `verified crates/shep-core/src/protocol/mod.rs (PROTOCOL_VERSION, and the doc comment naming the retype), crates/shep-core/src/protocol/request.rs (Response::Reloading's accepted/refused fields)`
 
+### `PROTOCOL_VERSION` moved to 7 for the same retype applied to `Response::Restarted`
+
+The reload half of the entry above shipped with a channel for per-app
+refusals and the restart half did not, so a staged restart that could not
+restart one member answered `Ok` with that member's row absent, exit 0, and a
+`tracing::warn!` as the only record. `Restarted` became a struct variant
+carrying `accepted` and `refused`, and the constant moved 6 to 7.
+
+**Why:** Identical reasoning to the 5 to 6 move, applied to the other verb
+that walks stages. A tuple variant serializes `Restarted` as a JSON array
+under `data` and a struct variant serializes it as an object, which the
+protocol's own doc comment names as bump-forcing, and a peer still on 6 would
+fail to decode a reply to a verb that already ships rather than merely miss a
+new capability. The bump makes that a named `protocol_mismatch` refusal, exit
+6, at the handshake.
+
+Restart's refusals are rarer than reload's and that is not a reason to leave
+the gap. `SupervisorError::ReloadInFlight` gives reload a refusal an operator
+meets on any busy fold; a per-member restart can only fail `NotFound`, when
+the sheep left the flock between the walk being planned from a listing and
+the member being called, or `EngineStopped`. Both are races rather than
+routine, and both are exactly the case where a silently missing row is worst:
+nothing else reports them, and `shep restart all` is a deploy step.
+
+`verified crates/shep-core/src/protocol/mod.rs (PROTOCOL_VERSION, and the doc comment naming the retype), crates/shep-core/src/protocol/request.rs (Response::Restarted's accepted/refused fields), crates/shep-daemon/src/rpc.rs (restart_in_stages)`
+
 ### An app something depends on waits out `listen_timeout`, and there is no `boot_delay`
 
 An app a later stage depends on is armed with `ReadinessSource::Heuristic` instead of being inserted `Online` at spawn. It sits `Starting` for its own `listen_timeout`, 3000ms by default, then flips and the stage advances. The gating is per app: `Command::Start` carries a `gate: BTreeSet<String>` naming the apps in this batch that something later waits on, so `shep start db` on its own is untouched.
@@ -2001,3 +2027,13 @@ The spec's second promotion, a sheep pulling a dog earlier by naming it in `depe
 **Why:** Rolling back means stopping apps that came up fine, on a guess about what the operator wanted. An operator who wants them down types `shep stop`; one who wants to fix the failing stage would otherwise have to bring the whole flock up again. Naming what is running costs one `Command::List`, on the failure path only and only under `AllOrNothing`, where the walk is ending either way. `left_running` reads the live flock rather than the walk's own record, because `do_start` refuses a batch in advance only for the checks it can make in advance: a spawn that fails at exec leaves the batch part-registered, and those apps are in no stage the walk completed.
 
 `verified crates/shep-daemon/src/boot_order.rs (left_running, and the two AllOrNothing messages it feeds)`
+
+## Protocol compatibility
+
+### The handshake takes a floor, not a strict match
+
+`Hello` and `HelloAck` compare against `MIN_SUPPORTED`, not against equality on `PROTOCOL_VERSION`. The check is one-directional: a daemon at 7 refuses a client below `MIN_SUPPORTED`, but nothing on the client side evaluates the daemon's version. `HelloAck::min_supported` carries the daemon's floor across the wire, but no client reads it today; the field exists so a client can act on it later without another protocol bump. Both fields are additive: `dog_name` and `min_supported` are absent, not `null`, on a peer that predates them, so the constant does not move for either.
+
+**Why:** Strict equality was the shipped handshake through 0.5.0, and this branch replaced it. Several entries above already priced a bump as "refuse every older client for every verb until the shepherd restarts," which only made sense because that refusal was real. A floor keeps the refusal for an actual break, an old peer that cannot decode a retyped payload, while letting an additive change on either side of the handshake, a new optional field, a new `ServerFrame` variant like a progress frame, cross a version gap that a strict-equality read would have refused for no decoding reason at all. `reply_id`'s own fix in this same wave depends on the same idea at the frame level: a client has to keep working when the daemon on the other end sends something one version newer than what shipped it.
+
+`verified crates/shep-core/src/protocol/mod.rs (MIN_SUPPORTED, PROTOCOL_VERSION), crates/shep-core/src/protocol/request.rs (Hello::dog_name, HelloAck::min_supported)`

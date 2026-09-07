@@ -19,6 +19,15 @@ ratatui = "ratatui"
 # `toml::ser`, serde's real serialize-module path. Not a typo of "set".
 ser = "ser"
 
+# A deliberate misspelling of `timeout`, in the Flockfile test that proves a
+# typo inside a nested `readiness_probe` table is caught and named
+# (crates/shep-core/src/config/flockfile.rs). The same string sits in that
+# test's TOML fixture a few lines above and slips past on its own, because
+# the escaped newline before it makes the tokenizer read `ntimeuot`. Listing
+# it keeps the fixture and the assertion spelled the same, which is the whole
+# point of the test.
+timeuot = "timeuot"
+
 # `flate2`, the real compression crate named in the trace docs
 # (docs/systematic-refactor/refactor-workspace/trace/_all-rust_map.md).
 flate = "flate"

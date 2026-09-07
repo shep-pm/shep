@@ -86,6 +86,14 @@ pub enum RequestError {
     Closed,
     /// `body` failed to encode onto the wire.
     Wire(WireError),
+    /// The daemon's reply arrived but this build could not decode it.
+    ///
+    /// Distinct from [`Self::Rpc`]: the daemon did not report a structured
+    /// error, it answered with something (a `Reply` or an unrecognized
+    /// `ServerFrame` variant) that does not match the shapes this build
+    /// knows. The likely cause is a daemon newer than this client, not a
+    /// daemon-side failure, so the message says which side could not read.
+    Undecodable(WireError),
 }
 
 impl fmt::Display for RequestError {
@@ -95,6 +103,10 @@ impl fmt::Display for RequestError {
             Self::Timeout { after } => write!(f, "no reply within {after:?}"),
             Self::Closed => f.write_str("the connection closed before a reply arrived"),
             Self::Wire(err) => write!(f, "request frame error: {err}"),
+            Self::Undecodable(err) => write!(
+                f,
+                "this client could not decode the daemon's reply ({err}); the daemon is likely newer than this build"
+            ),
         }
     }
 }
@@ -102,7 +114,7 @@ impl fmt::Display for RequestError {
 impl core::error::Error for RequestError {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
-            Self::Wire(err) => Some(err),
+            Self::Wire(err) | Self::Undecodable(err) => Some(err),
             Self::Rpc(_) | Self::Timeout { .. } | Self::Closed => None,
         }
     }

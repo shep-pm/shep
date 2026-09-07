@@ -370,6 +370,7 @@ mod tests {
             daemon_version: "0.1.8".to_string(),
             protocol: shep_core::protocol::PROTOCOL_VERSION,
             pid: 4242,
+            min_supported: None,
         };
         let (client, _fake) = shep_client::testing::fake_client_with_ack(&addr, ack).await;
         let flock = ClientFlock(client);
@@ -396,6 +397,7 @@ mod tests {
             daemon_version: env!("CARGO_PKG_VERSION").to_string(),
             protocol: shep_core::protocol::PROTOCOL_VERSION,
             pid: 4242,
+            min_supported: None,
         };
         let (client, _fake) = shep_client::testing::fake_client_with_ack(&addr, ack).await;
         let flock = ClientFlock(client);

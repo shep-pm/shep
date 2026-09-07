@@ -418,6 +418,7 @@ mod tests {
             daemon_version: "0.2.0".into(),
             protocol: PROTOCOL_VERSION,
             pid: 5150,
+            min_supported: None,
         };
         let shepherds = fake_daemon_across_handovers(
             &socket,

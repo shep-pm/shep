@@ -22,7 +22,8 @@ pub enum ExitCode {
     /// No daemon answered, and none could be started.
     #[cfg_attr(windows, allow(dead_code))]
     DaemonUnreachable = 5,
-    /// Client and daemon speak different wire versions.
+    /// The daemon refused this client's handshake: its protocol version is
+    /// below the daemon's `MIN_SUPPORTED` floor.
     ProtocolMismatch = 6,
     /// The daemon could not spawn a sheep.
     SpawnFailed = 7,
@@ -51,6 +52,12 @@ pub enum ExitCode {
     /// [`ExitCode::ProtocolMismatch`] instead. Never returned for `kill`,
     /// `daemon reload` or `ping`, which are how an operator gets out of it.
     VersionSkew = 12,
+    /// The daemon understood the handshake but not the request itself.
+    ///
+    /// [`RpcErrorCode::Unsupported`]: the verb this binary sent is not one
+    /// the connected daemon implements, so a newer shepherd is the remedy
+    /// rather than different arguments.
+    Unsupported = 13,
 }
 
 impl ExitCode {
@@ -75,6 +82,7 @@ impl ExitCode {
             Self::DaemonAlreadyRunning => "daemon_already_running",
             Self::FlockEmpty => "flock_empty",
             Self::VersionSkew => "version_skew",
+            Self::Unsupported => "unsupported",
         }
     }
 }
@@ -92,6 +100,7 @@ impl From<RpcErrorCode> for ExitCode {
             RpcErrorCode::ProtocolMismatch => Self::ProtocolMismatch,
             RpcErrorCode::Internal => Self::Internal,
             RpcErrorCode::DeadlineExceeded => Self::DeadlineExceeded,
+            RpcErrorCode::Unsupported => Self::Unsupported,
             _ => Self::Internal,
         }
     }
@@ -198,6 +207,7 @@ mod tests {
             ExitCode::DaemonAlreadyRunning,
             ExitCode::FlockEmpty,
             ExitCode::VersionSkew,
+            ExitCode::Unsupported,
         ];
         let strings: Vec<&str> = all.iter().map(|c| c.code_str()).collect();
         assert!(strings.iter().all(|s| !s.is_empty()));
