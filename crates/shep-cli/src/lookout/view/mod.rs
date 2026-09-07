@@ -27,7 +27,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use self::flock::MIN_HEIGHT;
-use super::app::{App, Link, RowKey};
+use super::app::{App, Body, Link, RowKey};
 use super::theme::Palette;
 use crate::vocabulary::Role;
 
@@ -218,34 +218,35 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
         y += 1;
     }
 
-    // The settings screen owns the whole body between the title and the
-    // status bar. That is a swap, not an overlay: the banner, the host
-    // strip, the flock table and the two bottom panes all belong to the
-    // body this branch replaces, so none of them draw while it is open.
-    // The config pane owns the same body and is checked first, the same
-    // order `App::on_key` uses.
-    if let Some(pane) = app.config_pane() {
-        let body = Rect {
-            x: area.x,
-            y,
-            width,
-            height: body_rows(area),
-        };
-        pane::draw_pane(app, pane, body, buffer);
-        buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
-        return;
-    }
-
-    if let Some(settings) = app.settings() {
-        let body = Rect {
-            x: area.x,
-            y,
-            width,
-            height: body_rows(area),
-        };
-        settings::draw_settings(app, settings, body, buffer);
-        buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
-        return;
+    // The settings screen and the config pane each own the whole body
+    // between the title and the status bar: a swap, not an overlay, so
+    // nothing below draws while one is up. One `match` on `App::body`
+    // rather than two sequential `if let`s, since the two can never both
+    // be open at once.
+    match app.body() {
+        Body::ConfigPane(pane) => {
+            let body = Rect {
+                x: area.x,
+                y,
+                width,
+                height: body_rows(area),
+            };
+            pane::draw_pane(app, pane, body, buffer);
+            buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
+            return;
+        }
+        Body::Settings(settings) => {
+            let body = Rect {
+                x: area.x,
+                y,
+                width,
+                height: body_rows(area),
+            };
+            settings::draw_settings(app, settings, body, buffer);
+            buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
+            return;
+        }
+        Body::FlockTable => {}
     }
 
     if let Some(banner) = status::banner_line(app) {

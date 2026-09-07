@@ -1231,6 +1231,24 @@ const HISTORY: usize = 140;
 /// enough that nothing else does.
 const CPU_CEILING_FLOOR: f32 = 2.0;
 
+/// What occupies the body between the title band and the status bar.
+///
+/// A variant per pane rather than a shared "which pane is open" enum plus
+/// separate state for each: the flock table needs no state of its own, and
+/// the other two carry their screen's whole state directly, so there is
+/// nowhere for a stale value to survive a switch. See [`App::body`]'s doc
+/// comment for why this replaced two `Option` fields.
+#[derive(Debug)]
+pub(crate) enum Body {
+    /// The dashboard: flock table, host strip, sheep detail, bleats feed.
+    FlockTable,
+    /// The settings screen, opened by [`KeyPress::Settings`].
+    Settings(Settings),
+    /// An open config pane, for a sheep or a dog, opened by
+    /// [`KeyPress::Edit`].
+    ConfigPane(ConfigPane),
+}
+
 /// The whole dashboard's state.
 #[derive(Debug)]
 pub struct App {
@@ -1281,8 +1299,11 @@ pub struct App {
     lambs: Option<LambReading>,
     /// The one action this dashboard is in the middle of, or `None`.
     action: Option<Action>,
-    /// The settings screen's own state. `None` is the dashboard.
-    settings: Option<Settings>,
+    /// What the body between the title band and the status bar is showing.
+    ///
+    /// One field rather than the two `Option`s this replaced: see [`Body`]'s
+    /// doc for why.
+    body: Body,
     /// Which sheep a config pane is open for, or wanted for.
     ///
     /// Set when the read goes out, cleared when the pane closes, checked
@@ -1297,14 +1318,6 @@ pub struct App {
     /// probed once at open and reused on every re-read, so `r` never
     /// respawns the dog's binary. Cleared alongside `config_target`.
     dog_target: Option<DogProbe>,
-    /// The open config pane, or `None`. Opened by `e` on a selected sheep,
-    /// and closed by `e` or `Escape` from inside it.
-    ///
-    /// A sibling of [`Self::settings`] rather than a field on it: the two
-    /// screens open from different places and neither is reachable from the
-    /// other. `on_key` checks this one first, so a pane opened over the
-    /// dashboard owns the keyboard for as long as it is up.
-    config_pane: Option<ConfigPane>,
     /// The apply offer over the open pane, or `None`.
     ///
     /// Opened by `Escape` on a pane with parked fields and the gate open,
@@ -1350,10 +1363,9 @@ impl App {
             feed: super::tail::Tail::default(),
             lambs: None,
             action: None,
-            settings: None,
+            body: Body::FlockTable,
             config_target: None,
             dog_target: None,
-            config_pane: None,
             pane_menu: None,
             style: (StyleLevel::Full, StyleSource::Default),
             cpu_history: HashMap::new(),
@@ -1430,7 +1442,7 @@ impl App {
                 // Against the tick's own `now`, not `self.now`, which stops on
                 // a dead link: a settings edit describes a local file that is
                 // no staler for the shepherd being gone.
-                if let Some(settings) = self.settings.as_mut() {
+                if let Some(settings) = self.settings_mut() {
                     let expired = matches!(
                         settings.pending,
                         Some(Pending::Armed { at, .. } | Pending::DogArmed { at, .. })
@@ -1444,7 +1456,7 @@ impl App {
                 // armed edit that can never be sent is not worth leaving
                 // on screen either, even with a live link. `now`, not
                 // `self.now`, which that guard stops advancing.
-                if let Some(pane) = self.config_pane.as_mut()
+                if let Some(pane) = self.config_pane_mut()
                     && pane
                         .armed_at()
                         .is_some_and(|at| now.saturating_duration_since(at) >= CONFIRM_EXPIRY)
@@ -1527,7 +1539,7 @@ impl App {
                 Sent::ApplyField {
                     name, ticket, key, ..
                 } => {
-                    if let Some(pane) = self.config_pane.as_mut() {
+                    if let Some(pane) = self.config_pane_mut() {
                         pane.settle(ticket);
                     }
                     self.notice = Some(Notice {
@@ -1539,7 +1551,7 @@ impl App {
                 Sent::SetEnv {
                     name, ticket, key, ..
                 } => {
-                    if let Some(pane) = self.config_pane.as_mut() {
+                    if let Some(pane) = self.config_pane_mut() {
                         pane.settle(ticket);
                     }
                     self.notice = Some(Notice {
@@ -1559,7 +1571,7 @@ impl App {
                     Effect::None
                 }
                 Sent::SetDogSection { name, ticket, .. } => {
-                    if let Some(pane) = self.config_pane.as_mut() {
+                    if let Some(pane) = self.config_pane_mut() {
                         pane.settle(ticket);
                     }
                     self.notice = Some(Notice {
@@ -1570,7 +1582,7 @@ impl App {
                 }
                 // The arm above, against the settings screen's pending line.
                 Sent::Dog { name, enable, .. } => {
-                    if let Some(settings) = self.settings.as_mut() {
+                    if let Some(settings) = self.settings_mut() {
                         settings.pending = None;
                     }
                     let verb = if enable { "enable" } else { "disable" };
@@ -1586,7 +1598,7 @@ impl App {
             // with `self.settings` already `Some`, so `opening` is false and
             // the cursor survives.
             Msg::Settings { result } => {
-                let opening = self.settings.is_none();
+                let opening = self.settings().is_none();
                 match result {
                     Ok(snapshot) => {
                         // An action armed while the read was in flight: once
@@ -1601,7 +1613,7 @@ impl App {
                         // `Settings::cursor` clamps on every read, so a
                         // preserved `Viewport` past a shorter dogs list
                         // still lands somewhere real.
-                        let view = self.settings.as_ref().map(|settings| settings.view.clone());
+                        let view = self.settings().map(|settings| settings.view.clone());
                         let mut settings = Settings::new(snapshot);
                         if !opening {
                             if let Some(view) = view {
@@ -1610,7 +1622,7 @@ impl App {
                             let len = settings.rows().len();
                             settings.view.clamp(len);
                         }
-                        self.settings = Some(settings);
+                        self.body = Body::Settings(settings);
                     }
                     Err(message) => {
                         self.notice = Some(Notice {
@@ -1626,7 +1638,7 @@ impl App {
             // free-text fields, so a long path need not be retyped.
             Msg::SettingWritten { edit, result } => match result {
                 Ok(()) => {
-                    if let Some(settings) = self.settings.as_mut() {
+                    if let Some(settings) = self.settings_mut() {
                         settings.pending = None;
                     }
                     Effect::LoadSettings
@@ -1635,11 +1647,11 @@ impl App {
                     // Split so no borrow of `self.settings` is held across the
                     // `self.notice` assignment below.
                     if let Some((field, buffer)) = typed_text_of(&edit) {
-                        if let Some(settings) = self.settings.as_mut() {
+                        if let Some(settings) = self.settings_mut() {
                             settings.pending = Some(Pending::Typing { field, buffer });
                         }
                         self.mode = InputMode::Text;
-                    } else if let Some(settings) = self.settings.as_mut() {
+                    } else if let Some(settings) = self.settings_mut() {
                         settings.pending = None;
                     }
                     self.notice = Some(Notice {
@@ -1684,7 +1696,7 @@ impl App {
                     source,
                 }),
                 Err(message) => {
-                    if let Some(settings) = self.settings.as_mut() {
+                    if let Some(settings) = self.settings_mut() {
                         settings.pending = None;
                     }
                     self.notice = Some(Notice {
@@ -1797,7 +1809,7 @@ impl App {
         enable: bool,
         result: Result<Response, RequestError>,
     ) -> Effect {
-        if let Some(settings) = self.settings.as_mut() {
+        if let Some(settings) = self.settings_mut() {
             settings.pending = None;
         }
         let verb = if enable { "enable" } else { "disable" };
@@ -1866,34 +1878,31 @@ impl App {
         }
         match result {
             Ok(Response::SheepConfig(view)) => {
-                let carried = self.config_pane.as_ref().map(|pane| pane.view().clone());
+                let carried = self.config_pane().map(|pane| pane.view().clone());
                 // The env sub-screen is carried too: a set re-reads the
                 // whole config, and without this it would close on the
                 // very keystroke that just added a row. Its cursor rides
                 // by key, not index, since a removal would rename it.
                 let carried_env = self
-                    .config_pane
-                    .as_ref()
+                    .config_pane()
                     .and_then(ConfigPane::env)
                     .map(|env| (env.view().clone(), env.cursor_key().map(str::to_owned)));
                 // The list sub-screen rides across for the same reason,
                 // and by index rather than by name: an element has no
                 // name. See `ListPane::adopt_view`.
                 let carried_list = self
-                    .config_pane
-                    .as_ref()
+                    .config_pane()
                     .and_then(ConfigPane::list)
                     .map(|list| (list.key().to_owned(), list.view().clone()));
                 // A question the operator has not answered, or a write
                 // still out, survives the rebuild. Only `Typing` is
                 // dropped. See `ConfigPane::adopt_pending_edit`.
                 let carried_edit = self
-                    .config_pane
-                    .as_ref()
+                    .config_pane()
                     .and_then(|pane| pane.pending_edit().cloned());
                 // Carried for the same reason as the cursor: a re-read must
                 // not dismiss a help note the operator has not dismissed.
-                let carried_help = self.config_pane.as_ref().is_some_and(ConfigPane::help_open);
+                let carried_help = self.config_pane().is_some_and(ConfigPane::help_open);
                 let mut pane = ConfigPane::sheep(*view);
                 pane.adopt_pending_edit(carried_edit);
                 if let Some(carried) = carried {
@@ -1906,7 +1915,7 @@ impl App {
                     pane.adopt_list_view(&key, carried);
                 }
                 pane.set_help_open(carried_help);
-                self.config_pane = Some(pane);
+                self.body = Body::ConfigPane(pane);
                 // The rebuilt pane carries no editor, so the keyboard must
                 // not still think one is open.
                 self.release_text_mode_if_unowned();
@@ -2011,12 +2020,11 @@ impl App {
                 // rebuild replaces the pane: see `Self::on_sheep_config`,
                 // which states the argument for each. A dog pane has no env
                 // sub-screen, so only two of the three apply.
-                let carried = self.config_pane.as_ref().map(|pane| pane.view().clone());
+                let carried = self.config_pane().map(|pane| pane.view().clone());
                 let carried_edit = self
-                    .config_pane
-                    .as_ref()
+                    .config_pane()
                     .and_then(|pane| pane.pending_edit().cloned());
-                let carried_help = self.config_pane.as_ref().is_some_and(ConfigPane::help_open);
+                let carried_help = self.config_pane().is_some_and(ConfigPane::help_open);
                 let mut pane = ConfigPane::dog(
                     probe.name,
                     probe.adopted_path,
@@ -2028,10 +2036,11 @@ impl App {
                     pane.adopt_view(carried);
                 }
                 pane.set_help_open(carried_help);
-                self.config_pane = Some(pane);
-                // The settings screen is what a dog pane opens over, and it
-                // closes only now, once there is something to look at.
-                self.settings = None;
+                // The settings screen is what a dog pane opens over, and this
+                // one assignment is what closes it: `Body` holds one
+                // variant, so the pane replaces it once there is something
+                // to look at.
+                self.body = Body::ConfigPane(pane);
                 self.release_text_mode_if_unowned();
             }
             Ok(_unrecognised) => {
@@ -2075,7 +2084,7 @@ impl App {
         ticket: u64,
         result: Result<Response, RequestError>,
     ) -> Effect {
-        if let Some(pane) = self.config_pane.as_mut() {
+        if let Some(pane) = self.config_pane_mut() {
             pane.settle(ticket);
         }
         match result {
@@ -2130,7 +2139,7 @@ impl App {
         key: &str,
         result: Result<Response, RequestError>,
     ) -> Effect {
-        if let Some(pane) = self.config_pane.as_mut() {
+        if let Some(pane) = self.config_pane_mut() {
             pane.settle(ticket);
         }
         match result {
@@ -2190,7 +2199,7 @@ impl App {
         was_set: bool,
         result: Result<Response, RequestError>,
     ) -> Effect {
-        if let Some(pane) = self.config_pane.as_mut() {
+        if let Some(pane) = self.config_pane_mut() {
             pane.settle(ticket);
         }
         match result {
@@ -2239,11 +2248,11 @@ impl App {
         // settings screen and the armed-confirm check below. The two
         // screens cannot coexist, so this ordering is a documentation
         // choice, not a correctness one.
-        if self.config_pane.is_some() {
+        if self.config_pane().is_some() {
             return self.on_pane_key(key);
         }
         // The settings screen owns its own keymap while it is open.
-        if self.settings.is_some() {
+        if self.settings().is_some() {
             return self.on_settings_key(key);
         }
         // A cancelling keypress is consumed: a stray `j` cancels the confirm
@@ -2339,13 +2348,13 @@ impl App {
             // cancel-before-act rule the dashboard follows. `Escape` closing
             // rather than quitting is where this screen swaps that cascade.
             KeyPress::Settings | KeyPress::Escape => {
-                let armed = self.settings.as_ref().is_some_and(Settings::is_armed);
+                let armed = self.settings().is_some_and(Settings::is_armed);
                 if armed {
-                    if let Some(settings) = self.settings.as_mut() {
+                    if let Some(settings) = self.settings_mut() {
                         settings.pending = None;
                     }
                 } else {
-                    self.settings = None;
+                    self.body = Body::FlockTable;
                 }
             }
             // An armed candidate eats the first movement key rather than also
@@ -2355,7 +2364,7 @@ impl App {
             | KeyPress::SelectDown
             | KeyPress::SelectFirst
             | KeyPress::SelectLast => {
-                if let Some(settings) = self.settings.as_mut() {
+                if let Some(settings) = self.settings_mut() {
                     if settings.is_armed() {
                         settings.pending = None;
                     } else {
@@ -2374,7 +2383,7 @@ impl App {
             // Re-reads `shep.toml`, so another process's write shows up, and
             // the cursor survives. An armed candidate eats this key too.
             KeyPress::Refresh => {
-                if let Some(settings) = self.settings.as_mut()
+                if let Some(settings) = self.settings_mut()
                     && settings.is_armed()
                 {
                     settings.pending = None;
@@ -2386,7 +2395,7 @@ impl App {
             // the pane shows the dog's real schema and section or nothing.
             // An armed candidate eats it first, like every other key here.
             KeyPress::Edit => {
-                if let Some(settings) = self.settings.as_mut()
+                if let Some(settings) = self.settings_mut()
                     && settings.is_armed()
                 {
                     settings.pending = None;
@@ -2421,7 +2430,7 @@ impl App {
     /// listing request is needed. An adopted-but-disabled dog stays in
     /// that list: configure-then-enable is the ordinary order.
     fn probe_dog_schema(&mut self) -> Effect {
-        let Some(settings) = self.settings.as_ref() else {
+        let Some(settings) = self.settings() else {
             return Effect::None;
         };
         let Some(SettingsRow::Dog(index)) = settings.cursor() else {
@@ -2480,7 +2489,7 @@ impl App {
         if self.mode != InputMode::Text {
             return;
         }
-        let owned = self.config_pane.as_ref().is_some_and(|pane| {
+        let owned = self.config_pane().is_some_and(|pane| {
             pane.env().map_or_else(
                 || matches!(pane.pending_edit(), Some(PanePending::Typing { .. })),
                 |env| env.typing().is_some(),
@@ -2511,18 +2520,10 @@ impl App {
         if self.pane_menu.is_some() {
             return self.on_pane_menu_key(key);
         }
-        if self
-            .config_pane
-            .as_ref()
-            .is_some_and(|pane| pane.list().is_some())
-        {
+        if self.config_pane().is_some_and(|pane| pane.list().is_some()) {
             return self.on_list_key(key);
         }
-        if self
-            .config_pane
-            .as_ref()
-            .is_some_and(|pane| pane.env().is_some())
-        {
+        if self.config_pane().is_some_and(|pane| pane.env().is_some()) {
             return self.on_env_key(key);
         }
         if key == KeyPress::Quit {
@@ -2532,10 +2533,10 @@ impl App {
         // `e` and `space`: the same carve-out `on_settings_key` makes, so a
         // choice can still reach its third value instead of needing a
         // cancel in between.
-        if self.config_pane.as_ref().is_some_and(ConfigPane::is_armed)
+        if self.config_pane().is_some_and(ConfigPane::is_armed)
             && !matches!(key, KeyPress::Confirm | KeyPress::Edit | KeyPress::Cycle)
         {
-            if let Some(pane) = self.config_pane.as_mut() {
+            if let Some(pane) = self.config_pane_mut() {
                 pane.cancel();
             }
             return Effect::None;
@@ -2547,9 +2548,9 @@ impl App {
             // filter clear or a quit, exactly as it does on the settings
             // screen.
             KeyPress::Escape => {
-                let help_open = self.config_pane.as_ref().is_some_and(ConfigPane::help_open);
+                let help_open = self.config_pane().is_some_and(ConfigPane::help_open);
                 if help_open {
-                    if let Some(pane) = self.config_pane.as_mut() {
+                    if let Some(pane) = self.config_pane_mut() {
                         pane.close_help();
                     }
                 } else if let Some(menu) = self.apply_offer() {
@@ -2562,7 +2563,7 @@ impl App {
             | KeyPress::SelectDown
             | KeyPress::SelectFirst
             | KeyPress::SelectLast => {
-                if let Some(pane) = self.config_pane.as_mut() {
+                if let Some(pane) = self.config_pane_mut() {
                     match key {
                         KeyPress::SelectUp => pane.move_by(-1),
                         KeyPress::SelectDown => pane.move_by(1),
@@ -2582,7 +2583,7 @@ impl App {
             // key to use it.
             KeyPress::Confirm | KeyPress::Edit => return self.confirm_field(),
             KeyPress::Help => {
-                if let Some(pane) = self.config_pane.as_mut() {
+                if let Some(pane) = self.config_pane_mut() {
                     pane.toggle_help();
                 }
             }
@@ -2607,7 +2608,7 @@ impl App {
     /// open and is parked on [`Self::dog_target`]; re-probing would respawn
     /// somebody else's binary on a keystroke whose job is to re-read a file.
     fn reread_pane(&mut self) -> Effect {
-        let Some(pane) = self.config_pane.as_ref() else {
+        let Some(pane) = self.config_pane() else {
             return Effect::None;
         };
         let name = pane.target().name().to_owned();
@@ -2625,7 +2626,7 @@ impl App {
     /// sheep), and a stale one left set is exactly the re-open behind the
     /// operator's back `config_target` exists to prevent.
     fn close_pane(&mut self) {
-        self.config_pane = None;
+        self.body = Body::FlockTable;
         self.pane_menu = None;
         self.config_target = None;
         self.dog_target = None;
@@ -2641,7 +2642,7 @@ impl App {
         if self.control == Control::ReadOnly {
             return None;
         }
-        let pane = self.config_pane.as_ref()?;
+        let pane = self.config_pane()?;
         let parked = pane.parked_count();
         (parked > 0).then(|| PaneMenu::new(parked, pane.reload_kind(), self.now))
     }
@@ -2713,8 +2714,7 @@ impl App {
             return Effect::None;
         }
         let Some(name) = self
-            .config_pane
-            .as_ref()
+            .config_pane()
             .map(|pane| pane.target().name().to_owned())
         else {
             return Effect::None;
@@ -2799,8 +2799,7 @@ impl App {
         // `--allow-control` would not change it. A screen that answers
         // one question two ways teaches an operator to believe neither.
         if let Some((key, lock)) = self
-            .config_pane
-            .as_ref()
+            .config_pane()
             .and_then(ConfigPane::cursor_lock)
             .map(|(key, lock)| (key.to_owned(), lock))
         {
@@ -2814,7 +2813,7 @@ impl App {
             return Effect::None;
         }
         let now = self.now;
-        if let Some(pane) = self.config_pane.as_mut() {
+        if let Some(pane) = self.config_pane_mut() {
             pane.cycle(now);
         }
         Effect::None
@@ -2840,7 +2839,14 @@ impl App {
         // unique, but the counter is easier to reason about when every
         // value on it names a request that went out.
         let ticket = self.next_write_ticket;
-        let Some(pane) = self.config_pane.as_mut() else {
+        // A direct field match, not `Self::config_pane_mut`: that helper
+        // borrows the whole struct for as long as `pane` lives, and this
+        // function still needs `self.next_write_ticket` while it is in
+        // scope.
+        let Some(pane) = (match &mut self.body {
+            Body::ConfigPane(pane) => Some(pane),
+            Body::FlockTable | Body::Settings(_) => None,
+        }) else {
             return Effect::None;
         };
         let Some(edit) = pane.take_armed(ticket) else {
@@ -2915,7 +2921,7 @@ impl App {
     /// sub-screen is gated too: it exists only to write, since the
     /// shepherd never sends a value back for it to show.
     fn confirm_field(&mut self) -> Effect {
-        let Some(pane) = self.config_pane.as_ref() else {
+        let Some(pane) = self.config_pane() else {
             return Effect::None;
         };
         if pane.is_armed() {
@@ -2953,7 +2959,7 @@ impl App {
         if self.authorize_write().is_none() {
             return Effect::None;
         }
-        let Some(pane) = self.config_pane.as_mut() else {
+        let Some(pane) = self.config_pane_mut() else {
             return Effect::None;
         };
         if kind == FieldKind::Map {
@@ -2983,10 +2989,10 @@ impl App {
         if key == KeyPress::Quit {
             return Effect::Quit;
         }
-        if self.config_pane.as_ref().is_some_and(ConfigPane::is_armed)
+        if self.config_pane().is_some_and(ConfigPane::is_armed)
             && !matches!(key, KeyPress::Confirm | KeyPress::Edit)
         {
-            if let Some(pane) = self.config_pane.as_mut() {
+            if let Some(pane) = self.config_pane_mut() {
                 pane.cancel();
             }
             return Effect::None;
@@ -2995,7 +3001,7 @@ impl App {
         match key {
             KeyPress::Quit => return Effect::Quit,
             KeyPress::Escape => {
-                if let Some(pane) = self.config_pane.as_mut() {
+                if let Some(pane) = self.config_pane_mut() {
                     pane.close_list();
                 }
                 self.release_text_mode_if_unowned();
@@ -3004,7 +3010,7 @@ impl App {
             | KeyPress::SelectDown
             | KeyPress::SelectFirst
             | KeyPress::SelectLast => {
-                if let Some(list) = self.config_pane.as_mut().and_then(ConfigPane::list_mut) {
+                if let Some(list) = self.config_pane_mut().and_then(ConfigPane::list_mut) {
                     match key {
                         KeyPress::SelectUp => list.move_by(-1),
                         KeyPress::SelectDown => list.move_by(1),
@@ -3016,13 +3022,13 @@ impl App {
             }
             KeyPress::Refresh => return self.reread_pane(),
             KeyPress::Confirm | KeyPress::Edit => {
-                if self.config_pane.as_ref().is_some_and(ConfigPane::is_armed) {
+                if self.config_pane().is_some_and(ConfigPane::is_armed) {
                     return self.send_armed();
                 }
                 if self.authorize_write().is_none() {
                     return Effect::None;
                 }
-                if let Some(list) = self.config_pane.as_mut().and_then(ConfigPane::list_mut) {
+                if let Some(list) = self.config_pane_mut().and_then(ConfigPane::list_mut) {
                     list.begin_typing();
                     self.mode = InputMode::Text;
                 }
@@ -3031,7 +3037,7 @@ impl App {
                 if self.authorize_write().is_none() {
                     return Effect::None;
                 }
-                if let Some(pane) = self.config_pane.as_mut() {
+                if let Some(pane) = self.config_pane_mut() {
                     pane.arm_list_removal(now);
                 }
             }
@@ -3040,7 +3046,7 @@ impl App {
                     return Effect::None;
                 }
                 let delta = if key == KeyPress::ListMoveUp { -1 } else { 1 };
-                if let Some(pane) = self.config_pane.as_mut() {
+                if let Some(pane) = self.config_pane_mut() {
                     pane.arm_list_reorder(delta, now);
                 }
             }
@@ -3076,10 +3082,10 @@ impl App {
         if key == KeyPress::Quit {
             return Effect::Quit;
         }
-        if self.config_pane.as_ref().is_some_and(ConfigPane::is_armed)
+        if self.config_pane().is_some_and(ConfigPane::is_armed)
             && !matches!(key, KeyPress::Confirm | KeyPress::Edit)
         {
-            if let Some(pane) = self.config_pane.as_mut() {
+            if let Some(pane) = self.config_pane_mut() {
                 pane.cancel();
             }
             return Effect::None;
@@ -3087,7 +3093,7 @@ impl App {
         match key {
             KeyPress::Quit => return Effect::Quit,
             KeyPress::Escape => {
-                if let Some(pane) = self.config_pane.as_mut() {
+                if let Some(pane) = self.config_pane_mut() {
                     pane.close_env();
                 }
                 self.release_text_mode_if_unowned();
@@ -3096,7 +3102,7 @@ impl App {
             | KeyPress::SelectDown
             | KeyPress::SelectFirst
             | KeyPress::SelectLast => {
-                if let Some(env) = self.config_pane.as_mut().and_then(ConfigPane::env_mut) {
+                if let Some(env) = self.config_pane_mut().and_then(ConfigPane::env_mut) {
                     match key {
                         KeyPress::SelectUp => env.move_by(-1),
                         KeyPress::SelectDown => env.move_by(1),
@@ -3110,13 +3116,13 @@ impl App {
             // `e` does exactly what `Enter` does here, the same rule the
             // field list follows.
             KeyPress::Confirm | KeyPress::Edit => {
-                if self.config_pane.as_ref().is_some_and(ConfigPane::is_armed) {
+                if self.config_pane().is_some_and(ConfigPane::is_armed) {
                     return self.send_armed();
                 }
                 if self.authorize_write().is_none() {
                     return Effect::None;
                 }
-                if let Some(env) = self.config_pane.as_mut().and_then(ConfigPane::env_mut) {
+                if let Some(env) = self.config_pane_mut().and_then(ConfigPane::env_mut) {
                     env.begin_typing();
                     self.mode = InputMode::Text;
                 }
@@ -3150,22 +3156,14 @@ impl App {
         if key == KeyPress::Quit {
             return Effect::Quit;
         }
-        if self
-            .config_pane
-            .as_ref()
-            .is_some_and(|pane| pane.list().is_some())
-        {
+        if self.config_pane().is_some_and(|pane| pane.list().is_some()) {
             return self.on_list_text_key(key);
         }
-        if self
-            .config_pane
-            .as_ref()
-            .is_some_and(|pane| pane.env().is_some())
-        {
+        if self.config_pane().is_some_and(|pane| pane.env().is_some()) {
             return self.on_env_text_key(key);
         }
         let now = self.now;
-        let Some(pane) = self.config_pane.as_mut() else {
+        let Some(pane) = self.config_pane_mut() else {
             return Effect::None;
         };
         match key {
@@ -3197,7 +3195,12 @@ impl App {
     /// rather than what the key asked for.
     fn on_list_text_key(&mut self, key: KeyPress) -> Effect {
         let now = self.now;
-        let Some(pane) = self.config_pane.as_mut() else {
+        // See the comment in `Self::send_armed`: a direct field match, not
+        // `Self::config_pane_mut`, so `self.mode` stays reachable below.
+        let Some(pane) = (match &mut self.body {
+            Body::ConfigPane(pane) => Some(pane),
+            Body::FlockTable | Body::Settings(_) => None,
+        }) else {
             return Effect::None;
         };
         let Some(list) = pane.list_mut() else {
@@ -3230,7 +3233,12 @@ impl App {
     /// [`Self::on_env_key`] for why an env write arms before it sends.
     fn on_env_text_key(&mut self, key: KeyPress) -> Effect {
         let now = self.now;
-        let Some(pane) = self.config_pane.as_mut() else {
+        // See the comment in `Self::send_armed`: a direct field match, not
+        // `Self::config_pane_mut`, so `self.mode` stays reachable below.
+        let Some(pane) = (match &mut self.body {
+            Body::ConfigPane(pane) => Some(pane),
+            Body::FlockTable | Body::Settings(_) => None,
+        }) else {
             return Effect::None;
         };
         let Some(env) = pane.env_mut() else {
@@ -3277,7 +3285,7 @@ impl App {
         if self.authorize_write().is_none() {
             return Effect::None;
         }
-        let Some(cursor) = self.settings.as_ref().and_then(Settings::cursor) else {
+        let Some(cursor) = self.settings().and_then(Settings::cursor) else {
             return Effect::None;
         };
         match cursor {
@@ -3290,7 +3298,12 @@ impl App {
     /// already armed, so a second `space` walks one step further along the
     /// cycle. Does nothing on the two free-text fields.
     fn cycle_scalar(&mut self, field: SettingField) -> Effect {
-        let Some(settings) = self.settings.as_mut() else {
+        // See the comment in `Self::send_armed`: a direct field match, not
+        // `Self::settings_mut`, so `self.now` stays reachable below.
+        let Some(settings) = (match &mut self.body {
+            Body::Settings(settings) => Some(settings),
+            Body::FlockTable | Body::ConfigPane(_) => None,
+        }) else {
             return Effect::None;
         };
         let Some(value) = settings.next_candidate(field) else {
@@ -3319,7 +3332,12 @@ impl App {
             });
             return Effect::None;
         }
-        let Some(settings) = self.settings.as_mut() else {
+        // See the comment in `Self::send_armed`: a direct field match, not
+        // `Self::settings_mut`, so `self.now` stays reachable below.
+        let Some(settings) = (match &mut self.body {
+            Body::Settings(settings) => Some(settings),
+            Body::FlockTable | Body::ConfigPane(_) => None,
+        }) else {
             return Effect::None;
         };
         let Some(dog) = settings.snapshot.dogs.get(index) else {
@@ -3349,7 +3367,7 @@ impl App {
     /// editor is gated as well as applying it, so the refusal arrives before a
     /// whole socket path is typed.
     fn confirm_setting(&mut self) -> Effect {
-        let Some(settings) = self.settings.as_ref() else {
+        let Some(settings) = self.settings() else {
             return Effect::None;
         };
         let opens_editor = settings.pending.is_none()
@@ -3365,7 +3383,7 @@ impl App {
         let Some(authority) = self.authorize_write() else {
             return Effect::None;
         };
-        let Some(settings) = self.settings.as_mut() else {
+        let Some(settings) = self.settings_mut() else {
             return Effect::None;
         };
         if opens_editor {
@@ -3603,10 +3621,10 @@ impl App {
         // only from the dashboard, and `s` only from there too), and
         // neither can coexist with the filter box, which `Msg::Settings`'s
         // own arm closed the window on.
-        if self.config_pane.is_some() {
+        if self.config_pane().is_some() {
             return self.on_pane_text_key(key);
         }
-        if self.settings.is_some() {
+        if self.settings().is_some() {
             return self.on_settings_text_key(key);
         }
         self.on_filter_text_key(key)
@@ -3652,7 +3670,7 @@ impl App {
     /// `Enter` sends it. `TextAbandon` leaves the screen open.
     fn on_settings_text_key(&mut self, key: KeyPress) -> Effect {
         let now = self.now;
-        let Some(settings) = self.settings.as_mut() else {
+        let Some(settings) = self.settings_mut() else {
             return Effect::None;
         };
         match key {
@@ -4129,21 +4147,44 @@ impl App {
         })
     }
 
+    /// What the body between the title band and the status bar is showing.
+    ///
+    /// `view::draw` matches on this directly rather than calling
+    /// [`Self::settings`] and [`Self::config_pane`] in sequence, which is
+    /// what a ninth pane would otherwise have to insert itself into as a
+    /// third `if let`.
+    #[must_use]
+    pub(crate) fn body(&self) -> &Body {
+        &self.body
+    }
+
     /// The settings screen's own state, or `None` while the dashboard is
     /// showing.
     #[must_use]
     pub fn settings(&self) -> Option<&Settings> {
-        self.settings.as_ref()
+        match &self.body {
+            Body::Settings(settings) => Some(settings),
+            Body::FlockTable | Body::ConfigPane(_) => None,
+        }
+    }
+
+    /// [`Self::settings`]'s mutable twin, for the settings keymap and the
+    /// handlers that update a field or a pending edit in place.
+    fn settings_mut(&mut self) -> Option<&mut Settings> {
+        match &mut self.body {
+            Body::Settings(settings) => Some(settings),
+            Body::FlockTable | Body::ConfigPane(_) => None,
+        }
     }
 
     /// Tells every scrollable screen how tall the body is. Called by the
     /// event loop before each draw, so a screen's cursor never lands on a
     /// row that was not rendered.
     pub fn note_body_rows(&mut self, rows: u16) {
-        if let Some(settings) = self.settings.as_mut() {
+        if let Some(settings) = self.settings_mut() {
             settings.set_rows(usize::from(rows));
         }
-        if let Some(pane) = self.config_pane.as_mut() {
+        if let Some(pane) = self.config_pane_mut() {
             // One less than the settings screen gets: the pane spends its
             // first line on a title naming the sheep, which
             // `view::pane::pane_lines` draws before any row.
@@ -4163,7 +4204,19 @@ impl App {
     /// The open config pane, or `None` while nothing is being edited.
     #[must_use]
     pub fn config_pane(&self) -> Option<&ConfigPane> {
-        self.config_pane.as_ref()
+        match &self.body {
+            Body::ConfigPane(pane) => Some(pane),
+            Body::FlockTable | Body::Settings(_) => None,
+        }
+    }
+
+    /// [`Self::config_pane`]'s mutable twin, for the pane keymap and the
+    /// handlers that settle a write or adopt a re-read in place.
+    fn config_pane_mut(&mut self) -> Option<&mut ConfigPane> {
+        match &mut self.body {
+            Body::ConfigPane(pane) => Some(pane),
+            Body::FlockTable | Body::Settings(_) => None,
+        }
     }
 
     /// The apply offer over the open pane, or `None`.
