@@ -768,7 +768,12 @@ newer client at the handshake and an operator restarts the daemon after
 upgrading. The output envelope's `SCHEMA_VERSION` did NOT move and is
 still 1: `ProcessInfo.instance` is purely additive, and the envelope's own
 rule is that only a rename, a removal or a retype bumps it. The two
-constants answer different questions and it is easy to move the wrong one. `shep flock` groups a multi-instance app under one rollup row
+constants answer different questions and it is easy to move the wrong one.
+A third, `MIN_SUPPORTED`, sits beside `PROTOCOL_VERSION` and answers yet
+another question: the oldest protocol this build still accepts, not the
+newest it speaks. `PROTOCOL_VERSION` moving does not refuse anyone by
+itself; only `MIN_SUPPORTED` moving does, and it refuses every peer built
+below the new floor. `shep flock` groups a multi-instance app under one rollup row
 (`web ×3`, with `↳ :0` marker rows beneath it) in `full` and `plain` style;
 `bare` and JSON still print one row per instance, with `bare` suffixing the
 name and JSON carrying the slot as its own field. `shep lookout`'s flock
