@@ -114,6 +114,9 @@ pub enum KeyPress {
     ListMoveUp,
     /// `J`: the same, moving down.
     ListMoveDown,
+    /// `F`: toggles the flock table between the flat list and grouping by
+    /// fold.
+    FoldView,
 }
 
 /// Everything that can change the dashboard.
@@ -533,6 +536,7 @@ impl Sent {
                 let selector = match target {
                     RowKey::Sheep(id) => SelectorSpec::Id(*id),
                     RowKey::Group(name) => SelectorSpec::Name(name.clone()),
+                    RowKey::Fold(name) => SelectorSpec::Fold(name.clone()),
                     RowKey::Section(_) => unreachable!("a header is never an action target"),
                 };
                 match verb {
@@ -629,6 +633,23 @@ pub enum RowKey {
     /// A header, never selectable. `&'static str` because the only two are
     /// written here.
     Section(&'static str),
+    /// One fold's header, carrying its name.
+    ///
+    /// Selectable and actionable, unlike [`Self::Section`], because
+    /// `SelectorSpec::Fold` can name its members on the wire.
+    Fold(String),
+}
+
+/// How the flock table gathers its rows.
+///
+/// `Debug` is derived; it is two words.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Grouping {
+    /// Every sheep in one list, apps rolled up by instance.
+    #[default]
+    Flat,
+    /// Sheep gathered under their fold.
+    ByFold,
 }
 
 /// What one lamb fetch came back with. The pane says a different sentence for
@@ -1349,7 +1370,13 @@ pub struct App {
     /// The whole flock's summed CPU percent, one sample per poll, same
     /// depth and ordering as [`Self::cpu_history`].
     flock_cpu: VecDeque<f32>,
+    /// How [`Self::visible_rows`] gathers the flock table, toggled by `F`.
+    grouping: Grouping,
 }
+
+/// One flock entry as `visible_rows` sorts and partitions it: name, instance
+/// slot, id, and whether it names a dog.
+type RowEntry<'a> = (&'a str, Option<u32>, u32, bool);
 
 impl App {
     /// A dashboard with an empty flock, a live link, and no notice.
@@ -1379,6 +1406,7 @@ impl App {
             style: (StyleLevel::Full, StyleSource::Default),
             cpu_history: HashMap::new(),
             flock_cpu: VecDeque::new(),
+            grouping: Grouping::Flat,
         }
     }
 
@@ -2366,6 +2394,16 @@ impl App {
             // `h` names a field's help text, and the dashboard has no
             // field selected.
             KeyPress::Help => Effect::None,
+            // Toggles rather than opening: pressing it twice is where it
+            // began. Every sheep id in [`Self::selected`] survives either
+            // way, so there is nothing here for `reseat` to fix.
+            KeyPress::FoldView => {
+                self.grouping = match self.grouping {
+                    Grouping::Flat => Grouping::ByFold,
+                    Grouping::ByFold => Grouping::Flat,
+                };
+                Effect::None
+            }
         }
     }
 
@@ -2445,7 +2483,8 @@ impl App {
             | KeyPress::Help
             | KeyPress::ListRemove
             | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown => {}
+            | KeyPress::ListMoveDown
+            | KeyPress::FoldView => {}
         }
         Effect::None
     }
@@ -2627,7 +2666,8 @@ impl App {
             | KeyPress::TextAbandon
             | KeyPress::ListRemove
             | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown => {}
+            | KeyPress::ListMoveDown
+            | KeyPress::FoldView => {}
         }
         Effect::None
     }
@@ -2721,7 +2761,8 @@ impl App {
             | KeyPress::TextAbandon
             | KeyPress::ListRemove
             | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown => Effect::None,
+            | KeyPress::ListMoveDown
+            | KeyPress::FoldView => Effect::None,
         }
     }
 
@@ -3098,7 +3139,8 @@ impl App {
             | KeyPress::TextBackspace
             | KeyPress::TextApply
             | KeyPress::TextAbandon
-            | KeyPress::Help => {}
+            | KeyPress::Help
+            | KeyPress::FoldView => {}
         }
         Effect::None
     }
@@ -3178,7 +3220,8 @@ impl App {
             | KeyPress::Help
             | KeyPress::ListRemove
             | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown => {}
+            | KeyPress::ListMoveDown
+            | KeyPress::FoldView => {}
         }
         Effect::None
     }
@@ -3503,6 +3546,14 @@ impl App {
                     .count();
                 (RowKey::Group(group_name.clone()), group_name.clone(), count)
             }
+            RowKey::Fold(fold_name) => {
+                let count = self
+                    .flock
+                    .values()
+                    .filter(|row| row.info.fold.as_deref() == Some(fold_name.as_str()))
+                    .count();
+                (RowKey::Fold(fold_name.clone()), fold_name.clone(), count)
+            }
             RowKey::Section(_) => unreachable!("a header is never selectable"),
         };
         self.action = Some(Action {
@@ -3552,6 +3603,10 @@ impl App {
         match target {
             RowKey::Sheep(id) => self.flock.contains_key(id),
             RowKey::Group(name) => self.flock.values().any(|row| &row.info.name == name),
+            RowKey::Fold(name) => self
+                .flock
+                .values()
+                .any(|row| row.info.fold.as_deref() == Some(name.as_str())),
             RowKey::Section(_) => unreachable!("a header is never an action target"),
         }
     }
@@ -3766,7 +3821,7 @@ impl App {
     #[must_use]
     pub fn visible_rows(&self) -> Vec<RowKey> {
         let needle = self.filter.to_lowercase();
-        let mut visible: Vec<(&str, Option<u32>, u32, bool)> = self
+        let mut visible: Vec<RowEntry<'_>> = self
             .flock
             .iter()
             .filter(|(_, row)| needle.is_empty() || row.info.name.to_lowercase().contains(&needle))
@@ -3783,9 +3838,14 @@ impl App {
         let (dogs, sheep): (Vec<_>, Vec<_>) = visible.into_iter().partition(|entry| entry.3);
 
         let mut out = Vec::new();
-        if !sheep.is_empty() {
-            out.push(RowKey::Section("Flock"));
-            self.push_grouped_rows(&sheep, &mut out);
+        match self.grouping {
+            Grouping::Flat => {
+                if !sheep.is_empty() {
+                    out.push(RowKey::Section("Flock"));
+                    self.push_grouped_rows(&sheep, &mut out);
+                }
+            }
+            Grouping::ByFold => self.push_fold_rows(&sheep, &mut out),
         }
         if !dogs.is_empty() {
             out.push(RowKey::Section("Dogs"));
@@ -3794,9 +3854,65 @@ impl App {
         out
     }
 
+    /// The `ByFold` half of [`Self::visible_rows`]: `sheep` gathered under
+    /// its fold, each fold's own name-order header pushed before
+    /// [`Self::push_fold_group_rows`] lays down its members, so a
+    /// multi-instance app inside a fold keeps its own [`RowKey::Group`] row
+    /// rather than flattening to one row per instance.
+    ///
+    /// Sheep carrying no fold land under [`RowKey::Section`]`("no fold")`
+    /// instead of a [`RowKey::Fold`]: `SelectorSpec::Fold` cannot name "no
+    /// fold" on the wire, so a header rather than an action target is the
+    /// honest answer.
+    fn push_fold_rows(&self, sheep: &[RowEntry<'_>], out: &mut Vec<RowKey>) {
+        let mut folds: BTreeMap<String, Vec<RowEntry<'_>>> = BTreeMap::new();
+        let mut unfoldered: Vec<RowEntry<'_>> = Vec::new();
+        for entry in sheep {
+            match self
+                .flock
+                .get(&entry.2)
+                .and_then(|row| row.info.fold.clone())
+            {
+                Some(fold) => folds.entry(fold).or_default().push(*entry),
+                None => unfoldered.push(*entry),
+            }
+        }
+        for (fold, members) in &folds {
+            out.push(RowKey::Fold(fold.clone()));
+            self.push_fold_group_rows(members, out);
+        }
+        if !unfoldered.is_empty() {
+            out.push(RowKey::Section("no fold"));
+            self.push_fold_group_rows(&unfoldered, out);
+        }
+    }
+
+    /// [`Self::push_grouped_rows`]'s fold-scoped twin: a grouped app
+    /// collapses to its own [`RowKey::Group`] header alone, with no
+    /// [`RowKey::Sheep`] row following it, so a fold never nests three
+    /// levels deep (fold, app, instance). An app with no group still gets
+    /// its ordinary sheep row, exactly as the flat path would draw it.
+    fn push_fold_group_rows(&self, entries: &[RowEntry<'_>], out: &mut Vec<RowKey>) {
+        let mut at = 0;
+        while at < entries.len() {
+            let name = entries[at].0;
+            let end = entries[at..]
+                .iter()
+                .position(|entry| entry.0 != name)
+                .map_or(entries.len(), |offset| at + offset);
+            let group = &entries[at..end];
+            if self.is_grouped(name) {
+                out.push(RowKey::Group(name.to_string()));
+            } else {
+                out.extend(group.iter().map(|entry| RowKey::Sheep(entry.2)));
+            }
+            at = end;
+        }
+    }
+
     /// Appends `entries`' rows to `out`, splicing a [`RowKey::Group`] header
     /// before a grouped app's instances.
-    fn push_grouped_rows(&self, entries: &[(&str, Option<u32>, u32, bool)], out: &mut Vec<RowKey>) {
+    fn push_grouped_rows(&self, entries: &[RowEntry<'_>], out: &mut Vec<RowKey>) {
         let mut at = 0;
         while at < entries.len() {
             let name = entries[at].0;
@@ -3818,7 +3934,7 @@ impl App {
     fn is_dog_row(&self, row: &RowKey) -> bool {
         match row {
             RowKey::Sheep(id) => self.flock.get(id).is_some_and(|r| r.info.dog.is_some()),
-            RowKey::Group(_) | RowKey::Section(_) => false,
+            RowKey::Group(_) | RowKey::Section(_) | RowKey::Fold(_) => false,
         }
     }
 
@@ -3997,6 +4113,10 @@ impl App {
         match &self.selected {
             Some(RowKey::Group(name)) => Some(name.clone()),
             Some(RowKey::Sheep(id)) => self.flock.get(id).map(|row| row.info.name.clone()),
+            // A fold names no single app config to fetch: `e` on a fold row
+            // has nothing to open, the same answer a group gives the
+            // detail pane and feed.
+            Some(RowKey::Fold(_)) => None,
             Some(RowKey::Section(_)) => unreachable!("a header is never selectable"),
             None => None,
         }
@@ -4199,6 +4319,18 @@ impl App {
         &self.body
     }
 
+    /// How the flock table currently gathers its rows, toggled by
+    /// [`KeyPress::FoldView`].
+    ///
+    /// No non-test caller yet: the view code that reads this to choose a
+    /// column set lands in a later task of the fold-view plan.
+    /// `#[allow(dead_code)]` says so rather than inventing a caller early.
+    #[allow(dead_code)]
+    #[must_use]
+    pub fn grouping(&self) -> Grouping {
+        self.grouping
+    }
+
     /// The settings screen's own state, or `None` while the dashboard is
     /// showing.
     #[must_use]
@@ -4305,6 +4437,7 @@ fn target_prefix(verb: ActionVerb, target: &RowKey, name: &str) -> String {
     match target {
         RowKey::Sheep(id) => format!("{} {name} (id {id})", verb.label()),
         RowKey::Group(_) => format!("{} all instances of {name}", verb.label()),
+        RowKey::Fold(_) => format!("{} all sheep in fold {name}", verb.label()),
         RowKey::Section(_) => unreachable!("a header is never an action target"),
     }
 }
@@ -4517,6 +4650,71 @@ mod tests {
         );
         assert_eq!(app.visible_rows()[0], RowKey::Section("Flock"));
         assert!(matches!(app.visible_rows()[1], RowKey::Group(ref n) if n == "web"));
+    }
+
+    /// Sheep gather under their fold, unfoldered ones under a header that
+    /// names the situation, and dogs keep their own band because a dog
+    /// cannot carry a fold at all.
+    #[test]
+    fn by_fold_groups_sheep_under_their_fold() {
+        let mut app = fixtures::app_with(
+            vec![
+                fixtures::sheep_in_fold(1, "api", Some("edge")),
+                fixtures::sheep_in_fold(2, "cdn", Some("edge")),
+                fixtures::sheep_in_fold(3, "batch", None),
+            ],
+            fixtures::plain(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::FoldView));
+        let rows = app.visible_rows();
+        assert!(
+            rows.iter()
+                .any(|r| matches!(r, RowKey::Fold(name) if name == "edge"))
+        );
+        assert!(rows.iter().any(|r| matches!(r, RowKey::Section("no fold"))));
+    }
+
+    /// `F` toggles rather than opening, so pressing it twice is where it
+    /// began.
+    #[test]
+    fn f_toggles_back_to_the_flat_list() {
+        let mut app = fixtures::app_with(
+            vec![fixtures::sheep_in_fold(1, "api", Some("edge"))],
+            fixtures::plain(),
+        );
+        let flat = app.visible_rows();
+        let _ = app.update(Msg::Key(KeyPress::FoldView));
+        assert_ne!(app.visible_rows(), flat);
+        let _ = app.update(Msg::Key(KeyPress::FoldView));
+        assert_eq!(app.visible_rows(), flat);
+    }
+
+    /// Two levels, never three. A three-instance app inside a fold is one
+    /// member row keeping its own rollup, or `edge ×4` stops meaning
+    /// anything fixed.
+    #[test]
+    fn an_app_inside_a_fold_stays_one_row() {
+        let mut app = fixtures::app_with(
+            vec![
+                fixtures::instance_in_fold(1, "web", 0, Some("edge")),
+                fixtures::instance_in_fold(2, "web", 1, Some("edge")),
+                fixtures::instance_in_fold(3, "web", 2, Some("edge")),
+            ],
+            fixtures::plain(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::FoldView));
+        let rows = app.visible_rows();
+        let sheep = rows
+            .iter()
+            .filter(|r| matches!(r, RowKey::Sheep(_)))
+            .count();
+        assert_eq!(sheep, 0, "instances stay behind their app's row: {rows:?}");
+        assert_eq!(
+            rows.iter()
+                .filter(|r| matches!(r, RowKey::Group(_)))
+                .count(),
+            1
+        );
     }
 
     #[test]

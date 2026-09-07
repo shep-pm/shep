@@ -202,6 +202,11 @@ fn confirm_prompt(action: &ActionState<'_>) -> String {
                 action.verb.label()
             )
         }
+        RowKey::Fold(name) => format!(
+            "{} all {} sheep in fold {name}? enter confirms, any other key cancels",
+            action.verb.label(),
+            action.count
+        ),
         RowKey::Section(_) => unreachable!("a header is never an action target"),
     }
 }
@@ -217,6 +222,11 @@ fn in_flight_text(action: &ActionState<'_>) -> String {
         ),
         RowKey::Group(name) => format!(
             "{} all {} instances of {name}: sent, waiting for the shepherd",
+            action.verb.label(),
+            action.count
+        ),
+        RowKey::Fold(name) => format!(
+            "{} all {} sheep in fold {name}: sent, waiting for the shepherd",
             action.verb.label(),
             action.count
         ),

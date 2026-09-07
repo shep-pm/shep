@@ -30,8 +30,24 @@ pub fn detail_lines(app: &App, width: u16) -> Vec<Line<'static>> {
         None => empty_lines(app, width, palette),
         Some(RowKey::Group(name)) => group_lines(app, &name, width, palette),
         Some(RowKey::Sheep(_)) => sheep_lines(app, width, palette),
+        Some(RowKey::Fold(name)) => fold_lines(&name, width, palette),
         Some(RowKey::Section(_)) => unreachable!("a header is never selectable"),
     }
+}
+
+/// A fold's four lines when a [`RowKey::Fold`] is selected. Its own rollup
+/// is a later task; for now this names the fold and leaves the other three
+/// lines blank, the same shape [`empty_lines`] uses.
+fn fold_lines(name: &str, width: u16, palette: Palette) -> Vec<Line<'static>> {
+    vec![
+        Line::from(Span::styled(
+            fit(&format!("fold {name}"), width),
+            palette.muted(),
+        )),
+        Line::from(Span::raw(String::new())),
+        Line::from(Span::raw(String::new())),
+        Line::from(Span::raw(String::new())),
+    ]
 }
 
 /// The pane's four lines when nothing is selected. Names the cause, not the

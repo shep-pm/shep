@@ -44,6 +44,16 @@ pub fn feed_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
             ));
             return out;
         }
+        // A fold has no single log either, same reasoning as a group above.
+        Some(RowKey::Fold(name)) => {
+            out.push(header_line(
+                palette,
+                &format!("{name}  follows one fold; select a sheep inside to see its log"),
+                palette.muted(),
+                width,
+            ));
+            return out;
+        }
         Some(RowKey::Section(_)) => unreachable!("a header is never selectable"),
         Some(RowKey::Sheep(_)) => {
             let row = app

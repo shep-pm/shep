@@ -477,6 +477,7 @@ pub fn key_line(
         ),
         RowKey::Group(name) => group_line(app, name, columns, width, selected),
         RowKey::Section(label) => section_line(label, width, app.palette().muted()),
+        RowKey::Fold(name) => fold_line(app, name, width, selected),
     }
 }
 
@@ -486,6 +487,20 @@ fn section_line(label: &str, width: u16, style: Style) -> Line<'static> {
     let used = label.chars().count() + 1;
     let rule = "─".repeat(usize::from(width).saturating_sub(used));
     Line::from(Span::styled(format!("{label} {rule}"), style))
+}
+
+/// One fold's header row. Selectable, unlike [`section_line`]'s callers, so
+/// it takes the same ground highlight a sheep row does; its own rollup
+/// columns land in a later task, so this draws the same rule
+/// [`section_line`] does either way.
+fn fold_line(app: &App, name: &str, width: u16, selected: bool) -> Line<'static> {
+    let palette = app.palette();
+    let style = if selected {
+        palette.ground()
+    } else {
+        palette.muted()
+    };
+    section_line(name, width, style)
 }
 
 /// An app's group header row: [`App::group_totals`]'s own rollup, in the

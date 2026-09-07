@@ -47,6 +47,29 @@ pub fn app_with(flock: Vec<ProcessInfo>, palette: Palette) -> App {
     app
 }
 
+/// One online sheep named `name`, carrying `fold`, for the fold-grouping
+/// tests.
+pub fn sheep_in_fold(id: u32, name: &str, fold: Option<&str>) -> ProcessInfo {
+    ProcessInfo::builder(id, name, ProcStatus::Online)
+        .pid(Some(1000 + id))
+        .uptime_ms(60_000)
+        .fold(fold.map(str::to_string))
+        .build()
+}
+
+/// One instance of a grouped app, at `slot`, carrying `fold`: the same
+/// shape [`sheep_in_fold`] builds, with an instance slot set so
+/// [`super::super::app::App::is_grouped`] gathers it under a
+/// [`RowKey::Group`] header.
+pub fn instance_in_fold(id: u32, name: &str, slot: u32, fold: Option<&str>) -> ProcessInfo {
+    ProcessInfo::builder(id, name, ProcStatus::Online)
+        .pid(Some(1000 + id))
+        .uptime_ms(60_000)
+        .instance(Some(slot))
+        .fold(fold.map(str::to_string))
+        .build()
+}
+
 /// `count` online sheep, the first `with_readings` of which report cpu and
 /// memory. The rest report neither, which is the case the `-` assertions need.
 pub fn flock_of(count: u32, with_readings: u32) -> Vec<ProcessInfo> {
