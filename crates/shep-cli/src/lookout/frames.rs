@@ -2339,10 +2339,70 @@ mod tests {
                 which.label()
             );
         }
-        // The literal 34 catches a scene added to the enum but not to
-        // `ALL`, or the reverse; `labels.len()` would not, since `insert`
-        // above already guarantees it.
-        assert_eq!(Scene::ALL.len(), 35);
+    }
+
+    /// The scene that follows `scene` in gallery order, or `None` after the
+    /// last one. Mirrors `Scene::ALL`'s own order.
+    ///
+    /// Exhaustive over [`Scene`], with no wildcard arm: a variant added to
+    /// the enum without an arm here fails to compile. `scene_all_lists_every_variant_the_compiler_can_see`
+    /// below walks this chain and checks it against `ALL`, which a
+    /// hand-counted length could not: a forgotten scene just left the count
+    /// honest at the old number.
+    fn scene_after(scene: Scene) -> Option<Scene> {
+        match scene {
+            Scene::HealthyWide => Some(Scene::Errored),
+            Scene::Errored => Some(Scene::Grouped),
+            Scene::Grouped => Some(Scene::WithDogs),
+            Scene::WithDogs => Some(Scene::MemCeiling),
+            Scene::MemCeiling => Some(Scene::CfgDrift),
+            Scene::CfgDrift => Some(Scene::Empty),
+            Scene::Empty => Some(Scene::Narrow),
+            Scene::Narrow => Some(Scene::TooNarrow),
+            Scene::TooNarrow => Some(Scene::Retrying),
+            Scene::Retrying => Some(Scene::Frozen),
+            Scene::Frozen => Some(Scene::Refused),
+            Scene::Refused => Some(Scene::FilterEditing),
+            Scene::FilterEditing => Some(Scene::FilterActive),
+            Scene::FilterActive => Some(Scene::FilterNoMatch),
+            Scene::FilterNoMatch => Some(Scene::NoDetail),
+            Scene::NoDetail => Some(Scene::TableOnly),
+            Scene::TableOnly => Some(Scene::FeedGap),
+            Scene::FeedGap => Some(Scene::FeedMissing),
+            Scene::FeedMissing => Some(Scene::Cramped),
+            Scene::Cramped => Some(Scene::HostUnknown),
+            Scene::HostUnknown => Some(Scene::Lambs),
+            Scene::Lambs => Some(Scene::LambsUnknown),
+            Scene::LambsUnknown => Some(Scene::Confirm),
+            Scene::Confirm => Some(Scene::Acting),
+            Scene::Acting => Some(Scene::ActionRefused),
+            Scene::ActionRefused => Some(Scene::ActionAccepted),
+            Scene::ActionAccepted => Some(Scene::ActionRefusedOffline),
+            Scene::ActionRefusedOffline => Some(Scene::SettingsFresh),
+            Scene::SettingsFresh => Some(Scene::SettingsSet),
+            Scene::SettingsSet => Some(Scene::SettingsConfirm),
+            Scene::SettingsConfirm => Some(Scene::SettingsTyping),
+            Scene::SettingsTyping => Some(Scene::SettingsDogs),
+            Scene::SettingsDogs => Some(Scene::SettingsNarrow),
+            Scene::SettingsNarrow => Some(Scene::SettingsShort),
+            Scene::SettingsShort => None,
+        }
+    }
+
+    /// Walks [`scene_after`] from the first scene and checks the walk names
+    /// exactly `Scene::ALL`, in the same order.
+    ///
+    /// The walk can only see variants `scene_after` was taught about, and
+    /// that match cannot compile with one missing, so a scene left out of
+    /// `ALL` shows up here as a length or order mismatch rather than as
+    /// nothing at all.
+    #[test]
+    fn scene_all_lists_every_variant_the_compiler_can_see() {
+        let mut walked = vec![Scene::HealthyWide];
+        while let Some(next) = scene_after(*walked.last().unwrap()) {
+            walked.push(next);
+        }
+        assert_eq!(walked.as_slice(), Scene::ALL);
     }
 
     /// `sgr` now draws a foreground, a background and `REVERSED`, so the
