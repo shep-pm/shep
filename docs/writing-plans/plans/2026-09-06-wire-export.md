@@ -205,6 +205,8 @@ crates/shep-channel/wire/channel.go text eol=lf
 
 `crates/shep-channel/tests/wire_export.rs`. This exact source was compiled, `cargo fmt --check` clean, clippy clean under `-D warnings`, and run on 2026-09-06, and its output diffed against plan 2's frozen Go text with a zero diff:
 
+Review after this plan shipped found three holes in the guard below, so the file in the tree now carries a per-kind key check, a Go type check, and a refusal of a field that names no kind. Read `crates/shep-channel/tests/wire_export.rs` for what runs. This block is what was planned.
+
 ```rust
 //! The Go spelling of this crate's two wire enums.
 //!
