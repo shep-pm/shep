@@ -47,9 +47,17 @@ pub fn decode_frame<T: DeserializeOwned>(frame: &[u8]) -> Result<T, WireError> {
 
 /// Enough of a reply to recover its id when the reply's own type does not
 /// decode.
+///
+/// `result` is required but its value is never looked at: its only job is to
+/// keep this struct from matching a frame that merely happens to carry an
+/// `id`, such as a future progress or flow-control frame. Without it,
+/// `reply_id` would misidentify that frame as an undecodable reply and fail
+/// a caller whose real reply is still in flight.
 #[derive(serde::Deserialize)]
 struct ReplyIdOnly {
     id: u64,
+    #[allow(dead_code, reason = "present only to narrow the match; never read")]
+    result: serde::de::IgnoredAny,
 }
 
 /// If `frame` is a reply, the id it answers; `None` for anything else,
@@ -134,6 +142,17 @@ mod tests {
     #[test]
     fn reply_id_is_none_for_non_json() {
         assert_eq!(reply_id(b"not json"), None);
+    }
+
+    #[test]
+    fn reply_id_is_none_for_a_future_progress_frame() {
+        // A frame that carries an `id` but is not shaped like a reply (no
+        // `result`) must not be mistaken for an undecodable reply: the
+        // caller it would falsely fail is still waiting on the real one.
+        assert_eq!(
+            reply_id(br#"{"kind":"progress","id":7,"percent":40}"#),
+            None
+        );
     }
 
     #[test]
