@@ -3537,12 +3537,18 @@ mod tests {
                 name: "ghost".to_string(),
                 toml: String::new().into(),
             },
+            Request::PutSecrets {
+                namespace: "ghost".to_string(),
+                environment: "production".to_string(),
+                entries: BTreeMap::new(),
+            },
         ];
         for (id, request) in requests.into_iter().enumerate() {
+            let named = format!("{request:?}");
             let reply = reply_of(
                 dispatch(
                     envelope(
-                        u64::try_from(id).expect("three requests fit a u64"),
+                        u64::try_from(id).expect("an index into `requests` fits a u64"),
                         request,
                     ),
                     &h.ctx,
@@ -3554,7 +3560,7 @@ mod tests {
             };
             assert_ne!(
                 err.message, "this daemon does not implement that request",
-                "a config-pane variant fell through to the wildcard"
+                "{named} fell through to the wildcard"
             );
         }
     }
