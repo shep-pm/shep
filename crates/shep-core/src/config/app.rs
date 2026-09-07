@@ -30,9 +30,17 @@ pub enum ProbeKind {
 // `Response::SheepConfig`), where an unknown field means a newer peer, not
 // a typo — denying it here would make a newer daemon's reply break an
 // older client. The denial moved to `Flockfile::parse`, where the input
-// really is a hand-written file. Do not restore it.
+// really is a hand-written file. Do not restore the serde attribute here.
+//
+// The schema-only sibling attribute below is not the same thing and stays:
+// `schemars(deny_unknown_fields)` only shapes the generated
+// `additionalProperties: false`, which an editor uses to flag a Flockfile
+// typo before a parse ever runs. It never reaches `#[derive(Deserialize)]`
+// (schemars mirrors it into a synthesized attribute its own macro expansion
+// reads, not the real one), so the wire still tolerates an unknown field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schema", schemars(deny_unknown_fields))]
 pub struct ProbeConfig {
     /// Probe mechanism
     pub kind: ProbeKind,
@@ -82,9 +90,17 @@ fn default_failure_threshold() -> u32 {
 // older client a config it does not fully understand, which is exactly the
 // case an unknown field means "a newer peer", not a typo. The denial moved
 // to `Flockfile::parse`, where the input really is a hand-written file. Do
-// not restore it here.
+// not restore the serde attribute here.
+//
+// The schema-only sibling attribute below is not the same thing and stays:
+// `schemars(deny_unknown_fields)` only shapes the generated
+// `additionalProperties: false`, which an editor uses to flag a Flockfile
+// typo before a parse ever runs. It never reaches `#[derive(Deserialize)]`
+// (schemars mirrors it into a synthesized attribute its own macro expansion
+// reads, not the real one), so the wire still tolerates an unknown field.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schema", schemars(deny_unknown_fields))]
 #[serde(default)]
 pub struct AppConfig {
     /// Unique sheep name (required)

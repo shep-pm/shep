@@ -526,7 +526,8 @@
             "type": "string"
           }
         }
-      }
+      },
+      "additionalProperties": false
     },
     "MemSize": {
       "description": "A byte quantity: digits, optionally suffixed G, M or K (binary units).",
@@ -563,6 +564,7 @@
           "default": "5s"
         }
       },
+      "additionalProperties": false,
       "required": [
         "kind",
         "target"

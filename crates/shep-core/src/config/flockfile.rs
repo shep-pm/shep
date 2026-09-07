@@ -1049,6 +1049,58 @@ env = { DB_HOST = "", NODE_ENV = "production" }
         );
     }
 
+    /// The design goal is one refusal naming every typo, not one refusal
+    /// per run. Two misspelled keys in one document must both show up in
+    /// the single [`FlockfileError::UnknownKeys`] this produces.
+    #[test]
+    fn two_misspelled_keys_are_both_named_in_one_error() {
+        let err = Flockfile::parse(
+            "[[app]]\nname = \"web\"\nscript = \"./srv\"\nmax_restrts = 5\ninstences = 2\n",
+            FlockFormat::Toml,
+        )
+        .expect_err("both typos must be refused");
+        let FlockfileError::UnknownKeys { keys } = err else {
+            panic!("expected UnknownKeys, got {err:?}");
+        };
+        assert!(
+            keys.iter().any(|k| k.contains("max_restrts")),
+            "got {keys:?}"
+        );
+        assert!(keys.iter().any(|k| k.contains("instences")), "got {keys:?}");
+    }
+
+    /// fails if a format other than TOML loses the unknown-key refusal.
+    /// `parse_into_ignoring` dispatches over all four; a regression here
+    /// means a format bypassed `serde_ignored` on the way through.
+    #[test]
+    fn a_misspelled_key_is_refused_in_every_parse_format() {
+        let cases: [(FlockFormat, &str); 4] = [
+            (
+                FlockFormat::Toml,
+                "[[app]]\nname = \"web\"\nscript = \"./srv\"\nmax_restrts = 5\n",
+            ),
+            (
+                FlockFormat::Yaml,
+                "app:\n  - name: web\n    script: ./srv\n    max_restrts: 5\n",
+            ),
+            (
+                FlockFormat::Json,
+                r#"{"app":[{"name":"web","script":"./srv","max_restrts":5}]}"#,
+            ),
+            (
+                FlockFormat::Json5,
+                "{ app: [{ name: \"web\", script: \"./srv\", max_restrts: 5 }] }",
+            ),
+        ];
+        for (format, text) in cases {
+            let err = Flockfile::parse(text, format).expect_err("a typo must be refused");
+            assert!(
+                matches!(err, FlockfileError::UnknownKeys { .. }),
+                "{format:?}: got {err:?}"
+            );
+        }
+    }
+
     /// fails if a format other than TOML loses the key set. All four go
     /// through one generic intermediate, so a regression here means the
     /// intermediate was bypassed for a format.
