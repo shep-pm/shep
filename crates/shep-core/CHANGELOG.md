@@ -10,6 +10,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-07
+
+### Added
+
+- Name the apps a staged restart could not restart **(BREAKING)**
+- Decode an unknown error code or process event instead of failing
+- Refuse an unrecognized request by id instead of ending the connection
+- Accept any peer at or above a protocol floor **(BREAKING)**
+- Deny unknown Flockfile keys at the parse site, not on the wire
+- A protocol floor, tolerant decode, and refusals a staged restart can name ([#173](https://github.com/shep-pm/shep/pull/173)) **(BREAKING)**
+
+### Changed
+
+- Drop hand-rolled Deserialize for RpcErrorCode and ProcessEventKind
+- Move reply-id decode into shep-core, drop shep-client's serde dep
+- Delegate parse_into to parse_into_ignoring
+
+### Fixed
+
+- Restore additionalProperties:false via schemars(deny_unknown_fields)
+- Stop reply_id from matching non-reply frames
+
+
 ## [0.5.1] - 2026-09-07
 
 
