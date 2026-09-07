@@ -549,6 +549,12 @@ Update the refusal message to name the window rather than one number:
     pub min_supported: Option<u32>,
 ```
 
+`Option` makes the field optional ON THE WIRE. It does not make the Rust field
+optional at construction, and `HelloAck` is built as a literal in a good many
+places across the workspace and its test fixtures. Every one needs
+`min_supported: None` added or the branch will not compile. Thirteen did when
+this task ran.
+
 Update `protocol_skew_is_refused_over_the_real_socket` (`daemon_e2e.rs:1137`) to assert acceptance, rename it to match, and say in its doc comment why the expectation reversed. A test whose name asserts the opposite of its body is worse than no test.
 
 - [ ] **Step 5: Run to verify they pass**

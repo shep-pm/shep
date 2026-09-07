@@ -280,12 +280,26 @@ a trade rather than a free win.
 ## What this does not do
 
 - No down conversion. An old peer is accepted, not translated for.
-- No capability negotiation. Once additive changes are free and the version
-  moves only on structural breaks, "daemon speaks N" already means every
-  feature through N exists, and a dog checks `HelloAck.protocol >= N`. Nothing
-  in shep today can have a protocol feature present in one build and absent in
-  another at the same version. `Hello` and `HelloAck` both tolerate unknown
-  fields, so a capability list can be added additively if that ever changes.
+- No capability negotiation, and the version number is NOT a capability check.
+
+  **Corrected 2026-09-07, after this spec was approved.** This bullet used to
+  say that "daemon speaks N" means every feature through N exists, and that a
+  dog can check `HelloAck.protocol >= N`. That is false, and it is this design
+  that makes it false: an additive change deliberately keeps the version, so
+  two daemons both reporting 7, built either side of a new request variant,
+  genuinely differ. The bullet also claimed nothing in shep can have a feature
+  present at one build and absent at another at the same version, which is the
+  exact situation the rules above create.
+
+  What replaces it is discovery by asking. A request the peer cannot name is
+  answered `Unsupported` by id with the connection still serving, so a client
+  tries the newer thing and reads the refusal rather than predicting from a
+  number. That is why section 2 is not optional: without it the same attempt
+  drops the connection, and guessing from a version would be the only option
+  left.
+
+  `Hello` and `HelloAck` both tolerate unknown fields, so a capability list can
+  be added additively later if trying and reading stops being enough.
 - No change to `SCHEMA_VERSION`, which answers a different question about JSON
   output and is untouched here.
 
@@ -304,5 +318,9 @@ considered.
    and the promise runs forward from it.
 4. **`serde_ignored` rather than a hand rolled key check**, because nesting is
    where a hand rolled one stops being under a hundred lines.
-5. **The version number is the capability check.** A capability list is YAGNI
-   until something can be present at one build and absent at another.
+5. **Discovery is by asking, not by reading the version.** An additive change
+   keeps the version, so the number cannot answer "do you have X". A request
+   the peer cannot name comes back `Unsupported` by id with the connection
+   intact, which answers it exactly. A capability list stays YAGNI while that
+   holds. This decision first read "the version number is the capability
+   check", which the rules it sits beside make untrue.
