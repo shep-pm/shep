@@ -42,7 +42,9 @@
 
 ## Task 1: Tolerant decode for the two bare-string enums
 
-`RpcErrorCode` and `ProcessEventKind` are all-unit enums that serialize as bare strings. `#[serde(other)]` is not allowed on those, so each needs a small custom `Deserialize`. This task lands first because every later task benefits and nothing else can safely add a variant until it does.
+`RpcErrorCode` and `ProcessEventKind` are all-unit enums that serialize as bare strings. Each gains an `Unrecognized` variant carrying `#[serde(other)]`, keeping the ordinary derive. This task lands first because every later task benefits and nothing else can safely add a variant until it does.
+
+**Corrected 2026-09-07, mid-execution.** This task originally prescribed a hand-written `Deserialize` for each enum, on the stated grounds that `#[serde(other)]` is not allowed on a bare-string enum. That was read out of serde's documentation rather than measured, and it is wrong. The review caught it after the hand-written version shipped; commit 6eb653d0 replaced roughly seventy lines per enum with the attribute. Step 3 below describes what the code does now.
 
 **Files:**
 - Modify: `crates/shep-core/src/protocol/request.rs` (`RpcErrorCode`, around line 1637)
@@ -133,59 +135,40 @@ fn a_non_string_process_event_is_still_an_error() {
 Run: `cargo test --workspace --all-features --lib --bins -- unknown_error_code unknown_process_event`
 Expected: FAIL, no variant named `Unrecognized`.
 
-- [ ] **Step 3: Implement the tolerant `Deserialize` for `RpcErrorCode`**
+- [ ] **Step 3: Add the catch-all to `RpcErrorCode`**
 
-Remove `Deserialize` from the derive list, keep `Serialize`, add the variant, and add the impl. The nested `Known` enum keeps `rename_all` doing the spelling work so the string table is never hand-maintained.
+Keep the derive exactly as it is. Add one variant.
 
 ```rust
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum RpcErrorCode {
     // ... existing variants unchanged ...
     /// A code this build has not been taught.
     ///
-    /// Only ever produced by decoding. Never serialized, so it cannot
-    /// reach a peer and cannot be mistaken for a real code shep emits.
+    /// Only ever produced by decoding: `#[serde(other)]` has no
+    /// serialized spelling of its own, so this cannot reach a peer and
+    /// cannot be mistaken for a code shep emits.
+    #[serde(other)]
     Unrecognized,
-}
-
-impl<'de> serde::Deserialize<'de> for RpcErrorCode {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        #[derive(serde::Deserialize)]
-        #[serde(rename_all = "snake_case")]
-        enum Known {
-            NotFound,
-            InvalidConfig,
-            SpawnFailed,
-            ProtocolMismatch,
-            Internal,
-            DeadlineExceeded,
-        }
-        #[derive(serde::Deserialize)]
-        #[serde(untagged)]
-        enum Wire {
-            Known(Known),
-            Unknown(String),
-        }
-        Ok(match Wire::deserialize(d)? {
-            Wire::Known(Known::NotFound) => Self::NotFound,
-            Wire::Known(Known::InvalidConfig) => Self::InvalidConfig,
-            Wire::Known(Known::SpawnFailed) => Self::SpawnFailed,
-            Wire::Known(Known::ProtocolMismatch) => Self::ProtocolMismatch,
-            Wire::Known(Known::Internal) => Self::Internal,
-            Wire::Known(Known::DeadlineExceeded) => Self::DeadlineExceeded,
-            Wire::Unknown(_) => Self::Unrecognized,
-        })
-    }
 }
 ```
 
-- [ ] **Step 4: Implement the same shape for `ProcessEventKind`**
+Leave `RpcErrorCode::ALL` alone. It must NOT list `Unrecognized`, because
+`exit.rs`'s `From<RpcErrorCode> for ExitCode` maps unknown codes onto `Internal`
+through a wildcard, and adding it would collide there and break
+`every_rpc_error_code_maps_to_a_distinct_nonzero_exit_code`.
 
-Identical structure in `events.rs`, listing that enum's ten variants in both the `Known` enum and the match. Add the `Unrecognized` variant with the same doc comment reasoning.
+- [ ] **Step 4: Add the same catch-all to `ProcessEventKind`**
 
-Then delete the now-false comment above the enum (currently lines 13-14: "A new variant is not free here: there is no `#[serde(other)]` fallback, so an old subscriber is sent a frame under `process.*` it cannot decode") and replace it with one saying a new variant IS free for a subscriber built from this point on.
+Identical shape in `events.rs`: keep the derive, add an `Unrecognized` variant
+carrying `#[serde(other)]`, with the same doc reasoning.
+
+Then delete the now-false comment above the enum (currently lines 13-14: "A new
+variant is not free here: there is no `#[serde(other)]` fallback, so an old
+subscriber is sent a frame under `process.*` it cannot decode") and replace it
+with one saying a new variant IS free for a subscriber built from this point on.
 
 - [ ] **Step 5: Fix in-crate exhaustive matches**
 

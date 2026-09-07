@@ -124,18 +124,25 @@ every bump, which is how a real warning becomes noise people learn to skip.
 
 ### 2. Tolerant decode
 
-serde only allows `#[serde(other)]` on internally and adjacently tagged enums,
-and only on a variant carrying no payload. The shapes shep already ships
-therefore decide which fix each type gets. All three were measured with
-throwaway probes before this was written.
+`#[serde(other)]` covers two of the three shapes on this wire, and one shape
+needs a wrapper. All three were measured on this tree.
 
 | Wire type | Tagging | Fix | Measured result |
 |---|---|---|---|
 | `Request` | internally tagged | `#[serde(other)] Unrecognized` unit variant | absorbs unknown kinds carrying payloads, and `Envelope.id` survives |
-| `Response`, `BusEvent` | adjacently tagged | `#[serde(untagged)]` wrapper at the decode site | absorbs payload carrying unknowns; known variants still decode normally |
-| `RpcErrorCode`, `ProcessEventKind` | bare strings | small custom `Deserialize` with a `String` fallback | unknown spelling lands on `Unrecognized`, and a number is still an error |
+| `RpcErrorCode`, `ProcessEventKind` | bare strings | the same `#[serde(other)]`, derive kept | unknown spelling lands on `Unrecognized`, and a number is still an error |
+| `Response`, `BusEvent` | adjacently tagged | `#[serde(untagged)]` wrapper at the decode site | `other` absorbs only a payload-free unknown here, so the wrapper carries the rest |
 
-Three mechanisms rather than one is not elegant and is not a choice.
+**Corrected 2026-09-07, after this spec was approved.** The row above for bare
+strings first said `#[serde(other)]` was not allowed on them at all, and
+prescribed a hand-written `Deserialize` instead. That was read out of serde's
+documentation rather than measured, while the two rows either side of it were
+measured. It is wrong: an all-unit enum with `rename_all`, no tag attribute and
+`#[serde(other)]` on a unit variant decodes an unknown string to the catch-all,
+round-trips every known variant, and still refuses a number. The Task 1 review
+caught it after the hand-written version had shipped, and the code now uses the
+attribute. Roughly seventy lines per enum, and a three-place sync burden, came
+out again.
 
 The behaviour change is on the daemon side. With the catch-all, an unrecognized
 request decodes, arrives with its id intact, and is answered
