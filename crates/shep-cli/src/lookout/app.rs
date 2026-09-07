@@ -1667,10 +1667,21 @@ impl App {
                     // Split so no borrow of `self.body` is held across the
                     // `self.notice` assignment below.
                     if let Some((field, buffer)) = typed_text_of(&edit) {
-                        if let Some(settings) = self.settings_mut() {
+                        // Only when the editor is really back up. A dog
+                        // section can have replaced the settings screen with
+                        // a config pane while the write was in flight, and
+                        // `InputMode::Text` with no editor behind it sends
+                        // every later keystroke to a text handler that owns
+                        // nothing.
+                        let reopened = if let Some(settings) = self.settings_mut() {
                             settings.pending = Some(Pending::Typing { field, buffer });
+                            true
+                        } else {
+                            false
+                        };
+                        if reopened {
+                            self.mode = InputMode::Text;
                         }
-                        self.mode = InputMode::Text;
                     } else if let Some(settings) = self.settings_mut() {
                         settings.pending = None;
                     }
@@ -6977,6 +6988,33 @@ mod tests {
             "the stale settings reply leaves the pane alone"
         );
         assert!(app.settings().is_none());
+    }
+
+    /// `typed_text_of` answers for the two free-text settings fields, and
+    /// its `Some` used to arm `InputMode::Text` whether or not the editor
+    /// it types into was still there. Opening a dog section replaces the
+    /// settings screen, so a refusal landing afterwards armed a text mode
+    /// over a pane, and `on_key` then sent every later keystroke to a text
+    /// handler owning nothing.
+    #[test]
+    fn a_refused_settings_write_landing_over_a_dog_pane_does_not_arm_text_mode() {
+        let mut app = fixtures::app_in_dog_pane();
+        assert!(app.config_pane().is_some(), "the pane is open");
+
+        let _ = app.update(Msg::SettingWritten {
+            edit: SettingEdit::Set {
+                field: SettingField::MaxCronSleep,
+                value: "500ms".to_string(),
+            },
+            result: Err("max_cron_sleep is 500ms, below the 1s floor".to_string()),
+        });
+
+        assert!(app.config_pane().is_some(), "the pane survives the reply");
+        assert_ne!(
+            app.mode(),
+            InputMode::Text,
+            "there is no settings editor for the keystrokes to reach"
+        );
     }
 
     #[test]
