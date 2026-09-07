@@ -20,9 +20,10 @@ audit-debt phase.
 
 **That reload is NOT "SO_REUSEPORT reload", which this line said until
 2026-08-28.** shep never binds an app's listening socket and never sets
-`SO_REUSEPORT` on one. The only socket it binds is its own control socket at
-`$SHEP_HOME/run/shep.sock`, which is a different thing entirely and does fail
-loudly when its path exceeds the platform limit. Whether a reload's overlap is
+`SO_REUSEPORT` on one. The only endpoint it binds is its own control
+endpoint, a unix socket at `$SHEP_HOME/run/shep.sock` and a named pipe on
+Windows, which is a different thing entirely. The unix one does fail loudly
+when its path exceeds the platform limit. Whether a reload's overlap is
 zero-downtime depends on the app having set `SO_REUSEPORT` on its own
 listener; without it the second instance takes `EADDRINUSE`.
 
@@ -287,12 +288,12 @@ right about different questions, so neither is a bug to fix; check which one is
 being asked before changing either. README.md deliberately quotes the grouping
 without a count, so there is no third number to keep in step.
 
-What's built vs. deferred to v1.1+: [docs/specs/deferred.md](docs/specs/deferred.md).
+What's built vs. deferred to v1.1+: [docs/specs/deferred.md](specs/deferred.md).
 
 **Windows is built and runs.** This line said "0%, not partial — every verb
 prints 'not yet supported' and exits" for eighteen phases, and that is no
 longer true of anything. A Windows host became available, and
-[windows-estimate.md](docs/specs/windows-estimate.md)'s own first
+[windows-estimate.md](specs/windows-estimate.md)'s own first
 recommendation — dispatch the CI leg before scoping anything — was run: the
 tree was already compile-green on native MSVC. Tier A is now implemented and
 verified against a live flock on real Windows.
