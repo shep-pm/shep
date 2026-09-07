@@ -673,7 +673,7 @@ type Action struct {
 	Name string
 	// Params is the argument text, nil when the trigger carried none.
 	//
-	// A pointer because the wire omits the key entirely: an absent
+	// A pointer because the wire omits the key entirely. An absent
 	// params and an empty one are different messages.
 	Params *string
 }
@@ -1123,7 +1123,7 @@ func TestAPipePathIsTakenFromTheEnvironment(t *testing.T) {
 	}
 }
 
-// Taking 1 would give this module the app's stdout: it would write JSON
+// Taking 1 would give this module the app's stdout. It would write JSON
 // into it and close it on exit. Worse than a merely wrong number.
 func TestADescriptorBelowThreeIsRefused(t *testing.T) {
 	for _, raw := range []string{"0", "1", "2", "-1"} {
@@ -1291,7 +1291,7 @@ type connection struct {
 
 // Discover reads the environment and says where the channel is.
 //
-// Branches on which variable is present, never on the platform: the
+// It branches on which variable is present, never on the platform. The
 // shepherd sets exactly one of them, and neither is the ordinary case.
 func Discover() (Endpoint, error) {
 	return discover(os.LookupEnv)
@@ -1610,8 +1610,8 @@ const connDeadline = 5 * time.Second
 // process and never a second.
 func releaseChannel() { channelTaken.Store(false) }
 
-// fakeShepherd hands back a real socketpair: one end's descriptor number
-// for the library, the other end wrapped for the test to drive.
+// fakeShepherd hands back a real socketpair. The library gets one end's
+// descriptor number, and the test drives the other.
 func fakeShepherd(t *testing.T) (appFD int, shepherd net.Conn) {
 	t.Helper()
 	pair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
@@ -2167,7 +2167,7 @@ const outboxCapacity = 1024
 // outbox is the queue between the app's goroutines and the one goroutine
 // that writes.
 //
-// A dropped metric costs nothing: the shepherd logs metrics at debug
+// A dropped metric costs nothing. The shepherd logs metrics at debug
 // level and reads them nowhere else. A dropped readiness hangs
 // wait_ready, and a dropped reply costs an operator a whole
 // action_timeout.
@@ -2330,8 +2330,8 @@ func TestARegisteredActionRunsItsHandler(t *testing.T) {
 	}
 }
 
-// The contract calls this out: without a reply the operator waits out the
-// whole action_timeout for a typo.
+// The contract calls this out. Without a reply the operator waits
+// out the whole action_timeout for a typo.
 func TestAnUnregisteredActionStillGetsAReply(t *testing.T) {
 	registry := newDispatch()
 	handler, registered := registry.resolveAction("reload-config")
@@ -2597,8 +2597,7 @@ func testShepherd(warn func(string)) *Shepherd {
 	return &Shepherd{out: newOutbox(outboxCapacity), handlers: newDispatch(), warn: warn}
 }
 
-// D3: an app must be able to call every method without asking whether it
-// has a channel.
+// D3: an app calls every method without asking whether it has a channel.
 func TestAnInertHandleAcceptsEverythingAndDoesNothing(t *testing.T) {
 	shepherd := inert("", func(string) {})
 	if shepherd.Active() {
@@ -2892,8 +2891,8 @@ var (
 
 // Serve opens this process's channel and starts serving it.
 //
-// Always returns a usable handle. A second call returns the first one:
-// the channel is one descriptor and cannot be owned twice.
+// Always returns a usable handle. A second call returns the first one.
+// The channel is one descriptor and cannot be owned twice.
 func Serve() *Shepherd {
 	return serveShared(os.LookupEnv, stderrWarn)
 }
@@ -3032,7 +3031,7 @@ func (s *Shepherd) Metric(name string, value float64) {
 // OnAction registers a handler for one action name, replacing any prior
 // one. The returned string becomes the reply body.
 //
-// Safe to call from another goroutine, or from inside a handler: a
+// Safe to call from another goroutine, or from inside a handler. A
 // reload action can swap its own handlers this way.
 func (s *Shepherd) OnAction(name string, fn func(a Action) string) *Shepherd {
 	s.handlers.registerAction(name, fn)
@@ -3494,7 +3493,7 @@ replace github.com/shep-pm/shep-go/channel => ../../channel
 // Command answers is a supervised app that answers on the shepherd
 // channel.
 //
-// Run it under shep with `channel = true` and `shep trigger answers gc`
+// Run it under shep with `channel = true`. Then `shep trigger answers gc`
 // reaches the handler below.
 package main
 
