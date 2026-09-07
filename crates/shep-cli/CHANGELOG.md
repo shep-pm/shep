@@ -13,6 +13,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-09-07
+
+### Added
+
+- Give the palette a band, a ground and four roles
+- Add the shared gauge, sparkline, rule and band cells
+- Carry a sheep's memory ceiling on ProcessInfo
+- Retain per-sheep cpu samples across the poll
+- Add the cpu sparkline and memory gauge columns
+- Paint the selected row and its gutter edge
+- Draw the title and section bands
+- Give the host strip gauges and a flock summary
+- Merge the log paths into one row with its size
+- Give the bleats feed its chip
+- Paint the status bar and its control indicator
+- Render backgrounds and reverse video in the gallery
+- Cap the name column and give the table two rows of air
+- Group the host's two readings before the flock's numbers
+- Redraw the landing pane ([#168](https://github.com/shep-pm/shep/pull/168))
+
+### Fixed
+
+- State theme's ground rule without claiming its callers exist
+- Cover the max_memory byte conversion with a real ProcessEntry
+- Drop fabricated IR-24 citation and strengthen two cpu-history tests
+- Split the memory gauge into a styled fill and a muted tail
+- Correct stale caption text after gutter paint change
+- Give the dogs section band its own sky role
+- Gauge before value, summary ahead of host memory on strip
+- Add the detail band's cfg pending cell, drop a temp-dir width dependency, dedupe rule rendering
+- Move the detail pane's cfg cell into the truncatable rest, last
+- Reword palette-specific captions, add CFG/CPU-history gallery coverage
+- Reword the MemCeiling caption and render the log row's on-disk size
+- Scale the sparkline to a fixed ceiling, not its own peak
+- Draw the flock rules and detail divider in the line role
+- Use f32::clamp instead of chained max/min in sparkline
+- Scale the cpu sparkline to the flock, not to each row or a core
+- Declare the tempfile version the test fixtures actually need
+- Measure the detail pane's used width in columns, not chars
+- Require both log files' metadata before showing a size
+- Drop the redundant word from the bleats feed header
+- Measure the group row's used width in columns, not chars
+
+
 ## [0.4.5] - 2026-09-06
 
 
