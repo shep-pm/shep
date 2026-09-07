@@ -51,6 +51,13 @@ fn child_messages_match_their_fixtures() {
             },
         ),
         (
+            "child-metric-zero",
+            ChildMessage::Metric {
+                name: "idle".into(),
+                value: 0.0,
+            },
+        ),
+        (
             "child-action-reply",
             ChildMessage::ActionReply {
                 action: "gc".into(),

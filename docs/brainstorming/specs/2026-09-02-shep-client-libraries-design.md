@@ -74,11 +74,18 @@ stays silent. `is_active()` is there for anyone who wants to branch anyway.
 
 **D4. Metrics are droppable. Readiness and replies are not.** One writer
 thread behind a bounded queue, 1024 messages by default. `metric` never
-blocks and never fails; on a full queue it drops the oldest and increments a
-counter the app can read. `ready` and action replies block until queued,
-because a lost `ready` hangs the `wait_ready` gate and a lost reply costs an
-operator the full `action_timeout`. The daemon logs metrics at debug level
-and nothing else reads them yet, so dropping one costs nothing today.
+blocks and never fails; on a full queue it drops a sample and increments a
+counter the app can read. The counter is the shared contract. Which sample
+goes is each language's own call: Rust evicts the oldest to make room, and
+Go drops the one being emitted, because evicting the oldest there needs a
+second `select` racing the writer for a queue it does not own. A value the
+wire cannot carry counts against the same counter, so Go drops a
+non-finite float rather than queueing a line that will not encode, where
+Rust writes `null` and lets the shepherd skip it. `ready` and action
+replies block until queued, because a lost `ready` hangs the `wait_ready`
+gate and a lost reply costs an operator the full `action_timeout`. The
+daemon logs metrics at debug level and nothing else reads them yet, so
+dropping one costs nothing today.
 
 **D5. A shutdown with no handler warns and does nothing.** The library never
 terminates an app that did not ask it to. It names the missing handler and
@@ -175,13 +182,135 @@ between an author noticing that and not.
 The pipe name carries a random suffix per spawn, so a library must read it
 from the environment and never reconstruct it.
 
+## Go, settled 2026-09-06
+
+The contract table above gives the names. These are the calls it did not
+cover, decided when `shep-go` was planned.
+
+**The handler takes one `Action` struct.** The wire omits `params` entirely
+when there is none, so an empty string and an absent key are different
+messages. Go has no Option, and a plain string would collapse the two, so
+`Params` is a pointer, the way `encoding/json` and every wire-facing Go API
+handle an optional value.
+
+```go
+type Action struct {
+    Name   string
+    Params *string
+}
+
+// Fields splits Params on whitespace, empty when there were none.
+func (a Action) Fields() []string
+```
+
+A struct rather than two arguments, because adding a field later does not
+break callers. This signature has more to gain from that than most: typed
+action names are deferred under D11, and the dog client lands at 0.2.0.
+
+`Name` is on the struct because the contract table commits all four
+languages to a handler that receives it, and Rust published that signature.
+An app can always close over the name it registered, so the field is
+convenience rather than capability. The struct is what makes carrying it
+free: an unused field is invisible, while Rust's unused parameter shows up
+as `_name` at both of its own call sites.
+
+**`Fields()` is where a whitespace split belongs, and only there.** Most
+actions want words, and making every app write the split plus a nil check is
+friction. Doing it in the library instead of beside it was considered and
+refused. `params` is one opaque string the daemon never reads, so splitting
+would destroy an app's ability to pass JSON or any value containing a space,
+and recovering those needs shell-word parsing that four libraries would have
+to implement identically. A helper costs none of that, and each language can
+spell it its own way without the fixtures encoding a grammar the wire does
+not have.
+
+Two registration methods, one taking params and one not, was considered and
+refused. It reads cleaner for the common case, but it moves a call-time fact
+to registration time and leaves nothing sensible to do when a message
+carrying params reaches a handler that declared it wanted none. It would
+also split one concept across two rows of the contract table above, which is
+the thing keeping the four libraries in agreement.
+
+`Version()` returns a plain string, because an empty version stamp means
+nothing and a pointer there would buy a nil check and no information.
+
+**The outbox is a buffered channel of 1024.** D4's split falls out of the
+language: a metric is a `select` with a `default` that counts a drop, and
+readiness and a reply are a blocking send raced against a closed channel.
+This differs from the Rust crate in two ways worth knowing. Rust evicts an
+already queued metric to admit a readiness message sooner, and Go makes
+readiness wait for the writer to drain one instead. A full queue also loses
+a different sample: Rust drops the oldest, and Go's `default` arm drops the
+one being emitted. The observable contract is the same, since what D4
+promises is the counter rather than the eviction order, and the Go version
+is a third of the code.
+
+**The type is `Shepherd`, matching Rust.** `channel.Serve()` returning
+`*channel.Channel` would stutter.
+
+**One module per half, against the layout this document first carried.**
+Go puts the major version in the import path from v2 onward, so under a
+single module a breaking change in the dog rewrites the import path of every
+channel consumer who never imported the dog. The two halves do not move
+together: `CHANNEL_VERSION` has never left `"1"`, while `PROTOCOL_VERSION`
+went 1 to 2 to 3 within a few months. Splitting costs nothing now and is a
+consumer migration once a tag exists.
+
+**Windows needs the same peek Rust needed, and this was measured rather than
+assumed.** Three probes on real Windows against a real shepherd, 2026-09-06,
+each with a reader parked and a writer trying to send:
+
+| approach | result |
+|---|---|
+| `os.OpenFile`, reader and writer goroutines | write blocked, 6s |
+| `FILE_FLAG_OVERLAPPED` through `syscall.CreateFile`, wrapped in `os.NewFile` | write blocked, 6s |
+| `PeekNamedPipe` poll loop through `syscall.NewLazyDLL` | write completed, 0s |
+
+So Go carries the identical hazard, and the fix Rust names as the proper one
+does not work here: Go issues a synchronous read regardless of the flag, so
+wrapping an overlapped handle changes nothing. The reader polls with
+`PeekNamedPipe` at the same 20ms interval, reached through
+`syscall.NewLazyDLL`, which keeps the standard-library-only rule. The test
+that creates the pipe server reaches `CreateNamedPipe` the same way.
+
+A naive port would have shipped the deadlock this project already fixed once
+in Rust, and every CI leg would have been green while it did.
+
 ## Testing
 
 **Fixtures are the shared floor.** Every library's suite decodes and
-re-encodes the same corpus of JSON lines and asserts byte equality where the
-daemon's own tests assert it. That is what makes four independent
-implementations agree before the generator exists to make them agree by
-construction.
+re-encodes the same corpus of JSON lines. That is what makes four
+independent implementations agree before the generator exists to make them
+agree by construction.
+
+**Byte equality holds on decode and not on encode, which was measured rather
+than assumed.** The same values serialize differently in the four standard
+libraries, 2026-09-06:
+
+| value | Rust | Go | Node | Python |
+|---|---|---|---|---|
+| `42.0` as a float | `42.0` | `42` | `42` | `42.0` |
+| `a<b&c` in a string | verbatim | `a\u003cb\u0026c` | verbatim | verbatim |
+
+Two of the four disagree with the committed fixture on a whole-numbered
+float, and Go alone escapes HTML by default. Neither difference is a wire
+problem, since every decoder accepts both forms, but both defeat a
+byte-for-byte encode assertion.
+
+So the floor is exact in one direction and semantic in the other. Decoding a
+fixture must produce exactly the expected field values. Re-encoding is
+compared by decoding both the library's output and the fixture and comparing
+those, which stays strict about key presence, key names and string values,
+and is tolerant only of number formatting. Go additionally turns HTML
+escaping off, so a reply body carrying angle brackets survives verbatim the
+way it does everywhere else.
+
+**A field that is optional on the wire and has a meaningful zero needs a
+type that can hold absent.** Go's `omitempty` drops a metric of 0 entirely,
+producing a message with no `value` key. The corpus carried no zero-valued
+metric until this was found, so all seven fixtures passed while that bug was
+live. There is a zero-valued metric fixture now, and every library has to
+decode and re-encode it.
 
 **Above the fixtures, each library is driven against a real socketpair**
 with a fake shepherd on the other end, not against a mocked transport. The
@@ -268,8 +397,8 @@ is pydantic, which splits `pydantic` from `pydantic-core` for this reason.
 shep-pm/shep                       exists
   crates/shep-channel/             new, leaf: serde and serde_json only
   crates/shep-core/                depends on it, re-exports the two enums
-  docs/shepherd-channel/fixtures/  new, generated from the real serde impls
-  xtask wire-export                new, built last
+  crates/shep-channel/fixtures/    generated from the real serde impls
+  crates/shep-channel/wire/        the emitted Go types, built last
 
 shep-pm/shep-js                    npm workspace
   packages/channel/                @shep-pm/channel
@@ -283,10 +412,10 @@ shep-pm/shep-py
   src/shep_pm/dog/                 0.2.0
   fixtures/                        vendored
 
-shep-pm/shep-go                    one module, one tag, standard library only
-  channel/
-  dog/                             0.2.0
-  fixtures/                        vendored
+shep-pm/shep-go                    one module per half, standard library only
+  channel/       module github.com/shep-pm/shep-go/channel
+    fixtures/    vendored
+  dog/           module github.com/shep-pm/shep-go/dog, 0.2.0
 ```
 
 Each new repo mirrors what `shep` already carries: dual MIT and Apache-2.0,
@@ -330,11 +459,38 @@ first run produces a zero diff against files written by hand. If it does not,
 one of the two is wrong and that is worth knowing before anything immutable
 is published.
 
+**It arrives in two halves, and the first one already shipped.**
+`crates/shep-channel/tests/fixtures.rs` writes the corpus from the real serde
+impls under `SHEP_CHANNEL_BLESS=1`, and on every other run compares each
+committed file byte for byte and fails. That is the whole of "shep's own CI
+fails if the committed copy is stale", and it has been running since the
+crate landed. What remains is the emitted wire file per language, and the
+cross-repo pull requests.
+
+**The wire file uses that same mechanism rather than an xtask**, which is
+what this document first proposed. `tests/wire_export.rs` emits the Go types
+under `SHEP_CHANNEL_BLESS=1` and otherwise fails on a stale committed copy.
+No new workspace member, no new dependency, and one convention for both
+generated artifacts.
+
+**An exhaustive match is what makes it catch drift.** The emitter matches
+over `ChildMessage` and `ShepherdMessage` with no wildcard arm, so a new
+variant in Rust stops it compiling until someone decides what the Go spelling
+is. That is the property the two enums were left exhaustive for, spent here
+rather than only described.
+
+**The cross-repo half waits for more than one library.** With a single
+consumer the zero-diff acceptance test covers one language, which is the
+weaker test this section exists to avoid. The pull request machinery and its
+credential land once `shep-js` and `shep-py` give it three targets. Until
+then a vendored copy going stale is caught by hand, and that is a real gap
+rather than a solved problem.
+
 ```
 shep-core's real serde impls
         |
         v
-docs/shepherd-channel/fixtures/*.json, plus a wire file per language
+crates/shep-channel/fixtures/*.json, plus a wire file per language
         |  shep's own CI fails if the committed copy is stale
         v
 opens a pull request in shep-js, shep-py and shep-go when the bytes change

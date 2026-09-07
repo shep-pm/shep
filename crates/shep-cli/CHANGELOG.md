@@ -13,6 +13,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-07
+
+
+## [0.6.0] - 2026-09-07
+
+### Added
+
+- Name the apps a staged restart could not restart **(BREAKING)**
+- Decode an unknown error code or process event instead of failing
+- Refuse an unrecognized request by id instead of ending the connection
+- Accept any peer at or above a protocol floor **(BREAKING)**
+- Name the protocol floor in version output
+- A protocol floor, tolerant decode, and refusals a staged restart can name ([#173](https://github.com/shep-pm/shep/pull/173)) **(BREAKING)**
+
+### Changed
+
+- Stop leaking version_text on every call
+
+### Fixed
+
+- Exit non-zero and name the apps a restart went around
+- Judge a dog's protocol against the floor rather than exact equality
+
+
 ## [0.5.1] - 2026-09-07
 
 ### Changed

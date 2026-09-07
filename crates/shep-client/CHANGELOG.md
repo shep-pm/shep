@@ -10,6 +10,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-07
+
+
+## [0.6.0] - 2026-09-07
+
+### Added
+
+- Accept any peer at or above a protocol floor **(BREAKING)**
+- A protocol floor, tolerant decode, and refusals a staged restart can name ([#173](https://github.com/shep-pm/shep/pull/173)) **(BREAKING)**
+
+### Changed
+
+- Move reply-id decode into shep-core, drop shep-client's serde dep
+
+### Fixed
+
+- Fail a caller whose reply cannot be decoded instead of leaving it waiting
+
+
 ## [0.5.1] - 2026-09-07
 
 
