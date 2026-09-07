@@ -1844,6 +1844,7 @@ otel = "/usr/local/bin/shep-otel"
             daemon_version: version.to_string(),
             protocol: shep_core::protocol::PROTOCOL_VERSION,
             pid: 4242,
+            min_supported: None,
         }
     }
 }

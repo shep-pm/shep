@@ -49,9 +49,18 @@ pub mod channel {
 /// direction.
 pub const PROTOCOL_VERSION: u32 = 7;
 
+/// The oldest protocol this build accepts from a peer.
+///
+/// The handshake compares against this rather than [`PROTOCOL_VERSION`],
+/// so a change that only adds does not refuse anyone. This rises only
+/// when a message shape changes such that an older peer cannot read it,
+/// and raising it refuses every peer built below it, which is why the
+/// rules in the spec exist to make that rare.
+pub const MIN_SUPPORTED: u32 = 7;
+
 #[cfg(test)]
 mod tests {
-    use super::PROTOCOL_VERSION;
+    use super::{MIN_SUPPORTED, PROTOCOL_VERSION};
 
     #[test]
     fn a_retyped_restarted_forced_the_protocol_version_up() {
@@ -61,5 +70,13 @@ mod tests {
         // as an array, so an older peer decodes neither, and the handshake
         // is the only place that can say so.
         assert_eq!(PROTOCOL_VERSION, 7);
+    }
+
+    #[test]
+    fn the_floor_never_outruns_the_ceiling() {
+        // A floor above the current version would refuse every peer,
+        // including one built from this exact commit. Both sides are
+        // `const`, so clippy wants the check itself const-evaluated.
+        const { assert!(MIN_SUPPORTED <= PROTOCOL_VERSION) };
     }
 }

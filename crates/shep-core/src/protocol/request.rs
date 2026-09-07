@@ -41,6 +41,13 @@ pub struct HelloAck {
     pub protocol: u32,
     /// Daemon pid
     pub pid: u32,
+    /// The oldest protocol this daemon accepts, or `None` from a daemon
+    /// predating the floor.
+    ///
+    /// Absent rather than `null` on the wire, so it does not move
+    /// [`crate::protocol::PROTOCOL_VERSION`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_supported: Option<u32>,
 }
 
 /// Serializable selector (mirror of [`crate::selector::ProcessSelector`];

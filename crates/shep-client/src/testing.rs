@@ -393,6 +393,7 @@ pub fn sample_ack() -> HelloAck {
         daemon_version: "9.9.9".into(),
         protocol: PROTOCOL_VERSION,
         pid: 4242,
+        min_supported: None,
     }
 }
 

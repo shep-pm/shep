@@ -422,6 +422,7 @@ mod tests {
             daemon_version: format!("0.0.{pid}"),
             protocol: PROTOCOL_VERSION,
             pid,
+            min_supported: None,
         }
     }
 
