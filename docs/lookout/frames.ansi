@@ -65,7 +65,7 @@ All three panes at 120x30: the host strip under the title, the detail pane and t
 [0m[38;5;245mout  tests/fixtures/gallery-logs/api-out.log[0m[38;5;238m   │   [0m[38;5;245merr  tests/fixtures/gallery-logs/api-err.log   2.0K on disk          [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mbleats  api  … 1 earlier line not shown                                                                      [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mapi  … 1 earlier line not shown                                                                              [0m
 [0m[38;5;245mout  [0mGET /healthz 200 3ms                                                                                               [0m
 [0m[38;5;245mout  [0mGET /v1/orders 200 44ms                                                                                            [0m
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m
@@ -100,7 +100,7 @@ One errored, one waiting to restart, one stopped, with the selection parked on t
 [0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/api-2-err.log                                   [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mbleats  api  … 1 earlier line not shown                                                                      [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mapi  … 1 earlier line not shown                                                                              [0m
 [0m[38;5;245mout  [0mGET /healthz 200 3ms                                                                                               [0m
 [0m[38;5;245mout  [0mGET /v1/orders 200 44ms                                                                                            [0m
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m
@@ -135,7 +135,7 @@ app web ×3  [0m[38;5;29monline[0m   restarts 3   uptime 15m   cpu 9.4%   mem
                                                                                                                         [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;245mbleats  web  follows one instance; select one to see its log                                                 [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;245mweb  follows one instance; select one to see its log                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -170,7 +170,7 @@ Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in 
 [0m[38;5;245mout  not reported[0m[38;5;238m   │   [0m[38;5;245merr  not reported                                                                               [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;245mbleats  log-rotate  out then err  from the log files, re-read with each listing                              [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;245mlog-rotate  out then err  from the log files, re-read with each listing                                      [0m
 [0m[38;5;245mout  [0mrotated /var/log/api/access.log -> access.log.1                                                                    [0m
 [0m[38;5;245mout  [0mcompressed access.log.1 (4.2M -> 380K)                                                                             [0m
 [0m[38;5;245mout  [0mpruned 2 archives older than 14 days                                                                               [0m
@@ -205,7 +205,7 @@ Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a
 [0m[38;5;245mout  /home/ada/.shep/logs/web-hot-1-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/web-hot-1-err.log                                                         [0m
                                                                                                                                                       [0m
 [0m[38;5;238m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mbleats  web-hot  … 1 earlier line not shown                                                                                                [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mweb-hot  … 1 earlier line not shown                                                                                                        [0m
 [0m[38;5;245mout  [0mGET /healthz 200 3ms                                                                                                                             [0m
 [0m[38;5;245mout  [0mGET /v1/orders 200 44ms                                                                                                                          [0m
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                                                         [0m
@@ -240,7 +240,7 @@ Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a
 [0m[38;5;245mout  /home/ada/.shep/logs/web-10-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/web-10-err.log                                                     [0m
                                                                                                                                             [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mbleats  web  … 1 earlier line not shown                                                                                          [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mweb  … 1 earlier line not shown                                                                                                  [0m
 [0m[38;5;245mout  [0mGET /healthz 200 3ms                                                                                                                   [0m
 [0m[38;5;245mout  [0mGET /v1/orders 200 44ms                                                                                                                [0m
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                                               [0m
@@ -273,7 +273,7 @@ No sheep registered. Each of the three panes says why it is empty, and the three
                                                                                                     [0m
                                                                                                     [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;245mbleats  no sheep is selected                                                             [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;245mno sheep is selected                                                                     [0m
                                                                                                     [0m
                                                                                                     [0m
                                                                                                     [0m
@@ -340,7 +340,7 @@ The shepherd stopped answering. Five attempts over about eight seconds before th
 [0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/api-2-err.log                                   [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mbleats  api  … 1 earlier line not shown                                                                      [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mapi  … 1 earlier line not shown                                                                              [0m
 [0m[38;5;245mout  [0mGET /healthz 200 3ms                                                                                               [0m
 [0m[38;5;245mout  [0mGET /v1/orders 200 44ms                                                                                            [0m
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m
@@ -375,7 +375,7 @@ The ladder ran out. Last known values stay, the uptime clock has stopped, and so
 [0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/api-2-err.log                                   [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mbleats  api  … 1 earlier line not shown                                                                      [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mapi  … 1 earlier line not shown                                                                              [0m
 [0m[38;5;245mout  [0mGET /healthz 200 3ms                                                                                               [0m
 [0m[38;5;245mout  [0mGET /v1/orders 200 44ms                                                                                            [0m
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m
@@ -410,7 +410,7 @@ The ladder ran out. Last known values stay, the uptime clock has stopped, and so
 [0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/api-2-err.log                                   [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mbleats  api  … 1 earlier line not shown                                                                      [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mapi  … 1 earlier line not shown                                                                              [0m
 [0m[38;5;245mout  [0mGET /healthz 200 3ms                                                                                               [0m
 [0m[38;5;245mout  [0mGET /v1/orders 200 44ms                                                                                            [0m
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m
@@ -492,7 +492,7 @@ A query nothing matches. The table names the query rather than claiming the floc
   1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mbleats  api  … 1 earlier line not shown                                                                      [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mapi  … 1 earlier line not shown                                                                              [0m
 [0m[38;5;245mout  [0mGET /healthz 200 3ms                                                                                               [0m
 [0m[38;5;245mout  [0mGET /v1/orders 200 44ms                                                                                            [0m
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m
@@ -544,7 +544,7 @@ The feed under a burst: 3.8 megabytes were never read and some hundreds of lines
 [0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/api-2-err.log                                   [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mbleats  api  … 525 earlier lines not shown, and 3.8M before them never read                                  [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mapi  … 525 earlier lines not shown, and 3.8M before them never read                                          [0m
 [0m[38;5;245mout  [0mGET /v1/orders/25 200 33ms                                                                                         [0m
 [0m[38;5;245mout  [0mGET /v1/orders/26 200 34ms                                                                                         [0m
 [0m[38;5;245mout  [0mGET /v1/orders/27 200 35ms                                                                                         [0m
@@ -579,7 +579,7 @@ The selected sheep has never written a log in this $SHEP_HOME. The feed names th
 [0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/api-2-err.log                                   [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;245mbleats  api  out then err  from the log files, re-read with each listing                                     [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;245mapi  out then err  from the log files, re-read with each listing                                             [0m
 [0m[38;5;245mthis sheep has not written a log in this $SHEP_HOME                                                                     [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -610,7 +610,7 @@ The selected sheep has never written a log in this $SHEP_HOME. The feed names th
 [0m[38;5;245mout  …out.log[0m[38;5;238m   │   [0m[38;5;245merr  …err.log[0m
                                  [0m
 [0m[38;5;238m─────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mbleats  api  … 1 earl…[0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mapi  … 1 earlier line…[0m
 [0m[38;5;245mout  [0mGET /healthz 200 3ms        [0m
 [0m[38;5;245mout  [0mGET /v1/orders 200 44ms     [0m
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms    [0m
@@ -645,7 +645,7 @@ The selected sheep has never written a log in this $SHEP_HOME. The feed names th
 [0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/api-2-err.log                                   [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mbleats  api  … 1 earlier line not shown                                                                      [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mapi  … 1 earlier line not shown                                                                              [0m
 [0m[38;5;245mout  [0mGET /healthz 200 3ms                                                                                               [0m
 [0m[38;5;245mout  [0mGET /v1/orders 200 44ms                                                                                            [0m
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m
@@ -680,7 +680,7 @@ The detail pane with a lamb list: how many descendants the shepherd's walk found
 [0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/api-2-err.log                                   [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mbleats  api  … 1 earlier line not shown                                                                      [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mapi  … 1 earlier line not shown                                                                              [0m
 [0m[38;5;245mout  [0mGET /healthz 200 3ms                                                                                               [0m
 [0m[38;5;245mout  [0mGET /v1/orders 200 44ms                                                                                            [0m
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m
@@ -715,7 +715,7 @@ The same pane on a stopped sheep. The shepherd had no pid to walk from and left 
 [0m[38;5;245mout  /home/ada/.shep/logs/cron-4-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/cron-4-err.log                                 [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mbleats  cron  … 1 earlier line not shown                                                                     [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mcron  … 1 earlier line not shown                                                                             [0m
 [0m[38;5;245mout  [0mGET /healthz 200 3ms                                                                                               [0m
 [0m[38;5;245mout  [0mGET /v1/orders 200 44ms                                                                                            [0m
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m

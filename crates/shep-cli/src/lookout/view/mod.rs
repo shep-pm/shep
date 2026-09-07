@@ -621,7 +621,7 @@ mod tests {
             "the detail pane says its own reason: {frame:?}"
         );
         assert!(
-            frame.contains("bleats  no sheep is selected"),
+            frame.contains("BLEATS no sheep is selected"),
             "the feed's sentence is already true and is unchanged: {frame:?}"
         );
     }
@@ -1030,13 +1030,12 @@ mod tests {
                     );
                 }
                 if panes.feed {
-                    // `contains`, not `starts_with`: the `BLEATS` chip now
-                    // leads the line, ahead of the `bleats  ` text this
-                    // check has always looked for.
+                    // `contains`, not `starts_with`: the `BLEATS` chip
+                    // leads the line, and nothing else on screen carries it.
                     let positions: Vec<usize> = lines
                         .iter()
                         .enumerate()
-                        .filter(|(_, l)| l.contains("bleats  "))
+                        .filter(|(_, l)| l.contains("BLEATS"))
                         .map(|(i, _)| i)
                         .collect();
                     assert_eq!(positions.len(), 1, "the feed header at {width}x{height}");

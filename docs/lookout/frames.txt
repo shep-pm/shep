@@ -65,7 +65,7 @@ lambs  not read yet
 out  tests/fixtures/gallery-logs/api-out.log   │   err  tests/fixtures/gallery-logs/api-err.log   2.0K on disk          
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  api  … 1 earlier line not shown                                                                      
+ ██ BLEATS api  … 1 earlier line not shown                                                                              
 out  GET /healthz 200 3ms                                                                                               
 out  GET /v1/orders 200 44ms                                                                                            
 out  POST /v1/orders 201 88ms                                                                                           
@@ -99,7 +99,7 @@ lambs  not read yet
 out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                   
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  api  … 1 earlier line not shown                                                                      
+ ██ BLEATS api  … 1 earlier line not shown                                                                              
 out  GET /healthz 200 3ms                                                                                               
 out  GET /v1/orders 200 44ms                                                                                            
 out  POST /v1/orders 201 88ms                                                                                           
@@ -133,7 +133,7 @@ lambs  not shown for a group; select one instance
                                                                                                                         
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  web  follows one instance; select one to see its log                                                 
+ ██ BLEATS web  follows one instance; select one to see its log                                                         
                                                                                                                         
                                                                                                                         
                                                                                                                         
@@ -167,7 +167,7 @@ lambs  not read yet
 out  not reported   │   err  not reported                                                                               
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  log-rotate  out then err  from the log files, re-read with each listing                              
+ ██ BLEATS log-rotate  out then err  from the log files, re-read with each listing                                      
 out  rotated /var/log/api/access.log -> access.log.1                                                                    
 out  compressed access.log.1 (4.2M -> 380K)                                                                             
 out  pruned 2 archives older than 14 days                                                                               
@@ -201,7 +201,7 @@ lambs  not read yet
 out  /home/ada/.shep/logs/web-hot-1-out.log   │   err  /home/ada/.shep/logs/web-hot-1-err.log                                                         
                                                                                                                                                       
 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  web-hot  … 1 earlier line not shown                                                                                                
+ ██ BLEATS web-hot  … 1 earlier line not shown                                                                                                        
 out  GET /healthz 200 3ms                                                                                                                             
 out  GET /v1/orders 200 44ms                                                                                                                          
 out  POST /v1/orders 201 88ms                                                                                                                         
@@ -235,7 +235,7 @@ lambs  not read yet
 out  /home/ada/.shep/logs/web-10-out.log   │   err  /home/ada/.shep/logs/web-10-err.log                                                     
                                                                                                                                             
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  web  … 1 earlier line not shown                                                                                          
+ ██ BLEATS web  … 1 earlier line not shown                                                                                                  
 out  GET /healthz 200 3ms                                                                                                                   
 out  GET /v1/orders 200 44ms                                                                                                                
 out  POST /v1/orders 201 88ms                                                                                                               
@@ -267,7 +267,7 @@ no sheep selected: the flock is empty
                                                                                                     
                                                                                                     
 ────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  no sheep is selected                                                             
+ ██ BLEATS no sheep is selected                                                                     
                                                                                                     
                                                                                                     
                                                                                                     
@@ -331,7 +331,7 @@ lambs  not read yet
 out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                   
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  api  … 1 earlier line not shown                                                                      
+ ██ BLEATS api  … 1 earlier line not shown                                                                              
 out  GET /healthz 200 3ms                                                                                               
 out  GET /v1/orders 200 44ms                                                                                            
 out  POST /v1/orders 201 88ms                                                                                           
@@ -365,7 +365,7 @@ lambs  3 parent-pid descendants, read 0s ago   48220 node   48221 node   48222 n
 out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                   
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  api  … 1 earlier line not shown                                                                      
+ ██ BLEATS api  … 1 earlier line not shown                                                                              
 out  GET /healthz 200 3ms                                                                                               
 out  GET /v1/orders 200 44ms                                                                                            
 out  POST /v1/orders 201 88ms                                                                                           
@@ -399,7 +399,7 @@ lambs  not read yet
 out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                   
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  api  … 1 earlier line not shown                                                                      
+ ██ BLEATS api  … 1 earlier line not shown                                                                              
 out  GET /healthz 200 3ms                                                                                               
 out  GET /v1/orders 200 44ms                                                                                            
 out  POST /v1/orders 201 88ms                                                                                           
@@ -477,7 +477,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
   1     web         online           48212    0         -          2.9%    178.0M    1h 26m    edge        -            
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  api  … 1 earlier line not shown                                                                      
+ ██ BLEATS api  … 1 earlier line not shown                                                                              
 out  GET /healthz 200 3ms                                                                                               
 out  GET /v1/orders 200 44ms                                                                                            
 out  POST /v1/orders 201 88ms                                                                                           
@@ -527,7 +527,7 @@ lambs  not read yet
 out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                   
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  api  … 525 earlier lines not shown, and 3.8M before them never read                                  
+ ██ BLEATS api  … 525 earlier lines not shown, and 3.8M before them never read                                          
 out  GET /v1/orders/25 200 33ms                                                                                         
 out  GET /v1/orders/26 200 34ms                                                                                         
 out  GET /v1/orders/27 200 35ms                                                                                         
@@ -561,7 +561,7 @@ lambs  not read yet
 out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                   
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  api  out then err  from the log files, re-read with each listing                                     
+ ██ BLEATS api  out then err  from the log files, re-read with each listing                                             
 this sheep has not written a log in this $SHEP_HOME                                                                     
                                                                                                                         
                                                                                                                         
@@ -591,7 +591,7 @@ lambs  not read yet
 out  …out.log   │   err  …err.log
                                  
 ─────────────────────────────────
- ██ BLEATS bleats  api  … 1 earl…
+ ██ BLEATS api  … 1 earlier line…
 out  GET /healthz 200 3ms        
 out  GET /v1/orders 200 44ms     
 out  POST /v1/orders 201 88ms    
@@ -625,7 +625,7 @@ lambs  not read yet
 out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                   
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  api  … 1 earlier line not shown                                                                      
+ ██ BLEATS api  … 1 earlier line not shown                                                                              
 out  GET /healthz 200 3ms                                                                                               
 out  GET /v1/orders 200 44ms                                                                                            
 out  POST /v1/orders 201 88ms                                                                                           
@@ -659,7 +659,7 @@ lambs  3 parent-pid descendants, read 9m 53s ago   48220 node   48221 node   482
 out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                   
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  api  … 1 earlier line not shown                                                                      
+ ██ BLEATS api  … 1 earlier line not shown                                                                              
 out  GET /healthz 200 3ms                                                                                               
 out  GET /v1/orders 200 44ms                                                                                            
 out  POST /v1/orders 201 88ms                                                                                           
@@ -693,7 +693,7 @@ lambs  this sheep is not running, so there is no tree to walk
 out  /home/ada/.shep/logs/cron-4-out.log   │   err  /home/ada/.shep/logs/cron-4-err.log                                 
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  cron  … 1 earlier line not shown                                                                     
+ ██ BLEATS cron  … 1 earlier line not shown                                                                             
 out  GET /healthz 200 3ms                                                                                               
 out  GET /v1/orders 200 44ms                                                                                            
 out  POST /v1/orders 201 88ms                                                                                           

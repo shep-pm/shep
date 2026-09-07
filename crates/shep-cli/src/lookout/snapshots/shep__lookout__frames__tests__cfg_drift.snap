@@ -1,5 +1,6 @@
 ---
 source: crates/shep-cli/src/lookout/frames.rs
+assertion_line: 2430
 expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                                                                3 in the flock
@@ -25,7 +26,7 @@ lambs  not read yet
 out  /home/ada/.shep/logs/web-10-out.log   │   err  /home/ada/.shep/logs/web-10-err.log                                                     
                                                                                                                                             
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  web  … 1 earlier line not shown                                                                                          
+ ██ BLEATS web  … 1 earlier line not shown                                                                                                  
 out  GET /healthz 200 3ms                                                                                                                   
 out  GET /v1/orders 200 44ms                                                                                                                
 out  POST /v1/orders 201 88ms                                                                                                               

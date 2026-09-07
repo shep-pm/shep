@@ -30,12 +30,7 @@ pub fn feed_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
     let lost_lines = feed.missed_lines + feed.lines.len().saturating_sub(body);
 
     let header = match app.selected() {
-        None => header_line(
-            palette,
-            "bleats  no sheep is selected",
-            palette.muted(),
-            width,
-        ),
+        None => header_line(palette, "no sheep is selected", palette.muted(), width),
         // A group has no single log to re-read, so the header replaces "no
         // sheep is selected" rather than falling through to stale lines
         // from the previously selected sheep. Only visible while frozen,
@@ -43,7 +38,7 @@ pub fn feed_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
         Some(RowKey::Group(name)) => {
             out.push(header_line(
                 palette,
-                &format!("bleats  {name}  follows one instance; select one to see its log"),
+                &format!("{name}  follows one instance; select one to see its log"),
                 palette.muted(),
                 width,
             ));
@@ -57,7 +52,7 @@ pub fn feed_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
             match gap_notice(lost_lines, feed.missed_bytes) {
                 Some(notice) => header_line(
                     palette,
-                    &format!("bleats  {}  {notice}", row.info.name),
+                    &format!("{}  {notice}", row.info.name),
                     // Attention, not alarm: a sheep writing faster than a
                     // two-second poll is busy, not broken. `--bark` means
                     // errored, refused and destructive.
@@ -70,7 +65,7 @@ pub fn feed_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
                 None => header_line(
                     palette,
                     &format!(
-                        "bleats  {}  out then err  from the log files, re-read with each listing",
+                        "{}  out then err  from the log files, re-read with each listing",
                         row.info.name
                     ),
                     palette.muted(),
@@ -291,7 +286,7 @@ mod tests {
             1,
         );
         let rendered = render_all(&feed_lines(&app, 120, 6));
-        assert!(rendered.contains("bleats  sheep-1"), "got {rendered:?}");
+        assert!(rendered.contains("sheep-1"), "got {rendered:?}");
         assert!(rendered.contains("out then err"), "got {rendered:?}");
         assert!(
             !rendered.contains("out+err"),

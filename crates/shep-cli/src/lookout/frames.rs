@@ -1706,10 +1706,7 @@ mod tests {
             wide.contains("SHEEP 2  api"),
             "the detail pane, on the selected sheep, behind its own chip"
         );
-        assert!(
-            wide.contains("bleats  api"),
-            "and the feed, on the same one"
-        );
+        assert!(wide.contains("BLEATS api"), "and the feed, on the same one");
         assert!(
             wide.contains("2.0K on disk"),
             "api's log row points at real, fixed-size fixture files, so the size renders: {wide:?}"
@@ -1780,7 +1777,7 @@ mod tests {
             "the detail pane says lambs are per-instance: {grouped:?}"
         );
         assert!(
-            grouped.contains("bleats  web  follows one instance; select one to see its log"),
+            grouped.contains("BLEATS web  follows one instance; select one to see its log"),
             "and the feed will not guess which instance to tail: {grouped:?}"
         );
         assert!(
@@ -1872,7 +1869,7 @@ mod tests {
             empty.contains("no sheep selected: the flock is empty"),
             "the detail pane's"
         );
-        assert!(empty.contains("bleats  no sheep is selected"), "the feed's");
+        assert!(empty.contains("BLEATS no sheep is selected"), "the feed's");
         // The summary sits after both host readings now, which puts it past
         // the cut at this scene's 100 columns. Asserted as absent rather
         // than dropped: this is the visible cost of grouping the machine's
@@ -1893,7 +1890,7 @@ mod tests {
             assert!(!narrow.contains(gone), "the narrow tier dropped {gone}");
         }
         assert!(narrow.contains("host  load"), "the strip is up at 14 rows");
-        assert!(!narrow.contains("bleats  "), "the feed is not");
+        assert!(!narrow.contains("BLEATS"), "the feed is not");
         assert!(
             !narrow.contains("SHEEP 0  "),
             "and neither is the detail pane"
@@ -1925,7 +1922,7 @@ mod tests {
         // NoDetail: the detail pane is the first to go at 20 rows.
         let no_detail = render_text(&scene(Scene::NoDetail).1);
         assert!(
-            no_detail.contains("bleats  api"),
+            no_detail.contains("BLEATS api"),
             "the feed stayed, on the selection"
         );
         assert!(no_detail.contains("host  load"), "and so did the strip");
@@ -1939,7 +1936,7 @@ mod tests {
         // TableOnly: 12 rows, no optional panes.
         let table_only = render_text(&scene(Scene::TableOnly).1);
         assert!(!table_only.contains("host  load"));
-        assert!(!table_only.contains("bleats  "));
+        assert!(!table_only.contains("BLEATS"));
         assert!(table_only.contains("STATUS"), "the table is still there");
 
         // Cramped: 33 columns, the narrowest terminal that draws.
@@ -1949,7 +1946,7 @@ mod tests {
         // "nothing overlaps" means each pane's marker appears exactly once.
         // `contains`, not `starts_with`: the `BLEATS` chip now leads that
         // row.
-        for marker in ["host  ", "bleats  "] {
+        for marker in ["host  ", "BLEATS"] {
             assert_eq!(
                 cramped.lines().filter(|line| line.contains(marker)).count(),
                 1,
@@ -2058,7 +2055,7 @@ mod tests {
         let refused = render_text(&scene(Scene::Refused).1);
         assert!(refused.contains("--read-only"), "{refused}");
         assert!(
-            refused.contains("bleats  api"),
+            refused.contains("BLEATS api"),
             "a refusal does not blank the screen"
         );
 
