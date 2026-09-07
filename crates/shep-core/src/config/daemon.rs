@@ -492,9 +492,10 @@ impl fmt::Display for DaemonConfigError {
             }
             Self::InvalidEnvironment(value) => write!(
                 f,
-                "invalid value `{value}` for environment: must be 1-128 bytes of \
+                "invalid value `{value}` for environment: must be 1-{} bytes of \
                  `[A-Za-z0-9._-]` not starting with `.`, and not `{}` (the secrets \
                  store's every-environment slot)",
+                secrets::MAX_KEY_BYTES,
                 secrets::ALL_ENVIRONMENTS
             ),
         }
