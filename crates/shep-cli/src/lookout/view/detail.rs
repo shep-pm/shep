@@ -154,7 +154,7 @@ fn sheep_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
         // drops rather than the one field immune to truncation.
         cfg_text,
     );
-    let used = chip.chars().count() + facts.chars().count() + status.chars().count();
+    let used = columns(&chip) + columns(&facts) + columns(&status);
 
     vec![
         Line::from(vec![
@@ -712,6 +712,27 @@ mod tests {
         assert!(
             narrow_text.contains("-out.log"),
             "the tail identifies the file"
+        );
+    }
+
+    /// `used` must be measured in display columns, not `char`s: a sheep name
+    /// with double-width characters undercounts by `chars().count()`, which
+    /// hands `fit` a larger budget than actually remains and pushes the
+    /// composed line past `width`.
+    #[test]
+    fn a_wide_character_name_does_not_push_the_first_line_past_width() {
+        let info = ProcessInfo::builder(3, "羊羊羊羊羊", ProcStatus::Online)
+            .pid(Some(48_103))
+            .build();
+        let app = with_selection(info);
+        let width = 60;
+
+        let lines = detail_lines(&app, width);
+        let first = rendered(&lines[0]);
+        assert!(
+            columns(&first) <= usize::from(width),
+            "first line is {} columns wide, wanted at most {width}: {first:?}",
+            columns(&first)
         );
     }
 }
