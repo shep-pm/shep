@@ -199,7 +199,7 @@ git commit -m "feat(core): decode an unknown error code or process event instead
 
 **Files:**
 - Modify: `crates/shep-core/src/protocol/request.rs` (`Request` enum at line 191, `RpcErrorCode`)
-- Modify: `crates/shep-daemon/src/server.rs` (request dispatch)
+- Modify: `crates/shep-daemon/src/rpc.rs` (request dispatch)
 - Test: `crates/shep-daemon/tests/daemon_e2e.rs`
 
 **Interfaces:**
@@ -293,7 +293,9 @@ Add to `RpcErrorCode`, remembering to add it to Task 1's `Known` enum and match:
 
 - [ ] **Step 5: Answer it in the daemon**
 
-In `crates/shep-daemon/src/server.rs`, in the dispatch that matches on the decoded `Request`, add the arm. Do not touch the `?` at the `decode_frame` call: with the catch-all, an unknown kind no longer reaches it as an error.
+In `crates/shep-daemon/src/rpc.rs`, in the dispatch that matches on the decoded `Request`, add the arm. Do not touch the `?` at the `decode_frame` call in `server.rs`: with the catch-all, an unknown kind no longer reaches it as an error, and that path should still end the connection for a genuinely malformed frame.
+
+**Corrected 2026-09-07, mid-execution.** This step first named `server.rs` for the dispatch, which holds the handshake but not the request match, and first set `daemon_version: Some(...)` on the arm below. Both were defects in this plan. `RpcError::daemon_version` is documented as set only on a `ProtocolMismatch` refusal, because that is the one path where `HelloAck` never reaches the client; `Unsupported` is answered after a successful handshake, so the client already holds the version. The snippet also read it from `env!("CARGO_PKG_VERSION")`, shep-daemon's own version, where the real producer uses `ctx.daemon_version`.
 
 ```rust
         Request::Unrecognized => Outcome::Reply(Reply {
@@ -304,7 +306,7 @@ In `crates/shep-daemon/src/server.rs`, in the dispatch that matches on the decod
                     "this shepherd speaks protocol {PROTOCOL_VERSION} and does not \
                      implement the request the client sent"
                 ),
-                daemon_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+                daemon_version: None,
             }),
         }),
 ```
