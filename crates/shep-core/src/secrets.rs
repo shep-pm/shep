@@ -736,12 +736,21 @@ impl SecretView {
     }
 
     /// Whether a provider has pushed `namespace` for this view's own
-    /// environment.
+    /// environment or for [`ALL_ENVIRONMENTS`].
+    ///
+    /// A push to [`ALL_ENVIRONMENTS`] populates the namespace for every
+    /// environment, [`resolve`](Self::resolve)'s value lookup included, so
+    /// the pair check has to agree: a namespace pushed only under `all`
+    /// counts as pushed here too, or a key genuinely absent from that push
+    /// would read as the transient `MissingNamespace` instead of the
+    /// permanent `MissingKey` it actually is.
     fn is_pushed(&self, namespace: &str) -> bool {
         self.providers
             .pushed
             .get(namespace)
-            .is_some_and(|environments| environments.contains(&self.environment))
+            .is_some_and(|environments| {
+                environments.contains(&self.environment) || environments.contains(ALL_ENVIRONMENTS)
+            })
     }
 }
 
@@ -1126,6 +1135,57 @@ mod tests {
                 key: "ABSENT"
             }),
             Resolution::MissingKey
+        ));
+    }
+
+    /// A cache holding `vercel/PRESENT` for [`ALL_ENVIRONMENTS`], pushed as
+    /// that one pair and no other.
+    fn vercel_all() -> ProviderCache {
+        ProviderCache {
+            values: BTreeMap::from([(
+                "vercel".to_string(),
+                BTreeMap::from([(
+                    "PRESENT".to_string(),
+                    BTreeMap::from([(ALL_ENVIRONMENTS.to_string(), "v".to_string())]),
+                )]),
+            )]),
+            pushed: BTreeMap::from([(
+                "vercel".to_string(),
+                BTreeSet::from([ALL_ENVIRONMENTS.to_string()]),
+            )]),
+        }
+    }
+
+    /// A push to [`ALL_ENVIRONMENTS`] populates the namespace for every
+    /// environment, not only the literal string `"all"`, so a key that push
+    /// genuinely lacks is permanent for a `staging` view exactly as it
+    /// would be for a `production` one.
+    #[test]
+    fn an_all_slot_push_makes_a_genuinely_missing_key_permanent() {
+        let view = SecretView::new("staging".to_string(), BTreeMap::new(), vercel_all());
+
+        assert!(matches!(
+            view.resolve(&SecretRef {
+                namespace: Some("vercel"),
+                key: "ABSENT"
+            }),
+            Resolution::MissingKey
+        ));
+    }
+
+    /// The value half of the same all-only push, from a pair-aware view:
+    /// the namespace resolves the key it does carry for an environment that
+    /// never received its own push.
+    #[test]
+    fn an_all_slot_push_resolves_its_key_for_every_environment() {
+        let view = SecretView::new("staging".to_string(), BTreeMap::new(), vercel_all());
+
+        assert!(matches!(
+            view.resolve(&SecretRef {
+                namespace: Some("vercel"),
+                key: "PRESENT"
+            }),
+            Resolution::Found("v")
         ));
     }
 
