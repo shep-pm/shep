@@ -701,7 +701,13 @@ otel = "/usr/local/bin/shep-otel"
         // sheep that names `all` directly.
         let err =
             DaemonConfig::load(Some("[daemon]\nenvironment = \"all\"\n"), &|_| None).unwrap_err();
-        assert!(err.to_string().contains("all"), "{err}");
+        // The variant and the value it carries, not the rendered text: the
+        // message interpolates `ALL_ENVIRONMENTS` whatever it refused, so its
+        // words cannot say which check fired.
+        assert_eq!(
+            err,
+            DaemonConfigError::InvalidEnvironment(secrets::ALL_ENVIRONMENTS.to_string())
+        );
     }
 
     #[test]
