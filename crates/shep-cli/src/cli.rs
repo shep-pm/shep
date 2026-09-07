@@ -11,6 +11,7 @@
 
 use std::net::IpAddr;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 
 use shep_core::config::ResetDepth;
 use shep_core::protocol::{MIN_SUPPORTED, PROTOCOL_VERSION};
@@ -97,17 +98,17 @@ Upgrading        cargo install shep replaces the binary, not the running shepher
 /// back to `version` for when unset, so this is purely additive.
 ///
 /// `clap::Command::long_version` wants `&'static str` in the clap version
-/// this workspace pins, not `String`, and the text is built once per
-/// process, so leaking it is cheaper than threading a `OnceLock` through a
-/// derive attribute.
-fn version_text() -> &'static str {
-    Box::leak(
-        format!(
-            "{}\nspeaks protocol {PROTOCOL_VERSION}, accepts {MIN_SUPPORTED} and newer",
-            env!("CARGO_PKG_VERSION")
-        )
-        .into_boxed_str(),
+/// this workspace pins, not `String`. A `LazyLock` builds the text once, on
+/// first access, and every caller after that borrows the same allocation.
+static VERSION_TEXT: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        "{}\nspeaks protocol {PROTOCOL_VERSION}, accepts {MIN_SUPPORTED} and newer",
+        env!("CARGO_PKG_VERSION")
     )
+});
+
+fn version_text() -> &'static str {
+    VERSION_TEXT.as_str()
 }
 
 /// The `shep` command line.
