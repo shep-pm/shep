@@ -537,6 +537,15 @@ pub enum Request {
         /// Topic globs, e.g. `process.*`
         topics: Vec<String>,
     },
+    /// A request kind this build has not been taught.
+    ///
+    /// `#[serde(other)]`, which serde allows here because `Request` is
+    /// internally tagged and this variant carries nothing. The unknown
+    /// body's own fields are discarded: the only thing to do with a
+    /// request we cannot name is refuse it, and the refusal needs the
+    /// envelope's id rather than the body.
+    #[serde(other)]
+    Unrecognized,
 }
 
 /// Where a dog came from: this binary, or one an operator adopted.
@@ -1674,6 +1683,12 @@ pub enum RpcErrorCode {
     Internal,
     /// The request's deadline expired before the daemon finished it
     DeadlineExceeded,
+    /// The peer asked for something this build does not implement.
+    ///
+    /// Distinct from `NotFound`, which means a selector matched nothing.
+    /// This means the verb itself is unknown here, and the remedy is a
+    /// newer shepherd rather than a different selector.
+    Unsupported,
     /// A code this build has not been taught.
     ///
     /// Only ever produced by decoding: an unrecognized string falls through
@@ -1691,13 +1706,14 @@ impl RpcErrorCode {
     /// crate, which would swallow a variant added here and never updated
     /// there (`crates/shep-cli/src/exit.rs` maps every code to an exit
     /// status).
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::NotFound,
         Self::InvalidConfig,
         Self::SpawnFailed,
         Self::ProtocolMismatch,
         Self::Internal,
         Self::DeadlineExceeded,
+        Self::Unsupported,
     ];
 
     /// Never called; exists so this crate fails to build if a variant is
@@ -1715,6 +1731,7 @@ impl RpcErrorCode {
             Self::ProtocolMismatch => Self::ALL[3],
             Self::Internal => Self::ALL[4],
             Self::DeadlineExceeded => Self::ALL[5],
+            Self::Unsupported => Self::ALL[6],
             // `Unrecognized` is decode-only and never appears in `ALL`;
             // treat it as `Internal` would be treated.
             Self::Unrecognized => Self::ALL[4],
@@ -1748,6 +1765,7 @@ mod tests {
             RpcErrorCode::ProtocolMismatch,
             RpcErrorCode::Internal,
             RpcErrorCode::DeadlineExceeded,
+            RpcErrorCode::Unsupported,
         ] {
             let json = serde_json::to_string(&code).unwrap();
             assert_eq!(serde_json::from_str::<RpcErrorCode>(&json).unwrap(), code);
@@ -1759,6 +1777,18 @@ mod tests {
     #[test]
     fn a_non_string_error_code_is_still_an_error() {
         assert!(serde_json::from_str::<RpcErrorCode>("42").is_err());
+    }
+
+    /// The id has to survive a body this build cannot name, or the daemon
+    /// has nothing to address a refusal to.
+    #[test]
+    fn an_unknown_request_kind_keeps_the_envelope_id() {
+        let envelope: Envelope = serde_json::from_str(
+            r#"{"id":42,"deadline_ms":null,"body":{"kind":"from_the_future","extra":{"a":1}}}"#,
+        )
+        .unwrap();
+        assert_eq!(envelope.id, 42);
+        assert_eq!(envelope.body, Request::Unrecognized);
     }
 
     fn sample_info() -> ProcessInfo {

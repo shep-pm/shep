@@ -23,8 +23,8 @@ use shep_core::config::graph::BootPlan;
 use shep_core::config::{DeclaredApp, NormalizeError, ResolvedApp, normalize_all};
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{
-    Envelope, Lamb, ProcessInfo, Reply, Request, Response, RpcError, RpcErrorCode, SelectorSpec,
-    SheepApplied, SheepRefusal,
+    Envelope, Lamb, PROTOCOL_VERSION, ProcessInfo, Reply, Request, Response, RpcError,
+    RpcErrorCode, SelectorSpec, SheepApplied, SheepRefusal,
 };
 use shep_core::selector::ProcessSelector;
 use shep_core::signals::OperatorSignal;
@@ -807,6 +807,18 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                 })),
             }
         }
+        // The catch-all `#[serde(other)]` lands on the wire, not a panic:
+        // a client newer than this daemon gets a named refusal instead of
+        // a dropped connection, and the connection keeps serving requests
+        // this daemon does know.
+        Request::Unrecognized => reply(Err(RpcError {
+            code: RpcErrorCode::Unsupported,
+            message: format!(
+                "this shepherd speaks protocol {PROTOCOL_VERSION} and does not \
+                 implement the request the client sent"
+            ),
+            daemon_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        })),
         // `Request` is #[non_exhaustive]: a verb from a newer client that this
         // daemon has never heard of is an error, not a panic.
         _ => reply(Err(RpcError {

@@ -2023,6 +2023,32 @@ async fn a_smit_carrying_an_escape_is_refused_at_the_daemon() {
     fixture.shutdown().await;
 }
 
+/// The whole point of the catch-all. An unknown request must be refused BY
+/// ID and leave the connection usable, because the alternative is the
+/// dropped connection that made every additive change a version bump.
+#[tokio::test]
+async fn an_unrecognized_request_is_refused_and_the_connection_survives() {
+    let fixture = Fixture::boot(tempfile::tempdir().unwrap(), false).await;
+    let mut conn = fixture.connect().await;
+
+    let refusal = conn
+        .request_raw(serde_json::json!({"kind": "from_the_future"}))
+        .await
+        .expect("an unrecognized request is refused, not disconnected");
+    let Err(err) = refusal.result else {
+        panic!("an unknown request must be refused");
+    };
+    assert_eq!(err.code, RpcErrorCode::Unsupported);
+
+    let pong = conn.request(Request::Ping).await;
+    assert!(
+        pong.result.is_ok(),
+        "the connection must still serve after refusing one request"
+    );
+
+    fixture.shutdown().await;
+}
+
 // --- Reload: a probed app's replacement answers for itself ---
 
 /// The `AwaitReady` window a probed reload gets, as `listen_timeout`.
