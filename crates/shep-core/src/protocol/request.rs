@@ -2014,6 +2014,10 @@ mod tests {
         assert_eq!(serde_json::from_str::<Request>(&json).unwrap(), request);
     }
 
+    /// The exact `Debug` string, not the absence of one value: `entries` is
+    /// a map of [`EnvValue`], so what is actually under test is that the
+    /// nested redaction renders, and a `contains` check would pass just as
+    /// well against a map that printed nothing at all.
     #[test]
     fn put_secrets_round_trips_and_hides_its_values() {
         let request = Request::PutSecrets {
@@ -2026,7 +2030,11 @@ mod tests {
         };
         let encoded = serde_json::to_string(&request).unwrap();
         assert_eq!(serde_json::from_str::<Request>(&encoded).unwrap(), request);
-        assert!(!format!("{request:?}").contains("sk_live"));
+        assert_eq!(
+            format!("{request:?}"),
+            "PutSecrets { namespace: \"vercel\", environment: \"production\", \
+             entries: {\"API_KEY\": EnvValue(<7 bytes>)} }"
+        );
     }
 
     /// The pane edits everything else about a sheep, so the config itself
