@@ -1238,6 +1238,15 @@ const CPU_CEILING_FLOOR: f32 = 2.0;
 /// the other two carry their screen's whole state directly, so there is
 /// nowhere for a stale value to survive a switch. See [`App::body`]'s doc
 /// comment for why this replaced two `Option` fields.
+///
+/// One field, one variant at a time, which is what used to be two
+/// independent `Option`s (`settings`, `config_pane`) kept disjoint only by
+/// convention. That made the pair's own history reachable: opening a config
+/// pane never cleared a settings screen still parked underneath it, so an
+/// `Escape` from a pane that outraced a slower settings read could resurface
+/// a screen the operator had already walked past. With one field there is
+/// nothing left underneath to resurface — see
+/// `escape_from_a_config_pane_that_outraced_a_settings_read_lands_on_the_dashboard`.
 #[derive(Debug)]
 pub(crate) enum Body {
     /// The dashboard: flock table, host strip, sheep detail, bleats feed.
@@ -2625,6 +2634,15 @@ impl App {
     /// runs (`e` on a dog, then the settings screen closes and `e` opens a
     /// sheep), and a stale one left set is exactly the re-open behind the
     /// operator's back `config_target` exists to prevent.
+    ///
+    /// This always lands on [`Body::FlockTable`], never on whatever screen
+    /// preceded the pane. That used to be reachable the other way: a
+    /// settings screen and a config pane were once two independent
+    /// `Option`s, so closing the pane only cleared its own field and a
+    /// still-`Some` settings screen underneath resurfaced — the dashboard is
+    /// what `Escape` is supposed to reach, not a screen the operator asked
+    /// for two actions ago. `Body` makes that unrepresentable: there is only
+    /// ever one screen to close to, and it is this one.
     fn close_pane(&mut self) {
         self.body = Body::FlockTable;
         self.pane_menu = None;
@@ -6370,7 +6388,7 @@ mod tests {
         assert!(app.settings().is_none());
     }
 
-    /// `s` raises `Effect::LoadSettings` while `self.settings` is still `None`,
+    /// `s` raises `Effect::LoadSettings` while `body` is still `Body::FlockTable`,
     /// so `x` reaches `arm()`. Once the read lands, `on_settings_key` no-ops
     /// `Confirm`, so nothing could resolve the armed action.
     #[test]
@@ -6876,6 +6894,43 @@ mod tests {
         let pane = app.config_pane().expect("the reply opens the pane");
         assert_eq!(pane.target().name(), "web");
         assert_eq!(pane.fields().len(), 40);
+    }
+
+    /// `s` then `e` fire two reads; if the settings one lands first it opens
+    /// the settings screen, and the config-pane reply that follows replaces
+    /// it (`Body` cannot hold both at once). `Escape` from the config pane
+    /// must land on the dashboard, not resurrect the settings screen it
+    /// walked past on the way in — see the doc note on [`Body`] and on
+    /// [`App::close_pane`].
+    #[test]
+    fn escape_from_a_config_pane_that_outraced_a_settings_read_lands_on_the_dashboard() {
+        let mut app =
+            fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Settings));
+        let _ = app.update(Msg::Key(KeyPress::Edit));
+        let _ = app.update(Msg::Settings {
+            result: Ok(fixtures::settings_snapshot()),
+        });
+        assert!(app.settings().is_some(), "the settings reply lands first");
+        app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "web".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(
+                fixtures::sheep_config_view(),
+            ))),
+        });
+        assert!(
+            app.config_pane().is_some(),
+            "the config pane reply replaces the settings screen"
+        );
+        assert!(app.settings().is_none());
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(
+            matches!(app.body(), Body::FlockTable),
+            "esc from the pane goes to the dashboard, not back to settings"
+        );
+        assert!(app.settings().is_none());
     }
 
     #[test]
