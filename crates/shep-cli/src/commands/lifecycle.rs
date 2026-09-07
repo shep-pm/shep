@@ -4468,12 +4468,18 @@ mod tests {
         }
 
         /// The answer a dog gives when its binary was built against a
-        /// protocol this shep does not speak
+        /// protocol below the floor this shep's handshake still accepts.
+        ///
+        /// Was `PROTOCOL_VERSION + 1` under the name `stale_answer`, back
+        /// when the restart check compared for exact equality. The
+        /// handshake now accepts anything at or above
+        /// [`shep_core::protocol::MIN_SUPPORTED`], so a newer protocol is
+        /// no longer stale; only one below the floor is.
         #[cfg(unix)]
-        fn stale_answer() -> String {
+        fn below_floor_answer() -> String {
             format!(
                 "echo 'shep-log-rotate 0.1.3'\necho 'shep-protocol: {}'",
-                shep_client::PROTOCOL_VERSION + 1
+                shep_core::protocol::MIN_SUPPORTED.saturating_sub(1)
             )
         }
 
@@ -4487,7 +4493,7 @@ mod tests {
         #[tokio::test]
         async fn a_dog_whose_disk_binary_cannot_connect_is_warned_about_before_the_restart() {
             let dir = tempfile::tempdir().unwrap();
-            let paths = adopted_dog(dir.path(), "log-rotate", &stale_answer());
+            let paths = adopted_dog(dir.path(), "log-rotate", &below_floor_answer());
             let sock = shep_client::testing::control_address(dir.path());
             let (client, _daemon) =
                 fake_client_replying_err(&sock, RpcErrorCode::NotFound, "no such sheep").await;
@@ -4526,7 +4532,7 @@ mod tests {
         #[tokio::test]
         async fn the_restart_warning_names_both_numbers_and_both_ways_out() {
             let dir = tempfile::tempdir().unwrap();
-            let paths = adopted_dog(dir.path(), "log-rotate", &stale_answer());
+            let paths = adopted_dog(dir.path(), "log-rotate", &below_floor_answer());
             let sock = shep_client::testing::control_address(dir.path());
             let (client, _envelopes) = fake_client_answering(&sock, answering_a_restart).await;
 
@@ -4546,14 +4552,17 @@ mod tests {
             }
 
             let text = String::from_utf8(err).unwrap();
-            let disk = (shep_client::PROTOCOL_VERSION + 1).to_string();
-            let shep = shep_client::PROTOCOL_VERSION.to_string();
+            let disk = shep_core::protocol::MIN_SUPPORTED
+                .saturating_sub(1)
+                .to_string();
+            let floor = shep_core::protocol::MIN_SUPPORTED.to_string();
             assert!(
-                text.contains(&disk) && text.contains(&shep),
+                text.contains(&disk) && text.contains(&floor),
                 "the warning names both numbers: {text}"
             );
             assert!(
-                text.contains("Run a shep that speaks") && text.contains("reinstall the dog"),
+                text.contains("Run a shep that accepts protocol")
+                    && text.contains("reinstall the dog"),
                 "the warning names both ways out, and picks neither: {text}"
             );
             assert!(
@@ -4708,7 +4717,7 @@ mod tests {
         #[tokio::test]
         async fn a_built_in_dog_is_never_asked_what_its_binary_speaks() {
             let dir = tempfile::tempdir().unwrap();
-            let paths = adopted_dog(dir.path(), "log-rotate", &stale_answer());
+            let paths = adopted_dog(dir.path(), "log-rotate", &below_floor_answer());
             crate::commands::shep_toml::ShepToml::edit(&paths.daemon_config, |cfg| {
                 cfg.enable_dog("metrics");
             })
