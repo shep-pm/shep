@@ -78,8 +78,11 @@ impl Whistle {
             })
             .await?
         {
-            Response::Restarted(flock) => Ok(Json(FlockListing {
-                flock: flock.iter().map(SheepRow::from).collect(),
+            // One name, so the shepherd refuses it whole through the error
+            // arm and the reply's `refused` list is always empty; only a
+            // multi-sheep walk fills it.
+            Response::Restarted { accepted, .. } => Ok(Json(FlockListing {
+                flock: accepted.iter().map(SheepRow::from).collect(),
             })),
             _ => Err(unexpected_response()),
         }
@@ -124,8 +127,11 @@ impl Whistle {
     ) -> Result<Json<FlockListing>, CallToolResult> {
         let selector = SelectorSpec::Name(name);
         match self.shepherd.call(Request::Restart { selector }).await? {
-            Response::Restarted(flock) => Ok(Json(FlockListing {
-                flock: flock.iter().map(SheepRow::from).collect(),
+            // One name, so the shepherd refuses it whole through the error
+            // arm and the reply's `refused` list is always empty; only a
+            // multi-sheep walk fills it.
+            Response::Restarted { accepted, .. } => Ok(Json(FlockListing {
+                flock: accepted.iter().map(SheepRow::from).collect(),
             })),
             _ => Err(unexpected_response()),
         }
@@ -362,7 +368,10 @@ mod tests {
             &socket,
             vec![
                 Ok(Response::Described(vec![stopped])),
-                Ok(Response::Restarted(vec![restarted])),
+                Ok(Response::Restarted {
+                    accepted: vec![restarted],
+                    refused: Vec::new(),
+                }),
             ],
         );
 

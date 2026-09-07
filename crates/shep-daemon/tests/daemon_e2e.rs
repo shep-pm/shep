@@ -501,12 +501,11 @@ fn track_spawned(spawned: &std::sync::Arc<std::sync::Mutex<Vec<i32>>>, reply: &R
         | Response::Described(infos)
         | Response::Started(infos)
         | Response::Stopped(infos)
-        | Response::Restarted(infos)
         | Response::Reopened(infos)
         | Response::Flushed(infos) => infos,
-        // Struct-shaped, so it cannot join the or-pattern above; the rows a
-        // reload accepted are the half that carries pids.
-        Response::Reloading { accepted, .. } => accepted,
+        // Struct-shaped, so neither can join the or-pattern above; the rows
+        // a restart or a reload accepted are the half that carries pids.
+        Response::Restarted { accepted, .. } | Response::Reloading { accepted, .. } => accepted,
         _ => return,
     };
     for info in infos {

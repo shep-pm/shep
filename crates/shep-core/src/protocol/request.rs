@@ -59,7 +59,7 @@ pub enum SelectorSpec {
     Regex(String),
     /// By fold name
     Fold(String),
-    // Both field names are wire contract, pinned by `request_wire_v6`.
+    // Both field names are wire contract, pinned by `request_wire_v7`.
     /// By app name and instance slot
     ///
     /// On the wire: `{"kind":"instance","value":{"name":"web","slot":2}}`.
@@ -1240,13 +1240,14 @@ impl SheepApplied {
     }
 }
 
-/// One app a multi-sheep reload could not accept, and why
+/// One app a multi-sheep reload or restart could not accept, and why
 ///
-/// A staged reload asks the supervisor per app, so an app already reloading
-/// is refused on its own while the rest of the fold goes ahead. One of these
-/// per refused app rides back in [`Response::Reloading`], which is what lets
-/// the client name the app and exit non-zero instead of printing a table
-/// with a row quietly missing from it.
+/// A staged walk asks the supervisor per app, so an app already reloading is
+/// refused on its own while the rest of the fold goes ahead, and so is one
+/// that left the flock after the walk was planned. One of these per refused
+/// app rides back in [`Response::Reloading`] or [`Response::Restarted`],
+/// which is what lets the client name the app and exit non-zero instead of
+/// printing a table with a row quietly missing from it.
 ///
 /// [`Self::reason`] is the daemon's own sentence rather than a code, the
 /// rule [`SheepApplied::refused`] takes and for its reason: the class of
@@ -1456,8 +1457,31 @@ pub enum Response {
     },
     /// Answer to `Stop`
     Stopped(Vec<ProcessInfo>),
-    /// Answer to `Restart`
-    Restarted(Vec<ProcessInfo>),
+    /// Answer to `Restart`: the sheep that were restarted, one row each.
+    ///
+    /// **When the reply arrives depends on how many sheep matched.** One
+    /// sheep is answered as soon as its respawn is issued. Two or more are
+    /// restarted in dependency order, and the daemon holds each stage until
+    /// the apps a later stage waits on are back, so the reply arrives no
+    /// sooner than the last stage's respawns and the rows are stitched from
+    /// one answer per stage. A client asking for a budget sizes it for the
+    /// whole walk, not for one respawn.
+    Restarted {
+        /// The sheep the restart reached, one row each.
+        ///
+        /// A row is not a promise the process is up. A respawn that could
+        /// not exec is an `errored` row here rather than an entry in
+        /// `refused` below: the sheep was reached and the restart was not
+        /// refused, it is the child that failed.
+        accepted: Vec<ProcessInfo>,
+        /// The apps the walk could not restart, empty when it restarted
+        /// every one it named.
+        ///
+        /// Only a walk fills this. A selector matching one app is refused
+        /// whole, as the `Err` arm, so a client reading a single-target
+        /// restart never sees a row here.
+        refused: Vec<SheepRefusal>,
+    },
     /// Answer to `Reload`: acceptances, not results.
     ///
     /// One instance costs a readiness wait plus a drain, so a clustered app
@@ -2385,7 +2409,7 @@ mod tests {
                 },
             },
         ];
-        insta::assert_json_snapshot!("request_wire_v6", requests);
+        insta::assert_json_snapshot!("request_wire_v7", requests);
     }
 
     #[test]
@@ -2475,12 +2499,19 @@ mod tests {
                 id: 11,
                 result: Ok(Response::Stopped(vec![])),
             },
+            // Both halves populated, as the row below: `refused` is the one
+            // field on either variant a walk fills and a single-target
+            // request never does.
             Reply {
                 id: 12,
-                result: Ok(Response::Restarted(vec![])),
+                result: Ok(Response::Restarted {
+                    accepted: vec![],
+                    refused: vec![SheepRefusal::new(
+                        "db",
+                        "selector matched no registered sheep",
+                    )],
+                }),
             },
-            // Both halves populated: `refused` is the one field on this
-            // variant a walk fills and a single-target reload never does.
             Reply {
                 id: 13,
                 result: Ok(Response::Reloading {
@@ -2749,7 +2780,7 @@ mod tests {
                 }),
             },
         ];
-        insta::assert_json_snapshot!("reply_wire_v6", replies);
+        insta::assert_json_snapshot!("reply_wire_v7", replies);
     }
 
     /// Asserts on the JSON, not the struct: a `Vec<String>` cannot say which
@@ -2899,7 +2930,7 @@ mod tests {
             dog_name: None,
         };
         let json = serde_json::to_string(&hello).unwrap();
-        assert_eq!(json, r#"{"client_version":"0.1.0","protocol":6}"#);
+        assert_eq!(json, r#"{"client_version":"0.1.0","protocol":7}"#);
     }
 
     #[test]
@@ -2912,7 +2943,7 @@ mod tests {
         let json = serde_json::to_string(&dog).unwrap();
         assert_eq!(
             json,
-            r#"{"client_version":"0.1.0","protocol":6,"dog_name":"metrics"}"#
+            r#"{"client_version":"0.1.0","protocol":7,"dog_name":"metrics"}"#
         );
         assert_eq!(serde_json::from_str::<Hello>(&json).unwrap(), dog);
     }

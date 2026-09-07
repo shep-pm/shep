@@ -705,8 +705,10 @@ async fn resume(
         &[SelectorSpec::Id(sheep.id)],
         None,
         |selector| Request::Restart { selector },
+        // One id, so the shepherd matches it or refuses the whole request;
+        // `refused` is a staged walk's field and a walk needs two names.
         |response| match response {
-            Response::Restarted(procs) => Some(procs),
+            Response::Restarted { accepted, .. } => Some(accepted),
             _ => None,
         },
     )
@@ -1377,6 +1379,13 @@ pub async fn stop(client: &Client, streams: &mut Streams<'_>, args: &SelectorArg
 /// selector spans or what their timeouts are, and asking would cost a round
 /// trip and still race the actor. The daemon clamps at its own 60s ceiling
 /// either way.
+///
+/// That walk asks the shepherd per app, so an app it could not restart is
+/// named on stderr and exits [`WALK_REFUSED_EXIT`] with the rest of the fold
+/// still printed, exactly as [`reload`] does. Distinct from a respawn that
+/// could not exec, which is an `errored` row inside an `Ok` and exits
+/// [`ExitCode::SpawnFailed`]; both can happen in one invocation, and the
+/// spawn failure is the louder of the two.
 pub async fn restart(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -1404,6 +1413,7 @@ pub async fn restart_within(
     // Before `request_each`: a warning that arrives after the restart is a
     // description of a state the operator is already in.
     dogs::warn_of_a_dog_a_restart_would_break(streams, paths, &selectors, probe);
+    let mut refused: Vec<SheepRefusal> = Vec::new();
     let (procs, failure) = request_each(
         client,
         streams,
@@ -1411,14 +1421,21 @@ pub async fn restart_within(
         Some(START_DEADLINE),
         |selector| Request::Restart { selector },
         |response| match response {
-            Response::Restarted(procs) => Some(procs),
+            Response::Restarted {
+                accepted,
+                refused: rows,
+            } => {
+                refused.extend(rows);
+                Some(accepted)
+            }
             _ => None,
         },
     )
     .await;
     // Named before `procs` is moved into the table below. The `Restart`
     // reply has no per-id error slot, so a failed respawn reaches here as an
-    // ordinary `errored` row inside an `Ok`.
+    // ordinary `errored` row inside an `Ok`, and not as a refusal: the sheep
+    // was reached, it is the child that could not exec.
     let failed: Vec<String> = procs
         .iter()
         .filter(|info| info.status == shep_core::status::ProcStatus::Errored)
@@ -1428,8 +1445,9 @@ pub async fn restart_within(
     // Stdout stays empty on a failure, as every verb's failure path does.
     // The cost is that a `restart all` where one of ten fails lists none of
     // the nine that came back.
-    if (!procs.is_empty() || failure.is_none()) && failed.is_empty() {
-        let wrote = render_outcome(client, streams, "restart", FlockRows(procs)).await;
+    let carried = (!procs.is_empty() || failure.is_none()) && failed.is_empty();
+    if carried {
+        let wrote = render_partial(client, streams, "restart", procs, &refused).await;
         if wrote != ExitCode::Success {
             return wrote;
         }
@@ -1437,14 +1455,34 @@ pub async fn restart_within(
 
     if !failed.is_empty() {
         let names = failed.join(", ");
-        let message = format!(
+        let mut message = format!(
             "{names} did not come back up; see `shep bleats {}` or its log files for why",
             failed[0]
         );
+        // The refused apps have nowhere else to go from here. Stdout stayed
+        // empty, so the `--format json` envelope that would have carried
+        // them was never printed, and a second error object is what
+        // `cli.rs`' one-object-per-invocation rule forbids. They ride this
+        // sentence rather than being dropped, which is the whole point of
+        // carrying them.
+        if let Some(refusal) = refused_line("restart", &refused) {
+            message.push_str("; ");
+            message.push_str(&refusal);
+        }
         return streams.fail(ExitCode::SpawnFailed, &message);
     }
 
-    failure.unwrap_or(ExitCode::Success)
+    // Under `--format json` the refusals rode out in the envelope above, so
+    // saying them again on stderr is the second top-level object that guard
+    // exists to stop; `reload` carries the same one and for the same reason.
+    let refusal = refused_line("restart", &refused).map(|message| {
+        if streams.fmt == Format::Json && carried {
+            WALK_REFUSED_EXIT
+        } else {
+            streams.fail(WALK_REFUSED_EXIT, &message)
+        }
+    });
+    failure.or(refusal).unwrap_or(ExitCode::Success)
 }
 
 /// Reloads the sheep matching `args.selector`, replacing each instance with
@@ -1495,7 +1533,7 @@ pub async fn reload(client: &Client, streams: &mut Streams<'_>, args: &SelectorA
     // answer to the question the operator asked.
     let carried = !procs.is_empty() || failure.is_none();
     if carried {
-        let wrote = render_reload(client, streams, procs, &refused).await;
+        let wrote = render_partial(client, streams, "reload", procs, &refused).await;
         if wrote != ExitCode::Success {
             return wrote;
         }
@@ -1505,56 +1543,59 @@ pub async fn reload(client: &Client, streams: &mut Streams<'_>, args: &SelectorA
     // exists to stop. `carried` is the condition and not the format alone:
     // an envelope that never printed took the names with it, and stderr is
     // the only stream left to name them on.
-    let refusal = refused_line(&refused).map(|message| {
+    let refusal = refused_line("reload", &refused).map(|message| {
         if streams.fmt == Format::Json && carried {
-            RELOAD_REFUSED_EXIT
+            WALK_REFUSED_EXIT
         } else {
-            streams.fail(RELOAD_REFUSED_EXIT, &message)
+            streams.fail(WALK_REFUSED_EXIT, &message)
         }
     });
     failure.or(refusal).unwrap_or(ExitCode::Success)
 }
 
-/// [`render_outcome`] for a reload, which can have both halves of an answer
-/// to render at once.
+/// [`render_outcome`] for a staged walk, which can have both halves of an
+/// answer to render at once.
 ///
 /// The table half is [`render_outcome`] unchanged: a fresh flock listing,
 /// with the refused apps named on stderr by the caller. The JSON half is one
 /// envelope carrying both, since `cli.rs` publishes `--format json` as one
 /// object per invocation.
-async fn render_reload(
+async fn render_partial(
     client: &Client,
     streams: &mut Streams<'_>,
+    command: &str,
     accepted: Vec<ProcessInfo>,
     refused: &[SheepRefusal],
 ) -> ExitCode {
     if streams.fmt == Format::Json {
         return write_outcome(emit_partial(
             &mut *streams.out,
-            "reload",
+            command,
             FlockRows(accepted),
             refused,
         ));
     }
-    render_outcome(client, streams, "reload", FlockRows(accepted)).await
+    render_outcome(client, streams, command, FlockRows(accepted)).await
 }
 
-/// What a refused app inside an otherwise successful reload exits with
+/// What a refused app inside an otherwise successful walk exits with
 ///
-/// A staged reload asks the shepherd per app, so `shep reload all` can
-/// reload thirty-nine and be refused the fortieth. Not the
+/// A staged reload or restart asks the shepherd per app, so `shep reload
+/// all` can reload thirty-nine and be refused the fortieth. Not the
 /// [`ExitCode::Internal`] a single-target refusal exits with: that code is
 /// what the wire spells a conflict as for want of one of its own, and it
 /// tells an operator to go looking for a daemon bug where the fold in fact
 /// reloaded around one busy app.
-const RELOAD_REFUSED_EXIT: ExitCode = ExitCode::Failure;
+const WALK_REFUSED_EXIT: ExitCode = ExitCode::Failure;
 
-/// One line for the apps a reload could not reload, or `None` when it
-/// reloaded every one it named
+/// One line for the apps `verb` could not reach, or `None` when it reached
+/// every one it named
 ///
-/// `name: reason`, the shape [`applied_line`] prints a load's refusal in,
-/// so the two verbs read alike. The reason is the shepherd's own sentence.
-fn refused_line(refused: &[SheepRefusal]) -> Option<String> {
+/// `did not <verb>: name: reason`, carrying the `name: reason` shape
+/// [`applied_line`] prints a load's refusal in, so every verb that can
+/// refuse part of its work reads alike. The reason is the shepherd's own
+/// sentence.
+fn refused_line(verb: &str, refused: &[SheepRefusal]) -> Option<String> {
     if refused.is_empty() {
         return None;
     }
@@ -1562,7 +1603,7 @@ fn refused_line(refused: &[SheepRefusal]) -> Option<String> {
         .iter()
         .map(|sheep| format!("{}: {}", sheep.name, sheep.reason))
         .collect();
-    Some(format!("did not reload: {}", listed.join("; ")))
+    Some(format!("did not {verb}: {}", listed.join("; ")))
 }
 
 /// Deletes (stops and deregisters) the sheep matching `args.selector`.
@@ -2491,14 +2532,20 @@ mod tests {
                     // Never reached by a correct build. Answered rather than
                     // panicked, so the assertion naming the bug is the one
                     // that fails.
-                    return Response::Restarted(Vec::new());
+                    return Response::Restarted {
+                        accepted: Vec::new(),
+                        refused: Vec::new(),
+                    };
                 };
                 let status = if failing.contains(id) {
                     ProcStatus::Errored
                 } else {
                     ProcStatus::Online
                 };
-                Response::Restarted(vec![ProcessInfo::builder(*id, "zam", status).build()])
+                Response::Restarted {
+                    accepted: vec![ProcessInfo::builder(*id, "zam", status).build()],
+                    refused: Vec::new(),
+                }
             }
             _ => Response::Pong,
         }
@@ -2815,6 +2862,257 @@ mod tests {
             "a failed verb leaves stdout empty, so `--format json` never \
              carries a data envelope beside an error one: {printed}"
         );
+    }
+
+    /// fails if a restart that the shepherd refused an app of exits 0 with
+    /// that app's row simply absent, which is what shipped between #166 and
+    /// this: `shep restart all` is a deploy step, and exit 0 there says the
+    /// whole fold came back when part of it did not.
+    #[tokio::test]
+    async fn a_restart_the_shepherd_refused_an_app_of_names_it_and_exits_non_zero() {
+        use shep_client::testing::fake_client_answering;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) = fake_client_answering(&path, move |request| match request {
+            Request::Restart { .. } => Response::Restarted {
+                accepted: vec![reloaded_api()],
+                refused: vec![SheepRefusal::new(
+                    "db",
+                    "selector matched no registered sheep",
+                )],
+            },
+            Request::ListFlock => Response::Flock(vec![reloaded_api()]),
+            _ => Response::Pong,
+        })
+        .await;
+
+        let (code, printed, said) = restart_against(&client, "all").await;
+
+        assert_eq!(
+            code,
+            ExitCode::Failure,
+            "a fold restarted around a refused app is not a success: {said}"
+        );
+        assert!(
+            said.contains("did not restart")
+                && said.contains("db")
+                && said.contains("no registered sheep"),
+            "the refused app and the shepherd's reason reach the operator: {said}"
+        );
+        assert!(
+            printed.contains("api"),
+            "and what did restart is still printed: {printed}"
+        );
+    }
+
+    /// fails if an ordinary restart starts exiting non-zero: the refused list
+    /// is empty on every restart nothing was refused of, which is all of them
+    /// bar the staged walk.
+    #[tokio::test]
+    async fn a_restart_that_refused_nothing_still_exits_zero() {
+        use shep_client::testing::fake_client_answering;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) = fake_client_answering(&path, move |request| match request {
+            Request::Restart { .. } => Response::Restarted {
+                accepted: vec![reloaded_api()],
+                refused: Vec::new(),
+            },
+            Request::ListFlock => Response::Flock(vec![reloaded_api()]),
+            _ => Response::Pong,
+        })
+        .await;
+
+        let (code, printed, said) = restart_against(&client, "all").await;
+
+        assert_eq!(code, ExitCode::Success, "{said}");
+        assert!(printed.contains("api"), "{printed}");
+        assert!(said.is_empty(), "nothing to say: {said}");
+    }
+
+    /// fails if a partially-refused restart prints two top-level JSON
+    /// objects for one invocation, the guard `reload` already carries: a
+    /// consumer piping the run through `jq` either takes a parse error or
+    /// reads the first object and believes the whole fold came back.
+    #[tokio::test]
+    async fn a_partly_refused_restart_prints_one_json_envelope_carrying_both_halves() {
+        use shep_client::testing::fake_client_answering;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) = fake_client_answering(&path, move |request| match request {
+            Request::Restart { .. } => Response::Restarted {
+                accepted: vec![reloaded_api()],
+                refused: vec![SheepRefusal::new(
+                    "db",
+                    "selector matched no registered sheep",
+                )],
+            },
+            Request::ListFlock => Response::Flock(vec![reloaded_api()]),
+            _ => Response::Pong,
+        })
+        .await;
+
+        let (code, printed, said) = restart_against_in(&client, "all", Format::Json).await;
+
+        assert_eq!(
+            code,
+            ExitCode::Failure,
+            "the exit code is unchanged: {said}"
+        );
+        assert_eq!(
+            objects_in(&printed),
+            1,
+            "one envelope per invocation, refusal or no refusal: {printed}"
+        );
+        assert!(
+            said.is_empty(),
+            "and no second object beside it on stderr: {said}"
+        );
+
+        let envelope: serde_json::Value = serde_json::from_str(&printed).unwrap();
+        assert_eq!(envelope["command"], "restart", "{envelope}");
+        assert_eq!(
+            envelope["schema_version"], 1,
+            "a key added beside `data` is additive: {envelope}"
+        );
+        assert_eq!(
+            envelope["data"][0]["name"], "api",
+            "what restarted is still the answer: {envelope}"
+        );
+        assert_eq!(
+            envelope["refused"][0]["name"], "db",
+            "and what did not is named in the same object: {envelope}"
+        );
+        assert_eq!(
+            envelope["refused"][0]["reason"], "selector matched no registered sheep",
+            "with the shepherd's own reason: {envelope}"
+        );
+    }
+
+    /// fails if an ordinary restart's envelope grows a key: `refused` is
+    /// carried only by a run that had something to refuse, so every existing
+    /// consumer reads the same three fields it always did and
+    /// `SCHEMA_VERSION` stays 1.
+    #[tokio::test]
+    async fn a_restart_that_refused_nothing_carries_no_refused_key() {
+        use shep_client::testing::fake_client_answering;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) = fake_client_answering(&path, move |request| match request {
+            Request::Restart { .. } => Response::Restarted {
+                accepted: vec![reloaded_api()],
+                refused: Vec::new(),
+            },
+            Request::ListFlock => Response::Flock(vec![reloaded_api()]),
+            _ => Response::Pong,
+        })
+        .await;
+
+        let (code, printed, said) = restart_against_in(&client, "all", Format::Json).await;
+
+        assert_eq!(code, ExitCode::Success, "{said}");
+        let envelope: serde_json::Value = serde_json::from_str(&printed).unwrap();
+        assert!(
+            envelope.get("refused").is_none(),
+            "nothing was refused, so nothing says so: {envelope}"
+        );
+    }
+
+    /// fails if a respawn that could not exec takes the refused apps down
+    /// with it. Both failures land in one invocation: `api` came back
+    /// `errored`, so stdout stays empty and the `--format json` envelope
+    /// that would have carried `db` was never printed. One error object is
+    /// all `cli.rs` publishes, so `db` rides that object rather than being
+    /// dropped.
+    #[tokio::test]
+    async fn a_restart_that_both_failed_to_spawn_and_refused_an_app_names_both() {
+        use shep_client::testing::fake_client_answering;
+        use shep_core::status::ProcStatus;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) = fake_client_answering(&path, move |request| match request {
+            Request::Restart { .. } => Response::Restarted {
+                accepted: vec![ProcessInfo::builder(1, "api", ProcStatus::Errored).build()],
+                refused: vec![SheepRefusal::new(
+                    "db",
+                    "selector matched no registered sheep",
+                )],
+            },
+            Request::ListFlock => Response::Flock(Vec::new()),
+            _ => Response::Pong,
+        })
+        .await;
+
+        let (code, printed, said) = restart_against(&client, "all").await;
+
+        assert_eq!(
+            code,
+            ExitCode::SpawnFailed,
+            "a child that could not exec is the louder failure: {said}"
+        );
+        assert!(
+            said.contains("api") && said.contains("did not come back up"),
+            "the sheep that could not spawn is named: {said}"
+        );
+        assert!(
+            said.contains("db") && said.contains("did not restart"),
+            "and so is the one the walk went around: {said}"
+        );
+        assert!(
+            printed.is_empty(),
+            "a failed verb prints no table: {printed}"
+        );
+    }
+
+    /// Runs `shep restart <selector>` against `client`, handing back its code
+    /// and both streams.
+    async fn restart_against(client: &Client, selector: &str) -> (ExitCode, String, String) {
+        restart_against_in(client, selector, Format::Table).await
+    }
+
+    /// [`restart_against`] under a caller-chosen `--format`, so the JSON
+    /// shape can be asserted on the bytes a consumer actually reads.
+    ///
+    /// A `$SHEP_HOME` with nothing adopted in it, so
+    /// `warn_of_a_dog_a_restart_would_break` has no binary to probe and the
+    /// budget below is never spent. These cases are about the reply.
+    async fn restart_against_in(
+        client: &Client,
+        selector: &str,
+        fmt: Format,
+    ) -> (ExitCode, String, String) {
+        let home = tempfile::tempdir().unwrap();
+        let paths = ShepPaths::resolve(&|_| None, home.path());
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = Streams {
+                out: &mut out,
+                err: &mut err,
+                style: crate::style::Presentation::BARE,
+                fmt,
+            };
+            restart_within(
+                client,
+                &mut streams,
+                &paths,
+                &SelectorArgs {
+                    selectors: vec![selector.to_string()],
+                },
+                Duration::from_millis(1),
+            )
+            .await
+        };
+        (
+            code,
+            String::from_utf8(out).unwrap(),
+            String::from_utf8(err).unwrap(),
+        )
     }
 
     /// fails if a reload that the shepherd refused an app of exits 0 with
@@ -3960,7 +4258,10 @@ mod tests {
             ),
             Request::Add { apps } => Response::Added(rows(apps, ProcStatus::Stopped)),
             Request::Start { apps } => Response::Started(rows(apps, ProcStatus::Online)),
-            Request::Restart { .. } => Response::Restarted(Vec::new()),
+            Request::Restart { .. } => Response::Restarted {
+                accepted: Vec::new(),
+                refused: Vec::new(),
+            },
             _ => Response::Pong,
         }
     }
@@ -4158,7 +4459,10 @@ mod tests {
         #[cfg(unix)]
         fn answering_a_restart(request: &Request) -> Response {
             match request {
-                Request::Restart { .. } => Response::Restarted(Vec::new()),
+                Request::Restart { .. } => Response::Restarted {
+                    accepted: Vec::new(),
+                    refused: Vec::new(),
+                },
                 _ => Response::Flock(Vec::new()),
             }
         }

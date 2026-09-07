@@ -438,7 +438,7 @@ The format is line-oriented text:
 
 ```
 shep-log-rotate 0.1.3
-shep-protocol: 4
+shep-protocol: 7
 ```
 
 - Line 1 is `<name> <version>`. Shep takes the last whitespace-separated
@@ -473,9 +473,9 @@ question costs one argument on a process that was going to start anyway.
 The refusal names both numbers and both ways out:
 
 ```
-/usr/local/bin/shep-otel: this dog was built for shep protocol 3, and this
-shep speaks 4; reinstall the dog without --locked so it builds against the
-current shep-core, or run a shep that speaks 3
+/usr/local/bin/shep-otel: this dog was built for shep protocol 6, and this
+shep speaks 7; reinstall the dog without --locked so it builds against the
+current shep-core, or run a shep that speaks 6
 ```
 
 Only a stated protocol can refuse an adopt. The version is never compared
@@ -536,9 +536,9 @@ the upgrade.
 
 ```
 notice[dog_binary_skew]: `log-rotate`'s binary at /usr/local/bin/shep-log-rotate
-was built for shep protocol 5, and this shep speaks 4; restarting it brings it
-back on that binary, unable to connect. Run a shep that speaks 5, or reinstall
-the dog against protocol 4, and restart it again
+was built for shep protocol 8, and this shep speaks 7; restarting it brings it
+back on that binary, unable to connect. Run a shep that speaks 8, or reinstall
+the dog against protocol 7, and restart it again
 ```
 
 Then it restarts the dog. This is a warning and never a refusal: the
@@ -762,7 +762,7 @@ Shep now writes its own account into the dog's log as well, marked
 
 ```
 2026-09-02T14:22:31.412+02:00 [shep] shep started this dog; its process is pid 5512
-2026-09-02T14:22:31.480+02:00 [shep] shep accepted this dog's handshake; it is registered with this shepherd as `log-rotate`, on protocol 4
+2026-09-02T14:22:31.480+02:00 [shep] shep accepted this dog's handshake; it is registered with this shepherd as `log-rotate`, on protocol 7
 2026-09-02T14:22:31.492+02:00 rotating web-0-out.log (12.4 MiB)
 ```
 

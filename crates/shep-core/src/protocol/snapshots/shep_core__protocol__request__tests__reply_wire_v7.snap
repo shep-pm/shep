@@ -201,7 +201,15 @@ expression: replies
     "result": {
       "Ok": {
         "kind": "restarted",
-        "data": []
+        "data": {
+          "accepted": [],
+          "refused": [
+            {
+              "name": "db",
+              "reason": "selector matched no registered sheep"
+            }
+          ]
+        }
       }
     }
   },
