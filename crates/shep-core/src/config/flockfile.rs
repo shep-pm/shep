@@ -215,8 +215,9 @@ impl Flockfile {
     ///   parser, whose recursive-descent stack-overflows on deep input
     ///   rather than returning an error.
     /// - [`FlockfileError::NoApps`]: parsed fine but declared no apps.
+    /// - [`FlockfileError::UnknownKeys`]: named a key no field claims.
     pub fn parse(source: &str, format: FlockFormat) -> Result<Self, FlockfileError> {
-        let raw = parse_into::<RawFlockfile>(source, format)?;
+        let raw = parse_raw_denying_unknown(source, format)?;
         let RawFlockfile {
             schema: _schema,
             // Discarded by name. Whatever a dog wrote under `[dog]` is that
@@ -245,7 +246,10 @@ impl Flockfile {
         text: &str,
         format: FlockFormat,
     ) -> Result<Vec<DeclaredApp>, FlockfileError> {
-        let raw = parse_into::<RawFlockfile>(text, format)?;
+        // Same reasoning as `Flockfile::parse`: this reads a Flockfile off
+        // disk (the reload/muster path in shep-cli), not a value off the
+        // wire, so a typo here must still be loud.
+        let raw = parse_raw_denying_unknown(text, format)?;
         let RawFlockfile {
             schema: _schema,
             dog: _dog,
@@ -289,6 +293,32 @@ impl Flockfile {
     }
 }
 
+// Shared by `Flockfile::parse` and `parse_declared`: both read a Flockfile
+// off disk (never a value off the wire), so both refuse a typo the same
+// way. `deny_unknown_fields` used to live on `AppConfig` itself, which made
+// every new Flockfile field a protocol event: the same type rides the
+// wire, where an unknown field means a newer peer rather than a typo. The
+// denial belongs here instead.
+fn parse_raw_denying_unknown(
+    source: &str,
+    format: FlockFormat,
+) -> Result<RawFlockfile, FlockfileError> {
+    let mut unknown = Vec::new();
+    let raw: RawFlockfile = parse_into_ignoring(source, format, |path| {
+        // `dog` is a map of `IgnoredAny` by design (see its doc comment):
+        // shep does not read or validate what a dog wrote there, so
+        // serde_ignored's callback for a key inside it is not a typo, it
+        // is the field doing exactly what it is for.
+        if !path.starts_with("dog.") {
+            unknown.push(path.to_string());
+        }
+    })?;
+    if !unknown.is_empty() {
+        return Err(FlockfileError::UnknownKeys { keys: unknown });
+    }
+    Ok(raw)
+}
+
 // Generic over the target type so the same four backends serve both
 // `RawFlockfile` (validation) and `serde_json::Value` (recovering the
 // document's literal keys), the one place that knows all four.
@@ -313,6 +343,53 @@ fn parse_into<T: serde::de::DeserializeOwned>(
                 ));
             }
             json5::from_str(source).map_err(|e| FlockfileError::Json5(e.to_string()))
+        }
+    }
+}
+
+// Same per-format dispatch as `parse_into`, but additionally routes each
+// format's `Deserializer` through `serde_ignored::deserialize`, calling
+// `on_ignored` once per key the target type did not claim, recursing into
+// nested structs (a Flockfile's `readiness_probe`/`liveness_probe` tables
+// included). Used only by `Flockfile::parse` and `parse_declared`: those are
+// the two places a document really is a hand-written file, where an
+// unrecognized key means a typo. Everywhere else the same `AppConfig`/
+// `ProbeConfig` shape rides the wire, where it means a newer peer instead,
+// which is why the two types dropped `deny_unknown_fields` rather than this
+// function replacing it everywhere.
+fn parse_into_ignoring<T: serde::de::DeserializeOwned>(
+    source: &str,
+    format: FlockFormat,
+    mut on_ignored: impl FnMut(&str),
+) -> Result<T, FlockfileError> {
+    match format {
+        FlockFormat::Toml => serde_ignored::deserialize(toml::Deserializer::new(source), |path| {
+            on_ignored(&path.to_string());
+        })
+        .map_err(|e| FlockfileError::Toml(e.to_string())),
+        FlockFormat::Yaml => serde_saphyr::with_deserializer_from_str(source, |de| {
+            serde_ignored::deserialize(de, |path| on_ignored(&path.to_string()))
+        })
+        .map_err(|e| FlockfileError::Yaml(e.to_string())),
+        FlockFormat::Json => {
+            let mut de = serde_json::Deserializer::from_str(source);
+            let value = serde_ignored::deserialize(&mut de, |path| on_ignored(&path.to_string()))
+                .map_err(|e| FlockfileError::Json(e.to_string()))?;
+            // `serde_json::from_str` checks this too, to catch trailing
+            // garbage after a value that otherwise parsed fine.
+            de.end().map_err(|e| FlockfileError::Json(e.to_string()))?;
+            Ok(value)
+        }
+        FlockFormat::Json5 => {
+            if json5_nesting_depth(source) > MAX_JSON5_NESTING_DEPTH {
+                return Err(FlockfileError::Json5(
+                    "nesting depth exceeds 64".to_string(),
+                ));
+            }
+            let mut de = json5::Deserializer::from_str(source)
+                .map_err(|e| FlockfileError::Json5(e.to_string()))?;
+            serde_ignored::deserialize(&mut de, |path| on_ignored(&path.to_string()))
+                .map_err(|e| FlockfileError::Json5(e.to_string()))
         }
     }
 }
@@ -424,6 +501,18 @@ pub enum FlockfileError {
     Json5(String),
     /// The document parsed but declared no apps
     NoApps,
+    /// The document named one or more keys no field claims.
+    ///
+    /// A Flockfile is hand-written, unlike the same [`AppConfig`]/
+    /// [`ProbeConfig`](crate::config::ProbeConfig) shape riding the wire,
+    /// where an unknown field means a newer peer rather than a typo.
+    /// `keys` names every offending key (dotted path for a nested one, e.g.
+    /// `app.0.readiness_probe.<the misspelled key>`) so one refusal lists
+    /// every typo instead of one refusal per run.
+    UnknownKeys {
+        /// Every key the document named that no field claimed.
+        keys: Vec<String>,
+    },
 }
 
 impl fmt::Display for FlockfileError {
@@ -434,6 +523,13 @@ impl fmt::Display for FlockfileError {
             Self::Json(m) => write!(f, "invalid JSON Flockfile: {m}"),
             Self::Json5(m) => write!(f, "invalid JSON5 Flockfile: {m}"),
             Self::NoApps => f.write_str("Flockfile declares no apps"),
+            Self::UnknownKeys { keys } => {
+                write!(f, "Flockfile names unrecognized key")?;
+                if keys.len() != 1 {
+                    f.write_str("s")?;
+                }
+                write!(f, ": {}", keys.join(", "))
+            }
         }
     }
 }
@@ -914,6 +1010,43 @@ env = { DB_HOST = "", NODE_ENV = "production" }
             vec!["DB_HOST", "NODE_ENV"]
         );
         assert!(apps[0].declared.contains("env"));
+    }
+
+    /// A typo in a Flockfile must still be loud. This is the whole reason
+    /// `deny_unknown_fields` was there.
+    #[test]
+    fn a_misspelled_flockfile_key_is_refused_and_named() {
+        let err = Flockfile::parse(
+            "[[app]]\nname = \"web\"\nscript = \"./srv\"\nmax_restrts = 5\n",
+            FlockFormat::Toml,
+        )
+        .expect_err("a typo must be refused");
+        let FlockfileError::UnknownKeys { keys } = err else {
+            panic!("expected UnknownKeys, got {err:?}");
+        };
+        assert!(
+            keys.iter().any(|k| k.contains("max_restrts")),
+            "got {keys:?}"
+        );
+    }
+
+    /// Nesting is why this uses serde_ignored rather than a key list.
+    ///
+    /// `kind`/`target` are supplied alongside the typo: both are required by
+    /// `ProbeConfig` with no default, and omitting them would surface a
+    /// missing-field error instead of the unknown-key one this test means to
+    /// exercise.
+    #[test]
+    fn a_misspelled_key_inside_a_probe_is_also_named() {
+        let err = Flockfile::parse(
+            "[[app]]\nname = \"web\"\nscript = \"./srv\"\n[app.readiness_probe]\nkind = \"http\"\ntarget = \"http://localhost/x\"\ntimeuot = \"5s\"\n",
+            FlockFormat::Toml,
+        )
+        .expect_err("a nested typo must be refused");
+        assert!(
+            matches!(err, FlockfileError::UnknownKeys { .. }),
+            "got {err:?}"
+        );
     }
 
     /// fails if a format other than TOML loses the key set. All four go
