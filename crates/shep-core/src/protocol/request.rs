@@ -1658,7 +1658,7 @@ pub struct RpcError {
 
 /// Machine-readable RPC error codes
 // wire format: changing existing variants is a breaking change
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum RpcErrorCode {
@@ -1676,45 +1676,12 @@ pub enum RpcErrorCode {
     DeadlineExceeded,
     /// A code this build has not been taught.
     ///
-    /// Only ever produced by decoding. Never serialized, so it cannot
-    /// reach a peer and cannot be mistaken for a real code shep emits.
+    /// Only ever produced by decoding: an unrecognized string falls through
+    /// to this variant via `#[serde(other)]` instead of failing the whole
+    /// frame. Never serialized, so it cannot reach a peer and cannot be
+    /// mistaken for a real code shep emits.
+    #[serde(other)]
     Unrecognized,
-}
-
-// A future variant is added in three places, and only three: the `Known`
-// enum below, the match in `deserialize`, and the round-trip test list in
-// `mod tests`. Nothing else needs to change for a new code to decode.
-impl<'de> serde::Deserialize<'de> for RpcErrorCode {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        #[derive(serde::Deserialize)]
-        #[serde(rename_all = "snake_case")]
-        enum Known {
-            NotFound,
-            InvalidConfig,
-            SpawnFailed,
-            ProtocolMismatch,
-            Internal,
-            DeadlineExceeded,
-        }
-        #[derive(serde::Deserialize)]
-        #[serde(untagged)]
-        enum Wire {
-            Known(Known),
-            // The string itself is never read: its only job is to prove
-            // `Known` did not match, not to be inspected.
-            #[allow(dead_code)]
-            Unknown(String),
-        }
-        Ok(match Wire::deserialize(d)? {
-            Wire::Known(Known::NotFound) => Self::NotFound,
-            Wire::Known(Known::InvalidConfig) => Self::InvalidConfig,
-            Wire::Known(Known::SpawnFailed) => Self::SpawnFailed,
-            Wire::Known(Known::ProtocolMismatch) => Self::ProtocolMismatch,
-            Wire::Known(Known::Internal) => Self::Internal,
-            Wire::Known(Known::DeadlineExceeded) => Self::DeadlineExceeded,
-            Wire::Unknown(_) => Self::Unrecognized,
-        })
-    }
 }
 
 impl RpcErrorCode {

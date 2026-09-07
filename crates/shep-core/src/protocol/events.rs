@@ -13,7 +13,7 @@ use crate::protocol::request::ProcessInfo;
 // A new variant is free for a subscriber built from this point on: an
 // unrecognized string decodes as `Unrecognized` instead of failing the
 // whole frame.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ProcessEventKind {
@@ -48,53 +48,12 @@ pub enum ProcessEventKind {
     Errored,
     /// An event kind this build has not been taught.
     ///
-    /// Only ever produced by decoding. Never serialized, so it cannot
-    /// reach a peer and cannot be mistaken for a real event shep emits.
+    /// Only ever produced by decoding: an unrecognized string falls through
+    /// to this variant via `#[serde(other)]` instead of failing the whole
+    /// frame. Never serialized, so it cannot reach a peer and cannot be
+    /// mistaken for a real event shep emits.
+    #[serde(other)]
     Unrecognized,
-}
-
-// A future variant is added in three places, and only three: the `Known`
-// enum below, the match in `deserialize`, and the round-trip test list in
-// `mod tests`. Nothing else needs to change for a new event kind to decode.
-impl<'de> serde::Deserialize<'de> for ProcessEventKind {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        #[derive(serde::Deserialize)]
-        #[serde(rename_all = "snake_case")]
-        enum Known {
-            Start,
-            Online,
-            Exit,
-            Restart,
-            Reload,
-            Reloaded,
-            ReloadAbandoned,
-            Stop,
-            Delete,
-            Errored,
-        }
-        #[derive(serde::Deserialize)]
-        #[serde(untagged)]
-        enum Wire {
-            Known(Known),
-            // The string itself is never read: its only job is to prove
-            // `Known` did not match, not to be inspected.
-            #[allow(dead_code)]
-            Unknown(String),
-        }
-        Ok(match Wire::deserialize(d)? {
-            Wire::Known(Known::Start) => Self::Start,
-            Wire::Known(Known::Online) => Self::Online,
-            Wire::Known(Known::Exit) => Self::Exit,
-            Wire::Known(Known::Restart) => Self::Restart,
-            Wire::Known(Known::Reload) => Self::Reload,
-            Wire::Known(Known::Reloaded) => Self::Reloaded,
-            Wire::Known(Known::ReloadAbandoned) => Self::ReloadAbandoned,
-            Wire::Known(Known::Stop) => Self::Stop,
-            Wire::Known(Known::Delete) => Self::Delete,
-            Wire::Known(Known::Errored) => Self::Errored,
-            Wire::Unknown(_) => Self::Unrecognized,
-        })
-    }
 }
 
 /// One event on the daemon bus
