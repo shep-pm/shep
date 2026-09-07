@@ -4169,8 +4169,9 @@ impl App {
     ///
     /// `view::draw` matches on this directly rather than calling
     /// [`Self::settings`] and [`Self::config_pane`] in sequence, which is
-    /// what a ninth pane would otherwise have to insert itself into as a
-    /// third `if let`.
+    /// the two-branch `if let` chain a new pane would otherwise have to
+    /// insert itself into. Eight more panes are planned; each becomes a new
+    /// `Body` arm instead.
     #[must_use]
     pub(crate) fn body(&self) -> &Body {
         &self.body
