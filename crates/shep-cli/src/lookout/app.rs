@@ -1740,7 +1740,10 @@ impl App {
         let rows = match result {
             Ok(Response::Stopped(rows)) if verb == ActionVerb::Stop => rows,
             Ok(Response::Restarted(rows)) if verb == ActionVerb::Restart => rows,
-            Ok(Response::Reloading(rows)) if verb == ActionVerb::Reload => rows,
+            // `refused` is a staged walk's field and a lookout action always
+            // names one app, which the shepherd refuses whole through the
+            // `Err` arm below, so there is never a row in it here.
+            Ok(Response::Reloading { accepted, .. }) if verb == ActionVerb::Reload => accepted,
             Ok(_unrecognised) => {
                 self.notice = Some(Notice {
                     text: format!(
@@ -5705,11 +5708,10 @@ mod tests {
                 target: RowKey::Sheep(2),
                 name: "api".to_string(),
             },
-            result: Ok(Response::Reloading(vec![sheep(
-                2,
-                "api",
-                ProcStatus::Online,
-            )])),
+            result: Ok(Response::Reloading {
+                accepted: vec![sheep(2, "api", ProcStatus::Online)],
+                refused: Vec::new(),
+            }),
         });
         let said = app.notice().map(ToString::to_string).unwrap_or_default();
         assert_eq!(
@@ -6820,7 +6822,7 @@ mod tests {
         });
         let pane = app.config_pane().expect("the reply opens the pane");
         assert_eq!(pane.target().name(), "web");
-        assert_eq!(pane.fields().len(), 39);
+        assert_eq!(pane.fields().len(), 40);
     }
 
     #[test]
@@ -7115,7 +7117,7 @@ mod tests {
         app.update(Msg::Key(KeyPress::SelectDown));
         assert_eq!(app.config_pane().unwrap().view().cursor(), 2);
         app.update(Msg::Key(KeyPress::SelectLast));
-        assert_eq!(app.config_pane().unwrap().view().cursor(), 38);
+        assert_eq!(app.config_pane().unwrap().view().cursor(), 39);
         app.update(Msg::Key(KeyPress::SelectFirst));
         assert_eq!(app.config_pane().unwrap().view().cursor(), 0);
     }
@@ -7137,7 +7139,7 @@ mod tests {
                 fixtures::sheep_config_view(),
             ))),
         });
-        assert_eq!(app.config_pane().unwrap().view().cursor(), 38);
+        assert_eq!(app.config_pane().unwrap().view().cursor(), 39);
     }
 
     #[test]
@@ -7181,7 +7183,7 @@ mod tests {
         let mut app = fixtures::app_in_sheep_pane();
         app.note_body_rows(20);
         app.update(Msg::Key(KeyPress::SelectLast));
-        assert_eq!(app.config_pane().unwrap().view().offset(), 39 - 19);
+        assert_eq!(app.config_pane().unwrap().view().offset(), 40 - 19);
     }
 
     /// Walks the pane's cursor onto `key`. The pane is a public type with

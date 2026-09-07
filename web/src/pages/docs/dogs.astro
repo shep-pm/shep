@@ -41,7 +41,7 @@ hand-edited section. The dog is adopted and runs normally; this is a bug to
 report to whoever wrote it`;
 
 const dogLogDemo = `2026-09-02T14:22:31.412+02:00 [shep] shep started this dog; its process is pid 5512
-2026-09-02T14:22:31.480+02:00 [shep] shep accepted this dog's handshake; it is registered with this shepherd as \`log-rotate\`, on protocol 4
+2026-09-02T14:22:31.480+02:00 [shep] shep accepted this dog's handshake; it is registered with this shepherd as \`log-rotate\`, on protocol 6
 2026-09-02T14:22:31.492+02:00 rotating web-0-out.log (12.4 MiB)`;
 ---
 
@@ -170,6 +170,31 @@ $ shep disable metrics`}</CodeBlock>
       migration a boot runs once), so two backgrounded rehomes both land
       and neither fights a boot. A boot holding both takes{" "}
       <code>shep.toml</code>'s first.
+    </p>
+
+    <h2>When a dog starts</h2>
+    <p>
+      After the flock, by default. A metrics dog that came up first would
+      spend the boot answering for a flock that is not running yet.
+    </p>
+    <p>
+      A log-rotation dog is the other way round, since it has to be running
+      before a sheep starts writing. Put its name in{" "}
+      <code>[daemon] boot_first_dogs</code> and it runs ahead of every
+      sheep:
+    </p>
+    <CodeBlock label="$SHEP_HOME/shep.toml">{`[daemon]
+enabled_dogs    = ["metrics", "log-rotate"]
+boot_first_dogs = ["log-rotate"]`}</CodeBlock>
+    <p class="fine">
+      A name here that is not in <code>enabled_dogs</code> is inert:
+      promoting a dog does not enable it. This is <code>shep.toml</code>{" "}
+      rather than <code>dogs.toml</code> for the same reason{" "}
+      <code>adopted_dogs</code> is: the <code>[&lt;name&gt;]</code> table in{" "}
+      <code>dogs.toml</code> is passed through to the dog itself, and a
+      shep-owned key inside it would collide with a third-party dog's own
+      schema. See <a href="/docs/boot-order">boot order</a> for the stages
+      this positions a dog in.
     </p>
 
     <h2>Configuration lives on the socket, not the environment</h2>
@@ -548,7 +573,7 @@ watchdog  adopted  true      stopped`}</CodeBlock>
       <div class="row"><span><code>shep-protocol</code></span> <span>Whether this dog can handshake with this shepherd at all. A difference means it can't connect until one side moves.</span></div>
     </div>
     <CodeBlock>{`shep-log-rotate 0.1.3
-shep-protocol: 4`}</CodeBlock>
+shep-protocol: 6`}</CodeBlock>
     <p>
       Line 1 is <code>&lt;name&gt; &lt;version&gt;</code>. Shep takes the
       last whitespace-separated field as the version and ignores the name,
@@ -612,9 +637,9 @@ shep-protocol: 4`}</CodeBlock>
       <div class="row"><span>nothing, or a run that exits non-zero</span> <span>Adopts, protocol unknown, no notice.</span></div>
     </div>
     <p>The refusal names both numbers and both ways out:</p>
-    <CodeBlock>{`/usr/local/bin/shep-otel: this dog was built for shep protocol 3, and this
-shep speaks 4; reinstall the dog without --locked so it builds against the
-current shep-core, or run a shep that speaks 3`}</CodeBlock>
+    <CodeBlock>{`/usr/local/bin/shep-otel: this dog was built for shep protocol 5, and this
+shep speaks 6; reinstall the dog without --locked so it builds against the
+current shep-core, or run a shep that speaks 5`}</CodeBlock>
     <p>
       Only a stated protocol can refuse an adopt. The version is never
       compared with anything, because a third-party dog's crate version has
@@ -650,9 +675,9 @@ current shep-core, or run a shep that speaks 3`}</CodeBlock>
       same question first:
     </p>
     <CodeBlock>{`notice[dog_binary_skew]: \`log-rotate\`'s binary at /usr/local/bin/shep-log-rotate
-was built for shep protocol 5, and this shep speaks 4; restarting it brings it
-back on that binary, unable to connect. Run a shep that speaks 5, or reinstall
-the dog against protocol 4, and restart it again`}</CodeBlock>
+was built for shep protocol 7, and this shep speaks 6; restarting it brings it
+back on that binary, unable to connect. Run a shep that speaks 7, or reinstall
+the dog against protocol 6, and restart it again`}</CodeBlock>
     <p>
       Then it restarts the dog. This is a warning and never a refusal: the
       operator asked for the restart, the binary on disk may be exactly what

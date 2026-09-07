@@ -149,6 +149,36 @@ migrated, so check `dogs.toml` first. An empty `[dog.<name>]`, which
 nothing. A dog present in only one file migrates or starts normally
 either way.
 
+## When a dog starts
+
+Every dog starts after the flock by default, so a metrics dog does not answer
+for a flock that is not up yet. Some dogs need the opposite: a log-rotation
+dog has to be running before the first sheep writes a line.
+
+`[daemon] boot_first_dogs` names the dogs that start before the muster roll is
+restored rather than after it.
+
+```toml
+# $SHEP_HOME/shep.toml
+[daemon]
+enabled_dogs    = ["metrics", "bark", "log-rotate"]
+boot_first_dogs = ["log-rotate"]
+```
+
+A name here that is not in `enabled_dogs` is inert. The list says where an
+enabled dog goes, never whether it runs, so a typo or a dog you disabled later
+sits in the file doing nothing and the boot says nothing about it.
+
+The key lives in `shep.toml` and not in the dog's own `dogs.toml` section
+because that section belongs to the dog. Shep hands it over the wire without
+reading it, so a shep key inside it would arrive at a program that has never
+heard of the key, and a third-party dog with `deny_unknown_fields` would refuse
+its own config over it.
+
+Promotion covers the boot window only. A `shep start web` typed later, while
+`log-rotate` happens to be down, is a supervision problem that boot ordering
+does not solve.
+
 ## The metrics dog
 
 `shep enable metrics` serves Prometheus exposition text over plain HTTP,

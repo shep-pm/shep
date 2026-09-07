@@ -11,12 +11,14 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::ValueEnum as _;
-use shep_client::{Client, START_DEADLINE};
+use shep_client::{Client, RELOAD_DEADLINE, START_DEADLINE};
 use shep_core::config::{
     AppConfig, DeclaredApp, FlockFormat, Flockfile, FlockfileError, ResetDepth,
 };
 use shep_core::paths::ShepPaths;
-use shep_core::protocol::{ProcessInfo, Request, Response, SelectorSpec, SheepApplied};
+use shep_core::protocol::{
+    ProcessInfo, Request, Response, SelectorSpec, SheepApplied, SheepRefusal,
+};
 use shep_core::selector::ProcessSelector;
 
 use crate::cli::Format;
@@ -25,7 +27,9 @@ use crate::commands::bounded::{Bounded, run_bounded};
 use crate::commands::dogs;
 use crate::commands::selector::parse_selector;
 use crate::exit::ExitCode;
-use crate::output::{DeletedIds, FlockRows, Render, Streams, emit, emit_flock, write_outcome};
+use crate::output::{
+    DeletedIds, FlockRows, Render, Streams, emit, emit_flock, emit_partial, write_outcome,
+};
 
 /// What [`resolve_target`] can fail with
 ///
@@ -426,11 +430,14 @@ async fn request_each<I, B, F>(
     selectors: &[SelectorSpec],
     deadline: Option<Duration>,
     body: B,
-    extract: F,
+    mut extract: F,
 ) -> (Vec<I>, Option<ExitCode>)
 where
     B: Fn(SelectorSpec) -> Request,
-    F: Fn(Response) -> Option<Vec<I>>,
+    // `FnMut` so a caller can keep what the reply carried beside the rows:
+    // `reload` collects the refused apps out of a response whose row half is
+    // all this returns.
+    F: FnMut(Response) -> Option<Vec<I>>,
 {
     let mut collected = Vec::new();
     let mut failure: Option<ExitCode> = None;
@@ -1237,10 +1244,14 @@ async fn load_one(
         streams, // Both requests carry the apps, so this "selector" is a
         // placeholder the body closure ignores.
         &[SelectorSpec::All],
-        // `START_DEADLINE`: a cold spawn plus a readiness probe routinely
-        // outruns the client's default 5s, and on `Add` a single-threaded
-        // actor behind a batch of cold spawns does too.
-        Some(START_DEADLINE),
+        Some(match mode {
+            // `add` registers and starts nothing, so it runs no stages and
+            // needs no more than the batch budget. `START_DEADLINE`: a
+            // single-threaded actor behind a batch of cold spawns outruns the
+            // client's default 5s on its own.
+            Load::Add => START_DEADLINE,
+            Load::Start => staged_start_deadline(&apps),
+        }),
         |_| match mode {
             Load::Start => Request::Start { apps: apps.clone() },
             Load::Add => Request::Add { apps: apps.clone() },
@@ -1266,6 +1277,61 @@ async fn load_one(
         applied,
         first_failure(failure.unwrap_or(ExitCode::Success), recorded),
     )
+}
+
+/// Slack the client allows PER APP over the summed readiness deadlines of a
+/// staged start.
+///
+/// Mirrors the daemon's own `boot_order::STAGE_SLACK`, which is 5s and is
+/// spent per stage, not per start: the daemon's worst case over N stages is
+/// the summed `listen_timeout`s plus N times that. A flat 10s therefore made
+/// the client give up BEFORE the daemon from three stages on, which is the
+/// opposite of what it was for. [`staged_start_deadline`] already sums the
+/// timeouts under the worst case of one app per stage, so multiplying the
+/// slack the same way keeps the two halves reading the same graph.
+///
+/// The round trip needs nothing here: `Client::request_with_deadline` waits
+/// the deadline it asked for plus `DEADLINE_GRACE` before calling it a
+/// timeout of its own.
+const STAGED_START_SLACK: Duration = Duration::from_secs(5);
+
+/// The deadline a staged start needs.
+///
+/// `foreground` reaches this too, for `shep runtime` and `shep dev`: both
+/// start a whole Flockfile in one request, and a flat budget there takes a
+/// container's flock down over a chain that was doing what it was asked.
+///
+/// The daemon runs a `Request::Start` batch in dependency order and holds
+/// each stage until its members settle, so the reply lands only after the
+/// last one. The worst case is every app in its own stage, each held for its
+/// own `listen_timeout`, and the sum of those is the bound. Never under
+/// [`START_DEADLINE`], which is what a one-stage batch of cold spawns already
+/// needs.
+///
+/// The CLI computes it rather than asking the daemon because the CLI is what
+/// holds every [`AppConfig`] going out. `shep bleats -f` asks for a longer
+/// deadline the same way.
+///
+/// The daemon clamps anything past its own `MAX_DEADLINE_MS` (60s), so a
+/// batch whose stages sum past that is bounded there whatever this returns;
+/// asking for more only makes the client outlast the daemon rather than the
+/// other way round.
+///
+/// Which is why this is not clamped to 60s here. Past that line the daemon
+/// answers `DeadlineExceeded` while the start carries on running: the budget
+/// bounds the reply, not the actor's work. A client that gave up at the same
+/// moment would race that answer and print a local timeout instead of the
+/// daemon's own, and the operator reconciles with `shep flock` either way.
+/// The slack is spent per app as well, so at the default 3s
+/// `listen_timeout` each app costs 8s and the ceiling is crossed at eight of
+/// them, which is an ordinary flock rather than a pathological one.
+pub(crate) fn staged_start_deadline(apps: &[AppConfig]) -> Duration {
+    let stages: Duration = apps
+        .iter()
+        .map(|app| app.listen_timeout.as_duration())
+        .sum();
+    let slack = STAGED_START_SLACK * u32::try_from(apps.len()).unwrap_or(u32::MAX);
+    (stages + slack).max(START_DEADLINE)
 }
 
 /// Stops the sheep matching `args.selector`.
@@ -1300,6 +1366,17 @@ pub async fn stop(client: &Client, streams: &mut Streams<'_>, args: &SelectorArg
 ///
 /// `paths` is here so a restart that names a dog is warned about before the
 /// request goes out. See [`dogs::warn_of_a_dog_a_restart_would_break`].
+///
+/// Sent with [`START_DEADLINE`] rather than the client's 5s default. A
+/// restart matching several sheep now walks the dependency stages INSIDE the
+/// request handler, and one edge routinely clears 5s: the daemon holds each
+/// stage for its members' `listen_timeout` before issuing the next, so a
+/// client on the default abandons a restart the shepherd is still doing.
+/// Not [`staged_start_deadline`], which needs the `AppConfig`s a load holds
+/// and a selector does not: nothing the CLI has says how many stages this
+/// selector spans or what their timeouts are, and asking would cost a round
+/// trip and still race the actor. The daemon clamps at its own 60s ceiling
+/// either way.
 pub async fn restart(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -1331,7 +1408,7 @@ pub async fn restart_within(
         client,
         streams,
         &selectors,
-        None,
+        Some(START_DEADLINE),
         |selector| Request::Restart { selector },
         |response| match response {
             Response::Restarted(procs) => Some(procs),
@@ -1373,34 +1450,119 @@ pub async fn restart_within(
 /// Reloads the sheep matching `args.selector`, replacing each instance with
 /// a fresh one so the app has a window in which it can hand over
 ///
-/// The client's default deadline, as `stop`/`restart`/`delete` use: the
-/// daemon answers when the reload is accepted, not when the swaps finish.
-/// The rows printed are the flock as it stood at acceptance.
+/// The rows printed are acceptances. One sheep is the flock as it stood when
+/// its reload was accepted; a selector matching several is walked in stages
+/// daemon-side, so the table is stitched from one acceptance per stage and
+/// the earlier stages' swaps have already happened by the time it prints.
+///
+/// Sent with [`RELOAD_DEADLINE`], for `restart`'s reason and then some. A
+/// reload matching several sheep no longer answers at acceptance: the staged
+/// walk runs in the request handler and holds each stage until its swaps
+/// land, so the reply waits on a drain AND a readiness wait per stage, which
+/// is the longest budget any of these verbs needs. The client's 5s default
+/// would abandon a fold with one edge as a matter of routine, and
+/// [`START_DEADLINE`]'s 30s is provably short too: two stages at the default
+/// timeouts already cost more than that, and `with_deadline` DROPS the walk,
+/// so the later stages are never issued and the operator holds a timeout
+/// over a half-reloaded fold. 60s is the daemon's own ceiling, so asking for
+/// it costs nothing the shepherd would not already honour.
 pub async fn reload(client: &Client, streams: &mut Streams<'_>, args: &SelectorArgs) -> ExitCode {
     let selectors = match parse_selectors(streams, &args.selectors) {
         Ok(selectors) => selectors,
         Err(code) => return code,
     };
+    let mut refused: Vec<SheepRefusal> = Vec::new();
     let (procs, failure) = request_each(
         client,
         streams,
         &selectors,
-        None,
+        Some(RELOAD_DEADLINE),
         |selector| Request::Reload { selector },
         |response| match response {
-            Response::Reloading(procs) => Some(procs),
+            Response::Reloading {
+                accepted,
+                refused: rows,
+            } => {
+                refused.extend(rows);
+                Some(accepted)
+            }
             _ => None,
         },
     )
     .await;
-    // Printed whenever the verb did its work; see `load`.
-    if !procs.is_empty() || failure.is_none() {
-        let wrote = render_outcome(client, streams, "reload", FlockRows(procs)).await;
+    // Printed whenever the verb did its work; see `load`. The refused apps
+    // are named after it, not instead of it: what did reload is still the
+    // answer to the question the operator asked.
+    let carried = !procs.is_empty() || failure.is_none();
+    if carried {
+        let wrote = render_reload(client, streams, procs, &refused).await;
         if wrote != ExitCode::Success {
             return wrote;
         }
     }
-    failure.unwrap_or(ExitCode::Success)
+    // Under `--format json` the refusals rode out in the envelope above, so
+    // saying them again on stderr is the second top-level object this guard
+    // exists to stop. `carried` is the condition and not the format alone:
+    // an envelope that never printed took the names with it, and stderr is
+    // the only stream left to name them on.
+    let refusal = refused_line(&refused).map(|message| {
+        if streams.fmt == Format::Json && carried {
+            RELOAD_REFUSED_EXIT
+        } else {
+            streams.fail(RELOAD_REFUSED_EXIT, &message)
+        }
+    });
+    failure.or(refusal).unwrap_or(ExitCode::Success)
+}
+
+/// [`render_outcome`] for a reload, which can have both halves of an answer
+/// to render at once.
+///
+/// The table half is [`render_outcome`] unchanged: a fresh flock listing,
+/// with the refused apps named on stderr by the caller. The JSON half is one
+/// envelope carrying both, since `cli.rs` publishes `--format json` as one
+/// object per invocation.
+async fn render_reload(
+    client: &Client,
+    streams: &mut Streams<'_>,
+    accepted: Vec<ProcessInfo>,
+    refused: &[SheepRefusal],
+) -> ExitCode {
+    if streams.fmt == Format::Json {
+        return write_outcome(emit_partial(
+            &mut *streams.out,
+            "reload",
+            FlockRows(accepted),
+            refused,
+        ));
+    }
+    render_outcome(client, streams, "reload", FlockRows(accepted)).await
+}
+
+/// What a refused app inside an otherwise successful reload exits with
+///
+/// A staged reload asks the shepherd per app, so `shep reload all` can
+/// reload thirty-nine and be refused the fortieth. Not the
+/// [`ExitCode::Internal`] a single-target refusal exits with: that code is
+/// what the wire spells a conflict as for want of one of its own, and it
+/// tells an operator to go looking for a daemon bug where the fold in fact
+/// reloaded around one busy app.
+const RELOAD_REFUSED_EXIT: ExitCode = ExitCode::Failure;
+
+/// One line for the apps a reload could not reload, or `None` when it
+/// reloaded every one it named
+///
+/// `name: reason`, the shape [`applied_line`] prints a load's refusal in,
+/// so the two verbs read alike. The reason is the shepherd's own sentence.
+fn refused_line(refused: &[SheepRefusal]) -> Option<String> {
+    if refused.is_empty() {
+        return None;
+    }
+    let listed: Vec<String> = refused
+        .iter()
+        .map(|sheep| format!("{}: {}", sheep.name, sheep.reason))
+        .collect();
+    Some(format!("did not reload: {}", listed.join("; ")))
 }
 
 /// Deletes (stops and deregisters) the sheep matching `args.selector`.
@@ -2655,6 +2817,209 @@ mod tests {
         );
     }
 
+    /// fails if a reload that the shepherd refused an app of exits 0 with
+    /// that app's row simply absent: `shep reload all` is a deploy step, and
+    /// exit 0 there says the whole fold reloaded when part of it did not.
+    #[tokio::test]
+    async fn a_reload_the_shepherd_refused_an_app_of_names_it_and_exits_non_zero() {
+        use shep_client::testing::fake_client_answering;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) = fake_client_answering(&path, move |request| match request {
+            Request::Reload { .. } => Response::Reloading {
+                accepted: vec![reloaded_api()],
+                refused: vec![SheepRefusal::new("db", "db is already being reloaded")],
+            },
+            // The table a lifecycle verb prints is a fresh listing, not the
+            // reply's own rows.
+            Request::ListFlock => Response::Flock(vec![reloaded_api()]),
+            _ => Response::Pong,
+        })
+        .await;
+
+        let (code, printed, said) = reload_against(&client, "all").await;
+
+        assert_eq!(
+            code,
+            ExitCode::Failure,
+            "a fold reloaded around a refused app is not a success: {said}"
+        );
+        assert!(
+            said.contains("db") && said.contains("already being reloaded"),
+            "the refused app and the shepherd's reason reach the operator: {said}"
+        );
+        assert!(
+            printed.contains("api"),
+            "and what did reload is still printed: {printed}"
+        );
+    }
+
+    /// fails if an ordinary reload starts exiting non-zero: the refused list
+    /// is empty on every reload nothing was refused of, which is all of them
+    /// bar the staged walk.
+    #[tokio::test]
+    async fn a_reload_that_refused_nothing_still_exits_zero() {
+        use shep_client::testing::fake_client_answering;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) = fake_client_answering(&path, move |request| match request {
+            Request::Reload { .. } => Response::Reloading {
+                accepted: vec![reloaded_api()],
+                refused: Vec::new(),
+            },
+            Request::ListFlock => Response::Flock(vec![reloaded_api()]),
+            _ => Response::Pong,
+        })
+        .await;
+
+        let (code, printed, said) = reload_against(&client, "all").await;
+
+        assert_eq!(code, ExitCode::Success, "{said}");
+        assert!(printed.contains("api"), "{printed}");
+        assert!(said.is_empty(), "nothing to say: {said}");
+    }
+
+    /// fails if a partially-refused reload prints two top-level JSON
+    /// objects for one invocation: `cli.rs` publishes `--format json` as
+    /// one object per invocation, and a consumer piping the run through
+    /// `jq` either takes a parse error or reads the first object and
+    /// believes the whole fold reloaded.
+    #[tokio::test]
+    async fn a_partly_refused_reload_prints_one_json_envelope_carrying_both_halves() {
+        use shep_client::testing::fake_client_answering;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) = fake_client_answering(&path, move |request| match request {
+            Request::Reload { .. } => Response::Reloading {
+                accepted: vec![reloaded_api()],
+                refused: vec![SheepRefusal::new("db", "db is already being reloaded")],
+            },
+            Request::ListFlock => Response::Flock(vec![reloaded_api()]),
+            _ => Response::Pong,
+        })
+        .await;
+
+        let (code, printed, said) = reload_against_in(&client, "all", Format::Json).await;
+
+        assert_eq!(
+            code,
+            ExitCode::Failure,
+            "the exit code is unchanged: {said}"
+        );
+        assert_eq!(
+            objects_in(&printed),
+            1,
+            "one envelope per invocation, refusal or no refusal: {printed}"
+        );
+        assert!(
+            said.is_empty(),
+            "and no second object beside it on stderr: {said}"
+        );
+
+        let envelope: serde_json::Value = serde_json::from_str(&printed).unwrap();
+        assert_eq!(envelope["command"], "reload", "{envelope}");
+        assert_eq!(
+            envelope["schema_version"], 1,
+            "a key added beside `data` is additive: {envelope}"
+        );
+        assert_eq!(
+            envelope["data"][0]["name"], "api",
+            "what reloaded is still the answer: {envelope}"
+        );
+        assert_eq!(
+            envelope["refused"][0]["name"], "db",
+            "and what did not is named in the same object: {envelope}"
+        );
+        assert_eq!(
+            envelope["refused"][0]["reason"], "db is already being reloaded",
+            "with the shepherd's own reason: {envelope}"
+        );
+    }
+
+    /// fails if an ordinary reload's envelope grows a key: `refused` is
+    /// carried only by a run that had something to refuse, so every
+    /// existing consumer reads the same three fields it always did.
+    #[tokio::test]
+    async fn a_reload_that_refused_nothing_carries_no_refused_key() {
+        use shep_client::testing::fake_client_answering;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) = fake_client_answering(&path, move |request| match request {
+            Request::Reload { .. } => Response::Reloading {
+                accepted: vec![reloaded_api()],
+                refused: Vec::new(),
+            },
+            Request::ListFlock => Response::Flock(vec![reloaded_api()]),
+            _ => Response::Pong,
+        })
+        .await;
+
+        let (code, printed, said) = reload_against_in(&client, "all", Format::Json).await;
+
+        assert_eq!(code, ExitCode::Success, "{said}");
+        let envelope: serde_json::Value = serde_json::from_str(&printed).unwrap();
+        assert!(
+            envelope.get("refused").is_none(),
+            "nothing was refused, so nothing says so: {envelope}"
+        );
+    }
+
+    /// How many top-level JSON values `text` holds. Counted rather than
+    /// parsed whole: `serde_json::from_str` refuses trailing input, so it
+    /// reports two objects and forty as the same failure.
+    fn objects_in(text: &str) -> usize {
+        serde_json::Deserializer::from_str(text)
+            .into_iter::<serde_json::Value>()
+            .count()
+    }
+
+    /// The one sheep the two reload tests reload.
+    fn reloaded_api() -> ProcessInfo {
+        ProcessInfo::builder(1, "api", shep_core::status::ProcStatus::Online).build()
+    }
+
+    /// Runs `shep reload <selector>` against `client`, handing back its code
+    /// and both streams.
+    async fn reload_against(client: &Client, selector: &str) -> (ExitCode, String, String) {
+        reload_against_in(client, selector, Format::Table).await
+    }
+
+    /// [`reload_against`] under a caller-chosen `--format`, so the JSON
+    /// shape can be asserted on the bytes a consumer actually reads.
+    async fn reload_against_in(
+        client: &Client,
+        selector: &str,
+        fmt: Format,
+    ) -> (ExitCode, String, String) {
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = Streams {
+                out: &mut out,
+                err: &mut err,
+                style: crate::style::Presentation::BARE,
+                fmt,
+            };
+            reload(
+                client,
+                &mut streams,
+                &SelectorArgs {
+                    selectors: vec![selector.to_string()],
+                },
+            )
+            .await
+        };
+        (
+            code,
+            String::from_utf8(out).unwrap(),
+            String::from_utf8(err).unwrap(),
+        )
+    }
+
     /// A load whose answer this client cannot read means the whole file went
     /// nowhere, and a daemon-side fault takes its own class's code rather
     /// than the refusal's.
@@ -3032,8 +3397,12 @@ mod tests {
     /// its own `Request` variant
     ///
     /// The whole `sent.body` is asserted, so a verb sending the wrong request
-    /// kind is caught. Also pins that all four pass `deadline: None`, visible
-    /// on the wire as `DEFAULT_DEADLINE`.
+    /// kind is caught. Also pins each verb's budget: `stop` and `delete`
+    /// pass `None` and reach the wire as `DEFAULT_DEADLINE`, while `restart`
+    /// and `reload` ask for their own because their staged walk runs inside
+    /// the request handler. `reload` asks for the larger of the two: its
+    /// stages cost a drain as well as a readiness wait, and two of them
+    /// clear `START_DEADLINE` at the default timeouts.
     #[tokio::test]
     async fn a_selector_reaches_the_wire_in_its_compiled_form() {
         let dir = tempfile::tempdir().unwrap();
@@ -3084,16 +3453,104 @@ mod tests {
                 };
                 let sent = envelopes.recv().await.unwrap();
                 assert_eq!(sent.body, expected_body, "verb={verb:?} input={input}");
-                // `request_with_deadline` fills in `DEFAULT_DEADLINE`, so
-                // an envelope carrying exactly that is the signal that the
-                // call site passed `None`.
+                // fails if a staged verb goes out on the client's 5s
+                // default: `restart` and `reload` now walk the dependency
+                // stages inside the request handler, and one edge clears 5s,
+                // so the client would abandon a walk the shepherd is still
+                // doing. `request_with_deadline` fills in `DEFAULT_DEADLINE`
+                // for a `None`, so an envelope carrying exactly that is the
+                // signal that the call site passed one.
+                let expected_deadline = match verb {
+                    Verb::Stop | Verb::Delete => DEFAULT_DEADLINE,
+                    Verb::Restart => START_DEADLINE,
+                    Verb::Reload => RELOAD_DEADLINE,
+                };
                 assert_eq!(
                     sent.deadline_ms,
-                    Some(u64::try_from(DEFAULT_DEADLINE.as_millis()).unwrap()),
-                    "verb={verb:?} input={input} must defer to the client's default deadline"
+                    Some(u64::try_from(expected_deadline.as_millis()).unwrap()),
+                    "verb={verb:?} input={input} must ask for its own budget"
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_staged_start_allows_the_daemon_its_slack_on_every_stage() {
+        // fails if the client's slack is flat: the daemon spends
+        // `boot_order::STAGE_SLACK` (5s) per stage, so over three stages its
+        // worst case is 60s of timeouts plus 15s of slack, and a single 10s
+        // made the client abandon at 70s a start the shepherd would still be
+        // running at 75s
+        let apps: Vec<AppConfig> = ["db", "api", "web"]
+            .iter()
+            .map(|name| {
+                let mut app = AppConfig::minimal(name, "/bin/sleep");
+                app.listen_timeout = shep_core::values::UpDuration::from_millis(20_000);
+                app
+            })
+            .collect();
+
+        assert_eq!(
+            staged_start_deadline(&apps),
+            Duration::from_secs(75),
+            "three 20s stages plus 5s of slack each"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_start_asks_for_a_deadline_its_own_stages_fit_inside() {
+        // fails if `shep start` sends a fixed budget: the daemon holds every
+        // stage for its members' listen_timeout, so a flock whose timeouts
+        // sum past `START_DEADLINE` is abandoned by the client while the
+        // shepherd is doing exactly what it was asked
+        let dir = tempfile::tempdir().unwrap();
+        // Two apps at 40s each, so the sum clears `START_DEADLINE` by enough
+        // that neither app's timeout alone would.
+        let flockfile = dir.path().join("Flockfile.toml");
+        std::fs::write(
+            &flockfile,
+            "[[app]]\nname = \"db\"\nscript = \"/bin/sleep\"\nlisten_timeout = \"40s\"\n\
+             [[app]]\nname = \"api\"\nscript = \"/bin/sleep\"\nlisten_timeout = \"40s\"\n\
+             depends_on = [\"db\"]\n",
+        )
+        .unwrap();
+
+        let sock = shep_client::testing::control_address(dir.path());
+        let (client, mut envelopes) = fake_client_capturing_envelopes(&sock).await;
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let args = StartArgs {
+            targets: vec![flockfile.to_string_lossy().into_owned()],
+            name: None,
+            fold: None,
+            cwd: None,
+            interpreter: None,
+            flockfile: false,
+            reset: None,
+        };
+        {
+            let mut streams = Streams {
+                out: &mut out,
+                err: &mut err,
+                style: crate::style::Presentation::BARE,
+                fmt: Format::Table,
+            };
+            let _ = start(&client, &mut streams, &args, None, &BTreeMap::new()).await;
+        }
+
+        // The first envelope is the `ListFlock` the bare-name rule needs; the
+        // `Start` is the one under test.
+        let mut deadlines = Vec::new();
+        while let Ok(sent) = envelopes.try_recv() {
+            if matches!(sent.body, Request::Start { .. }) {
+                deadlines.push(sent.deadline_ms);
+            }
+        }
+        assert_eq!(
+            deadlines,
+            vec![Some(90_000)],
+            "two 40s stages plus STAGED_START_SLACK, not a fixed budget"
+        );
     }
 
     /// A `$SHEP_HOME`, a dog binary answering `--version` with `protocol`,

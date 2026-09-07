@@ -9,7 +9,7 @@
 //! below is this pane's own, since a field list under eight headers and a
 //! settings screen with a dogs table share almost no lines.
 //!
-//! A sheep pane is 39 rows plus a title, eight headers and seven blank
+//! A sheep pane is 40 rows plus a title, eight headers and seven blank
 //! separators: sixteen lines of chrome before a marker is paid for.
 
 use ratatui::buffer::Buffer;
@@ -113,7 +113,7 @@ fn section_header(label: &str, palette: Palette) -> Line<'static> {
 /// The pane's own title: which sheep or dog is being edited.
 ///
 /// The dashboard's title line above this one names `$SHEP_HOME` and
-/// nothing else, so this names whose 39 fields are on screen.
+/// nothing else, so this names whose 40 fields are on screen.
 ///
 /// Carries no control-dependent word: what the keys do belongs in the key
 /// hint (`view::status::pane_hint`), which already reads the gate.
@@ -611,7 +611,7 @@ pub fn pane_lines(
     let mut lines = vec![title_line(pane, palette, width)];
     // The title is unconditional, so the body is laid out against what is
     // left after it. An empty form (unreachable for a sheep, whose schema
-    // is a committed file with 39 properties, but a dog answers `--schema`
+    // is a committed file with 40 properties, but a dog answers `--schema`
     // for itself) leaves the title as the whole pane.
     let mut body_budget = budget - 1;
     // The confirm echoed under the title, the same redundancy the settings
@@ -853,7 +853,7 @@ mod tests {
 
     /// The whole pane at a comfortable width, unbounded. The snapshot is the
     /// assertion: it pins the title, the four section headers in order, all
-    /// 39 rows, the two flags and the cost cell beside each one.
+    /// 40 rows, the two flags and the cost cell beside each one.
     #[test]
     fn a_sheep_pane_at_a_comfortable_width() {
         let lines = pane_lines(&web_pane(), None, fixtures::plain(), 120, 0);
@@ -967,7 +967,7 @@ mod tests {
         };
         assert_eq!(flagged('*'), ["reuse_port", "max_restarts"]);
         assert_eq!(flagged('!'), ["kill_signal"]);
-        assert_eq!(rows_of(&text).len(), 39, "every field is drawn at 120");
+        assert_eq!(rows_of(&text).len(), 40, "every field is drawn at 120");
     }
 
     /// `=` is shep refusing the write outright; `~` is only this pane
@@ -986,7 +986,7 @@ mod tests {
         };
         assert_eq!(glyphed('='), ["instances", "name"]);
         assert_eq!(glyphed('~'), ["liveness_probe", "readiness_probe"]);
-        assert_eq!(glyphed(' ').len(), 39 - 2 - 2);
+        assert_eq!(glyphed(' ').len(), 40 - 2 - 2);
     }
 
     /// `kill_timeout` and `exp_backoff_restart_delay` default to 1600ms
@@ -1302,7 +1302,7 @@ mod tests {
     /// park. `autostart` is `NextSpawn`, draws `next start`, and takes
     /// effect at muster, not at the next spawn. The column is never
     /// corrected after a reply, since a reply covers one row of
-    /// thirty-nine; it stays a prediction everywhere, the bar reports the
+    /// forty; it stays a prediction everywhere, the bar reports the
     /// outcome, and the row's `!` flag carries it afterwards.
     #[test]
     fn the_cost_column_predicts_and_the_status_bar_reports() {

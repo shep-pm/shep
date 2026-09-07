@@ -10,6 +10,7 @@
       "restarts": 0,
       "uptime_ms": null,
       "fold": null,
+      "depends_on": [],
       "out_file": null,
       "err_file": null,
       "cpu_percent": null,

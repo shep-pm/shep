@@ -68,6 +68,9 @@ const FIELDS: &[(&str, ApplyGroup)] = &[
     ("readiness_probe", ApplyGroup::NextSpawn),
     // Read once at muster or boot, by `restorable()`.
     ("autostart", ApplyGroup::NextSpawn),
+    // Read once when a batch is ordered, at a boot, a muster, or a staged
+    // start; see the field's own doc comment on `AppConfig`.
+    ("depends_on", ApplyGroup::NextSpawn),
     // Baked into the child at exec: argv, cwd, environment, credentials, the
     // fd table, the log paths it is already writing to.
     ("script", ApplyGroup::NeedsRespawn),
@@ -205,16 +208,25 @@ mod tests {
         );
     }
 
+    #[test]
+    fn depends_on_applies_at_the_next_spawn() {
+        // fails if the field is classified Live, which would claim an edit
+        // reaches a running flock's order, or Structural, which would route it
+        // through handle_scale
+        assert_eq!(apply_group("depends_on"), ApplyGroup::NextSpawn);
+        assert!(is_classified("depends_on"));
+    }
+
     /// fails if the split drifts from what the spec recorded.
     #[test]
-    fn the_split_is_nineteen_four_fourteen_three() {
+    fn the_split_is_nineteen_five_fourteen_three() {
         let serde_json::Value::Object(fields) = serde_json::to_value(AppConfig::default()).unwrap()
         else {
             panic!("AppConfig must serialize as an object");
         };
         let count = |want: ApplyGroup| fields.keys().filter(|k| apply_group(k) == want).count();
         assert_eq!(count(ApplyGroup::Live), 19, "Live");
-        assert_eq!(count(ApplyGroup::NextSpawn), 4, "NextSpawn");
+        assert_eq!(count(ApplyGroup::NextSpawn), 5, "NextSpawn");
         assert_eq!(count(ApplyGroup::NeedsRespawn), 14, "NeedsRespawn");
         assert_eq!(count(ApplyGroup::Structural), 3, "Structural");
     }

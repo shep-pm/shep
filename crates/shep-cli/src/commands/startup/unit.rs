@@ -32,6 +32,20 @@ pub(crate) struct UnitSpec {
 }
 
 /// Renders the systemd unit, `Type=notify`.
+///
+/// No `TimeoutStartSec`, so systemd's own default applies, 90s on a stock
+/// installation. Readiness is reported after the restore, and the restore
+/// walks the muster roll in dependency order, holding each stage until its
+/// members are ready. The budget is therefore a sum over stages rather than
+/// the longest spawn in the roll: roughly thirty stages at the default 3s
+/// `listen_timeout`, and three or four at a `listen_timeout` of half a
+/// minute. Past it systemd kills the shepherd mid-restore and starts it again
+/// on `RestartSec`, which is a boot loop rather than a slow boot.
+///
+/// Documented rather than fixed. Raising it here is a one-line change and the
+/// right one for a flock deep enough to need it, but the number belongs to
+/// the operator's flock and not to this renderer, and a wrong one trades the
+/// loop for a shepherd systemd waits on forever.
 pub(crate) fn systemd_unit(spec: &UnitSpec) -> String {
     let home = systemd_environment_value(&spec.home.display().to_string());
     let path = systemd_environment_value(&spec.path.to_string_lossy());

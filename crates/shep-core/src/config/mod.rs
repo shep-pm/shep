@@ -7,6 +7,7 @@ pub mod cron;
 pub mod daemon;
 pub mod dogs;
 pub mod flockfile;
+pub mod graph;
 pub mod kill_signal;
 pub mod normalize;
 pub mod probe;
@@ -22,6 +23,7 @@ pub use dogs::{DogsConfig, DogsConfigError};
 pub use flockfile::{DeclaredApp, FlockFormat, Flockfile, FlockfileError, discover};
 #[cfg(feature = "schema")]
 pub use flockfile::{flockfile_schema_json, flockfile_schema_string};
+pub use graph::{BootNode, BootPlan, NodeKind, Unresolved, plan, render_cycle};
 pub use kill_signal::KillSignal;
 pub use normalize::{
     NormalizeError, ResolvedApp, TildeError, expand_home_tilde, normalize, normalize_all,

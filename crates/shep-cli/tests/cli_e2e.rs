@@ -7762,3 +7762,79 @@ fn a_sudo_startup_without_home_carries_the_target_users_home_not_this_processes(
         "nothing is created under a $HOME that is not the target user's"
     );
 }
+
+/// A three-app Flockfile drawing one chain: `db`, then `api`, then `web`.
+///
+/// Three stages is the point. Each gated stage is held for its own
+/// `listen_timeout` before the next one spawns, so this is what a staged
+/// start's wall clock is made of.
+fn write_chained_flockfile(dir: &TempDir, script: &Path) -> PathBuf {
+    write_flockfile(
+        dir,
+        &format!(
+            "[[app]]\nname = \"db\"\nscript = '{script}'\n\
+             [[app]]\nname = \"api\"\nscript = '{script}'\ndepends_on = [\"db\"]\n\
+             [[app]]\nname = \"web\"\nscript = '{script}'\ndepends_on = [\"api\"]\n",
+            script = script.display(),
+        ),
+    )
+}
+
+#[test]
+fn starting_a_flockfile_with_a_cycle_refuses_and_names_it() {
+    // fails if the cycle starts an arbitrary half of the flock anyway, or if
+    // the refusal says only that a cycle exists without naming the path an
+    // operator has to break
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let script = write_test_script(&dir);
+    let flockfile = write_flockfile(
+        &dir,
+        &format!(
+            "[[app]]\nname = \"a\"\nscript = '{script}'\ndepends_on = [\"b\"]\n\
+             [[app]]\nname = \"b\"\nscript = '{script}'\ndepends_on = [\"a\"]\n",
+            script = script.display(),
+        ),
+    );
+    let mut guard = DaemonGuard::default();
+
+    let out = shep(home).arg("start").arg(&flockfile).output().unwrap();
+    guard.adopt_home(home);
+
+    assert_eq!(out.status.code(), Some(4), "invalid_config");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains(" -> "),
+        "the cycle must be named as a path: {stderr}"
+    );
+    graceful_kill(home);
+}
+
+#[test]
+fn a_three_stage_start_brings_every_stage_online() {
+    // fails if a staged start does not survive the round trip: the reply
+    // lands only after the last stage, so a deadline sized for one spawn
+    // abandons a flock the shepherd is still bringing up correctly
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let script = write_test_script(&dir);
+    let flockfile = write_chained_flockfile(&dir, &script);
+    let mut guard = DaemonGuard::default();
+
+    let out = shep(home).arg("start").arg(&flockfile).output().unwrap();
+    guard.adopt_home(home);
+    assert_success(&out);
+
+    let data = poll_flock_data(home, FLOCK_DEADLINE, |data| {
+        data.as_array()
+            .is_some_and(|rows| rows.len() == 3 && rows.iter().all(|row| row["status"] == "online"))
+    });
+    let names: Vec<&str> = data
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names.len(), 3, "every stage came up: {data}");
+    graceful_kill(home);
+}

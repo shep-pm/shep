@@ -179,6 +179,13 @@ pub(crate) enum Command {
         apps: Vec<ResolvedApp>,
         /// Whether one app that provably cannot run refuses the whole batch.
         policy: BatchPolicy,
+        /// Names in `apps` that a later boot stage depends on.
+        ///
+        /// Each one is armed with [`ReadinessSource::Heuristic`] rather than
+        /// reported `Online` at spawn, so a stage waiting on it waits for
+        /// its `listen_timeout` rather than for `fork` returning. Empty for
+        /// every caller but the boot-order driver.
+        gate: BTreeSet<String>,
         /// Answers with every spawned instance, or the first spawn failure.
         reply: oneshot::Sender<Result<Vec<ProcessInfo>, SupervisorError>>,
     },
@@ -562,7 +569,11 @@ pub enum SupervisorError {
     /// not run. Carries `"<name>: <reason>"` per app that could not.
     ///
     /// Unlike [`Self::SpawnFailed`], which can leave earlier apps registered
-    /// and running, this guarantees an untouched flock. Both map to
+    /// and running, this guarantees an untouched flock for the batch it
+    /// refuses. That is not the whole flock when the caller is
+    /// `boot_order::start_in_stages`, which sends one batch per stage and
+    /// leaves an earlier stage running; the message it answers with names
+    /// those apps. Both map to
     /// [`RpcErrorCode::SpawnFailed`](shep_core::protocol::RpcErrorCode::SpawnFailed).
     CannotStart(String),
     /// The selector reached an app that is already being reloaded; carries
@@ -711,37 +722,39 @@ impl SupervisorHandle {
     /// # Errors
     ///
     /// - [`SupervisorError::CannotStart`]: at least one app provably could
-    ///   not run, so nothing was registered. Carries one
+    ///   not run, so nothing in this batch was registered. Carries one
     ///   `"<name>: <reason>"` per refused app, never one per failed check.
     /// - [`SupervisorError::SpawnFailed`]: the first instance that failed to
     ///   spawn (already-registered instances persist regardless).
     /// - [`SupervisorError::EngineStopped`]: the actor is gone.
     pub async fn start(&self, apps: Vec<ResolvedApp>) -> Result<Vec<ProcessInfo>, SupervisorError> {
-        self.start_with(apps, BatchPolicy::AllOrNothing).await
+        self.start_staged(apps, BTreeSet::new(), BatchPolicy::AllOrNothing)
+            .await
     }
 
-    /// [`Self::start`], but one app that cannot run costs only itself.
-    ///
-    /// For restoring a muster roll: a saved app whose binary went missing must
-    /// not keep the rest of the flock down.
+    /// [`Self::start`], holding every app in `gate` at `Starting` until its
+    /// readiness deadline, so a later stage can wait on it.
     ///
     /// # Errors
     ///
-    /// - [`SupervisorError::SpawnFailed`]: at least one app could not be
-    ///   started, carrying one `"<name>: <reason>"` entry per such app joined
-    ///   by `"; "`. Every app was attempted, and every one that could not
-    ///   start is registered `Errored` and visible.
+    /// - [`SupervisorError::CannotStart`]: only reachable under
+    ///   [`BatchPolicy::AllOrNothing`] (`Self::start`'s policy); nothing in
+    ///   this batch was registered. Carries one `"<name>: <reason>"` per
+    ///   refused app, never one per failed check. A staged start sends one
+    ///   batch per stage, so an earlier stage of it can be running;
+    ///   `boot_order::start_in_stages` is what says so.
+    /// - [`SupervisorError::SpawnFailed`]: an instance that failed to spawn.
+    ///   Under `AllOrNothing` this is the first such failure, and every
+    ///   already-registered app in the batch persists regardless. Under
+    ///   [`BatchPolicy::PerApp`] (the muster restore's policy) every app
+    ///   was attempted and this carries one `"<name>: <reason>"` entry per
+    ///   app that could not start, joined by `"; "`; each such app is
+    ///   registered `Errored` and visible.
     /// - [`SupervisorError::EngineStopped`]: the actor is gone.
-    pub(crate) async fn start_restored(
+    pub(crate) async fn start_staged(
         &self,
         apps: Vec<ResolvedApp>,
-    ) -> Result<Vec<ProcessInfo>, SupervisorError> {
-        self.start_with(apps, BatchPolicy::PerApp).await
-    }
-
-    async fn start_with(
-        &self,
-        apps: Vec<ResolvedApp>,
+        gate: BTreeSet<String>,
         policy: BatchPolicy,
     ) -> Result<Vec<ProcessInfo>, SupervisorError> {
         let (reply, rx) = oneshot::channel();
@@ -749,6 +762,7 @@ impl SupervisorHandle {
             .send(Msg::Command(Command::Start {
                 apps,
                 policy,
+                gate,
                 reply,
             }))
             .await
@@ -2520,12 +2534,13 @@ impl<R: ProcessRunner> Actor<R> {
             Command::Start {
                 apps,
                 policy,
+                gate,
                 reply,
             } => {
                 let result = if self.shutting_down {
                     Err(SupervisorError::EngineStopped)
                 } else {
-                    self.do_start(apps, None, policy)
+                    self.do_start(apps, None, policy, &gate)
                 };
                 let _ = reply.send(result);
                 false
@@ -2725,7 +2740,12 @@ impl<R: ProcessRunner> Actor<R> {
         }
         // `PerApp`: a dog that cannot start must land in the dogs table as
         // `Errored`, which `dogs::spawn_dog_watch` subscribes to.
-        let started = self.do_start(vec![app], Some(source), BatchPolicy::PerApp)?;
+        let started = self.do_start(
+            vec![app],
+            Some(source),
+            BatchPolicy::PerApp,
+            &BTreeSet::new(),
+        )?;
         started
             .into_iter()
             .next()
@@ -2747,6 +2767,7 @@ impl<R: ProcessRunner> Actor<R> {
         apps: Vec<ResolvedApp>,
         dog: Option<DogSource>,
         policy: BatchPolicy,
+        gate: &BTreeSet<String>,
     ) -> Result<Vec<ProcessInfo>, SupervisorError> {
         // One sequence rather than two: a zip against `apps` misaligns the
         // moment a failure is skipped.
@@ -2809,7 +2830,7 @@ impl<R: ProcessRunner> Actor<R> {
         }
         if !refusals.is_empty() {
             return Err(SupervisorError::CannotStart(format!(
-                "nothing was registered; {} of {} apps cannot start: {}",
+                "nothing in this batch was registered; {} of {} apps cannot start: {}",
                 refusals.len(),
                 total,
                 refusals.join("; "),
@@ -2829,7 +2850,7 @@ impl<R: ProcessRunner> Actor<R> {
             let slots = instance_slots(&existing, app.config().instances);
 
             for instance in slots {
-                match self.spawn_fresh(&app, instance, credentials, dog.clone()) {
+                match self.spawn_fresh(&app, instance, credentials, dog.clone(), gate) {
                     Ok(info) => results.push(info),
                     Err(message) => {
                         let failure = format!("{name}: {message}");
@@ -3026,15 +3047,18 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// Always inserts a [`SheepSlot`] before returning: on success `Starting`
     /// with a readiness task armed when the app configures `wait_ready` or
-    /// `readiness_probe` and `Online` otherwise, `Errored` with no task on
-    /// failure. `dog` lands on the entry either way, so a dog whose binary
-    /// cannot be spawned still shows up in the dogs table.
+    /// `readiness_probe`, `Starting` with a readiness task armed on its
+    /// `listen_timeout` fallback when the app's name is in `gate` even though
+    /// it configures no signal of its own, and `Online` otherwise. `Errored`
+    /// with no task on failure. `dog` lands on the entry either way, so a dog
+    /// whose binary cannot be spawned still shows up in the dogs table.
     fn spawn_fresh(
         &mut self,
         app: &ResolvedApp,
         instance: u32,
         credentials: Option<Credentials>,
         dog: Option<DogSource>,
+        gate: &BTreeSet<String>,
     ) -> Result<ProcessInfo, String> {
         // Read before the spawn: a scale-up's new instance must show the same
         // overrides its siblings do, not a blank cell until the next load.
@@ -3053,7 +3077,11 @@ impl<R: ProcessRunner> Actor<R> {
         // `normalize`, so an `Err` here means an app skipped that step.
         let source = ReadinessSource::of(app.config())
             .expect("ResolvedApp already passed ProbeTarget::parse in normalize");
-        let gated = !matches!(source, ReadinessSource::Heuristic);
+        // An app a later stage waits on is gated even with no signal of its
+        // own: the wait then costs its `listen_timeout`, which is the field's
+        // documented fallback, rather than costing nothing.
+        let gated =
+            !matches!(source, ReadinessSource::Heuristic) || gate.contains(&app.config().name);
 
         match self.runner.spawn(&spec) {
             Ok((proc, io)) => {
@@ -4034,7 +4062,8 @@ impl<R: ProcessRunner> Actor<R> {
                 let mut ids: Vec<u32> = slots.iter().map(|(_, id)| *id).collect();
                 for instance in instance_slots(&existing, count - current) {
                     let attempted_id = self.next_id;
-                    match self.spawn_fresh(&rescaled, instance, credentials, None) {
+                    match self.spawn_fresh(&rescaled, instance, credentials, None, &BTreeSet::new())
+                    {
                         Ok(info) => ids.push(info.id),
                         Err(message) => {
                             // Partial, and said so: the instances already
@@ -4635,11 +4664,14 @@ impl<R: ProcessRunner> Actor<R> {
             self.rearm_name(name);
         }
 
-        // In force, or waiting for a respawn. `autostart` is the
-        // `NextSpawn` field that reports as in force, because `restorable()`
-        // reads it at muster or boot rather than at a spawn, and telling an
-        // operator to restart for it would be telling them to do nothing.
-        let in_force = !park_all && (group == ApplyGroup::Live || key == "autostart");
+        // In force, or waiting for a respawn. `autostart` and `depends_on`
+        // are the two `NextSpawn` fields that report as in force, because
+        // both are read at a muster, a boot or an ordered walk rather than at
+        // a spawn: `restorable()` reads one and `plan_for_names` the other,
+        // off the stored spec the moment it lands. Telling an operator to
+        // restart for either would be telling them to do nothing.
+        let in_force =
+            !park_all && (group == ApplyGroup::Live || matches!(key, "autostart" | "depends_on"));
         Ok(Some(FieldSet {
             app: parked.unwrap_or_else(|| next_spec.unwrap_or(merged)),
             pending: !in_force,
@@ -4841,12 +4873,14 @@ impl<R: ProcessRunner> Actor<R> {
             self.rearm_name(&name);
         }
 
-        // `autostart` is the one `NextSpawn` field that reports as applied:
-        // `restorable()` reads it at muster or boot rather than at a spawn, so
-        // it is in force the moment it lands on the stored spec.
-        let (autostart, later): (Vec<String>, Vec<String>) = next_spawn
+        // `autostart` and `depends_on` are the two `NextSpawn` fields that
+        // report as applied: neither is read at a spawn. `restorable()` reads
+        // `autostart` at a muster or a boot, and `plan_for_names` reads
+        // `depends_on` whenever a batch is ordered, so both are in force the
+        // moment they land on the stored spec.
+        let (already_in_force, later): (Vec<String>, Vec<String>) = next_spawn
             .into_iter()
-            .partition(|field| field == "autostart");
+            .partition(|field| matches!(field.as_str(), "autostart" | "depends_on"));
         // What could not be parked, for the refusal below to name. Under
         // `park_all` that is every field; otherwise the `NeedsRespawn` ones
         // alone, since a `NextSpawn` field is already on the stored spec.
@@ -4855,7 +4889,7 @@ impl<R: ProcessRunner> Actor<R> {
         } else if park_all {
             live.iter()
                 .cloned()
-                .chain(autostart.iter().cloned())
+                .chain(already_in_force.iter().cloned())
                 .chain(later.iter().cloned())
                 .chain(respawn.iter().cloned())
                 .collect()
@@ -4934,7 +4968,7 @@ impl<R: ProcessRunner> Actor<R> {
                 } else {
                     live.iter()
                         .cloned()
-                        .chain(autostart)
+                        .chain(already_in_force)
                         .chain(later)
                         .chain(respawn)
                         .collect()
@@ -4942,7 +4976,7 @@ impl<R: ProcessRunner> Actor<R> {
             )
         } else {
             (
-                live.iter().cloned().chain(autostart).collect(),
+                live.iter().cloned().chain(already_in_force).collect(),
                 if parked_failed {
                     later
                 } else {
@@ -5050,8 +5084,13 @@ impl<R: ProcessRunner> Actor<R> {
             return;
         }
 
-        // Refused whole, before anything is spawned: a partly-accepted selector
-        // is worse than a refused one.
+        // Refused whole, before anything is spawned: a partly-accepted
+        // selector is worse than a refused one. The rule holds per supervisor
+        // call rather than per request now, since `rpc::reload_in_stages`
+        // walks a multi-sheep selector one name at a time and so reaches this
+        // once per app. That walk carries every refusal back on
+        // `Response::Reloading`, so a fold reloaded around a busy app is
+        // still named at the operator rather than being a missing row.
         let in_flight = matched.iter().find_map(|id| {
             let slot = self
                 .sheep
@@ -7145,6 +7184,7 @@ fn to_info(entry: &ProcessEntry, smits: &Smits) -> ProcessInfo {
         .restarts(entry.restarts)
         .uptime_ms(uptime_ms)
         .fold(entry.spec.config().fold.clone())
+        .depends_on(entry.spec.config().depends_on.clone())
         // Lossy on purpose: a non-UTF-8 log path must not fail serialization
         // of the whole reply and blank the listing for every other sheep.
         .out_file(Some(entry.out_file.to_string_lossy().into_owned()))
@@ -7510,7 +7550,7 @@ struct HandoverDraft {
 ///
 /// The sheep are visited concurrently because the deadline on the other end is
 /// fixed at `shep-cli`'s `admin::KILL_TEARDOWN_WAIT`. Serially, N wedged pumps
-/// cost N times [`REPORT_DEADLINE`], and past six that outlasts the client,
+/// cost N times [`REPORT_DEADLINE`], and past thirty that outlasts the client,
 /// which falls back to a predecessor still serving and exits 0 mid-sweep.
 /// `join_all` returns results in input order, so `drafts`' id-sorted order
 /// survives into `candidates` and `carried` with no re-sort.
@@ -7615,8 +7655,9 @@ enum PumpReport {
 ///
 /// Per pump but paid once: [`spawn_handover_task`] visits every pump
 /// concurrently, so a flock of wedged pumps costs one deadline, not N. `shep
-/// daemon reload` gives the successor `admin::KILL_TEARDOWN_WAIT` (10s), which
-/// a sweep scaling with N would outlast at six wedged pumps.
+/// daemon reload` gives the successor `admin::KILL_TEARDOWN_WAIT` (60s, and
+/// 10s until the staged teardown raised it), which a sweep scaling with N
+/// would outlast at thirty wedged pumps.
 #[cfg(unix)]
 const REPORT_DEADLINE: Duration = Duration::from_secs(2);
 
@@ -10850,6 +10891,51 @@ mod tests {
         assert_eq!(errored.dog, Some(DogSource::BuiltIn));
     }
 
+    /// Fails if the gate is ignored: with no `wait_ready` and no
+    /// `readiness_probe`, `spawn_fresh`'s ungated arm reports `Online` at once
+    /// and a stage gate on this app would wait for nothing.
+    ///
+    /// Paused time, since the daemon still arms a readiness task for the
+    /// gated fallback: the assertion below reads the status `handle_command`
+    /// answers with synchronously, before that task's `listen_timeout` runs
+    /// out either way, but pausing keeps the fixture's background tasks from
+    /// costing real wall clock while the case holds them.
+    #[tokio::test(start_paused = true)]
+    async fn an_app_in_the_gate_set_holds_at_starting_without_a_probe() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut actor, _mailbox) =
+            actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
+        let (reply, rx) = oneshot::channel();
+        let mut app = AppConfig::minimal("db", "./db");
+        app.listen_timeout = UpDuration::from_millis(50);
+        actor.handle_command(Command::Start {
+            apps: vec![normalize(app).unwrap()],
+            policy: BatchPolicy::AllOrNothing,
+            gate: BTreeSet::from(["db".to_string()]),
+            reply,
+        });
+        let started = rx.await.unwrap().unwrap();
+        assert_eq!(started[0].status, ProcStatus::Starting);
+    }
+
+    /// Fails if gating leaks to every app, which would hold a plain
+    /// `shep start db` at `Starting` for its whole `listen_timeout`.
+    #[tokio::test(start_paused = true)]
+    async fn an_app_outside_the_gate_set_is_online_at_spawn() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut actor, _mailbox) =
+            actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
+        let (reply, rx) = oneshot::channel();
+        actor.handle_command(Command::Start {
+            apps: vec![normalize(AppConfig::minimal("db", "./db")).unwrap()],
+            policy: BatchPolicy::AllOrNothing,
+            gate: BTreeSet::new(),
+            reply,
+        });
+        let started = rx.await.unwrap().unwrap();
+        assert_eq!(started[0].status, ProcStatus::Online);
+    }
+
     /// `PerApp` skips an app whose credentials do not resolve, so `credentials`
     /// is shorter than `apps` while still in order: a naive `zip` against `apps`
     /// pairs app 2 with app 3's credentials and drops the last app. The first of
@@ -10889,6 +10975,7 @@ mod tests {
                 normalize(plain).unwrap(),
             ],
             policy: BatchPolicy::PerApp,
+            gate: BTreeSet::new(),
             reply,
         });
 
@@ -12574,6 +12661,7 @@ mod tests {
         actor.handle_command(Command::Start {
             apps: vec![normalize(AppConfig::minimal("api", "./api")).unwrap()],
             policy: BatchPolicy::AllOrNothing,
+            gate: BTreeSet::new(),
             reply,
         });
 
@@ -12653,6 +12741,7 @@ mod tests {
         actor.handle_command(Command::Start {
             apps: vec![normalize(app).unwrap()],
             policy: BatchPolicy::AllOrNothing,
+            gate: BTreeSet::new(),
             reply,
         });
         assert!(
@@ -15007,7 +15096,7 @@ mod tests {
         let app = app_with("web", |app| app.user = Some(NO_SUCH_USER.to_string()));
 
         let err = actor
-            .do_start(vec![app], None, BatchPolicy::PerApp)
+            .do_start(vec![app], None, BatchPolicy::PerApp, &BTreeSet::new())
             .expect_err("an unresolvable user must refuse the start");
         assert!(
             err.to_string().contains(NO_SUCH_USER),
@@ -15046,7 +15135,7 @@ mod tests {
         let app = app_with("web", |app| app.user = Some(NO_SUCH_USER.to_string()));
 
         let err = actor
-            .do_start(vec![app], None, BatchPolicy::AllOrNothing)
+            .do_start(vec![app], None, BatchPolicy::AllOrNothing, &BTreeSet::new())
             .expect_err("an unresolvable user must refuse the start");
         assert!(
             err.to_string().contains(NO_SUCH_USER),
@@ -15115,7 +15204,12 @@ mod tests {
         for attempt in 1..=2 {
             assert!(
                 actor
-                    .do_start(vec![app.clone()], None, BatchPolicy::PerApp)
+                    .do_start(
+                        vec![app.clone()],
+                        None,
+                        BatchPolicy::PerApp,
+                        &BTreeSet::new()
+                    )
                     .is_err(),
                 "restore {attempt} must refuse the app"
             );
@@ -15155,7 +15249,7 @@ mod tests {
 
         // The row, made the way an unattended boot makes it.
         actor
-            .do_start(vec![app], None, BatchPolicy::PerApp)
+            .do_start(vec![app], None, BatchPolicy::PerApp, &BTreeSet::new())
             .expect_err("an unresolvable user must refuse the start");
         let id = actor
             .sheep
@@ -15781,12 +15875,16 @@ mod tests {
         );
     }
 
-    /// Six is where a serial sweep first outlasts `shep-cli`'s
-    /// `admin::KILL_TEARDOWN_WAIT` (10s): past it the client gives up first,
-    /// falls back to a predecessor still serving, and exits 0 before the gate
-    /// refuses for real. Under the paused clock a serial sweep reads six
-    /// [`REPORT_DEADLINE`]s (12s) and a concurrent one about one (2s); the
-    /// bound below sits in that gap.
+    /// Six wedged pumps is the size this test pins, and the bound it asserts
+    /// is about the shape rather than about any one budget: a serial sweep
+    /// scales with N and a concurrent one does not. Under the paused clock a
+    /// serial sweep reads six [`REPORT_DEADLINE`]s (12s) and a concurrent one
+    /// about one (2s); the bound below sits in that gap. Six was also where a
+    /// serial sweep first outlasted `shep-cli`'s `admin::KILL_TEARDOWN_WAIT`
+    /// while that was 10s, past which the client gives up first, falls back
+    /// to a predecessor still serving, and exits 0 before the gate refuses
+    /// for real. At 60s that crossing moved to thirty; the failure it names
+    /// did not go away, it got further off.
     #[cfg(unix)]
     #[tokio::test(start_paused = true)]
     async fn a_sweep_of_six_wedged_pumps_costs_one_deadline_not_six() {
@@ -17712,6 +17810,46 @@ mod tests {
         assert_eq!(actor.sheep[&0].entry.spec.config().max_restarts, 42);
         assert_eq!(reply[0].applied, vec!["max_restarts".to_string()]);
         assert!(reply[0].pending.is_empty(), "{reply:?}");
+    }
+
+    /// `depends_on` is `ApplyGroup::NextSpawn` and reports as in force
+    /// anyway, the carve-out `autostart` already had and for the same reason:
+    /// nothing reads either at a spawn. `plan_for_names` reads `depends_on`
+    /// when a batch is ordered, off the stored spec, so the new value already
+    /// governs the next restart, the next shutdown and the next boot.
+    /// Reporting it pending would send an operator to `shep reload` to
+    /// promote a value that is already promoted.
+    #[tokio::test(start_paused = true)]
+    async fn a_loaded_depends_on_is_in_force_and_never_reports_as_pending() {
+        // fails if `depends_on` is left in the ordinary NextSpawn arm, which
+        // shows the sheep as `!1` in `shep flock` and tells `shep describe`
+        // to reload for a value the next ordered walk is already reading.
+        let dir = tempfile::tempdir().unwrap();
+        let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
+
+        let mut file = AppConfig::minimal("web", "./srv");
+        file.depends_on = vec!["db".to_string()];
+        let reply = apply_config(
+            &mut actor,
+            vec![declared_app(file, &["name", "script", "depends_on"])],
+            ResetDepth::None,
+        )
+        .await;
+
+        assert_eq!(
+            actor.sheep[&0].entry.spec.config().depends_on,
+            vec!["db".to_string()],
+            "the edge has to be on the stored spec for the walk to read it"
+        );
+        assert_eq!(reply[0].applied, vec!["depends_on".to_string()]);
+        assert!(
+            reply[0].pending.is_empty(),
+            "an edge already being read is not pending: {reply:?}"
+        );
+        assert!(
+            actor.sheep[&0].entry.pending.is_none(),
+            "nothing may be parked for a respawn to promote"
+        );
     }
 
     /// A load must never kill a process.

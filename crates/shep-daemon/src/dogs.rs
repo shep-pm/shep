@@ -791,6 +791,13 @@ async fn restart_refused_dog(supervisor: &SupervisorHandle, name: &str) {
 ///
 /// Not `shep daemon reload`'s three-second settle wait, which lives in
 /// `shep-cli` and answers how long a command holds its output open.
+///
+/// Not the budget a boot-promoted dog dies to either, though that one is
+/// also five seconds. A dog spawned by `[daemon] boot_first_dogs` meets a
+/// socket that is bound and not yet served, and `shep-client`'s own
+/// `HANDSHAKE_TIMEOUT` ends it while this watch is still unarmed. See
+/// `docs/specs/deferred.md`, "A promoted dog cannot handshake during the
+/// restore".
 pub const DOG_SILENCE_BUDGET: Duration = Duration::from_secs(5);
 
 /// Gap between two of [`spawn_silent_dog_watch`]'s looks.

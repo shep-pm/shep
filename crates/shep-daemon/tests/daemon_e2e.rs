@@ -502,9 +502,11 @@ fn track_spawned(spawned: &std::sync::Arc<std::sync::Mutex<Vec<i32>>>, reply: &R
         | Response::Started(infos)
         | Response::Stopped(infos)
         | Response::Restarted(infos)
-        | Response::Reloading(infos)
         | Response::Reopened(infos)
         | Response::Flushed(infos) => infos,
+        // Struct-shaped, so it cannot join the or-pattern above; the rows a
+        // reload accepted are the half that carries pids.
+        Response::Reloading { accepted, .. } => accepted,
         _ => return,
     };
     for info in infos {
@@ -1753,7 +1755,7 @@ async fn reload_under_load(name: &str, defiant: bool) -> Vec<Attempt> {
             selector: SelectorSpec::Name(name.to_string()),
         })
         .await;
-    let Response::Reloading(accepted) = accepted.result.unwrap() else {
+    let Response::Reloading { accepted, .. } = accepted.result.unwrap() else {
         panic!("expected an accepted reload")
     };
     assert_eq!(accepted.len(), 1);
@@ -2107,7 +2109,7 @@ async fn a_probed_reload_of_a_working_release_still_finishes() {
             selector: SelectorSpec::Name("web".to_string()),
         })
         .await;
-    let Response::Reloading(accepted) = accepted.result.unwrap() else {
+    let Response::Reloading { accepted, .. } = accepted.result.unwrap() else {
         panic!("expected an accepted reload")
     };
     assert_eq!(accepted.len(), 1);
@@ -2188,7 +2190,7 @@ async fn a_replacement_that_serves_nothing_is_refused_not_reported_reloaded() {
             selector: SelectorSpec::Name("web".to_string()),
         })
         .await;
-    let Response::Reloading(accepted) = accepted.result.unwrap() else {
+    let Response::Reloading { accepted, .. } = accepted.result.unwrap() else {
         panic!("expected an accepted reload")
     };
     assert_eq!(accepted.len(), 1);

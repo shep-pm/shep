@@ -138,6 +138,10 @@ impl Render for FlockRows {
         "instance",
         // CFG's header maps to `pending`, so `overridden` rides here.
         "overridden",
+        // No new `shep flock` column for this: it names other sheep, not
+        // this row's own status, and the table already drops columns under
+        // pressure.
+        "depends_on",
         // MEM already reports the raw reading; a gauge against this ceiling
         // is lookout's, not this table's.
         "max_memory",
@@ -792,6 +796,8 @@ impl Render for DogRows {
         // can neither park nor override one.
         "pending",
         "overridden",
+        // A sheep concept: a dog is never staged behind a start order.
+        "depends_on",
         // A sheep concept: a dog has no `AppConfig` and so no ceiling to
         // report; always `null` here.
         "max_memory",
@@ -1201,6 +1207,8 @@ impl Render for FlushedRows {
         "instance",
         "pending",
         "overridden",
+        // Nothing a flush reads or changes.
+        "depends_on",
         // A ceiling is a resource reading, the same reason `memory_bytes`
         // rides here.
         "max_memory",

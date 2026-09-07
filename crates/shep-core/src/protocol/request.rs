@@ -59,7 +59,7 @@ pub enum SelectorSpec {
     Regex(String),
     /// By fold name
     Fold(String),
-    // Both field names are wire contract, pinned by `request_wire_v4`.
+    // Both field names are wire contract, pinned by `request_wire_v6`.
     /// By app name and instance slot
     ///
     /// On the wire: `{"kind":"instance","value":{"name":"web","slot":2}}`.
@@ -636,6 +636,11 @@ pub struct ProcessInfo {
     pub uptime_ms: u64,
     /// Fold membership
     pub fold: Option<String>,
+    /// Names this sheep waits for at a staged start, from its
+    /// `depends_on`. Empty both when the sheep declares none and when the
+    /// peer daemon predates the field.
+    #[serde(default)]
+    pub depends_on: Vec<String>,
     /// Resolved stdout log path: the app's explicit
     /// [`AppConfig::out_file`] when it set one, else the daemon-derived
     /// default. `None` only when the peer daemon predates this field.
@@ -776,6 +781,7 @@ impl ProcessInfo {
                 restarts: 0,
                 uptime_ms: 0,
                 fold: None,
+                depends_on: Vec::new(),
                 out_file: None,
                 err_file: None,
                 cpu_percent: None,
@@ -831,6 +837,12 @@ impl ProcessInfoBuilder {
     /// Sets fold membership.
     pub fn fold(mut self, fold: Option<String>) -> Self {
         self.info.fold = fold;
+        self
+    }
+
+    /// Sets the names this sheep waits for at a staged start.
+    pub fn depends_on(mut self, depends_on: Vec<String>) -> Self {
+        self.info.depends_on = depends_on;
         self
     }
 
@@ -1228,6 +1240,40 @@ impl SheepApplied {
     }
 }
 
+/// One app a multi-sheep reload could not accept, and why
+///
+/// A staged reload asks the supervisor per app, so an app already reloading
+/// is refused on its own while the rest of the fold goes ahead. One of these
+/// per refused app rides back in [`Response::Reloading`], which is what lets
+/// the client name the app and exit non-zero instead of printing a table
+/// with a row quietly missing from it.
+///
+/// [`Self::reason`] is the daemon's own sentence rather than a code, the
+/// rule [`SheepApplied::refused`] takes and for its reason: the class of
+/// refusal is not on the wire, and the message is what tells two of them
+/// apart. `Debug` is derived; a name and a refusal sentence carry no env,
+/// no path and no argument vector.
+// wire format: changing field names is a breaking change
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SheepRefusal {
+    /// The app's name, as the walk that planned the reload spelled it.
+    pub name: String,
+    /// Why the reload was refused, in the daemon's own words.
+    pub reason: String,
+}
+
+impl SheepRefusal {
+    /// Builds one app's refusal.
+    #[must_use]
+    pub fn new(name: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            reason: reason.into(),
+        }
+    }
+}
+
 /// One sheep's effective config as a pane sees it: every field but env's
 /// values, plus which fields an operator has overridden and which are
 /// waiting on a respawn.
@@ -1412,15 +1458,33 @@ pub enum Response {
     Stopped(Vec<ProcessInfo>),
     /// Answer to `Restart`
     Restarted(Vec<ProcessInfo>),
-    /// Answer to `Reload`: an acceptance, not a result.
+    /// Answer to `Reload`: acceptances, not results.
     ///
     /// One instance costs a readiness wait plus a drain, so a clustered app
-    /// outlasts any deadline a client may ask for. The daemon answers as soon
-    /// as the reload is accepted, with the matched sheep as they stood then,
-    /// and the swaps report themselves on the bus (`process.reload`,
-    /// `process.reloaded`, `process.reload_abandoned`). A matched sheep with
-    /// nothing to replace is listed as the no-op success it is.
-    Reloading(Vec<ProcessInfo>),
+    /// outlasts any deadline a client may ask for. Every row is therefore the
+    /// sheep as it stood when its own reload was accepted, and the swaps
+    /// report themselves on the bus (`process.reload`, `process.reloaded`,
+    /// `process.reload_abandoned`). A matched sheep with nothing to replace
+    /// is listed as the no-op success it is.
+    ///
+    /// **When the reply arrives depends on how many sheep matched.** One
+    /// sheep is answered as soon as its reload is accepted. Two or more are
+    /// reloaded in dependency order, and the daemon holds each stage until
+    /// the swaps of the apps a later stage waits on have landed, so the
+    /// reply arrives no sooner than the last stage's acceptance and the rows
+    /// are stitched from one acceptance per stage. A client asking for a
+    /// budget sizes it for the whole walk, not for one acceptance.
+    Reloading {
+        /// The sheep whose reloads were accepted, one row each.
+        accepted: Vec<ProcessInfo>,
+        /// The apps the walk could not reload, empty when it reloaded every
+        /// one it named.
+        ///
+        /// Only a walk fills this. A selector matching one app is refused
+        /// whole, as the `Err` arm, so a client reading a single-target
+        /// reload never sees a row here.
+        refused: Vec<SheepRefusal>,
+    },
     /// Answer to `Scale`: the app's instances that will remain, one row each,
     /// ordered by [`sort_flock`]. Every row shares one name, so that is slot
     /// order with the id breaking a tie.
@@ -1639,6 +1703,10 @@ mod tests {
             restarts: 1,
             uptime_ms: 60_000,
             fold: Some("backend".to_string()),
+            // Left empty: this fixture feeds `reply_wire_snapshots` and
+            // `bus_event_wire_snapshots`, so a non-empty value moves pinned
+            // bytes.
+            depends_on: Vec::new(),
             out_file: Some("/home/ada/.shep/logs/web-0-out.log".to_string()),
             err_file: Some("/home/ada/.shep/logs/web-0-err.log".to_string()),
             // 12.5: an insta JSON snapshot is stable across platforms only
@@ -2317,7 +2385,7 @@ mod tests {
                 },
             },
         ];
-        insta::assert_json_snapshot!("request_wire_v4", requests);
+        insta::assert_json_snapshot!("request_wire_v6", requests);
     }
 
     #[test]
@@ -2411,9 +2479,14 @@ mod tests {
                 id: 12,
                 result: Ok(Response::Restarted(vec![])),
             },
+            // Both halves populated: `refused` is the one field on this
+            // variant a walk fills and a single-target reload never does.
             Reply {
                 id: 13,
-                result: Ok(Response::Reloading(vec![])),
+                result: Ok(Response::Reloading {
+                    accepted: vec![],
+                    refused: vec![SheepRefusal::new("db", "db is already being reloaded")],
+                }),
             },
             Reply {
                 id: 14,
@@ -2676,7 +2749,7 @@ mod tests {
                 }),
             },
         ];
-        insta::assert_json_snapshot!("reply_wire_v4", replies);
+        insta::assert_json_snapshot!("reply_wire_v6", replies);
     }
 
     /// Asserts on the JSON, not the struct: a `Vec<String>` cannot say which
@@ -2826,7 +2899,7 @@ mod tests {
             dog_name: None,
         };
         let json = serde_json::to_string(&hello).unwrap();
-        assert_eq!(json, r#"{"client_version":"0.1.0","protocol":4}"#);
+        assert_eq!(json, r#"{"client_version":"0.1.0","protocol":6}"#);
     }
 
     #[test]
@@ -2839,7 +2912,7 @@ mod tests {
         let json = serde_json::to_string(&dog).unwrap();
         assert_eq!(
             json,
-            r#"{"client_version":"0.1.0","protocol":4,"dog_name":"metrics"}"#
+            r#"{"client_version":"0.1.0","protocol":6,"dog_name":"metrics"}"#
         );
         assert_eq!(serde_json::from_str::<Hello>(&json).unwrap(), dog);
     }

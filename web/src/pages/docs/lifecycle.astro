@@ -342,9 +342,15 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       <p>
         Replaces each matched sheep's instances one at a time with a fresh
         process, so a clustered app is never short more than one instance
-        mid-swap. Answers as soon as the shepherd accepts the reload,
-        printing the flock as it stands at that moment; the swaps themselves
-        land afterward and are reported on the bus.
+        mid-swap. A selector matching one app answers as soon as the
+        shepherd accepts the reload, printing the flock as it stands at that
+        moment; the swaps themselves land afterward and are reported on the
+        bus.
+      </p>
+      <p>
+        A selector matching two or more apps is walked in dependency order,
+        and the reply waits out every stage's swaps before it prints. See{" "}
+        <a href="#several-sheep-at-once">below</a>.
       </p>
     </VerbSignature>
     <p>
@@ -441,6 +447,24 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       lamb it forked; see{" "}
       <a href="/docs/folds">Folds</a> for what a stop
       actually kills versus what a sheep's process tree contains.
+    </p>
+
+    <h2 id="several-sheep-at-once">Several sheep at once run in dependency order</h2>
+    <p>
+      Everything above describes one sheep. Once a Flockfile uses{" "}
+      <code>depends_on</code>, shep sorts the flock into stages, and the
+      verbs that touch more than one sheep walk those stages instead of
+      firing at everything together.
+    </p>
+    <p>
+      A shepherd going down walks them in reverse, so a worker gets its
+      SIGTERM before the database it is draining against, and each stage
+      costs its own members' <code>kill_timeout</code> rather than the whole
+      flock costing one. Dogs are held out of that walk and stopped after
+      every sheep, because monitoring should outlive what it monitors.{" "}
+      <code>restart</code> and <code>reload</code> against a selector
+      matching several sheep go the other way, dependencies first. See{" "}
+      <a href="/docs/boot-order">boot order</a>.
     </p>
 
     <h2>Where to go next</h2>

@@ -25,6 +25,7 @@ expression: replies
             "restarts": 1,
             "uptime_ms": 60000,
             "fold": "backend",
+            "depends_on": [],
             "out_file": "/home/ada/.shep/logs/web-0-out.log",
             "err_file": "/home/ada/.shep/logs/web-0-err.log",
             "cpu_percent": 12.5,
@@ -98,6 +99,7 @@ expression: replies
             "restarts": 1,
             "uptime_ms": 60000,
             "fold": "backend",
+            "depends_on": [],
             "out_file": "/home/ada/.shep/logs/web-0-out.log",
             "err_file": "/home/ada/.shep/logs/web-0-err.log",
             "cpu_percent": 12.5,
@@ -145,6 +147,7 @@ expression: replies
           "restarts": 1,
           "uptime_ms": 60000,
           "fold": "backend",
+          "depends_on": [],
           "out_file": "/home/ada/.shep/logs/web-0-out.log",
           "err_file": "/home/ada/.shep/logs/web-0-err.log",
           "cpu_percent": 12.5,
@@ -207,7 +210,15 @@ expression: replies
     "result": {
       "Ok": {
         "kind": "reloading",
-        "data": []
+        "data": {
+          "accepted": [],
+          "refused": [
+            {
+              "name": "db",
+              "reason": "db is already being reloaded"
+            }
+          ]
+        }
       }
     }
   },
@@ -312,6 +323,7 @@ expression: replies
             "restarts": 1,
             "uptime_ms": 60000,
             "fold": "backend",
+            "depends_on": [],
             "out_file": "/home/ada/.shep/logs/web-0-out.log",
             "err_file": "/home/ada/.shep/logs/web-0-err.log",
             "cpu_percent": 12.5,
@@ -378,6 +390,7 @@ expression: replies
             "restarts": 0,
             "uptime_ms": 0,
             "fold": null,
+            "depends_on": [],
             "out_file": null,
             "err_file": null,
             "cpu_percent": null,
@@ -418,6 +431,7 @@ expression: replies
             "restarts": 1,
             "uptime_ms": 0,
             "fold": null,
+            "depends_on": [],
             "out_file": null,
             "err_file": null,
             "cpu_percent": null,
@@ -452,6 +466,7 @@ expression: replies
             "restarts": 0,
             "uptime_ms": 0,
             "fold": null,
+            "depends_on": [],
             "out_file": null,
             "err_file": null,
             "cpu_percent": null,
@@ -507,6 +522,7 @@ expression: replies
             "restarts": 0,
             "uptime_ms": 0,
             "fold": null,
+            "depends_on": [],
             "out_file": null,
             "err_file": null,
             "cpu_percent": null,
@@ -576,6 +592,7 @@ expression: replies
             "restarts": 0,
             "uptime_ms": 0,
             "fold": null,
+            "depends_on": [],
             "out_file": null,
             "err_file": null,
             "cpu_percent": null,
@@ -610,6 +627,7 @@ expression: replies
             "restarts": 0,
             "uptime_ms": 0,
             "fold": null,
+            "depends_on": [],
             "out_file": null,
             "err_file": null,
             "cpu_percent": null,
@@ -706,6 +724,7 @@ expression: replies
             "watch_delay": null,
             "cron_restart": null,
             "fold": null,
+            "depends_on": [],
             "user": null,
             "group": null,
             "out_file": null,

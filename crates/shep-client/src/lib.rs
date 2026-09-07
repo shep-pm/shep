@@ -38,8 +38,8 @@ mod reconnect;
 // own intra-doc links.
 pub mod spawn;
 pub use client::{
-    Client, DEADLINE_GRACE, DEFAULT_DEADLINE, LOG_PLANE_DEADLINE, RequestError, START_DEADLINE,
-    TRIGGER_DEADLINE,
+    Client, DEADLINE_GRACE, DEFAULT_DEADLINE, LOG_PLANE_DEADLINE, RELOAD_DEADLINE, RequestError,
+    START_DEADLINE, TRIGGER_DEADLINE,
 };
 pub use connection::{ConnectError, HANDSHAKE_TIMEOUT};
 pub use events::{EventStream, Lagged};

@@ -30,7 +30,9 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
     <h2>The envelope</h2>
     <p>
       Every non-streaming command wraps its payload in the same three
-      fields: a schema version, the verb name, and the data itself.
+      fields: a schema version, the verb name, and the data itself. One
+      verb adds a fourth, and only sometimes; see
+      <a href="#refused">a reload that was refused part of its fold</a>.
       Here's <code>shep flock --format json</code> against a two-sheep
       flock:
     </p>
@@ -46,6 +48,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       "restarts": 0,
       "uptime_ms": 1019,
       "fold": "backend",
+      "depends_on": [],
       "out_file": "/tmp/shepdemo/logs/web-0-out.log",
       "err_file": "/tmp/shepdemo/logs/web-0-err.log",
       "cpu_percent": null,
@@ -66,6 +69,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       "restarts": 0,
       "uptime_ms": 1017,
       "fold": "backend",
+      "depends_on": [],
       "out_file": "/tmp/shepdemo/logs/worker-0-out.log",
       "err_file": "/tmp/shepdemo/logs/worker-0-err.log",
       "cpu_percent": null,
@@ -111,6 +115,52 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       <code>invalid_config</code>, and so on. A script can switch on
       <code>error.code</code> without parsing English, and the exit status
       confirms it independently.
+    </p>
+
+    <h2 id="refused">A reload that was refused part of its fold</h2>
+    <p>
+      <code>shep reload</code> is the one verb that can half-answer. A fold
+      reloads in stages, and an app already reloading is skipped instead of
+      failing the rest, so the run has two things to report. It still prints
+      one object: <code>refused</code> sits beside <code>data</code>, and the
+      exit status is <code>1</code>.
+    </p>
+    <CodeBlock label="shep reload all --format json">{`{
+  "schema_version": 1,
+  "command": "reload",
+  "data": [
+    {
+      "id": 1,
+      "name": "api",
+      "status": "online",
+      "pid": 63850,
+      "restarts": 0,
+      "uptime_ms": 7059,
+      "fold": null,
+      "depends_on": ["db"],
+      "out_file": "/tmp/shepdemo/logs/api-0-out.log",
+      "err_file": "/tmp/shepdemo/logs/api-0-err.log",
+      "cpu_percent": null,
+      "memory_bytes": null,
+      "dog": null,
+      "lambs": null,
+      "last_exit": null,
+      "smit": null,
+      "instance": 0,
+      "handshook": null,
+      "dog_stale": null
+    }
+  ],
+  "refused": [
+    { "name": "db", "reason": "db is already being reloaded" }
+  ]
+}`}</CodeBlock>
+    <p>
+      The key appears only on a run that refused something, so an ordinary
+      reload carries the same three fields as everything else. Nothing goes
+      to stderr either: the names are already in the envelope, and a second
+      object would break the one-per-invocation rule the rest of this page
+      rests on.
     </p>
 
     <h2>What <code>schema_version</code> promises</h2>
