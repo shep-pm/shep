@@ -1924,3 +1924,49 @@ The probe runs before `CHANNEL_TAKEN`, matching the Windows arm's rule that a re
 What would actually close the hole is a shepherd-side change, not a client-side one. A nonce written into the socket before the exec, or a `SHEP_CHANNEL_PID` the crate compares against `getpid()`, would both survive an environment inherited by a grandchild. Both break every app on the current contract, so neither ships here.
 
 `verified crates/shep-channel/src/endpoint.rs (refuse_unless_socket, connect's Descriptor arm, a_descriptor_that_is_not_a_socket_is_refused_and_left_open)`
+
+## The wire emitter
+
+### The Go types are emitted by a test, and the guard against drift is two mechanisms rather than one
+
+An exhaustive match catches a new variant and nothing else. It is a compile
+error in `child_kind` or `shepherd_kind` the moment a variant lands, which is
+the property `wire.rs` argues for in its own module doc and this is what
+spends it. What it cannot see is a rename, a reorder or a serde attribute,
+because all three still compile.
+
+So the emitter carries a hand-written Go field table and a test that holds it
+against serde. A Go identifier and a Go type are human decisions and cannot be
+derived from a Rust field name; what can be derived is the set of keys the
+types actually serialize and the order they come out in, and that is what the
+table is checked against. Measured on 2026-09-06: renaming `body` to `text`
+leaves the emitted bytes identical and fails only the guard, and swapping
+`action` and `body` in the declaration does the same. Neither is visible to a
+byte comparison, and a reorder is not visible to the compiler either.
+
+The staleness check is the third leg and it covers what the emitter
+interpolates rather than declares. `CHANNEL_VERSION` is the live example:
+changing it to `"2"` leaves every fixture passing, because no fixture carries
+the stamp, and turns the committed Go file stale immediately.
+
+The emitted file lives inside the crate so `CARGO_MANIFEST_DIR` resolves it in
+a packaged build the way `fixtures.rs` already does, which means it ships in
+the tarball. Under two kilobytes, accepted.
+
+`verified crates/shep-channel/tests/wire_export.rs (child_kind, CHILD_FIELDS, every_wire_key_reaches_a_go_field_in_the_same_order, the_committed_go_file_is_what_the_emitter_writes), crates/shep-channel/wire/channel.go, .gitattributes (the eol=lf entry)`
+
+### The cross-repo propagation half is deferred until three libraries exist
+
+The spec's generator section describes a workflow that opens a pull request in
+`shep-js`, `shep-py` and `shep-go` when the wire bytes change, and a
+credential with contents and pull-requests write on all three. Neither ships
+here. With one consumer the zero-diff acceptance test covers one language,
+which is the weaker test that machinery exists to avoid, and a token that can
+write to three repositories is real attack surface to add for a job with one
+target a person can watch.
+
+Until then a vendored copy going stale is caught by hand. That is a gap rather
+than a solved problem, and it is written down here so nobody later reads the
+emitter as the whole of what was designed.
+
+`verified docs/brainstorming/specs/2026-09-02-shep-client-libraries-design.md (The generator)`

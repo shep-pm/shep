@@ -146,6 +146,12 @@ build a JSON object, append `\n`, write it.
 | `{"kind":"shutdown"}` | Sent instead of a stop signal when `shutdown_with_message = true`. Treat it as your cue to shut down gracefully; the daemon still escalates to `SIGKILL` after `kill_timeout` if you take too long. |
 | `{"kind":"action","name":"<name>","id":<number>}`, optionally with `"params":"<text>"` | An operator ran `shep trigger <selector> <name> [params]` against you. `params` is present only when the operator supplied one; `id` is always present — echo it on your reply. |
 
+The Go spelling of both shapes is generated from the Rust enums above and
+committed at `crates/shep-channel/wire/channel.go`. It is the same file
+`github.com/shep-pm/shep-go/channel` ships as `channel/wire.go`. Copy it
+rather than retyping it: every optional field is a pointer, because Go's
+`omitempty` on a plain value drops a metric of zero and an id of zero.
+
 ## Custom actions — the part most worth reading closely
 
 `shep trigger <selector> <action> [params]` is how an operator reaches a

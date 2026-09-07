@@ -77,6 +77,16 @@ channel = true`}</CodeBlock>
       over the same contract are planned. Whatever language an app is
       written in, this page is still the contract it has to hold to.
     </p>
+    <p>
+      <strong>Go types are generated from the Rust enums, not typed by
+      hand.</strong> The committed file is{" "}
+      <code>crates/shep-channel/wire/channel.go</code> in this repository,
+      and <code>github.com/shep-pm/shep-go/channel</code> vendors the same
+      bytes as <code>channel/wire.go</code>. Copy it rather than retyping
+      it: every optional field is a pointer, because Go's{" "}
+      <code>omitempty</code> on a plain value drops a metric of zero and
+      an id of zero.
+    </p>
 
     <h2>The wire format</h2>
     <p>
