@@ -615,12 +615,13 @@ impl fmt::Debug for ProviderCacheFile {
     }
 }
 
-/// The cache file version [`provider_cache_on_disk`] understands.
+/// The `secrets-cache.json` format version this build reads and writes.
 ///
-/// Matches `shep-daemon`'s own `CACHE_VERSION`; a mismatch there and here
-/// is a drift this module cannot detect on its own; the two constants
-/// carry the same comment for that reason.
-const PROVIDER_CACHE_VERSION: u32 = 2;
+/// One constant for both sides: shep-daemon writes the file and stamps it
+/// with this, and [`provider_cache_on_disk`] refuses anything else. Two
+/// literals of the same value would let a bump on one side turn every read
+/// on the other into an empty cache, with nothing to say why.
+pub const PROVIDER_CACHE_VERSION: u32 = 2;
 
 /// The provider cache as `secrets-cache.json` currently holds it on disk,
 /// or nothing when the file is missing, will not parse, or is a version

@@ -17,18 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use serde::{Deserialize, Serialize};
-use shep_core::secrets::{NamespaceValues, ProviderCache, PushedPairs};
-
-/// The cache file's format version.
-///
-/// A file carrying any other version is read as empty: nothing here is
-/// authored, so a refetch costs one provider poll.
-///
-/// Matches `shep_core::secrets`'s own `PROVIDER_CACHE_VERSION`, which is
-/// what `shep describe` reads this file with; a mismatch there and here is
-/// a drift neither side can detect on its own, so the two constants carry
-/// the same comment.
-const CACHE_VERSION: u32 = 2;
+use shep_core::secrets::{NamespaceValues, PROVIDER_CACHE_VERSION, ProviderCache, PushedPairs};
 
 /// The cache file's shape.
 ///
@@ -218,7 +207,7 @@ impl ProviderSecrets {
 /// others.
 fn persisted_view(state: &State) -> CacheFile {
     CacheFile {
-        version: CACHE_VERSION,
+        version: PROVIDER_CACHE_VERSION,
         namespaces: state
             .persisted
             .iter()
@@ -248,7 +237,7 @@ fn read_cache(path: &Path) -> ProviderCache {
         return ProviderCache::default();
     };
     match serde_json::from_str::<CacheFile>(&raw) {
-        Ok(file) if file.version == CACHE_VERSION => ProviderCache {
+        Ok(file) if file.version == PROVIDER_CACHE_VERSION => ProviderCache {
             values: file.namespaces,
             pushed: file.pushed,
         },
@@ -573,7 +562,7 @@ mod tests {
     #[test]
     fn a_cache_file_debug_never_prints_a_value() {
         let file = CacheFile {
-            version: CACHE_VERSION,
+            version: PROVIDER_CACHE_VERSION,
             namespaces: BTreeMap::from([(
                 "vercel".to_string(),
                 BTreeMap::from([(
