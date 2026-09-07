@@ -1,6 +1,16 @@
 # Exceptions for `crate-ci/typos` (CI job `typos`, `.github/workflows/test.yml`).
 # Every entry here was read in context, not defaulted.
 
+[default.extend-identifiers]
+# `ANDed`: logical-AND, verbed, in `docs/lookout/design-files/README.md`'s
+# description of how the feed's filters combine. typos' camelCase splitter
+# reads it as `AN` + `Ded` and flags `Ded` as a typo of "Dead"; this false
+# positive only surfaced once README.md and rulings.md stopped being
+# excluded from this file's directory-wide skip, below. An identifier entry,
+# not an extend-word, since the word this needs to bypass is the split
+# result, not the whole token.
+ANDed = "ANDed"
+
 [default.extend-words]
 # The TUI crate this project depends on, throughout `shep lookout`
 # (crates/shep-cli/src/lookout, docs/lookout). Not "ratatouille".
@@ -43,6 +53,11 @@ retsarts = "retsarts"
 # "Gs" and flags "PN" as a typo of "ON".
 pn = "pn"
 
+# `rin`: the maintainer's GitHub handle, and the first half of the `rin-voice`
+# skill named in the plans under docs/writing-plans/. typos reads it as a
+# misspelling of "ring"/"rain"/"ruin".
+rin = "rin"
+
 # The next six are pm2's own spellings, quoted verbatim in the read-only
 # trace docs this port's specs are built from; correcting them would misquote
 # the source.
@@ -58,3 +73,29 @@ resurect = "resurect" # trace/tests.md:48, pm2's own `resurect_state.mocha.js`
 # running sheep's uptime..."). Not the plural CLAUDE.md bans.
 sheeps = "sheeps"
 childs = "childs"
+
+[files]
+# CI's `typos` action runs with no paths, which ignores hidden files by
+# default and would otherwise skip `.github/`. The pre-commit hook passed
+# `--hidden` to cover it locally, which meant a typo in a staged hidden file
+# failed the hook and passed CI — backwards for a hook that exists to match
+# its gate. Setting it here instead of dropping `--hidden` makes both scan
+# hidden files, since that is the behaviour worth having.
+ignore-hidden = false
+
+# The Claude Design bundle under docs/lookout/design-files: two generated
+# HTML pages, their runtime, and nine PNG screenshots. Nothing in these is
+# written by hand, so a spelling report on them has nobody to act on it. The
+# PNGs are the reason this is a file rule rather than more extend-words —
+# passed an explicit path, typos reads a PNG as text and reports the
+# compressed bytes a few dozen times per image. The bundle's sample data also
+# carries a GitHub handle that typos reads as a misspelt English word.
+#
+# README.md and rulings.md in the same directory are hand-written prose and
+# stay out of this list on purpose: they get spell-checked like everything
+# else.
+extend-exclude = [
+    "docs/lookout/design-files/*.html",
+    "docs/lookout/design-files/support.js",
+    "docs/lookout/design-files/screenshots/",
+]

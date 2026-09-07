@@ -28,7 +28,8 @@ expression: events
         "smit": "▲ main@a1b2c3",
         "instance": null,
         "handshook": null,
-        "dog_stale": null
+        "dog_stale": null,
+        "max_memory": null
       },
       "manually": false,
       "at_ms": 1700000000000
@@ -69,7 +70,8 @@ expression: events
         "smit": null,
         "instance": 2,
         "handshook": null,
-        "dog_stale": null
+        "dog_stale": null,
+        "max_memory": null
       },
       "manually": false,
       "at_ms": 1700000000000
@@ -100,7 +102,8 @@ expression: events
         "smit": null,
         "instance": null,
         "handshook": null,
-        "dog_stale": null
+        "dog_stale": null,
+        "max_memory": null
       },
       "manually": false,
       "at_ms": 1700000000000
@@ -131,7 +134,8 @@ expression: events
         "smit": null,
         "instance": null,
         "handshook": null,
-        "dog_stale": null
+        "dog_stale": null,
+        "max_memory": null
       },
       "manually": false,
       "at_ms": 1700000000000
@@ -162,7 +166,8 @@ expression: events
         "smit": null,
         "instance": null,
         "handshook": null,
-        "dog_stale": null
+        "dog_stale": null,
+        "max_memory": null
       },
       "manually": false,
       "at_ms": 1700000000000
@@ -193,7 +198,8 @@ expression: events
         "smit": null,
         "instance": null,
         "handshook": null,
-        "dog_stale": null
+        "dog_stale": null,
+        "max_memory": null
       },
       "manually": false,
       "at_ms": 1700000000000
@@ -224,7 +230,8 @@ expression: events
         "smit": null,
         "instance": null,
         "handshook": null,
-        "dog_stale": null
+        "dog_stale": null,
+        "max_memory": null
       },
       "manually": false,
       "at_ms": 1700000000000
@@ -255,7 +262,8 @@ expression: events
         "smit": null,
         "instance": null,
         "handshook": null,
-        "dog_stale": null
+        "dog_stale": null,
+        "max_memory": null
       },
       "manually": false,
       "at_ms": 1700000000000

@@ -6,6 +6,7 @@
 //! both testable and cheap to keep working across a ratatui release.
 
 pub mod bleats;
+pub mod cell;
 pub mod detail;
 pub mod flock;
 pub mod host;
@@ -22,10 +23,13 @@ pub mod fixtures;
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use self::flock::MIN_HEIGHT;
-use super::app::App;
+use super::app::{App, Link, RowKey};
+use super::theme::Palette;
+use crate::vocabulary::Role;
 
 /// The narrowest terminal the dashboard draws into.
 ///
@@ -45,6 +49,16 @@ pub const MIN_TERM_WIDTH: u16 = flock::MIN_WIDTH + flock::GUTTER;
 const CHROME_ROWS: u16 = 4;
 
 /// The host strip is one line.
+/// The shortest terminal that gets the design's two blank chrome rows, one
+/// under the title band and one under the rule.
+///
+/// Not a taste threshold. `the_flock_table_keeps_the_middle_of_the_screen`
+/// pins the table at five data rows on a 24-row terminal, and at that height
+/// there is exactly no slack: spending two rows on air there takes the table
+/// to three, which is the pane stopping being the point of the screen. Six
+/// rows above that floor is where the air costs nothing that matters.
+const ROOMY_HEIGHT: u16 = 30;
+
 const HOST_ROWS: u16 = 1;
 
 /// The detail pane: one rule and four lines.
@@ -193,13 +207,16 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     let bottom = area.y + height - 1;
     let buffer = frame.buffer_mut();
 
-    buffer.set_line(
-        area.x,
-        y,
-        &status::title_line(app, app.home(), width),
-        width,
-    );
+    buffer.set_line(area.x, y, &title_band(app, width), width);
     y += 1;
+    // A blank row under the title, and another under the rule further down.
+    // Both come from the design's own row allocation, and both are spent
+    // only where there is height to spare: on a short terminal every row
+    // belongs to the table.
+    let roomy = height >= ROOMY_HEIGHT;
+    if roomy {
+        y += 1;
+    }
 
     // The settings screen owns the whole body between the title and the
     // status bar. That is a swap, not an overlay: the banner, the host
@@ -244,16 +261,24 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     // width >= MIN_TERM_WIDTH, checked above, so this never underflows.
     let table_width = width - flock::GUTTER;
     let columns = flock::columns_for(table_width);
+    // The rule sits between the host strip and the table, not between the
+    // headers and their own rows: it separates two regions, and a rule
+    // directly under the headers reads as underlining them instead.
+    //
+    // Full width, unlike the headers, which start after the gutter: it is
+    // chrome, and a rule that stopped two columns short of the left edge
+    // would look like a rendering bug.
+    buffer.set_line(area.x, y, &status::rule_line(palette.line(), width), width);
+    y += 1;
+    if roomy {
+        y += 1;
+    }
     buffer.set_line(
         area.x + flock::GUTTER,
         y,
         &flock::header_line(columns, table_width, palette.muted()),
         table_width,
     );
-    y += 1;
-    // The rule stays full width: it is chrome, and a rule that stopped two
-    // columns short of the left edge would look like a rendering bug.
-    buffer.set_line(area.x, y, &status::rule_line(palette.muted(), width), width);
     y += 1;
 
     // The bottom stack, laid out upward from the status bar: whichever of
@@ -290,18 +315,35 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
         for (slot, key) in keys.iter().skip(offset).take(viewport).enumerate() {
             let slot = u16::try_from(slot).unwrap_or(0);
             let is_selected = selected.as_ref() == Some(key);
+            let (gutter_text, gutter_style) = flock::gutter(is_selected, palette);
             buffer.set_line(
                 area.x,
                 y + slot,
-                &Line::from(Span::raw(flock::mark(is_selected))),
+                &Line::from(Span::styled(gutter_text, gutter_style)),
                 1,
             );
-            buffer.set_line(
-                area.x + flock::GUTTER,
-                y + slot,
-                &flock::key_line(app, key, columns, table_width),
-                table_width,
-            );
+            let line = if let RowKey::Section(label) = key {
+                // The `Flock`/`Dogs` header becomes a band, drawn here
+                // rather than through `flock::key_line`'s own
+                // `RowKey::Section` arm: that arm's `section_line` stays,
+                // muted rather than a band, but no current caller reaches
+                // it, since this task's file list does not extend to
+                // `flock.rs`.
+                //
+                // Meadow for the flock band, sky for the dogs band
+                // (docs/lookout/design-files/README.md:149). `"Dogs"` is
+                // the only other label `RowKey::Section` ever carries
+                // (see `App::visible_rows`), so anything else stays meadow.
+                let role = if *label == "Dogs" {
+                    Role::Sky
+                } else {
+                    Role::Meadow
+                };
+                section_band(&label.to_ascii_uppercase(), role, &palette, table_width)
+            } else {
+                flock::key_line(app, key, columns, table_width, is_selected)
+            };
+            buffer.set_line(area.x + flock::GUTTER, y + slot, &line, table_width);
         }
     }
 
@@ -309,7 +351,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
         buffer.set_line(
             area.x,
             top,
-            &status::rule_line(palette.muted(), width),
+            &status::rule_line(palette.line(), width),
             width,
         );
         for (offset, line) in detail::detail_lines(app, width).iter().enumerate() {
@@ -321,7 +363,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
         buffer.set_line(
             area.x,
             top,
-            &status::rule_line(palette.muted(), width),
+            &status::rule_line(palette.line(), width),
             width,
         );
         let rows = usize::from(FEED_ROWS - 1);
@@ -334,18 +376,175 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
 }
 
+/// The title row: a full-width reverse-video band naming the mode.
+///
+/// Meadow while [`App::link`] is live, bark once it is [`Link::Lost`] — the
+/// only two arms this pane needs; the editing and secrets bands belong to
+/// panes this plan does not build. What this is, where it points, and how
+/// big the flock is, padded to `width` before styling ([`band_line`]):
+/// ratatui paints a span's background, and applies `Modifier::REVERSED`,
+/// only under the cells its text occupies, so a band that stopped where its
+/// text stopped would leave the rest of the row unpainted.
+fn title_band(app: &App, width: u16) -> Line<'static> {
+    let left = format!("shep lookout   {}", app.home());
+    let visible = app.rows().len();
+    let total = app.flock_len();
+    let right = if app.filter().is_empty() {
+        format!(" {total} in the flock")
+    } else {
+        format!(" {visible} of {total} in the flock")
+    };
+    let budget = width.saturating_sub(u16::try_from(right.chars().count()).unwrap_or(0));
+    let text = format!("{}{right}", flock::fit(&left, budget));
+    let role = if matches!(app.link(), Link::Lost { .. }) {
+        Role::Bark
+    } else {
+        Role::Meadow
+    };
+    band_line(text, width, app.palette().band(role))
+}
+
+/// A section header band: [`cell::band`]'s two-block marker and `label`,
+/// reverse video in `role`.
+///
+/// `cell::band` already pads its result to `width`, so unlike [`title_band`]
+/// this needs no separate padding step.
+fn section_band(label: &str, role: Role, palette: &Palette, width: u16) -> Line<'static> {
+    Line::from(Span::styled(
+        cell::band(label, usize::from(width)),
+        palette.band(role),
+    ))
+}
+
+/// Pads `text` to `width` columns before wrapping it in one styled span.
+///
+/// Shared by callers that build their own text rather than going through
+/// [`cell::band`], so a band's `REVERSED` modifier paints every cell of the
+/// row rather than stopping where the text does.
+fn band_line(text: String, width: u16, style: Style) -> Line<'static> {
+    let drawn = text
+        .chars()
+        .map(crate::output::width::char_columns)
+        .sum::<usize>();
+    let mut padded = text;
+    if drawn < usize::from(width) {
+        padded.extend(std::iter::repeat_n(' ', usize::from(width) - drawn));
+    }
+    Line::from(Span::styled(padded, style))
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Instant;
 
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
+    use ratatui::style::{Color, Modifier};
     use shep_core::protocol::ProcessInfo;
     use shep_core::status::ProcStatus;
 
     use super::*;
     use crate::lookout::app::{App, Control, KeyPress, Msg};
     use crate::lookout::theme::Palette;
+
+    #[test]
+    fn the_title_band_is_reverse_video_across_the_whole_width() {
+        let app = fixtures::app_with(Vec::new(), fixtures::coloured());
+        let line = title_band(&app, 80);
+        assert_eq!(
+            line.spans
+                .iter()
+                .map(|s| s.content.chars().count())
+                .sum::<usize>(),
+            80,
+            "a band that stops where its text stops leaves unpainted cells"
+        );
+        assert!(
+            line.spans[0]
+                .style
+                .add_modifier
+                .contains(Modifier::REVERSED)
+        );
+    }
+
+    #[test]
+    fn a_frozen_link_turns_the_title_band_bark() {
+        let mut app = fixtures::app_with(Vec::new(), fixtures::coloured());
+        app.update(Msg::Frozen {
+            at_local: "2026-08-14 14:32:07".to_string(),
+        });
+        let line = title_band(&app, 80);
+        assert_eq!(line.spans[0].style.fg, Some(Color::Indexed(166)));
+    }
+
+    #[test]
+    fn the_title_band_counts_both_numbers_while_a_filter_is_on() {
+        let app = fixtures::filtered_app("web");
+        let title = fixtures::rendered(&title_band(&app, 120));
+        assert!(title.contains("2 of 4 in the flock"), "got {title:?}");
+    }
+
+    #[test]
+    fn the_unfiltered_title_band_is_unchanged() {
+        let app = fixtures::filtered_app("");
+        let title = fixtures::rendered(&title_band(&app, 120));
+        assert!(title.contains("4 in the flock"), "got {title:?}");
+        assert!(
+            !title.contains(" of "),
+            "no second number when nothing is hidden"
+        );
+    }
+
+    #[test]
+    fn the_flock_and_dogs_bands_carry_different_roles() {
+        // Meadow for the flock band, sky for the dogs band
+        // (docs/lookout/design-files/README.md:149).
+        let flock = vec![
+            ProcessInfo::builder(1, "web", ProcStatus::Online).build(),
+            ProcessInfo::builder(90, "otel", ProcStatus::Online)
+                .pid(Some(90_000))
+                .dog(Some(shep_core::protocol::DogSource::BuiltIn))
+                .build(),
+        ];
+        let app = fixtures::app_with(flock, fixtures::coloured());
+        let width = 60;
+        let mut terminal = Terminal::new(TestBackend::new(width, 12)).unwrap();
+        terminal.draw(|frame| draw(&app, frame)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let text = crate::lookout::frames::render_text(buffer);
+        let lines: Vec<&str> = text.lines().collect();
+        let flock_y = u16::try_from(
+            lines
+                .iter()
+                .position(|l| l.contains("FLOCK"))
+                .expect("a FLOCK band is drawn"),
+        )
+        .unwrap();
+        let dogs_y = u16::try_from(
+            lines
+                .iter()
+                .position(|l| l.contains("DOGS"))
+                .expect("a DOGS band is drawn"),
+        )
+        .unwrap();
+        let flock_fg = buffer.cell((flock::GUTTER, flock_y)).unwrap().fg;
+        let dogs_fg = buffer.cell((flock::GUTTER, dogs_y)).unwrap().fg;
+        assert_ne!(
+            flock_fg, dogs_fg,
+            "the flock and dogs bands must carry different roles"
+        );
+    }
+
+    #[test]
+    fn the_section_bands_name_their_section_in_words() {
+        let flock = section_band(
+            "FLOCK",
+            crate::vocabulary::Role::Meadow,
+            &fixtures::coloured(),
+            40,
+        );
+        assert!(flock.spans.iter().any(|s| s.content.contains("FLOCK")));
+    }
 
     fn draw_to(app: &App, width: u16, height: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
@@ -422,7 +621,7 @@ mod tests {
             "the detail pane says its own reason: {frame:?}"
         );
         assert!(
-            frame.contains("bleats  no sheep is selected"),
+            frame.contains("BLEATS no sheep is selected"),
             "the feed's sentence is already true and is unchanged: {frame:?}"
         );
     }
@@ -460,7 +659,7 @@ mod tests {
         let frame = draw_to(&app, 100, 12);
         let rows: Vec<&str> = frame.lines().skip(3).take(5).collect();
         assert!(
-            rows[0].starts_with("  Flock "),
+            rows[0].starts_with("   \u{2588}\u{2588} FLOCK "),
             "the section header keeps a blank gutter too: {:?}",
             rows[0]
         );
@@ -484,6 +683,83 @@ mod tests {
             1,
             "exactly one marker on the frame"
         );
+    }
+
+    /// The regression the padding step in `row_line`/`group_line` guards
+    /// against: a `Span`'s background only paints the cells under its own
+    /// text, so a row styled only to the end of its content would leave a
+    /// ragged, unpainted tail rather than a full row. Checked against the
+    /// live `Buffer`'s own cells, not the rendered text, since a text-only
+    /// assertion cannot see a background at all.
+    #[test]
+    fn the_selected_rows_ground_paints_every_column_of_the_table_not_just_its_text() {
+        let mut app = App::new(
+            Palette::detect(None, None, Some(std::ffi::OsStr::new("truecolor"))),
+            Control::ReadOnly,
+            "/home/ada/.shep".to_string(),
+            Instant::now(),
+        );
+        app.update(Msg::Snapshot {
+            rows: vec![
+                ProcessInfo::builder(0, "web", ProcStatus::Online).build(),
+                ProcessInfo::builder(1, "worker", ProcStatus::Online).build(),
+            ],
+            at: Instant::now(),
+        });
+        // Row 0 is selected by default. The gutter reads as a space either
+        // way at this palette ([`flock::gutter`] paints rather than
+        // switching glyphs), so the row is identified by content, not by
+        // the marker character.
+        let width = 100;
+        let mut terminal = Terminal::new(TestBackend::new(width, 12)).unwrap();
+        terminal.draw(|frame| draw(&app, frame)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let text = crate::lookout::frames::render_text(buffer);
+        let lines: Vec<&str> = text.lines().collect();
+        // title, header, rule, "Flock" section: the selected sheep row is
+        // the first one after them.
+        let selected_y = 4;
+        let unselected_y = 5;
+        assert!(
+            lines[selected_y].contains("web"),
+            "row 0 is the selected one: {:?}",
+            lines[selected_y]
+        );
+        assert!(
+            lines[unselected_y].contains("worker"),
+            "row 1 stays unselected: {:?}",
+            lines[unselected_y]
+        );
+
+        let palette = app.palette();
+        let ground = palette.ground().bg;
+        assert!(
+            ground.is_some(),
+            "truecolor gets a real ground to paint with"
+        );
+
+        let table_width = width - flock::GUTTER;
+        let painted = (flock::GUTTER..width)
+            .filter(|&x| {
+                buffer
+                    .cell((x, u16::try_from(selected_y).unwrap()))
+                    .is_some_and(|cell| Some(cell.bg) == ground)
+            })
+            .count();
+        assert_eq!(
+            painted,
+            usize::from(table_width),
+            "the ground must reach every column of the table, not just the text"
+        );
+
+        let unpainted = (flock::GUTTER..width)
+            .filter(|&x| {
+                buffer
+                    .cell((x, u16::try_from(unselected_y).unwrap()))
+                    .is_some_and(|cell| Some(cell.bg) == ground)
+            })
+            .count();
+        assert_eq!(unpainted, 0, "an unselected row carries no ground at all");
     }
 
     /// Last values stay on screen, with a sentence admitting they are
@@ -754,10 +1030,12 @@ mod tests {
                     );
                 }
                 if panes.feed {
+                    // `contains`, not `starts_with`: the `BLEATS` chip
+                    // leads the line, and nothing else on screen carries it.
                     let positions: Vec<usize> = lines
                         .iter()
                         .enumerate()
-                        .filter(|(_, l)| l.starts_with("bleats  "))
+                        .filter(|(_, l)| l.contains("BLEATS"))
                         .map(|(i, _)| i)
                         .collect();
                     assert_eq!(positions.len(), 1, "the feed header at {width}x{height}");
@@ -768,12 +1046,14 @@ mod tests {
                     );
                 }
                 if panes.detail {
-                    // The path prefix, not a bare `out  `: the feed's own
-                    // body lines are tagged `out  ` too.
+                    // The `\u{2502}` divider, not a bare `out  `: the feed's
+                    // own body lines are tagged `out  ` too, and the merged
+                    // log row's own path can truncate away at a narrow
+                    // width, but its divider never does.
                     let positions: Vec<usize> = lines
                         .iter()
                         .enumerate()
-                        .filter(|(_, l)| l.starts_with("out  /home/ada/.shep/logs/"))
+                        .filter(|(_, l)| l.starts_with("out  ") && l.contains('\u{2502}'))
                         .map(|(i, _)| i)
                         .collect();
                     assert_eq!(
@@ -794,6 +1074,27 @@ mod tests {
     /// Whatever else is on screen, the table gets the remainder, and at the
     /// tier where all three panes are up it still has room for more than a
     /// couple of rows.
+    /// The two blank chrome rows are spent only above [`ROOMY_HEIGHT`].
+    ///
+    /// Guards the trade the constant exists for: air on a tall terminal,
+    /// none on a short one where every row is a sheep you cannot see.
+    #[test]
+    fn a_short_terminal_spends_no_rows_on_air() {
+        let app = fixtures::full_app();
+        let short = draw_to(&app, 120, ROOMY_HEIGHT - 1);
+        let tall = draw_to(&app, 120, ROOMY_HEIGHT);
+
+        let blanks = |frame: &str| {
+            frame
+                .lines()
+                .take(6)
+                .filter(|line| line.trim().is_empty())
+                .count()
+        };
+        assert_eq!(blanks(&short), 0, "short:\n{short}");
+        assert_eq!(blanks(&tall), 2, "tall:\n{tall}");
+    }
+
     #[test]
     fn the_flock_table_keeps_the_middle_of_the_screen() {
         let app = fixtures::full_app(); // twelve sheep
