@@ -25,8 +25,8 @@ use shep_core::config::{AppConfig, ProbeConfig, ProbeKind};
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{
     ActionOutcome, BusEvent, ChildMessage, Envelope, Hello, HelloAck, HelloReply, LineOutcome,
-    PROTOCOL_VERSION, ProcessEventKind, ProcessInfo, Reply, Request, Response, RpcErrorCode,
-    SelectorSpec, ServerFrame, codec, decode_frame, encode_frame,
+    MIN_SUPPORTED, PROTOCOL_VERSION, ProcessEventKind, ProcessInfo, Reply, Request, Response,
+    RpcError, RpcErrorCode, SelectorSpec, ServerFrame, codec, decode_frame, encode_frame,
 };
 use shep_core::status::ProcStatus;
 use shep_core::values::UpDuration;
@@ -501,10 +501,11 @@ fn track_spawned(spawned: &std::sync::Arc<std::sync::Mutex<Vec<i32>>>, reply: &R
         | Response::Described(infos)
         | Response::Started(infos)
         | Response::Stopped(infos)
-        | Response::Restarted(infos)
-        | Response::Reloading(infos)
         | Response::Reopened(infos)
         | Response::Flushed(infos) => infos,
+        // Struct-shaped, so neither can join the or-pattern above; the rows
+        // a restart or a reload accepted are the half that carries pids.
+        Response::Restarted { accepted, .. } | Response::Reloading { accepted, .. } => accepted,
         _ => return,
     };
     for info in infos {
@@ -1132,8 +1133,80 @@ async fn a_trigger_against_a_silent_child_times_out_rather_than_hitting_the_rpc_
     fixture.shutdown().await;
 }
 
+/// Sends a `Hello` naming `protocol` over a fresh connection to `fixture`'s
+/// socket and returns the daemon's `HelloAck` reply, by hand rather than
+/// through [`Fixture::connect`], which always sends a matching protocol.
+async fn handshake_with_protocol(fixture: &Fixture, protocol: u32) -> Result<HelloAck, RpcError> {
+    let stream = transport::connect(&fixture.paths.socket).await.unwrap();
+    let mut frames = Framed::new(stream, codec());
+    frames
+        .send(
+            encode_frame(&Hello {
+                client_version: "9.9.9".to_string(),
+                protocol,
+                dog_name: None,
+            })
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let frame = tokio::time::timeout(RECV_TIMEOUT, frames.next())
+        .await
+        .expect("timed out waiting for the handshake reply")
+        .expect("connection closed before replying")
+        .unwrap();
+    let ack: HelloReply = decode_frame(&frame).unwrap();
+    ack
+}
+
 #[tokio::test]
-async fn protocol_skew_is_refused_over_the_real_socket() {
+async fn a_peer_at_the_floor_is_accepted() {
+    let fixture = Fixture::boot(tempfile::tempdir().unwrap(), false).await;
+
+    let ack = handshake_with_protocol(&fixture, MIN_SUPPORTED)
+        .await
+        .expect("at the floor");
+    assert_eq!(ack.protocol, PROTOCOL_VERSION);
+    assert_eq!(ack.min_supported, Some(MIN_SUPPORTED));
+
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_peer_below_the_floor_is_refused_by_name() {
+    let fixture = Fixture::boot(tempfile::tempdir().unwrap(), false).await;
+
+    let err = handshake_with_protocol(&fixture, MIN_SUPPORTED - 1)
+        .await
+        .expect_err("below the floor");
+    assert_eq!(err.code, RpcErrorCode::ProtocolMismatch);
+
+    fixture.shutdown().await;
+}
+
+/// A dog rebuilt against a newer shep-client than the running shepherd.
+/// Refusing it bought nothing: anything it asks for that does not exist
+/// is refused per request by `Request::Unrecognized`.
+#[tokio::test]
+async fn a_peer_above_the_daemons_own_version_is_accepted() {
+    let fixture = Fixture::boot(tempfile::tempdir().unwrap(), false).await;
+
+    let ack = handshake_with_protocol(&fixture, PROTOCOL_VERSION + 1)
+        .await
+        .expect("a newer peer connects");
+    assert_eq!(ack.protocol, PROTOCOL_VERSION);
+
+    fixture.shutdown().await;
+}
+
+/// Named `protocol_skew_is_refused_...` until this task: a peer above the
+/// daemon's own version used to be refused as skew. It is now accepted,
+/// since the handshake compares against `MIN_SUPPORTED` rather than exact
+/// equality, so this test moved to asserting the connection stays open
+/// rather than that it closes.
+#[tokio::test]
+async fn a_newer_peer_keeps_the_connection_open_over_the_real_socket() {
     let fixture = Fixture::boot(tempfile::tempdir().unwrap(), false).await;
 
     // By hand: `Fixture::connect` always sends a matching protocol.
@@ -1153,20 +1226,30 @@ async fn protocol_skew_is_refused_over_the_real_socket() {
 
     let frame = tokio::time::timeout(RECV_TIMEOUT, frames.next())
         .await
-        .expect("timed out waiting for the refusal")
-        .expect("connection closed before refusing")
+        .expect("timed out waiting for the ack")
+        .expect("connection closed before acking")
         .unwrap();
     let ack: HelloReply = decode_frame(&frame).unwrap();
-    let err = ack.expect_err("protocol skew must be refused, not silently accepted");
-    assert_eq!(err.code, RpcErrorCode::ProtocolMismatch);
+    ack.expect("a peer newer than the daemon must be accepted, not refused as skew");
 
-    let eof = tokio::time::timeout(RECV_TIMEOUT, frames.next())
+    // A live connection accepts a request rather than staying silent.
+    let frame = encode_frame(&Envelope {
+        id: 1,
+        deadline_ms: None,
+        body: Request::Ping,
+    })
+    .unwrap();
+    frames.send(frame).await.unwrap();
+    let reply = tokio::time::timeout(RECV_TIMEOUT, frames.next())
         .await
-        .expect("timed out waiting for the connection to close");
-    assert!(
-        eof.is_none(),
-        "the daemon must close the connection after refusing skew"
-    );
+        .expect("timed out waiting for the ping reply")
+        .expect("connection closed before replying")
+        .unwrap();
+    let frame: ServerFrame = decode_frame(&reply).unwrap();
+    let ServerFrame::Reply(reply) = frame else {
+        panic!("expected a reply frame")
+    };
+    assert_eq!(reply.result, Ok(Response::Pong));
 
     fixture.shutdown().await;
 }
@@ -1753,7 +1836,7 @@ async fn reload_under_load(name: &str, defiant: bool) -> Vec<Attempt> {
             selector: SelectorSpec::Name(name.to_string()),
         })
         .await;
-    let Response::Reloading(accepted) = accepted.result.unwrap() else {
+    let Response::Reloading { accepted, .. } = accepted.result.unwrap() else {
         panic!("expected an accepted reload")
     };
     assert_eq!(accepted.len(), 1);
@@ -2022,6 +2105,37 @@ async fn a_smit_carrying_an_escape_is_refused_at_the_daemon() {
     fixture.shutdown().await;
 }
 
+/// The whole point of the catch-all. An unknown request must be refused BY
+/// ID and leave the connection usable, because the alternative is the
+/// dropped connection that made every additive change a version bump.
+#[tokio::test]
+async fn an_unrecognized_request_is_refused_and_the_connection_survives() {
+    let fixture = Fixture::boot(tempfile::tempdir().unwrap(), false).await;
+    let mut conn = fixture.connect().await;
+
+    let refusal = conn
+        .request_raw(serde_json::json!({"kind": "from_the_future"}))
+        .await
+        .expect("an unrecognized request is refused, not disconnected");
+    let Err(err) = refusal.result else {
+        panic!("an unknown request must be refused");
+    };
+    assert_eq!(err.code, RpcErrorCode::Unsupported);
+    assert_eq!(
+        err.daemon_version, None,
+        "daemon_version is reserved for a ProtocolMismatch refusal; this \
+         client already has it from HelloAck"
+    );
+
+    let pong = conn.request(Request::Ping).await;
+    assert!(
+        pong.result.is_ok(),
+        "the connection must still serve after refusing one request"
+    );
+
+    fixture.shutdown().await;
+}
+
 // --- Reload: a probed app's replacement answers for itself ---
 
 /// The `AwaitReady` window a probed reload gets, as `listen_timeout`.
@@ -2107,7 +2221,7 @@ async fn a_probed_reload_of_a_working_release_still_finishes() {
             selector: SelectorSpec::Name("web".to_string()),
         })
         .await;
-    let Response::Reloading(accepted) = accepted.result.unwrap() else {
+    let Response::Reloading { accepted, .. } = accepted.result.unwrap() else {
         panic!("expected an accepted reload")
     };
     assert_eq!(accepted.len(), 1);
@@ -2188,7 +2302,7 @@ async fn a_replacement_that_serves_nothing_is_refused_not_reported_reloaded() {
             selector: SelectorSpec::Name("web".to_string()),
         })
         .await;
-    let Response::Reloading(accepted) = accepted.result.unwrap() else {
+    let Response::Reloading { accepted, .. } = accepted.result.unwrap() else {
         panic!("expected an accepted reload")
     };
     assert_eq!(accepted.len(), 1);

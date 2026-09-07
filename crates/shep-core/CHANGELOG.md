@@ -36,11 +36,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `PROTOCOL_VERSION` is 5. `Request::PutSecrets` and `Response::SecretsPut`
-  are additive, and the rule keeps the version for an addition, but the move
-  to 4 already settled that an unbumped addition fails the operator: a newer
-  client passes the handshake and the daemon then drops the connection on an
-  envelope it cannot decode. A named `protocol_mismatch` refusal is better.
+- `PROTOCOL_VERSION` and `MIN_SUPPORTED` are 8. `AppConfig::environment` is
+  what moved them: that struct is `deny_unknown_fields`, so an older peer
+  refuses the whole payload rather than ignoring a key it does not know,
+  which is the same reason `depends_on` moved them to 5.
+  `Request::PutSecrets` and `Response::SecretsPut` rode in on the same
+  commit and moved nothing. They are additive, and a daemon that has never
+  heard of `put_secrets` now decodes `Request::Unrecognized` and answers
+  `unsupported` naming its own protocol, instead of dropping the connection
+  on an envelope it cannot read. That is the case this entry used to say
+  justified a bump for an addition; the tolerant decode removed it.
   Run `shep daemon reload` after upgrading.
 - `config::template::render` now takes a `secrets::SecretView` and returns
   `Result<String, RenderError>`, so a spawn can refuse on a secret it cannot
@@ -49,6 +54,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `RenderError::is_retriable` separates a namespace no provider dog has pushed
   to for that environment yet, which a later attempt can clear, from a value
   only a person will supply.
+
+## [0.5.1] - 2026-09-07
+
+
+## [0.5.0] - 2026-09-07
+
+### Added
+
+- Boot ordering with dependency trees ([#166](https://github.com/shep-pm/shep/pull/166)) **(BREAKING)**
+
+
 ## [0.4.6] - 2026-09-07
 
 ### Added

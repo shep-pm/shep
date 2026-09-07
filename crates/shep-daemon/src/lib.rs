@@ -199,6 +199,7 @@
 // a dog author builds against `shep-core`. Widening one back to `pub` is an
 // API decision.
 pub(crate) mod backoff;
+pub(crate) mod boot_order;
 pub(crate) mod brain;
 pub(crate) mod bus;
 // The bus surface a caller of `supervisor::spawn_supervisor` needs, and no

@@ -25,9 +25,22 @@ pub enum ProbeKind {
 
 /// Readiness/liveness probe configuration (spec §7)
 // wire format: changing field names/defaults is a breaking change
+// `deny_unknown_fields` used to live here. This type rides the wire inside
+// `AppConfig` (itself carried by `Request::Start`, `Request::Add`, and
+// `Response::SheepConfig`), where an unknown field means a newer peer, not
+// a typo — denying it here would make a newer daemon's reply break an
+// older client. The denial moved to `Flockfile::parse`, where the input
+// really is a hand-written file. Do not restore the serde attribute here.
+//
+// The schema-only sibling attribute below is not the same thing and stays:
+// `schemars(deny_unknown_fields)` only shapes the generated
+// `additionalProperties: false`, which an editor uses to flag a Flockfile
+// typo before a parse ever runs. It never reaches `#[derive(Deserialize)]`
+// (schemars mirrors it into a synthesized attribute its own macro expansion
+// reads, not the real one), so the wire still tolerates an unknown field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "schema", schemars(deny_unknown_fields))]
 pub struct ProbeConfig {
     /// Probe mechanism
     pub kind: ProbeKind,
@@ -57,8 +70,10 @@ fn default_failure_threshold() -> u32 {
 /// Per-app configuration — one sheep's entry in a Flockfile
 ///
 /// Field names are the Flockfile contract (sheep-native; pm2 spellings are
-/// rejected — the importer translates them). Unknown fields are errors so
-/// typos fail loudly at parse time.
+/// rejected — the importer translates them). Deserializing this type
+/// directly tolerates an unknown field, since it also rides the wire; a
+/// Flockfile typo instead fails loudly at [`Flockfile::parse`](crate::config::Flockfile::parse),
+/// the input that really is hand-written.
 ///
 /// # Example
 /// ```
@@ -68,9 +83,25 @@ fn default_failure_threshold() -> u32 {
 /// assert!(app.autorestart); // spec default
 /// ```
 // wire format: changing field names/defaults is a breaking change
+//
+// `deny_unknown_fields` used to sit beside `default` here. This type rides
+// the wire inside `Request::Start`, `Request::Add`, and
+// `Response::SheepConfig` — the last of which is a newer daemon handing an
+// older client a config it does not fully understand, which is exactly the
+// case an unknown field means "a newer peer", not a typo. The denial moved
+// to `Flockfile::parse`, where the input really is a hand-written file. Do
+// not restore the serde attribute here.
+//
+// The schema-only sibling attribute below is not the same thing and stays:
+// `schemars(deny_unknown_fields)` only shapes the generated
+// `additionalProperties: false`, which an editor uses to flag a Flockfile
+// typo before a parse ever runs. It never reaches `#[derive(Deserialize)]`
+// (schemars mirrors it into a synthesized attribute its own macro expansion
+// reads, not the real one), so the wire still tolerates an unknown field.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(deny_unknown_fields, default)]
+#[cfg_attr(feature = "schema", schemars(deny_unknown_fields))]
+#[serde(default)]
 pub struct AppConfig {
     /// Unique sheep name (required)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
@@ -290,6 +321,21 @@ pub struct AppConfig {
         "blurb": "A fold to group this app with others, for commands that take one"
     })))]
     pub fold: Option<String>,
+    /// Sheep or dogs that must be up before this one starts
+    ///
+    /// Names, never `name:slot`: a dependency on one instance of a
+    /// load-balanced app is not a claim about availability. A dependency on
+    /// a multi-instance app waits for every instance.
+    ///
+    /// Read once when a batch is ordered, at a boot, a muster, or a staged
+    /// start, so an edit reaches the next such operation rather than the
+    /// running child.
+    #[cfg_attr(feature = "schema", schemars(extend("init" = {
+        "example": "[\"db\", \"cache\"]",
+        "group": "process",
+        "blurb": "Other sheep or dogs that must be up before this one starts"
+    })))]
+    pub depends_on: Vec<String>,
     /// Run as this user (unix)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "www-data",
@@ -490,6 +536,7 @@ impl Default for AppConfig {
             watch_delay: None,
             cron_restart: None,
             fold: None,
+            depends_on: Vec::new(),
             user: None,
             group: None,
             out_file: None,
@@ -644,13 +691,18 @@ env = { RUST_LOG = "info" }
         assert_eq!(app.args, vec!["job.py", "--fast"]);
     }
 
+    /// The wire path is the opposite of a Flockfile's: an unknown field
+    /// means a newer peer, and ignoring it is what stops a new Flockfile
+    /// field breaking an older client that reads a config off the wire.
+    /// `deny_unknown_fields` used to live here; the same typo is now
+    /// refused only at `Flockfile::parse`, where the input really is a
+    /// hand-written file.
     #[test]
-    fn unknown_fields_are_rejected() {
-        let err = toml::from_str::<AppConfig>(
-            "name = \"x\"\nscript = \"y\"\nmax_memory_restart = \"1G\"",
-        )
-        .unwrap_err();
-        assert!(err.to_string().contains("max_memory_restart"), "{err}");
+    fn an_unknown_field_on_the_wire_is_ignored_rather_than_refused() {
+        let config: AppConfig =
+            serde_json::from_str(r#"{"name":"web","script":"./srv","invented_next_year":true}"#)
+                .expect("the wire path tolerates what it does not know");
+        assert_eq!(config.name, "web");
     }
 
     #[test]

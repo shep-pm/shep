@@ -17,11 +17,11 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
-use shep_client::{Client, ConnectError, PROTOCOL_VERSION};
+use shep_client::{Client, ConnectError};
 use shep_core::barks;
 use shep_core::dogs::{DogVersion, SCHEMA_FLAG, VERSION_FLAG, parse_version_answer};
 use shep_core::paths::ShepPaths;
-use shep_core::protocol::{DogSource, Request, Response, SelectorSpec};
+use shep_core::protocol::{DogSource, MIN_SUPPORTED, Request, Response, SelectorSpec};
 
 use crate::cli::{AdoptArgs, BarksArgs};
 use crate::commands::dog_migration::{self, DogMigrationError};
@@ -395,14 +395,17 @@ pub enum AdoptRefusal {
         reason: String,
     },
     /// It answered `--version` (see [`DogVersion`]) with a `shep-protocol`
-    /// this shep does not speak, so adopting it would register a dog that
-    /// connects to nothing. Only a stated protocol reaches this: a dog that
-    /// names none is [`DogVersion::protocol`]'s `None` and is adopted.
+    /// below [`MIN_SUPPORTED`], the oldest this shep's handshake still
+    /// accepts, so adopting it would register a dog that connects to
+    /// nothing. A dog built against a newer protocol than this shep is
+    /// fine: the handshake has no upper bound, only a floor. Only a stated
+    /// protocol reaches this: a dog that names none is
+    /// [`DogVersion::protocol`]'s `None` and is adopted.
     ProtocolMismatch {
         /// What the candidate said it speaks.
         dog: u32,
-        /// [`PROTOCOL_VERSION`], what this shep speaks.
-        shep: u32,
+        /// [`MIN_SUPPORTED`], the oldest protocol this shep still accepts.
+        min: u32,
     },
 }
 
@@ -421,11 +424,11 @@ impl std::fmt::Display for AdoptRefusal {
             Self::WillNotExec { reason } => {
                 write!(f, "this kernel refused to run that file: {reason}")
             }
-            Self::ProtocolMismatch { dog, shep } => write!(
+            Self::ProtocolMismatch { dog, min } => write!(
                 f,
-                "this dog was built for shep protocol {dog}, and this shep speaks {shep}; \
-                 reinstall the dog without --locked so it builds against the current \
-                 shep-core, or run a shep that speaks {dog}"
+                "this dog was built for shep protocol {dog}, and this shep needs {min} or \
+                 newer; reinstall the dog without --locked so it builds against the current \
+                 shep-core, or run a shep that accepts protocol {dog}"
             ),
         }
     }
@@ -492,11 +495,11 @@ pub fn vet_binary_within(
     // has no relationship to shep's own. Only the protocol decides whether
     // the dog can connect.
     if let Some(dog) = answer.as_ref().and_then(|answer| answer.protocol)
-        && dog != PROTOCOL_VERSION
+        && dog < MIN_SUPPORTED
     {
         return Err(AdoptRefusal::ProtocolMismatch {
             dog,
-            shep: PROTOCOL_VERSION,
+            min: MIN_SUPPORTED,
         });
     }
     // After the protocol refusal: a candidate shep is about to refuse is
@@ -987,12 +990,15 @@ fn warn_unreadable_schema(streams: &mut Streams<'_>, name: &str) {
 const DOG_BINARY_SKEW_NOTICE: &str = "dog_binary_skew";
 
 /// Warns, before `restart` sends anything, about a dog whose binary on disk
-/// speaks a protocol this shepherd does not.
+/// speaks a protocol below [`MIN_SUPPORTED`], the floor this shepherd's
+/// handshake still accepts.
 ///
 /// The running dog works, the binary it would come back from does not, and
 /// the two meet at the next restart. A warning, never a refusal: the binary
-/// may be exactly what the operator just installed. A dog that does not
-/// answer [`VERSION_FLAG`] is unknown rather than stale and gets nothing.
+/// may be exactly what the operator just installed. A dog built against a
+/// newer protocol than this shep is inside the window and gets no warning.
+/// A dog that does not answer [`VERSION_FLAG`] is unknown rather than stale
+/// and gets nothing.
 ///
 /// Only a `Name` selector is probed: a built-in dog has no `[daemon]
 /// adopted_dogs` entry, an `all` or `/regex/` sweep names no dog, and an
@@ -1024,14 +1030,14 @@ pub fn warn_of_a_dog_a_restart_would_break(
         let Some(disk) = answer.protocol else {
             continue;
         };
-        if disk == PROTOCOL_VERSION {
+        if disk >= MIN_SUPPORTED {
             continue;
         }
         let message = format!(
             "`{name}`'s binary at {} was built for shep protocol {disk}, and this shep \
-             speaks {PROTOCOL_VERSION}; restarting it brings it back on that binary, \
-             unable to connect. Run a shep that speaks {disk}, or reinstall the dog \
-             against protocol {PROTOCOL_VERSION}, and restart it again",
+             needs {MIN_SUPPORTED} or newer; restarting it brings it back on that binary, \
+             unable to connect. Run a shep that accepts protocol {disk}, or reinstall the \
+             dog against protocol {MIN_SUPPORTED}, and restart it again",
             binary.display()
         );
         streams.aside(DOG_BINARY_SKEW_NOTICE, &message);
@@ -1419,6 +1425,7 @@ pub fn barks(streams: &mut Streams<'_>, paths: &ShepPaths, args: &BarksArgs) -> 
 // `tests/cli_e2e.rs`.
 #[cfg(all(test, unix))]
 mod tests {
+    use shep_client::PROTOCOL_VERSION;
     use shep_client::testing::{
         fake_client_capturing_envelopes, fake_client_replying_err, sample_ack, sample_info,
         serve_one_request,
@@ -1974,13 +1981,46 @@ mod tests {
         probe_script(dir, name, body, "exit 0")
     }
 
+    /// Renamed from `a_dog_that_speaks_another_protocol_is_refused_at_adopt`,
+    /// whose name and body asserted a refusal for exactly this input. The
+    /// daemon's own handshake compares against a floor with no upper bound,
+    /// so a dog newer than this shep now has to adopt cleanly here too, or
+    /// `shep adopt` would refuse a dog the shepherd would happily serve.
+    #[tokio::test]
+    async fn a_dog_above_this_protocol_is_adopted() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ShepPaths::resolve(&|_| None, dir.path());
+        let newer = PROTOCOL_VERSION + 1;
+        let bin = dog_script(
+            dir.path(),
+            "shep-otel",
+            &format!("echo 'shep-otel 0.1.3'\necho 'shep-protocol: {newer}'"),
+        );
+
+        assert!(vet_binary_within(&bin, dir.path(), "otel", TEST_BUDGET).is_ok());
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let args = AdoptArgs {
+            name: Some("otel".to_string()),
+            path: bin,
+        };
+        let code = adopt(&mut streams(&mut out, &mut err), &paths, &args).await;
+
+        assert_eq!(code, ExitCode::Success, "a newer protocol is not a refusal");
+        assert!(
+            paths.daemon_config.exists(),
+            "an accepted adopt writes shep.toml"
+        );
+    }
+
     /// Adopting one would make an online-and-idle entry whose failure
     /// surfaces days later, at a handshake nobody is watching.
     #[tokio::test]
-    async fn a_dog_that_speaks_another_protocol_is_refused_at_adopt() {
+    async fn a_dog_below_the_floor_is_refused_at_adopt() {
         let dir = tempfile::tempdir().unwrap();
         let paths = ShepPaths::resolve(&|_| None, dir.path());
-        let stale = PROTOCOL_VERSION + 1;
+        let stale = MIN_SUPPORTED.saturating_sub(1);
         let bin = dog_script(
             dir.path(),
             "shep-otel",
@@ -1991,7 +2031,7 @@ mod tests {
             vet_binary_within(&bin, dir.path(), "otel", TEST_BUDGET),
             Err(AdoptRefusal::ProtocolMismatch {
                 dog: stale,
-                shep: PROTOCOL_VERSION,
+                min: MIN_SUPPORTED,
             })
         );
 
@@ -2006,16 +2046,113 @@ mod tests {
         assert_eq!(code, ExitCode::InvalidConfig);
         let text = String::from_utf8(err).unwrap();
         assert!(
-            text.contains(&stale.to_string()) && text.contains(&PROTOCOL_VERSION.to_string()),
+            text.contains(&stale.to_string()) && text.contains(&MIN_SUPPORTED.to_string()),
             "the refusal names both numbers: {text}"
         );
         assert!(
-            text.contains("--locked") && text.contains("run a shep that speaks"),
+            text.contains("--locked") && text.contains("run a shep that accepts protocol"),
             "the refusal names both fixes, and picks neither: {text}"
         );
         assert!(
             !paths.daemon_config.exists(),
             "a refused adopt must not write shep.toml"
+        );
+    }
+
+    /// Rewrites the binary a name in `[daemon] adopted_dogs` points at, so
+    /// `warn_of_a_dog_a_restart_would_break` re-probes it and sees `protocol`
+    /// rather than whatever `adopt` vetted at adoption time.
+    fn rewrite_dog_protocol(bin: &Path, protocol: u32) {
+        std::fs::write(
+            bin,
+            format!(
+                "#!/bin/sh\ncase \"$1\" in\n--version)\necho 'shep-otel 0.1.3'\n\
+                 echo 'shep-protocol: {protocol}'\n;;\nesac\n"
+            ),
+        )
+        .unwrap();
+        chmod(bin, 0o755);
+    }
+
+    /// The warning used to fire on every dog after every protocol bump,
+    /// because it compared for exact equality. A dog inside the accepted
+    /// window, at the floor or above it, now earns silence: the point of
+    /// the warning is a dog that genuinely cannot connect, not drift.
+    #[tokio::test]
+    async fn no_restart_warning_for_a_dog_inside_the_window() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ShepPaths::resolve(&|_| None, dir.path());
+        let bin = dog_script(
+            dir.path(),
+            "shep-otel",
+            &format!("echo 'shep-otel 0.1.3'\necho 'shep-protocol: {PROTOCOL_VERSION}'"),
+        );
+        let args = AdoptArgs {
+            name: Some("otel".to_string()),
+            path: bin.clone(),
+        };
+        let mut adopt_out = Vec::new();
+        let mut adopt_err = Vec::new();
+        let code = adopt(&mut streams(&mut adopt_out, &mut adopt_err), &paths, &args).await;
+        assert_eq!(code, ExitCode::Success, "the fixture must adopt cleanly");
+
+        for protocol in [PROTOCOL_VERSION + 1, MIN_SUPPORTED] {
+            rewrite_dog_protocol(&bin, protocol);
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+            let selectors = vec![SelectorSpec::Name("otel".to_string())];
+            warn_of_a_dog_a_restart_would_break(
+                &mut streams(&mut out, &mut err),
+                &paths,
+                &selectors,
+                TEST_BUDGET,
+            );
+            let text = String::from_utf8(err).unwrap();
+            assert!(
+                !text.contains(DOG_BINARY_SKEW_NOTICE),
+                "protocol {protocol} is inside the window, so no warning belongs here: {text}"
+            );
+        }
+    }
+
+    /// The one case the warning exists for: a binary on disk that would
+    /// come back unable to connect.
+    #[tokio::test]
+    async fn a_restart_warning_fires_for_a_dog_below_the_floor() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ShepPaths::resolve(&|_| None, dir.path());
+        let bin = dog_script(
+            dir.path(),
+            "shep-otel",
+            &format!("echo 'shep-otel 0.1.3'\necho 'shep-protocol: {PROTOCOL_VERSION}'"),
+        );
+        let args = AdoptArgs {
+            name: Some("otel".to_string()),
+            path: bin.clone(),
+        };
+        let mut adopt_out = Vec::new();
+        let mut adopt_err = Vec::new();
+        let code = adopt(&mut streams(&mut adopt_out, &mut adopt_err), &paths, &args).await;
+        assert_eq!(code, ExitCode::Success, "the fixture must adopt cleanly");
+
+        rewrite_dog_protocol(&bin, MIN_SUPPORTED.saturating_sub(1));
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let selectors = vec![SelectorSpec::Name("otel".to_string())];
+        warn_of_a_dog_a_restart_would_break(
+            &mut streams(&mut out, &mut err),
+            &paths,
+            &selectors,
+            TEST_BUDGET,
+        );
+        let text = String::from_utf8(err).unwrap();
+        assert!(
+            text.contains(DOG_BINARY_SKEW_NOTICE),
+            "a dog below the floor is exactly what this warning is for: {text}"
+        );
+        assert!(
+            text.contains(&MIN_SUPPORTED.to_string()),
+            "the warning names the floor, not one exact version: {text}"
         );
     }
 
@@ -2219,11 +2356,13 @@ mod tests {
     #[test]
     fn an_answer_from_a_failed_run_is_not_an_answer() {
         let dir = tempfile::tempdir().unwrap();
-        let stale = PROTOCOL_VERSION + 1;
+        // The value itself is irrelevant here: a failed exit discards the
+        // answer whether the protocol named is above the floor or below it.
+        let named = PROTOCOL_VERSION + 1;
         let bin = dog_script(
             dir.path(),
             "shep-otel",
-            &format!("echo 'shep-otel 0.1.3'\necho 'shep-protocol: {stale}'\nexit 3"),
+            &format!("echo 'shep-otel 0.1.3'\necho 'shep-protocol: {named}'\nexit 3"),
         );
 
         let vetted = vet_binary_within(&bin, dir.path(), "otel", TEST_BUDGET).unwrap();

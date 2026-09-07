@@ -2310,6 +2310,7 @@ mod tests {
             daemon_version: version.to_owned(),
             protocol: shep_core::protocol::PROTOCOL_VERSION,
             pid: 4242,
+            min_supported: None,
         };
         shep_client::testing::fake_client_with_ack(addr, ack).await
     }

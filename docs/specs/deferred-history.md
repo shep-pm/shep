@@ -1281,3 +1281,23 @@ sites rather than inferred from the field names, and all now carried in
 **The wrong warning is gone rather than reworded.** The drift warning was
 deleted outright once the load path could apply the edit it was warning about.
 
+### A staged reload's refusal has no field in `--format json` -- FIXED, 2026-09-06
+
+`Response::Reloading` carried a `refused: Vec<SheepRefusal>` list that only
+the CLI's plain output read. A `--format json` caller got the exit code and
+nothing else: the envelope showed a clean fold with nothing naming the apps
+the shepherd had refused, which is the answer a deploy script parses.
+
+It was worse than a missing field. The staged walk printed the accepted rows
+as one envelope on stdout and an error envelope on stderr, against `cli.rs`
+publishing `--format json` as one object per invocation, so a consumer
+merging the two streams got a parse error or read the first object and
+believed the whole fold reloaded.
+
+The refusals now ride in the same object, under a `refused` key beside
+`data`, one entry per app with the shepherd's own reason. Adding a key beside
+`data` is additive, so `SCHEMA_VERSION` did not move: its rule is a rename, a
+removal or a retype of `data` itself. The key is dropped when empty, so every
+reload that refused nothing prints the three fields it always did. Verified
+against a live daemon and documented on the JSON output page, which claimed
+three fields for every command.

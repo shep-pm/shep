@@ -15,7 +15,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.4.6"
+version = "0.5.1"
 edition = "2024"
 # 1.88: serde-saphyr's let-chains need it; also the floor ratatui, sysinfo
 # and rmcp require.
@@ -33,11 +33,11 @@ license = "MIT OR Apache-2.0"
 # turn an inherited dependency's default features back on but never off, so the
 # floor is set off here. shep-core wants the wire types without the client
 # feature; a future consumer that wants the client opts back in.
-shep-channel = { path = "crates/shep-channel", version = "0.4.6", default-features = false }
-shep-core = { path = "crates/shep-core", version = "0.4.6" }
-shep-daemon = { path = "crates/shep-daemon", version = "0.4.6" }
-shep-client = { path = "crates/shep-client", version = "0.4.6" }
-shep-macros = { path = "crates/shep-macros", version = "0.4.6" }
+shep-channel = { path = "crates/shep-channel", version = "0.5.1", default-features = false }
+shep-core = { path = "crates/shep-core", version = "0.5.1" }
+shep-daemon = { path = "crates/shep-daemon", version = "0.5.1" }
+shep-client = { path = "crates/shep-client", version = "0.5.1" }
+shep-macros = { path = "crates/shep-macros", version = "0.5.1" }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1", default-features = false, features = ["std"] }
 toml = { version = "0.8", default-features = false, features = ["parse", "display"] }
@@ -50,6 +50,12 @@ toml = { version = "0.8", default-features = false, features = ["parse", "displa
 # Floor 0.22.7: `DocumentMut` is that release's rename of the older `Document`.
 toml_edit = { version = "0.22.7", default-features = false, features = ["display", "parse"] }
 serde-saphyr = { version = "1", default-features = false, features = ["deserialize"] }
+# Names which keys a document wrote that no field claimed, recursing through
+# nested structs. Backs `Flockfile::parse`'s unknown-key refusal now that
+# `AppConfig`/`ProbeConfig` no longer deny them themselves (see
+# crates/shep-core/src/config/app.rs). What cargo itself uses to report an
+# unused manifest key.
+serde_ignored = { version = "0.1.14", default-features = false }
 # Transitive floor pins: -Z minimal-versions picks a version below what a
 # dependency's own code actually needs.
 #   - annotate-snippets: Title::element() needed, added 0.12.3.
@@ -73,7 +79,10 @@ syn-floor = { package = "syn", version = "1.0.1", default-features = false }
 proc-macro2 = { version = "1.0", default-features = false, features = ["proc-macro"] }
 quote = { version = "1.0", default-features = false, features = ["proc-macro"] }
 syn = { version = "2.0", default-features = false }
-json5 = { version = "0.4", default-features = false }
+# Floor 0.4.1: `json5::Deserializer` is what `serde_ignored` wraps to report
+# unknown Flockfile keys. 0.4.0 exposes `from_str` but not the `Deserializer`
+# type itself, so -Z minimal-versions fails to compile shep-core without this.
+json5 = { version = "0.4.1", default-features = false }
 # Floor 1.9: regex 1.8's compiled-size accounting lets
 # `selector_spec_oversized_regex_is_rejected`'s huge pattern slip under the
 # 1 MiB size_limit; 1.9 rejects it.

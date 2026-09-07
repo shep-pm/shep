@@ -1,6 +1,6 @@
 //! A cursor that knows what is on screen.
 //!
-//! A config pane has 39 fields under eight headers; a 30-line terminal
+//! A config pane has 40 fields under eight headers; a 30-line terminal
 //! shows a fraction of them. This holds the offset and scroll-into-view a
 //! bare `cursor: usize` cannot.
 //!

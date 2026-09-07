@@ -22,8 +22,8 @@ use tokio::task::JoinHandle;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
 use shep_core::protocol::{
-    Envelope, Hello, HelloAck, HelloReply, PROTOCOL_VERSION, RpcError, RpcErrorCode, WireError,
-    codec, decode_frame, encode_frame,
+    Envelope, Hello, HelloAck, HelloReply, MIN_SUPPORTED, PROTOCOL_VERSION, RpcError, RpcErrorCode,
+    WireError, codec, decode_frame, encode_frame,
 };
 use shep_core::transport::{Listener, ServerReadHalf, ServerStream, ServerWriteHalf};
 
@@ -223,7 +223,7 @@ pub enum ConnError {
     Decode(WireError),
     /// A reply or event failed to encode onto the wire.
     Encode(WireError),
-    /// The peer's `Hello.protocol` did not match [`PROTOCOL_VERSION`] (carries
+    /// The peer's `Hello.protocol` fell below [`MIN_SUPPORTED`] (carries
     /// the client's claimed version; the refusal is written before this is
     /// returned).
     ProtocolMismatch {
@@ -403,12 +403,16 @@ async fn handshake(
     {
         ctx.peer_contacts.named_a_dog(pid);
     }
-    if hello.protocol != PROTOCOL_VERSION {
-        // Version skew is a typed error, not silence (spec §6).
+    if hello.protocol < MIN_SUPPORTED {
+        // Version skew is a typed error, not silence (spec §6). No upper
+        // bound: a peer newer than this daemon is accepted deliberately,
+        // since anything it asks for that this daemon cannot name is
+        // refused per request by `RpcErrorCode::Unsupported` rather than
+        // at connect time.
         let refusal: HelloReply = Err(RpcError {
             code: RpcErrorCode::ProtocolMismatch,
             message: format!(
-                "daemon speaks protocol {PROTOCOL_VERSION}, client sent {}",
+                "client sent protocol {}, daemon speaks {PROTOCOL_VERSION} and accepts {MIN_SUPPORTED} and above",
                 hello.protocol
             ),
             // The refusal names our protocol, which does not say which shep
@@ -476,6 +480,7 @@ async fn handshake(
         daemon_version: ctx.daemon_version.clone(),
         protocol: PROTOCOL_VERSION,
         pid: ctx.pid,
+        min_supported: Some(MIN_SUPPORTED),
     });
     send(out, &ack).await
 }
@@ -579,10 +584,13 @@ mod tests {
         assert_eq!(ack.protocol, PROTOCOL_VERSION);
         assert_eq!(ack.pid, h.ctx.pid);
         assert_eq!(ack.daemon_version, h.ctx.daemon_version);
+        assert_eq!(ack.min_supported, Some(MIN_SUPPORTED));
     }
 
     #[tokio::test]
-    async fn handshake_refuses_protocol_skew_before_closing() {
+    async fn handshake_accepts_a_peer_newer_than_the_daemon() {
+        // No upper bound: anything a newer peer asks for that this daemon
+        // cannot name is refused per request, not at connect time.
         let h = harness(vec![]);
         let mut client = connected(h.ctx.clone()).await;
         client
@@ -592,8 +600,24 @@ mod tests {
                 dog_name: None,
             })
             .await;
+        let ack: HelloReply = client.recv().await;
+        let ack = ack.expect("a peer above the daemon's own version must be accepted");
+        assert_eq!(ack.protocol, PROTOCOL_VERSION);
+    }
+
+    #[tokio::test]
+    async fn handshake_refuses_protocol_skew_before_closing() {
+        let h = harness(vec![]);
+        let mut client = connected(h.ctx.clone()).await;
+        client
+            .send(&Hello {
+                client_version: "9.9.9".to_string(),
+                protocol: MIN_SUPPORTED - 1,
+                dog_name: None,
+            })
+            .await;
         let refusal: HelloReply = client.recv().await;
-        let err = refusal.expect_err("skew must be refused");
+        let err = refusal.expect_err("skew below the floor must be refused");
         assert_eq!(err.code, RpcErrorCode::ProtocolMismatch);
         assert!(
             client.closed().await,
@@ -610,12 +634,12 @@ mod tests {
         client
             .send(&Hello {
                 client_version: "9.9.9".to_string(),
-                protocol: PROTOCOL_VERSION + 1,
+                protocol: MIN_SUPPORTED - 1,
                 dog_name: None,
             })
             .await;
         let refusal: HelloReply = client.recv().await;
-        let err = refusal.expect_err("skew must be refused");
+        let err = refusal.expect_err("skew below the floor must be refused");
         assert_eq!(err.code, RpcErrorCode::ProtocolMismatch);
         // The same field the ack uses: a client must never learn two versions
         // for one daemon.
@@ -900,12 +924,12 @@ mod tests {
         client
             .send(&Hello {
                 client_version: "0.1.14".to_string(),
-                protocol: PROTOCOL_VERSION + 1,
+                protocol: MIN_SUPPORTED - 1,
                 dog_name: dog.map(str::to_owned),
             })
             .await;
         let refusal: HelloReply = client.recv().await;
-        refusal.expect_err("a skewed protocol must be refused");
+        refusal.expect_err("a protocol below the floor must be refused");
         assert!(
             client.closed().await,
             "the daemon must close after refusing"

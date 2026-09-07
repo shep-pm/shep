@@ -17,8 +17,13 @@ A dog is a process speaking the client wire protocol (spec
 [§6](specs/shep-v1.md#6-wire-protocol-v1--protocol-version-1)), connected
 to `$SHEP_HOME/run/shep.sock` and handshaking exactly as `shep flock` or
 `shep describe` would. `PROTOCOL_VERSION` covers a dog exactly as it
-covers every other client: a version mismatch is a typed error at
-handshake, not silence.
+covers every other client: shep accepts any peer at or above
+`MIN_SUPPORTED`, and `PROTOCOL_VERSION` only moves when a message shape
+changes in a way an older peer cannot read. Accepting an old peer is not
+the same as talking to it in an old shape; the daemon never converts
+down, only forward. Raising the floor still refuses every peer built
+below it, which is why that should now happen once or twice a year
+instead of every release.
 
 Two dogs ship inside the `shep` binary — `metrics` and `bark` — reached
 through the hidden `shep dog <name>` re-exec target, the same shape
@@ -168,6 +173,36 @@ header, `["vercel.prod"]`, or the section never matches and `persist`
 silently falls back to its default of `true`. Ordinary TOML, and the same
 trap catches any dog name with a dot in it, not only a provider's
 namespace.
+
+## When a dog starts
+
+Every dog starts after the flock by default, so a metrics dog does not answer
+for a flock that is not up yet. Some dogs need the opposite: a log-rotation
+dog has to be running before the first sheep writes a line.
+
+`[daemon] boot_first_dogs` names the dogs that start before the muster roll is
+restored rather than after it.
+
+```toml
+# $SHEP_HOME/shep.toml
+[daemon]
+enabled_dogs    = ["metrics", "bark", "log-rotate"]
+boot_first_dogs = ["log-rotate"]
+```
+
+A name here that is not in `enabled_dogs` is inert. The list says where an
+enabled dog goes, never whether it runs, so a typo or a dog you disabled later
+sits in the file doing nothing and the boot says nothing about it.
+
+The key lives in `shep.toml` and not in the dog's own `dogs.toml` section
+because that section belongs to the dog. Shep hands it over the wire without
+reading it, so a shep key inside it would arrive at a program that has never
+heard of the key, and a third-party dog with `deny_unknown_fields` would refuse
+its own config over it.
+
+Promotion covers the boot window only. A `shep start web` typed later, while
+`log-rotate` happens to be down, is a supervision problem that boot ordering
+does not solve.
 
 ## The metrics dog
 
@@ -426,13 +461,13 @@ and they answer different questions:
 | what | answers | on a mismatch |
 |---|---|---|
 | the version on line 1 | which build of the dog this is | reported |
-| `shep-protocol` | whether this dog can handshake with this shepherd at all | it cannot connect until one side moves |
+| `shep-protocol` | whether this dog can handshake with this shepherd at all | below the floor, it cannot connect; above it, shep accepts it |
 
 The format is line-oriented text:
 
 ```
 shep-log-rotate 0.1.3
-shep-protocol: 4
+shep-protocol: 7
 ```
 
 - Line 1 is `<name> <version>`. Shep takes the last whitespace-separated
@@ -459,17 +494,17 @@ question costs one argument on a process that was going to start anyway.
 
 | what the candidate answers | what `adopt` does |
 |---|---|
-| a `shep-protocol` this shep does not speak | refuses, before `shep.toml` is touched |
-| a protocol this shep speaks | adopts, and reports the version it gave |
+| a `shep-protocol` below `MIN_SUPPORTED` | refuses, before `shep.toml` is touched |
+| a `shep-protocol` at or above `MIN_SUPPORTED` | adopts, and reports the version it gave |
 | a version and no protocol line | adopts, and says the protocol is unknown |
 | nothing, or a run that exits non-zero | adopts, protocol unknown, no notice |
 
 The refusal names both numbers and both ways out:
 
 ```
-/usr/local/bin/shep-otel: this dog was built for shep protocol 3, and this
-shep speaks 4; reinstall the dog without --locked so it builds against the
-current shep-core, or run a shep that speaks 3
+/usr/local/bin/shep-otel: this dog was built for shep protocol 6, and this
+shep needs 7 or newer; reinstall the dog without --locked so it builds
+against the current shep-core, or run a shep that accepts protocol 6
 ```
 
 Only a stated protocol can refuse an adopt. The version is never compared
@@ -530,9 +565,9 @@ the upgrade.
 
 ```
 notice[dog_binary_skew]: `log-rotate`'s binary at /usr/local/bin/shep-log-rotate
-was built for shep protocol 5, and this shep speaks 4; restarting it brings it
-back on that binary, unable to connect. Run a shep that speaks 5, or reinstall
-the dog against protocol 4, and restart it again
+was built for shep protocol 6, and this shep needs 7 or newer; restarting it
+brings it back on that binary, unable to connect. Run a shep that accepts
+protocol 6, or reinstall the dog against protocol 7, and restart it again
 ```
 
 Then it restarts the dog. This is a warning and never a refusal: the
@@ -542,8 +577,8 @@ the message names both and picks neither.
 
 | what the binary answers | what `restart` does |
 |---|---|
-| a `shep-protocol` this shep does not speak | warns, then restarts |
-| a protocol this shep speaks | restarts, silently |
+| a `shep-protocol` below `MIN_SUPPORTED` | warns, then restarts |
+| a `shep-protocol` at or above `MIN_SUPPORTED` | restarts, silently |
 | a version and no protocol line | restarts, silently |
 | nothing, or a run that exits non-zero | restarts, silently |
 
@@ -611,21 +646,23 @@ question here for a contract to answer:
 ```
 $ shep --version
 shep 0.1.24
+speaks protocol 7, accepts 7 and newer
 $ shep dog metrics --version
 shep-dog 0.1.24
+speaks protocol 7, accepts 7 and newer
 ```
 
-Neither prints a `shep-protocol` line, and that is not a gap to close.
-The protocol a built-in dog speaks is the shepherd's own, because it is
-the shepherd's binary.
+Neither prints the `shep-protocol:` line an external dog's probe answers
+with, and that is not a gap to close. The protocol a built-in dog speaks
+is the shepherd's own, because it is the shepherd's binary.
 
 ### What this does not catch
 
-Two dogs can agree on the protocol and still be different code.
+Two dogs can clear the protocol floor and still be different code.
 `RpcError` gained a public `daemon_version` field inside the 0.1.x range;
 its fields are public and it has no constructor, so every literal built
 outside `shep-client` stopped compiling while `PROTOCOL_VERSION` stood
-still. Protocol equality is necessary and not sufficient.
+still. Speaking a protocol shep accepts is necessary and not sufficient.
 
 Closing that is deferred, and the reason is that `--version` cannot close
 it. A break of that kind is source level: it lands when the dog is
@@ -756,7 +793,7 @@ Shep now writes its own account into the dog's log as well, marked
 
 ```
 2026-09-02T14:22:31.412+02:00 [shep] shep started this dog; its process is pid 5512
-2026-09-02T14:22:31.480+02:00 [shep] shep accepted this dog's handshake; it is registered with this shepherd as `log-rotate`, on protocol 4
+2026-09-02T14:22:31.480+02:00 [shep] shep accepted this dog's handshake; it is registered with this shepherd as `log-rotate`, on protocol 7
 2026-09-02T14:22:31.492+02:00 rotating web-0-out.log (12.4 MiB)
 ```
 

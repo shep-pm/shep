@@ -10,8 +10,9 @@ use crate::protocol::request::ProcessInfo;
 /// What happened to a sheep
 // wire format: changing existing variants is a breaking change
 //
-// A new variant is not free here: there is no `#[serde(other)]` fallback,
-// so an old subscriber is sent a frame under `process.*` it cannot decode.
+// A new variant is free for a subscriber built from this point on: an
+// unrecognized string decodes as `Unrecognized` instead of failing the
+// whole frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -45,6 +46,16 @@ pub enum ProcessEventKind {
     Delete,
     /// Restart budget exhausted
     Errored,
+    /// An event kind this build has not been taught.
+    ///
+    /// Only ever produced by decoding: an unrecognized string falls through
+    /// to this variant via `#[serde(other)]` instead of failing the whole
+    /// frame. Nothing constructs one to send, and `bark`'s `is_known_kind`
+    /// refuses the spelling before a rule can name it. That is a call-site
+    /// invariant rather than a type-level one: `#[serde(other)]` governs
+    /// decoding only, so serializing this would emit `"unrecognized"`.
+    #[serde(other)]
+    Unrecognized,
 }
 
 /// One event on the daemon bus
@@ -151,6 +162,12 @@ impl BusEvent {
                 ProcessEventKind::Stop => "process.stop",
                 ProcessEventKind::Delete => "process.delete",
                 ProcessEventKind::Errored => "process.errored",
+                // Decode-only, never emitted by this build. Given its own
+                // topic rather than acted on: a subscriber sees it pass
+                // through like any other kind it does not specifically
+                // filter for, instead of the daemon treating it as a real
+                // lifecycle transition.
+                ProcessEventKind::Unrecognized => "process.unrecognized",
             },
             Self::LogOut { .. } => "log.out",
             Self::LogErr { .. } => "log.err",
@@ -179,6 +196,43 @@ mod tests {
     use crate::protocol::request::{ExitInfo, ProcessInfo};
     use crate::status::ProcStatus;
 
+    /// The comment above this enum said a new variant is not free because
+    /// there is no fallback. This is the fallback.
+    #[test]
+    fn an_unknown_process_event_decodes_as_unrecognized() {
+        assert_eq!(
+            serde_json::from_str::<ProcessEventKind>(r#""invented_next_year""#).unwrap(),
+            ProcessEventKind::Unrecognized
+        );
+    }
+
+    #[test]
+    fn every_known_process_event_still_round_trips() {
+        for kind in [
+            ProcessEventKind::Start,
+            ProcessEventKind::Online,
+            ProcessEventKind::Exit,
+            ProcessEventKind::Restart,
+            ProcessEventKind::Reload,
+            ProcessEventKind::Reloaded,
+            ProcessEventKind::ReloadAbandoned,
+            ProcessEventKind::Stop,
+            ProcessEventKind::Delete,
+            ProcessEventKind::Errored,
+        ] {
+            let json = serde_json::to_string(&kind).unwrap();
+            assert_eq!(
+                serde_json::from_str::<ProcessEventKind>(&json).unwrap(),
+                kind
+            );
+        }
+    }
+
+    #[test]
+    fn a_non_string_process_event_is_still_an_error() {
+        assert!(serde_json::from_str::<ProcessEventKind>("42").is_err());
+    }
+
     #[test]
     fn bus_event_wire_snapshots() {
         let mut events = vec![
@@ -192,6 +246,7 @@ mod tests {
                     restarts: 2,
                     uptime_ms: 500,
                     fold: None,
+                    depends_on: Vec::new(),
                     out_file: Some("/home/ada/.shep/logs/web-0-out.log".to_string()),
                     err_file: Some("/home/ada/.shep/logs/web-0-err.log".to_string()),
                     // A bus event is built from the actor's own snapshot,
@@ -305,7 +360,7 @@ mod tests {
             dog: "bark".to_string(),
         });
 
-        insta::assert_json_snapshot!("bus_event_wire_v5", events);
+        insta::assert_json_snapshot!("bus_event_wire_v8", events);
     }
 
     #[test]
@@ -347,6 +402,7 @@ mod tests {
                     restarts: 0,
                     uptime_ms: 0,
                     fold: None,
+                    depends_on: Vec::new(),
                     out_file: None,
                     err_file: None,
                     cpu_percent: None,

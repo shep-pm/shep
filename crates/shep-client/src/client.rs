@@ -29,6 +29,25 @@ pub const DEFAULT_DEADLINE: Duration = Duration::from_secs(5);
 /// inside what the daemon will honour.
 pub const START_DEADLINE: Duration = Duration::from_secs(30);
 
+/// Budget for `Request::Reload`.
+///
+/// A reload matching several sheep is walked in dependency order, and the
+/// daemon holds every stage for the drains and readiness waits of the apps a
+/// later stage needs, so two stages at the default timeouts already clear
+/// [`START_DEADLINE`]. A client that gave up there would drop the walk with
+/// its later stages never issued and hand the operator a timeout over a
+/// half-reloaded fold. This asks for the daemon's whole `MAX_DEADLINE_MS`
+/// (60s), which is the most it will honour, so the client is no longer the
+/// one that gives up first.
+///
+/// It does not make the budget big enough, and no client-side value can. A
+/// reload stage is bounded by `max(listen_timeout + graceful_timeout) *
+/// swaps + STAGE_SLACK`, 16s per single-instance stage at the defaults: four
+/// such stages is 64s, and two stages of a three-instance app is 76s. Both
+/// are past the daemon's own 60s clamp, where the shepherd drops the walk
+/// exactly as the client used to.
+pub const RELOAD_DEADLINE: Duration = Duration::from_secs(60);
+
 /// Budget for the log-plane verbs that walk the flock file by file:
 /// `Request::Reopen` and `Request::Flush`.
 ///
@@ -67,6 +86,14 @@ pub enum RequestError {
     Closed,
     /// `body` failed to encode onto the wire.
     Wire(WireError),
+    /// The daemon's reply arrived but this build could not decode it.
+    ///
+    /// Distinct from [`Self::Rpc`]: the daemon did not report a structured
+    /// error, it answered with something (a `Reply` or an unrecognized
+    /// `ServerFrame` variant) that does not match the shapes this build
+    /// knows. The likely cause is a daemon newer than this client, not a
+    /// daemon-side failure, so the message says which side could not read.
+    Undecodable(WireError),
 }
 
 impl fmt::Display for RequestError {
@@ -76,6 +103,10 @@ impl fmt::Display for RequestError {
             Self::Timeout { after } => write!(f, "no reply within {after:?}"),
             Self::Closed => f.write_str("the connection closed before a reply arrived"),
             Self::Wire(err) => write!(f, "request frame error: {err}"),
+            Self::Undecodable(err) => write!(
+                f,
+                "this client could not decode the daemon's reply ({err}); the daemon is likely newer than this build"
+            ),
         }
     }
 }
@@ -83,7 +114,7 @@ impl fmt::Display for RequestError {
 impl core::error::Error for RequestError {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
-            Self::Wire(err) => Some(err),
+            Self::Wire(err) | Self::Undecodable(err) => Some(err),
             Self::Rpc(_) | Self::Timeout { .. } | Self::Closed => None,
         }
     }

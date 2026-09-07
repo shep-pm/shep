@@ -56,6 +56,7 @@ mod tests {
                 restarts: 0,
                 uptime_ms: 0,
                 fold: None,
+                depends_on: Vec::new(),
                 out_file: Some("/home/ada/.shep/logs/web-0-out.log".to_string()),
                 err_file: Some("/home/ada/.shep/logs/web-0-err.log".to_string()),
                 cpu_percent: None,

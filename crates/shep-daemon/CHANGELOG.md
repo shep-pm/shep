@@ -40,6 +40,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `#[non_exhaustive]`, so an out-of-tree literal that named every field no
   longer compiles; `..Default::default()` is the shape that survives the
   next one.
+
+## [0.5.1] - 2026-09-07
+
+
+## [0.5.0] - 2026-09-07
+
+### Added
+
+- Boot ordering with dependency trees ([#166](https://github.com/shep-pm/shep/pull/166)) **(BREAKING)**
+
+
 ## [0.4.6] - 2026-09-07
 
 ### Added

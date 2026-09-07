@@ -676,17 +676,33 @@ where an operator reads. `every_exempt_verb_is_one_of_the_documented_recovery_ve
 pins `add` at `Enforce`, since it reaches that through the `_` arm rather
 than by being named.
 
-**`PROTOCOL_VERSION` moved to 5 on 2026-09-06, for `Request::PutSecrets`
-and `Response::SecretsPut`.** Both are additive: a provider dog's push is
-a request no daemon before this shipped could ever receive, and no
-existing traffic changes shape. By the rule the paragraph below states,
-that is exactly the case that should not move the number. It bumped
-anyway, for the same reason `docs/decisions.md` records for the move to
-4: an unbumped addition hands a version-matched, not-yet-restarted
-daemon a dead connection on an envelope it cannot decode, rather than a
-named `protocol_mismatch` refusal naming both numbers and the remedy.
-`shep daemon reload` is the fix here too. The paragraph below is about
-the 4.
+**`PROTOCOL_VERSION` and `MIN_SUPPORTED` moved to 8 on 2026-09-07, for
+`AppConfig::environment`.** Not for `Request::PutSecrets` and
+`Response::SecretsPut`, which arrived on the same branch and moved
+nothing. This paragraph said the opposite until #173 merged, and the
+correction is the whole point of that PR.
+
+An addition used to force a bump anyway, because an unbumped one handed a
+version-matched, not-yet-restarted daemon a dead connection on an
+envelope it could not decode. #173 removed that: `Request` grows a
+`#[serde(other)] Unrecognized` variant, so a daemon that has never heard
+of `put_secrets` decodes it, answers `unsupported` naming its own
+protocol, and keeps serving the connection. An addition is free now, and
+`PutSecrets` takes that path.
+
+What is NOT free is a new field on a `deny_unknown_fields` struct.
+`AppConfig` is one, so an older peer refuses the whole payload rather
+than ignoring a key it does not know. That is what moved the number to 5
+for `depends_on` and to 8 for `environment`, and it moves `MIN_SUPPORTED`
+in lockstep, since the handshake compares against the floor. 6 and 7 came
+from a third cause again: `Response::Reloading` and `Response::Restarted`
+became struct variants, so they serialize as an object where an older
+peer reads an array.
+
+Three causes, then, and only the first is exempt: an addition (free), a
+field on a `deny_unknown_fields` struct (bumps), a retype (bumps).
+`shep daemon reload` is the remedy for the last two. The paragraph below
+is about the 4, and predates the tolerant decode.
 
 **`PROTOCOL_VERSION` moved to 4 on 2026-09-04.** It went to 3 first, for
 `ApplyConfig`'s payload rename described below, and then to 4 for the four
@@ -781,7 +797,12 @@ newer client at the handshake and an operator restarts the daemon after
 upgrading. The output envelope's `SCHEMA_VERSION` did NOT move and is
 still 1: `ProcessInfo.instance` is purely additive, and the envelope's own
 rule is that only a rename, a removal or a retype bumps it. The two
-constants answer different questions and it is easy to move the wrong one. `shep flock` groups a multi-instance app under one rollup row
+constants answer different questions and it is easy to move the wrong one.
+A third, `MIN_SUPPORTED`, sits beside `PROTOCOL_VERSION` and answers yet
+another question: the oldest protocol this build still accepts, not the
+newest it speaks. `PROTOCOL_VERSION` moving does not refuse anyone by
+itself; only `MIN_SUPPORTED` moving does, and it refuses every peer built
+below the new floor. `shep flock` groups a multi-instance app under one rollup row
 (`web ×3`, with `↳ :0` marker rows beneath it) in `full` and `plain` style;
 `bare` and JSON still print one row per instance, with `bare` suffixing the
 name and JSON carrying the slot as its own field. `shep lookout`'s flock
@@ -805,6 +826,28 @@ purpose: removing it would turn an un-migrated `shep.toml` into a refused
 boot under `deny_unknown_fields`, so it stays as the thing the migration
 reads from. The migration itself lives in
 `crates/shep-cli/src/commands/dog_migration.rs`.
+
+**Boot ordering merged on 2026-09-06.** A Flockfile app can name
+`depends_on = ["db"]`, and shep sorts the flock into stages that start one
+after another. An app something depends on is armed with
+`ReadinessSource::Heuristic`, so it holds its stage for its own
+`listen_timeout` instead of going straight to `Online`. A cycle refuses at the
+keyboard and only warns at boot, where a typo must not strand a machine
+nobody is watching. Shutdown walks the same stages in reverse. Dogs are held
+out of that walk and stop in the backstop after every sheep, and `[daemon]
+boot_first_dogs` is the only thing that moves one earlier: those dogs spawn
+before the restore, every other dog after every stage. `PROTOCOL_VERSION`
+moved to 5, because `AppConfig` is `deny_unknown_fields` and a shepherd at 4
+cannot decode `depends_on`, so restart the shepherd after upgrading to it.
+
+**It moved again, to 6, on the same branch.** `Response::Reloading` carried
+the refused half of a staged reload back to the caller and had to say which
+apps a walk could not reload, so the variant went from a tuple over
+`Vec<ProcessInfo>` to a struct carrying `accepted` and `refused`. That
+serializes as an object where it used to serialize as an array, which is a
+retype under the constant's own rule, not an addition, so it bumps on the
+same terms as the 4-to-5 move rather than skating past it. Restart the
+shepherd after upgrading to this one too.
 
 Project memory (cross-session state) tracks decisions; docs above are the
 source of truth.

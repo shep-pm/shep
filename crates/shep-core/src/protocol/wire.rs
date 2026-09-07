@@ -45,6 +45,33 @@ pub fn decode_frame<T: DeserializeOwned>(frame: &[u8]) -> Result<T, WireError> {
     serde_json::from_slice(frame).map_err(|e| WireError::Json(e.to_string()))
 }
 
+/// Enough of a reply to recover its id when the reply's own type does not
+/// decode.
+///
+/// `result` is required but its value is never looked at: its only job is to
+/// keep this struct from matching a frame that merely happens to carry an
+/// `id`, such as a future progress or flow-control frame. Without it,
+/// `reply_id` would misidentify that frame as an undecodable reply and fail
+/// a caller whose real reply is still in flight.
+#[derive(serde::Deserialize)]
+struct ReplyIdOnly {
+    id: u64,
+    #[allow(dead_code, reason = "present only to narrow the match; never read")]
+    result: serde::de::IgnoredAny,
+}
+
+/// If `frame` is a reply, the id it answers; `None` for anything else,
+/// including an event and a frame that is not JSON at all.
+///
+/// A reply whose `Response` this build cannot decode still has a caller
+/// waiting on it. The id is the only thing needed to fail that caller by
+/// name instead of leaving it to wait out its deadline for an answer that
+/// already arrived.
+#[must_use]
+pub fn reply_id(frame: &[u8]) -> Option<u64> {
+    decode_frame::<ReplyIdOnly>(frame).ok().map(|r| r.id)
+}
+
 /// Error type returned from [`encode_frame`] and [`decode_frame`]
 ///
 /// `#[non_exhaustive]`: this type is on the peer-facing surface, and the
@@ -97,6 +124,35 @@ mod tests {
             decode_frame::<Envelope>(b"not json"),
             Err(WireError::Json(_))
         ));
+    }
+
+    #[test]
+    fn reply_id_reads_the_id_off_a_real_reply() {
+        assert_eq!(
+            reply_id(br#"{"id":7,"result":{"Ok":{"kind":"Pong"}}}"#),
+            Some(7)
+        );
+    }
+
+    #[test]
+    fn reply_id_is_none_for_an_event() {
+        assert_eq!(reply_id(br#"{"event":"from_the_future","data":{}}"#), None);
+    }
+
+    #[test]
+    fn reply_id_is_none_for_non_json() {
+        assert_eq!(reply_id(b"not json"), None);
+    }
+
+    #[test]
+    fn reply_id_is_none_for_a_future_progress_frame() {
+        // A frame that carries an `id` but is not shaped like a reply (no
+        // `result`) must not be mistaken for an undecodable reply: the
+        // caller it would falsely fail is still waiting on the real one.
+        assert_eq!(
+            reply_id(br#"{"kind":"progress","id":7,"percent":40}"#),
+            None
+        );
     }
 
     #[test]

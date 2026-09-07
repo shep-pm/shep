@@ -40,6 +40,7 @@ serde_json.workspace = true
 shep-channel = { workspace = true, default-features = false }
 toml.workspace = true
 serde-saphyr.workspace = true
+serde_ignored.workspace = true
 json5.workspace = true
 regex.workspace = true
 tokio-util.workspace = true
@@ -75,6 +76,7 @@ nix = { workspace = true, features = ["fs"] }
 
 [dev-dependencies]
 insta.workspace = true
+proptest.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "io-util"] }
 futures-util.workspace = true
 

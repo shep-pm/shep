@@ -103,6 +103,16 @@ export const docsNav: DocsNavGroup[] = [
         spec: { anchor: "5-configuration", label: "§5 Configuration" },
       },
       {
+        slug: "boot-order",
+        label: "Boot order",
+        built: true,
+        source: [
+          "crates/shep-core/src/config/graph.rs",
+          "crates/shep-daemon/src/boot_order.rs",
+        ],
+        spec: { anchor: "5-configuration", label: "§5 Configuration" },
+      },
+      {
         slug: "overrides",
         label: "Overrides",
         built: true,

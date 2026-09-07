@@ -21,8 +21,24 @@ use crate::output::{KillRow, Streams, emit, write_outcome};
 /// daemon acknowledges shutdown. Covers the whole kill ladder over every
 /// online sheep, which `RunningDaemon::run` runs before it unlinks.
 ///
+/// 60s, the daemon's own `MAX_DEADLINE_MS` ceiling, and it was 10s until the
+/// teardown became staged. One flock-wide ladder cost the longest
+/// `kill_timeout` once, 1.6s at the defaults. A reverse-order teardown pays
+/// each stage's longest ladder in turn, so the budget is a sum over stages
+/// rather than one ladder: seven stages of default sheep that ignore
+/// `SIGTERM` passed 10s, and four stages holding one `kill_timeout = "5s"`
+/// member each reach twenty. Every one of those shutdowns is proceeding
+/// correctly, and the old budget reported them as
+/// [`ExitCode::DeadlineExceeded`].
+///
+/// A budget cannot be big enough for every flock, so it is not the only
+/// thing standing between `shep daemon reload` and a signalled predecessor
+/// with no successor: see `commands::daemon`'s `stop_and_start`, which asks
+/// the pidfile lock what happened rather than reading an elapsed clock as an
+/// answer.
+///
 /// `pub(crate)`: `commands::daemon`'s reload waits out the same teardown.
-pub(crate) const KILL_TEARDOWN_WAIT: Duration = Duration::from_secs(10);
+pub(crate) const KILL_TEARDOWN_WAIT: Duration = Duration::from_secs(60);
 
 /// Gap between socket-existence checks while waiting out teardown.
 ///
