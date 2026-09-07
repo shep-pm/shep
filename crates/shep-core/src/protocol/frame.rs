@@ -69,6 +69,7 @@ mod tests {
                 dog_stale: None,
                 pending: None,
                 overridden: None,
+                max_memory: None,
             },
             manually: false,
             at_ms: 1_700_000_000_000,

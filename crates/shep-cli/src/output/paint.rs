@@ -29,6 +29,11 @@ pub(crate) fn style_for(role: Role, deep: bool) -> Style {
         (Role::Bark, false) => Color::Ansi(AnsiColor::Red),
         (Role::Butter, false) => Color::Ansi(AnsiColor::Yellow),
         (Role::Ink3, false) => Color::Ansi(AnsiColor::BrightBlack),
+        // Sky is lookout-only: `shep flock` has no memory gauge to colour.
+        // Matched here so the mapping stays total, with the same colours
+        // `lookout/theme.rs::Palette::detect` uses for its own sky.
+        (Role::Sky, true) => Color::Ansi256(Ansi256Color(74)),
+        (Role::Sky, false) => Color::Ansi(AnsiColor::Blue),
     };
     Style::new().fg_color(Some(colour))
 }

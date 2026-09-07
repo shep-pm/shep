@@ -3,6 +3,7 @@ source: crates/shep-cli/src/lookout/frames.rs
 expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                                            6 in the flock
+                                                                                                                        
   [daemon]                                                                                                              
   log_level        warn                            shep.toml    needs shep daemon reload                                
   log_json         false                           the default  needs shep daemon reload                                
@@ -22,7 +23,6 @@ shep lookout   /home/ada/.shep                                                  
   metrics                                                             yes      built-in                  not running    
                                                                                                                         
   editing socket: /home/ada/.shep/run/s▏   enter applies   esc cancels                                                  
-                                                                                                                        
                                                                                                                         
                                                                                                                         
                                                                                                                         

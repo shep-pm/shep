@@ -199,6 +199,14 @@ tokio = { workspace = true, features = ["test-util", "rt-multi-thread"] }
 # constraint and it buys nothing. `scripts/check-dev-deps.py` enforces the rule.
 shep-client = { path = "../shep-client", features = ["test-support"] }
 # Snapshot coverage for `--format json` payloads.
+# Not `workspace = true`: the workspace floor is 3.10, chosen for creating a
+# ring at 0600 directly, and that is still all the SHIPPED code needs. The
+# `#[cfg(test)]` fixtures call `TempDir::keep`, which arrived in 3.20.0, so
+# the test build asks for more than the library does. Declared here rather
+# than by raising the workspace floor, so a consumer of this crate is not
+# made to carry a version only our tests need. `minimal-versions` in
+# test.yml is what caught the floor lying.
+tempfile = "3.20"
 insta.workspace = true
 # The real-binary e2e tier (`tests/cli_e2e.rs`).
 assert_cmd.workspace = true

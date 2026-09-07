@@ -7176,6 +7176,7 @@ fn to_info(entry: &ProcessEntry, smits: &Smits) -> ProcessInfo {
         // that can register or replace a sheep keeps `ProcessEntry::overridden`
         // correct, so this listing path does no I/O.
         .overridden((!entry.overridden.is_empty()).then(|| entry.overridden.clone()))
+        .max_memory(entry.spec.config().max_memory.map(MemSize::bytes))
         .build()
 }
 
@@ -19329,6 +19330,38 @@ mod tests {
         );
         let info = to_info(entry, &actor.smits);
         assert_eq!(info.pending, Some(vec!["env".to_string()]));
+    }
+
+    /// The daemon's one production construction site converts `MemSize` to
+    /// raw bytes for the wire. The ceiling is chosen off a round megabyte
+    /// boundary so a unit mix-up (bytes vs. KiB vs. MiB) could not pass by
+    /// coincidence.
+    #[tokio::test(start_paused = true)]
+    async fn to_info_carries_a_sheep_s_configured_memory_ceiling_in_bytes() {
+        const CEILING_BYTES: u64 = 43_000_001;
+        let dir = tempfile::tempdir().unwrap();
+        let (actor, _enforcer) = actor_over(
+            &dir,
+            &[app_with("web", |app| {
+                app.max_memory = Some(MemSize::from_bytes(CEILING_BYTES));
+            })],
+        );
+
+        let entry = &actor.sheep[&0].entry;
+        let info = to_info(entry, &actor.smits);
+        assert_eq!(info.max_memory, Some(CEILING_BYTES));
+    }
+
+    /// A dog's `AppConfig::minimal` sets no ceiling, so its `ProcessInfo`
+    /// must report `None` rather than inheriting a stray value.
+    #[tokio::test(start_paused = true)]
+    async fn to_info_reports_none_for_a_dog_with_no_ceiling() {
+        let dir = tempfile::tempdir().unwrap();
+        let (actor, _enforcer) = actor_over(&dir, &[dog_app("watcher")]);
+
+        let entry = &actor.sheep[&0].entry;
+        let info = to_info(entry, &actor.smits);
+        assert_eq!(info.max_memory, None);
     }
 
     /// A scale-up calls `overridden_for` once per new instance, so a cache miss

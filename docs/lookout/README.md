@@ -4,7 +4,9 @@
 now draws all four panes spec §9 names: the flock table (the spine, and the
 only pane Phase 12a shipped), a host-usage strip above it, and a sheep
 detail pane plus a bleats feed underneath a selected row — both added in
-Phase 12b, kept as plain as the table that came before them.
+Phase 12b. Plan 1a repainted the whole thing afterward: reverse-video bands,
+a load and memory gauge on the strip, and a CPU sparkline and a memory gauge
+in the table. See "What 1a settled" below.
 
 This directory is not documentation of a shipped design. It is the thing
 The maintainer asked for: *"let's start with flock table first. I need to see the
@@ -14,9 +16,17 @@ phase before deciding what came next.
 
 ## Reading the frames
 
-- `frames.txt`, thirty-three scenes in plain text. Open it in any editor.
-- `frames.ansi`, the same thirty-three scenes with colour. Read it with
-  `less -R` so the escape codes render instead of printing literally.
+- `frames.txt`, thirty-five scenes rendered through the flattened `NO_COLOR`
+  palette, the one an operator with `$NO_COLOR` set or a 16-colour terminal
+  actually gets. Open it in any editor.
+- `frames.ansi`, the same thirty-five scenes rendered through the coloured
+  palette the pinned snapshot tests use. Read it with `less -R` so the
+  escape codes render instead of printing literally.
+
+The two files are deliberately different pictures of the same dashboard, not
+one file with the colour stripped from the other: `frames.txt` still shows
+the section bands and the selection marker, since reverse video and the `>`
+gutter both survive `NO_COLOR`, but the meadow/sky/bark roles are gone.
 
 Both files are generated, not hand-written, and both come from the same
 scene list the pinned snapshot tests read (`Scene::ALL` in
@@ -63,14 +73,22 @@ cargo test -p shep --lib --all-features -- --ignored write_the_gallery
   died` under `--bark`. Nothing here is colour-only, so `NO_COLOR` and a
   16-colour terminal both lose decoration, never information.
 - **Narrow terminals drop columns in a fixed order**, least diagnostic
-  first, one at a time, at the width in brackets: SMIT (101), FOLD (89),
-  EXIT (78), RESTARTS (68), PID (59), MEM (49), CPU (41), then UPTIME,
-  leaving `ID NAME STATUS` as the floor. SMIT goes first for being much the
-  widest, and EXIT that early because it renders `-` for every sheep that is
-  still running, which is what the pane shows most of the time. Below 31 columns or 6 rows the pane
-  refuses outright rather than draw overlapping garbage, with a two-line
-  message short enough to survive the narrowest terminal it is warning
-  about.
+  first, one at a time, at the width in brackets: `MEM/CEIL` (134), `CPU 20s`
+  (122), `CFG` (116), `SMIT` (101), `FOLD` (89), `EXIT` (78), `RESTARTS`
+  (68), `PID` (59), `MEM` (49), `CPU` (41), then `UPTIME`, leaving
+  `ID NAME STATUS` as the floor. `MEM/CEIL` and `CPU 20s` go first, ahead of
+  even `CFG`, because both restate a number a plainer column already
+  carries: the gauge repeats `MEM`, the sparkline repeats `CPU`. `SMIT`
+  still goes next for being much the widest of what is left, and `EXIT`
+  early after it because it renders `-` for every sheep that is still
+  running, which is what the pane shows most of the time. Below 33 columns
+  or 6 rows the pane refuses outright rather than draw overlapping garbage,
+  with a two-line message short enough to survive the narrowest terminal it
+  is warning about. The 33 is the table's own 31-column floor plus the
+  2-column gutter the selection marker needs; the table draws inside a
+  two-column border, so seeing
+  `MEM/CEIL` at all takes a terminal at least 148 columns wide, and
+  `CPU 20s` at least 136.
 
 ## What 12b settled
 
@@ -118,6 +136,41 @@ cargo test -p shep --lib --all-features -- --ignored write_the_gallery
   detail gone.
 
 `shep lookout` ships complete as of Phase 16: the filter, lambs in the detail
-pane, and the three action keys behind the gate are all built. See
+pane, and the three action keys behind the gate are all built. Plan 1a then
+redrew the landing pane on top of that shipped surface. See
 [docs/specs/deferred.md](../specs/deferred.md) for the workspace's remaining
 debt.
+
+## What 1a settled
+
+- **The flock table grew two columns.** `CPU 20s` is a ten-cell sparkline of
+  the sheep's own CPU history, scaled to one ceiling shared by every row:
+  the busiest sample any sheep has posted in the retained window, floored at
+  2%, so rows read against each other instead of each filling its own
+  column. `MEM/CEIL` is a ten-cell gauge of RSS against the sheep's
+  `max_memory`, when it has one. Fourteen columns total, with `NAME` capped
+  at 32 (`NAME_MAX`): past that width the table ends and the row stays
+  empty, rather than `NAME` swallowing the rest of a wide terminal. Both new
+  columns are read restatements of `CPU` and `MEM`, which is why the drop
+  ladder above sheds them first.
+- **The title, the two section bands, and the selected row all paint now.**
+  The title and the `FLOCK`/`DOGS` bands are reverse video: meadow for the
+  flock band, sky for dogs, and the title turns bark when the link to the
+  shepherd has frozen. The selected row and the status bar are the only two
+  rows that ever paint a background; everywhere else the operator's own
+  terminal background shows through. Under `NO_COLOR` the roles disappear
+  but the reverse video stays, so a band still names its section in plain
+  text, and the selected row falls back to the `>` gutter it always had.
+- **The host strip gained two gauges and a sparkline.** A ten-cell load
+  gauge and a ten-cell memory gauge sit next to the numbers they used to
+  print alone, and an eight-cell sparkline now rides beside `flock cpu`,
+  scaled to its own window peak rather than the table's ceiling, since it
+  plots a sum across the whole flock. The strip reads machine then flock,
+  left to right: load, host memory, the `N errored · N parked` summary,
+  flock CPU and memory, then the machine's own uptime, so the two host
+  readings survive a narrow terminal together, and the summary is what
+  falls off next.
+- **The detail pane's two log-path lines became one.** `out` and `err` now
+  share a single row with a divider between them and the pair's combined
+  size on disk after it, and the pane gained a `cfg !N pending` cell for a
+  sheep still carrying an unapplied config change.

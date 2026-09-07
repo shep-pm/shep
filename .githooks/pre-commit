@@ -16,4 +16,11 @@ trap 'rm -rf "$staged"' EXIT
 git diff --cached -z --name-only --diff-filter=ACMR \
     | git checkout-index -z --stdin --prefix="$staged/"
 config=$(git rev-parse --show-toplevel)/_typos.toml
-cd "$staged" && find . -type f -print0 | xargs -0 typos --config "$config" --
+# The directory, not a file list. Named explicitly, a path bypasses both of
+# typos' own filters: `[files] extend-exclude` in _typos.toml, and the binary
+# sniff that keeps it from reading a PNG as prose. Handed a directory it walks
+# it and applies both, which is what the `typos` job in test.yml does. Walking
+# skips dotfiles by default; `_typos.toml` sets `files.ignore-hidden = false`
+# so the staged set's `.github/` is scanned both here and by CI. `--hidden`
+# stays as a belt-and-suspenders match for that same config key.
+cd "$staged" && typos --config "$config" --hidden .

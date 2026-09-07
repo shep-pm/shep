@@ -10,7 +10,7 @@
 //! back on a real row.
 
 use core::fmt;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -1213,6 +1213,24 @@ pub(super) fn retrying_sentence(attempt: u32) -> String {
 /// The sentence every closed-gate refusal gives, dashboard and settings alike.
 const READ_ONLY_REFUSAL: &str = "read-only: from --read-only or lookout.allow_control";
 
+/// The widest window any pane draws, in samples.
+///
+/// The landing pane's sparkline needs ten. 1d's charts want six minutes,
+/// which is 180 at the two-second poll, and 140 is what fits the frames'
+/// 140-cell chart body. Sized for the charts now so the sheep pane
+/// inherits a filled buffer rather than starting cold on a pane the
+/// operator has just opened.
+const HISTORY: usize = 140;
+
+/// The lowest ceiling [`App::cpu_ceiling`] will report, in percent of one
+/// core.
+///
+/// Without it, a flock idling at a tenth of a percent would have its own
+/// jitter scaled to full height, so the busiest thing on screen would be
+/// noise. Two percent is low enough that any real work clears it and high
+/// enough that nothing else does.
+const CPU_CEILING_FLOOR: f32 = 2.0;
+
 /// The whole dashboard's state.
 #[derive(Debug)]
 pub struct App {
@@ -1297,6 +1315,18 @@ pub struct App {
     /// overridden through [`Self::set_style`], so the STYLE LEVEL row reads the
     /// same answer the rest of the CLI does.
     style: (StyleLevel, StyleSource),
+    /// Each sheep's last [`HISTORY`] CPU-percent samples, oldest first,
+    /// keyed by [`ProcessInfo::id`].
+    ///
+    /// Populated by [`Msg::Snapshot`] only: the bus's per-event
+    /// [`Msg::Event`] carries no CPU reading, so a sample is one point per
+    /// poll, not per bus message. A row missing from the latest snapshot
+    /// loses its entry entirely, so a sheep that left the flock leaves no
+    /// history behind for a later id to inherit.
+    cpu_history: HashMap<u32, VecDeque<f32>>,
+    /// The whole flock's summed CPU percent, one sample per poll, same
+    /// depth and ordering as [`Self::cpu_history`].
+    flock_cpu: VecDeque<f32>,
 }
 
 impl App {
@@ -1326,6 +1356,8 @@ impl App {
             config_pane: None,
             pane_menu: None,
             style: (StyleLevel::Full, StyleSource::Default),
+            cpu_history: HashMap::new(),
+            flock_cpu: VecDeque::new(),
         }
     }
 
@@ -1343,6 +1375,7 @@ impl App {
                     .into_iter()
                     .map(|info| (info.id, Row { info, anchor: at }))
                     .collect();
+                self.record_cpu_samples();
                 self.reseat(previous);
                 self.forget_missing_target();
                 // Unconditional: the selected row's log paths can change even
@@ -3462,6 +3495,75 @@ impl App {
         }
     }
 
+    /// Appends one CPU sample per sheep in the current flock, plus the
+    /// flock-wide sum, and drops every history entry for a sheep the new
+    /// snapshot no longer carries.
+    ///
+    /// Called after `self.flock` is replaced, so it reads the fresh
+    /// snapshot rather than the one before it. A sheep with no reading
+    /// contributes `0.0`: skipping it would slide the whole window and
+    /// make an old spike look recent.
+    ///
+    /// Every touched deque is made contiguous here, while this method
+    /// still holds `&mut self`, so [`Self::cpu_history`] and
+    /// [`Self::flock_cpu_history`] can hand out a slice from `&self`
+    /// alone.
+    fn record_cpu_samples(&mut self) {
+        let mut sum = 0.0;
+        for row in self.flock.values() {
+            let cpu = row.info.cpu_percent.unwrap_or(0.0);
+            sum += cpu;
+            let history = self.cpu_history.entry(row.info.id).or_default();
+            history.push_back(cpu);
+            if history.len() > HISTORY {
+                history.pop_front();
+            }
+            history.make_contiguous();
+        }
+        self.cpu_history.retain(|id, _| self.flock.contains_key(id));
+        self.flock_cpu.push_back(sum);
+        if self.flock_cpu.len() > HISTORY {
+            self.flock_cpu.pop_front();
+        }
+        self.flock_cpu.make_contiguous();
+    }
+
+    /// One sheep's CPU-percent samples, oldest first, newest last.
+    ///
+    /// Empty for a sheep with no history yet, and for one that has left the
+    /// flock: [`Self::record_cpu_samples`] drops its entry entirely.
+    pub fn cpu_history(&self, id: u32) -> &[f32] {
+        self.cpu_history
+            .get(&id)
+            .map_or(&[][..], |history| history.as_slices().0)
+    }
+
+    /// The whole flock's summed CPU-percent samples, oldest first, newest
+    /// last, same depth as [`Self::cpu_history`].
+    pub fn flock_cpu_history(&self) -> &[f32] {
+        self.flock_cpu.as_slices().0
+    }
+
+    /// The ceiling every row's CPU sparkline scales against: the busiest
+    /// sample any sheep has recorded in the retained window.
+    ///
+    /// One ceiling shared by every row is what makes the column comparable
+    /// down the table. Per-row peaks make an idle sheep and a busy one both
+    /// fill their own cells; a fixed 100% of a core makes an ordinary flock,
+    /// where nothing is above two percent, draw a screen of flat lines.
+    ///
+    /// Floored at [`CPU_CEILING_FLOOR`] so a flock that is genuinely doing
+    /// nothing stays flat instead of having its rounding noise stretched
+    /// into a shape. Below that floor there is nothing to see and saying so
+    /// is the honest answer.
+    #[must_use]
+    pub fn cpu_ceiling(&self) -> f32 {
+        self.cpu_history
+            .values()
+            .flat_map(|series| series.iter().copied())
+            .fold(CPU_CEILING_FLOOR, f32::max)
+    }
+
     /// Takes an armed prompt off the screen once its target is gone, rather
     /// than leaving a question about nothing. An action already in flight
     /// keeps its line.
@@ -4142,6 +4244,91 @@ mod tests {
             .pid(Some(1000 + id))
             .uptime_ms(60_000)
             .build()
+    }
+
+    /// One snapshot row for `id`, reporting `cpu` percent.
+    fn row_with_cpu(id: u32, cpu: f32) -> ProcessInfo {
+        ProcessInfo::builder(id, format!("sheep-{id}"), ProcStatus::Online)
+            .cpu_percent(Some(cpu))
+            .build()
+    }
+
+    /// The same row with no CPU reading, which is what a stopped sheep sends.
+    fn row_without_cpu(id: u32) -> ProcessInfo {
+        ProcessInfo::builder(id, format!("sheep-{id}"), ProcStatus::Stopped).build()
+    }
+
+    /// A dashboard with an empty flock, for tests that only exercise the
+    /// snapshot's history bookkeeping.
+    fn fixture() -> App {
+        App::new(
+            Palette::detect(None, None, None),
+            Control::ReadOnly,
+            "/home/ada/.shep".to_string(),
+            Instant::now(),
+        )
+    }
+
+    impl App {
+        /// Drives [`Msg::Snapshot`] the way the poll does, anchored on the
+        /// app's own clock.
+        fn on_snapshot(&mut self, rows: Vec<ProcessInfo>) {
+            let at = self.now;
+            self.update(Msg::Snapshot { rows, at });
+        }
+    }
+
+    #[test]
+    fn a_snapshot_appends_one_sample_per_sheep() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_cpu(1, 10.0)]);
+        app.on_snapshot(vec![row_with_cpu(1, 20.0)]);
+        assert_eq!(app.cpu_history(1), &[10.0, 20.0]);
+    }
+
+    #[test]
+    fn a_sheep_with_no_cpu_reading_appends_a_zero_rather_than_a_gap() {
+        // The sparkline is one cell per sample; a skipped sample would slide
+        // the whole window and make an old spike look recent.
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_cpu(1, 10.0)]);
+        app.on_snapshot(vec![row_without_cpu(1)]);
+        assert_eq!(app.cpu_history(1), &[10.0, 0.0]);
+    }
+
+    #[test]
+    fn the_buffer_holds_at_most_a_hundred_and_forty_samples() {
+        // Each pushed value is distinct so a wrong-end eviction or a
+        // reversed order fails this, not just a wrong length.
+        let mut app = fixture();
+        for i in 0..200 {
+            app.on_snapshot(vec![row_with_cpu(1, i as f32)]);
+        }
+        let history = app.cpu_history(1);
+        assert_eq!(history.len(), 140);
+        assert_eq!(history.first(), Some(&60.0), "oldest survivor");
+        assert_eq!(history.last(), Some(&199.0), "newest sample");
+    }
+
+    #[test]
+    fn a_sheep_that_leaves_the_flock_takes_its_history_with_it() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_cpu(1, 10.0), row_with_cpu(2, 5.0)]);
+        app.on_snapshot(vec![row_with_cpu(1, 10.0)]);
+        assert!(
+            app.cpu_history(2).is_empty(),
+            "a deleted sheep leaves no history behind"
+        );
+    }
+
+    #[test]
+    fn the_flock_series_is_the_sum_of_the_snapshot() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_cpu(1, 10.0), row_with_cpu(2, 5.5)]);
+        // Sheep 2 leaves on the second poll; the next sample must sum only
+        // the sheep still present, not carry the departed one along.
+        app.on_snapshot(vec![row_with_cpu(1, 10.0)]);
+        assert_eq!(app.flock_cpu_history(), &[15.5, 10.0]);
     }
 
     fn started() -> (App, Instant) {
