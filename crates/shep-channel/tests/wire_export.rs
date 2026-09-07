@@ -338,6 +338,22 @@ fn the_const_block_declares_each_identifier_once() {
 }
 
 #[test]
+fn every_go_field_names_at_least_one_kind() {
+    for (enum_name, fields) in [
+        ("ChildMessage", CHILD_FIELDS),
+        ("ShepherdMessage", SHEPHERD_FIELDS),
+    ] {
+        for field in fields {
+            assert!(
+                !field.kinds.is_empty(),
+                "{enum_name}.{} names no kind, so no sample reaches it",
+                field.ident
+            );
+        }
+    }
+}
+
+#[test]
 fn every_wire_key_reaches_a_go_field_in_the_same_order() {
     check_keys(
         child_samples().iter().map(|sample| {
