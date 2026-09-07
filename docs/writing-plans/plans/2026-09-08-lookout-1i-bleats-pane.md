@@ -523,15 +523,21 @@ git commit -m "feat(lookout): state the filter composition and the window's surv
 
 **Files:**
 - Modify: `crates/shep-cli/src/lookout/app.rs`
-- Modify: `crates/shep-cli/src/lookout/mod.rs` if the effect needs wiring
+- Nothing in `crates/shep-cli/src/lookout/mod.rs`. `Effect::RefreshFeed` is already handled there (`mod.rs:392`); the pre-flight scan confirmed it, so this task is `app.rs` only.
 
 **Interfaces:**
 - Consumes: the pane from Task 1.
 - Produces: nothing later tasks depend on.
 
-**Read this before starting.** `link::FLOCK_POLL` is a `const` passed once into `run_link` (`link.rs:29`, `mod.rs:172`) and the ticker is built once per connection at `link.rs:165`. **There is no way to change the interval at runtime, and you must not add one.** What exists is an out-of-band channel: `channels.polls` at `link.rs:173`, which `Effect::PollNow` and the `r` key already use to ask for an immediate reconcile.
+**Read this before starting.** `link::FLOCK_POLL` is a `const` passed once into `run_link` (`link.rs:29`, `mod.rs:172`) and the ticker is built once per connection at `link.rs:165`. **There is no way to change the interval at runtime, and you must not add one.** Nor is the answer the out-of-band `channels.polls` at `link.rs:173`: that is the reconcile route, and `Effect::PollNow` and `r` own it.
 
-Drive extra polls through that channel while the pane is open. The dashboard's own cadence is untouched.
+The feed has a separate route already. `Effect::RefreshFeed` sets `feed_dirty` at `mod.rs:392` and the read is coalesced onto `MIN_REDRAW`, for the reason the comment above it gives: a held `j` reaches the terminal as twenty to thirty events a second, and an uncoalesced synchronous 128 KiB read would sit behind every repeat on the task that also owns the redraw. Raising `RefreshFeed` more often is therefore cheap by construction. Nothing in `mod.rs` changes.
+
+**Corrected during the pre-flight scan.** This task first said to raise `Effect::PollNow`. That is the wrong effect: it asks the link task for a `ListFlock`, the whole flock listing, which a log viewer does not want and which would re-fetch every sheep every tick while the pane is open.
+
+`Effect::RefreshFeed` (`app.rs:273`) is the right one, and its own doc says why: "Re-read the selected sheep's log files and hand the result back as `Msg::Bleats`. The feed has no timer of its own; it rides this." The read is coalesced at `mod.rs:257`, so repeated effects do not stack up reads.
+
+Raise `RefreshFeed` on each tick while the pane is open. The dashboard's own cadence is untouched.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -543,7 +549,7 @@ fn a_tick_while_the_pane_is_open_asks_for_a_poll() {
     let mut app =
         fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
     let _ = app.update(Msg::Key(KeyPress::Bleats));
-    assert_eq!(app.update(Msg::Tick(fixtures::later())), Effect::PollNow);
+    assert_eq!(app.update(Msg::Tick(now)), Effect::RefreshFeed);
 }
 
 /// And does not on the dashboard, or every lookout would poll twice as
@@ -552,11 +558,11 @@ fn a_tick_while_the_pane_is_open_asks_for_a_poll() {
 fn a_tick_on_the_dashboard_asks_for_nothing() {
     let mut app =
         fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
-    assert_eq!(app.update(Msg::Tick(fixtures::later())), Effect::None);
+    assert_eq!(app.update(Msg::Tick(now)), Effect::None);
 }
 ```
 
-Read the existing `Msg::Tick` tests first: the clock fixture and the `Effect` variant names must match what is really there, and `Effect::PollNow` is the name to confirm rather than assume.
+Read the existing `Msg::Tick` tests first and build `now` the way they do; `fixtures::later()` does not exist. `Effect::RefreshFeed` does, at `app.rs:273`.
 
 - [ ] **Step 2: Run to verify they fail**
 
@@ -687,4 +693,4 @@ git commit -m "docs(lookout): describe the full-screen bleats pane"
 
 **Names checked against the tree, not carried from the spec.** `Body` (`app.rs:1251`), `close_pane` (`:2668`), `config_pane` (`:4247`), `App::feed` (`:4145`), `tail::Tail`/`TailLine`/`Stream` (`tail.rs:34-61`), `tail::read` (`tail.rs:104`), `link::FLOCK_POLL` (`link.rs:29`), the `polls` channel (`link.rs:173`), `cell::*` (`cell.rs:24-101`), `Palette::band`/`ground` (`theme.rs:194`, `:208`), the width sweep (`view/mod.rs:957`).
 
-**Two names the implementer must confirm rather than trust.** `Effect::PollNow` in Task 5 and the key-event helper in Task 1's input test: both are named from a survey rather than read in place, and the plan says to check them.
+**Helpers this plan invents, marked so the implementer builds rather than hunts.** `fixtures::draw_lines` in Task 4 and the clock value in Task 5's tick tests. `fixtures::with_selection`, `app_with`, `plain`, `render_all` and `rendered` were all confirmed to exist. `Effect::RefreshFeed` and `Effect::PollNow` both exist; the pre-flight scan established that this pane wants the first.
