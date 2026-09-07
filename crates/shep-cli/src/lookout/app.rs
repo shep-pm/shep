@@ -2395,13 +2395,24 @@ impl App {
             // field selected.
             KeyPress::Help => Effect::None,
             // Toggles rather than opening: pressing it twice is where it
-            // began. Every sheep id in [`Self::selected`] survives either
-            // way, so there is nothing here for `reseat` to fix.
+            // began. But `ByFold` collapses a grouped app to its
+            // `RowKey::Group` header alone (`push_fold_group_rows`), so a
+            // `RowKey::Sheep` row the flat view was pointing at can vanish
+            // from `visible_rows()` even though the id survives in
+            // `self.selected`. `reseat` reads `selected_index`, not id
+            // survival, so the same fixup `set_filter` uses applies here.
             KeyPress::FoldView => {
+                let previous = self.selected_index();
                 self.grouping = match self.grouping {
                     Grouping::Flat => Grouping::ByFold,
                     Grouping::ByFold => Grouping::Flat,
                 };
+                if self.reseat(previous) && !matches!(self.link, Link::Lost { .. }) {
+                    // The cursor moved to a different sheep (or a group
+                    // standing in for several), so the feed and lambs panes
+                    // are about to describe someone else.
+                    return Effect::RefreshSelected;
+                }
                 Effect::None
             }
         }
@@ -4687,6 +4698,29 @@ mod tests {
         assert_ne!(app.visible_rows(), flat);
         let _ = app.update(Msg::Key(KeyPress::FoldView));
         assert_eq!(app.visible_rows(), flat);
+    }
+
+    /// A selected instance of a grouped app has no [`RowKey::Sheep`] row of
+    /// its own once `F` collapses it under a [`RowKey::Group`] header: the
+    /// selection must reseat onto something visible rather than sit on a row
+    /// `visible_rows()` no longer draws.
+    #[test]
+    fn f_reseats_a_selection_that_folds_away() {
+        let mut app = allowed_with_instances();
+        app.select(RowKey::Sheep(1));
+        assert!(
+            app.selected_index().is_some(),
+            "sanity: seated before the toggle"
+        );
+
+        let _ = app.update(Msg::Key(KeyPress::FoldView));
+
+        assert!(
+            app.selected().is_some(),
+            "F must not orphan the selection: {:?}",
+            app.visible_rows()
+        );
+        assert!(app.selected_index().is_some());
     }
 
     /// Two levels, never three. A three-instance app inside a fold is one
