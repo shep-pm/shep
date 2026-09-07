@@ -79,7 +79,10 @@ syn-floor = { package = "syn", version = "1.0.1", default-features = false }
 proc-macro2 = { version = "1.0", default-features = false, features = ["proc-macro"] }
 quote = { version = "1.0", default-features = false, features = ["proc-macro"] }
 syn = { version = "2.0", default-features = false }
-json5 = { version = "0.4", default-features = false }
+# Floor 0.4.1: `json5::Deserializer` is what `serde_ignored` wraps to report
+# unknown Flockfile keys. 0.4.0 exposes `from_str` but not the `Deserializer`
+# type itself, so -Z minimal-versions fails to compile shep-core without this.
+json5 = { version = "0.4.1", default-features = false }
 # Floor 1.9: regex 1.8's compiled-size accounting lets
 # `selector_spec_oversized_regex_is_rejected`'s huge pattern slip under the
 # 1 MiB size_limit; 1.9 rejects it.
