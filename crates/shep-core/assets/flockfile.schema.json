@@ -30,7 +30,7 @@
   "additionalProperties": false,
   "$defs": {
     "AppConfig": {
-      "description": "Per-app configuration — one sheep's entry in a Flockfile\n\nField names are the Flockfile contract (sheep-native; pm2 spellings are\nrejected — the importer translates them). Unknown fields are errors so\ntypos fail loudly at parse time.\n\n# Example\n```\nuse shep_core::config::AppConfig;\n\nlet app: AppConfig = toml::from_str(\"name = \\\"web\\\"\\nscript = \\\"./srv\\\"\").unwrap();\nassert!(app.autorestart); // spec default\n```",
+      "description": "Per-app configuration — one sheep's entry in a Flockfile\n\nField names are the Flockfile contract (sheep-native; pm2 spellings are\nrejected — the importer translates them). Deserializing this type\ndirectly tolerates an unknown field, since it also rides the wire; a\nFlockfile typo instead fails loudly at [`Flockfile::parse`](crate::config::Flockfile::parse),\nthe input that really is hand-written.\n\n# Example\n```\nuse shep_core::config::AppConfig;\n\nlet app: AppConfig = toml::from_str(\"name = \\\"web\\\"\\nscript = \\\"./srv\\\"\").unwrap();\nassert!(app.autorestart); // spec default\n```",
       "type": "object",
       "properties": {
         "action_timeout": {

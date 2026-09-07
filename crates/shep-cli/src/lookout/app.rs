@@ -1782,10 +1782,10 @@ impl App {
         // a `Restart` carries rows and would upsert happily.
         let rows = match result {
             Ok(Response::Stopped(rows)) if verb == ActionVerb::Stop => rows,
-            Ok(Response::Restarted(rows)) if verb == ActionVerb::Restart => rows,
             // `refused` is a staged walk's field and a lookout action always
             // names one app, which the shepherd refuses whole through the
-            // `Err` arm below, so there is never a row in it here.
+            // `Err` arm below, so there is never a row in it on either.
+            Ok(Response::Restarted { accepted, .. }) if verb == ActionVerb::Restart => accepted,
             Ok(Response::Reloading { accepted, .. }) if verb == ActionVerb::Reload => accepted,
             Ok(_unrecognised) => {
                 self.notice = Some(Notice {

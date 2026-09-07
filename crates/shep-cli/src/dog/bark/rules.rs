@@ -123,7 +123,13 @@ fn wire_spelling(kind: ProcessEventKind) -> String {
 /// Whether `kind` is a spelling [`ProcessEventKind`] actually has, the same
 /// way [`wire_spelling`] reads the mapping rather than hand-listing it.
 fn is_known_kind(kind: &str) -> bool {
-    serde_json::from_value::<ProcessEventKind>(serde_json::Value::String(kind.to_owned())).is_ok()
+    // `ProcessEventKind`'s `Deserialize` now accepts any string, decoding an
+    // unrecognized one as `Unrecognized` rather than erroring, so validity
+    // has to be judged from the decoded variant instead of from success.
+    !matches!(
+        serde_json::from_value::<ProcessEventKind>(serde_json::Value::String(kind.to_owned())),
+        Err(_) | Ok(ProcessEventKind::Unrecognized)
+    )
 }
 
 /// Why [`Rules::new`] refused a configuration.

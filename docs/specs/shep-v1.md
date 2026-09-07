@@ -457,12 +457,14 @@ reach processes the operator never named.
 | 3 | not found | A selector matched no registered sheep. |
 | 4 | invalid config | A Flockfile or daemon config failed validation. |
 | 5 | daemon unreachable | No daemon answered, and none could be started. |
-| 6 | protocol mismatch | Client and daemon speak different wire versions. |
+| 6 | protocol mismatch | The daemon refused this client's `Hello`: its protocol version is below the daemon's `MIN_SUPPORTED` floor. |
 | 7 | spawn failed | The daemon could not spawn a sheep. |
 | 8 | deadline exceeded | The request outlived its deadline. |
 | 9 | internal | An unexpected daemon-side failure. |
 | 10 | daemon already running | Another daemon already holds this `$SHEP_HOME`. |
 | 11 | flock empty | The foreground flock emptied with a sheep in `errored`. `runtime`'s fail-fast status. |
+| 12 | version skew | The handshake succeeded, but this binary and the running shepherd are different crate versions. Not returned for `kill`, `daemon reload` or `ping`. |
+| 13 | unsupported | The daemon understood the handshake but not the request itself; a newer shepherd is the remedy. |
 
 Code 10 is a contract across a process boundary, not merely a CLI detail: a
 CLI that loses the race to start a daemon learns it only from the exit

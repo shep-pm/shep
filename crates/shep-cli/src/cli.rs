@@ -11,8 +11,10 @@
 
 use std::net::IpAddr;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 
 use shep_core::config::ResetDepth;
+use shep_core::protocol::{MIN_SUPPORTED, PROTOCOL_VERSION};
 
 /// The verb groups [`HELP_TEMPLATE`] renders, and the source of truth the
 /// drift test checks the real command tree against.
@@ -88,6 +90,27 @@ Upgrading        cargo install shep replaces the binary, not the running shepher
 
 {options}{after-help}";
 
+/// `shep --version`'s extra line, naming the protocol this build speaks and
+/// how far back it reaches.
+///
+/// `-V` still prints the bare crate version (clap's `version` attribute
+/// covers that); this is `--version`'s `long_version`, which clap falls
+/// back to `version` for when unset, so this is purely additive.
+///
+/// `clap::Command::long_version` wants `&'static str` in the clap version
+/// this workspace pins, not `String`. A `LazyLock` builds the text once, on
+/// first access, and every caller after that borrows the same allocation.
+static VERSION_TEXT: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        "{}\nspeaks protocol {PROTOCOL_VERSION}, accepts {MIN_SUPPORTED} and newer",
+        env!("CARGO_PKG_VERSION")
+    )
+});
+
+fn version_text() -> &'static str {
+    VERSION_TEXT.as_str()
+}
+
 /// The `shep` command line.
 // `bin_name = "shep"` below is load-bearing, not decoration. Without it, clap
 // renders every `Usage:` line from `argv[0]` rather than from `name` — so
@@ -108,6 +131,7 @@ Upgrading        cargo install shep replaces the binary, not the running shepher
     name = "shep",
     bin_name = "shep",
     version,
+    long_version = version_text(),
     about = "A process manager for your flock",
     propagate_version = true,
     help_template = HELP_TEMPLATE,
@@ -249,6 +273,34 @@ pub enum Commands {
     /// Stop one or more sheep.
     Stop(SelectorArgs),
     /// Restart one or more sheep.
+    ///
+    /// The running process is killed and a new one spawned in its place, so
+    /// there is a window with nothing serving. `shep reload` is the verb
+    /// that closes that window, at the cost of caring how the app is
+    /// configured.
+    ///
+    /// A selector matching one sheep is answered as soon as the respawn is
+    /// issued, printing the flock as it stood at that moment.
+    ///
+    /// A selector matching two or more is walked in dependency order
+    /// instead, and the reply waits: each stage is held until the apps a
+    /// later stage depends on are back, so a fold comes back in the order
+    /// its depends_on lines describe rather than all at once. The wait is
+    /// the sum of the stages.
+    ///
+    /// That walk asks the shepherd once per app, so an app it could not
+    /// restart is refused on its own and the rest of the fold restarts
+    /// anyway. The rows printed are what the walk finished with, the app it
+    /// went around is named on stderr, and the exit is non-zero. Under
+    /// `--format json` the same names come back under refused in the one
+    /// envelope.
+    ///
+    /// A sheep that came back errored is a different failure and is reported
+    /// separately: that one was reached, and it is the child that could not
+    /// start. That failure empties stdout, the way every verb's does, so a
+    /// restart that BOTH refused an app and brought one back errored prints
+    /// no envelope at all. The refused names ride the stderr sentence in
+    /// that case, which is the only place left for them.
     Restart(SelectorArgs),
     /// Reload one or more sheep, one instance at a time.
     ///
@@ -1324,6 +1376,82 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::*;
+
+    /// An operator asking what a build speaks should not have to read
+    /// source to learn how far back it reaches.
+    #[test]
+    fn version_output_names_both_the_protocol_and_the_floor() {
+        let text = version_text();
+        assert!(
+            text.contains(&format!("protocol {PROTOCOL_VERSION}")),
+            "got {text}"
+        );
+        assert!(
+            text.contains(&format!("accepts {MIN_SUPPORTED}")),
+            "got {text}"
+        );
+    }
+
+    /// The test above exercises `version_text()`, the free function. It
+    /// cannot catch a `#[command(long_version = ..)]` attribute that stops
+    /// wiring that function in, or a `propagate_version` that stops
+    /// carrying it to subcommands -- both survive a refactor that never
+    /// touches `version_text()` itself. This renders the real `clap::Command`
+    /// clap builds from the derive, the way `shep --version` and `shep
+    /// daemon reload --version` actually do, so either regression fails
+    /// here.
+    ///
+    /// `PROTOCOL_VERSION` and `MIN_SUPPORTED` are both 7 today, so a bare
+    /// "does '7' appear" assertion would pass even if the two numbers were
+    /// swapped. Matching each constant against the label `version_text()`
+    /// prints next to it (`"speaks protocol"` / `"accepts .. and newer"`)
+    /// checks the two numbers in their roles rather than merely finding "7"
+    /// twice -- it would fail if the labels were swapped even though the
+    /// values are equal. It would not fail if both constants moved to the
+    /// same new value together; nothing can, while they are pinned equal.
+    #[test]
+    fn the_rendered_version_names_the_protocol_and_the_floor_on_the_real_command() {
+        use clap::CommandFactory;
+
+        let top = Cli::command().render_long_version().to_string();
+        assert!(
+            top.contains(&format!("speaks protocol {PROTOCOL_VERSION}")),
+            "top-level --version lost the protocol line: {top}"
+        );
+        assert!(
+            top.contains(&format!("accepts {MIN_SUPPORTED} and newer")),
+            "top-level --version lost the floor line: {top}"
+        );
+
+        // `propagate_version = true` on `Cli` is supposed to carry the same
+        // `long_version` down to every subcommand. `shep daemon reload` is
+        // two levels deep (`daemon` -> `reload`), the deepest nesting this
+        // command tree has, so it is the strongest check available that
+        // propagation actually reaches leaves rather than just top-level
+        // verbs.
+        // `propagate_version` is applied by `Command::build`, which
+        // `get_matches`/`parse` calls internally on the real CLI path but
+        // `Cli::command()` alone does not -- an un-built `Command` has not
+        // pushed `long_version` down to its subcommands yet, so `build()`
+        // here is what makes this test see what a real invocation sees.
+        let mut top_command = Cli::command();
+        top_command.build();
+        let daemon = top_command
+            .find_subcommand("daemon")
+            .expect("shep daemon exists");
+        let reload = daemon
+            .find_subcommand("reload")
+            .expect("shep daemon reload exists");
+        let nested = reload.clone().render_long_version().to_string();
+        assert!(
+            nested.contains(&format!("speaks protocol {PROTOCOL_VERSION}")),
+            "shep daemon reload --version lost the protocol line: {nested}"
+        );
+        assert!(
+            nested.contains(&format!("accepts {MIN_SUPPORTED} and newer")),
+            "shep daemon reload --version lost the floor line: {nested}"
+        );
+    }
 
     /// `web/`, three directories above this file, only when it actually
     /// exists.

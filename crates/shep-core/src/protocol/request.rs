@@ -41,6 +41,13 @@ pub struct HelloAck {
     pub protocol: u32,
     /// Daemon pid
     pub pid: u32,
+    /// The oldest protocol this daemon accepts, or `None` from a daemon
+    /// predating the floor.
+    ///
+    /// Absent rather than `null` on the wire, so it does not move
+    /// [`crate::protocol::PROTOCOL_VERSION`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_supported: Option<u32>,
 }
 
 /// Serializable selector (mirror of [`crate::selector::ProcessSelector`];
@@ -59,7 +66,7 @@ pub enum SelectorSpec {
     Regex(String),
     /// By fold name
     Fold(String),
-    // Both field names are wire contract, pinned by `request_wire_v6`.
+    // Both field names are wire contract, pinned by `request_wire_v7`.
     /// By app name and instance slot
     ///
     /// On the wire: `{"kind":"instance","value":{"name":"web","slot":2}}`.
@@ -537,6 +544,15 @@ pub enum Request {
         /// Topic globs, e.g. `process.*`
         topics: Vec<String>,
     },
+    /// A request kind this build has not been taught.
+    ///
+    /// `#[serde(other)]`, which serde allows here because `Request` is
+    /// internally tagged and this variant carries nothing. The unknown
+    /// body's own fields are discarded: the only thing to do with a
+    /// request we cannot name is refuse it, and the refusal needs the
+    /// envelope's id rather than the body.
+    #[serde(other)]
+    Unrecognized,
 }
 
 /// Where a dog came from: this binary, or one an operator adopted.
@@ -1240,13 +1256,14 @@ impl SheepApplied {
     }
 }
 
-/// One app a multi-sheep reload could not accept, and why
+/// One app a multi-sheep reload or restart could not accept, and why
 ///
-/// A staged reload asks the supervisor per app, so an app already reloading
-/// is refused on its own while the rest of the fold goes ahead. One of these
-/// per refused app rides back in [`Response::Reloading`], which is what lets
-/// the client name the app and exit non-zero instead of printing a table
-/// with a row quietly missing from it.
+/// A staged walk asks the supervisor per app, so an app already reloading is
+/// refused on its own while the rest of the fold goes ahead, and so is one
+/// that left the flock after the walk was planned. One of these per refused
+/// app rides back in [`Response::Reloading`] or [`Response::Restarted`],
+/// which is what lets the client name the app and exit non-zero instead of
+/// printing a table with a row quietly missing from it.
 ///
 /// [`Self::reason`] is the daemon's own sentence rather than a code, the
 /// rule [`SheepApplied::refused`] takes and for its reason: the class of
@@ -1257,9 +1274,10 @@ impl SheepApplied {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SheepRefusal {
-    /// The app's name, as the walk that planned the reload spelled it.
+    /// The app's name, as the walk that planned the reload or the restart
+    /// spelled it.
     pub name: String,
-    /// Why the reload was refused, in the daemon's own words.
+    /// Why that app was refused, in the daemon's own words.
     pub reason: String,
 }
 
@@ -1456,8 +1474,31 @@ pub enum Response {
     },
     /// Answer to `Stop`
     Stopped(Vec<ProcessInfo>),
-    /// Answer to `Restart`
-    Restarted(Vec<ProcessInfo>),
+    /// Answer to `Restart`: the sheep that were restarted, one row each.
+    ///
+    /// **When the reply arrives depends on how many sheep matched.** One
+    /// sheep is answered as soon as its respawn is issued. Two or more are
+    /// restarted in dependency order, and the daemon holds each stage until
+    /// the apps a later stage waits on are back, so the reply arrives no
+    /// sooner than the last stage's respawns and the rows are stitched from
+    /// one answer per stage. A client asking for a budget sizes it for the
+    /// whole walk, not for one respawn.
+    Restarted {
+        /// The sheep the restart reached, one row each.
+        ///
+        /// A row is not a promise the process is up. A respawn that could
+        /// not exec is an `errored` row here rather than an entry in
+        /// `refused` below: the sheep was reached and the restart was not
+        /// refused, it is the child that failed.
+        accepted: Vec<ProcessInfo>,
+        /// The apps the walk could not restart, empty when it restarted
+        /// every one it named.
+        ///
+        /// Only a walk fills this. A selector matching one app is refused
+        /// whole, as the `Err` arm, so a client reading a single-target
+        /// restart never sees a row here.
+        refused: Vec<SheepRefusal>,
+    },
     /// Answer to `Reload`: acceptances, not results.
     ///
     /// One instance costs a readiness wait plus a drain, so a clustered app
@@ -1650,6 +1691,21 @@ pub enum RpcErrorCode {
     Internal,
     /// The request's deadline expired before the daemon finished it
     DeadlineExceeded,
+    /// The peer asked for something this build does not implement.
+    ///
+    /// Distinct from `NotFound`, which means a selector matched nothing.
+    /// This means the verb itself is unknown here, and the remedy is a
+    /// newer shepherd rather than a different selector.
+    Unsupported,
+    /// A code this build has not been taught.
+    ///
+    /// Only ever produced by decoding: an unrecognized string falls through
+    /// to this variant via `#[serde(other)]` instead of failing the whole
+    /// frame. Nothing constructs one to send, which is a call-site
+    /// invariant rather than a type-level one: `#[serde(other)]` governs
+    /// decoding only, so serializing this would emit `"unrecognized"`.
+    #[serde(other)]
+    Unrecognized,
 }
 
 impl RpcErrorCode {
@@ -1659,13 +1715,14 @@ impl RpcErrorCode {
     /// crate, which would swallow a variant added here and never updated
     /// there (`crates/shep-cli/src/exit.rs` maps every code to an exit
     /// status).
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::NotFound,
         Self::InvalidConfig,
         Self::SpawnFailed,
         Self::ProtocolMismatch,
         Self::Internal,
         Self::DeadlineExceeded,
+        Self::Unsupported,
     ];
 
     /// Never called; exists so this crate fails to build if a variant is
@@ -1683,6 +1740,10 @@ impl RpcErrorCode {
             Self::ProtocolMismatch => Self::ALL[3],
             Self::Internal => Self::ALL[4],
             Self::DeadlineExceeded => Self::ALL[5],
+            Self::Unsupported => Self::ALL[6],
+            // `Unrecognized` is decode-only and never appears in `ALL`;
+            // treat it as `Internal` would be treated.
+            Self::Unrecognized => Self::ALL[4],
         }
     }
 }
@@ -1693,6 +1754,51 @@ mod tests {
     use crate::config::AppConfig;
     use crate::protocol::PROTOCOL_VERSION;
     use crate::status::ProcStatus;
+
+    /// A code this build has never heard of must decode, not fail. Without
+    /// this, adding any error code is a breaking change for every peer.
+    #[test]
+    fn an_unknown_error_code_decodes_as_unrecognized() {
+        assert_eq!(
+            serde_json::from_str::<RpcErrorCode>(r#""invented_next_year""#).unwrap(),
+            RpcErrorCode::Unrecognized
+        );
+    }
+
+    #[test]
+    fn every_known_error_code_still_round_trips() {
+        for code in [
+            RpcErrorCode::NotFound,
+            RpcErrorCode::InvalidConfig,
+            RpcErrorCode::SpawnFailed,
+            RpcErrorCode::ProtocolMismatch,
+            RpcErrorCode::Internal,
+            RpcErrorCode::DeadlineExceeded,
+            RpcErrorCode::Unsupported,
+        ] {
+            let json = serde_json::to_string(&code).unwrap();
+            assert_eq!(serde_json::from_str::<RpcErrorCode>(&json).unwrap(), code);
+        }
+    }
+
+    /// The fallback absorbs an unknown STRING, not an unknown TYPE. A number
+    /// where a code belongs is still a defect worth reporting.
+    #[test]
+    fn a_non_string_error_code_is_still_an_error() {
+        assert!(serde_json::from_str::<RpcErrorCode>("42").is_err());
+    }
+
+    /// The id has to survive a body this build cannot name, or the daemon
+    /// has nothing to address a refusal to.
+    #[test]
+    fn an_unknown_request_kind_keeps_the_envelope_id() {
+        let envelope: Envelope = serde_json::from_str(
+            r#"{"id":42,"deadline_ms":null,"body":{"kind":"from_the_future","extra":{"a":1}}}"#,
+        )
+        .unwrap();
+        assert_eq!(envelope.id, 42);
+        assert_eq!(envelope.body, Request::Unrecognized);
+    }
 
     fn sample_info() -> ProcessInfo {
         ProcessInfo {
@@ -2385,7 +2491,7 @@ mod tests {
                 },
             },
         ];
-        insta::assert_json_snapshot!("request_wire_v6", requests);
+        insta::assert_json_snapshot!("request_wire_v7", requests);
     }
 
     #[test]
@@ -2475,12 +2581,19 @@ mod tests {
                 id: 11,
                 result: Ok(Response::Stopped(vec![])),
             },
+            // Both halves populated, as the row below: `refused` is the one
+            // field on either variant a walk fills and a single-target
+            // request never does.
             Reply {
                 id: 12,
-                result: Ok(Response::Restarted(vec![])),
+                result: Ok(Response::Restarted {
+                    accepted: vec![],
+                    refused: vec![SheepRefusal::new(
+                        "db",
+                        "selector matched no registered sheep",
+                    )],
+                }),
             },
-            // Both halves populated: `refused` is the one field on this
-            // variant a walk fills and a single-target reload never does.
             Reply {
                 id: 13,
                 result: Ok(Response::Reloading {
@@ -2749,7 +2862,7 @@ mod tests {
                 }),
             },
         ];
-        insta::assert_json_snapshot!("reply_wire_v6", replies);
+        insta::assert_json_snapshot!("reply_wire_v7", replies);
     }
 
     /// Asserts on the JSON, not the struct: a `Vec<String>` cannot say which
@@ -2899,7 +3012,7 @@ mod tests {
             dog_name: None,
         };
         let json = serde_json::to_string(&hello).unwrap();
-        assert_eq!(json, r#"{"client_version":"0.1.0","protocol":6}"#);
+        assert_eq!(json, r#"{"client_version":"0.1.0","protocol":7}"#);
     }
 
     #[test]
@@ -2912,7 +3025,7 @@ mod tests {
         let json = serde_json::to_string(&dog).unwrap();
         assert_eq!(
             json,
-            r#"{"client_version":"0.1.0","protocol":6,"dog_name":"metrics"}"#
+            r#"{"client_version":"0.1.0","protocol":7,"dog_name":"metrics"}"#
         );
         assert_eq!(serde_json::from_str::<Hello>(&json).unwrap(), dog);
     }
@@ -2933,6 +3046,50 @@ mod tests {
         let hello: Hello = serde_json::from_str(newer).unwrap();
         assert_eq!(hello.protocol, 2);
         assert_eq!(hello.dog_name.as_deref(), Some("metrics"));
+    }
+
+    #[test]
+    fn hello_ack_handshake_shape() {
+        let ack = HelloAck {
+            daemon_version: "0.5.0".to_string(),
+            protocol: PROTOCOL_VERSION,
+            pid: 1234,
+            min_supported: Some(crate::protocol::MIN_SUPPORTED),
+        };
+        let json = serde_json::to_string(&ack).unwrap();
+        assert_eq!(
+            json,
+            r#"{"daemon_version":"0.5.0","protocol":7,"pid":1234,"min_supported":7}"#
+        );
+        assert_eq!(serde_json::from_str::<HelloAck>(&json).unwrap(), ack);
+    }
+
+    /// `min_supported` is `None` from a daemon predating the floor, and the
+    /// omission has to be a missing key rather than `null`, or it would move
+    /// `PROTOCOL_VERSION` for every daemon that already ships one.
+    #[test]
+    fn hello_ack_without_min_supported_omits_the_key_not_nulls_it() {
+        let ack = HelloAck {
+            daemon_version: "0.5.0".to_string(),
+            protocol: PROTOCOL_VERSION,
+            pid: 1234,
+            min_supported: None,
+        };
+        let json = serde_json::to_string(&ack).unwrap();
+        assert_eq!(
+            json,
+            r#"{"daemon_version":"0.5.0","protocol":7,"pid":1234}"#
+        );
+        assert!(!json.contains("min_supported"));
+    }
+
+    /// An old daemon fixture, from before the floor existed, still decodes.
+    #[test]
+    fn an_old_hello_ack_without_min_supported_still_parses() {
+        let fixture = r#"{"daemon_version":"0.1.14","protocol":2,"pid":9}"#;
+        let ack: HelloAck = serde_json::from_str(fixture).unwrap();
+        assert_eq!(ack.protocol, 2);
+        assert_eq!(ack.min_supported, None);
     }
 
     #[test]
