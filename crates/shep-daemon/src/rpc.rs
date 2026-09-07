@@ -1369,6 +1369,10 @@ fn reload_stage_bound(ctx: &RpcContext, waiting: &BTreeMap<String, usize>) -> Du
 
 /// `Restart`'s arm: ordered when the selector matches several sheep, the
 /// plain supervisor call when it matches one.
+///
+/// The refused half of the reply is a walk's alone: the supervisor refuses a
+/// selector matching one app whole, so that arm answers `Err` and has
+/// nothing to name.
 async fn restart_request(id: u64, spec: SelectorSpec, ctx: &RpcContext) -> Outcome {
     let result = match selector_of(spec) {
         Err(err) => Err(err),
@@ -1377,19 +1381,21 @@ async fn restart_request(id: u64, spec: SelectorSpec, ctx: &RpcContext) -> Outco
                 .supervisor
                 .restart(selector)
                 .await
-                .map(Response::Restarted)
+                .map(|accepted| Response::Restarted {
+                    accepted,
+                    refused: Vec::new(),
+                })
                 .map_err(|err| rpc_error(&err)),
-            Some(walk) => restart_in_stages(ctx, &walk).await.map(Response::Restarted),
+            Some(walk) => restart_in_stages(ctx, &walk)
+                .await
+                .map(|(accepted, refused)| Response::Restarted { accepted, refused }),
         },
     };
     Outcome::Reply(Reply { id, result })
 }
 
-/// `Reload`'s arm, mirroring [`restart_request`].
-///
-/// The refused half of the reply is a walk's alone: the supervisor refuses a
-/// selector matching one app whole, so that arm answers `Err` and has
-/// nothing to name.
+/// `Reload`'s arm, mirroring [`restart_request`] down to the refused half of
+/// its reply.
 async fn reload_request(id: u64, spec: SelectorSpec, ctx: &RpcContext) -> Outcome {
     let result = match selector_of(spec) {
         Err(err) => Err(err),
@@ -1426,6 +1432,11 @@ async fn walk_for(ctx: &RpcContext, selector: &ProcessSelector) -> Option<Ordere
 /// `start_in_stages` takes under `BatchPolicy::PerApp` and for its reason: a
 /// fold half restarted is worse than a fold restarted around one bad app.
 ///
+/// Every member that was refused is named in the second half of the answer,
+/// the rule `reload_in_stages` states in full: a walk that restarted
+/// something still answers `Ok`, and exit 0 with a row silently missing is
+/// what carrying the names replaces.
+///
 /// # Errors
 ///
 /// - The first member's refusal, when no member restarted at all. A request
@@ -1434,8 +1445,9 @@ async fn walk_for(ctx: &RpcContext, selector: &ProcessSelector) -> Option<Ordere
 async fn restart_in_stages(
     ctx: &RpcContext,
     walk: &OrderedWalk,
-) -> Result<Vec<ProcessInfo>, RpcError> {
+) -> Result<(Vec<ProcessInfo>, Vec<SheepRefusal>), RpcError> {
     let mut restarted = Vec::new();
+    let mut refused: Vec<SheepRefusal> = Vec::new();
     let mut refusal = None;
     for stage in &walk.stages {
         // Subscribed before the calls for the reason `start_in_stages` gives:
@@ -1469,6 +1481,9 @@ async fn restart_in_stages(
                         "a sheep did not restart in its stage; it may have left the flock since \
                          the walk was planned"
                     );
+                    // Every one, where `refusal` below keeps the first:
+                    // that one is only ever read when nothing restarted.
+                    refused.push(SheepRefusal::new(name.clone(), err.to_string()));
                     refusal.get_or_insert(err);
                 }
             }
@@ -1486,7 +1501,7 @@ async fn restart_in_stages(
         let unsettled = crate::boot_order::await_stage(rx, waiting, bound, &ctx.supervisor).await;
         warn_about_unsettled(&unsettled);
     }
-    finished(restarted, refusal)
+    finished(restarted, refusal).map(|rows| (rows, refused))
 }
 
 /// [`restart_in_stages`] for a reload: same walk, a different call and a
@@ -2655,7 +2670,10 @@ mod tests {
             )
             .await,
         );
-        let Response::Restarted(infos) = reply.result.unwrap() else {
+        let Response::Restarted {
+            accepted: infos, ..
+        } = reply.result.unwrap()
+        else {
             panic!("expected restarted")
         };
         assert_eq!(infos.len(), 2, "both sheep restart: {infos:?}");
@@ -2761,7 +2779,10 @@ mod tests {
         );
         let spent = began.elapsed();
 
-        let Response::Restarted(infos) = reply.result.unwrap() else {
+        let Response::Restarted {
+            accepted: infos, ..
+        } = reply.result.unwrap()
+        else {
             panic!("expected restarted")
         };
         assert_eq!(infos.len(), 2, "both sheep restart: {infos:?}");
@@ -2794,7 +2815,10 @@ mod tests {
             )
             .await,
         );
-        let Response::Restarted(infos) = reply.result.unwrap() else {
+        let Response::Restarted {
+            accepted: infos, ..
+        } = reply.result.unwrap()
+        else {
             panic!("expected restarted")
         };
         assert_eq!(infos.len(), 2, "both sheep restart: {infos:?}");
@@ -2882,6 +2906,115 @@ mod tests {
         assert!(
             swapped < dependant,
             "api must wait out the refused stage's swap: {seen:?}"
+        );
+    }
+
+    /// fails if a staged restart drops the name of an app it went around: the
+    /// walk asks per app, so one the flock no longer holds is refused on its
+    /// own and the reply would otherwise be a success with that app's row
+    /// silently missing.
+    ///
+    /// The refusal is planted the way the real one arrives. `walk_for` reads
+    /// a listing and `restart_in_stages` calls the supervisor per member
+    /// afterwards, so a sheep that leaves the flock in between is named by
+    /// the walk and no longer matched by the supervisor; deleting `db`
+    /// between the two calls is that interleaving, held still. Going through
+    /// `Request::Restart` instead would take both halves inside one handler
+    /// with nothing able to run between them. Three scripts: two for the
+    /// pair's first spawn and one for `api`'s respawn.
+    #[tokio::test(start_paused = true)]
+    async fn a_staged_restart_names_the_app_it_could_not_restart() {
+        let h = harness(vec![ProcScript::never_exits(); 3]);
+        start_api_before_the_db_it_waits_for(&h).await;
+
+        let walk = walk_for(&h.ctx, &ProcessSelector::All)
+            .await
+            .expect("two sheep are an ordered walk");
+        let deleted = reply_of(
+            dispatch(
+                envelope(
+                    3,
+                    Request::Delete {
+                        selector: SelectorSpec::Name("db".to_string()),
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        assert!(deleted.result.is_ok(), "db leaves the flock");
+
+        let (accepted, refused) = restart_in_stages(&h.ctx, &walk)
+            .await
+            .expect("api still restarted, so the walk answers Ok");
+        let names: Vec<&str> = accepted.iter().map(|info| info.name.as_str()).collect();
+        assert_eq!(names, ["api"], "the rest of the fold still restarts");
+        let refused_names: Vec<&str> = refused.iter().map(|row| row.name.as_str()).collect();
+        assert_eq!(refused_names, ["db"], "and the one that did not is named");
+        assert!(
+            refused[0].reason.contains("no registered sheep"),
+            "with the shepherd's own reason: {:?}",
+            refused[0].reason
+        );
+    }
+
+    /// fails if a staged restart keeps only the first refusal, which is what
+    /// the walk did with the error before `refused` existed: two apps gone
+    /// from the flock have to produce two names, not one.
+    ///
+    /// The same interleaving as the sibling above, over three apps with two
+    /// of them deleted, so `api` still restarts and the answer is the
+    /// partial one a client has to render. Four scripts: three for the first
+    /// spawns and one for `api`'s respawn.
+    #[tokio::test(start_paused = true)]
+    async fn a_staged_restart_collects_every_refusal_and_not_just_the_first() {
+        let h = harness(vec![ProcScript::never_exits(); 4]);
+        start_api_before_the_db_it_waits_for(&h).await;
+        let started = reply_of(
+            dispatch(
+                envelope(
+                    3,
+                    Request::Start {
+                        apps: vec![AppConfig::minimal("cache", "./cache")],
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        assert!(started.result.is_ok(), "cache comes up beside the pair");
+
+        let walk = walk_for(&h.ctx, &ProcessSelector::All)
+            .await
+            .expect("three sheep are an ordered walk");
+        for (id, name) in [(4, "db"), (5, "cache")] {
+            let deleted = reply_of(
+                dispatch(
+                    envelope(
+                        id,
+                        Request::Delete {
+                            selector: SelectorSpec::Name(name.to_string()),
+                        },
+                    ),
+                    &h.ctx,
+                )
+                .await,
+            );
+            assert!(deleted.result.is_ok(), "{name} leaves the flock");
+        }
+
+        let (accepted, refused) = restart_in_stages(&h.ctx, &walk)
+            .await
+            .expect("api still restarted, so the walk answers Ok");
+        let names: Vec<&str> = accepted.iter().map(|info| info.name.as_str()).collect();
+        assert_eq!(names, ["api"], "the one app still in the flock restarts");
+        // A set, not a list: which stage each deleted app fell in is
+        // `plan_for_names`' business and not what this pins.
+        let refused_names: BTreeSet<&str> = refused.iter().map(|row| row.name.as_str()).collect();
+        assert_eq!(
+            refused_names,
+            ["cache", "db"].into_iter().collect::<BTreeSet<&str>>(),
+            "both are named, not just whichever was refused first"
         );
     }
 

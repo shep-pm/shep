@@ -705,8 +705,10 @@ async fn resume(
         &[SelectorSpec::Id(sheep.id)],
         None,
         |selector| Request::Restart { selector },
+        // One id, so the shepherd matches it or refuses the whole request;
+        // `refused` is a staged walk's field and a walk needs two names.
         |response| match response {
-            Response::Restarted(procs) => Some(procs),
+            Response::Restarted { accepted, .. } => Some(accepted),
             _ => None,
         },
     )
@@ -1411,7 +1413,7 @@ pub async fn restart_within(
         Some(START_DEADLINE),
         |selector| Request::Restart { selector },
         |response| match response {
-            Response::Restarted(procs) => Some(procs),
+            Response::Restarted { accepted, .. } => Some(accepted),
             _ => None,
         },
     )
@@ -2491,14 +2493,20 @@ mod tests {
                     // Never reached by a correct build. Answered rather than
                     // panicked, so the assertion naming the bug is the one
                     // that fails.
-                    return Response::Restarted(Vec::new());
+                    return Response::Restarted {
+                        accepted: Vec::new(),
+                        refused: Vec::new(),
+                    };
                 };
                 let status = if failing.contains(id) {
                     ProcStatus::Errored
                 } else {
                     ProcStatus::Online
                 };
-                Response::Restarted(vec![ProcessInfo::builder(*id, "zam", status).build()])
+                Response::Restarted {
+                    accepted: vec![ProcessInfo::builder(*id, "zam", status).build()],
+                    refused: Vec::new(),
+                }
             }
             _ => Response::Pong,
         }
@@ -3960,7 +3968,10 @@ mod tests {
             ),
             Request::Add { apps } => Response::Added(rows(apps, ProcStatus::Stopped)),
             Request::Start { apps } => Response::Started(rows(apps, ProcStatus::Online)),
-            Request::Restart { .. } => Response::Restarted(Vec::new()),
+            Request::Restart { .. } => Response::Restarted {
+                accepted: Vec::new(),
+                refused: Vec::new(),
+            },
             _ => Response::Pong,
         }
     }
@@ -4158,7 +4169,10 @@ mod tests {
         #[cfg(unix)]
         fn answering_a_restart(request: &Request) -> Response {
             match request {
-                Request::Restart { .. } => Response::Restarted(Vec::new()),
+                Request::Restart { .. } => Response::Restarted {
+                    accepted: Vec::new(),
+                    refused: Vec::new(),
+                },
                 _ => Response::Flock(Vec::new()),
             }
         }

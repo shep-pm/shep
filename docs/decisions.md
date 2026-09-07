@@ -1960,6 +1960,32 @@ older client cannot parse.
 
 `verified crates/shep-core/src/protocol/mod.rs (PROTOCOL_VERSION, and the doc comment naming the retype), crates/shep-core/src/protocol/request.rs (Response::Reloading's accepted/refused fields)`
 
+### `PROTOCOL_VERSION` moved to 7 for the same retype applied to `Response::Restarted`
+
+The reload half of the entry above shipped with a channel for per-app
+refusals and the restart half did not, so a staged restart that could not
+restart one member answered `Ok` with that member's row absent, exit 0, and a
+`tracing::warn!` as the only record. `Restarted` became a struct variant
+carrying `accepted` and `refused`, and the constant moved 6 to 7.
+
+**Why:** Identical reasoning to the 5 to 6 move, applied to the other verb
+that walks stages. A tuple variant serializes `Restarted` as a JSON array
+under `data` and a struct variant serializes it as an object, which the
+protocol's own doc comment names as bump-forcing, and a peer still on 6 would
+fail to decode a reply to a verb that already ships rather than merely miss a
+new capability. The bump makes that a named `protocol_mismatch` refusal, exit
+6, at the handshake.
+
+Restart's refusals are rarer than reload's and that is not a reason to leave
+the gap. `SupervisorError::ReloadInFlight` gives reload a refusal an operator
+meets on any busy fold; a per-member restart can only fail `NotFound`, when
+the sheep left the flock between the walk being planned from a listing and
+the member being called, or `EngineStopped`. Both are races rather than
+routine, and both are exactly the case where a silently missing row is worst:
+nothing else reports them, and `shep restart all` is a deploy step.
+
+`verified crates/shep-core/src/protocol/mod.rs (PROTOCOL_VERSION, and the doc comment naming the retype), crates/shep-core/src/protocol/request.rs (Response::Restarted's accepted/refused fields), crates/shep-daemon/src/rpc.rs (restart_in_stages)`
+
 ### An app something depends on waits out `listen_timeout`, and there is no `boot_delay`
 
 An app a later stage depends on is armed with `ReadinessSource::Heuristic` instead of being inserted `Online` at spawn. It sits `Starting` for its own `listen_timeout`, 3000ms by default, then flips and the stage advances. The gating is per app: `Command::Start` carries a `gate: BTreeSet<String>` naming the apps in this batch that something later waits on, so `shep start db` on its own is untouched.

@@ -1041,7 +1041,10 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
                         target: RowKey::Sheep(2),
                         name: "api".to_string(),
                     },
-                    result: Ok(Response::Restarted(vec![restarted_api()])),
+                    result: Ok(Response::Restarted {
+                        accepted: vec![restarted_api()],
+                        refused: Vec::new(),
+                    }),
                 });
             }
             if which == Scene::ActionRefused {

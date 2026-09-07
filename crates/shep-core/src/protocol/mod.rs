@@ -1,4 +1,4 @@
-//! The client<->daemon wire protocol (version 6).
+//! The client<->daemon wire protocol (version 7).
 //!
 //! Typed request/response enums plus bus events. Framing lives in
 //! [`wire`]; a serialized shape change bumps [`PROTOCOL_VERSION`].
@@ -7,9 +7,11 @@
 //! does not cover it and an older daemon cannot decode `depends_on`.
 //! Version 6 bumped on a retype: [`Response::Reloading`] became a struct
 //! variant to carry the apps a staged reload refused, so it serializes as
-//! an object where an older peer reads an array.
+//! an object where an older peer reads an array. Version 7 bumped on the
+//! same retype applied to [`Response::Restarted`], which a staged restart
+//! refuses apps of for the same reason and had nowhere to name them.
 //!
-//! A `*_wire_v6` test pins today's shape. A
+//! A `*_wire_v7` test pins today's shape. A
 //! `v1_*_fixture_still_deserializes` test pins an old peer's payload and
 //! never renames.
 
@@ -45,18 +47,19 @@ pub mod channel {
 /// renaming, or retyping anything serialized bumps it, recorded in the
 /// CHANGELOG. Byte fixtures in each protocol module pin the deserialize
 /// direction.
-pub const PROTOCOL_VERSION: u32 = 6;
+pub const PROTOCOL_VERSION: u32 = 7;
 
 #[cfg(test)]
 mod tests {
     use super::PROTOCOL_VERSION;
 
     #[test]
-    fn a_retyped_reloading_forced_the_protocol_version_up() {
-        // fails if `Response::Reloading` becomes a struct variant without
-        // the bump. The variant serializes as an object now where it used
-        // to serialize as an array, so an older peer decodes neither, and
-        // the handshake is the only place that can say so.
-        assert_eq!(PROTOCOL_VERSION, 6);
+    fn a_retyped_restarted_forced_the_protocol_version_up() {
+        // fails if `Response::Restarted` becomes a struct variant without
+        // the bump, the same way `Response::Reloading` forced 6. The
+        // variant serializes as an object now where it used to serialize
+        // as an array, so an older peer decodes neither, and the handshake
+        // is the only place that can say so.
+        assert_eq!(PROTOCOL_VERSION, 7);
     }
 }
