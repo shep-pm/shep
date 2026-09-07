@@ -31,3 +31,9 @@ docs/lookout/frames.ansi text eol=lf
 # Written by `web/scripts/generate-cli-reference.sh` with `\n`; a CRLF
 # checkout makes every regeneration look like a whole-file diff.
 web/src/data/cli-reference.generated.txt text eol=lf
+
+# Emitted by `crates/shep-channel/tests/wire_export.rs` with `\n`, then
+# compared byte for byte against a runtime-built string. `text=auto` above
+# checks this out CRLF on Windows: a diff on all 48 lines. `shep-go`
+# vendors these bytes and gofmt wants LF.
+crates/shep-channel/wire/channel.go text eol=lf
