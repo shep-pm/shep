@@ -1604,7 +1604,7 @@ impl App {
             },
             // The screen opens on what this read found; a failed read leaves
             // the dashboard up. A landed write's re-read and `r` land here too,
-            // with `self.settings` already `Some`, so `opening` is false and
+            // with `body` already `Body::Settings`, so `opening` is false and
             // the cursor survives.
             Msg::Settings { result } => {
                 let opening = self.settings().is_none();
@@ -1653,7 +1653,7 @@ impl App {
                     Effect::LoadSettings
                 }
                 Err(message) => {
-                    // Split so no borrow of `self.settings` is held across the
+                    // Split so no borrow of `self.body` is held across the
                     // `self.notice` assignment below.
                     if let Some((field, buffer)) = typed_text_of(&edit) {
                         if let Some(settings) = self.settings_mut() {
