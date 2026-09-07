@@ -69,7 +69,7 @@ fn group_lines(app: &App, name: &str, width: u16, palette: Palette) -> Vec<Line<
             .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
         totals.memory.map_or_else(|| "-".to_string(), human_bytes),
     );
-    let used = head.chars().count() + status.chars().count();
+    let used = columns(&head) + columns(&status);
     // `palette.status`, not `palette.reported`: a selected group is always
     // an app's own instances, never a dog.
     let status_style = app
@@ -759,6 +759,34 @@ mod tests {
             .pid(Some(48_103))
             .build();
         let app = with_selection(info);
+        let width = 60;
+
+        let lines = detail_lines(&app, width);
+        let first = rendered(&lines[0]);
+        assert!(
+            columns(&first) <= usize::from(width),
+            "first line is {} columns wide, wanted at most {width}: {first:?}",
+            columns(&first)
+        );
+    }
+
+    /// The group path composes its own first line and so needs the same
+    /// column measurement the sheep path does. `chars().count()` over an
+    /// app name of double-width characters undercounts by half, and the
+    /// rollup line runs off the right edge.
+    #[test]
+    fn a_wide_character_group_name_does_not_push_the_first_line_past_width() {
+        let app = app_with(
+            vec![
+                ProcessInfo::builder(1, "\u{7f8a}\u{7f8a}\u{7f8a}\u{7f8a}\u{7f8a}", ProcStatus::Online)
+                    .instance(Some(0))
+                    .build(),
+                ProcessInfo::builder(2, "\u{7f8a}\u{7f8a}\u{7f8a}\u{7f8a}\u{7f8a}", ProcStatus::Online)
+                    .instance(Some(1))
+                    .build(),
+            ],
+            plain(),
+        );
         let width = 60;
 
         let lines = detail_lines(&app, width);
