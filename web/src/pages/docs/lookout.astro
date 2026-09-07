@@ -16,9 +16,9 @@ import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 
 const healthy = `shep lookout   /home/ada/.shep                                                                            6 in the flock
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  ████░░░░░░ 12.4G / 32.0G     floc…
-  ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   floc…
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT
    ██ FLOCK
 > 2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -
@@ -42,8 +42,8 @@ q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e 
 
 const narrow = `shep lookout   /home/ada/.shep       6 in the flock
 host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores  …
-  ID    NAME      STATUS           CPU     UPTIME
 ───────────────────────────────────────────────────
+  ID    NAME      STATUS           CPU     UPTIME
    ██ FLOCK
 > 2     api       online           7.1%    1h 28m
   3     billing…  online           0.8%    1h 29m
@@ -58,9 +58,9 @@ need 33x6`;
 
 const frozen = `shep lookout   /home/ada/.shep                                                                            6 in the flock
 the shepherd has died: these values are frozen as of 2026-08-14 14:32:07
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     1 errored · 0 parked   host mem  ████░░░░░░ 12.4G / 32.0G     floc…
-  ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     1 errored · 0 parked   floc…
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT
    ██ FLOCK
 > 2     api         errored          -        14        1          -       -         1h 18m    edge        -
   3     billing-r…  waiting-restart  -        3         1          -       -         1h 19m    -           -
@@ -83,9 +83,9 @@ out  connection pool: 14/50 in use
 q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled`;
 
 const refused = `shep lookout   /home/ada/.shep                                                                            6 in the flock
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  ████░░░░░░ 12.4G / 32.0G     floc…
-  ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   floc…
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT
    ██ FLOCK
 > 2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -
@@ -115,9 +115,9 @@ const feedExcerpt = ` ██ BLEATS bleats  api  … 525 earlier lines not shown
 this sheep has not written a log in this $SHEP_HOME`;
 
 const lambs = `shep lookout   /home/ada/.shep                                                                            6 in the flock
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  ████░░░░░░ 12.4G / 32.0G     floc…
-  ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   floc…
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT
    ██ FLOCK
 > 2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -
   3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -
@@ -140,18 +140,18 @@ out  connection pool: 14/50 in use
 q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled`;
 
 const filterActive = `shep lookout   /home/ada/.shep                                                   2 of 6 in the flock
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  ████░░░░░░ 12…
-  ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 error…
 ────────────────────────────────────────────────────────────────────────────────────────────────────
+  ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME
    ██ FLOCK
 > 0     web                online           48211    0         -          3.4%    182.0M    1h 25m
   1     web                online           48212    0         -          2.9%    178.0M    1h 26m
 filter "web"   / edit   esc clear                                                    control enabled`;
 
 const confirm = `shep lookout   /home/ada/.shep                                                        6 in the flock
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  ████░░░░░░ 12…
-  ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 error…
 ────────────────────────────────────────────────────────────────────────────────────────────────────
+  ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME
    ██ FLOCK
 > 2     api                online           48219    1         -          7.1%    241.0M    1h 28m
   3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m
@@ -162,9 +162,9 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 error
 restart api (id 2)? enter confirms, any other key cancels                            control enabled`;
 
 const actionAccepted = `shep lookout   /home/ada/.shep                                                        6 in the flock
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     0 errored · 0 parked   host mem  ████░░░░░░ 12…
-  ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 error…
 ────────────────────────────────────────────────────────────────────────────────────────────────────
+  ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME
    ██ FLOCK
 > 2     api                online           48299    2         -          7.1%    241.0M    1h 18m
   3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m
@@ -401,7 +401,10 @@ esc/s close   j/k select   g… control enabled`;
       is a sparkline of its CPU history; both restate a number CPU and MEM
       already carry, so they go first. A terminal needs 148 columns for the
       gauge and 136 for the sparkline, wider than every frame on this page,
-      so neither shows up below.
+      so neither shows up below. Every row's sparkline scales to the same
+      ceiling, the busiest sample any sheep has posted in the retained
+      window, so rows read against each other rather than each one filling
+      its own column.
     </p>
     <p class="fine">
       <code>CFG</code> drops third, right after <code>MEM/CEIL</code> and
