@@ -461,22 +461,6 @@ The last of those is the reason this is deferred rather than squeezed in: the
 question is what a dog does when its shepherd is gone, and answering it for
 bark alone would leave two dogs answering it differently for the third time.
 
-### A staged reload's refusal has no field in `--format json`, open, 2026-09-06
-
-`Response::Reloading` carries a `refused: Vec<SheepRefusal>` list, and the
-CLI's plain output reads it. A `--format json` caller does not get the same
-answer: the exit code is the only in-band signal a staged reload's walk
-refused an app, while the JSON envelope shows a clean fold with nothing
-naming what was skipped.
-
-**Why this matters more than a cosmetic gap.** Deploy scripts are the named
-audience for the exit code shep already returns here, and a script parsing
-JSON has no field to check instead, so it either trusts an exit code it
-otherwise ignores or has no way to tell a refused app from one that reloaded
-cleanly. Closing this needs another wire field on the JSON envelope, which
-is a deliberate addition rather than a bug fix, so it stays out of this
-branch.
-
 ### `EXTEND_TIMEOUT_USEC` would remove an operator's readiness homework, open, 2026-09-06
 
 systemd's `sd_notify` protocol accepts `EXTEND_TIMEOUT_USEC=<n>`, which lets a
@@ -738,12 +722,12 @@ rather than a fix to apply on the way past.
 
 Everything this file used to carry that is now FIXED, STALE, resolved or
 rejected, plus the record of what shipped instead of being deferred, moved to
-[deferred-history.md](deferred-history.md) on 2026-08-29. That is 1279 lines
-against the 660 left here, and a reader had to get past all of it to reach
-the 11 entries under "Known debt" that are actually still open. All three
+[deferred-history.md](deferred-history.md) on 2026-08-29. That is 1303 lines
+against the 733 left here, and a reader had to get past all of it to reach
+the 13 entries under "Known debt" that are actually still open. All three
 numbers were stated once and then drifted, which is the failure this file
 warns about elsewhere; they are counted, not remembered, and they were
-recounted on 2026-09-03 when the config-edit entry moved next door.
+recounted on 2026-09-06 when the staged-reload JSON entry moved next door.
 
 This file answers "what is not built". That one answers "what was not built,
 and what happened to it".
