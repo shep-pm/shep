@@ -1700,8 +1700,9 @@ pub enum RpcErrorCode {
     ///
     /// Only ever produced by decoding: an unrecognized string falls through
     /// to this variant via `#[serde(other)]` instead of failing the whole
-    /// frame. Never serialized, so it cannot reach a peer and cannot be
-    /// mistaken for a real code shep emits.
+    /// frame. Nothing constructs one to send, which is a call-site
+    /// invariant rather than a type-level one: `#[serde(other)]` governs
+    /// decoding only, so serializing this would emit `"unrecognized"`.
     #[serde(other)]
     Unrecognized,
 }

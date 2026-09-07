@@ -1026,9 +1026,17 @@ env = { DB_HOST = "", NODE_ENV = "production" }
             FlockFormat::Toml,
         )
         .expect_err("a nested typo must be refused");
+        let FlockfileError::UnknownKeys { keys } = err else {
+            panic!("expected UnknownKeys, got {err:?}");
+        };
+        // The variant alone would pass on any path at all, including one
+        // from a different app. Nesting is the reason this parse goes
+        // through `serde_ignored` rather than a flat key list, so the
+        // path is the thing worth asserting.
         assert!(
-            matches!(err, FlockfileError::UnknownKeys { .. }),
-            "got {err:?}"
+            keys.iter()
+                .any(|key| key.contains("readiness_probe") && key.contains("timeuot")),
+            "the nested path should name both the probe and the key: {keys:?}"
         );
     }
 

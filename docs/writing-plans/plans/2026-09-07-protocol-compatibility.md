@@ -52,7 +52,7 @@
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `RpcErrorCode::Unrecognized` and `ProcessEventKind::Unrecognized`, both unit variants that are never serialized. Later tasks rely on unknown spellings decoding rather than erroring.
+- Produces: `RpcErrorCode::Unrecognized` and `ProcessEventKind::Unrecognized`, unit variants nothing constructs to send. `#[serde(other)]` governs decoding only, so each still has a serialized spelling; the invariant is held at the call sites. Later tasks rely on unknown spellings decoding rather than erroring.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -147,9 +147,9 @@ pub enum RpcErrorCode {
     // ... existing variants unchanged ...
     /// A code this build has not been taught.
     ///
-    /// Only ever produced by decoding: `#[serde(other)]` has no
-    /// serialized spelling of its own, so this cannot reach a peer and
-    /// cannot be mistaken for a code shep emits.
+    /// Only ever produced by decoding. Nothing constructs one to send,
+    /// which is a call-site invariant: `#[serde(other)]` governs decoding
+    /// only, so serializing this would emit `"unrecognized"`.
     #[serde(other)]
     Unrecognized,
 }
