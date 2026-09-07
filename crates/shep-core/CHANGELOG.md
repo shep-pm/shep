@@ -49,6 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `RenderError::is_retriable` separates a namespace no provider dog has pushed
   to for that environment yet, which a later attempt can clear, from a value
   only a person will supply.
+## [0.4.5] - 2026-09-06
+
 
 ## [0.4.4] - 2026-09-06
 

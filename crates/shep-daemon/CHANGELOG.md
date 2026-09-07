@@ -40,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `#[non_exhaustive]`, so an out-of-tree literal that named every field no
   longer compiles; `..Default::default()` is the shape that survives the
   next one.
+## [0.4.5] - 2026-09-06
+
 
 ## [0.4.4] - 2026-09-06
 
