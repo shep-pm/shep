@@ -223,6 +223,16 @@ git commit -m "feat(lookout): open the bleats feed full screen on b"
 
 A pure function with no dependencies, so it lands on its own and is tested exhaustively before anything filters with it.
 
+**Correction, 2026-09-08, after this task's review.** The trimming rule below
+was written as `trim_matches(|c: char| !c.is_ascii_alphabetic())`, which
+strips digits as well as punctuation from both ends of a word. That turns
+`/error404` into `error` and `info2` into `info`, so `level_of` announces a
+level on an ordinary access-log token that announced none. Spec decision 3
+forbids exactly that. The trim must not swallow digits: a level word is the
+whole word once surrounding punctuation is gone, and a digit next to it means
+it was never a level word. The tests below cover only the alphabetic
+continuation case (`information`, `warnings`), which is why this got through.
+
 - [ ] **Step 1: Write the failing tests**
 
 ```rust
@@ -302,7 +312,7 @@ pub enum Level {
 #[must_use]
 pub fn level_of(line: &str) -> Option<Level> {
     line.split_whitespace().take(4).find_map(|word| {
-        match word.trim_matches(|c: char| !c.is_ascii_alphabetic()).to_ascii_lowercase().as_str() {
+        match word.trim_matches(|c: char| !c.is_ascii_alphanumeric())  // see the correction note below.to_ascii_lowercase().as_str() {
             "trace" => Some(Level::Trace),
             "debug" => Some(Level::Debug),
             "info" => Some(Level::Info),
@@ -685,7 +695,20 @@ git commit -m "docs(lookout): describe the full-screen bleats pane"
 
 ## Self-review
 
-**Spec coverage.** Pane shape and pinned sheep: Task 1. Source and the no-bus rule: Task 1, with the constraint stated globally. The three axes: Tasks 2 and 3. The unclassifiable-line rule: Task 2 defines it, Task 3 tests it. `esc` semantics: Task 3. Dropped line-number column: Task 4. Window-scoped survivor count: Task 4. Faster polling: Task 5. Scene, gallery and docs: Task 6.
+**Correction, 2026-09-08, found during Task 3's review.** The coverage claim
+below said "The three axes: Tasks 2 and 3" and that was false for half of one
+axis. The spec's match row reads "text **or regex**, with matches
+**highlighted**". Neither `regex` nor `highlight` appeared anywhere in this
+plan, so a spec requirement had no task at all and the self-review passed it
+anyway.
+
+Ruled into Task 4, which renders the filter row and is where highlighting
+belongs. The cost is small and was checked rather than assumed: `regex` is
+already a workspace dependency (`Cargo.toml:89`), already used by shep-core,
+and already in shep-cli's dependency graph, so honouring the spec row adds one
+`regex.workspace = true` line and no new crate to the tree.
+
+**Spec coverage.** Pane shape and pinned sheep: Task 1. Source and the no-bus rule: Task 1, with the constraint stated globally. The three axes: Tasks 2 and 3, with the match axis's regex and highlighting in Task 4 (see the correction above). The unclassifiable-line rule: Task 2 defines it, Task 3 tests it. `esc` semantics: Task 3. Dropped line-number column: Task 4. Window-scoped survivor count: Task 4. Faster polling: Task 5. Scene, gallery and docs: Task 6.
 
 **One spec item deliberately has no task.** The spec's "no per-sheep log topics" is a decision not to build something, recorded so a later reader knows it was considered. Nothing to implement.
 
