@@ -1079,8 +1079,9 @@ pub fn rows_of(buffer: &Buffer) -> Vec<String> {
 
 /// The secrets pane, opened and loaded: `DB_PASSWORD` set for `production`
 /// only, `ELSEWHERE_ONLY` set for `ci` only, `SET_EVERYWHERE` set for `all`,
-/// the tab on `production` (the first load's own default, since
-/// `environment` below is what it asks for).
+/// `SET_IN_ALL_THREE` set for every environment slot including `all`, the
+/// tab on `production` (the first load's own default, since `environment`
+/// below is what it asks for).
 pub fn app_with_secrets() -> App {
     let mut app = full_app();
     app.update(Msg::Key(KeyPress::Secrets));
@@ -1114,6 +1115,18 @@ pub fn app_with_secrets() -> App {
                     source: Source::Operator,
                     in_force: Some("all".to_string()),
                     set_in: vec!["all".to_string()],
+                    byte_len: Some(4),
+                    readers: Vec::new(),
+                },
+                SecretRow {
+                    key: "SET_IN_ALL_THREE".to_string(),
+                    source: Source::Operator,
+                    in_force: Some("all".to_string()),
+                    set_in: vec![
+                        "all".to_string(),
+                        "ci".to_string(),
+                        "production".to_string(),
+                    ],
                     byte_len: Some(4),
                     readers: Vec::new(),
                 },

@@ -526,6 +526,13 @@ mod tests {
             .unwrap_or_else(|| panic!("{needle:?} is not drawn anywhere"))
     }
 
+    /// The heading row `draw` places, fixed like [`first_row`] for the same
+    /// reason: it is the row right above the hairline, one above
+    /// [`first_row`]'s own chrome count.
+    fn heading_row() -> u16 {
+        7
+    }
+
     /// The leading number off the tab row's own trailing caption, `N` in `N
     /// environments in this store`.
     fn header_environment_count(buffer: &Buffer) -> usize {
@@ -672,6 +679,35 @@ mod tests {
         assert_eq!(
             cell(&buffer, all_row, Column::SetIn).trim(),
             format!("1 of {header_count} \u{b7} all")
+        );
+    }
+
+    /// `draw` passes `columns_for` the full row width, gutter included:
+    /// `columns_for(table_width)` fits one column short of what
+    /// [`SECRET_TIERS`] calibrated for, and drops `LANDS` at 160 columns
+    /// with no other test catching it.
+    #[test]
+    fn lands_is_drawn_at_the_widest_tier() {
+        let app = fixtures::app_with_secrets();
+        let buffer = fixtures::render(&app, 160, 48);
+
+        assert_eq!(cell(&buffer, heading_row(), Column::Lands).trim(), "LANDS");
+        assert_eq!(cell(&buffer, first_row(), Column::Lands).trim(), "-");
+    }
+
+    /// `set_in_cell`'s `count >= environment_count` branch: a key set in
+    /// every environment slot names none of them, since the count alone
+    /// already says so.
+    #[test]
+    fn a_key_set_everywhere_names_no_environments() {
+        let app = fixtures::app_with_secrets();
+        let buffer = fixtures::render(&app, 160, 48);
+        let header_count = header_environment_count(&buffer);
+        let row = row_of(&buffer, "SET_IN_ALL_THREE");
+
+        assert_eq!(
+            cell(&buffer, row, Column::SetIn).trim(),
+            format!("{header_count} of {header_count}")
         );
     }
 }
