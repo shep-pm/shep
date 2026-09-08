@@ -101,6 +101,12 @@ error[not_found]: the daemon reported NotFound: selector matched no registered s
       count. <code>z</code> collapses one. <code>F</code> again goes back to
       the flat list.
     </p>
+    <p>
+      The <code>no fold</code> header is the exception. It cannot be selected
+      or acted on, because no selector names every sheep that is in no fold:
+      <code>fold:&lt;name&gt;</code> needs a name. Act on those sheep
+      individually, or give them a fold.
+    </p>
 
     <h2>Selecting one from any verb</h2>
     <p>

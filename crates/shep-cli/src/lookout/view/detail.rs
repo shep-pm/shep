@@ -55,6 +55,19 @@ fn fold_lines(app: &App, name: &str, width: u16, palette: Palette) -> Vec<Line<'
             .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
         totals.memory.map_or_else(|| "-".to_string(), human_bytes),
     );
+    // The head is fit to whatever the status leaves, not drawn whole. A fold
+    // named at length otherwise spends the entire row at `MIN_TERM_WIDTH`
+    // and pushes the status word off the pane: measured, `fold
+    // edge-services-and-more \u{d7}2  online` is 38 columns in a 33-column
+    // pane. The status is the half an operator is reading for.
+    let head_budget = width.saturating_sub(u16::try_from(columns(&status)).unwrap_or(0));
+    // `min` because `fit` pads as well as truncates: fitting a short head to
+    // the whole remaining width would pad it across the row and leave the
+    // rollup nothing.
+    let head = fit(
+        &head,
+        head_budget.min(u16::try_from(columns(&head)).unwrap_or(head_budget)),
+    );
     let used = columns(&head) + columns(&status);
     let status_style = app
         .fold_uniform_status(name)
@@ -115,6 +128,16 @@ fn group_lines(app: &App, name: &str, width: u16, palette: Palette) -> Vec<Line<
             .cpu
             .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
         totals.memory.map_or_else(|| "-".to_string(), human_bytes),
+    );
+    // Fit before measuring, the same rule the fold branch above states: a
+    // long app name would otherwise push the status word off a narrow pane.
+    let head_budget = width.saturating_sub(u16::try_from(columns(&status)).unwrap_or(0));
+    // `min` because `fit` pads as well as truncates: fitting a short head to
+    // the whole remaining width would pad it across the row and leave the
+    // rollup nothing.
+    let head = fit(
+        &head,
+        head_budget.min(u16::try_from(columns(&head)).unwrap_or(head_budget)),
     );
     let used = columns(&head) + columns(&status);
     // `palette.status`, not `palette.reported`: a selected group is always
@@ -876,5 +899,38 @@ mod tests {
             "first line is {} columns wide, wanted at most {width}: {first:?}",
             columns(&first)
         );
+    }
+
+    /// A long fold name cannot push the status word off a narrow pane.
+    ///
+    /// `MIN_TERM_WIDTH` is 33 and the head is built before anything is fit,
+    /// so a fold named at length would otherwise spend the whole row and the
+    /// status word would never be drawn. The sibling `Group` branch had the
+    /// same shape and the same bug.
+    #[test]
+    fn a_long_fold_name_does_not_push_the_status_off_a_narrow_pane() {
+        let mut app = app_with(
+            vec![
+                sheep_in_fold(1, "api", Some("edge-services-and-more")),
+                sheep_in_fold(2, "cdn", Some("edge-services-and-more")),
+            ],
+            plain(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::FoldView));
+        app.select_fold_for_tests("edge-services-and-more");
+        let lines = detail_lines(&app, 33);
+        for line in &lines {
+            let drawn: String = line
+                .spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect();
+            assert!(
+                columns(&drawn) <= 33,
+                "a detail row overflowed 33 columns: {drawn:?}"
+            );
+        }
+        let head = render_all(&lines);
+        assert!(head.contains("online"), "the status survives: {head}");
     }
 }

@@ -18,7 +18,7 @@ use shep_client::RequestError;
 use shep_core::config::LogLevel;
 use shep_core::protocol::{
     BusEvent, DogSectionToml, DogSource, EnvValue, Lamb, ProcessEventKind, ProcessInfo, Request,
-    Response, SelectorSpec,
+    Response, SelectorSpec, SheepRefusal,
 };
 use shep_core::status::ProcStatus;
 
@@ -1411,6 +1411,24 @@ fn name_runs<'a>(entries: &'a [RowEntry<'a>]) -> impl Iterator<Item = &'a [RowEn
     })
 }
 
+/// What a partly refused walk should say, or `None` when nothing was
+/// refused.
+///
+/// Names the apps rather than counting them, because "2 refused" sends an
+/// operator to the shepherd's log to find out which. One app's reason is
+/// worth carrying; several would outrun the status bar, so past the first
+/// the sentence names the apps alone.
+fn refusal_sentence(refused: &[SheepRefusal]) -> Option<String> {
+    match refused {
+        [] => None,
+        [only] => Some(format!("{} refused it: {}", only.name, only.reason)),
+        many => {
+            let names: Vec<&str> = many.iter().map(|one| one.name.as_str()).collect();
+            Some(format!("{} refused it", names.join(", ")))
+        }
+    }
+}
+
 impl App {
     /// A dashboard with an empty flock, a live link, and no notice.
     #[must_use]
@@ -1842,13 +1860,24 @@ impl App {
         let prefix = target_prefix(verb, &target, name);
         // Each verb accepts its own reply and no other: a `Stopped` answering
         // a `Restart` carries rows and would upsert happily.
+        let mut refusal: Option<String> = None;
         let rows = match result {
             Ok(Response::Stopped(rows)) if verb == ActionVerb::Stop => rows,
-            // `refused` is a staged walk's field and a lookout action always
-            // names one app, which the shepherd refuses whole through the
-            // `Err` arm below, so there is never a row in it on either.
-            Ok(Response::Restarted { accepted, .. }) if verb == ActionVerb::Restart => accepted,
-            Ok(Response::Reloading { accepted, .. }) if verb == ActionVerb::Reload => accepted,
+            // `refused` was a staged walk's field that a lookout action could
+            // never populate, because every action named one app and the
+            // shepherd refuses one whole through the `Err` arm below. The
+            // fold view broke that: `SelectorSpec::Fold` names every app in a
+            // fold, so a fold-wide restart or reload is exactly the multi-app
+            // walk that fills it (`rpc.rs:1617`), and dropping it would tell
+            // an operator the whole fold restarted when some of it did not.
+            Ok(Response::Restarted { accepted, refused }) if verb == ActionVerb::Restart => {
+                refusal = refusal_sentence(&refused);
+                accepted
+            }
+            Ok(Response::Reloading { accepted, refused }) if verb == ActionVerb::Reload => {
+                refusal = refusal_sentence(&refused);
+                accepted
+            }
             Ok(_unrecognised) => {
                 self.notice = Some(Notice {
                     text: format!(
@@ -1880,9 +1909,18 @@ impl App {
         for info in rows {
             self.flock.insert(info.id, Row { info, anchor });
         }
-        self.notice = Some(Notice {
-            text: format!("{prefix}: {}", outcome(verb)),
-            grave: false,
+        // A partial walk is not a success sentence. `grave` follows, so a
+        // fold that half refused reads as a problem rather than as a done
+        // thing an operator scrolls past.
+        self.notice = Some(match &refusal {
+            Some(sentence) => Notice {
+                text: format!("{prefix}: {}, but {sentence}", outcome(verb)),
+                grave: true,
+            },
+            None => Notice {
+                text: format!("{prefix}: {}", outcome(verb)),
+                grave: false,
+            },
         });
         if was_empty && self.reseat(None) {
             return Effect::RefreshSelected;
@@ -4997,6 +5035,61 @@ mod tests {
 
     /// The confirm names the count so nobody stops four things believing
     /// they stopped one.
+    /// A fold restart that half refused says so, and says which apps.
+    ///
+    /// `refused` only ever arrives on a multi-app walk. Before the fold view
+    /// every lookout action named one app, so the field was always empty and
+    /// `on_action_reply` dropped it with a comment explaining why that was
+    /// safe. `SelectorSpec::Fold` names a whole fold, which makes it exactly
+    /// the walk that fills it, and the comment's premise stopped being true
+    /// the day `F` shipped.
+    ///
+    /// Without this the operator reads "restarted" over a fold where two apps
+    /// did not, with nothing on screen to say otherwise.
+    #[test]
+    fn a_partly_refused_fold_restart_names_what_refused_it() {
+        let mut app = fixtures::app_with(
+            vec![
+                fixtures::sheep_in_fold(1, "api", Some("edge")),
+                fixtures::sheep_in_fold(2, "cdn", Some("edge")),
+            ],
+            fixtures::plain(),
+        );
+        app.set_control_for_tests(Control::Allowed);
+        let _ = app.update(Msg::Key(KeyPress::FoldView));
+        app.select(RowKey::Fold("edge".to_string()));
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+
+        let _ = app.update(Msg::Replied {
+            sent: Sent::Action {
+                verb: ActionVerb::Restart,
+                target: RowKey::Fold("edge".to_string()),
+                name: "edge".to_string(),
+            },
+            result: Ok(Response::Restarted {
+                accepted: vec![ProcessInfo::builder(1, "api", ProcStatus::Online).build()],
+                refused: vec![SheepRefusal::new("cdn", "its Flockfile moved")],
+            }),
+        });
+
+        let notice = app.notice().expect("a reply always leaves a notice");
+        assert!(
+            notice.text.contains("cdn"),
+            "names the app: {}",
+            notice.text
+        );
+        assert!(
+            notice.text.contains("its Flockfile moved"),
+            "and the shepherd's reason: {}",
+            notice.text
+        );
+        assert!(
+            notice.grave,
+            "a half-done fold action is not a success sentence"
+        );
+    }
+
     #[test]
     fn a_fold_confirm_states_how_many_it_reaches() {
         let mut app = fixtures::app_with(

@@ -515,7 +515,7 @@ git commit -m "feat(lookout): collapse a fold with z and describe one in the det
 - Modify: `crates/shep-cli/src/lookout/frames.rs`
 - Create: a snapshot under `crates/shep-cli/src/lookout/snapshots/`
 - Modify: `docs/lookout/frames.txt`, `docs/lookout/frames.ansi` (generated)
-- Modify: `docs/lookout/README.md`, `web/src/pages/docs/lookout.astro`
+- Modify: `docs/lookout/README.md`, `web/src/pages/docs/lookout.astro`, `web/src/pages/docs/folds.astro`
 
 **Adding a scene touches more places than it looks**, and the first four fail to compile if missed:
 

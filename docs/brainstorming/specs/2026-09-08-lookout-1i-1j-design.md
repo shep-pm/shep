@@ -1,6 +1,6 @@
 # Lookout panes 1i and 1j: bleats full screen, and the fold view
 
-**Status:** approved 2026-09-08. Not yet implemented.
+**Status:** approved 2026-09-08. 1j implemented; 1i in progress on its own branch.
 
 Two panes from the redesign bundle, built on what 1a landed. They share no code
 with each other and can be built in parallel; they share this document because
