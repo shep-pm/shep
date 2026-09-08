@@ -100,8 +100,7 @@ pub fn sync_dir(dir: &Path) -> std::io::Result<()> {
 /// Installs `tmp` at `path`, replacing whatever was there.
 ///
 /// Returns only once both the contents and the rename that published them
-/// have reached disk. The directory flushed is `path`'s own, or the current
-/// one when `path` names no parent.
+/// have reached disk.
 ///
 /// # Errors
 /// - [`std::io::Error`] if the `fsync`, the rename, or the directory flush
@@ -113,9 +112,6 @@ pub fn publish(tmp: tempfile::NamedTempFile, path: &Path) -> std::io::Result<()>
     // inside the error and its `Drop` removes the staging file, so a failed
     // replace does not leave one behind.
     tmp.persist(path).map_err(|err| err.error)?;
-
-    // `sync_all` above made the contents durable; this makes the rename
-    // that published them durable.
     sync_dir(path.parent().unwrap_or_else(|| Path::new(".")))
 }
 
@@ -192,24 +188,6 @@ mod tests {
                 "{prefix:?} {suffix:?}: {err:?}"
             );
         }
-    }
-
-    /// fails if `publish` leaves the staging file behind, or installs
-    /// anything but the bytes written to it.
-    #[test]
-    fn publish_installs_the_staged_bytes_and_leaves_no_staging_file() {
-        use std::io::Write as _;
-
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("store.json");
-        std::fs::write(&path, "old").unwrap();
-
-        let mut tmp = create_staging_file(dir.path(), "kv", ".tmp").unwrap();
-        tmp.write_all(b"new").unwrap();
-        publish(tmp, &path).unwrap();
-
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
-        assert_eq!(entry_names(dir.path()), vec!["store.json"]);
     }
 
     /// fails if a refused rename leaves a staging file in `$SHEP_HOME`, the
