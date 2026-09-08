@@ -11,6 +11,7 @@
 //! than ending it; see [`link::RECONNECT_ATTEMPTS`].
 
 pub mod app;
+pub mod edits;
 pub mod field;
 // `#[cfg(test)]`: every item in `frames` is read by tests and by the gallery
 // writer, and by nothing else. `pub` exempts nothing from `dead_code` here,
