@@ -10,7 +10,7 @@
 
 use super::field::{Field, FieldKind, ValueKind};
 
-/// One line of the table: what to print, and the string that proves it.
+/// One line of the table: what to print, and the strings that prove it.
 ///
 /// `Debug` is derived (IR-41): two `&'static str`s, no value from a live
 /// flock.
@@ -18,19 +18,20 @@ use super::field::{Field, FieldKind, ValueKind};
 pub struct Form {
     /// What the panel prints.
     pub text: &'static str,
-    /// A value the claim is checked against in this module's tests.
-    pub example: &'static str,
+    /// Values the claim is checked against in this module's tests, one for
+    /// each form the text names.
+    pub examples: &'static [&'static str],
 }
 
 /// The forms an [`ValueKind::UpDuration`] field accepts.
 pub const DURATION_FORMS: &[Form] = &[
     Form {
         text: "500ms, 2s, 5m, 1h",
-        example: "5m",
+        examples: &["500ms", "2s", "5m", "1h"],
     },
     Form {
         text: "a bare number is milliseconds",
-        example: "250",
+        examples: &["250"],
     },
 ];
 
@@ -38,11 +39,11 @@ pub const DURATION_FORMS: &[Form] = &[
 pub const DURATION_REFUSALS: &[Form] = &[
     Form {
         text: "a negative",
-        example: "-1s",
+        examples: &["-1s"],
     },
     Form {
         text: "a unit shep does not know",
-        example: "3 fortnights",
+        examples: &["3 fortnights"],
     },
 ];
 
@@ -50,24 +51,30 @@ pub const DURATION_REFUSALS: &[Form] = &[
 pub const MEMORY_FORMS: &[Form] = &[
     Form {
         text: "512M, 2G",
-        example: "512M",
+        examples: &["512M", "2G"],
     },
     Form {
         text: "a bare number is bytes",
-        example: "1048576",
+        examples: &["1048576"],
     },
 ];
 
 /// The forms a [`FieldKind::Bool`] field accepts.
+///
+/// This table is not parser-backed: there is no `shep_core` grammar for a
+/// bool, so no test parses these examples.
 pub const BOOL_FORMS: &[Form] = &[Form {
     text: "true or false",
-    example: "true",
+    examples: &["true", "false"],
 }];
 
 /// The forms a [`FieldKind::Integer`] field accepts.
+///
+/// This table is not parser-backed: there is no `shep_core` grammar for an
+/// integer, so no test parses these examples.
 pub const INTEGER_FORMS: &[Form] = &[Form {
     text: "a whole number",
-    example: "3",
+    examples: &["3"],
 }];
 
 /// What a field's explanation panel prints under VALIDATION.
@@ -135,32 +142,79 @@ mod tests {
     #[test]
     fn every_accepted_duration_form_parses() {
         for form in DURATION_FORMS {
-            assert!(
-                form.example.parse::<UpDuration>().is_ok(),
-                "{} is listed as accepted but does not parse",
-                form.example
-            );
+            for example in form.examples {
+                assert!(
+                    example.parse::<UpDuration>().is_ok(),
+                    "{} is listed as accepted but does not parse",
+                    example
+                );
+            }
         }
     }
 
     #[test]
     fn every_refused_duration_form_fails_to_parse() {
         for form in DURATION_REFUSALS {
-            assert!(
-                form.example.parse::<UpDuration>().is_err(),
-                "{} is listed as refused but parses",
-                form.example
-            );
+            for example in form.examples {
+                assert!(
+                    example.parse::<UpDuration>().is_err(),
+                    "{} is listed as refused but parses",
+                    example
+                );
+            }
         }
     }
 
     #[test]
     fn every_accepted_memory_form_parses() {
         for form in MEMORY_FORMS {
+            for example in form.examples {
+                assert!(
+                    example.parse::<MemSize>().is_ok(),
+                    "{} is listed as accepted but does not parse",
+                    example
+                );
+            }
+        }
+    }
+
+    /// Every form the text names has a corresponding example in examples,
+    /// since that is the hole being closed. Exempt DURATION_REFUSALS and
+    /// INTEGER_FORMS: DURATION_REFUSALS describes a single category in prose
+    /// and takes one example each, and INTEGER_FORMS is not parser-backed.
+    #[test]
+    fn every_form_the_text_names_has_an_example() {
+        for form in DURATION_FORMS {
+            let comma_count = form.text.matches(',').count();
+            let expected_count = comma_count + 1;
             assert!(
-                form.example.parse::<MemSize>().is_ok(),
-                "{} is listed as accepted but does not parse",
-                form.example
+                expected_count <= form.examples.len(),
+                "text \"{}\" names {} forms but examples has only {}",
+                form.text,
+                expected_count,
+                form.examples.len()
+            );
+        }
+        for form in MEMORY_FORMS {
+            let comma_count = form.text.matches(',').count();
+            let expected_count = comma_count + 1;
+            assert!(
+                expected_count <= form.examples.len(),
+                "text \"{}\" names {} forms but examples has only {}",
+                form.text,
+                expected_count,
+                form.examples.len()
+            );
+        }
+        for form in BOOL_FORMS {
+            let comma_count = form.text.matches(',').count();
+            let expected_count = comma_count + 1;
+            assert!(
+                expected_count <= form.examples.len(),
+                "text \"{}\" names {} forms but examples has only {}",
+                form.text,
+                expected_count,
+                form.examples.len()
             );
         }
     }
