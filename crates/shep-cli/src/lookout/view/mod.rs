@@ -258,7 +258,11 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
             buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
             return;
         }
-        Body::FlockTable => {}
+        // Nothing draws the secrets pane yet: this task is the reducer path
+        // and the load. Falling through to the flock table is a stand-in,
+        // not a design choice; a later task in this same frame gives this
+        // arm its own body the way the three above have.
+        Body::FlockTable | Body::Secrets(_) => {}
     }
 
     if let Some(banner) = status::banner_line(app) {

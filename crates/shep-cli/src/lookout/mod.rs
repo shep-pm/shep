@@ -43,7 +43,7 @@ use ratatui::layout::Rect;
 use shep_core::paths::ShepPaths;
 use tokio::sync::mpsc;
 
-use self::app::{App, Control, Effect, Msg, RowKey, Sent};
+use self::app::{App, Body, Control, Effect, Msg, RowKey, Sent};
 use self::source::Shepherd;
 use self::theme::Palette;
 use crate::cli::LookoutArgs;
@@ -209,6 +209,20 @@ pub fn resolve_control(read_only: bool, kv: &Path) -> Control {
         Ok(Some(value)) if value == "false" => Control::ReadOnly,
         _ => Control::Allowed,
     }
+}
+
+/// Rebuilds `ShepPaths` from `home` alone, the way `run_ui`'s own three
+/// loose path parameters were themselves built.
+///
+/// A plain `home_dir.join(".shep")` fallback is [`ShepPaths::resolve`]'s own
+/// rule for when `$SHEP_HOME` is unset; `home` here has already run that
+/// gauntlet once (in `lookout` or in a test harness), so the closure below
+/// hands it back as `SHEP_HOME` rather than letting `resolve` append
+/// `.shep` a second time and land every `secrets::model` read one directory
+/// short of `daemon_config`.
+fn secrets_paths_from(home: &Path) -> ShepPaths {
+    let home_str = home.to_string_lossy().into_owned();
+    ShepPaths::resolve(&|key| (key == "SHEP_HOME").then(|| home_str.clone()), home)
 }
 
 /// The UI loop.
@@ -442,6 +456,50 @@ where
                 }));
                 dirty = true;
             }
+            // Off this task for the same reason `Effect::WriteSetting` is:
+            // the store's own lock (`ShepToml::try_edit`'s cousin over
+            // `secrets.json`) acquires with no deadline.
+            //
+            // `paths` is reconstructed from `home` rather than threaded in
+            // as a fourth parameter, since `home` alone already fixes every
+            // field `secrets::model` reads: `daemon_config` and
+            // `socket_default` above are the same derivation, kept as their
+            // own parameters so a test can hand this loop an arbitrary
+            // pair. The environment is the current tab's, once there is
+            // one; before the first load lands there is no tab yet, so this
+            // reads the daemon's own configured default instead, and
+            // `Msg::Secrets` echoes back whichever it used so the reducer
+            // can find that environment's tab once the model arrives.
+            Effect::LoadSecrets => {
+                let paths = secrets_paths_from(&home);
+                let procs = app
+                    .rows()
+                    .into_iter()
+                    .map(|row| row.info.clone())
+                    .collect::<Vec<_>>();
+                let environment = match app.body() {
+                    Body::Secrets(pane) if !pane.model.environments.is_empty() => {
+                        pane.model.environments[pane.tab].clone()
+                    }
+                    _ => {
+                        crate::commands::secret::daemon_config(&paths)
+                            .daemon
+                            .environment
+                    }
+                };
+                let for_msg = environment.clone();
+                let handle = tokio::task::spawn_blocking(move || {
+                    crate::lookout::secrets::model(&paths, &procs, &environment)
+                });
+                inflight.push(Box::pin(async move {
+                    let result = handle.await.map(Box::new).map_err(|err| err.to_string());
+                    Msg::Secrets {
+                        environment: for_msg,
+                        result,
+                    }
+                }));
+                dirty = true;
+            }
             // `apply_setting` takes `ShepToml::try_edit`'s lock, which blocks
             // with no deadline, so the handle goes into `inflight` rather than
             // being awaited here. `_authority` is a proof carried by the
@@ -582,6 +640,22 @@ mod tests {
     use crate::lookout::source::{HostSample, Local};
     use crate::lookout::tail::Tail;
     use crate::lookout::theme::Palette;
+
+    /// Pins the bug a bare `ShepPaths::resolve(&|_| None, home)` would
+    /// reintroduce: with no `SHEP_HOME` in the closure, `resolve` appends
+    /// `.shep` to `home_dir` itself, and every `secrets::model` read would
+    /// land one directory below `daemon_config`, which every `run_ui` test
+    /// above builds directly under `home`.
+    #[test]
+    fn secrets_paths_from_does_not_add_a_shep_suffix() {
+        let home = Path::new("/tmp/shep-lookout-tests");
+
+        let paths = secrets_paths_from(home);
+
+        assert_eq!(paths.home, home);
+        assert_eq!(paths.daemon_config, home.join("shep.toml"));
+        assert_eq!(paths.secrets, home.join("secrets.json"));
+    }
 
     /// A `Local` that touches no disk: a fixed sample, a fixed tail, and a
     /// count of each call. `Arc`, since `run_ui` takes the reader by value.

@@ -48,11 +48,6 @@ pub(crate) struct SecretRow {
 }
 
 /// Everything the pane needs for one environment tab.
-///
-/// `environments`, `unreadable` and `roll_age` have no non-test reader yet:
-/// the pane that draws them lands in a later task. `#[allow(dead_code)]`
-/// says so rather than inventing one.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SecretsModel {
     /// Every environment the store holds a slot for, plus
@@ -62,15 +57,22 @@ pub(crate) struct SecretsModel {
     /// each.
     pub rows: Vec<SecretRow>,
     /// Why the operator's store would not read, when it would not.
+    ///
+    /// No non-test reader yet: the pane that draws it lands in a later
+    /// task. `#[allow(dead_code)]` says so rather than inventing one.
+    #[allow(dead_code)]
     pub unreadable: Option<String>,
     /// How old the muster roll is, or `None` when it is missing.
+    ///
+    /// No non-test reader yet, for the same reason as [`Self::unreadable`].
+    #[allow(dead_code)]
     pub roll_age: Option<Duration>,
 }
 
 impl SecretsModel {
     /// This model's rows from one store, in key order.
     ///
-    /// No non-test caller yet: the pane that draws `rows_for` lands in a
+    /// No non-test caller yet: the pane that draws grouped rows lands in a
     /// later task. `#[allow(dead_code)]` says so rather than inventing one.
     #[allow(dead_code)]
     pub fn rows_for<'a>(&'a self, source: &'a Source) -> impl Iterator<Item = &'a SecretRow> {
@@ -83,10 +85,6 @@ impl SecretsModel {
 /// Best-effort throughout. An unreadable operator store reports itself and
 /// leaves the provider rows alone; a missing roll costs the readers and
 /// nothing else.
-///
-/// No non-test caller yet: the pane that renders this model lands in a
-/// later task. `#[allow(dead_code)]` says so rather than inventing one.
-#[allow(dead_code)]
 pub(crate) fn model(paths: &ShepPaths, procs: &[ProcessInfo], environment: &str) -> SecretsModel {
     let (store, unreadable) = match secrets::all(&paths.secrets) {
         Ok(store) => (store, None),

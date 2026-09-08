@@ -63,6 +63,9 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char('R') => Some(KeyPress::Action(ActionVerb::Restart)),
         KeyCode::Char('L') => Some(KeyPress::Action(ActionVerb::Reload)),
         KeyCode::Char('s') => Some(KeyPress::Settings),
+        KeyCode::Char('S') => Some(KeyPress::Secrets),
+        KeyCode::Left => Some(KeyPress::TabPrev),
+        KeyCode::Right => Some(KeyPress::TabNext),
         KeyCode::Char('e') => Some(KeyPress::Edit),
         KeyCode::Char('h') => Some(KeyPress::Help),
         KeyCode::Char(' ') => Some(KeyPress::Cycle),
@@ -229,6 +232,41 @@ mod tests {
         assert_eq!(
             map_key(&key(KeyCode::End), InputMode::Normal),
             Some(KeyPress::SelectLast)
+        );
+    }
+
+    #[test]
+    fn capital_s_opens_the_secrets_pane_and_lower_s_still_opens_settings() {
+        assert_eq!(
+            map_key(&key(KeyCode::Char('S')), InputMode::Normal),
+            Some(KeyPress::Secrets)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('s')), InputMode::Normal),
+            Some(KeyPress::Settings),
+            "the settings screen keeps its own key"
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('g')), InputMode::Normal),
+            Some(KeyPress::SelectFirst),
+            "the frame wanted `g` for secrets; `g` is still SelectFirst"
+        );
+    }
+
+    #[test]
+    fn the_arrow_keys_move_the_environment_tab() {
+        assert_eq!(
+            map_key(&key(KeyCode::Left), InputMode::Normal),
+            Some(KeyPress::TabPrev)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Right), InputMode::Normal),
+            Some(KeyPress::TabNext)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Up), InputMode::Normal),
+            Some(KeyPress::SelectUp),
+            "the vertical arrows keep the meaning they already have"
         );
     }
 
