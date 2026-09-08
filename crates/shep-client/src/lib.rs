@@ -79,6 +79,17 @@ pub mod testing;
 
 pub use shep_core;
 
+// Pins the `schema` feature's forward to `shep-core/schema`: a dog reaches
+// these two through the re-export above, so a missing forward costs it a
+// second dependency it should never name. Workspace feature unification
+// hides that everywhere except `cargo check -p shep-client`.
+#[cfg(feature = "schema")]
+const _: () = {
+    const fn assert_json_schema<T: schemars::JsonSchema>() {}
+    assert_json_schema::<shep_core::values::MemSize>();
+    assert_json_schema::<shep_core::values::UpDuration>();
+};
+
 /// The wire protocol this client speaks, re-exported from
 /// [`shep_core::protocol::PROTOCOL_VERSION`].
 ///
