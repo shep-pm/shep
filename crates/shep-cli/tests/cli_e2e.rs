@@ -3708,14 +3708,31 @@ fn import_env_splits_a_dotenv_between_the_two_stores() {
     // the daemon holds the parked spec in memory until something rolls it.
     assert_success(&shep(home.path()).arg("save").output().unwrap());
 
+    // The roll is where the reference itself lands, so it is where the
+    // literal token is asserted. `describe` reports the reference resolved
+    // rather than reprinting it, and that is the second half of the claim:
+    // a bare `contains("DB_PASSWORD")` would pass on an unresolved one.
+    let rolled = std::fs::read_to_string(home.path().join("flock.json")).unwrap();
+    assert!(
+        rolled.contains("{{secret:DB_PASSWORD}}"),
+        "the reference did not reach the sheep: {rolled}"
+    );
+
     let described = shep(home.path())
         .args(["describe", "web", "--format", "json"])
         .output()
         .unwrap();
-    let described = String::from_utf8_lossy(&described.stdout);
-    assert!(
-        described.contains("{{secret:DB_PASSWORD}}") || described.contains("DB_PASSWORD"),
-        "the reference did not reach the sheep: {described}"
+    let described: serde_json::Value =
+        serde_json::from_slice(&described.stdout).expect("describe --format json emits JSON");
+    assert_eq!(
+        described["secrets"],
+        serde_json::json!([{
+            "name": "web",
+            "reference": "DB_PASSWORD",
+            "environment": "production",
+            "status": "resolved",
+        }]),
+        "{described}"
     );
 
     graceful_kill(home.path());
@@ -4071,7 +4088,11 @@ fn import_env_dry_run_writes_nothing() {
     )
     .unwrap();
 
-    let before = std::fs::read_to_string(home.path().join("secrets.json")).ok();
+    // Both stores, because the fixture's plain key never reaches the secret
+    // one: a dry run that sent a non-dry batch would move `overrides.json`
+    // alone and pass a check that only read `secrets.json`.
+    let secrets_before = std::fs::read_to_string(home.path().join("secrets.json")).ok();
+    let overrides_before = std::fs::read_to_string(home.path().join("overrides.json")).ok();
     let output = shep(home.path())
         .args([
             "import",
@@ -4088,7 +4109,11 @@ fn import_env_dry_run_writes_nothing() {
     assert!(output.status.success(), "{output:?}");
     assert_eq!(
         std::fs::read_to_string(home.path().join("secrets.json")).ok(),
-        before
+        secrets_before
+    );
+    assert_eq!(
+        std::fs::read_to_string(home.path().join("overrides.json")).ok(),
+        overrides_before
     );
     // The dry run is the path that prints a row per key, so it is the one
     // where a value would show up if a row ever grew one.
