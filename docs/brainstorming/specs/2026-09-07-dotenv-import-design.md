@@ -5,7 +5,8 @@ Status: designed 2026-09-07, implemented on `feat/dotenv-import`, 2026-09-08.
 An operator with a `.env` and an app under shep has no way to get one into the
 other. This design adds `shep import env`, which reads a `.env`, puts the keys
 the operator names into the secret store, puts the rest into that sheep's own
-env, and refuses rather than half finishing.
+env, and refuses whole rather than half finishing, up to the point where it
+starts writing. Decision 13 has the one window where that stops being true.
 
 It also splits `shep import`, which is currently one verb meaning "read a pm2
 dump", into `shep import pm2` and `shep import env`. That is a breaking change
@@ -308,10 +309,25 @@ and the reason that rule stopped being trusted is already fixed by
 5. Write `secrets.json`.
 6. `SetSheepEnvBatch { dry_run: false }`.
 
-Secrets first and env second, deliberately. A failure at step 6 leaves values
-in the store that nothing references, which are inert, and a re-run is clean
-because an identical value is not a collision. The reverse order leaves
-`{{secret:KEY}}` pointing at nothing, and the re-run then needs `--force`.
+Steps 1 to 4 are the atomic half. Every refusal they raise happens before
+either store is opened, so nothing is written: a parse error, a pattern that
+matches nothing, an unknown sheep, a dog, a collision without `--force`, and a
+merged config `normalize` will not take. That last one is the daemon's, and it
+answers a dry run exactly as it answers the real send, which is what keeps a
+reserved variable like `SHEP_NAME` from getting past step 4.
+
+Steps 5 and 6 are not atomic, and nothing can make them so: they write two
+stores that no shared lock covers. A failure at step 6 leaves the secrets
+written at step 5 behind. Two things reach it. The daemon decides collisions
+afresh on each call, so anything that touched the sheep's env between step 3
+and step 6 lands there; and the request itself can fail, on a daemon that went
+away or a deadline. Both say so, naming how many secret keys are already
+written.
+
+Secrets first and env second, deliberately. Those leftover values are inert,
+since nothing references them, and a re-run is clean because an identical value
+is not a collision. The reverse order leaves `{{secret:KEY}}` pointing at
+nothing, and the re-run then needs `--force`.
 
 CLI `--dry-run` stops after step 3 and prints one line per key: key, store,
 slot, byte length. Never a value.

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** `shep import env <FILE> --app <NAME>` reads a `.env`, puts the keys the operator names into the secret store, puts the rest into that sheep's own env overrides, and refuses rather than half finishing.
+**Goal:** `shep import env <FILE> --app <NAME>` reads a `.env`, puts the keys the operator names into the secret store, puts the rest into that sheep's own env overrides, and refuses whole rather than half finishing, up to the point where it starts writing. The one window where that stops being true is between the secret write and the env batch: the design doc's decision 13 says what reaches it and what it leaves behind.
 
 **Architecture:** `shep import` splits into `pm2` and `env` subcommands, which forces the existing `import/` modules under an `import/pm2/` directory and gives the new half `import/dotenv/`. The parser is hand written and strict. Classification is a glob match against the parsed keys. The secret half is written by the CLI directly, as `shep secret set` already is; the env half goes through one new additive request, `Request::SetSheepEnvBatch`, which the daemon applies as a single read-modify-write of `overrides.json` so every key lands or none does.
 
