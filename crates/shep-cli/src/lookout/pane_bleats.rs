@@ -302,6 +302,19 @@ impl BleatsPane {
         self.match_snapshot = Some(self.filters.matcher.clone());
     }
 
+    /// The match box's live buffer while it is open, or `None` when it is
+    /// not.
+    ///
+    /// The status bar needs both facts and the buffer alone cannot carry
+    /// them: an empty box and a closed box both read as an empty matcher.
+    /// `Some("")` is a box open over nothing typed yet.
+    #[must_use]
+    pub fn match_editing(&self) -> Option<&str> {
+        self.match_snapshot
+            .as_ref()
+            .map(|_| self.filters.matcher.as_deref().unwrap_or(""))
+    }
+
     /// Ends the match box, keeping whatever [`Self::set_match`] already
     /// applied on the way in: `TextChar` and `TextBackspace` narrow the
     /// axis live, so there is nothing left for this to write.

@@ -10,6 +10,7 @@ use super::super::app::{
     ActionState, App, Control, InputMode, Link, RowKey, Settings, SettingsPrompt, retrying_sentence,
 };
 use super::super::pane::{ConfigPane, PanePending};
+use super::super::pane_bleats::BleatsPane;
 use super::cell;
 use super::flock::fit;
 use super::settings::field_label;
@@ -71,6 +72,15 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             format!("{}  enter confirms, any other key cancels", prompt.text)
         };
         (text, palette.attention())
+    } else if let Some(buffer) = app.bleats_pane().and_then(BleatsPane::match_editing) {
+        // Ahead of the filter branch for the reason the comment below gives:
+        // the bleats pane's match box shares `InputMode::Text` with the
+        // dashboard's name filter, and falling through would label the
+        // dashboard's own untouched query as this pane's match.
+        (
+            format!("match  {buffer}\u{258f}   enter applies   esc cancels"),
+            palette.attention(),
+        )
     } else if let Some((label, buffer)) = app.config_pane().and_then(pane_editor) {
         // The pane's own free-text editor, and the env sub-screen's, ahead
         // of the filter branch: all three share `InputMode::Text`, and a
@@ -374,6 +384,7 @@ mod tests {
     use super::super::fixtures::{
         acting_app, allowed_app, app_in_settings, app_in_settings_on, app_in_settings_with_control,
         armed_app, armed_app_with_a_filter_and_a_notice, editing_app, filtered_app, rendered,
+        with_selection,
     };
     use super::*;
     use crate::commands::settings::SettingField;
@@ -852,5 +863,28 @@ mod tests {
         app.update(Msg::Key(KeyPress::Escape));
         app.update(Msg::Key(KeyPress::ListMoveDown));
         assert!(app.config_pane().unwrap().is_armed(), "J arms a move");
+    }
+
+    /// The bleats pane's match box gets the status bar, not the dashboard's
+    /// name filter.
+    ///
+    /// Both own `InputMode::Text`, and the filter branch is a catch-all, so
+    /// without a branch of its own the bar labels the dashboard's untouched
+    /// query as this pane's match. The same trap the config pane's editor
+    /// sits ahead of the filter branch to avoid.
+    #[test]
+    fn the_bleats_match_box_owns_the_status_bar_while_it_is_open() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let _ = app.update(Msg::Key(KeyPress::FilterStart));
+        for typed in "pool".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        let bar = rendered(&status_line(&app, 160));
+        assert!(bar.contains("match  pool"), "got {bar}");
+        assert!(!bar.contains("filter"), "not the dashboard's box: {bar}");
     }
 }
