@@ -111,7 +111,7 @@ fn feed_line(app: &App, filters: &Filters, line: &TailLine, width: u16) -> Line<
         Span::styled(format!("{tag}  "), palette.muted()),
     ];
     let text = fit(&line.text, width.saturating_sub(5));
-    spans.extend(highlighted(&text, filters, palette.attention()));
+    spans.extend(highlighted(&text, filters, palette.band(Role::Butter)));
     Line::from(spans)
 }
 
@@ -193,7 +193,7 @@ fn chip_labels(filters: &Filters) -> Vec<String> {
         chips.push(format!("stream {name}"));
     }
     if let Some(min) = filters.min_level {
-        chips.push(format!("level ≥{}", format!("{min:?}").to_lowercase()));
+        chips.push(format!("level ≥ {}", format!("{min:?}").to_lowercase()));
     }
     if let Some(text) = &filters.matcher {
         let suffix = match filters.match_kind() {
@@ -264,6 +264,7 @@ mod tests {
 
     use super::super::super::app::{KeyPress, Msg};
     use super::super::super::frames::render_text;
+    use super::super::super::level::Level;
     use super::super::super::pane_bleats::MatchKind;
     use super::super::super::tail::{Stream, Tail, TailLine};
     use super::super::fixtures::{
@@ -468,6 +469,27 @@ mod tests {
         // words.
         assert!(!text.contains("level ≥"), "got {text}");
         assert!(!text.contains("match "), "got {text}");
+    }
+
+    /// Each chip's literal text, exactly as the design draws it:
+    /// `stream err`, `level \u{2265} warn`, `match \u{2026}`. Pinned to the
+    /// character because nothing else asserts it and the spacing already
+    /// drifted once: the level chip shipped as `level \u{2265}warn` against a
+    /// design reading `level \u{2265} warn`, and every test passed.
+    #[test]
+    fn each_chip_reads_the_way_the_design_draws_it() {
+        let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        app.update(Msg::Key(KeyPress::Bleats));
+        let pane = app
+            .bleats_pane_mut_for_tests()
+            .expect("the key above opened the pane");
+        pane.set_stream(Some(Stream::Err));
+        pane.set_min_level(Some(Level::Warn));
+        pane.set_match("pool".to_string());
+        let text = render_all(&draw_lines(&app, 160, 40));
+        assert!(text.contains("stream err"), "got {text}");
+        assert!(text.contains("level \u{2265} warn"), "got {text}");
+        assert!(text.contains("match pool"), "got {text}");
     }
 
     /// A `/…/`-delimited matcher's chip says it is a regex.
