@@ -4321,6 +4321,30 @@ impl App {
         }
     }
 
+    /// The row whose log files the feed should read: the bleats pane's
+    /// pinned sheep while that pane is open, and the selection otherwise.
+    ///
+    /// The two are not the same and the difference is operator-visible. The
+    /// pane pins one sheep for its lifetime, but `Msg::Snapshot` reseats the
+    /// selection whatever screen is showing, so a pinned sheep leaving the
+    /// flock moves the selection to another one. Reading the selection here
+    /// would then draw that other sheep's lines under a title still naming
+    /// the pinned sheep, which is one sheep's output presented as another's.
+    ///
+    /// `None` once the pinned sheep is gone, so the pane shows its own
+    /// "no longer in the flock" title over nothing rather than over somebody
+    /// else's log.
+    #[must_use]
+    pub fn feed_row(&self) -> Option<&Row> {
+        match self.bleats_pane() {
+            Some(pane) => match pane.sheep() {
+                RowKey::Sheep(id) => self.flock.get(id),
+                _ => None,
+            },
+            None => self.selected_row(),
+        }
+    }
+
     /// The selected row's app name: a sheep's own, or a group row's.
     ///
     /// Unlike [`Self::selected_row`] this answers for a group too: a config
@@ -7439,6 +7463,51 @@ mod tests {
 
     /// The pane opens on whatever was selected and pins it: full screen
     /// leaves no table to change a selection with.
+    /// The feed follows the pinned sheep, not the selection.
+    ///
+    /// The pane pins one sheep for its lifetime, but `Msg::Snapshot` reseats
+    /// the selection whatever screen is showing. So a pinned sheep leaving
+    /// the flock moved the selection to another one, and the next refresh
+    /// read that sheep's log files while the title still named the pinned
+    /// one: one sheep's output under another sheep's heading.
+    ///
+    /// Asserts the row the feed reads, which is the thing that was wrong.
+    /// Asserting the rendered title would have passed throughout, because
+    /// the title was always right.
+    #[test]
+    fn the_feed_follows_the_pinned_sheep_when_the_selection_moves() {
+        let mut app = fixtures::app_with(
+            vec![
+                ProcessInfo::builder(9, "web", ProcStatus::Online).build(),
+                ProcessInfo::builder(4, "billing", ProcStatus::Online).build(),
+            ],
+            fixtures::plain(),
+        );
+        app.select(RowKey::Sheep(9));
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        assert_eq!(
+            app.feed_row().map(|row| row.info.id),
+            Some(9),
+            "the pane opened on 9"
+        );
+
+        // 9 leaves the flock. The reseat moves the selection to 4.
+        let _ = app.update(Msg::Snapshot {
+            rows: vec![ProcessInfo::builder(4, "billing", ProcStatus::Online).build()],
+            at: Instant::now(),
+        });
+        assert_eq!(
+            app.selected(),
+            Some(RowKey::Sheep(4)),
+            "the selection did move, which is the setup for the bug"
+        );
+        assert_eq!(
+            app.feed_row().map(|row| row.info.id),
+            None,
+            "and the feed reads nothing rather than billing's log"
+        );
+    }
+
     #[test]
     fn b_opens_the_pane_on_the_selected_sheep() {
         let mut app =
@@ -7749,6 +7818,15 @@ mod tests {
             assert!(
                 position(first) <= position(last) + 1,
                 "step {step} jumped from {last} to {first}, leaving a gap: \
+                 {before:?} then {after:?}"
+            );
+            // Two-sided. The check above catches a page that steps over
+            // lines; this one catches a page that barely steps at all, which
+            // `page_amount_down` returning a constant 1 would do while
+            // satisfying the first assertion trivially.
+            assert!(
+                position(first) + 1 >= position(before[0].as_str()) + before.len(),
+                "step {step} moved by almost nothing, so it is not a page: \
                  {before:?} then {after:?}"
             );
         }

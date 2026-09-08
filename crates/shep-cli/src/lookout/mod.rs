@@ -275,11 +275,16 @@ where
         // shows it and never on a frame that is not about to be drawn.
         let may_draw = last_draw.is_none_or(|at| at.elapsed() >= MIN_REDRAW);
         if feed_dirty && may_draw {
-            // Nothing selected means an empty flock, and the pane's header
-            // already says so. `tail::read`'s `(None, None)` early return is
-            // for a different case, a selected sheep whose shepherd predates
-            // the `out_file`/`err_file` fields.
-            let tail = match app.selected_row() {
+            // `feed_row`, not `selected_row`: the full-screen pane pins a
+            // sheep and the selection can move out from under it, so reading
+            // the selection would draw another sheep's lines under a title
+            // naming the pinned one.
+            //
+            // Nothing to read means an empty flock, or a pinned sheep that
+            // has left it, and the pane's header says which. `tail::read`'s
+            // `(None, None)` early return is for a different case, a sheep
+            // whose shepherd predates the `out_file`/`err_file` fields.
+            let tail = match app.feed_row() {
                 None => tail::Tail::default(),
                 Some(row) => {
                     // Cloned out before `app` is borrowed mutably.

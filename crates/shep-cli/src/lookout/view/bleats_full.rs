@@ -216,6 +216,16 @@ fn page_lines_back(start: usize, body_rows: usize, cost: impl Fn(usize) -> usize
     count.max(1)
 }
 
+/// Lines one forward page covers: the lines the window is showing.
+///
+/// Pure and named, mirroring [`page_lines_back`], so the property test can
+/// call the same code the key does. Its first version re-implemented this
+/// expression inline, which pinned the arithmetic and left the wiring free:
+/// `page_amount_down` could return a constant and every test still passed.
+fn page_lines_forward(shown: &std::ops::Range<usize>) -> usize {
+    shown.len().max(1)
+}
+
 /// How many lines one `ctrl-u` moves [`BleatsPane::scroll_offset`] by:
 /// what fits walking backward from the line the pane is currently showing
 /// first.
@@ -267,7 +277,7 @@ pub(crate) fn page_amount_down(app: &App, pane: &BleatsPane) -> usize {
     let shown = window_range(survivors.len(), pane.scroll_offset(), body_rows, |index| {
         row_height(&survivors[index].text, text_width, true)
     });
-    shown.len().max(1)
+    page_lines_forward(&shown)
 }
 
 /// One feed line, as the rows it actually draws: one row when
@@ -833,7 +843,7 @@ mod tests {
                              ctrl-u went from {shown:?} to {up:?}"
                         );
 
-                        let forward = shown.len().max(1);
+                        let forward = page_lines_forward(&shown);
                         let down =
                             window_range(len, offset.saturating_sub(forward), body_rows, cost);
                         assert!(
