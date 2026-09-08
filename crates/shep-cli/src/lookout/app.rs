@@ -7135,16 +7135,40 @@ mod tests {
         assert!(matches!(app.body(), Body::FlockTable));
     }
 
-    /// With no chips left, `Escape` closes the pane instead of dropping one.
-    /// A freshly opened pane has no filters set, so its very first `Escape`
-    /// already exercises this rather than the chip-dropping branch.
+    /// `Escape` with a chip set drops the chip and leaves the pane open; only
+    /// the next one closes it. Both halves in one test, because the guard in
+    /// `on_bleats_key` is invisible to a test that never sets a chip: with a
+    /// freshly opened pane `drop_newest_chip` returns `false` either way, so
+    /// removing the guard entirely still passes every other `esc` test in this
+    /// file. Measured, not assumed.
     #[test]
-    fn esc_with_no_chips_closes_the_pane() {
+    fn esc_drops_a_chip_before_it_closes_the_pane() {
         let mut app =
             fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
         let _ = app.update(Msg::Key(KeyPress::Bleats));
+        app.bleats_pane_mut()
+            .expect("the pane is open")
+            .set_min_level(Some(super::super::level::Level::Warn));
+
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(matches!(app.body(), Body::FlockTable));
+        assert!(
+            matches!(app.body(), Body::Bleats(_)),
+            "the first Escape spends the chip and keeps the pane"
+        );
+        assert!(
+            app.bleats_pane()
+                .expect("still open")
+                .filters()
+                .min_level
+                .is_none(),
+            "the chip it spent was the level one"
+        );
+
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(
+            matches!(app.body(), Body::FlockTable),
+            "with no chips left the next Escape closes"
+        );
     }
 
     /// `b` with nothing selected asks for nothing, the way `e` does.
