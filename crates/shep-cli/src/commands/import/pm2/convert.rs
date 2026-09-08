@@ -194,7 +194,7 @@ mod tests {
     use shep_core::values::{MemSize, UpDuration};
 
     use super::*;
-    use crate::commands::import::dump;
+    use crate::commands::import::pm2::dump;
 
     fn imported() -> Imported {
         convert(dump::parse(include_str!("testdata/dump.pm2.json")).unwrap()).unwrap()

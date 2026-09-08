@@ -38,9 +38,10 @@ use crate::exit::ExitCode;
 pub use rows::{
     AvailableDogRows, BarkRows, DeletedIds, DescribedSecret, DogAdoptedRow, DogDisabledRow,
     DogEnabledRow, DogRehomedRow, DogRows, EmptiedFile, EmptiedFiles, FlockRows, FlushedRows,
-    ImportRow, ImportRows, KillRow, KvEntry, KvRows, KvUnsetRow, LambRows, RolledSheep,
-    RolledSheepRows, SavedRollRow, SecretKeyRow, SecretKeyRows, SecretSlotRow, SecretStatus,
-    SecretValueRow, SentLineRows, SignalledRows, StartupStep, StartupSteps, TriggeredRows,
+    ImportEnvRow, ImportEnvRows, ImportRow, ImportRows, KillRow, KvEntry, KvRows, KvUnsetRow,
+    LambRows, RolledSheep, RolledSheepRows, SavedRollRow, SecretKeyRow, SecretKeyRows,
+    SecretSlotRow, SecretStatus, SecretValueRow, SentLineRows, SignalledRows, StartupStep,
+    StartupSteps, TriggeredRows,
 };
 pub use table::{human_bytes, human_duration, local_timestamp, render_table};
 

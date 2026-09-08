@@ -12,11 +12,16 @@
 //! environment as siblings defeats.
 
 use std::collections::BTreeMap;
+use std::fmt;
 
 use serde_json::{Map, Value};
 
 /// One instance row out of a pm2 dump.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// `Debug` is hand-written: `env` and `declared` carry a real process
+/// environment, values included (IR-41), so a derive would print secrets on
+/// any `{row:?}` or `dbg!` along a diagnostic path.
+#[derive(Clone, PartialEq)]
 pub(crate) struct DumpRow {
     /// The app's name, shared by every instance of a clustered app.
     pub name: String,
@@ -46,6 +51,26 @@ pub(crate) struct DumpRow {
     /// Keys dropped because their value was neither a string, a number, nor
     /// a boolean, none of which a Flockfile env can hold.
     pub unrepresentable: Vec<String>,
+}
+
+impl fmt::Debug for DumpRow {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DumpRow")
+            .field("name", &self.name)
+            .field("pm_exec_path", &self.pm_exec_path)
+            .field("args", &self.args)
+            .field("pm_cwd", &self.pm_cwd)
+            .field("exec_interpreter", &self.exec_interpreter)
+            .field("exec_mode", &self.exec_mode)
+            .field("autorestart", &self.autorestart)
+            .field("restart_delay", &self.restart_delay)
+            .field("merge_logs", &self.merge_logs)
+            .field("max_memory_restart", &self.max_memory_restart)
+            .field("env", &format_args!("<{} vars>", self.env.len()))
+            .field("declared", &format_args!("<{} envs>", self.declared.len()))
+            .field("unrepresentable", &self.unrepresentable)
+            .finish()
+    }
 }
 
 /// Why [`parse`] failed to read a dump.
@@ -289,6 +314,29 @@ mod tests {
         let rows = parse(nested).unwrap();
         assert!(rows[0].env.is_empty());
         assert_eq!(rows[0].unrepresentable, ["OPTS"]);
+    }
+
+    /// Exact string pinned so a lazy `derive(Debug)` refactor fails here
+    /// instead of silently reopening the leak (IR-41), matching
+    /// `overrides::debug_redacts_override_values`.
+    #[test]
+    fn debug_redacts_row_env_values() {
+        let rows = parse(FIXTURE).unwrap();
+        let migrate = &rows[3];
+        let rendered = format!("{migrate:?}");
+        assert!(
+            !rendered.contains("postgres://localhost/app"),
+            "leaked: {rendered}"
+        );
+        assert_eq!(
+            rendered,
+            "DumpRow { name: \"migrate\", pm_exec_path: \"/srv/migrate/bin/migrate\", \
+             args: [\"--once\"], pm_cwd: Some(\"/srv/migrate\"), \
+             exec_interpreter: Some(\"none\"), exec_mode: Some(\"fork_mode\"), \
+             autorestart: None, restart_delay: None, merge_logs: None, \
+             max_memory_restart: None, env: <2 vars>, declared: <0 envs>, \
+             unrepresentable: [] }"
+        );
     }
 
     #[test]

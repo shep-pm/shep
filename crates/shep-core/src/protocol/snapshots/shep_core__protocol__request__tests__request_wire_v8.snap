@@ -449,5 +449,19 @@ expression: requests
         "API_KEY": "sk_live_placeholder"
       }
     }
+  },
+  {
+    "id": 33,
+    "deadline_ms": null,
+    "body": {
+      "kind": "set_sheep_env_batch",
+      "name": "web",
+      "entries": {
+        "API_KEY": "sk_live_placeholder",
+        "DATABASE_URL": "postgres://localhost/app"
+      },
+      "force": true,
+      "dry_run": true
+    }
   }
 ]

@@ -2336,6 +2336,57 @@ Options:
   -V, --version
           Print version
 @@VERB:import@@
+Read somebody else's config into shep: a pm2 dump, or a `.env`
+
+Usage: shep import [OPTIONS] <COMMAND>
+
+Commands:
+  pm2   Write a Flockfile from a pm2 dump. Starts nothing
+  env   Read a `.env` into the secret store and one sheep's own env
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+      --format <FORMAT>
+          Output format
+
+          Possible values:
+          - table: Human-readable columns (the default)
+          - json:  A versioned JSON envelope, one object per invocation
+          
+          [default: table]
+
+  -q, --quiet
+          Suppress non-essential output
+          
+          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
+          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
+          print regardless.
+
+      --style <STYLE>
+          How much this invocation dresses up its output: `full`, `plain`, or `bare`
+          
+          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
+          style` reports which one answered.
+
+          Possible values:
+          - full:  Sheep, boxes and colour
+          - plain: Boxes and colour, no sheep
+          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
+
+      --home <HOME>
+          Talk to a different shepherd
+          
+          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
+          want the default, ~/.shep.
+          
+          [env: SHEP_HOME=]
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+@@VERB:import pm2@@
 Write a Flockfile from a pm2 dump. Starts nothing.
 
 Reads `--from`, or `~/.pm2/dump.pm2` if it names nothing — whichever `pm2 save` last wrote. Every
@@ -2344,7 +2395,7 @@ clustered app is named on stderr: shep binds nothing, so N instances on one port
 carried that was neither declared nor recognizable session junk is named on stderr too, and left out
 of the Flockfile, for the operator to decide.
 
-Usage: shep import [OPTIONS]
+Usage: shep import pm2 [OPTIONS]
 
 Options:
       --format <FORMAT>
@@ -2393,6 +2444,100 @@ Options:
           want the default, ~/.shep.
           
           [env: SHEP_HOME=]
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+@@VERB:import env@@
+Read a `.env` into the secret store and one sheep's own env.
+
+Every key the file holds goes to the named sheep's env, where it reaches the app at its next spawn.
+A key named by `--secret` has its value stored in `$SHEP_HOME/secrets.json` instead, and the sheep's
+env gets `{{secret:KEY}}`, so the value never reaches `flock.json` or the handover blob.
+
+A key that is not marked secret is stored in the clear, and is copied into both of those snapshots
+along with the rest of the sheep's config.
+
+The sheep has to exist already: this records an operator override, which is per sheep. Run `shep
+start` first.
+
+Any collision, any pattern that matches nothing, and any line the grammar does not accept refuses
+the whole import. A refusal reached before the secret store is written leaves both stores alone; one
+reached after counts the keys it left there, which nothing references until the import is re-run.
+
+Usage: shep import env [OPTIONS] --app <APP> <FILE>
+
+Arguments:
+  <FILE>
+          The `.env` to read
+          
+          A `{{...}}` in a plain value reaches the app as the literal text the file wrote, not as a
+          shep template reference.
+
+Options:
+      --app <APP>
+          The sheep whose env these keys belong to
+
+      --format <FORMAT>
+          Output format
+
+          Possible values:
+          - table: Human-readable columns (the default)
+          - json:  A versioned JSON envelope, one object per invocation
+          
+          [default: table]
+
+  -q, --quiet
+          Suppress non-essential output
+          
+          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
+          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
+          print regardless.
+
+      --secret <SECRET>
+          Store this key's value as a secret, and reference it from the env.
+          
+          An exact key, or a glob when it holds a metacharacter, the same rule a sheep-name selector
+          takes. Repeatable. A pattern matching no key in the file refuses the import.
+
+      --only <ONLY>
+          Import only these keys; the default is all of them.
+          
+          Same grammar as `--secret`, and the same refusal.
+
+      --style <STYLE>
+          How much this invocation dresses up its output: `full`, `plain`, or `bare`
+          
+          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
+          style` reports which one answered.
+
+          Possible values:
+          - full:  Sheep, boxes and colour
+          - plain: Boxes and colour, no sheep
+          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
+
+      --env <ENV>
+          Which environment's slot the secrets go in.
+          
+          The default is the sheep's own environment, which is its `environment` field, or `[daemon]
+          environment` when it has none, and so is never the `all` slot that every environment
+          reads. Naming `all` here writes that slot, as `shep secret set --env all` does.
+
+      --home <HOME>
+          Talk to a different shepherd
+          
+          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
+          want the default, ~/.shep.
+          
+          [env: SHEP_HOME=]
+
+      --dry-run
+          Print what would be written, and write nothing
+
+      --force
+          Overwrite keys that already hold a different value
 
   -h, --help
           Print help (see a summary with '-h')

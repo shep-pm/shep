@@ -1548,6 +1548,85 @@ impl Render for ImportRows {
     const PRIORITIES: &'static [u8] = &[0, 8, 7, 6];
 }
 
+/// One key `shep import env` wrote, or would write.
+///
+/// `Debug` is derived and stays that way only because there is no value
+/// here: `bytes` is a length. The row exists in this shape precisely so
+/// that neither format can print a value (IR-41).
+#[derive(Debug, Serialize)]
+pub struct ImportEnvRow {
+    /// The key.
+    pub key: String,
+    /// `secret` or `env`.
+    pub store: String,
+    /// The environment slot, for a secret. `-` for an env key.
+    pub slot: String,
+    /// The value's length in bytes.
+    pub bytes: usize,
+}
+
+/// `shep import env`: one row per key.
+///
+/// `transparent` so the JSON is a plain array.
+#[derive(Debug, Serialize)]
+#[serde(transparent)]
+pub struct ImportEnvRows(pub Vec<ImportEnvRow>);
+
+impl Render for ImportEnvRows {
+    fn headers() -> &'static [&'static str] {
+        &["KEY", "STORE", "SLOT", "BYTES"]
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        self.0
+            .iter()
+            .map(|row| {
+                vec![
+                    row.key.clone(),
+                    row.store.clone(),
+                    row.slot.clone(),
+                    row.bytes.to_string(),
+                ]
+            })
+            .collect()
+    }
+
+    /// STORE alone, and only on `secret`: the row an operator has to think
+    /// about, so the same `Butter` `ImportRows` paints its own.
+    fn rows_for(&self, presentation: Presentation, status_word: bool) -> Vec<Vec<String>> {
+        let rows = self.rows();
+        paint(
+            rows,
+            Self::headers(),
+            presentation,
+            status_word,
+            |header, cell, _index| match (header, cell) {
+                ("STORE", "secret") => Paint::Role(Role::Butter),
+                _ => Paint::Default,
+            },
+        )
+    }
+
+    /// # Panics
+    /// If `header` is not one of `Self::headers()`'s own values.
+    #[track_caller]
+    fn json_key_for(header: &str) -> &'static str {
+        match header {
+            "KEY" => "key",
+            "STORE" => "store",
+            "SLOT" => "slot",
+            "BYTES" => "bytes",
+            other => panic!("ImportEnvRows::headers() does not include {other:?}"),
+        }
+    }
+
+    const JSON_ONLY: &'static [&'static str] = &[];
+
+    // Parallel to `headers()`. KEY and STORE are the report; SLOT and BYTES
+    // are context a narrow terminal can lose.
+    const PRIORITIES: &'static [u8] = &[0, 0, 1, 2];
+}
+
 /// One step `shep startup` or `shep unstartup` took.
 ///
 /// Never from a wire `Response`: neither verb asks the shepherd anything.
@@ -3086,6 +3165,48 @@ pub(crate) mod tests {
         );
     }
 
+    /// Both stores, so the `-` slot an env key carries is covered too.
+    #[test]
+    fn import_env_rows_do_not_drift() {
+        assert_no_drift(
+            &ImportEnvRows(vec![
+                ImportEnvRow {
+                    key: "DB_PASSWORD".to_string(),
+                    store: "secret".to_string(),
+                    slot: "production".to_string(),
+                    bytes: 7,
+                },
+                ImportEnvRow {
+                    key: "PORT".to_string(),
+                    store: "env".to_string(),
+                    slot: "-".to_string(),
+                    bytes: 4,
+                },
+            ]),
+            |j| &j[0],
+            &[],
+        );
+    }
+
+    /// fails if a row ever grows a value: this payload is rendered from a
+    /// `.env` and every cell but `bytes` is a name (IR-41).
+    #[test]
+    fn import_env_rows_print_a_length_and_never_a_value() {
+        let rows = ImportEnvRows(vec![ImportEnvRow {
+            key: "DB_PASSWORD".to_string(),
+            store: "secret".to_string(),
+            slot: "production".to_string(),
+            bytes: "hunter2".len(),
+        }]);
+        let rendered = format!(
+            "{:?}{:?}",
+            rows.rows(),
+            serde_json::to_value(&rows).unwrap()
+        );
+        assert!(!rendered.contains("hunter2"), "{rendered}");
+        assert!(rendered.contains('7'), "{rendered}");
+    }
+
     /// The two rows cover both shapes the payload carries: a file that was
     /// written, and a command that was run and failed.
     #[test]
@@ -3626,6 +3747,7 @@ pub(crate) mod tests {
         assert_priorities_match_headers::<RolledSheepRows>(&["NAME", "STATUS"]);
         assert_priorities_match_headers::<SavedRollRow>(&["FILE", "APPS"]);
         assert_priorities_match_headers::<ImportRows>(&["NAME"]);
+        assert_priorities_match_headers::<ImportEnvRows>(&["KEY", "STORE"]);
         assert_priorities_match_headers::<StartupSteps>(&["TARGET", "RESULT"]);
         assert_priorities_match_headers::<TriggeredRows>(&["ID", "NAME", "OUTCOME"]);
         assert_priorities_match_headers::<SignalledRows>(&["ID", "NAME", "OUTCOME"]);

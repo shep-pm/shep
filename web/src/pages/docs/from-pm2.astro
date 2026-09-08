@@ -5,11 +5,11 @@
  * reader who has never opened this repo, not pasted verbatim — the field
  * table, the env rule, the runbook and the pm2-serve/pm2-runtime deltas all
  * come from that file. The import transcript below is real: run against
- * the test fixture crates/shep-cli/src/commands/import/testdata/dump.pm2.json,
+ * the test fixture crates/shep-cli/src/commands/import/pm2/testdata/dump.pm2.json,
  * which ships in the repo for exactly this kind of demonstration.
  *
- *   ./target/release/shep import \
- *     --from crates/shep-cli/src/commands/import/testdata/dump.pm2.json \
+ *   ./target/release/shep import pm2 \
+ *     --from crates/shep-cli/src/commands/import/pm2/testdata/dump.pm2.json \
  *     --dry-run
  *
  * Re-run that if the fixture or the importer's notices change, and paste
@@ -25,7 +25,7 @@ const meta = {
   title: "Coming from pm2",
   crumb: "Start here / Coming from pm2",
   blurb:
-    "shep import reads a real dump.pm2 and writes a Flockfile. It starts nothing, and names on stderr everything that could not survive the trip unchanged.",
+    "shep import pm2 reads a real dump.pm2 and writes a Flockfile. It starts nothing, and names on stderr everything that could not survive the trip unchanged.",
 };
 
 const benchTable: { metric: string; shep: string; pm2: string; ratio: string }[] = [
@@ -41,7 +41,7 @@ const verbTable: { pm2: string; shep: string; note?: string }[] = [
   { pm2: "pm2 start <script>", shep: "shep start <script>" },
   {
     pm2: "pm2 start ecosystem.config.js",
-    shep: "shep import, then shep start Flockfile.toml",
+    shep: "shep import pm2, then shep start Flockfile.toml",
     note: "shep never reads a pm2 ecosystem file directly",
   },
   { pm2: "pm2 stop", shep: "shep stop" },
@@ -95,7 +95,7 @@ const verbTable: { pm2: string; shep: string; note?: string }[] = [
     <h1>Coming from pm2</h1>
     <ReferencePills slug="from-pm2" />
     <p class="lede">
-      <code>shep import</code> reads a real <code>dump.pm2</code> and writes
+      <code>shep import pm2</code> reads a real <code>dump.pm2</code> and writes
       a Flockfile from it. It starts nothing: no daemon connection, no
       socket, just a file read and a file write.
     </p>
@@ -123,7 +123,7 @@ const verbTable: { pm2: string; shep: string; note?: string }[] = [
       three seconds into a sheep's life after a reboot.
     </p>
 
-    <VerbSignature verb="import" usage="shep import [OPTIONS]">
+    <VerbSignature verb="import pm2" usage="shep import pm2 [OPTIONS]">
       <p>
         <code>--from &lt;path&gt;</code> to read a dump somewhere other than{" "}
         <code>~/.pm2/dump.pm2</code>, <code>--out &lt;path&gt;</code> to
@@ -139,9 +139,9 @@ const verbTable: { pm2: string; shep: string; note?: string }[] = [
       The repo ships a synthetic three-app dump for exactly this: one
       clustered Node API, one Bun worker with a declared env block, and one
       one-shot migration script. This is the real output of running{" "}
-      <code>shep import --dry-run</code> against it.
+      <code>shep import pm2 --dry-run</code> against it.
     </p>
-    <CodeBlock label="$ shep import --from dump.pm2.json --dry-run">{`notice[read]: read 4 instance rows for 3 apps from dump.pm2.json
+    <CodeBlock label="$ shep import pm2 --from dump.pm2.json --dry-run">{`notice[read]: read 4 instance rows for 3 apps from dump.pm2.json
 notice[cluster_mode]: api ran 2 instances in pm2 cluster mode; shep binds nothing, so api must set SO_REUSEPORT itself (Node's reusePort: true, needing Node >= 22.12) or every instance past the first hits EADDRINUSE at start
 notice[instance_var]: api: reads its instance number from $NODE_APP_INSTANCE; imported as NODE_APP_INSTANCE = "{{instance}}" under [app.env] rather than copied as a value
 notice[inherited_env]: api: BUN_INSTALL was running but neither declared nor recognized session junk; decide whether it belongs in the Flockfile, the unit, or nowhere
@@ -181,7 +181,7 @@ cwd = "/srv/migrate"`}</CodeBlock>
     <p class="fine">
       Every notice lands on stderr in both <code>--format table</code> and{" "}
       <code>--format json</code>; stdout stays clean Flockfile TOML either
-      way, so <code>shep import --dry-run &gt; Flockfile.toml</code> is safe
+      way, so <code>shep import pm2 --dry-run &gt; Flockfile.toml</code> is safe
       to pipe. A normal run (no <code>--dry-run</code>) writes{" "}
       <code>./Flockfile.toml</code>, or wherever <code>--out</code> names,
       and refuses to overwrite an existing file unless you pass{" "}
@@ -257,7 +257,7 @@ cwd = "/srv/migrate"`}</CodeBlock>
       hits <code>EADDRINUSE</code> the moment it starts.
     </p>
     <p>
-      <code>shep import</code> names every app it found running in pm2
+      <code>shep import pm2</code> names every app it found running in pm2
       cluster mode on stderr, and writes nothing into the Flockfile for it.
       It used to set <code>reuse_port = true</code>, which read like a
       mitigation and was not one: no part of shep consulted that field at
@@ -373,7 +373,7 @@ PORT_BASE = "3000"`}</CodeBlock>
       app it runs: <code>PATH</code>, <code>JAVA_HOME</code>, whatever else
       your login session happened to have set. None of that was ever the
       app's own configuration, and a daemon started by systemd or launchd
-      has no login shell behind it to reproduce it. <code>shep import</code>{" "}
+      has no login shell behind it to reproduce it. <code>shep import pm2</code>{" "}
       applies one rule per key:
     </p>
     <ul>
@@ -525,8 +525,8 @@ PORT_BASE = "3000"`}</CodeBlock>
       as the flagship migration scenario. Step 3 is the only step that
       touches pm2, and the only irreversible one in the list.
     </p>
-    <CodeBlock>{`1.  shep import --dry-run           # read the Flockfile before it is written
-2.  shep import                     # writes ./Flockfile.toml; starts nothing
+    <CodeBlock>{`1.  shep import pm2 --dry-run       # read the Flockfile before it is written
+2.  shep import pm2                 # writes ./Flockfile.toml; starts nothing
 3.  pm2 delete all && pm2 kill      # the one destructive step, and it is pm2's
 4.  shep start ./Flockfile.toml     # the flock comes up under shep
 5.  shep flock                      # every app online, CPU and MEM populated
