@@ -62,7 +62,7 @@ ID  NAME  STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM   UPTIME  FOLD  SMIT
     <h1>Boot order</h1>
     <ReferencePills slug="boot-order" />
     <p class="lede">
-      shep starts a flock all at once unless you tell it otherwise. Add
+      shep starts a flock all at once unless you tell it otherwise. Add{" "}
       <code>depends_on</code> to an app and it sorts the flock into stages
       instead, holding each one until the members something later waits on
       are up. An app that would have crash-looped through its restart budget
@@ -91,7 +91,7 @@ depends_on = ["api"]`}</CodeBlock>
     <p>
       That sorts into three stages, <code>db</code>, then <code>api</code>,
       then <code>web</code>. Names inside a stage are sorted, so one flock
-      always plans the same way. The whole start took 6.17 seconds, and the
+      always plans the same way. The whole start took 6.17 seconds, and the{" "}
       <code>UPTIME</code> column is where it went:
     </p>
     <CodeBlock>{stagedStart}</CodeBlock>
@@ -104,16 +104,16 @@ depends_on = ["api"]`}</CodeBlock>
 
     <h2>What ready means, and what it costs</h2>
     <p>
-      A stage advances when its members have settled. An app with
+      A stage advances when its members have settled. An app with{" "}
       <code>wait_ready</code> or a <code>readiness_probe</code> settles the
       moment it says so, and an app that exits settles at once rather than
       holding its stage for the full wait.
     </p>
     <p>
-      An app with neither has nothing to report. shep holds it
+      An app with neither has nothing to report. shep holds it{" "}
       <code>starting</code> for its own <code>listen_timeout</code>, three
       seconds by default, then calls it up and moves on. That is where the
-      6.17 seconds went: <code>db</code> cost one wait and <code>api</code>
+      6.17 seconds went: <code>db</code> cost one wait and <code>api</code>{" "}
       cost another. <code>web</code> is last, so nothing waits on it and it
       costs nothing. Only apps something depends on pay this.
     </p>
@@ -136,7 +136,7 @@ depends_on = ["db"]`}</CodeBlock>
       That <code>interval</code> is doing real work. A probe polls every ten
       seconds by default and the first poll runs at spawn, so an app needing
       fifty milliseconds to bind its port fails that first poll and has
-      nothing left to answer with before <code>listen_timeout</code>
+      nothing left to answer with before <code>listen_timeout</code>{" "}
       elapses. Measured on the flock above: 0.14 seconds at an interval of
       100ms, and the full 3.05 at the default. Set an interval shorter than
       the app's own startup time or the probe buys you nothing at boot.
@@ -150,7 +150,7 @@ depends_on = ["db"]`}</CodeBlock>
     </p>
     <p>
       A log-rotation dog is the opposite case, since it has to be running
-      before a sheep starts writing. Name it in
+      before a sheep starts writing. Name it in{" "}
       <code>[daemon] boot_first_dogs</code> and it runs ahead of everything:
     </p>
     <CodeBlock label="$SHEP_HOME/shep.toml">{`[daemon]
@@ -163,7 +163,7 @@ stage 2  web
          metrics      spawns after every stage`}</CodeBlock>
     <p class="fine">
       A name here that is not in <code>enabled_dogs</code> is inert: nothing
-      enables a dog by promoting it. A sheep may also name a dog in its own
+      enables a dog by promoting it. A sheep may also name a dog in its own{" "}
       <code>depends_on</code>, but at a boot that does not move the dog. The
       shepherd spawns dogs in two groups, the promoted ones before the
       restore and the rest after it, and neither group sits at a stage
@@ -183,7 +183,7 @@ stage 2  web
 
     <h2>When the graph is wrong</h2>
     <p>
-      What happens depends on who is watching. An operator typing
+      What happens depends on who is watching. An operator typing{" "}
       <code>shep start</code> or <code>shep add</code> is there to fix a
       typo. A machine rebooting at 4am is not, and stranding its whole flock
       over one is worse than starting it in a bad order.
@@ -206,7 +206,7 @@ stage 2  web
     </div>
     <p class="fine">
       Every "warned" above is a line in the shepherd's own log, not a notice
-      on the reply, so <code>shep start</code> and <code>shep add</code>
+      on the reply, so <code>shep start</code> and <code>shep add</code>{" "}
       print nothing about the graph and exit 0. They are in{" "}
       <code>$SHEP_HOME/logs/shepd.err.log</code>. The{" "}
       <code>autostart = false</code> warning is narrower still: it lives on
@@ -230,7 +230,7 @@ error[invalid_config]: the daemon reported InvalidConfig: dependency cycle: api 
       and refusing it would make cross-repository dependencies unusable.
     </p>
     <Callout variant="note">
-      <code>autostart</code> wins. A dependency that sets
+      <code>autostart</code> wins. A dependency that sets{" "}
       <code>autostart = false</code> stays stopped, and the sheep that
       depends on it starts in its stage as though the edge were satisfied.
       A boot writes a warning naming both to the shepherd's log; a typed{" "}
@@ -242,16 +242,16 @@ error[invalid_config]: the daemon reported InvalidConfig: dependency cycle: api 
 
     <h2>Shutdown runs backwards</h2>
     <p>
-      A shepherd going down walks the stages in reverse, so
-      <code>web</code> gets its SIGTERM, then <code>api</code>, then
+      A shepherd going down walks the stages in reverse, so{" "}
+      <code>web</code> gets its SIGTERM, then <code>api</code>, then{" "}
       <code>db</code>. A worker draining its queue drains against a database
       that is still answering. Without ordering both get signalled in the
       same millisecond.
     </p>
     <p>
-      A stage's members overlap, so a stage costs the longest
+      A stage's members overlap, so a stage costs the longest{" "}
       <code>kill_timeout</code> in it rather than the sum, 1.6 seconds by
-      default. Five stages is eight seconds against systemd's default
+      default. Five stages is eight seconds against systemd's default{" "}
       <code>TimeoutStopSec</code> of ninety, so <code>shep startup</code>'s
       unit needs nothing extra.
     </p>
@@ -284,7 +284,7 @@ error[invalid_config]: the daemon reported InvalidConfig: dependency cycle: api 
     <p>
       Both verbs ask the shepherd once per app, so an app already being
       reloaded, or one that left the flock after the walk was planned, is
-      refused on its own and the rest of the fold goes ahead.
+      refused on its own and the rest of the fold goes ahead.{" "}
       <code>shep reload</code> and <code>shep restart</code> name the app
       they went around on stderr and exit non-zero, and under{" "}
       <code>--format json</code> the same names come back under{" "}
@@ -297,7 +297,7 @@ error[invalid_config]: the daemon reported InvalidConfig: dependency cycle: api 
       reached and the restart was not refused; it is the child that could
       not start. It also empties stdout, as every verb's failure does, so a
       restart that hits both at once prints no envelope: the refused names
-      are appended to that error's own sentence on stderr instead, and the
+      are appended to that error's own sentence on stderr instead, and the{" "}
       <code>refused</code> key above is what a run reports when nothing came
       back errored.
     </p>
@@ -325,8 +325,8 @@ error[spawn_failed]: the daemon reported SpawnFailed: nothing in this batch was 
       there is nothing else in that request to order it against.
     </p>
     <p>
-      Promoting a dog fixes the boot window and only the boot window. A
-      <code>shep start web</code> typed at noon, while
+      Promoting a dog fixes the boot window and only the boot window. A{" "}
+      <code>shep start web</code> typed at noon, while{" "}
       <code>log-rotate</code> happens to be down, is a supervision problem.
       Boot ordering has no opinion about it.
     </p>
@@ -345,8 +345,8 @@ Depends on for web:
     <p class="fine">
       There is no <code>shep flock</code> column for it. The field names
       other sheep rather than saying anything about this row's own status,
-      and that table already drops columns under pressure. Under
-      <code>--format json</code> every sheep carries a
+      and that table already drops columns under pressure. Under{" "}
+      <code>--format json</code> every sheep carries a{" "}
       <code>depends_on</code> array.
     </p>
 
@@ -355,15 +355,15 @@ Depends on for web:
       <a href="/docs/first-flockfile" class="next-card">
         <div class="next-title">Your first Flockfile →</div>
         <div class="next-body">
-          <code>depends_on</code> in the full field reference, next to
+          <code>depends_on</code> in the full field reference, next to{" "}
           <code>listen_timeout</code> and <code>readiness_probe</code>.
         </div>
       </a>
       <a href="/docs/dogs" class="next-card">
         <div class="next-title">Dogs →</div>
         <div class="next-body">
-          What a dog is, how <code>shep enable</code> writes one into
-          <code>shep.toml</code>, and where <code>boot_first_dogs</code>
+          What a dog is, how <code>shep enable</code> writes one into{" "}
+          <code>shep.toml</code>, and where <code>boot_first_dogs</code>{" "}
           sits.
         </div>
       </a>
