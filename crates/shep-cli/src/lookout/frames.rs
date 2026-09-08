@@ -2025,8 +2025,14 @@ mod tests {
             .expect("the detail pane's rollup line");
         // Summed restarts, CPU and memory; uptime is the minimum (300s
         // plus the 600s this frame renders at), not the oldest member's.
+        //
+        // CPU reads `-`, not a summed percent: this scene is one poll, and
+        // a CPU figure needs two before it has anything differenced to
+        // report. `cpu 9.4%` was this test's own value while the column
+        // still read `ProcessInfo::cpu_percent`; a single-poll scene
+        // honestly has no reading yet.
         assert!(rollup.contains("restarts 3"), "summed restarts: {rollup:?}");
-        assert!(rollup.contains("cpu 9.4%"), "summed cpu: {rollup:?}");
+        assert!(rollup.contains("cpu -"), "summed cpu: {rollup:?}");
         assert!(rollup.contains("mem 540.0M"), "summed memory: {rollup:?}");
         assert!(rollup.contains("uptime 15m"), "the shortest: {rollup:?}");
         assert!(

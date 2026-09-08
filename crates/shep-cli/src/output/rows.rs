@@ -2983,7 +2983,17 @@ pub(crate) mod tests {
         let dashboard_totals = app.group_totals("web");
         assert_eq!(dashboard_totals.count, flock.len());
         assert_eq!(dashboard_totals.restarts, table_totals.restarts, "restarts");
-        assert_eq!(dashboard_totals.cpu, table_totals.cpu, "cpu");
+        // CPU is the one field these two surfaces do NOT agree on, by
+        // design: `shep flock` reads `ProcessInfo::cpu_percent`, the
+        // shepherd's own running mean, while lookout differences its own
+        // polls and has had only one here, so it honestly has nothing yet.
+        // A one-shot listing has nothing to difference against, so the two
+        // surfaces answering differently is correct rather than drift.
+        assert_eq!(table_totals.cpu, Some(9.4), "the table keeps cpu_percent");
+        assert_eq!(
+            dashboard_totals.cpu, None,
+            "one poll has nothing differenced to sum yet"
+        );
         assert_eq!(dashboard_totals.memory, table_totals.memory, "memory");
         assert_eq!(
             dashboard_totals.uptime_ms,
@@ -3030,8 +3040,10 @@ pub(crate) mod tests {
         .collect::<String>();
 
         // Then the rendered cells. FOLD and SMIT are per-app facts, not sums;
-        // STATUS carries a face here and not in the dashboard.
-        for column in ["NAME", "RESTARTS", "CPU", "MEM", "UPTIME"] {
+        // STATUS carries a face here and not in the dashboard. CPU is not
+        // in this list: `dashboard_totals.cpu` above already pins the one
+        // field these two surfaces deliberately disagree on.
+        for column in ["NAME", "RESTARTS", "MEM", "UPTIME"] {
             let at = FlockRows::headers()
                 .iter()
                 .position(|header| *header == column)
@@ -3043,6 +3055,10 @@ pub(crate) mod tests {
                  does not agree: {dashboard:?}"
             );
         }
+        assert!(
+            dashboard.contains(" - "),
+            "the dashboard's own CPU cell reads `-` after one poll: {dashboard:?}"
+        );
     }
 
     #[test]

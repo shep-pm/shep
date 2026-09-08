@@ -51,18 +51,18 @@ All three panes at 120x30: the host strip under the title, the detail pane and t
                                                                                                                         [0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
-[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
-  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
-  4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
-  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
-  0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
-  1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
+[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          -       241.0M    1h 28m    edge        -            [0m
+  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          -       96.0M     1h 29m    -           -            [0m
+  4     cron        [0m[38;5;29monline         [0m  48233    0         -          -       8.0M      1h 31m    -           -            [0m
+  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 32m    -           -            [0m
+  0     web         [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m    edge        -            [0m
+  1     web         [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m    edge        -            [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;29m ██ SHEEP 2[0m  api   [0m[38;5;29monline[0m   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                  [0m
+[0m[7m[38;5;29m ██ SHEEP 2[0m  api   [0m[38;5;29monline[0m   pid 48219   restarts 1   uptime 1h 28m   cpu -   mem 241.0M   fold edge                     [0m
 [0m[38;5;245mlambs  not read yet                                                                                                     [0m
 [0m[38;5;245mout  tests/fixtures/gallery-logs/api-out.log[0m[38;5;238m   │   [0m[38;5;245merr  tests/fixtures/gallery-logs/api-err.log   2.0K on disk          [0m
                                                                                                                         [0m
@@ -89,9 +89,9 @@ One errored, one waiting to restart, one stopped, with the selection parked on t
 [0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;166m[48;5;235merrored        [0m[48;5;235m  -        14        1          -       -         1h 18m    edge        -            [0m
   3     billing-r…  [0m[38;5;221mwaiting-restart[0m  -        3         1          -       -         1h 19m    -           -            [0m
   4     cron        [0m[38;5;245mstopped        [0m  -        0         SIGTERM    -       -         1h 21m    -           -            [0m
-  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
-  0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
-  1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
+  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 32m    -           -            [0m
+  0     web         [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m    edge        -            [0m
+  1     web         [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m    edge        -            [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -121,18 +121,18 @@ Three instances of one app under a group header, with the cursor parked on the h
                                                                                                                         [0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
-  3     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 29m    edge        -            [0m
-[0m[48;5;235m [0m [0m[48;5;235m      web ×3      [0m[38;5;29m[48;5;235monline         [0m[48;5;235m           3                    9.4%    540.0M    15m       edge        -            [0m
-  0      ↳ :0       [0m[38;5;29monline         [0m  48400    0         -          3.4%    182.0M    1h 25m                             [0m
-  1      ↳ :1       [0m[38;5;29monline         [0m  48401    2         -          2.9%    178.0M    15m                                [0m
-  2      ↳ :2       [0m[38;5;29monline         [0m  48402    1         -          3.1%    180.0M    2h 40m                             [0m
+  3     api         [0m[38;5;29monline         [0m  48219    1         -          -       241.0M    1h 29m    edge        -            [0m
+[0m[48;5;235m [0m [0m[48;5;235m      web ×3      [0m[38;5;29m[48;5;235monline         [0m[48;5;235m           3                    -       540.0M    15m       edge        -            [0m
+  0      ↳ :0       [0m[38;5;29monline         [0m  48400    0         -          -       182.0M    1h 25m                             [0m
+  1      ↳ :1       [0m[38;5;29monline         [0m  48401    2         -          -       178.0M    15m                                [0m
+  2      ↳ :2       [0m[38;5;29monline         [0m  48402    1         -          -       180.0M    2h 40m                             [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-app web ×3  [0m[38;5;29monline[0m   restarts 3   uptime 15m   cpu 9.4%   mem 540.0M                                                    [0m
+app web ×3  [0m[38;5;29monline[0m   restarts 3   uptime 15m   cpu -   mem 540.0M                                                       [0m
 [0m[38;5;245mlambs  not shown for a group; select one instance                                                                       [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -151,23 +151,23 @@ app web ×3  [0m[38;5;29monline[0m   restarts 3   uptime 15m   cpu 9.4%   mem
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                   10 in the flock[0m
                                                                                                                                                                 [0m
-[0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     0 errored · 0 parked   flock cpu 20.6%        █   flock mem 928.0M …[0m
+[0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     0 errored · 0 parked   flock cpu -        ▁   flock mem 928.0M   up…[0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
                                                                                                                                                                 [0m
   [0m[38;5;245mNAME        STATUS        SHARE                   MEM         CPU        UPTIME      RESTARTS  NOTES                                                          [0m
-  ▸ batch ×2  [0m[38;5;29monline      [0m  [0m[38;5;74m█[0m[38;5;236m░░░░░░░░░░░░░░░░░░░  [0m  32.0M       1.6%       1h 55m      3         3% of flock memory                                             [0m
-  ▾ core ×1   [0m[38;5;29monline      [0m  [0m[38;5;74m██[0m[38;5;236m░░░░░░░░░░░░░░░░░░  [0m  96.0M       2.0%       1h 58m      0         10% of flock memory                                            [0m
-  [0m[38;5;245mworker    [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m96.0M     [0m  [0m[38;5;245m2.0%     [0m  [0m[38;5;245m1h 58m    [0m  [0m[38;5;245m0       [0m  [0m[38;5;245m                                                               [0m
-[0m[48;5;235m [0m [0m[48;5;235m▾ edge ×4   [0m[38;5;29m[48;5;235monline      [0m[48;5;235m  [0m[38;5;74m[48;5;235m█████████████████[0m[38;5;236m[48;5;235m░░░  [0m[48;5;235m  781.0M      16.5%      15m         4         84% of flock memory                                            [0m
-  [0m[38;5;245mapi       [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m241.0M    [0m  [0m[38;5;245m7.1%     [0m  [0m[38;5;245m2h 4m     [0m  [0m[38;5;245m1       [0m  [0m[38;5;245m                                                               [0m
-  [0m[38;5;245mweb ×3    [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m540.0M    [0m  [0m[38;5;245m9.4%     [0m  [0m[38;5;245m15m       [0m  [0m[38;5;245m3       [0m  [0m[38;5;245m                                                               [0m
+  ▸ batch ×2  [0m[38;5;29monline      [0m  [0m[38;5;74m█[0m[38;5;236m░░░░░░░░░░░░░░░░░░░  [0m  32.0M       -          1h 55m      3         3% of flock memory                                             [0m
+  ▾ core ×1   [0m[38;5;29monline      [0m  [0m[38;5;74m██[0m[38;5;236m░░░░░░░░░░░░░░░░░░  [0m  96.0M       -          1h 58m      0         10% of flock memory                                            [0m
+  [0m[38;5;245mworker    [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m96.0M     [0m  [0m[38;5;245m-        [0m  [0m[38;5;245m1h 58m    [0m  [0m[38;5;245m0       [0m  [0m[38;5;245m                                                               [0m
+[0m[48;5;235m [0m [0m[48;5;235m▾ edge ×4   [0m[38;5;29m[48;5;235monline      [0m[48;5;235m  [0m[38;5;74m[48;5;235m█████████████████[0m[38;5;236m[48;5;235m░░░  [0m[48;5;235m  781.0M      -          15m         4         84% of flock memory                                            [0m
+  [0m[38;5;245mapi       [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m241.0M    [0m  [0m[38;5;245m-        [0m  [0m[38;5;245m2h 4m     [0m  [0m[38;5;245m1       [0m  [0m[38;5;245m                                                               [0m
+  [0m[38;5;245mweb ×3    [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m540.0M    [0m  [0m[38;5;245m-        [0m  [0m[38;5;245m15m       [0m  [0m[38;5;245m3       [0m  [0m[38;5;245m                                                               [0m
   [0m[7m[38;5;29m ██ NO FOLD                                                                                                                                                   [0m
-  [0m[38;5;245mcron      [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m8.0M      [0m  [0m[38;5;245m0.1%     [0m  [0m[38;5;245m2h 6m     [0m  [0m[38;5;245m0       [0m  [0m[38;5;245m                                                               [0m
-  [0m[38;5;245mmetrics   [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m11.0M     [0m  [0m[38;5;245m0.4%     [0m  [0m[38;5;245m2h 7m     [0m  [0m[38;5;245m0       [0m  [0m[38;5;245m                                                               [0m
+  [0m[38;5;245mcron      [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m8.0M      [0m  [0m[38;5;245m-        [0m  [0m[38;5;245m2h 6m     [0m  [0m[38;5;245m0       [0m  [0m[38;5;245m                                                               [0m
+  [0m[38;5;245mmetrics   [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m11.0M     [0m  [0m[38;5;245m-        [0m  [0m[38;5;245m2h 7m     [0m  [0m[38;5;245m0       [0m  [0m[38;5;245m                                                               [0m
   [0m[7m[38;5;74m ██ DOGS                                                                                                                                                      [0m
   [0m[38;5;245mbark      [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m-         [0m  [0m[38;5;245m-        [0m  [0m[38;5;245m10m       [0m  [0m[38;5;245m0       [0m  [0m[38;5;245m                                                               [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-fold edge ×4  [0m[38;5;29monline[0m   restarts 4   uptime 15m   cpu 16.5%   mem 781.0M                                                                                         [0m
+fold edge ×4  [0m[38;5;29monline[0m   restarts 4   uptime 15m   cpu -   mem 781.0M                                                                                             [0m
 [0m[38;5;245mlambs  a fold has no single process to walk; select one sheep                                                                                                   [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
@@ -191,9 +191,9 @@ Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in 
                                                                                                                         [0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
-  1     api         [0m[38;5;29monline         [0m  48219    1         -          7.1%    241.0M    1h 26m    edge        -            [0m
-  2     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 28m    -           -            [0m
-  0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
+  1     api         [0m[38;5;29monline         [0m  48219    1         -          -       241.0M    1h 26m    edge        -            [0m
+  2     cron        [0m[38;5;29monline         [0m  48233    0         -          -       8.0M      1h 28m    -           -            [0m
+  0     web         [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m    edge        -            [0m
   [0m[7m[38;5;74m ██ DOGS                                                                                                              [0m
   90    bark        [0m[38;5;29monline         [0m  90090    0         -          -       -         10m       -           -            [0m
 [0m[48;5;235m [0m [0m[48;5;235m91    log-rotate  [0m[38;5;221m[48;5;235msilent         [0m[48;5;235m  90091    0         -          -       -         10m       -           -            [0m
@@ -221,14 +221,14 @@ Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                          3 in the flock[0m
                                                                                                                                                       [0m
-[0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     0 errored · 0 parked   flock cpu 5.0%        █   flock me…[0m
+[0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     0 errored · 0 parked   flock cpu -        ▁   flock mem 6…[0m
 [0m[38;5;238m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
                                                                                                                                                       [0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                                                           [0m
-  2     batch-wor…  [0m[38;5;29monline         [0m  48303    0         -          -     [0m[38;5;29m         ▅[0m  1.0%    [0m[38;5;245m░░░░░░░░░░[0m  64.0M     1h 28m    -           -            [0m
-  0     web-headr…  [0m[38;5;29monline         [0m  48300    0         -          -     [0m[38;5;29m         █[0m  2.0%    [0m[38;5;74m███[0m[38;5;236m░░░░░░░[0m  128.0M    1h 25m    edge        -            [0m
-[0m[48;5;235m [0m [0m[48;5;235m1     web-hot     [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48301    0         -          -     [0m[38;5;29m[48;5;235m         █[0m[48;5;235m  2.0%    [0m[38;5;221m[48;5;235m█████████[0m[38;5;236m[48;5;235m░[0m[48;5;235m  480.0M    1h 26m    edge        -            [0m
+  2     batch-wor…  [0m[38;5;29monline         [0m  48303    0         -          -     [0m[38;5;29m         ▁[0m  -       [0m[38;5;245m░░░░░░░░░░[0m  64.0M     1h 28m    -           -            [0m
+  0     web-headr…  [0m[38;5;29monline         [0m  48300    0         -          -     [0m[38;5;29m         ▁[0m  -       [0m[38;5;74m███[0m[38;5;236m░░░░░░░[0m  128.0M    1h 25m    edge        -            [0m
+[0m[48;5;235m [0m [0m[48;5;235m1     web-hot     [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48301    0         -          -     [0m[38;5;29m[48;5;235m         ▁[0m[48;5;235m  -       [0m[38;5;221m[48;5;235m█████████[0m[38;5;236m[48;5;235m░[0m[48;5;235m  480.0M    1h 26m    edge        -            [0m
                                                                                                                                                       [0m
                                                                                                                                                       [0m
                                                                                                                                                       [0m
@@ -237,7 +237,7 @@ Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a
                                                                                                                                                       [0m
                                                                                                                                                       [0m
 [0m[38;5;238m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;29m ██ SHEEP 1[0m  web-hot   [0m[38;5;29monline[0m   pid 48301   restarts 0   uptime 1h 26m   cpu 2.0%   mem 480.0M   fold edge                                            [0m
+[0m[7m[38;5;29m ██ SHEEP 1[0m  web-hot   [0m[38;5;29monline[0m   pid 48301   restarts 0   uptime 1h 26m   cpu -   mem 480.0M   fold edge                                               [0m
 [0m[38;5;245mlambs  not read yet                                                                                                                                   [0m
 [0m[38;5;245mout  /home/ada/.shep/logs/web-hot-1-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/web-hot-1-err.log                                                         [0m
                                                                                                                                                       [0m
@@ -252,18 +252,18 @@ Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a
 
 
 === cfg_drift  (140x30) ===
-140 columns: wide enough for the CFG and CPU 20s columns beside the ones every other scene shows. web has two fields parked for the next spawn and reads !2, api has one field an operator set that its Flockfile does not declare and reads *1, and cron has neither and reads a bare -. The status bar's own legend explains both glyphs; this is where they actually appear in a cell. web's CPU history carries ten distinct samples, so its sparkline draws a shape over time rather than one static bar, and the cursor is parked on web so the detail pane's own cfg !2 pending cell is on screen too.
+140 columns: wide enough for the CFG and CPU 20s columns beside the ones every other scene shows. web has two fields parked for the next spawn and reads !2, api has one field an operator set that its Flockfile does not declare and reads *1, and cron has neither and reads a bare -. The status bar's own legend explains both glyphs; this is where they actually appear in a cell. web's counter is differenced across several two-second polls at varying deltas, so its CPU history draws a shape over time rather than one static bar, and the cursor is parked on web so the detail pane's own cfg !2 pending cell is on screen too.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                3 in the flock[0m
                                                                                                                                             [0m
-[0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     0 errored · 1 parked   flock cpu 7.5% ▅█▅▇▄▆▇▆ …[0m
+[0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     0 errored · 1 parked   flock cpu - ▃█▄▇▃▅▇▁   f…[0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
                                                                                                                                             [0m
   [0m[38;5;245mID    NAME          STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                                                 [0m
-  11    api           [0m[38;5;29monline         [0m  48411    0         -          *1    [0m[38;5;29m▄▄▄▄▄▄▄▄▄▄[0m  3.0%    96.0M     1h 41m    edge        -            [0m
-  12    cron          [0m[38;5;29monline         [0m  48412    0         -          -     [0m[38;5;29m▁▁▁▁▁▁▁▁▁▁[0m  0.5%    8.0M      1h 43m    -           -            [0m
-[0m[48;5;235m [0m [0m[48;5;235m10    web           [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48410    0         -          !2    [0m[38;5;29m[48;5;235m▂▆▃█▄▇▃▅▇▅[0m[48;5;235m  4.0%    64.0M     1h 40m    edge        -            [0m
+  11    api           [0m[38;5;29monline         [0m  48411    0         -          *1    [0m[38;5;29m▁▁▁▁▁▁▁▁▁▁[0m  -       96.0M     1h 41m    edge        -            [0m
+  12    cron          [0m[38;5;29monline         [0m  48412    0         -          -     [0m[38;5;29m▁▁▁▁▁▁▁▁▁▁[0m  -       8.0M      1h 43m    -           -            [0m
+[0m[48;5;235m [0m [0m[48;5;235m10    web           [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48410    0         -          !2    [0m[38;5;29m[48;5;235m ▆▃█▄▇▃▅▇▁[0m[48;5;235m  -       64.0M     1h 40m    edge        -            [0m
                                                                                                                                             [0m
                                                                                                                                             [0m
                                                                                                                                             [0m
@@ -272,7 +272,7 @@ Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a
                                                                                                                                             [0m
                                                                                                                                             [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;29m ██ SHEEP 10[0m  web   [0m[38;5;29monline[0m   pid 48410   restarts 0   uptime 1h 40m   cpu 4.0%   mem 64.0M   fold edge   cfg !2 pending                     [0m
+[0m[7m[38;5;29m ██ SHEEP 10[0m  web   [0m[38;5;29monline[0m   pid 48410   restarts 0   uptime 1h 40m   cpu -   mem 64.0M   fold edge   cfg !2 pending                        [0m
 [0m[38;5;245mlambs  not read yet                                                                                                                         [0m
 [0m[38;5;245mout  /home/ada/.shep/logs/web-10-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/web-10-err.log                                                     [0m
                                                                                                                                             [0m
@@ -327,12 +327,12 @@ No sheep registered. Each of the three panes says why it is empty, and the three
 [0m[38;5;238m───────────────────────────────────────────────────[0m
   [0m[38;5;245mID    NAME      STATUS           CPU     UPTIME  [0m
   [0m[7m[38;5;29m ██ FLOCK                                        [0m
-[0m[48;5;235m [0m [0m[48;5;235m2     api       [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  7.1%    1h 28m  [0m
-  3     billing…  [0m[38;5;29monline         [0m  0.8%    1h 29m  [0m
-  4     cron      [0m[38;5;29monline         [0m  0.1%    1h 31m  [0m
-  5     metrics   [0m[38;5;29monline         [0m  0.4%    1h 32m  [0m
-  0     web       [0m[38;5;29monline         [0m  3.4%    1h 25m  [0m
-  1     web       [0m[38;5;29monline         [0m  2.9%    1h 26m  [0m
+[0m[48;5;235m [0m [0m[48;5;235m2     api       [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  -       1h 28m  [0m
+  3     billing…  [0m[38;5;29monline         [0m  -       1h 29m  [0m
+  4     cron      [0m[38;5;29monline         [0m  -       1h 31m  [0m
+  5     metrics   [0m[38;5;29monline         [0m  -       1h 32m  [0m
+  0     web       [0m[38;5;29monline         [0m  -       1h 25m  [0m
+  1     web       [0m[38;5;29monline         [0m  -       1h 26m  [0m
                                                    [0m
                                                    [0m
 [0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F…[0m[38;5;245m[48;5;235m control enabled[0m
@@ -362,17 +362,17 @@ The shepherd stopped answering. Five attempts over about eight seconds before th
                                                                                                                         [0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
-[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
-  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
-  4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
-  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
-  0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
-  1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
+[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          -       241.0M    1h 28m    edge        -            [0m
+  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          -       96.0M     1h 29m    -           -            [0m
+  4     cron        [0m[38;5;29monline         [0m  48233    0         -          -       8.0M      1h 31m    -           -            [0m
+  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 32m    -           -            [0m
+  0     web         [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m    edge        -            [0m
+  1     web         [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m    edge        -            [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;29m ██ SHEEP 2[0m  api   [0m[38;5;29monline[0m   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                  [0m
+[0m[7m[38;5;29m ██ SHEEP 2[0m  api   [0m[38;5;29monline[0m   pid 48219   restarts 1   uptime 1h 28m   cpu -   mem 241.0M   fold edge                     [0m
 [0m[38;5;245mlambs  not read yet                                                                                                     [0m
 [0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/api-2-err.log                                   [0m
                                                                                                                         [0m
@@ -400,9 +400,9 @@ The ladder ran out. Last known values stay, the uptime clock has stopped, and so
 [0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;166m[48;5;235merrored        [0m[48;5;235m  -        14        1          -       -         1h 18m    edge        -            [0m
   3     billing-r…  [0m[38;5;221mwaiting-restart[0m  -        3         1          -       -         1h 19m    -           -            [0m
   4     cron        [0m[38;5;245mstopped        [0m  -        0         SIGTERM    -       -         1h 21m    -           -            [0m
-  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 22m    -           -            [0m
-  0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 15m    edge        -            [0m
-  1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 16m    edge        -            [0m
+  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 22m    -           -            [0m
+  0     web         [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 15m    edge        -            [0m
+  1     web         [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 16m    edge        -            [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -431,18 +431,18 @@ The ladder ran out. Last known values stay, the uptime clock has stopped, and so
                                                                                                                         [0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
-[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
-  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
-  4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
-  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
-  0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
-  1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
+[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          -       241.0M    1h 28m    edge        -            [0m
+  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          -       96.0M     1h 29m    -           -            [0m
+  4     cron        [0m[38;5;29monline         [0m  48233    0         -          -       8.0M      1h 31m    -           -            [0m
+  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 32m    -           -            [0m
+  0     web         [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m    edge        -            [0m
+  1     web         [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m    edge        -            [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;29m ██ SHEEP 2[0m  api   [0m[38;5;29monline[0m   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                  [0m
+[0m[7m[38;5;29m ██ SHEEP 2[0m  api   [0m[38;5;29monline[0m   pid 48219   restarts 1   uptime 1h 28m   cpu -   mem 241.0M   fold edge                     [0m
 [0m[38;5;245mlambs  not read yet                                                                                                     [0m
 [0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/api-2-err.log                                   [0m
                                                                                                                         [0m
@@ -464,8 +464,8 @@ Mid-type at 100x14. The table has already narrowed to the two sheep whose names 
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                         [0m
-[0m[48;5;235m [0m [0m[48;5;235m0     web                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48211    0         -          3.4%    182.0M    1h 25m  [0m
-  1     web                [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m  [0m
+[0m[48;5;235m [0m [0m[48;5;235m0     web                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48211    0         -          -       182.0M    1h 25m  [0m
+  1     web                [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m  [0m
                                                                                                     [0m
                                                                                                     [0m
                                                                                                     [0m
@@ -483,8 +483,8 @@ The same query applied. The box is closed, the table is still narrowed, and the 
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                         [0m
-[0m[48;5;235m [0m [0m[48;5;235m0     web                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48211    0         -          3.4%    182.0M    1h 25m  [0m
-  1     web                [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m  [0m
+[0m[48;5;235m [0m [0m[48;5;235m0     web                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48211    0         -          -       182.0M    1h 25m  [0m
+  1     web                [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m  [0m
                                                                                                     [0m
                                                                                                     [0m
                                                                                                     [0m
@@ -521,12 +521,12 @@ A query nothing matches. The table names the query rather than claiming the floc
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
-[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
-  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
-  4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
-  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
-  0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
-  1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
+[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          -       241.0M    1h 28m    edge        -            [0m
+  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          -       96.0M     1h 29m    -           -            [0m
+  4     cron        [0m[38;5;29monline         [0m  48233    0         -          -       8.0M      1h 31m    -           -            [0m
+  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 32m    -           -            [0m
+  0     web         [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m    edge        -            [0m
+  1     web         [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m    edge        -            [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
 [0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;221mapi  … 1 earlier line not shown                                                                              [0m
@@ -545,12 +545,12 @@ A query nothing matches. The table names the query rather than claiming the floc
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
-[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
-  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
-  4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
-  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
-  0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
-  1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
+[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          -       241.0M    1h 28m    edge        -            [0m
+  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          -       96.0M     1h 29m    -           -            [0m
+  4     cron        [0m[38;5;29monline         [0m  48233    0         -          -       8.0M      1h 31m    -           -            [0m
+  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 32m    -           -            [0m
+  0     web         [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m    edge        -            [0m
+  1     web         [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m    edge        -            [0m
                                                                                                                         [0m
 [0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your…[0m[38;5;245m[48;5;235m control enabled[0m
 
@@ -565,18 +565,18 @@ The feed under a burst: 3.8 megabytes were never read and some hundreds of lines
                                                                                                                         [0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
-[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
-  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
-  4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
-  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
-  0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
-  1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
+[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          -       241.0M    1h 28m    edge        -            [0m
+  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          -       96.0M     1h 29m    -           -            [0m
+  4     cron        [0m[38;5;29monline         [0m  48233    0         -          -       8.0M      1h 31m    -           -            [0m
+  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 32m    -           -            [0m
+  0     web         [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m    edge        -            [0m
+  1     web         [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m    edge        -            [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;29m ██ SHEEP 2[0m  api   [0m[38;5;29monline[0m   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                  [0m
+[0m[7m[38;5;29m ██ SHEEP 2[0m  api   [0m[38;5;29monline[0m   pid 48219   restarts 1   uptime 1h 28m   cpu -   mem 241.0M   fold edge                     [0m
 [0m[38;5;245mlambs  not read yet                                                                                                     [0m
 [0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/api-2-err.log                                   [0m
                                                                                                                         [0m
@@ -600,18 +600,18 @@ The selected sheep has never written a log in this $SHEP_HOME. The feed names th
                                                                                                                         [0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
-[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
-  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
-  4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
-  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
-  0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
-  1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
+[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          -       241.0M    1h 28m    edge        -            [0m
+  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          -       96.0M     1h 29m    -           -            [0m
+  4     cron        [0m[38;5;29monline         [0m  48233    0         -          -       8.0M      1h 31m    -           -            [0m
+  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 32m    -           -            [0m
+  0     web         [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m    edge        -            [0m
+  1     web         [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m    edge        -            [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;29m ██ SHEEP 2[0m  api   [0m[38;5;29monline[0m   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                  [0m
+[0m[7m[38;5;29m ██ SHEEP 2[0m  api   [0m[38;5;29monline[0m   pid 48219   restarts 1   uptime 1h 28m   cpu -   mem 241.0M   fold edge                     [0m
 [0m[38;5;245mlambs  not read yet                                                                                                     [0m
 [0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/api-2-err.log                                   [0m
                                                                                                                         [0m
@@ -661,23 +661,23 @@ The selected sheep has never written a log in this $SHEP_HOME. The feed names th
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
                                                                                                                         [0m
-[0m[38;5;245mhost  usage is not available on this platform   0 errored · 0 parked   flock cpu 14.7%        █   flock mem 716.0M      [0m
+[0m[38;5;245mhost  usage is not available on this platform   0 errored · 0 parked   flock cpu -        ▁   flock mem 716.0M          [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
                                                                                                                         [0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
-[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
-  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
-  4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
-  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
-  0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
-  1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
+[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          -       241.0M    1h 28m    edge        -            [0m
+  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          -       96.0M     1h 29m    -           -            [0m
+  4     cron        [0m[38;5;29monline         [0m  48233    0         -          -       8.0M      1h 31m    -           -            [0m
+  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 32m    -           -            [0m
+  0     web         [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m    edge        -            [0m
+  1     web         [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m    edge        -            [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;29m ██ SHEEP 2[0m  api   [0m[38;5;29monline[0m   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                  [0m
+[0m[7m[38;5;29m ██ SHEEP 2[0m  api   [0m[38;5;29monline[0m   pid 48219   restarts 1   uptime 1h 28m   cpu -   mem 241.0M   fold edge                     [0m
 [0m[38;5;245mlambs  not read yet                                                                                                     [0m
 [0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/api-2-err.log                                   [0m
                                                                                                                         [0m
@@ -701,18 +701,18 @@ The detail pane with a lamb list: how many descendants the shepherd's walk found
                                                                                                                         [0m
   [0m[38;5;245mID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                                             [0m
-[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m    edge        -            [0m
-  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m    -           -            [0m
-  4     cron        [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m    -           -            [0m
-  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
-  0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
-  1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
+[0m[48;5;235m [0m [0m[48;5;235m2     api         [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          -       241.0M    1h 28m    edge        -            [0m
+  3     billing-r…  [0m[38;5;29monline         [0m  48230    0         -          -       96.0M     1h 29m    -           -            [0m
+  4     cron        [0m[38;5;29monline         [0m  48233    0         -          -       8.0M      1h 31m    -           -            [0m
+  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 32m    -           -            [0m
+  0     web         [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m    edge        -            [0m
+  1     web         [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m    edge        -            [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;29m ██ SHEEP 2[0m  api   [0m[38;5;29monline[0m   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                  [0m
+[0m[7m[38;5;29m ██ SHEEP 2[0m  api   [0m[38;5;29monline[0m   pid 48219   restarts 1   uptime 1h 28m   cpu -   mem 241.0M   fold edge                     [0m
 [0m[38;5;245mlambs  3 parent-pid descendants, read 9m 53s ago   48220 node   48221 node   48222 node                                 [0m
 [0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log[0m[38;5;238m   │   [0m[38;5;245merr  /home/ada/.shep/logs/api-2-err.log                                   [0m
                                                                                                                         [0m
@@ -739,9 +739,9 @@ The same pane on a stopped sheep. The shepherd had no pid to walk from and left 
   2     api         [0m[38;5;166merrored        [0m  -        14        1          -       -         1h 18m    edge        -            [0m
   3     billing-r…  [0m[38;5;221mwaiting-restart[0m  -        3         1          -       -         1h 19m    -           -            [0m
 [0m[48;5;235m [0m [0m[48;5;235m4     cron        [0m[38;5;245m[48;5;235mstopped        [0m[48;5;235m  -        0         SIGTERM    -       -         1h 21m    -           -            [0m
-  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m    -           -            [0m
-  0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
-  1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
+  5     metrics     [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 32m    -           -            [0m
+  0     web         [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m    edge        -            [0m
+  1     web         [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m    edge        -            [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -769,12 +769,12 @@ The same pane on a stopped sheep. The shepherd had no pid to walk from and left 
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                         [0m
-[0m[48;5;235m [0m [0m[48;5;235m2     api                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m  [0m
-  3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m  [0m
-  4     cron               [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m  [0m
-  5     metrics            [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m  [0m
-  0     web                [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m  [0m
-  1     web                [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m  [0m
+[0m[48;5;235m [0m [0m[48;5;235m2     api                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          -       241.0M    1h 28m  [0m
+  3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          -       96.0M     1h 29m  [0m
+  4     cron               [0m[38;5;29monline         [0m  48233    0         -          -       8.0M      1h 31m  [0m
+  5     metrics            [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 32m  [0m
+  0     web                [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m  [0m
+  1     web                [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m  [0m
                                                                                                     [0m
                                                                                                     [0m
 [0m[38;5;221m[48;5;235mrestart api (id 2)? enter confirms, any other key cancels                           [0m[38;5;245m[48;5;235m control enabled[0m
@@ -788,12 +788,12 @@ Enter pressed. The request is out and nothing on the table has changed, because 
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                         [0m
-[0m[48;5;235m [0m [0m[48;5;235m2     api                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m  [0m
-  3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m  [0m
-  4     cron               [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m  [0m
-  5     metrics            [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m  [0m
-  0     web                [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m  [0m
-  1     web                [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m  [0m
+[0m[48;5;235m [0m [0m[48;5;235m2     api                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          -       241.0M    1h 28m  [0m
+  3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          -       96.0M     1h 29m  [0m
+  4     cron               [0m[38;5;29monline         [0m  48233    0         -          -       8.0M      1h 31m  [0m
+  5     metrics            [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 32m  [0m
+  0     web                [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m  [0m
+  1     web                [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m  [0m
                                                                                                     [0m
                                                                                                     [0m
 [0m[38;5;221m[48;5;235mrestart api (id 2): sent, waiting for the shepherd                                  [0m[38;5;245m[48;5;235m control enabled[0m
@@ -807,11 +807,11 @@ The shepherd refused while the request was out, and its own sentence is forwarde
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                         [0m
-[0m[48;5;235m [0m [0m[48;5;235m3     billing-reconcil…  [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48230    0         -          0.8%    96.0M     1h 29m  [0m
-  4     cron               [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m  [0m
-  5     metrics            [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m  [0m
-  0     web                [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m  [0m
-  1     web                [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m  [0m
+[0m[48;5;235m [0m [0m[48;5;235m3     billing-reconcil…  [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48230    0         -          -       96.0M     1h 29m  [0m
+  4     cron               [0m[38;5;29monline         [0m  48233    0         -          -       8.0M      1h 31m  [0m
+  5     metrics            [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 32m  [0m
+  0     web                [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m  [0m
+  1     web                [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m  [0m
                                                                                                     [0m
                                                                                                     [0m
                                                                                                     [0m
@@ -826,12 +826,12 @@ The shepherd answered. The bar says what it did, in the non-grave style a refusa
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                         [0m
-[0m[48;5;235m [0m [0m[48;5;235m2     api                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48299    2         -          7.1%    241.0M    1h 18m  [0m
-  3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m  [0m
-  4     cron               [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m  [0m
-  5     metrics            [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m  [0m
-  0     web                [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m  [0m
-  1     web                [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m  [0m
+[0m[48;5;235m [0m [0m[48;5;235m2     api                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48299    2         -          -       241.0M    1h 18m  [0m
+  3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          -       96.0M     1h 29m  [0m
+  4     cron               [0m[38;5;29monline         [0m  48233    0         -          -       8.0M      1h 31m  [0m
+  5     metrics            [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 32m  [0m
+  0     web                [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m  [0m
+  1     web                [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m  [0m
                                                                                                     [0m
                                                                                                     [0m
 [0m[38;5;221m[48;5;235mrestart api (id 2): the shepherd restarted it                                       [0m[38;5;245m[48;5;235m control enabled[0m
@@ -846,12 +846,12 @@ An action key pressed while the link is coming back. The refusal names the same 
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245mID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  [0m
   [0m[7m[38;5;29m ██ FLOCK                                                                                         [0m
-[0m[48;5;235m [0m [0m[48;5;235m2     api                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          7.1%    241.0M    1h 28m  [0m
-  3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          0.8%    96.0M     1h 29m  [0m
-  4     cron               [0m[38;5;29monline         [0m  48233    0         -          0.1%    8.0M      1h 31m  [0m
-  5     metrics            [0m[38;5;29monline         [0m  48240    0         -          0.4%    11.0M     1h 32m  [0m
-  0     web                [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m  [0m
-  1     web                [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m  [0m
+[0m[48;5;235m [0m [0m[48;5;235m2     api                [0m[38;5;29m[48;5;235monline         [0m[48;5;235m  48219    1         -          -       241.0M    1h 28m  [0m
+  3     billing-reconcil…  [0m[38;5;29monline         [0m  48230    0         -          -       96.0M     1h 29m  [0m
+  4     cron               [0m[38;5;29monline         [0m  48233    0         -          -       8.0M      1h 31m  [0m
+  5     metrics            [0m[38;5;29monline         [0m  48240    0         -          -       11.0M     1h 32m  [0m
+  0     web                [0m[38;5;29monline         [0m  48211    0         -          -       182.0M    1h 25m  [0m
+  1     web                [0m[38;5;29monline         [0m  48212    0         -          -       178.0M    1h 26m  [0m
                                                                                                     [0m
 [0m[38;5;166m[48;5;235mthe shepherd stopped answering: reconnecting (attempt 3)                            [0m[38;5;245m[48;5;235m control enabled[0m
 

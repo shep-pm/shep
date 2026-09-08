@@ -199,7 +199,9 @@ fn sheep_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
         info.restarts,
         app.uptime_ms(info.id)
             .map_or_else(|| "-".to_string(), human_duration),
-        info.cpu_percent
+        // `App::cpu_now`, not `info.cpu_percent`: this band must agree with
+        // the flock table's own CPU cell for the same row.
+        app.cpu_now(info.id)
             .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
         info.memory_bytes
             .map_or_else(|| "-".to_string(), human_bytes),

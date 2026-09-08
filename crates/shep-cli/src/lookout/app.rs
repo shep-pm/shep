@@ -4158,6 +4158,30 @@ impl App {
             .map_or(&[][..], |history| history.as_slices().0)
     }
 
+    /// `id`'s newest differenced CPU sample: [`Self::cpu_history`]'s last
+    /// entry, the same number its sparkline's last cell draws.
+    ///
+    /// `None` in two cases, both honest gaps rather than a claimed zero:
+    /// before a first difference exists (one poll after launch, on
+    /// [`Self::cpu_history`]'s own terms), and when the current snapshot's
+    /// `cpu_ms` is itself `None` (the sheep is not running, or the peer
+    /// daemon predates the field). The second check matters because
+    /// [`Self::record_samples`] still appends a zero to the history buffer
+    /// in that case, to keep the sparkline's window from sliding; reading
+    /// that zero back as a figure would report "0.0%" for a sheep whose CPU
+    /// was never sampled, the same false claim `ProcessInfo::cpu_percent`'s
+    /// own `None` exists to refuse.
+    ///
+    /// Every CPU figure lookout draws reads through here rather than
+    /// `ProcessInfo::cpu_percent`, the shepherd's own mean over a window
+    /// that resets independently of this pane's polls: reading both would
+    /// put two different numbers under one label.
+    #[must_use]
+    pub fn cpu_now(&self, id: u32) -> Option<f32> {
+        self.flock.get(&id)?.info.cpu_ms?;
+        self.cpu_history(id).last().copied()
+    }
+
     /// One sheep's RSS samples in bytes, oldest first, newest last.
     ///
     /// Empty for a sheep with no history yet and for one that has left the
@@ -4771,9 +4795,12 @@ impl App {
         GroupTotals {
             count: members.len(),
             restarts: members.iter().map(|row| row.info.restarts).sum(),
+            // `Self::cpu_now`, not `row.info.cpu_percent`: this rollup feeds
+            // the same CPU cell a standalone row draws, and must answer the
+            // same question the row and the flock figure do.
             cpu: members
                 .iter()
-                .filter_map(|row| row.info.cpu_percent)
+                .filter_map(|row| self.cpu_now(row.info.id))
                 .fold(None, |acc, cpu| Some(acc.unwrap_or(0.0) + cpu)),
             memory: members
                 .iter()
@@ -5250,6 +5277,44 @@ mod tests {
         app.on_snapshot(vec![row_without_cpu(1)]);
         app.on_snapshot(vec![row_with_cpu_ms(1, 9_000)]);
         assert_eq!(app.cpu_history(1), &[100.0, 0.0]);
+    }
+
+    /// `App::cpu_now` is the source every CPU figure lookout draws reads
+    /// through, and it must agree with the sparkline beside it: `None`
+    /// while one poll has nothing differenced yet, then the same newest
+    /// sample [`App::cpu_history`] holds once a second poll has something
+    /// to difference against.
+    #[test]
+    fn cpu_now_reads_none_after_one_poll_and_matches_cpu_history_after_two() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0)]);
+        assert_eq!(app.cpu_now(1), None, "one poll has nothing to difference");
+        app.on_snapshot(vec![row_with_cpu_ms(1, 2_000)]);
+        assert_eq!(app.cpu_now(1), Some(100.0));
+        assert_eq!(
+            app.cpu_history(1).last().copied(),
+            app.cpu_now(1),
+            "the figure and the sparkline's newest cell must be the same number"
+        );
+    }
+
+    /// `App::record_samples` still appends a zero to the history buffer for
+    /// a sheep with no current reading, so the sparkline's window does not
+    /// slide. `App::cpu_now` must not read that buffered zero back as a
+    /// figure: a sheep whose `cpu_ms` is `None` this poll has nothing
+    /// measured, and `0.0%` would claim otherwise.
+    #[test]
+    fn cpu_now_reads_none_for_a_sheep_with_no_current_reading() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 2_000)]);
+        app.on_snapshot(vec![row_without_cpu(1)]);
+        assert_eq!(
+            app.cpu_history(1),
+            &[100.0, 0.0],
+            "sanity: the buffer still holds the appended zero"
+        );
+        assert_eq!(app.cpu_now(1), None);
     }
 
     /// A respawn gives a new tree whose counter starts below the old one's.

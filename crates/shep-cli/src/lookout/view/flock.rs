@@ -1072,8 +1072,10 @@ fn fold_member_cell(app: &App, row: &Row, column: FoldColumn) -> String {
         FoldColumn::Mem => info
             .memory_bytes
             .map_or_else(|| "-".to_string(), human_bytes),
-        FoldColumn::Cpu => info
-            .cpu_percent
+        // `App::cpu_now`, not `info.cpu_percent`: see `cell`'s own
+        // `Column::Cpu` arm.
+        FoldColumn::Cpu => app
+            .cpu_now(info.id)
             .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
         FoldColumn::Uptime => app
             .uptime_ms(info.id)
@@ -1174,8 +1176,11 @@ fn cell(app: &App, row: &Row, column: Column, grouped: bool) -> String {
         // pending-over-overridden precedence.
         Column::Cfg => cfg_cell(info.pending.as_deref(), info.overridden.as_deref()),
         Column::CpuSpark => cpu_spark_cell(app, info),
-        Column::Cpu => info
-            .cpu_percent
+        // `App::cpu_now`, the sparkline's own newest cell, not
+        // `info.cpu_percent`: the shepherd's running mean, differently
+        // windowed, would disagree with the shape beside it.
+        Column::Cpu => app
+            .cpu_now(info.id)
             .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
         Column::MemCeil => mem_ceil_cell(info),
         Column::Mem => info
