@@ -46,7 +46,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       is using: 160M and 4G both land in the same tier, and on a flock where
       everything is large the whole column is one colour and tells you
       nothing. A third tier would have to be the fault colour, which would
-      paint a healthy 4G service as though it had broken. Use
+      paint a healthy 4G service as though it had broken. Use{" "}
       <code>--format json</code> when the exact number is the thing you
       need.
     </p>
@@ -88,12 +88,12 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
     <h3>The EXIT column</h3>
     <p>
       A sheep that is not running shows why it stopped: an exit code, or a
-      signal name. A running one shows <code>-</code>, the same convention
+      signal name. A running one shows <code>-</code>, the same convention{" "}
       <code>PID</code> and <code>CPU</code> use for a value that has no
       honest answer yet.
     </p>
     <p>
-      It tells two failures apart that <code>status</code> alone cannot.
+      It tells two failures apart that <code>status</code> alone cannot.{" "}
       <code>errored</code> with fifteen restarts says only that a sheep is
       not up. <code>EXIT 1</code> says it started and crashed; an empty EXIT
       on that same row says it never started at all.
@@ -104,21 +104,21 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       A sheep with config waiting on it, or with settings of its own, is
       marked here; every other sheep reads <code>-</code>. <code>!2</code> means two fields are parked for
       this sheep's next spawn, left there by a Flockfile load that would have
-      had to kill the process to apply them, and
+      had to kill the process to apply them, and{" "}
       <code>shep reload &lt;name&gt;</code> promotes them.
     </p>
     <p>
-      A count and not the names, because the names are what
+      A count and not the names, because the names are what{" "}
       <code>shep describe</code> lists underneath its table and a
-      three-character cell has room for one number. See
+      three-character cell has room for one number. See{" "}
       <a href="/docs/overrides">Overrides</a>.
     </p>
     <p class="fine">
       The cell has a second marker, <code>*2</code>, for fields an operator
       has taken ownership of, whether or not the sheep's current Flockfile
-      declares them. The door that writes them is
-      <a href="/docs/lookout">the config pane</a>:
-      <code>e</code> on a sheep in <code>shep lookout</code>, behind
+      declares them. The door that writes them is{" "}
+      <a href="/docs/lookout">the config pane</a>:{" "}
+      <code>e</code> on a sheep in <code>shep lookout</code>, behind{" "}
       <code>--allow-control</code>. Pending takes the cell when a sheep has
       both: a parked field is one command away from taking effect, while an
       override has been true since the last load.
@@ -127,7 +127,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
     <h2 id="grouped-instances">Multi-instance apps group</h2>
     <p>
       An app with <code>instances</code> above 1 gets a header row above its
-      slots, in <code>full</code> or <code>plain</code>: <code>web ×3</code>
+      slots, in <code>full</code> or <code>plain</code>: <code>web ×3</code>{" "}
       in <code>NAME</code>, and a <code>↳ :0</code> row beneath it per
       instance, which is also what <code>web:0</code> selects. A
       single-instance app is unchanged, no group row and no suffix:
@@ -141,12 +141,12 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
 │ 2  │  ↳ :2  │ (o.o) online │ 74804 │ 0        │ -    │ -   │ 0.0% │ 3.0M │ 33s    │      │      │
 └────┴────────┴──────────────┴───────┴──────────┴──────┴─────┴──────┴──────┴────────┴──────┴──────┘`}</CodeBlock>
     <p>
-      The group row rolls up rather than picking a winner: <code>STATUS</code>
+      The group row rolls up rather than picking a winner: <code>STATUS</code>{" "}
       is the shared word when every instance agrees, else a count per state
-      like <code>2 up, 1 down</code>. <code>RESTARTS</code>, <code>CPU</code>
-      and <code>MEM</code> sum across the instances, and <code>UPTIME</code>
-      is the minimum, time since the last disruption. <code>ID</code> and
-      <code>PID</code> are blank, since neither has a single answer, and
+      like <code>2 up, 1 down</code>. <code>RESTARTS</code>, <code>CPU</code>{" "}
+      and <code>MEM</code> sum across the instances, and <code>UPTIME</code>{" "}
+      is the minimum, time since the last disruption. <code>ID</code> and{" "}
+      <code>PID</code> are blank, since neither has a single answer, and{" "}
       <code>FOLD</code> and <code>SMIT</code> sit only on the group row and
       stay blank on the instance rows beneath it, since both are per-app
       already. When a selector or filter matches only some of an app's
@@ -194,16 +194,16 @@ Dogs
     <p>
       <code>CFG</code>, <code>FOLD</code> and <code>SMIT</code> are missing
       from the dogs table because they are impossible for a dog rather than
-      merely empty: a dog belongs to no fold, a smit is a mark a dog paints
+      merely empty: a dog belongs to no fold, a smit is a mark a dog paints{" "}
       <em>on</em> a sheep, and no Flockfile load ever reaches a dog, so
       nothing can park config on one. A column that reads <code>-</code> on
       every row teaches nothing.
     </p>
     <p>
       Colours match too, column for column. Same face and status colour, same
-      restart colour above zero, same ramps for CPU and MEM, same
-      <code>EXIT</code>. So the same dog reads the same way under
-      <code>shep dogs</code>, under <code>shep flock</code>, and after
+      restart colour above zero, same ramps for CPU and MEM, same{" "}
+      <code>EXIT</code>. So the same dog reads the same way under{" "}
+      <code>shep dogs</code>, under <code>shep flock</code>, and after{" "}
       <code>shep restart log-rotate</code>.
     </p>
 
@@ -211,7 +211,7 @@ Dogs
     <p>
       A dog is a peer as well as a process. It dials back to the shepherd
       and keeps a connection open, and one that never manages it is not
-      doing its job however alive it looks. So <code>online</code> becomes
+      doing its job however alive it looks. So <code>online</code> becomes{" "}
       <code>silent</code>, in amber, with a puzzled face instead of a
       grazing one.
     </p>
@@ -224,7 +224,7 @@ Dogs
       What that adds is whether the shepherd has given up. A dog silent past
       five seconds is restarted once from the binary on disk; if the
       restarted dog stays silent, the shepherd stops and never restarts it
-      again. Nothing on the row changes when that happens — it still reads
+      again. Nothing on the row changes when that happens — it still reads{" "}
       <code>silent</code>, because the process is still up and still has not
       answered — so <code>shep describe</code> is the only place that says
       so.
@@ -243,8 +243,8 @@ Dogs
     <p class="fine">
       Only <code>online</code> is replaced. <code>starting</code> already
       says the connection is not up yet, and a dog is silent for a moment
-      every time it starts. <code>--format json</code> carries both facts as
-      <code>handshook</code> and <code>dog_stale</code>, beside a
+      every time it starts. <code>--format json</code> carries both facts as{" "}
+      <code>handshook</code> and <code>dog_stale</code>, beside a{" "}
       <code>status</code> that still reads <code>online</code> — true of the
       process, which is what that field has always described.
     </p>
@@ -253,14 +253,14 @@ Dogs
     <p>
       It is the only column in shep carrying a trust distinction, so the two
       values do not look alike. <code>built-in</code> is shep running its own
-      code, and is muted like any other label you read past.
+      code, and is muted like any other label you read past.{" "}
       <code>adopted</code> is a third-party binary running at the shepherd's
       own trust level, from a path you supplied, with no sandbox around it.
       That gets the same colour a restart count above zero gets: worth a
       glance, not a fault, because you chose it.
     </p>
     <p>
-      <code>enable</code>, <code>disable</code>, <code>adopt</code> and
+      <code>enable</code>, <code>disable</code>, <code>adopt</code> and{" "}
       <code>rehome</code> print a one-row confirmation with the same
       treatment. Their <code>STATUS</code> holds either a status or a
       sentence saying why no shepherd answered, and only a status is
@@ -283,7 +283,7 @@ Dogs
     <Callout variant="note">
       Seven tables carry no colour at all, deliberately: <code>describe</code>'s
       lamb tree, <code>delete</code>'s id list, <code>unset</code>'s count, the
-      two saved-roll tables, the KV store, and
+      two saved-roll tables, the KV store, and{" "}
       <code>shep dogs --available</code>. Each is either pure data shep has no
       opinion about, or a single column that is also the whole content, where
       muting would fade the table and distinguish nothing.
@@ -297,7 +297,7 @@ Dogs
 
     <h2 id="after-a-lifecycle-command">After a lifecycle command</h2>
     <p>
-      <code>start</code>, <code>stop</code>, <code>restart</code>,
+      <code>start</code>, <code>stop</code>, <code>restart</code>,{" "}
       <code>reload</code>, <code>delete</code> and <code>stock</code> all
       print the whole flock afterwards, not only the sheep they touched. The
       question after starting one app is usually what everything else is
@@ -318,7 +318,7 @@ Dogs
 └────┴────────────┴────────┴───────┴──────────┴──────┴──────┴──────┴────────┴─────────┘`}</CodeBlock>
     <p>
       That is the same output <code>shep flock</code> gives, dogs table and
-      all, so <code>shep restart log-rotate</code> and <code>shep flock</code>
+      all, so <code>shep restart log-rotate</code> and <code>shep flock</code>{" "}
       draw the same dog the same way. See <a href="#the-dogs-table">the dogs
       table</a> for why it is a second table rather than another row.
     </p>
@@ -329,28 +329,28 @@ Dogs
     </p>
     <CodeBlock label="shep delete koji">{`notice[delete]: deleted 1 sheep, id 5`}</CodeBlock>
     <Callout variant="note">
-      <code>--format json</code> is not widened. A script that runs
-      <code>shep stop web --format json</code> asked about
-      <code>web</code>, so <code>data</code> holds the rows for
+      <code>--format json</code> is not widened. A script that runs{" "}
+      <code>shep stop web --format json</code> asked about{" "}
+      <code>web</code>, so <code>data</code> holds the rows for{" "}
       <code>web</code>. Use <code>shep flock --format json</code> when you
       want the flock.
     </Callout>
 
     <h2 id="row-order">Row order</h2>
     <p>
-      Every listing shep prints is sorted by name, then by id. That covers
-      <code>shep flock</code>, every lifecycle verb above,
-      <code>shep lookout</code>, and the tables
-      <code>signal</code>, <code>whisper</code> and <code>trigger</code>
+      Every listing shep prints is sorted by name, then by id. That covers{" "}
+      <code>shep flock</code>, every lifecycle verb above,{" "}
+      <code>shep lookout</code>, and the tables{" "}
+      <code>signal</code>, <code>whisper</code> and <code>trigger</code>{" "}
       print.
     </p>
     <p>
       Ids are handed out in registration order, which is a fact about your
-      shell history rather than about the flock, and they move: a
+      shell history rather than about the flock, and they move: a{" "}
       <code>delete all</code> followed by a fresh start renumbers everything.
       Names do not. The id breaks ties, so the four instances of an app
       stocked to four stay in a fixed order instead of shuffling between
-      refreshes, and it is still what you type at
+      refreshes, and it is still what you type at{" "}
       <code>shep stop 11</code>.
     </p>
 
@@ -370,9 +370,9 @@ Dogs
     <p>
       Two things narrowed there. The status word went before any whole
       column did, leaving the face, which is five columns rather than
-      fifteen. Then <code>SMIT</code>, <code>FOLD</code>, <code>CFG</code>,
+      fifteen. Then <code>SMIT</code>, <code>FOLD</code>, <code>CFG</code>,{" "}
       <code>EXIT</code> and <code>CPU</code> dropped, in that order, and the
-      footer says so.
+      footer says so.{" "}
       <code>SMIT</code> goes first: it is by far the widest column, so
       dropping it buys back the most room.
     </p>
@@ -391,7 +391,7 @@ Dogs
     <h2>What a pipe gets</h2>
     <p>
       Redirect it and the boxes, colour and faces all go away. This is not a
-      setting; a non-terminal stdout forces it, and so does
+      setting; a non-terminal stdout forces it, and so does{" "}
       <code>--format json</code>:
     </p>
     <CodeBlock label="shep flock | cat">{`ID  NAME  STATUS   PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD     SMIT
@@ -399,8 +399,8 @@ Dogs
 0   web   online   68630  0         -     -    0.0%  3.0M  5m 10s  backend  -`}</CodeBlock>
     <p>
       None of the pretty rendering survives a pipe, which is the point. The
-      columns themselves do move between releases though. <code>CFG</code>,
-      <code>EXIT</code> and <code>SMIT</code> are all recent, so parse
+      columns themselves do move between releases though. <code>CFG</code>,{" "}
+      <code>EXIT</code> and <code>SMIT</code> are all recent, so parse{" "}
       <code>--format json</code> instead if a script depends on the shape.
     </p>
 
@@ -437,9 +437,9 @@ notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
 
     <h3>NO_COLOR</h3>
     <p>
-      <a href="https://no-color.org/">The <code>NO_COLOR</code> convention</a>
+      <a href="https://no-color.org/">The <code>NO_COLOR</code> convention</a>{" "}
       is honoured at every level, and it is a separate axis rather than a
-      fourth level. It removes colour and leaves the layout alone, so
+      fourth level. It removes colour and leaves the layout alone, so{" "}
       <code>full</code> under <code>NO_COLOR</code> still draws boxes and
       still shows faces:
     </p>
@@ -456,7 +456,7 @@ notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
       mustering forty processes does not paint a field.
     </p>
     <Callout variant="note">
-      Never on an error, and never after <code>kill</code>,
+      Never on an error, and never after <code>kill</code>,{" "}
       <code>delete</code> or <code>stop</code>. Errors keep their colour,
       because red is information, and lose everything else. A sheep beside a
       failure makes it harder to read, and a cheerful one after deleting a

@@ -37,7 +37,7 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
     <ReferencePills slug="serve" />
     <p class="lede">
       <code>shep serve &lt;dir&gt;</code> registers a sheep whose command line
-      is this same invocation, canonicalized, with <code>--foreground</code>
+      is this same invocation, canonicalized, with <code>--foreground</code>{" "}
       appended: the worker answering every request <em>is</em> the
       registered sheep, so <code>shep describe</code> shows exactly what
       restarts if it dies. It's hand-rolled (six small modules over an HTTP
@@ -56,16 +56,16 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
     <p>
       Every default below is the safe one, and every unsafe one is a named
       flag rather than a config file nobody reads. Binds loopback
-      (<code>127.0.0.1:8080</code>) unless you pass a wider
+      (<code>127.0.0.1:8080</code>) unless you pass a wider{" "}
       <code>--bind</code>, which prints a stderr notice naming what it just
-      exposed. These four requests were run against a real
-      <code>shep serve</code> process, docroot containing an
+      exposed. These four requests were run against a real{" "}
+      <code>shep serve</code> process, docroot containing an{" "}
       <code>index.html</code>, a <code>.env</code>, and a symlink:
     </p>
     <CodeBlock>{requestCodes}</CodeBlock>
     <p>
       Traversal is refused in every encoding it was tried in, not just the
-      literal one. Dotfiles 404: serving a repo checkout with
+      literal one. Dotfiles 404: serving a repo checkout with{" "}
       <code>shep serve .</code> would otherwise publish <code>.env</code> and
       the whole <code>.git</code> history. And <strong>any</strong> symlink
       under the docroot 404s by default, not only one that leaves it: an
@@ -89,13 +89,13 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
 
     <h2>The rest of the flags</h2>
     <p>
-      <code>--listing</code> turns on directory listings for a folder with no
+      <code>--listing</code> turns on directory listings for a folder with no{" "}
       <code>index.html</code>, off by default, since a listing publishes
       every filename under it. <code>--hidden</code> serves dotfiles, mainly
-      for <code>.well-known/acme-challenge</code>. <code>--spa</code> serves
+      for <code>.well-known/acme-challenge</code>. <code>--spa</code> serves{" "}
       <code>index.html</code> for a path that doesn't exist, only for
-      requests that accept HTML, so a missing script still 404s.
-      <code>--auth &lt;file&gt;</code> requires one <code>user:password</code>
+      requests that accept HTML, so a missing script still 404s.{" "}
+      <code>--auth &lt;file&gt;</code> requires one <code>user:password</code>{" "}
       line, mode <code>0600</code>, on every request. Sent as plain HTTP
       basic auth, base64 rather than encryption, so put a real proxy in front
       if that matters.
@@ -103,9 +103,9 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
     <p class="fine">
       What isn't here: range requests, conditional requests, ETags,
       compression, keep-alive, TLS, or HTTP/2
-      <NotBuilt note="range/conditional requests are v1.1 candidates" />.
+      <NotBuilt note="range/conditional requests are v1.1 candidates" />.{" "}
       <code>shep serve</code> takes no configuration from the environment:
-      pass <code>--port</code>, <code>--bind</code>, <code>--spa</code>,
+      pass <code>--port</code>, <code>--bind</code>, <code>--spa</code>,{" "}
       <code>--auth</code> and the flags above on the command line instead.
       The visible cost today is no video seeking and a full re-read per
       request.

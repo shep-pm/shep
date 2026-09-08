@@ -23,7 +23,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
     <p class="lede">
       A fold is a label, nothing more. It doesn't isolate a sheep's
       filesystem, network, or resources. It just gives a group of sheep a
-      name you can select, list, and read off the flock table, so
+      name you can select, list, and read off the flock table, so{" "}
       <code>backend</code> and <code>jobs</code> don't have to be regexes
       you keep retyping.
     </p>
@@ -31,8 +31,8 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
     <h2>Setting one</h2>
     <p>
       Add <code>fold = "&lt;name&gt;"</code> to any app in a Flockfile. A
-      sheep with no <code>fold</code> field simply has none. It prints
-      <code>-</code> in the table and <code>null</code> under
+      sheep with no <code>fold</code> field simply has none. It prints{" "}
+      <code>-</code> in the table and <code>null</code> under{" "}
       <code>--format json</code>.
     </p>
     <CodeBlock label="Flockfile.toml">{`[[app]]
@@ -54,7 +54,7 @@ fold   = "jobs"`}</CodeBlock>
     <p>
       <code>shep fold &lt;name&gt;</code> lists exactly that fold. Nothing
       else in the flock. It's <code>shep flock</code> pre-filtered, plus one
-      thing the plain flock table never shows: a <strong>Lambs</strong>
+      thing the plain flock table never shows: a <strong>Lambs</strong>{" "}
       section under any sheep that has spawned children of its own, one per
       sheep, listing every parent-pid descendant by PID and name:
     </p>
@@ -74,12 +74,12 @@ PID    NAME
 64785  sleep`}</CodeBlock>
     <p>
       A sheep with no children of its own gets no Lambs section at all. The
-      two above both happen to fork workers, which is why both get one. See
+      two above both happen to fork workers, which is why both get one. See{" "}
       <a href="/docs/json-output">JSON output</a> for how the same data
       surfaces as the <code>lambs</code> array under <code>--format json</code>.
     </p>
     <p>
-      A fold name that matches nothing is the same <code>not_found</code>
+      A fold name that matches nothing is the same <code>not_found</code>{" "}
       error any other selector gives you, exit code 3, not an empty list:
     </p>
     <CodeBlock>{`$ shep fold nonexistent
@@ -88,10 +88,10 @@ error[not_found]: the daemon reported NotFound: selector matched no registered s
     <h2>Selecting one from any verb</h2>
     <p>
       Every verb accepts <code>fold:&lt;name&gt;</code> in place of a name,
-      an id, a <code>/regex/</code>, a glob, <code>name:slot</code>
-      (<code>web:2</code>, one instance of a multi-instance app), or
-      <code>all</code>. That is <code>stop</code>, <code>restart</code>,
-      <code>reload</code>, <code>delete</code>, <code>bleats</code>,
+      an id, a <code>/regex/</code>, a glob, <code>name:slot</code>{" "}
+      (<code>web:2</code>, one instance of a multi-instance app), or{" "}
+      <code>all</code>. That is <code>stop</code>, <code>restart</code>,{" "}
+      <code>reload</code>, <code>delete</code>, <code>bleats</code>,{" "}
       <code>trigger</code>, <code>start</code>, and the rest. It reaches
       every sheep carrying that fold in one call:
     </p>
@@ -102,14 +102,14 @@ ID  NAME    STATUS   PID    RESTARTS  EXIT     CFG  CPU  MEM    UPTIME  FOLD    
 1   worker  stopped  -      0         SIGTERM  -    -    -      0s      backend  -`}</CodeBlock>
     <p>
       The listing is the whole flock, not just the fold. Every lifecycle verb
-      prints it that way, so <code>cron</code> is there and still online. See
+      prints it that way, so <code>cron</code> is there and still online. See{" "}
       <a href="/docs/output#after-a-lifecycle-command">terminal output</a>.
     </p>
 
     <h2>Folds on <code>start</code></h2>
     <p>
       <code>shep start</code> takes selectors like every other verb, and it
-      also takes the things only it can take: a script path, a Flockfile, or
+      also takes the things only it can take: a script path, a Flockfile, or{" "}
       <code>-</code> for Flockfile JSON on stdin. That makes some targets
       ambiguous, so it resolves one in a fixed order and the first tier that
       matches wins.
@@ -130,7 +130,7 @@ ID  NAME    STATUS   PID    RESTARTS  EXIT     CFG  CPU  MEM    UPTIME  FOLD    
     <p>
       Only sheep the flock already has can be reached this way. A fold is a
       field on a registered sheep, so there is nothing for a fold to
-      register. A sheep that is already running is reported and left alone;
+      register. A sheep that is already running is reported and left alone;{" "}
       <code>restart</code> is the verb that replaces one.
     </p>
     <CodeBlock>{`$ shep start fold:backed
@@ -149,18 +149,18 @@ error[not_found]: no sheep is in a fold called typo`}</CodeBlock>
 
     <Callout variant="note">
       Selector parsing checks shapes in a fixed order, and it matters if a
-      name is ambiguous with something else: the literal word
-      <code>all</code>, then a <code>fold:</code> prefix, then
+      name is ambiguous with something else: the literal word{" "}
+      <code>all</code>, then a <code>fold:</code> prefix, then{" "}
       <code>/regex/</code> slashes, then (if the whole string is ASCII
       digits) a numeric id, then a glob, then <code>name:slot</code>. Only
       after all six fail does it fall back to treating the string as a plain
       name. A sheep named <code>2</code> is the practical edge of this:
       typing <code>2</code> as a selector always means "id 2", never "the
-      sheep named 2", even if those aren't the same sheep. <code>fold:</code>
-      names don't collide with any of this: the prefix is checked for before
+      sheep named 2", even if those aren't the same sheep. <code>fold:</code>{" "}
+      names don't collide with any of this: the prefix is checked for before{" "}
       <code>/regex/</code> or a bare number, so a fold can be named anything,
-      including <code>all</code> or a number, and
-      <code>fold:&lt;that name&gt;</code> still reaches it. A glob like
+      including <code>all</code> or a number, and{" "}
+      <code>fold:&lt;that name&gt;</code> still reaches it. A glob like{" "}
       <code>web*</code> is checked before <code>name:slot</code>, so it still
       matches every instance of an app rather than being read as a name with
       a stray colon; and since a colon is no longer legal in a sheep name at
@@ -173,7 +173,7 @@ error[not_found]: no sheep is in a fold called typo`}</CodeBlock>
       Folds carry no uniqueness constraint and no nesting: a name is a flat
       string, and two sheep can share one with nothing else in common. There
       is no <code>shep fold create</code> or config listing every fold that
-      exists; a fold exists exactly as long as some sheep's
+      exists; a fold exists exactly as long as some sheep's{" "}
       <code>fold</code> field names it, and disappears the moment the last
       one does. If you're picturing folds as something closer to a
       Kubernetes namespace or a cgroup, that's the wrong mental model.
@@ -185,14 +185,14 @@ error[not_found]: no sheep is in a fold called typo`}</CodeBlock>
       <a href="/docs/first-flockfile" class="next-card">
         <div class="next-title">Your first Flockfile →</div>
         <div class="next-body">
-          Every field a Flockfile understands, including <code>fold</code>
+          Every field a Flockfile understands, including <code>fold</code>{" "}
           itself, and the strict grammars that catch typos.
         </div>
       </a>
       <a href="/docs/json-output" class="next-card">
         <div class="next-title">JSON output →</div>
         <div class="next-body">
-          How a fold (or its absence) actually serializes under
+          How a fold (or its absence) actually serializes under{" "}
           <code>--format json</code>.
         </div>
       </a>

@@ -97,15 +97,15 @@ const polyglotRows: ExampleRow[] = [
       Every page in this section describes what shep does. This one is
       seven tiny programs and a Flockfile that make it happen where you can
       watch: a probe waiting, a stop signal being ignored, a memory ceiling
-      firing, a crash loop backing off. Everything lives under
-      <code>examples/</code> — a workspace member of its own, built by
-      <code>cargo build --release</code> but never on the path a plain
+      firing, a crash loop backing off. Everything lives under{" "}
+      <code>examples/</code> — a workspace member of its own, built by{" "}
+      <code>cargo build --release</code> but never on the path a plain{" "}
       <code>cargo install shep</code> walks.
     </p>
     <p>
       That first set is Rust on purpose: it needs nothing but a Rust
-      toolchain, works from a fresh clone, and is what
-      <code>examples/Flockfile.toml</code> starts. A second layer,
+      toolchain, works from a fresh clone, and is what{" "}
+      <code>examples/Flockfile.toml</code> starts. A second layer,{" "}
       <code>examples/Flockfile.polyglot.toml</code>, runs the same ideas
       against Node, Bun, Python and Go — the stacks most shep operators
       actually run, and the ones the Rust set structurally can't stand in
@@ -129,15 +129,15 @@ const polyglotRows: ExampleRow[] = [
       polyglot layer</a> below for the same rule hitting a missing
       runtime). This file declares no <code>depends_on</code>, so it is one
       stage in file order, and on a non-Unix host it does not run straight
-      through as shown. Comment out
+      through as shown. Comment out{" "}
       <code>stubborn</code>'s <code>[[app]]</code> block to run the other
       six.
     </Callout>
 
     <Callout variant="careful">
-      No config edits needed otherwise. Every path in
-      <code>examples/Flockfile.toml</code> is relative to
-      <code>examples/</code> itself — a Flockfile app with no
+      No config edits needed otherwise. Every path in{" "}
+      <code>examples/Flockfile.toml</code> is relative to{" "}
+      <code>examples/</code> itself — a Flockfile app with no{" "}
       <code>cwd</code> runs where its Flockfile lives — so cloning the repo
       and running the commands below just works, on a Unix host.
     </Callout>
@@ -146,7 +146,7 @@ const polyglotRows: ExampleRow[] = [
     <p>
       Two of the seven — <code>leaky</code> and <code>crasher</code> — restart
       on purpose and by design, and <code>shep start</code> registers into
-      whatever <code>$SHEP_HOME</code> is already pointed at. The
+      whatever <code>$SHEP_HOME</code> is already pointed at. The{" "}
       <code>export</code> below is not optional: skip it and this starts
       inside your own real daemon, alongside whatever it's already
       supervising.
@@ -196,8 +196,8 @@ timeout  = "1s"`}</CodeBlock>
       <div><span class="prompt">$</span> touch /tmp/shep-examples-sentinel</div>
     </div>
     <p class="fine">
-      The next poll — within <code>interval</code> — flips
-      <code>http-server-gated-by-sentinel</code> from <code>starting</code> to
+      The next poll — within <code>interval</code> — flips{" "}
+      <code>http-server-gated-by-sentinel</code> from <code>starting</code> to{" "}
       <code>online</code>.
     </p>
 
@@ -208,8 +208,8 @@ timeout  = "1s"`}</CodeBlock>
       signal nothing can trap. The field that governs how long shep waits
       before that escalation on a plain <code>shep stop</code>/
       <code>restart</code>/<code>delete</code> is <code>kill_timeout</code>,
-      not <code>graceful_timeout</code>: the latter only governs a
-      <em>reload</em>'s drain window for the old instance. This example sets
+      not <code>graceful_timeout</code>: the latter only governs a{" "}
+      <em>reload</em>'s drain window for the old instance. This example sets{" "}
       <code>kill_timeout</code> to 3 seconds, short enough to watch land:
     </p>
     <div class="terminal">
@@ -217,14 +217,14 @@ timeout  = "1s"`}</CodeBlock>
     </div>
     <p class="fine">
       Roughly three seconds pass — one <code>"caught SIGTERM, still not
-      dying"</code> line in its log, then silence — before
+      dying"</code> line in its log, then silence — before{" "}
       <code>shep flock</code> reports it stopped by <code>SIGKILL</code>.
     </p>
 
     <h2 id="polyglot">The polyglot layer</h2>
     <p>
-      <code>examples/Flockfile.polyglot.toml</code> needs, per app,
-      <code>node</code>, <code>bun</code>, <code>python3</code>, or
+      <code>examples/Flockfile.polyglot.toml</code> needs, per app,{" "}
+      <code>node</code>, <code>bun</code>, <code>python3</code>, or{" "}
       <code>go</code> — never all four to run any single one of them.
       Two setup steps, once, before the runtimes that need them:
     </p>
@@ -263,7 +263,7 @@ timeout  = "1s"`}</CodeBlock>
       stays online, and the failure names it
       (<code>this start already has children running and leaves them
       alone: node-http, node-http-cluster</code>), but nothing after it is
-      even attempted in that same invocation. Missing <code>bun</code> would silently keep
+      even attempted in that same invocation. Missing <code>bun</code> would silently keep{" "}
       <code>python-app</code> and <code>go-http</code> from starting too,
       not just <code>bun-http</code>. If a runtime isn't installed, comment
       out that app's <code>[[app]]</code> block rather than leaving it in.
@@ -274,8 +274,8 @@ timeout  = "1s"`}</CodeBlock>
     <h3>One file, two runtimes</h3>
     <p>
       <code>node-http</code> and <code>bun-http</code> run the exact same
-      script, <code>examples/polyglot/node-http.js</code> — only
-      <code>interpreter</code> changes, from <code>"node"</code> to
+      script, <code>examples/polyglot/node-http.js</code> — only{" "}
+      <code>interpreter</code> changes, from <code>"node"</code> to{" "}
       <code>"bun"</code>:
     </p>
     <CodeBlock label="examples/Flockfile.polyglot.toml">{`[[app]]
@@ -291,7 +291,7 @@ interpreter = "bun"
 args        = ["19095"]`}</CodeBlock>
     <p class="fine">
       shep never inspects the script; <code>interpreter</code> is a plain
-      program name, spawned with the script as its first argument. A
+      program name, spawned with the script as its first argument. A{" "}
       <code>shep.toml</code> <code>[interpreters]</code> table does the same
       job automatically, by extension, so every app in a flock doesn't
       have to spell <code>interpreter</code> out by hand:
@@ -301,7 +301,7 @@ js = "node"
 py = "python3"`}</CodeBlock>
     <p class="fine">
       An app's own <code>interpreter</code> field, when it sets one — as
-      every interpreted app in <code>examples/Flockfile.polyglot.toml</code>
+      every interpreted app in <code>examples/Flockfile.polyglot.toml</code>{" "}
       does, though <code>go-http</code> sets none because a compiled binary
       runs directly — always wins over the extension map. The map exists for a flock of
       apps that all use the same handful of extensions and would rather
@@ -310,8 +310,8 @@ py = "python3"`}</CodeBlock>
 
     <h3>instances, without reuse_port</h3>
     <p>
-      <code>node-http-cluster</code> is the same script again,
-      <code>instances = 4</code>. Each instance gets its own
+      <code>node-http-cluster</code> is the same script again,{" "}
+      <code>instances = 4</code>. Each instance gets its own{" "}
       <code>SHEP_INSTANCE</code> env var (0 through 3), and the script adds
       that to its base port: four separate listeners on 19091 through
       19094, not one port shared four ways. A <code>readiness_probe</code> is what
@@ -328,7 +328,7 @@ py = "python3"`}</CodeBlock>
       overlap: an app that claims it wrongly gets a replacement that takes{" "}
       <code>EADDRINUSE</code>.
       This example offsets the port rather than sharing it, so the question
-      never arises: four listeners, four ports, nothing to share. See
+      never arises: four listeners, four ports, nothing to share. See{" "}
       <a href="/docs/from-pm2">Coming from pm2</a> for how this compares to
       pm2's own cluster mode.
     </p>
@@ -350,8 +350,8 @@ args        = ["19096"]`}</CodeBlock>
 
     <h3>A build step, then no interpreter</h3>
     <p>
-      <code>go-http</code> is compiled, not interpreted:
-      <code>examples/polyglot/go-http/build.sh</code> runs
+      <code>go-http</code> is compiled, not interpreted:{" "}
+      <code>examples/polyglot/go-http/build.sh</code> runs{" "}
       <code>go build</code> first, and the Flockfile entry that follows has
       no <code>interpreter</code> field at all — a native executable
       already runs itself.
@@ -367,7 +367,7 @@ args        = ["19096"]`}</CodeBlock>
       <div><span class="prompt">$</span> ./target/release/shep serve examples/polyglot/static-site --port 19098</div>
     </div>
     <p class="fine">
-      See <a href="/docs/serve">Serve</a> for <code>--bind</code>,
+      See <a href="/docs/serve">Serve</a> for <code>--bind</code>,{" "}
       <code>--auth</code>, and everything else it refuses by default.
     </p>
 

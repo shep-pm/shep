@@ -41,28 +41,28 @@ import Callout from "../../components/docs/Callout.astro";
       it got right is worth more than a tidy page.
     </p>
     <p>
-      The day-to-day loop works: <code>start</code>, <code>stop</code>,
-      <code>restart</code>, <code>reload</code>, <code>flock</code>,
-      <code>describe</code>, <code>bleats</code>, <code>delete</code>,
-      <code>save</code>/<code>muster</code>, <code>lookout</code>,
+      The day-to-day loop works: <code>start</code>, <code>stop</code>,{" "}
+      <code>restart</code>, <code>reload</code>, <code>flock</code>,{" "}
+      <code>describe</code>, <code>bleats</code>, <code>delete</code>,{" "}
+      <code>save</code>/<code>muster</code>, <code>lookout</code>,{" "}
       <code>whistle</code> and the dogs — over a named pipe instead of a unix
       socket, with each sheep contained in a job object instead of a process
       group.
     </p>
     <Callout variant="careful">
-      <strong>These limits are real and are not going to be papered over.</strong>
+      <strong>These limits are real and are not going to be papered over.</strong>{" "}
       Windows has nothing SIGTERM-shaped that can be delivered to an
-      arbitrary process, so <code>shep stop</code> waits out the app's whole
+      arbitrary process, so <code>shep stop</code> waits out the app's whole{" "}
       <code>kill_timeout</code> and then terminates it — unless the app opts
       into the shepherd channel with <code>shutdown_with_message</code>,
-      which is the supported graceful path there. And
+      which is the supported graceful path there. And{" "}
       <code>shep startup</code> is not built: boot-time supervision on
       Windows means a Service Control Manager service, a different program
       shape rather than a fifth unit template. Run <code>shep start</code> in
       your own session, or wrap <code>shep runtime</code> in NSSM or WinSW.
     </Callout>
     <p>
-      The estimate's own shape predictions all held. The 145
+      The estimate's own shape predictions all held. The 145{" "}
       <code>cfg(unix)</code> sites really were the cheap part — only ten
       files in the CLI contained a Unix API call at all, and four whole
       module trees contained none. The cost concentrated exactly where it
@@ -78,13 +78,13 @@ import Callout from "../../components/docs/Callout.astro";
       <li>
         <strong>The shepherd channel is not fd 3.</strong> It is a named pipe
         whose path arrives as <code>$SHEP_CHANNEL_PIPE</code>; the app opens
-        it itself. The wire format is untouched, so
-        <code>shep trigger</code>'s correlation id survives unchanged.
+        it itself. The wire format is untouched, so{" "}
+        <code>shep trigger</code>'s correlation id survives unchanged.{" "}
         <code>SHEP_CHANNEL_FD</code> is deliberately not set there, so an app
         can branch on which variable is present rather than on the platform.
       </li>
       <li>
-        <strong><code>user</code>/<code>group</code> refuse permanently.</strong>
+        <strong><code>user</code>/<code>group</code> refuse permanently.</strong>{" "}
         Dropping privilege on Windows needs a logon session or a
         primary-token privilege: a different feature, not a different call.
       </li>
@@ -92,7 +92,7 @@ import Callout from "../../components/docs/Callout.astro";
     <p class="fine">
       Two things the estimate did not anticipate, both found only by running
       the code: a Windows child started with a genuinely empty environment
-      fails before <code>main</code> (many Win32 APIs read
+      fails before <code>main</code> (many Win32 APIs read{" "}
       <code>%SystemRoot%</code>), and an append-mode handle cannot be
       truncated there, which broke <code>shep start</code>'s autostart
       outright. Neither is visible to a compiler.

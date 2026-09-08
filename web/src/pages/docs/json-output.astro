@@ -31,7 +31,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
     <p>
       Every non-streaming command wraps its payload in the same three
       fields: a schema version, the verb name, and the data itself. One
-      verb adds a fourth, and only sometimes; see
+      verb adds a fourth, and only sometimes; see{" "}
       <a href="#refused">a reload that was refused part of its fold</a>.
       Here's <code>shep flock --format json</code> against a two-sheep
       flock:
@@ -86,7 +86,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
 }`}</CodeBlock>
     <p>
       <code>command</code> is the verb you typed, spelled out in full:
-      run it as <code>shep ls --format json</code> and <code>command</code>
+      run it as <code>shep ls --format json</code> and <code>command</code>{" "}
       still reads <code>"flock"</code>, because that's what the daemon
       answered to, not the alias that got you there. <code>data</code> is
       always the same shape for a given command: a single object for
@@ -96,7 +96,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
 
     <h2>Errors get their own envelope</h2>
     <p>
-      A failed command prints a different, smaller shape to stderr, no
+      A failed command prints a different, smaller shape to stderr, no{" "}
       <code>command</code> key, because the command never produced a
       result:
     </p>
@@ -108,11 +108,11 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
   }
 }`}</CodeBlock>
     <p>
-      <code>code</code> is the same word that appears in
+      <code>code</code> is the same word that appears in{" "}
       <code>error[&lt;code&gt;]: …</code> under the default table format,
-      and it's the same taxonomy as the process exit code: <code>3</code>
-      for <code>not_found</code>, <code>4</code> for
-      <code>invalid_config</code>, and so on. A script can switch on
+      and it's the same taxonomy as the process exit code: <code>3</code>{" "}
+      for <code>not_found</code>, <code>4</code> for{" "}
+      <code>invalid_config</code>, and so on. A script can switch on{" "}
       <code>error.code</code> without parsing English, and the exit status
       confirms it independently.
     </p>
@@ -179,11 +179,11 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
         coded against still applies.
       </li>
       <li>
-        Don't assume every key is present on every row. <code>dog</code>
-        is <code>null</code> for a plain sheep. <code>lambs</code> is
+        Don't assume every key is present on every row. <code>dog</code>{" "}
+        is <code>null</code> for a plain sheep. <code>lambs</code> is{" "}
         <code>null</code> from <code>shep flock</code> (the plain listing
         never walks the process tree) but a populated array (empty if the
-        sheep has spawned no children of its own) from both
+        sheep has spawned no children of its own) from both{" "}
         <code>shep describe</code> and <code>shep fold</code>, since fold
         renders the same per-sheep detail the table format's Lambs section
         shows. Check the key itself, not which command you ran, if you're
@@ -194,14 +194,14 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
         has stopped at least once under this daemon, and afterwards holds
         one of two shapes: <code>{'{"code": 1, "signal": null}'}</code> for a
         normal exit, or <code>{'{"code": null, "signal": 15}'}</code> for
-        one ended by a signal. Both are never set at once, and both being
+        one ended by a signal. Both are never set at once, and both being{" "}
         <code>null</code> is not a state the daemon produces. It is the
         field that distinguishes a process that started and crashed from one
         that never started at all, which the <code>status</code> alone
         cannot: both read <code>errored</code>.
       </li>
       <li>
-        <code>cpu_percent</code> reads <code>null</code>, not
+        <code>cpu_percent</code> reads <code>null</code>, not{" "}
         <code>0</code>, when a sample wasn't available yet. A fresh sheep
         a few hundred milliseconds old, most often. Table format prints the
         same case as <code>-</code>, for the same reason: a confident zero
@@ -211,17 +211,17 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
         <code>handshook</code> is about dogs and is <code>null</code> for
         every sheep. <code>false</code> is the one to act on: the dog's
         process is up and the shepherd has never heard from it, so it is
-        not doing its job. <code>status</code> still reads
+        not doing its job. <code>status</code> still reads{" "}
         <code>online</code> there, truthfully — it describes the process.
         Table format shows this row as <code>silent</code>.
       </li>
       <li>
-        <code>dog_stale</code> is the other half of that and is
+        <code>dog_stale</code> is the other half of that and is{" "}
         <code>null</code> for every sheep. <code>true</code> means the
         shepherd has given up: it restarted the dog once for never answering,
         that did not help, and it will not restart it again. You cannot work
         this out from <code>handshook</code> — a dog spawned a second ago and
-        a dog the shepherd will never touch again are both
+        a dog the shepherd will never touch again are both{" "}
         <code>false</code>. Why it gave up is in that dog's own log rather
         than on the row, because the shepherd could only see the evidence at
         the moment it happened: <code>shep bleats &lt;dog&gt;</code>.
@@ -229,12 +229,12 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       <li>
         <code>smit</code> is <code>null</code> until a dog attaches one over
         the client protocol's <code>SetSmit</code> request. shep stores and
-        reports the string verbatim, and never parses it — see
+        reports the string verbatim, and never parses it — see{" "}
         <a href="/docs/terminology">terminology</a>.
       </li>
       <li>
-        <code>max_memory</code> is the sheep's memory ceiling in bytes, or
-        <code>null</code> when it has none configured. It's the same number
+        <code>max_memory</code> is the sheep's memory ceiling in bytes, or{" "}
+        <code>null</code> when it has none configured. It's the same number{" "}
         <code>--format table</code> and lookout's <code>MEM/CEIL</code> gauge
         divide against; a <code>null</code> here is why that gauge draws an
         all-tail bar instead of a fraction.
@@ -244,13 +244,13 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
     <Callout variant="note">
       <code>shep bleats --format json</code> is the one exception. A log
       follow has no end, so there's nothing to close an envelope around:
-      it prints one JSON object per line, newline-delimited, with no
+      it prints one JSON object per line, newline-delimited, with no{" "}
       <code>command</code> or <code>data</code> wrapper.
     </Callout>
     <CodeBlock label="shep bleats web --format json">{`{"schema_version":1,"id":0,"name":"web","stream":"out","instance":null,"line":"…"}`}</CodeBlock>
     <p>
       <code>instance</code> is the sheep's slot within its app, when that
-      app has more than one instance registered; <code>null</code>
+      app has more than one instance registered; <code>null</code>{" "}
       otherwise, and also <code>null</code> for a backlog line read from a
       log file several instances share, since nothing in that file says
       which one wrote it.
@@ -258,12 +258,12 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
 
     <h2>Table format is not a lesser version of this</h2>
     <p>
-      The default <code>--format table</code> and <code>--format json</code>
+      The default <code>--format table</code> and <code>--format json</code>{" "}
       render from the same underlying data (there's no separate code path
       that could drift between them) but table adds human formatting JSON
-      doesn't: <code>uptime_ms: 1019</code> becomes <code>1s</code>,
+      doesn't: <code>uptime_ms: 1019</code> becomes <code>1s</code>,{" "}
       <code>memory_bytes: 1212416</code> becomes <code>1.2M</code>. If
-      you're piping shep's output anywhere, reach for
+      you're piping shep's output anywhere, reach for{" "}
       <code>--format json</code> and do the formatting yourself rather than
       parsing the table's columns.
     </p>
