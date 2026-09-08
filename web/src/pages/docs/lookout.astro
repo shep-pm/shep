@@ -115,8 +115,8 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
   ladder    █ 250ms  █ 500ms  █ 1s  █ 2s  █ 4s
   refused   the shepherd did not answer: could not connect to \`/home/ada/.shep/run/shep.sock\`: Connection refused (os error 61)
   since     2026-08-14 14:32:07, 9m 53s ago      the sheep themselves may well still be running; lookout cannot see them to say
-  try       r dials again now      or start the shepherd from another shell: shep muster
-q quit   r retry the link   j/k still moves   every other key is refused while the link is down                                                         █ frozen`;
+  try       shep muster, from another shell      then reopen lookout: it does not reconnect on its own
+q quit   j/k still moves   every other key is refused while the link is down                                                                            █ frozen`;
 
 const refused = `shep lookout   /home/ada/.shep                                                                            6 in the flock
 host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   floc…
@@ -515,8 +515,9 @@ esc/s close   j/k select   g… control enabled`;
       gauge of a sheep's memory against its ceiling and <code>CPU 20s</code>{" "}
       is a sparkline of its CPU history; both restate a number CPU and MEM
       already carry, so they go first. A terminal needs 148 columns for the
-      gauge and 136 for the sparkline, wider than every frame on this page,
-      so neither shows up below. Every row's sparkline scales to the same
+      gauge and 136 for the sparkline, so the only frame on this page wide
+      enough to draw either is the frozen one further down. Every row's
+      sparkline scales to the same
       ceiling, the busiest sample any sheep has posted in the retained
       window, so rows read against each other rather than each one filling
       its own column.

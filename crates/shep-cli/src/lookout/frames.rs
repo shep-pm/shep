@@ -2276,6 +2276,17 @@ mod tests {
             frozen.contains("█ 250ms  █ 500ms  █ 1s  █ 2s  █ 4s"),
             "and draws every rung the ladder climbed"
         );
+        // The design's own copy offers `r` in both places. `r` is refused
+        // once the link is lost, and `run_link` has already returned, so
+        // the frame must not name it anywhere.
+        assert!(
+            frozen.contains("shep muster, from another shell"),
+            "the panel sends the operator somewhere that works"
+        );
+        assert!(
+            !frozen.contains("dials again") && !frozen.contains("retry the link"),
+            "and offers no key a freeze has already refused"
+        );
 
         // Errored: selection parked on the errored sheep.
         let errored_buffer = scene(Scene::Errored).1;

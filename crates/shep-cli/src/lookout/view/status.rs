@@ -55,11 +55,15 @@ pub fn banner_line(app: &App, width: u16) -> Option<Line<'static>> {
 
 /// The key hint once the link is [`Link::Lost`].
 ///
-/// Three keys, because three keys still do something: `q` leaves, `r` dials
-/// again, and `j`/`k` move a cursor over values that are already history.
-/// The last clause is the whole rest of the keymap, said once rather than
+/// Two keys, because two keys still do something: `q` leaves, and `j`/`k`
+/// move a cursor over values that are already history. `r` is not among
+/// them, whatever the design's own copy says: it is refused like the rest
+/// (`App::on_key`), and `super::super::link::run_link` has already returned
+/// by the time a freeze lands, so no task survives to answer a redial. The
+/// last clause is the whole rest of the keymap, said once rather than
 /// discovered a keypress at a time.
-const FROZEN_HINT: &str = "q quit   r retry the link   j/k still moves   every other key is refused while the link is down";
+const FROZEN_HINT: &str =
+    "q quit   j/k still moves   every other key is refused while the link is down";
 
 /// The bottom line: eight slots, highest priority first: the settings
 /// screen's armed or in-flight edit, a dashboard confirm, the settings

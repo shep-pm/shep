@@ -52,7 +52,9 @@ cargo test -p shep --lib --all-features -- --ignored write_the_gallery
   bleats feed give their rows to the link panel, which names the ladder it
   climbed, quotes the last dial's own error, counts how long ago that was,
   and says what is left to try. lookout never exits on its own — the
-  operator quits with `q`, or presses `r` to dial again.
+  operator quits with `q`. `r` is refused with the rest of the keymap:
+  `run_link` has already returned by then, so nothing survives to answer a
+  redial, and the panel says `shep muster` instead.
   A shepherd that was **never** running is a different case: that connect
   attempt happens before raw mode is entered, and a failure there is the
   ordinary `daemon_unreachable` refusal every other verb gives, not eight

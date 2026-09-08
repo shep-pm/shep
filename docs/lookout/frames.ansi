@@ -417,8 +417,8 @@ The ladder ran out. The band says so in bark, the whole table and the host strip
 [0m[38;5;245m  ladder    [0m[38;5;166m█[0m[38;5;245m 250ms  [0m[38;5;166m█[0m[38;5;245m 500ms  [0m[38;5;166m█[0m[38;5;245m 1s  [0m[38;5;166m█[0m[38;5;245m 2s  [0m[38;5;166m█[0m[38;5;245m 4s  [0m                                                                                                                [0m
 [0m[38;5;245m  refused   the shepherd did not answer: could not connect to `/home/ada/.shep/run/shep.sock`: Connection refused (os error 61)[0m                                 [0m
 [0m[38;5;245m  since     2026-08-14 14:32:07, 9m 53s ago      the sheep themselves may well still be running; lookout cannot see them to say[0m                                 [0m
-[0m[38;5;245m  try       [0m[38;5;221mr[0m[38;5;245m dials again now      or start the shepherd from another shell: shep muster[0m                                                                        [0m
-[0m[38;5;221m[48;5;235mq quit   r retry the link   j/k still moves   every other key is refused while the link is down                                                        [0m[38;5;245m[48;5;235m █ frozen[0m
+[0m[38;5;221m  try       [0m[38;5;245mshep muster, from another shell      then reopen lookout: it does not reconnect on its own[0m                                                          [0m
+[0m[38;5;221m[48;5;235mq quit   j/k still moves   every other key is refused while the link is down                                                                           [0m[38;5;245m[48;5;235m █ frozen[0m
 
 
 === refused  (120x30) ===

@@ -886,7 +886,11 @@ mod tests {
             .next_back()
             .expect("a status bar")
             .to_string();
-        assert!(bar.contains("r retry the link"), "{bar:?}");
+        assert!(bar.contains("j/k still moves"), "{bar:?}");
+        assert!(
+            !bar.contains("   r "),
+            "the bar must not offer a key a freeze has already refused: {bar:?}"
+        );
         assert!(bar.contains("\u{2588} frozen"), "{bar:?}");
     }
 

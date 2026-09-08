@@ -97,11 +97,16 @@ pub fn panel_lines(app: &App, width: u16) -> Vec<Line<'static>> {
                 palette.muted(),
             ),
         ]),
+        // Not the design's `r dials again now`. `r` is refused once the
+        // link is lost (`App::on_key`'s `KeyPress::Refresh` arm), and
+        // nothing is left to answer a redial anyway: `run_link` returns
+        // after sending `Msg::Frozen`, taking the poll channel's receiver
+        // with it. A row promising a key that does nothing is worse than
+        // no row.
         Line::from(vec![
-            Span::styled(label("try"), palette.muted()),
-            Span::styled("r", palette.attention()),
+            Span::styled(label("try"), palette.attention()),
             Span::styled(
-                " dials again now      or start the shepherd from another shell: shep muster"
+                "shep muster, from another shell      then reopen lookout: it does not reconnect on its own"
                     .to_string(),
                 palette.muted(),
             ),
