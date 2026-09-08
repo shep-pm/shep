@@ -49,7 +49,7 @@
           "init": {
             "accepts": [
               "a list of strings, one argument each",
-              "{{instance}} and {{name}} expand"
+              "{{instance}}, {{name}}, and {{secret:key}} expand"
             ],
             "blurb": "Arguments passed to the script, as a list",
             "group": "inputs",
@@ -171,7 +171,7 @@
                 "note": "relative paths follow it too"
               },
               {
-                "field": "watch",
+                "field": "watch_options",
                 "note": "globs are rooted here"
               }
             ],

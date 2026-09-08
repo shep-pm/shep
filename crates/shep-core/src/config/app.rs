@@ -129,7 +129,7 @@ pub struct AppConfig {
         "group": "inputs",
         "blurb": "Arguments passed to the script, as a list",
         "accepts": ["a list of strings, one argument each",
-                    "{{instance}} and {{name}} expand"],
+                    "{{instance}}, {{name}}, and {{secret:key}} expand"],
         "refuses": ["an unclosed {{ token", "a token shep does not define"]
     })))]
     pub args: Vec<String>,
@@ -141,9 +141,9 @@ pub struct AppConfig {
         "accepts": ["an absolute or relative path, expanded from cwd",
                     "~ expands, $VARS do not"],
         "refuses": ["a path the daemon's user cannot enter"],
-        "neighbours": [{"field": "script",   "note": "resolved against this cwd"},
-                       {"field": "out_file", "note": "relative paths follow it too"},
-                       {"field": "watch",    "note": "globs are rooted here"}]
+        "neighbours": [{"field": "script",        "note": "resolved against this cwd"},
+                       {"field": "out_file",      "note": "relative paths follow it too"},
+                       {"field": "watch_options", "note": "globs are rooted here"}]
     })))]
     pub cwd: Option<String>,
     /// Interpreter override (`"none"` = run script directly)
