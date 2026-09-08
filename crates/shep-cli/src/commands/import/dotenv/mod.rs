@@ -440,7 +440,7 @@ mod tests {
     /// reference is shep's own token and stays live.
     #[test]
     fn a_plain_value_escapes_its_braces_and_a_secret_reference_stays_live() {
-        const BRACES: &str = "MOTD=hello {{world}}\nGREETING={{name}}-prod\n                              JSON={\"a\":{\"b\":1}}\nDB_PASSWORD=hunter2\n";
+        const BRACES: &str = "MOTD=hello {{world}}\nGREETING={{name}}-prod\nJSON={\"a\":{\"b\":1}}\nDB_PASSWORD=hunter2\n";
         let entries = parse::parse(BRACES).expect("this fixture parses");
         let plan =
             plan::build(entries, &[], &["DB_PASSWORD".to_string()]).expect("this fixture plans");
