@@ -55,20 +55,25 @@ that shape do not survive contact with the existing types:
   from `SetEnv` for this reason.
 - A value is not one type. A field carries `FieldValue`, JSON with a redacted
   `Debug`. An env key carries `Option<EnvValue>`, where `None` removes the key.
+  `PaneEdit` already carries both, so the set stores one of those rather than a
+  parallel value enum of its own. A second enum beside it would say the same
+  thing twice and make a mismatched key and value expressible.
 - Impact is optional. `ConfigPane::cost` returns `None` for a dog, which has no
   `apply_group` table, and dogs are in scope.
 
 ```rust
-pub enum EditKey   { Field(String), Env(String) }
-pub enum EditValue { Field(FieldValue), Env(Option<EnvValue>) }
+pub enum EditKey { Field(String), Env(String) }
 
-pub struct Edit  { value: EditValue, impact: Option<ApplyGroup> }
+pub struct Edit  { edit: PaneEdit, impact: Option<ApplyGroup> }
 
 pub struct Edits {
     entries: BTreeMap<EditKey, Edit>,
     order:   Vec<EditKey>,
 }
 ```
+
+The key is derived from the `PaneEdit` on the way in, so a config value can
+never be filed under an env key.
 
 Two collections rather than one, the same shape `Filters` in `pane_bleats.rs`
 uses so `esc` can drop its newest chip. `entries` gives render order, `order`
@@ -101,8 +106,8 @@ those fields carry `Lock::Refused` and no key reaches them.
   pane is open. The values are the shepherd's and get replaced; the edits are the
   operator's and do not.
 
-`Debug` derives on all four types. `FieldValue` and `EnvValue` each redact
-themselves, which is the argument `PaneEdit`'s own doc comment already makes
+`Debug` derives on all three types. `PaneEdit`'s own `Debug` already withholds
+both value types, because `FieldValue` and `EnvValue` each redact themselves
 (IR-41).
 
 ## Dogs
