@@ -608,6 +608,25 @@ mod tests {
         );
     }
 
+    /// `.min(len)` in `value_cell` is what a 4096-byte value never binds:
+    /// the run is already capped by the column's own width there. A short
+    /// value is the case that pins it: with no cap the run would fill the
+    /// column regardless of the value behind it, implying a length nowhere
+    /// close to the real one.
+    #[test]
+    fn a_short_value_s_block_run_is_proportional_to_its_length() {
+        let app = fixtures::app_with_secrets();
+        let buffer = fixtures::render(&app, 160, 48);
+        let value = cell(&buffer, first_row(), Column::Value);
+        let blocks = value.chars().take_while(|&c| c == '\u{2588}').count();
+
+        // `DB_PASSWORD` carries `byte_len: Some(9)`.
+        assert_eq!(
+            blocks, 9,
+            "the run states the value's own length: {value:?}"
+        );
+    }
+
     #[test]
     fn a_provider_group_says_it_is_read_only() {
         let app = fixtures::app_with_a_pushed_secret();
