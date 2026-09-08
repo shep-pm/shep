@@ -3,6 +3,7 @@
 //! One resolver, no hidden `std::env` reads: the environment comes in as a
 //! closure so tests and the daemon share one code path.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 /// Drops the `\\?\` extended-length prefix Windows' `canonicalize` adds
@@ -40,6 +41,42 @@ pub fn strip_verbatim_prefix(path: &Path) -> std::borrow::Cow<'_, Path> {
 #[must_use]
 pub fn strip_verbatim_prefix(path: &Path) -> std::borrow::Cow<'_, Path> {
     std::borrow::Cow::Borrowed(path)
+}
+
+/// The user's home directory, read through `var` rather than the process
+/// environment
+///
+/// The base [`ShepPaths::resolve`] joins `.shep` onto when nothing names a
+/// `$SHEP_HOME`. A variable set to the empty string counts as unset.
+///
+/// # Platform
+///
+/// Unix reads `HOME` alone. Windows reads `HOME`, then `USERPROFILE`, then
+/// `HOMEDRIVE` and `HOMEPATH` concatenated. Windows sets none of the first:
+/// PowerShell's `$HOME` is a shell variable no child process inherits, and
+/// `cmd.exe` has no such variable at all, so a `HOME`-only lookup resolves
+/// nothing on a stock Windows session.
+#[must_use]
+pub fn user_home(var: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    let named = |key: &str| var(key).filter(|value| !value.is_empty());
+    #[cfg(not(windows))]
+    {
+        named("HOME").map(PathBuf::from)
+    }
+    #[cfg(windows)]
+    {
+        // `HOMEDRIVE` is `C:` and `HOMEPATH` is `\Users\name`: two halves of
+        // one string, not a directory and a child inside it.
+        let split = || {
+            let mut joined = named("HOMEDRIVE")?;
+            joined.push(named("HOMEPATH")?);
+            Some(joined)
+        };
+        named("HOME")
+            .or_else(|| named("USERPROFILE"))
+            .or_else(split)
+            .map(PathBuf::from)
+    }
 }
 
 /// Resolved filesystem layout for one shep home
@@ -329,6 +366,76 @@ mod tests {
             n.pipe_name(),
             d.pipe_name(),
             "only the digest keeps two homes that sanitize alike off one pipe"
+        );
+    }
+
+    /// A fake environment, so nothing here touches the process's own.
+    fn os_env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<OsString> + use<> {
+        let owned: Vec<(String, OsString)> = pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), OsString::from(*v)))
+            .collect();
+        move |key: &str| owned.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+    }
+
+    #[test]
+    fn home_is_read_first_on_every_platform() {
+        assert_eq!(
+            user_home(&os_env(&[
+                ("HOME", "/home/ada"),
+                ("USERPROFILE", r"C:\Users\Ada")
+            ])),
+            Some(PathBuf::from("/home/ada"))
+        );
+    }
+
+    #[test]
+    fn nothing_named_resolves_nothing() {
+        assert_eq!(user_home(&os_env(&[])), None);
+    }
+
+    /// An exported-but-empty `HOME` would otherwise resolve `.shep` relative
+    /// to the working directory, which is a different flock per `cd`.
+    #[test]
+    fn an_empty_value_counts_as_unset() {
+        assert_eq!(user_home(&os_env(&[("HOME", "")])), None);
+    }
+
+    /// The bug this fallback exists for: a stock Windows session exports
+    /// `USERPROFILE` and no `HOME` at all, so `shep` refused every command
+    /// with "none of --home, %SHEP_HOME%, or %USERPROFILE% resolves a root
+    /// directory" until 0.7.1.
+    #[cfg(windows)]
+    #[test]
+    fn windows_falls_back_to_userprofile_then_to_the_homedrive_pair() {
+        assert_eq!(
+            user_home(&os_env(&[("USERPROFILE", r"C:\Users\Ada")])),
+            Some(PathBuf::from(r"C:\Users\Ada"))
+        );
+        assert_eq!(
+            user_home(&os_env(&[("HOMEDRIVE", "C:"), ("HOMEPATH", r"\Users\Ada")])),
+            Some(PathBuf::from(r"C:\Users\Ada")),
+            "the two halves concatenate into one path, they do not nest"
+        );
+        assert_eq!(
+            user_home(&os_env(&[("HOMEDRIVE", "C:")])),
+            None,
+            "half the pair names no directory"
+        );
+    }
+
+    /// Unix reads `HOME` alone: a Windows-only fallback firing there would
+    /// resolve a home on a host that deliberately unset one.
+    #[cfg(not(windows))]
+    #[test]
+    fn unix_ignores_the_windows_variables() {
+        assert_eq!(
+            user_home(&os_env(&[
+                ("USERPROFILE", r"C:\Users\Ada"),
+                ("HOMEDRIVE", "C:"),
+                ("HOMEPATH", r"\Users\Ada"),
+            ])),
+            None
         );
     }
 }

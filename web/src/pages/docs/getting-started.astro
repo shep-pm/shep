@@ -31,7 +31,9 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       Windows all work; the Windows tier is newer, and two limits are worth
       knowing before you rely on it — <code>shep stop</code> has no graceful
       signal to send unless your app reads the shepherd channel, and{" "}
-      <code>shep startup</code> is not built there.
+      <code>shep startup</code> is not built there. Your flock lives in{" "}
+      <code>%USERPROFILE%\.shep</code> on Windows, since it sets no{" "}
+      <code>HOME</code>.
     </Callout>
 
     <h2>1. Install it</h2>

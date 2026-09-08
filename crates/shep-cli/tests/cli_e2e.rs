@@ -2418,6 +2418,43 @@ fn home_reaches_the_spawned_daemon() {
     graceful_kill(dir.path());
 }
 
+/// The default home resolves from whichever variable the platform actually
+/// sets: `$HOME` on unix, `%USERPROFILE%` on Windows, which sets no `HOME` at
+/// all. Both are cleared first, so an ambient value cannot be what passes it.
+///
+/// Spawned rather than unit-tested: the lookup reads this process's real
+/// environment, and a test cannot unset a variable for one thread of it.
+/// Asserted on the directory `ensure_home` creates, not on exit 0 alone, so a
+/// shepherd that came up under some other root still fails.
+#[test]
+fn the_default_home_resolves_from_the_platform_s_own_variable() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut guard = DaemonGuard::default();
+
+    let mut cmd = Command::cargo_bin("shep").unwrap();
+    cmd.arg("start")
+        .env_remove("SHEP_HOME")
+        .env_remove("HOME")
+        .env_remove("USERPROFILE");
+    #[cfg(unix)]
+    cmd.env("HOME", dir.path());
+    #[cfg(windows)]
+    cmd.env("USERPROFILE", dir.path());
+    let output = cmd.timeout(CMD_TIMEOUT).output().unwrap();
+
+    let home = dir.path().join(".shep");
+    guard.adopt_home(&home);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
+    assert!(
+        home.is_dir(),
+        "the shepherd came up under a root that is not {}",
+        home.display()
+    );
+
+    graceful_kill(&home);
+}
+
 // --- Case 9 --------------------------------------------------------------
 
 #[cfg(unix)]

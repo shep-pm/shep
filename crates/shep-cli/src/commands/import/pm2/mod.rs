@@ -144,22 +144,29 @@ pub fn import(streams: &mut Streams<'_>, args: &ImportPm2Args) -> ExitCode {
     ))
 }
 
-/// `args.from`, or `$HOME/.pm2/dump.pm2` if it names nothing.
+/// `args.from`, or `~/.pm2/dump.pm2` if it names nothing.
+///
+/// Which variables name that `~` is [`shep_core::paths::user_home`]'s
+/// question, and differs by platform.
 ///
 /// # Errors
-/// A message naming both `--from` and `$HOME` when neither resolves a path.
-/// `--home`/`$SHEP_HOME` can resolve `ShepPaths` while `$HOME` is unset.
+/// A message naming both `--from` and the home variable when neither
+/// resolves a path. `--home`/`$SHEP_HOME` can resolve `ShepPaths` while no
+/// home directory resolves at all.
 fn resolve_source(args: &ImportPm2Args) -> Result<PathBuf, String> {
+    #[cfg(not(windows))]
+    const NO_DUMP: &str = "neither --from nor $HOME names a dump to read; pass --from, or set \
+                           $HOME so ~/.pm2/dump.pm2 resolves";
+    #[cfg(windows)]
+    const NO_DUMP: &str = "neither --from nor %USERPROFILE% names a dump to read; pass --from, \
+                           or set %USERPROFILE% so ~/.pm2/dump.pm2 resolves";
+
     if let Some(from) = &args.from {
         return Ok(from.clone());
     }
-    std::env::var_os("HOME")
-        .map(|home| PathBuf::from(home).join(".pm2").join("dump.pm2"))
-        .ok_or_else(|| {
-            "neither --from nor $HOME names a dump to read; pass --from, or set $HOME so \
-             ~/.pm2/dump.pm2 resolves"
-                .to_string()
-        })
+    shep_core::paths::user_home(&|key| std::env::var_os(key))
+        .map(|home| home.join(".pm2").join("dump.pm2"))
+        .ok_or_else(|| NO_DUMP.to_string())
 }
 
 /// [`ImportNote`]'s stderr rendering: a stable code for `--format json`'s

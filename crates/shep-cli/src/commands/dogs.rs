@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 use shep_client::{Client, ConnectError};
 use shep_core::barks;
 use shep_core::dogs::{DogVersion, SCHEMA_FLAG, VERSION_FLAG, parse_version_answer};
-use shep_core::paths::ShepPaths;
+use shep_core::paths::{ShepPaths, user_home};
 use shep_core::protocol::{DogSource, MIN_SUPPORTED, Request, Response, SelectorSpec};
 
 use crate::cli::{AdoptArgs, BarksArgs};
@@ -1052,7 +1052,7 @@ pub fn warn_of_a_dog_a_restart_would_break(
 /// defaulted name goes through the same [`collides_with_a_verb`] refusal an
 /// explicit `--name` would.
 pub async fn adopt(streams: &mut Streams<'_>, paths: &ShepPaths, args: &AdoptArgs) -> ExitCode {
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = user_home(&|key| std::env::var_os(key));
     let path_var = std::env::var_os("PATH");
     let candidate = resolve_adopt_path(&args.path, home.as_deref(), path_var.as_deref());
     // Before vetting: `vet_binary` spawns the candidate, and a refusal
