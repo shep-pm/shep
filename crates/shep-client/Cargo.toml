@@ -21,7 +21,11 @@ default = ["schema"]
 # by default, so following the dog docs works with no feature line. Off is
 # additive, not broken: `probe` still answers the version flag and exits
 # silently on the schema flag.
-schema = ["dep:schemars", "dep:serde_json"]
+#
+# `shep-core/schema` carries the `JsonSchema` impls for `MemSize` and
+# `UpDuration`, which a dog's config type reaches through this crate's
+# `pub use shep_core` and cannot derive against without them.
+schema = ["dep:schemars", "dep:serde_json", "shep-core/schema"]
 
 # Option: expose `testing` (the hand-rolled daemon fakes) to other crates'
 # tests. Off by default, since it is test scaffolding, not public API.
