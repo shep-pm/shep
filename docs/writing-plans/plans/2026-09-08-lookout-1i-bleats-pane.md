@@ -607,7 +607,389 @@ git commit -m "feat(lookout): refresh the bleats pane on its own ticks"
 
 ---
 
-## Task 6: The scene, the gallery and the docs
+## Task 6: The filter keys
+
+**Added 2026-09-08.** The plan shipped three filter axes that no key could
+set. `KeyPress::FilterStart`, which is `/`, sat in `on_bleats_key`'s inert arm,
+while `docs/lookout/design-files/README.md:321` says plainly "In 1i, `/` adds a
+match chip". `rulings.md` calls the three axes "the point of it". They were
+built, tested, rendered and unreachable. The maintainer chose to build the
+pane's full status bar rather than the filter keys alone, so this task and the
+two after it exist.
+
+**Files:**
+- Modify: `crates/shep-cli/src/lookout/input.rs`
+- Modify: `crates/shep-cli/src/lookout/app.rs` (`on_bleats_key`)
+- Modify: `crates/shep-cli/src/lookout/pane_bleats.rs`
+
+**Interfaces:**
+- Consumes: `Filters`, `BleatsPane::{set_stream, set_min_level, set_match}`,
+  `Level`, `Stream` — all built in Tasks 2 and 3.
+- Produces: `KeyPress::StreamCycle`, `KeyPress::LevelCycle`; `/` reaching the
+  pane's match input.
+
+**Three keys, and only two of them come from the design.**
+
+| key | axis | source |
+|---|---|---|
+| `/` | match | `README.md:321` and the status bar's `/ search` |
+| `o` | stream, out/err/both | the status bar's `o out/err/both` |
+| `m` | minimum level | **invented here.** The design's status bar names no key for the level axis, though the filter row draws its chip. `m` for minimum, chosen because every better mnemonic is taken: `l` reads as line, `L` is Reload, `v` means nothing here. Flag it to the maintainer rather than burying it. |
+
+**`/` reuses `InputMode::Text`, and does not add a mode.** The dashboard's name
+filter already does exactly this: `/` starts text entry, typing narrows, `↵`
+applies, `esc` abandons the edit. Read how `KeyPress::FilterStart` and the
+`TextChar`/`TextApply`/`TextAbandon` family are handled for the flock table
+before writing the pane's version, and follow it. The global constraint stands:
+there are two modes, `Normal` and `Text`, and a new pane does not get a third.
+
+**`esc` while typing abandons the edit; `esc` with the input closed drops the
+newest chip.** Those are different actions on the same key and the existing
+flock-table filter draws the same distinction. Task 3's chip-dropping behaviour
+must keep working, and it has a test.
+
+- [ ] **Step 1: Write the failing tests**
+
+```rust
+/// `o` cycles the stream axis through its three states and back. Three
+/// presses return to where it began, which is what makes it a cycle
+/// rather than a toggle that strands the operator on `err`.
+#[test]
+fn o_cycles_the_stream_axis_and_returns_to_both() {
+    let mut app =
+        fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+    let _ = app.update(Msg::Key(KeyPress::Bleats));
+    assert!(app.bleats_pane().expect("open").filters().stream.is_none());
+    let _ = app.update(Msg::Key(KeyPress::StreamCycle));
+    let first = app.bleats_pane().expect("open").filters().stream;
+    assert!(first.is_some(), "one press sets an axis");
+    let _ = app.update(Msg::Key(KeyPress::StreamCycle));
+    let _ = app.update(Msg::Key(KeyPress::StreamCycle));
+    assert!(
+        app.bleats_pane().expect("open").filters().stream.is_none(),
+        "three presses land back on both"
+    );
+}
+
+/// `m` raises the minimum level and eventually clears it. The unset state
+/// has to be reachable by key, or an operator who sets a minimum can never
+/// see unlevelled output again without closing the pane.
+#[test]
+fn m_cycles_the_level_axis_back_to_unset() {
+    let mut app =
+        fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+    let _ = app.update(Msg::Key(KeyPress::Bleats));
+    let mut seen_some = false;
+    for _ in 0..8 {
+        let _ = app.update(Msg::Key(KeyPress::LevelCycle));
+        if app.bleats_pane().expect("open").filters().min_level.is_some() {
+            seen_some = true;
+        }
+    }
+    assert!(seen_some, "the cycle passes through a set minimum");
+    // Whatever the cycle length, it must return to unset within one lap.
+    let mut cleared = false;
+    for _ in 0..8 {
+        let _ = app.update(Msg::Key(KeyPress::LevelCycle));
+        if app.bleats_pane().expect("open").filters().min_level.is_none() {
+            cleared = true;
+            break;
+        }
+    }
+    assert!(cleared, "the cycle returns to unset");
+}
+
+/// `/` opens the match input rather than doing nothing, which is what it
+/// did when this pane first shipped.
+#[test]
+fn slash_opens_the_match_input_in_the_bleats_pane() {
+    let mut app =
+        fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+    let _ = app.update(Msg::Key(KeyPress::Bleats));
+    let _ = app.update(Msg::Key(KeyPress::FilterStart));
+    assert_eq!(app.input_mode(), InputMode::Text, "typing goes to the pane");
+}
+```
+
+Read the existing flock-table filter tests before writing these: the accessor
+for the current mode is named from a survey rather than read in place, so
+confirm `input_mode` exists and is reachable from the test module, and use
+whatever the neighbouring tests use if it is not.
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `cargo test --workspace --all-features --lib --bins -- o_cycles_the_stream m_cycles_the_level slash_opens_the_match`
+Expected: FAIL, no `KeyPress::StreamCycle` and no `KeyPress::LevelCycle`.
+
+- [ ] **Step 3: Add the two keys**
+
+`o` and `m` are both unbound; confirm with
+`rg "'o' =>|'m' =>" crates/shep-cli/src/lookout/input.rs` before adding. Add
+`KeyPress::StreamCycle` and `KeyPress::LevelCycle` to the enum and bind them in
+the `Normal` arm, following the shape of the neighbouring bindings.
+
+They are global bindings, so they reach the dashboard too. The dashboard's
+reducer must ignore them explicitly rather than by falling through, the same
+way it ignores `KeyPress::Bleats` on screens that have no bleats pane.
+
+- [ ] **Step 4: Cycle the axes**
+
+In `on_bleats_key`, move `KeyPress::FilterStart` out of the inert arm and add
+the two new keys. The stream cycle runs `None` → `Out` → `Err` → `None`. The
+level cycle walks `Level`'s variants in order and then returns to `None`, which
+is the state the "unclassifiable lines always show" rule depends on staying
+reachable.
+
+Both go through `set_stream` and `set_min_level` rather than writing
+`filters.stream` directly, because those setters maintain the chip order that
+`drop_newest_chip` reads. Setting an axis to `None` through them must remove it
+from that order; `note_axis` already has the branch for it and Task 3 left it
+untested, so this is where it earns a test.
+
+- [ ] **Step 5: Wire the match input**
+
+`/` puts the pane in `InputMode::Text` and routes `TextChar`, `TextBackspace`,
+`TextApply` and `TextAbandon` to the match axis. `TextApply` calls `set_match`;
+`TextAbandon` leaves the axis as it was. Follow the flock table's handling
+rather than inventing one.
+
+- [ ] **Step 6: Remove the dead-code allows this task retires**
+
+`set_stream`, `set_min_level`, `set_match`, `note_axis` and `Axis` carry
+`#[allow(dead_code)]` with a reason naming the task that would give them a
+caller. This is that task for the first three, and `note_axis` and `Axis` are
+reached through them. Remove every attribute this task retires, and its
+sentence with it.
+
+- [ ] **Step 7: Gate and commit**
+
+`cargo fmt --all --check`, then
+`cargo clippy --workspace --all-targets --all-features -- -D warnings`, then
+`cargo test --workspace --all-features`. One command at a time.
+
+---
+
+## Task 7: Scrolling, and following the tail
+
+**Added 2026-09-08.** The pane auto-tails and cannot be scrolled: `j`, `k`,
+`G` and the page keys all sit in `on_bleats_key`'s inert arm. The design's
+status bar names `j/k line`, `ctrl-d/u page`, `G end` and `f follow`.
+
+**Files:**
+- Modify: `crates/shep-cli/src/lookout/input.rs`
+- Modify: `crates/shep-cli/src/lookout/app.rs` (`on_bleats_key`)
+- Modify: `crates/shep-cli/src/lookout/pane_bleats.rs`
+- Modify: `crates/shep-cli/src/lookout/view/bleats_full.rs`
+
+**Interfaces:**
+- Consumes: `BleatsPane`, `BleatsPane::visible`.
+- Produces: a scroll offset and a follow flag on `BleatsPane`;
+  `KeyPress::PageDown`, `KeyPress::PageUp`, `KeyPress::FollowToggle`.
+
+**Follow is the state that makes scrolling coherent, so build it in the same
+task.** The pane is a live feed: new lines arrive every refresh. While
+following, the view stays pinned to the newest line and an arriving line
+scrolls the old ones up. The moment the operator scrolls back, following stops,
+or every keypress is undone two seconds later. `G` jumps to the end **and**
+re-enables following, because that is what an operator means by it. `f` toggles
+following explicitly, and the status bar's right-aligned `█ following`
+indicator says which state the pane is in.
+
+The scroll offset counts **filtered** lines, not raw ones. `visible` is what
+the body renders, so a changed filter changes what a given offset means;
+clamp the offset against the survivor count on every draw rather than trusting
+it to still be valid.
+
+`j`, `k` and `G` already map to `KeyPress::SelectDown`, `SelectUp` and
+`SelectLast`. Reuse them rather than adding pane-specific twins — the reducer
+already dispatches on `Body`, which is what makes one `KeyPress` mean two
+things on two screens. `ctrl-d` and `ctrl-u` are new and go in `map_key`'s
+CONTROL branch at `input.rs:24`, which currently handles only `ctrl-c`.
+
+**That CONTROL branch returns before the `InputMode::Text` check**, so
+`ctrl-d` will fire while the operator is typing a match. Decide deliberately
+whether that is acceptable and say which you chose: either move the check, or
+accept it and note why. Do not leave it unconsidered.
+
+- [ ] **Step 1: Write the failing tests**
+
+```rust
+/// Scrolling back stops the follow, or the next refresh undoes the
+/// operator's keypress.
+#[test]
+fn scrolling_back_stops_following() {
+    let mut app = fixtures::bleats_pane_with_lines(120);
+    assert!(app.bleats_pane().expect("open").following());
+    let _ = app.update(Msg::Key(KeyPress::SelectUp));
+    assert!(
+        !app.bleats_pane().expect("open").following(),
+        "one line back is enough to mean the operator took over"
+    );
+}
+
+/// `G` is the way back to the live tail, so it restores following as well
+/// as jumping.
+#[test]
+fn g_returns_to_the_end_and_resumes_following() {
+    let mut app = fixtures::bleats_pane_with_lines(120);
+    let _ = app.update(Msg::Key(KeyPress::SelectUp));
+    let _ = app.update(Msg::Key(KeyPress::SelectLast));
+    let pane = app.bleats_pane().expect("open");
+    assert!(pane.following(), "G resumes the follow");
+    assert_eq!(pane.scroll_offset(), 0, "and lands on the newest line");
+}
+
+/// A filter that hides most of the window must not leave the offset
+/// pointing past the end of what survives.
+#[test]
+fn a_narrowing_filter_clamps_the_scroll_offset() {
+    let mut app = fixtures::bleats_pane_with_lines(120);
+    let _ = app.update(Msg::Key(KeyPress::PageUp));
+    let _ = app.update(Msg::Key(KeyPress::PageUp));
+    app.bleats_pane_mut_for_tests()
+        .expect("open")
+        .set_match("a-string-no-line-contains".to_string());
+    let text = fixtures::render_all(&fixtures::draw_lines(&app, 160, 40));
+    assert!(!text.is_empty(), "the pane still draws rather than panicking");
+}
+```
+
+`fixtures::bleats_pane_with_lines` does not exist. Build it beside the
+existing bleats fixtures: an open pane over a feed of `n` lines, enough to
+exceed any test's body height.
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `cargo test --workspace --all-features --lib --bins -- scrolling_back_stops g_returns_to_the_end a_narrowing_filter_clamps`
+Expected: FAIL, no `following` and no `scroll_offset`.
+
+- [ ] **Step 3: Add the state**
+
+`BleatsPane` gains a scroll offset counted back from the newest surviving line,
+and a follow flag defaulting to true. Both need doc comments saying what the
+offset counts, because "0 is the newest" and "0 is the oldest" are equally
+plausible to the next reader and only one is right.
+
+- [ ] **Step 4: Handle the keys**
+
+`j`/`k` move by a line, `ctrl-d`/`ctrl-u` by a body height, `G` to the end.
+Any backward movement clears the follow flag; `G` and `f` restore it. Clamp
+against the survivor count.
+
+- [ ] **Step 5: Draw from the offset, and show the indicator**
+
+`view/bleats_full.rs` currently takes the last `body_rows` survivors. It now
+takes the window the offset names, still oldest-first with the newest at the
+bottom. The right-aligned `█ following` indicator appears only while following.
+
+- [ ] **Step 6: Gate and commit**
+
+The four commands, one at a time.
+
+---
+
+## Task 8: Wrap, and stepping between matches
+
+**Added 2026-09-08.** The last two keys in the design's status bar: `w wrap`
+and `n/N match`.
+
+**Files:**
+- Modify: `crates/shep-cli/src/lookout/input.rs`
+- Modify: `crates/shep-cli/src/lookout/app.rs` (`on_bleats_key`)
+- Modify: `crates/shep-cli/src/lookout/pane_bleats.rs`
+- Modify: `crates/shep-cli/src/lookout/view/bleats_full.rs`
+
+**Interfaces:**
+- Consumes: the scroll offset and follow flag from Task 7, the match axis and
+  its highlighting from Tasks 3 and 4.
+- Produces: `KeyPress::WrapToggle`, `KeyPress::MatchNext`,
+  `KeyPress::MatchPrev`.
+
+**Wrap changes how many rows a line occupies, so it changes what the scroll
+offset means.** A wrapped line takes as many rows as it needs; the offset
+counts lines, and the draw has to turn lines into rows. Get this wrong and
+scrolling near the end of a wrapped feed walks off the bottom. Task 7's clamp
+is the thing to extend, not to duplicate.
+
+**`n` and `N` step between lines that match the match axis**, which is only
+meaningful while that axis is set. With no matcher they do nothing rather than
+moving by one line, since a silent fallback to line movement is worse than an
+inert key. Stepping sets the offset and clears the follow flag, the same as any
+other backward movement.
+
+The highlighting from Task 4 already finds the match positions. Use what it
+computes rather than running the matcher a second time with a different
+implementation, which is how the two drift apart.
+
+- [ ] **Step 1: Write the failing tests**
+
+```rust
+/// `n` with no match axis set does nothing, rather than quietly becoming
+/// a line-movement key.
+#[test]
+fn n_without_a_matcher_does_nothing() {
+    let mut app = fixtures::bleats_pane_with_lines(120);
+    let before = app.bleats_pane().expect("open").scroll_offset();
+    let _ = app.update(Msg::Key(KeyPress::MatchNext));
+    assert_eq!(app.bleats_pane().expect("open").scroll_offset(), before);
+    assert!(app.bleats_pane().expect("open").following());
+}
+
+/// Wrapping a long line makes it occupy more rows than one, which is the
+/// whole point, and the pane must still draw inside its area.
+#[test]
+fn a_wrapped_line_occupies_more_rows_and_stays_in_the_area() {
+    let mut app = fixtures::bleats_pane_with_long_line();
+    let unwrapped = fixtures::draw_lines(&app, 80, 20).len();
+    let _ = app.update(Msg::Key(KeyPress::WrapToggle));
+    let wrapped = fixtures::draw_lines(&app, 80, 20);
+    assert!(wrapped.len() <= 20, "never draws past its own height");
+    assert!(
+        wrapped.iter().filter(|line| !line.spans.is_empty()).count() >= unwrapped,
+        "wrapping uses at least as many rows as not wrapping"
+    );
+}
+```
+
+`fixtures::bleats_pane_with_long_line` does not exist; build it, with a line
+comfortably wider than 80 columns.
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `cargo test --workspace --all-features --lib --bins -- n_without_a_matcher a_wrapped_line_occupies`
+Expected: FAIL, no `KeyPress::MatchNext` and no `KeyPress::WrapToggle`.
+
+- [ ] **Step 3: Add the three keys**
+
+`w`, `n` and `N` are unbound; confirm before adding.
+
+- [ ] **Step 4: Wrap**
+
+A flag on `BleatsPane`, and a draw that turns one line into as many rows as it
+needs. Use `columns` from the width module rather than `chars().count()`: this
+repo has fixed that same bug in two other branches and a third would reintroduce
+it.
+
+- [ ] **Step 5: Step between matches**
+
+`n` forward, `N` back, both clamped, both clearing the follow flag, both inert
+with no matcher set.
+
+- [ ] **Step 6: Update the status bar**
+
+The pane's status bar now carries the design's full line: `esc back`,
+`j/k line`, `ctrl-d/u page`, `G end`, `/ search`, `n/N match`, `f follow`,
+`w wrap`, `o out/err/both`, and right-aligned `█ following`. Add `m` for the
+level axis, which the design's own status bar omits, and say in the report that
+it was added.
+
+- [ ] **Step 7: Gate and commit**
+
+The four commands, one at a time.
+
+---
+
+## Task 9: The scene, the gallery and the docs
 
 **Files:**
 - Modify: `crates/shep-cli/src/lookout/frames.rs`
@@ -708,7 +1090,9 @@ already a workspace dependency (`Cargo.toml:89`), already used by shep-core,
 and already in shep-cli's dependency graph, so honouring the spec row adds one
 `regex.workspace = true` line and no new crate to the tree.
 
-**Spec coverage.** Pane shape and pinned sheep: Task 1. Source and the no-bus rule: Task 1, with the constraint stated globally. The three axes: Tasks 2 and 3, with the match axis's regex and highlighting in Task 4 (see the correction above). The unclassifiable-line rule: Task 2 defines it, Task 3 tests it. `esc` semantics: Task 3. Dropped line-number column: Task 4. Window-scoped survivor count: Task 4. Faster polling: Task 5. Scene, gallery and docs: Task 6.
+**Spec coverage.** Pane shape and pinned sheep: Task 1. Source and the no-bus rule: Task 1, with the constraint stated globally. The three axes: Tasks 2 and 3, with the match axis's regex and highlighting in Task 4 (see the correction above). The unclassifiable-line rule: Task 2 defines it, Task 3 tests it. `esc` semantics: Task 3. Dropped line-number column: Task 4. Window-scoped survivor count: Task 4. Faster polling: Task 5. The filter keys: Task 6. Scrolling and follow: Task 7. Wrap and match stepping: Task 8. Scene, gallery and docs: Task 9.
+
+**Second correction, 2026-09-08.** The coverage claim above accounted for the filter axes and never asked whether an operator could reach them. They could not: `KeyPress::FilterStart` sat in `on_bleats_key`'s inert arm, and no key touched stream or level. `docs/lookout/design-files/README.md:274` gives this pane a nine-key status bar and the plan implemented one key of it, `esc`. The maintainer chose the full status bar over the filter keys alone, which is Tasks 6 through 8.
 
 **One spec item deliberately has no task.** The spec's "no per-sheep log topics" is a decision not to build something, recorded so a later reader knows it was considered. Nothing to implement.
 
