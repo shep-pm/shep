@@ -370,11 +370,147 @@ pub fn columns_for(width: u16) -> &'static [Column] {
 #[must_use]
 pub fn name_width(width: u16, columns: &[Column]) -> u16 {
     let fixed: u16 = columns.iter().map(|column| column.width()).sum();
-    let gaps = u16::try_from(columns.len().saturating_sub(1)).unwrap_or(0) * 2;
+    name_width_from(width, fixed, columns.len())
+}
+
+/// The arithmetic [`name_width`] does, shared with [`fold_name_width`] so
+/// the fold view's own name column follows the same clamp and gap rule
+/// rather than a second copy of it.
+fn name_width_from(width: u16, fixed: u16, columns_len: usize) -> u16 {
+    let gaps = u16::try_from(columns_len.saturating_sub(1)).unwrap_or(0) * 2;
     width
         .saturating_sub(fixed)
         .saturating_sub(gaps)
         .clamp(NAME_MIN, NAME_MAX)
+}
+
+/// One column of the fold view: the flock gathered by `AppConfig::fold`
+/// instead of by name ([`super::super::app::Grouping::ByFold`]).
+///
+/// Separate from [`Column`], which is the flat table's set: the two share
+/// only `STATUS`, and [`Column::Fold`] already means one sheep's own fold
+/// name rather than anything about grouping. Two sets that each stay simple
+/// beat one carrying a mode flag into every arm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FoldColumn {
+    /// The fold header's or member's name, taking the remainder.
+    Name,
+    /// The row's lifecycle status. The one word this shares with [`Column`].
+    Status,
+    /// A 20-cell gauge of this fold's share of total flock memory, drawn in
+    /// a 22-cell column. Blank on a member row: the share is a fact about
+    /// the fold, not about one of its members.
+    Share,
+    /// Summed memory on a header, the member's own reading on a member row.
+    Mem,
+    /// Summed CPU on a header, the member's own reading on a member row.
+    Cpu,
+    /// The shortest member's uptime on a header, the member's own on a
+    /// member row.
+    Uptime,
+    /// Summed restarts on a header, the member's own count on a member row.
+    Restarts,
+    /// The share's own percentage, on a fold header. Blank on a member row.
+    Notes,
+}
+
+impl FoldColumn {
+    /// The fixed width of this column's cells. `Name` reports `0`: it is
+    /// the column that takes the remainder, computed by [`fold_name_width`].
+    #[must_use]
+    pub const fn width(self) -> u16 {
+        match self {
+            Self::Name => 0,
+            Self::Status => 12,
+            Self::Share => 22,
+            Self::Mem => 10,
+            Self::Cpu => 9,
+            Self::Uptime => 10,
+            Self::Restarts => 8,
+            Self::Notes => 63,
+        }
+    }
+}
+
+/// Every fold-view column.
+const FOLD_ALL: &[FoldColumn] = &[
+    FoldColumn::Name,
+    FoldColumn::Status,
+    FoldColumn::Share,
+    FoldColumn::Mem,
+    FoldColumn::Cpu,
+    FoldColumn::Uptime,
+    FoldColumn::Restarts,
+    FoldColumn::Notes,
+];
+/// `FOLD_ALL` minus `Share`, the first column a narrowing terminal sheds:
+/// a 22-cell gauge that exists nowhere in flat view is the easiest thing
+/// here to live without.
+const FOLD_NO_SHARE: &[FoldColumn] = &[
+    FoldColumn::Name,
+    FoldColumn::Status,
+    FoldColumn::Mem,
+    FoldColumn::Cpu,
+    FoldColumn::Uptime,
+    FoldColumn::Restarts,
+    FoldColumn::Notes,
+];
+/// `FOLD_NO_SHARE` minus `Notes`, the 63-cell column that otherwise
+/// dominates a narrow row.
+const FOLD_NO_NOTES: &[FoldColumn] = &[
+    FoldColumn::Name,
+    FoldColumn::Status,
+    FoldColumn::Mem,
+    FoldColumn::Cpu,
+    FoldColumn::Uptime,
+    FoldColumn::Restarts,
+];
+const FOLD_NO_RESTARTS: &[FoldColumn] = &[
+    FoldColumn::Name,
+    FoldColumn::Status,
+    FoldColumn::Mem,
+    FoldColumn::Cpu,
+    FoldColumn::Uptime,
+];
+const FOLD_NO_CPU: &[FoldColumn] = &[
+    FoldColumn::Name,
+    FoldColumn::Status,
+    FoldColumn::Mem,
+    FoldColumn::Uptime,
+];
+const FOLD_NO_UPTIME: &[FoldColumn] = &[FoldColumn::Name, FoldColumn::Status, FoldColumn::Mem];
+/// `NAME` and `STATUS`, the floor: the same two facts flat view's own floor
+/// keeps, minus `ID`, which the fold view never had.
+const FOLD_FLOOR: &[FoldColumn] = &[FoldColumn::Name, FoldColumn::Status];
+
+/// Width thresholds for the fold view, widest first, in the shape of
+/// [`TIERS`]. Each threshold is the narrowest terminal that still fits its
+/// column set's fixed columns, their gaps, and [`NAME_MIN`]: see
+/// `every_fold_tier_fits_the_width_it_claims`.
+const FOLD_TIERS: &[(u16, &[FoldColumn])] = &[
+    (156, FOLD_ALL),
+    (132, FOLD_NO_SHARE),
+    (67, FOLD_NO_NOTES),
+    (57, FOLD_NO_RESTARTS),
+    (46, FOLD_NO_CPU),
+    (34, FOLD_NO_UPTIME),
+    (MIN_WIDTH, FOLD_FLOOR),
+];
+
+/// The widest fold-view column set that fits `width`, [`columns_for`]'s
+/// twin for the fold view's own, separate column set.
+#[must_use]
+pub fn fold_columns_for(width: u16) -> &'static [FoldColumn] {
+    FOLD_TIERS
+        .iter()
+        .find(|(threshold, _)| width >= *threshold)
+        .map_or(FOLD_FLOOR, |(_, columns)| *columns)
+}
+
+/// [`name_width`]'s twin for [`FoldColumn`].
+fn fold_name_width(width: u16, columns: &[FoldColumn]) -> u16 {
+    let fixed: u16 = columns.iter().map(|column| column.width()).sum();
+    name_width_from(width, fixed, columns.len())
 }
 
 /// `text` in exactly `width` display columns: padded on the right, or
@@ -489,18 +625,17 @@ fn section_line(label: &str, width: u16, style: Style) -> Line<'static> {
     Line::from(Span::styled(format!("{label} {rule}"), style))
 }
 
-/// One fold's header row. Selectable, unlike [`section_line`]'s callers, so
-/// it takes the same ground highlight a sheep row does; its own rollup
-/// columns land in a later task, so this draws the same rule
-/// [`section_line`] does either way.
+/// One fold's header row, reached from [`key_line`] whenever a
+/// [`RowKey::Fold`] row is drawn. Selectable, unlike [`section_line`]'s
+/// callers, so it takes the same ground highlight a sheep row does.
+///
+/// Delegates to [`fold_header_line`] with the fold view's own
+/// [`fold_columns_for`], rather than [`key_line`]'s flat `columns`: a fold
+/// header's rollup and share bar are fold-view concepts with no flat-view
+/// equivalent, so they are laid out in [`FoldColumn`]'s widths regardless of
+/// which column set the surrounding table happens to be passed.
 fn fold_line(app: &App, name: &str, width: u16, selected: bool) -> Line<'static> {
-    let palette = app.palette();
-    let style = if selected {
-        palette.ground()
-    } else {
-        palette.muted()
-    };
-    section_line(name, width, style)
+    fold_header_line(app, name, fold_columns_for(width), width, selected)
 }
 
 /// An app's group header row: [`App::group_totals`]'s own rollup, in the
@@ -598,6 +733,348 @@ fn group_cell(app: &App, name: &str, column: Column, totals: &GroupTotals) -> St
             .first()
             .and_then(|row| row.info.smit.clone())
             .unwrap_or_else(|| "-".to_string()),
+    }
+}
+
+/// One row of the fold view, dispatching on `key` the way [`key_line`] does
+/// for the flat table: a [`RowKey::Fold`] renders the header, a
+/// [`RowKey::Group`] or [`RowKey::Sheep`] renders a member, and a
+/// [`RowKey::Section`] renders the same band [`key_line`] draws.
+///
+/// A fold's own members are never nested a second level deep (two levels of
+/// grouping, never three): a [`RowKey::Sheep`] only ever reaches this table
+/// standalone, since a grouped app collapses to its [`RowKey::Group`] header
+/// with its instances held back, the same rule [`App::grouping`]'s
+/// `ByFold` value enforces when it gathers the rows in the first place.
+///
+/// No non-test caller yet: `view::mod`'s draw loop wires this in, in place
+/// of [`key_line`], once a later task in the fold-view plan switches on
+/// [`App::grouping`]. `#[allow(dead_code)]` says so rather than inventing
+/// that wiring early.
+#[allow(dead_code)]
+#[must_use]
+pub fn fold_key_line(
+    app: &App,
+    key: &RowKey,
+    columns: &[FoldColumn],
+    width: u16,
+    selected: bool,
+) -> Line<'static> {
+    match key {
+        RowKey::Fold(name) => fold_header_line(app, name, columns, width, selected),
+        RowKey::Group(name) => fold_group_line(app, name, columns, width, selected),
+        RowKey::Sheep(id) => app.row(*id).map_or_else(
+            || Line::from(Span::raw(" ".repeat(usize::from(width)))),
+            |row| fold_member_line(app, row, columns, width, selected),
+        ),
+        RowKey::Section(label) => section_line(label, width, app.palette().muted()),
+    }
+}
+
+/// One fold's header row: [`App::fold_totals`]'s rollup, plus the share bar
+/// [`fold_key_line`]'s doc names.
+///
+/// Header rows render in ink (`Style::default()`) rather than
+/// [`Palette::muted()`]: [`fold_member_line`] takes the muted role instead,
+/// so a fold's own row reads as the more prominent of the two, the way the
+/// design's `edge ×4` header draws brighter than the members under it.
+fn fold_header_line(
+    app: &App,
+    name: &str,
+    columns: &[FoldColumn],
+    width: u16,
+    selected: bool,
+) -> Line<'static> {
+    let palette = app.palette();
+    let totals = app.fold_totals(name);
+    let total_memory = total_flock_memory(app);
+    let share_percent = fold_share_percent(totals.memory, total_memory);
+    let share_fill = cell::gauge_fill(totals.memory.unwrap_or(0), total_memory, 20);
+    let status = fold_uniform_status(app, name);
+    let status_style = status.map_or(Style::default(), |status| palette.status(status));
+    let name_width = fold_name_width(width, columns);
+    let ground = if selected {
+        palette.ground()
+    } else {
+        Style::default()
+    };
+    let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len() * 2 + 1);
+    let mut used: u16 = 0;
+    for (index, column) in columns.iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::styled("  ", ground));
+            used += 2;
+        }
+        let cell_width = if *column == FoldColumn::Name {
+            name_width
+        } else {
+            column.width()
+        };
+        let text = fit(
+            &fold_header_cell(app, name, *column, &totals, total_memory, share_percent),
+            cell_width,
+        );
+        match column {
+            FoldColumn::Share => {
+                push_fold_share_cell(&mut spans, palette, text, share_fill, ground)
+            }
+            FoldColumn::Status => spans.push(Span::styled(text, status_style.patch(ground))),
+            _ => spans.push(Span::styled(text, Style::default().patch(ground))),
+        }
+        used += cell_width;
+    }
+    pad_ground(&mut spans, used, width, ground);
+    Line::from(spans)
+}
+
+/// One cell of a fold header row.
+fn fold_header_cell(
+    app: &App,
+    name: &str,
+    column: FoldColumn,
+    totals: &GroupTotals,
+    total_memory: Option<u64>,
+    share_percent: Option<u32>,
+) -> String {
+    match column {
+        FoldColumn::Name => format!("{name} \u{d7}{}", totals.count),
+        FoldColumn::Status => fold_status_text(app, name),
+        // The text here is only the source [`push_fold_share_cell`] splits
+        // into filled and tail spans; the fill point it uses is computed
+        // once by the caller rather than re-derived from this string.
+        FoldColumn::Share => cell::gauge(totals.memory.unwrap_or(0), total_memory, 20),
+        FoldColumn::Mem => totals.memory.map_or_else(|| "-".to_string(), human_bytes),
+        FoldColumn::Cpu => totals
+            .cpu
+            .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
+        FoldColumn::Uptime => totals
+            .uptime_ms
+            .map_or_else(|| "-".to_string(), human_duration),
+        FoldColumn::Restarts => totals.restarts.to_string(),
+        FoldColumn::Notes => {
+            share_percent.map_or_else(String::new, |percent| format!("{percent}% of flock memory"))
+        }
+    }
+}
+
+/// Pushes the `Share` column's text as two spans, filled and tail, the same
+/// split [`push_row_cell`] gives `MemCeil`: the filled run in [`Palette::sky`],
+/// the unfilled run in [`Palette::gauge_rest`], so the two do not compete.
+fn push_fold_share_cell(
+    spans: &mut Vec<Span<'static>>,
+    palette: Palette,
+    text: String,
+    fill: usize,
+    ground: Style,
+) {
+    let fill = fill.min(text.chars().count());
+    let mut chars = text.chars();
+    let filled: String = chars.by_ref().take(fill).collect();
+    let rest: String = chars.collect();
+    spans.push(Span::styled(filled, palette.sky().patch(ground)));
+    spans.push(Span::styled(rest, palette.gauge_rest().patch(ground)));
+}
+
+/// The whole flock's own memory, summed the same way the host strip sums it
+/// (`view::host::strip_line`): every row [`App::all_rows`] returns, not the
+/// filtered [`App::rows`], so a name filter never changes what a share bar
+/// divides by. `None` only when nothing in the flock has reported a reading.
+fn total_flock_memory(app: &App) -> Option<u64> {
+    app.all_rows()
+        .iter()
+        .filter_map(|row| row.info.memory_bytes)
+        .fold(None, |sum, value| Some(sum.unwrap_or(0) + value))
+}
+
+/// A fold's share of `total_memory`, as a whole percentage. `None` when
+/// either side is unmeasured or `total_memory` is zero: the header's own
+/// `Notes` cell then draws nothing, matching [`fold_header_line`]'s empty
+/// bar for the same case.
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)] // display only, a table cell
+fn fold_share_percent(memory: Option<u64>, total_memory: Option<u64>) -> Option<u32> {
+    let memory = memory?;
+    let total_memory = total_memory?;
+    if total_memory == 0 {
+        return None;
+    }
+    Some((memory as f64 / total_memory as f64 * 100.0).round() as u32)
+}
+
+/// Every row whose `fold` is `fold`. The view's own twin of
+/// `App::fold_totals`'s private member walk: view code has no access to
+/// that helper, only to [`App::all_rows`].
+fn fold_members<'a>(app: &'a App, fold: &str) -> Vec<&'a Row> {
+    app.all_rows()
+        .into_iter()
+        .filter(|row| row.info.fold.as_deref() == Some(fold))
+        .collect()
+}
+
+/// A fold header's STATUS text: the shared status word when every member
+/// agrees, else a count per state. Mirrors [`App::group_status_text`], which
+/// answers the same question for an app's own instances by name rather than
+/// by fold.
+fn fold_status_text(app: &App, fold: &str) -> String {
+    let members = fold_members(app, fold);
+    let Some(first) = members.first().map(|row| row.info.status) else {
+        return String::new();
+    };
+    if members.iter().all(|row| row.info.status == first) {
+        return first.to_string();
+    }
+    let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for row in &members {
+        *counts.entry(row.info.status.to_string()).or_default() += 1;
+    }
+    counts
+        .into_iter()
+        .map(|(status, n)| format!("{n} {status}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// A fold's status when every member agrees on one. Mirrors
+/// [`App::group_uniform_status`].
+fn fold_uniform_status(app: &App, fold: &str) -> Option<ProcStatus> {
+    let members = fold_members(app, fold);
+    let first = members.first()?.info.status;
+    members
+        .iter()
+        .all(|row| row.info.status == first)
+        .then_some(first)
+}
+
+/// An app's group header row, laid out in [`FoldColumn`]'s widths rather
+/// than [`Column`]'s: the same rollup [`group_line`] draws for the flat
+/// table, reused rather than recomputed, since [`App::group_totals`] does
+/// not care which table is about to draw it.
+///
+/// `Share` and `Notes` are blank: the share bar is a fact about a fold, and
+/// a group nested inside one has no share of its own to state.
+fn fold_group_line(
+    app: &App,
+    name: &str,
+    columns: &[FoldColumn],
+    width: u16,
+    selected: bool,
+) -> Line<'static> {
+    let palette = app.palette();
+    let totals = app.group_totals(name);
+    let status = app.group_uniform_status(name);
+    let status_style = status.map_or(Style::default(), |status| palette.status(status));
+    let name_width = fold_name_width(width, columns);
+    let ground = if selected {
+        palette.ground()
+    } else {
+        Style::default()
+    };
+    let base = palette.muted();
+    let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len() * 2 + 1);
+    let mut used: u16 = 0;
+    for (index, column) in columns.iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::styled("  ", ground));
+            used += 2;
+        }
+        let cell_width = if *column == FoldColumn::Name {
+            name_width
+        } else {
+            column.width()
+        };
+        let text = fit(&fold_group_cell(app, name, *column, &totals), cell_width);
+        let style = if *column == FoldColumn::Status {
+            status_style
+        } else {
+            base
+        };
+        spans.push(Span::styled(text, style.patch(ground)));
+        used += cell_width;
+    }
+    pad_ground(&mut spans, used, width, ground);
+    Line::from(spans)
+}
+
+/// One cell of a group row nested inside a fold.
+fn fold_group_cell(app: &App, name: &str, column: FoldColumn, totals: &GroupTotals) -> String {
+    match column {
+        FoldColumn::Name => format!("{name} \u{d7}{}", totals.count),
+        FoldColumn::Status => app.group_status_text(name),
+        FoldColumn::Share | FoldColumn::Notes => String::new(),
+        FoldColumn::Mem => totals.memory.map_or_else(|| "-".to_string(), human_bytes),
+        FoldColumn::Cpu => totals
+            .cpu
+            .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
+        FoldColumn::Uptime => totals
+            .uptime_ms
+            .map_or_else(|| "-".to_string(), human_duration),
+        FoldColumn::Restarts => totals.restarts.to_string(),
+    }
+}
+
+/// One sheep's row, laid out in [`FoldColumn`]'s widths. A fold's own
+/// [`RowKey::Sheep`] rows are always standalone (two levels of grouping,
+/// never three), so unlike [`row_line`] this takes no `grouped` flag.
+fn fold_member_line(
+    app: &App,
+    row: &Row,
+    columns: &[FoldColumn],
+    width: u16,
+    selected: bool,
+) -> Line<'static> {
+    let palette = app.palette();
+    let status_style = palette.reported(row.reported());
+    let name_width = fold_name_width(width, columns);
+    let ground = if selected {
+        palette.ground()
+    } else {
+        Style::default()
+    };
+    let base = palette.muted();
+    let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len() * 2 + 1);
+    let mut used: u16 = 0;
+    for (index, column) in columns.iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::styled("  ", ground));
+            used += 2;
+        }
+        let cell_width = if *column == FoldColumn::Name {
+            name_width
+        } else {
+            column.width()
+        };
+        let text = fit(&fold_member_cell(app, row, *column), cell_width);
+        let style = if *column == FoldColumn::Status {
+            status_style
+        } else {
+            base
+        };
+        spans.push(Span::styled(text, style.patch(ground)));
+        used += cell_width;
+    }
+    pad_ground(&mut spans, used, width, ground);
+    Line::from(spans)
+}
+
+/// One cell of a standalone sheep's row in the fold view.
+fn fold_member_cell(app: &App, row: &Row, column: FoldColumn) -> String {
+    let info = &row.info;
+    match column {
+        FoldColumn::Name => info.name.clone(),
+        // `Row::reported`, not `info.status.to_string()`, for the same
+        // reason `cell`'s own `Column::Status` arm gives: a dog that has
+        // never handshook must not read `online` here either.
+        FoldColumn::Status => row.reported().word(),
+        FoldColumn::Share | FoldColumn::Notes => String::new(),
+        FoldColumn::Mem => info
+            .memory_bytes
+            .map_or_else(|| "-".to_string(), human_bytes),
+        FoldColumn::Cpu => info
+            .cpu_percent
+            .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
+        FoldColumn::Uptime => app
+            .uptime_ms(info.id)
+            .map_or_else(|| "-".to_string(), human_duration),
+        FoldColumn::Restarts => info.restarts.to_string(),
     }
 }
 
@@ -1554,5 +2031,60 @@ mod tests {
             "the sheep table has no dogs in it, and no silence rule either: {rendered:?}"
         );
         assert!(!rendered.contains("silent"), "got {rendered:?}");
+    }
+
+    /// The same invariant the flat ladder carries: a tier chosen for a width
+    /// must actually fit in it.
+    #[test]
+    fn every_fold_tier_fits_the_width_it_claims() {
+        for width in MIN_WIDTH..=200 {
+            let cols = fold_columns_for(width);
+            let fixed: u16 = cols.iter().map(|c| c.width()).sum();
+            let gaps = u16::try_from(cols.len() - 1).unwrap() * 2;
+            assert!(
+                fixed + gaps + NAME_MIN <= width,
+                "width {width} chose {} columns needing {}",
+                cols.len(),
+                fixed + gaps + NAME_MIN
+            );
+        }
+    }
+
+    /// The share bar goes first because it is the widest thing that is not
+    /// the name, and it does not exist in flat view to be missed.
+    #[test]
+    fn the_share_bar_is_the_first_column_to_go() {
+        let wide = fold_columns_for(200);
+        assert!(wide.contains(&FoldColumn::Share));
+        let narrow = fold_columns_for(100);
+        assert!(!narrow.contains(&FoldColumn::Share), "got {narrow:?}");
+    }
+
+    /// A header sums its members and shows the share of total flock memory.
+    #[test]
+    fn a_fold_header_shows_its_rollup_and_its_share() {
+        let app = fixtures::app_with(
+            vec![
+                fixtures::sheep_with(1, "api", Some("edge"), 120_000, Some(100 << 20), 2),
+                fixtures::sheep_with(2, "cdn", Some("edge"), 30_000, Some(150 << 20), 5),
+                fixtures::sheep_with(3, "batch", None, 60_000, Some(50 << 20), 0),
+            ],
+            fixtures::plain(),
+        );
+        let line = fold_key_line(
+            &app,
+            &RowKey::Fold("edge".into()),
+            fold_columns_for(160),
+            160,
+            false,
+        );
+        let text = fixtures::rendered(&line);
+        assert!(text.contains("edge ×2"), "got {text}");
+        assert!(text.contains("250.0M"), "memory sums: {text}");
+        assert!(text.contains("30s"), "uptime is the minimum: {text}");
+        assert!(
+            text.contains("83%"),
+            "250 of 300 MiB of flock memory: {text}"
+        );
     }
 }

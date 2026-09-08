@@ -4188,11 +4188,6 @@ impl App {
 
     /// `fold`'s rolled-up numbers, the same rule [`Self::group_totals`]
     /// applies but over every instance in the fold rather than one app's own.
-    ///
-    /// No non-test caller yet: the share bar that reads this lands in a later
-    /// task of the fold-view plan. `#[allow(dead_code)]` says so rather than
-    /// inventing a caller early.
-    #[allow(dead_code)]
     #[must_use]
     pub fn fold_totals(&self, fold: &str) -> GroupTotals {
         self.totals_for(self.fold_members(fold))
