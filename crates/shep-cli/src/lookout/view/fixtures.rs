@@ -57,6 +57,26 @@ pub fn sheep_in_fold(id: u32, name: &str, fold: Option<&str>) -> ProcessInfo {
         .build()
 }
 
+/// One online sheep named `name`, carrying `fold`, `uptime_ms`, `memory` and
+/// `restarts`: the shape [`crate::lookout::app::App::fold_totals`]'s rollup
+/// test needs numbers to sum and to take the minimum of.
+pub fn sheep_with(
+    id: u32,
+    name: &str,
+    fold: Option<&str>,
+    uptime_ms: u64,
+    memory: Option<u64>,
+    restarts: u32,
+) -> ProcessInfo {
+    ProcessInfo::builder(id, name, ProcStatus::Online)
+        .pid(Some(1000 + id))
+        .uptime_ms(uptime_ms)
+        .memory_bytes(memory)
+        .restarts(restarts)
+        .fold(fold.map(str::to_string))
+        .build()
+}
+
 /// One instance of a grouped app, at `slot`, carrying `fold`: the same
 /// shape [`sheep_in_fold`] builds, with an instance slot set so
 /// [`super::super::app::App::is_grouped`] gathers it under a

@@ -4173,7 +4173,33 @@ impl App {
     /// follows.
     #[must_use]
     pub fn group_totals(&self, name: &str) -> GroupTotals {
-        let members = self.group_members(name);
+        self.totals_for(self.group_members(name))
+    }
+
+    /// Every instance whose `fold` is `fold`: the members a [`RowKey::Fold`]
+    /// row summarises.
+    fn fold_members(&self, fold: &str) -> Vec<&Row> {
+        self.flock
+            .values()
+            .filter(|row| row.info.fold.as_deref() == Some(fold))
+            .collect()
+    }
+
+    /// `fold`'s rolled-up numbers, the same rule [`Self::group_totals`]
+    /// applies but over every instance in the fold rather than one app's own.
+    ///
+    /// No non-test caller yet: the share bar that reads this lands in a later
+    /// task of the fold-view plan. `#[allow(dead_code)]` says so rather than
+    /// inventing a caller early.
+    #[allow(dead_code)]
+    #[must_use]
+    pub fn fold_totals(&self, fold: &str) -> GroupTotals {
+        self.totals_for(self.fold_members(fold))
+    }
+
+    /// The shared rollup [`Self::group_totals`] and [`Self::fold_totals`]
+    /// both compute, over whichever members each selects.
+    fn totals_for(&self, members: Vec<&Row>) -> GroupTotals {
         GroupTotals {
             count: members.len(),
             restarts: members.iter().map(|row| row.info.restarts).sum(),
@@ -4858,6 +4884,70 @@ mod tests {
         app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
         let prompt = status_line_text(&app);
         assert!(prompt.contains('3'), "names the blast radius: {prompt}");
+    }
+
+    /// The same rule group_totals uses, whose own doc calls uptime the
+    /// minimum. A second rollup rule would make two headers disagree about
+    /// the same numbers.
+    #[test]
+    fn a_fold_rolls_up_like_a_group_does() {
+        let app = fixtures::app_with(
+            vec![
+                fixtures::sheep_with(1, "api", Some("edge"), 120_000, Some(100 << 20), 2),
+                fixtures::sheep_with(2, "cdn", Some("edge"), 30_000, Some(150 << 20), 5),
+            ],
+            fixtures::plain(),
+        );
+        let totals = app.fold_totals("edge");
+        assert_eq!(totals.count, 2);
+        assert_eq!(totals.restarts, 7);
+        assert_eq!(totals.memory, Some(250 << 20));
+        assert_eq!(
+            totals.uptime_ms,
+            Some(30_000),
+            "the minimum, not the first or the longest"
+        );
+    }
+
+    /// The confirm names the count so nobody stops four things believing
+    /// they stopped one.
+    #[test]
+    fn a_fold_confirm_states_how_many_it_reaches() {
+        let mut app = fixtures::app_with(
+            vec![
+                fixtures::sheep_in_fold(1, "api", Some("edge")),
+                fixtures::sheep_in_fold(2, "cdn", Some("edge")),
+            ],
+            fixtures::plain(),
+        );
+        app.set_control_for_tests(Control::Allowed);
+        let _ = app.update(Msg::Key(KeyPress::FoldView));
+        app.select(RowKey::Fold("edge".to_string()));
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+        let text = status_line_text(&app);
+        assert!(
+            text.contains('2'),
+            "the confirm must name the count: {text}"
+        );
+        assert!(text.contains("edge"), "and the fold: {text}");
+    }
+
+    /// The no-fold header is a header, not a fold. There is no
+    /// `SelectorSpec` that names "everything with no fold", so an action there
+    /// would have to enumerate ids behind the operator's back.
+    #[test]
+    fn the_no_fold_header_is_not_selectable() {
+        let mut app = fixtures::app_with(
+            vec![fixtures::sheep_in_fold(1, "batch", None)],
+            fixtures::plain(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::FoldView));
+        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
+        assert!(
+            !matches!(app.selected(), Some(RowKey::Section(_))),
+            "selection steps past a header, got {:?}",
+            app.selected()
+        );
     }
 
     #[test]
