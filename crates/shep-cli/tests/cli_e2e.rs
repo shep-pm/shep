@@ -4106,15 +4106,15 @@ fn import_env_dry_run_writes_nothing() {
 }
 
 #[cfg(unix)]
-/// A `.env` that names a variable shep injects itself passes the dry-run
-/// probe at step 3, which returns before `normalize` runs, so the secret
-/// store is written before the real send refuses it.
+/// A `.env` that names a variable shep injects itself is refused by the
+/// dry-run probe at step 3, which runs `normalize` on the merged config, so
+/// neither store is touched.
 ///
-/// The already-written disclosure covers exactly this case: the secret sits
-/// in `secrets.json` with nothing in the sheep's env referencing it until a
-/// re-run.
+/// This used to reach the real send instead and leave an orphaned secret in
+/// `secrets.json`. The refusal now lands before the secret write, and the
+/// secret's value still reaches neither output stream.
 #[test]
-fn import_env_discloses_a_secret_write_the_real_send_then_refuses() {
+fn import_env_refuses_a_reserved_variable_before_either_store_is_written() {
     let home = tempfile::tempdir().unwrap();
     let _guard = start_a_sheep_named_web(&home);
     std::fs::write(
@@ -4146,19 +4146,19 @@ fn import_env_discloses_a_secret_write_the_real_send_then_refuses() {
         "the value reached an output stream: {combined}"
     );
     assert!(
-        combined.contains("already written to the secret store"),
-        "the refusal did not disclose the earlier write: {combined}"
+        !combined.contains("already written to the secret store"),
+        "nothing was written, so nothing may be disclosed: {combined}"
     );
 
-    let stored = std::fs::read_to_string(home.path().join("secrets.json")).unwrap();
+    let secrets = std::fs::read_to_string(home.path().join("secrets.json")).unwrap_or_default();
     assert!(
-        stored.contains("API_TOKEN"),
-        "the secret write did not land: {stored}"
+        !secrets.contains("API_TOKEN"),
+        "the secret store was written by a refused import: {secrets}"
     );
     let overrides = std::fs::read_to_string(home.path().join("overrides.json")).unwrap_or_default();
     assert!(
-        !overrides.contains("API_TOKEN"),
-        "the sheep's env must not reference the orphaned secret: {overrides}"
+        !overrides.contains("API_TOKEN") && !overrides.contains("SHEP_NAME"),
+        "the override store was written by a refused import: {overrides}"
     );
 
     graceful_kill(home.path());

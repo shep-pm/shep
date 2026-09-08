@@ -4795,12 +4795,19 @@ impl<R: ProcessRunner> Actor<R> {
     /// nothing is written. A key holding the same value is `unchanged` and
     /// is not rewritten, so a repeated identical batch is a no-op.
     ///
+    /// # What a dry run answers
+    ///
+    /// Everything the real send would, refusals included: `normalize` runs
+    /// on the merged config before this returns, so a preview that reports
+    /// a key as `set` is one the real send takes.
+    ///
     /// # Errors
     ///
     /// - [`SupervisorError::IsADog`] - the name is a dog's. Raised before
     ///   the store is read, for [`Self::handle_set_sheep_env`]'s reason.
     /// - [`SupervisorError::InvalidEnv`] - the resulting config is one
-    ///   `normalize` refuses. Nothing was written.
+    ///   `normalize` refuses. Nothing was written, on a dry run or a real
+    ///   send alike.
     /// - [`SupervisorError::Overrides`] - the store could not be read or
     ///   written. Nothing was parked.
     fn handle_set_sheep_env_batch(
@@ -4842,21 +4849,34 @@ impl<R: ProcessRunner> Actor<R> {
             }
         }
 
-        let refused = !collisions.is_empty() && !force;
-        if refused || dry_run {
+        // A refused batch changes nothing, so what the merged config would
+        // normalize to is moot and the collision report is the whole answer.
+        if !collisions.is_empty() && !force {
             return Ok(Some(EnvBatch {
                 app: None,
-                set: if refused { Vec::new() } else { set },
+                set: Vec::new(),
                 unchanged,
                 collisions,
             }));
         }
 
+        // Before the `dry_run` return, not after it: `normalize` is this
+        // door's only validation, so a preview that skipped it would report
+        // a key as `set` and then fail on the real send.
         for key in &set {
             intended.env.insert(key.clone(), entries[key].clone());
         }
         let parked =
             normalize(intended).map_err(|err| SupervisorError::InvalidEnv(err.to_string()))?;
+
+        if dry_run {
+            return Ok(Some(EnvBatch {
+                app: None,
+                set,
+                unchanged,
+                collisions,
+            }));
+        }
 
         let mut record = overrides::get(&self.paths.overrides, name)
             .map_err(|err| SupervisorError::Overrides(err.to_string()))?
@@ -20940,6 +20960,68 @@ mod tests {
                 .is_none(),
             "a dry run left a store behind"
         );
+    }
+
+    /// A preview that does not match the outcome is worse than no preview:
+    /// `normalize` is this door's only validation, so a dry run that skipped
+    /// it would report `SHEP_NAME` as `set` and then fail on the real send,
+    /// after the caller had acted on the preview.
+    #[tokio::test(start_paused = true)]
+    async fn a_dry_run_refuses_what_the_real_send_would_refuse() {
+        let h = env_batch_harness().await;
+        let err = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([("SHEP_NAME".to_string(), "nope".to_string())]),
+                false,
+                true,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, SupervisorError::InvalidEnv(_)), "{err:?}");
+        assert!(
+            shep_core::overrides::get(&h.ctx.paths.overrides, "web")
+                .unwrap()
+                .is_none(),
+            "a refused dry run left a store behind"
+        );
+    }
+
+    /// A refused batch changes nothing, so validating the merged config is
+    /// moot and the collision report is the whole answer.
+    #[tokio::test(start_paused = true)]
+    async fn a_refused_collision_reports_rather_than_validating() {
+        let h = env_batch_harness().await;
+        h.ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([("A".to_string(), "1".to_string())]),
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        let batch = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([
+                    ("A".to_string(), "2".to_string()),
+                    ("SHEP_NAME".to_string(), "nope".to_string()),
+                ]),
+                false,
+                false,
+            )
+            .await
+            .unwrap()
+            .expect("web exists");
+        assert_eq!(batch.collisions, ["A"]);
+        assert!(batch.set.is_empty());
+        assert!(batch.app.is_none());
     }
 
     #[tokio::test(start_paused = true)]

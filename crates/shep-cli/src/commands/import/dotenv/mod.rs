@@ -9,8 +9,9 @@
 //!    exists.
 //! 3. `SetSheepEnvBatch` with `dry_run`, so the daemon names env collisions
 //!    against the values it holds and this process never sees them. This is
-//!    the step that refuses an unknown sheep and a dog, on either path into
-//!    it, before either store is written.
+//!    the step that refuses an unknown sheep, a dog, and a merged config
+//!    `normalize` will not take, on either path into it, before either
+//!    store is written.
 //! 4. secret-store collisions, decided here, since this process holds those
 //!    values.
 //! 5. any collision without `--force`: name them all and exit, writing
