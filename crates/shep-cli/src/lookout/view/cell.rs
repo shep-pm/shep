@@ -92,9 +92,18 @@ pub fn sparkline(samples: &[f32], cells: usize, ceiling: f32) -> String {
 /// counted from the top, `s = h - (rows - 1 - r) * 2`, and the cell is `█`
 /// when `s >= 2`, `▄` when `s == 1`, and blank otherwise.
 ///
-/// Left-padded and ceiling-saturating like [`sparkline`], and blank rather
-/// than a floor line with no samples, for the reasons that function's own
-/// doc gives.
+/// Left-padded like [`sparkline`], and blank rather than a floor line with
+/// no samples, for the reasons that function's own doc gives.
+///
+/// A sample at or above `ceiling` fills its column, the same way
+/// [`gauge_fill`] saturates a value above its own ceiling: the row match
+/// below sends any height at or past the top row's floor to the same `█`
+/// arm regardless of how far past it the sample sits, so there is nothing
+/// for an explicit clamp to add on that side. A negative sample is a
+/// different case, one this function does need to get right even though no
+/// caller today produces one: the `as usize` cast on the line below sends it
+/// to a height of `0` (a saturating cast, not a wrapping one), which reads as
+/// blank rather than as a spurious full column.
 ///
 /// No non-test caller yet: the sheep pane that draws with this cell lands
 /// in a later task, so `#[allow(dead_code)]` says so rather than inventing
@@ -114,7 +123,7 @@ pub fn chart(samples: &[f32], ceiling: f32, cols: usize, rows: usize) -> Vec<Str
     let steps = rows * 2;
     let heights: Vec<usize> = window
         .iter()
-        .map(|sample| (sample.clamp(0.0, ceiling) / ceiling * steps as f32).round() as usize)
+        .map(|sample| (sample / ceiling * steps as f32).round() as usize)
         .collect();
     (0..rows)
         .map(|row| {
@@ -208,8 +217,17 @@ mod tests {
     }
 
     #[test]
-    fn a_chart_over_its_ceiling_saturates_rather_than_overflowing() {
+    fn a_chart_over_its_ceiling_fills_its_column() {
         assert_eq!(chart(&[250.0], 100.0, 1, 2), ["█", "█"]);
+    }
+
+    /// The `as usize` cast that turns a height into a row count saturates a
+    /// negative value to zero rather than wrapping it, so a negative sample
+    /// reads as blank rather than as a spurious full column. Nothing today
+    /// produces a negative sample; this pins the cast anyway.
+    #[test]
+    fn a_negative_sample_reads_as_blank() {
+        assert_eq!(chart(&[-50.0], 100.0, 1, 2), [" ", " "]);
     }
 
     /// Left-padded like `sparkline`, so the chart grows into its column from
