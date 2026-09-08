@@ -363,13 +363,13 @@ fn already_written(written: usize) -> String {
     if written == 0 {
         return String::new();
     }
-    let (keys, verb) = if written == 1 {
-        ("key", "was")
+    let (keys, was_were, sit_sat) = if written == 1 {
+        ("key", "was", "sits")
     } else {
-        ("keys", "were")
+        ("keys", "were", "sit")
     };
     format!(
-        "; {written} secret {keys} {verb} already written to the secret store and sit \
+        "; {written} secret {keys} {was_were} already written to the secret store and {sit_sat} \
          unreferenced until the import is re-run. A re-run is clean, since an identical \
          value is not a collision"
     )
