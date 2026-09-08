@@ -7656,6 +7656,53 @@ mod tests {
     /// Asserts every line across the two windows, not the offset: an
     /// operator reading history by paging silently misses the gap, so a
     /// test that only watched the number move would too.
+    /// Wrapped paging leaves no line unseen either, over a feed whose older
+    /// lines are far longer than its newest.
+    ///
+    /// Measured: with the page sized from the tail, three steps into the
+    /// wrapped stretch showed `old-32..old-35` where the step before showed
+    /// `new-4..new-15`, skipping eight lines no screen ever drew, and the
+    /// next step skipped eight more. Sized from the current window instead,
+    /// the same walk is contiguous.
+    ///
+    /// That is the Task 7 defect one level harder: there the jump was one
+    /// row too many, here it is most of a screen. Both were invisible for
+    /// the same reason, that paging back cancels the error out.
+    ///
+    /// `note_body_width` matters as much as `note_body_rows` here. The
+    /// wrap-aware path is skipped entirely while the pane's width is `0`,
+    /// which is what a test that never reports one leaves it as, so a test
+    /// missing that call passes against a page size that was never wrapped.
+    ///
+    /// Walks in one direction and asserts every line across the windows,
+    /// because paging back is symmetric and would hide the gap.
+
+    #[test]
+    fn wrapped_pages_leave_no_line_unseen() {
+        let mut app = fixtures::bleats_pane_with_mixed_line_lengths();
+        let _ = app.update(Msg::Key(KeyPress::WrapToggle));
+        app.note_body_rows(13); // 1 title, no chip, so 12 body rows
+        app.note_body_width(60);
+
+        let mut seen = String::new();
+        for _ in 0..12 {
+            seen.push_str(&fixtures::render_all(
+                &super::super::view::bleats_full::draw_lines(&app, 60, 13),
+            ));
+            let _ = app.update(Msg::Key(KeyPress::PageUp));
+        }
+
+        // Every `old-` line the walk passed over must have been drawn in one
+        // of the windows. A gap means a page stepped over lines that no
+        // screen ever showed.
+        for n in 30..40 {
+            assert!(
+                seen.contains(&format!("old-{n} ")),
+                "old-{n} fell between two wrapped pages"
+            );
+        }
+    }
+
     #[test]
     fn consecutive_pages_leave_no_line_unseen_while_a_chip_is_showing() {
         let mut app = fixtures::bleats_pane_with_lines(40);

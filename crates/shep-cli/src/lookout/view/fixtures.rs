@@ -362,6 +362,33 @@ pub fn bleats_pane_with_lines(n: u32) -> App {
 
 /// The full-screen bleats pane, open on `web`, over a feed with one line
 /// comfortably wider than 80 columns, for the wrap tests.
+/// A feed whose newest lines are short and whose older ones are long, so a
+/// page sized from the tail is far too many lines once the view is scrolled
+/// back into the long stretch.
+///
+/// The shape a wrap-aware page step has to survive: `page_amount` measures
+/// from the tail, and a tail of one-row lines says "a page is N lines" while
+/// the older region draws each of those lines as three rows.
+#[must_use]
+pub fn bleats_pane_with_mixed_line_lengths() -> App {
+    let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+    let mut lines: Vec<TailLine> = (0..40)
+        .map(|i| line(Stream::Out, &format!("old-{i} {}", "y".repeat(150))))
+        .collect();
+    lines.extend((0..40).map(|i| line(Stream::Out, &format!("new-{i}"))));
+    app.update(Msg::Bleats {
+        tail: Tail {
+            lines,
+            missed_lines: 0,
+            missed_bytes: 0,
+            read_bytes: 1_024,
+            note: None,
+        },
+    });
+    app.update(Msg::Key(KeyPress::Bleats));
+    app
+}
+
 pub fn bleats_pane_with_long_line() -> App {
     let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
     app.update(Msg::Bleats {

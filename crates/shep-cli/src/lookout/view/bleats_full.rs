@@ -193,22 +193,22 @@ fn window_range(
 /// by, so a page under wrap moves by roughly the room `pane`'s own area
 /// draws rather than a raw row count that assumes one row per line.
 ///
-/// Falls back to [`BleatsPane::body_rows`] outright when wrap is off or
-/// [`BleatsPane::width`] is `0` (no draw has ever reported a column count):
-/// with one row per line, the row count and the line count are the same
-/// number, which is the arithmetic [`BleatsPane::page_up`]/[`BleatsPane::page_down`]
-/// always used before this task, and every test built against that pane
-/// already assumes it.
+/// How many lines one `ctrl-u`/`ctrl-d` moves [`BleatsPane::scroll_offset`]
+/// by: exactly the lines the pane is showing right now.
 ///
-/// Wrapped, walks backward from the tail — not from the current
-/// [`BleatsPane::scroll_offset`] — so a page is sized once from the feed's
-/// own newest lines rather than re-measured from wherever the view happens
-/// to be. A feed whose wrapped-line density varies sharply between its tail
-/// and an older stretch can still under- or overshoot a screen's worth of
-/// rows once scrolled into that stretch, the same way an unwrapped page
-/// already could undershoot the very first or last page of a feed shorter
-/// than one page: the fix in either case is [`window_range`]'s own clamp at
-/// render time, not a perfectly-sized step.
+/// Measured from the current [`BleatsPane::scroll_offset`] through the same
+/// [`window_range`] the draw uses, so consecutive pages are contiguous by
+/// construction rather than by estimate. Unwrapped that is `body_rows`, the
+/// arithmetic this pane always used.
+///
+/// It has to be the current window rather than the feed's tail. Sizing a page
+/// once at the tail and reusing it is wrong the moment wrapped-line density
+/// differs anywhere else: a tail of one-row lines says "a page is twelve
+/// lines" while an older stretch draws four of them per screen, so a step
+/// would pass over eight lines no screen ever rendered. Clamping at render
+/// time does not help, because the lines are skipped rather than
+/// overshot. `wrapped_pages_leave_no_line_unseen` walks one direction and
+/// checks every line, since paging back is symmetric and hides the gap.
 #[must_use]
 pub(crate) fn page_amount(app: &App, pane: &BleatsPane) -> usize {
     let body_rows = pane.body_rows();
@@ -217,14 +217,25 @@ pub(crate) fn page_amount(app: &App, pane: &BleatsPane) -> usize {
     }
     let survivors = pane.visible(&app.feed().lines);
     let text_width = pane.width().saturating_sub(TAG_PREFIX_WIDTH);
+    let cost = |index: usize| row_height(&survivors[index].text, text_width, true);
+    let shown = window_range(survivors.len(), pane.scroll_offset(), body_rows, cost);
+
+    // Backward from where the view starts, not forward from where it ends.
+    // A page has to land the NEXT window's last line on this one's first, so
+    // it is sized by what fits going back from `shown.start`. Sizing it by
+    // the current window's own length is the same mistake one step later:
+    // when the older stretch wraps denser, fewer of its lines fill the same
+    // rows, and the difference is skipped.
     let mut used = 0usize;
     let mut count = 0usize;
-    for line in survivors.iter().rev() {
-        let cost = row_height(&line.text, text_width, true);
-        if count > 0 && used + cost > body_rows {
+    let mut at = shown.start;
+    while at > 0 {
+        let row = cost(at - 1);
+        if count > 0 && used + row > body_rows {
             break;
         }
-        used += cost;
+        at -= 1;
+        used += row;
         count += 1;
     }
     count.max(1)
