@@ -7681,9 +7681,9 @@ mod tests {
 
     /// Unsetting the last key in an environment drops it from the union
     /// `secrets::model` recomputes on every load, so a tab sitting on the
-    /// rightmost entry can be left pointing past the end of a shorter list.
-    /// The old code indexed `environments[tab]` straight into that gap and
-    /// panicked the effect loop; this asserts the landing is safe instead.
+    /// rightmost entry can be left pointing past the end of a shorter
+    /// list. This pins `tab` staying in range and `environment()` still
+    /// naming a real entry once that happens.
     #[test]
     fn a_shrinking_environment_list_leaves_the_tab_somewhere_valid() {
         let mut app = fixtures::full_app();
