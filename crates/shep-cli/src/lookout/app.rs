@@ -1151,7 +1151,8 @@ struct Action {
     target: RowKey,
     name: String,
     /// How many processes [`Self::target`] reaches, captured at arm time: 1 for
-    /// a sheep, the group's own size for a [`RowKey::Group`].
+    /// a sheep, the group's own size for a [`RowKey::Group`], and the fold's
+    /// membership for a [`RowKey::Fold`].
     count: usize,
     /// When it was armed. Only an armed action expires.
     at: Instant,
