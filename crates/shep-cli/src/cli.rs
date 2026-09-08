@@ -722,6 +722,19 @@ pub struct StartArgs {
     /// no Flockfile there, `shep start` brings a shepherd up with nothing
     /// running yet, and `shep add` has nothing it could register.
     ///
+    /// A target may be preceded by `NAME=VALUE` assignments, read the way a
+    /// shell reads them: `shep start KOJI_TOKEN=secret ./koji` registers koji
+    /// with that variable set and records it, so a later `shep start koji`
+    /// needs no assignment. A name takes a letter or `_` and then letters,
+    /// digits or `_`, which is what makes `./A=1` a path and `1A=1` a target.
+    /// Quote the value and never the pair: `shep start "A=x y" ./koji`.
+    ///
+    /// Assignments take one target, and it must be a script path or a sheep
+    /// the flock already has. A Flockfile or a fold can name several sheep,
+    /// and an assignment names none of them. The value passes through this
+    /// command line, so it reaches `ps` and your shell history; write
+    /// `{{secret:NAME}}` to read a credential from `shep secret` instead.
+    ///
     /// Several are handled in turn, not atomically: if the second fails the
     /// first has already landed, and the exit code is the first failure.
     /// `--name` is refused with more than one, since a name is unique to one
