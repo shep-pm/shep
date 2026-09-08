@@ -926,7 +926,7 @@ mod tests {
         assert!(bar.contains("esc back"), "got {bar:?}");
         assert!(bar.contains("d remove"), "got {bar:?}");
         assert!(bar.contains("K/J move"), "got {bar:?}");
-        app.update(Msg::Key(KeyPress::ListRemove));
+        app.update(Msg::Key(KeyPress::Remove));
         assert!(app.config_pane().unwrap().is_armed(), "d arms a removal");
         app.update(Msg::Key(KeyPress::Escape));
         app.update(Msg::Key(KeyPress::ListMoveDown));

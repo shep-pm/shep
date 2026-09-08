@@ -109,9 +109,10 @@ pub enum KeyPress {
     /// Pressing it again, or `Escape`, dismisses it. Bound nowhere else.
     Help,
     /// `d`: arms the removal of the element under the cursor, on the config
-    /// pane's list sub-screen. Bound nowhere else, and named for that
-    /// screen so every other screen's own keymap reads as the no-op it is.
-    ListRemove,
+    /// pane's list sub-screen. On a config field, restores the default by
+    /// removing the operator's override so the default shows through. One
+    /// verb, both places.
+    Remove,
     /// `K`: arms the element under the cursor moving up one place, on the
     /// same sub-screen.
     ListMoveUp,
@@ -159,6 +160,13 @@ pub enum KeyPress {
     /// `N`: the same, toward the oldest matching line. Ignored on the
     /// dashboard.
     MatchPrev,
+    /// `Tab`: moves the config pane's focus to the next group.
+    NextGroup,
+    /// `1` through `8`: jumps the config pane's focus straight to that
+    /// group, numbered in the order the pane lists them.
+    Group(u8),
+    /// `u`: undoes the config pane's last change.
+    Undo,
 }
 
 /// Everything that can change the dashboard.
@@ -2500,15 +2508,20 @@ impl App {
             }
             // `TextChar`/`TextBackspace`/`TextApply`/`TextAbandon` reach here
             // only from text mode, already branched above. `map_key` also
-            // sends `ListRemove`/`ListMoveUp`/`ListMoveDown` from Normal mode
+            // sends `Remove`/`ListMoveUp`/`ListMoveDown` from Normal mode
             // (`d`/`K`/`J`), so those land here too, just inert.
+            // `NextGroup`/`Group`/`Undo` belong to the config pane; Task 5
+            // and Task 8 give them a reducer arm there.
             KeyPress::TextChar(_)
             | KeyPress::TextBackspace
             | KeyPress::TextApply
             | KeyPress::TextAbandon
-            | KeyPress::ListRemove
+            | KeyPress::Remove
             | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown => Effect::None,
+            | KeyPress::ListMoveDown
+            | KeyPress::NextGroup
+            | KeyPress::Group(_)
+            | KeyPress::Undo => Effect::None,
             // The read, not the open: the screen opens only once
             // `Msg::Settings` lands.
             KeyPress::Settings => Effect::LoadSettings,
@@ -2743,7 +2756,7 @@ impl App {
             | KeyPress::Cycle
             | KeyPress::Edit
             | KeyPress::Help
-            | KeyPress::ListRemove
+            | KeyPress::Remove
             | KeyPress::ListMoveUp
             | KeyPress::ListMoveDown
             // `F` and `z` belong to the flock table. Regrouping a table the
@@ -2751,7 +2764,12 @@ impl App {
             // change they would meet on closing it.
             | KeyPress::FoldView
             | KeyPress::Collapse
-            | KeyPress::Bleats => Effect::None,
+            | KeyPress::Bleats
+            // `NextGroup`/`Group`/`Undo` belong to the config pane; Task 5
+            // and Task 8 give them a reducer arm there.
+            | KeyPress::NextGroup
+            | KeyPress::Group(_)
+            | KeyPress::Undo => Effect::None,
         }
     }
 
@@ -2873,7 +2891,7 @@ impl App {
             | KeyPress::TextApply
             | KeyPress::TextAbandon
             | KeyPress::Help
-            | KeyPress::ListRemove
+            | KeyPress::Remove
             | KeyPress::ListMoveUp
             | KeyPress::ListMoveDown
             | KeyPress::FoldView
@@ -2886,7 +2904,12 @@ impl App {
             | KeyPress::WrapToggle
             | KeyPress::MatchNext
             | KeyPress::MatchPrev
-            | KeyPress::Bleats => {}
+            | KeyPress::Bleats
+            // `NextGroup`/`Group`/`Undo` belong to the config pane; Task 5
+            // and Task 8 give them a reducer arm there.
+            | KeyPress::NextGroup
+            | KeyPress::Group(_)
+            | KeyPress::Undo => {}
         }
         Effect::None
     }
@@ -3066,7 +3089,7 @@ impl App {
             | KeyPress::TextBackspace
             | KeyPress::TextApply
             | KeyPress::TextAbandon
-            | KeyPress::ListRemove
+            | KeyPress::Remove
             | KeyPress::ListMoveUp
             | KeyPress::ListMoveDown
             | KeyPress::FoldView
@@ -3080,6 +3103,9 @@ impl App {
             | KeyPress::MatchNext
             | KeyPress::MatchPrev
             | KeyPress::Bleats => {}
+            // No-op here for now: Task 5 gives `NextGroup`/`Group` a
+            // reducer arm and Task 8 gives `Undo` one.
+            KeyPress::NextGroup | KeyPress::Group(_) | KeyPress::Undo => {}
         }
         Effect::None
     }
@@ -3171,7 +3197,7 @@ impl App {
             | KeyPress::TextBackspace
             | KeyPress::TextApply
             | KeyPress::TextAbandon
-            | KeyPress::ListRemove
+            | KeyPress::Remove
             | KeyPress::ListMoveUp
             | KeyPress::ListMoveDown
             | KeyPress::FoldView
@@ -3184,7 +3210,12 @@ impl App {
             | KeyPress::WrapToggle
             | KeyPress::MatchNext
             | KeyPress::MatchPrev
-            | KeyPress::Bleats => Effect::None,
+            | KeyPress::Bleats
+            // `NextGroup`/`Group`/`Undo` belong to the config pane; Task 5
+            // and Task 8 give them a reducer arm there.
+            | KeyPress::NextGroup
+            | KeyPress::Group(_)
+            | KeyPress::Undo => Effect::None,
         }
     }
 
@@ -3536,7 +3567,7 @@ impl App {
                     self.mode = InputMode::Text;
                 }
             }
-            KeyPress::ListRemove => {
+            KeyPress::Remove => {
                 if self.authorize_write().is_none() {
                     return Effect::None;
                 }
@@ -3573,6 +3604,9 @@ impl App {
             | KeyPress::MatchNext
             | KeyPress::MatchPrev
             | KeyPress::Bleats => {}
+            // No-op here for now: Task 5 gives `NextGroup`/`Group` a
+            // reducer arm and Task 8 gives `Undo` one.
+            KeyPress::NextGroup | KeyPress::Group(_) | KeyPress::Undo => {}
         }
         Effect::None
     }
@@ -3650,7 +3684,7 @@ impl App {
             | KeyPress::TextApply
             | KeyPress::TextAbandon
             | KeyPress::Help
-            | KeyPress::ListRemove
+            | KeyPress::Remove
             | KeyPress::ListMoveUp
             | KeyPress::ListMoveDown
             | KeyPress::FoldView
@@ -3664,6 +3698,9 @@ impl App {
             | KeyPress::MatchNext
             | KeyPress::MatchPrev
             | KeyPress::Bleats => {}
+            // No-op here for now: Task 5 gives `NextGroup`/`Group` a
+            // reducer arm and Task 8 gives `Undo` one.
+            KeyPress::NextGroup | KeyPress::Group(_) | KeyPress::Undo => {}
         }
         Effect::None
     }
@@ -10200,7 +10237,7 @@ mod tests {
             "K moves the element under the cursor up one place"
         );
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        let _ = app.update(Msg::Key(KeyPress::ListRemove));
+        let _ = app.update(Msg::Key(KeyPress::Remove));
         assert_eq!(
             armed_value(&app),
             serde_json::json!(["--port"]),
