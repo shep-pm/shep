@@ -1,10 +1,10 @@
 # Moving a flock from pm2 to shep
 
 This is for an operator moving a running pm2 install to shep: what
-`shep import` carries across, what it does not, and the steps to take a
+`shep import pm2` carries across, what it does not, and the steps to take a
 flock through import, save, and a reboot without losing it.
 
-`shep import` reads exactly one file: `~/.pm2/dump.pm2` (or whatever path
+`shep import pm2` reads exactly one file: `~/.pm2/dump.pm2` (or whatever path
 `--from` names). It does not read `ecosystem.config.js` or any other pm2
 config format, and it never touches pm2's own state — nothing under
 `~/.pm2` is written or deleted by anything in this guide.
@@ -39,7 +39,7 @@ changes, update this quote in the same commit.
 
 ## 1. What comes across, and what does not
 
-`shep import` reads pm2's dump — one row per running *instance* — and
+`shep import pm2` reads pm2's dump — one row per running *instance* — and
 collapses same-named rows back into one app each, mapped field by field:
 
 | pm2 | shep |
@@ -58,7 +58,7 @@ collapses same-named rows back into one app each, mapped field by field:
 | `NODE_APP_INSTANCE` present in a row's env | an `[app.env]` entry set to `"{{instance}}"`, plus a note (below) |
 
 A dump row with no `pm_exec_path` is refused by name rather than imported
-as a broken app — `shep import` names the row's index and what keys it did
+as a broken app — `shep import pm2` names the row's index and what keys it did
 find, and stops. Every app the importer does produce is run through the
 same config validation the daemon applies to a Flockfile at `shep start`
 time, so a rejected field fails at import, not three seconds into a
@@ -82,7 +82,7 @@ it binds nothing on any app's behalf. Running N instances of an app on one
 port only works if the app arranges the socket sharing itself, with
 `SO_REUSEPORT` (Node's `reusePort: true` listen option, which needs
 Node ≥ 22.12). Without that, every instance past the first hits
-`EADDRINUSE` the moment it starts. `shep import` names every app it found
+`EADDRINUSE` the moment it starts. `shep import pm2` names every app it found
 in pm2 cluster mode on stderr and sets no `reuse_port` for it, deliberately:
 the field is the app's own claim that it calls `reusePort: true`, and the
 importer cannot know that from a pm2 dump. Setting it for you would assert
@@ -106,7 +106,7 @@ snapshot of one login session, most of which the app never needed and
 none of which a daemon started by systemd or launchd will ever have: an
 init-started process has no login shell behind it at all.
 
-The rule `shep import` applies:
+The rule `shep import pm2` applies:
 
 - A key **declared** in the app's own `env_<name>` blocks is always
   written. Its value is taken from what the process actually ran with when
@@ -118,7 +118,7 @@ The rule `shep import` applies:
   `unique_id`, ...) — and dropped silently if it matches either. This
   is session and tooling noise, not the app's own configuration.
 - Everything else is **named on stderr and left out of the Flockfile.**
-  `shep import` does not guess. An unrecognized key might be something the
+  `shep import pm2` does not guess. An unrecognized key might be something the
   app genuinely needs (a stray `DATABASE_URL` set by hand once and never
   written down) or might be more session noise the closed lists don't
   happen to know about — the importer cannot tell the two apart, and
@@ -129,7 +129,7 @@ The rule `shep import` applies:
 `NODE_APP_INSTANCE` is a special case of the same rule: it is not copied
 into `env` as a value, because the dump only ever holds instance 0's
 number, and copying it would tell every instance it is instance 0. Instead
-`shep import` writes `env.NODE_APP_INSTANCE = "{{instance}}"`, shep's own
+`shep import pm2` writes `env.NODE_APP_INSTANCE = "{{instance}}"`, shep's own
 template for the same job: the daemon substitutes each instance's own slot
 at spawn time, the same way `SHEP_INSTANCE` is always set for every app,
 imported or not.
@@ -158,10 +158,10 @@ at install time rather than leaving it to surface at the next reboot.
 
 In the order you'd reach for them:
 
-**`shep import`** turns pm2's dump into a Flockfile. It starts nothing —
+**`shep import pm2`** turns pm2's dump into a Flockfile. It starts nothing —
 no daemon connection, no socket, just a file read and a file write.
-`shep import --dry-run` prints the Flockfile to stdout and writes nothing,
-so `shep import --dry-run > Flockfile.toml` is a safe way to see the
+`shep import pm2 --dry-run` prints the Flockfile to stdout and writes nothing,
+so `shep import pm2 --dry-run > Flockfile.toml` is a safe way to see the
 result before committing to it. A normal run writes `./Flockfile.toml` (or
 wherever `--out` names) and refuses to overwrite an existing file unless
 you pass `--force`. Either way, every note — every cluster-mode app, every
@@ -184,15 +184,15 @@ that follows walks through where `startup` sits in the whole sequence.
 
 ## 5. The runbook
 
-This is the flagship scenario spec §13.4 describes: `shep import`,
+This is the flagship scenario spec §13.4 describes: `shep import pm2`,
 `shep save`, and a reboot, on a Linux box. It needs an actual reboot, so it
 cannot run in CI without a VM — this is what makes the outcome
 checkable by hand instead of just assumed. Every step below names what to
 check and what a failure looks like.
 
 ```
-1.  shep import --dry-run           # read the Flockfile before it is written
-2.  shep import                     # writes ./Flockfile.toml; starts nothing
+1.  shep import pm2 --dry-run       # read the Flockfile before it is written
+2.  shep import pm2                 # writes ./Flockfile.toml; starts nothing
 3.  pm2 delete all && pm2 kill      # the one destructive step, and it is pm2's
 4.  shep start ./Flockfile.toml     # the flock comes up under shep
 5.  shep flock                      # every app online, CPU and MEM populated
@@ -310,7 +310,7 @@ kind of paste-able command `startup` does. A machine that never ran
 is nothing left to guess at.
 
 Nothing about this guide is destructive to pm2 itself, except the one line
-in the runbook above that says so. `shep import` only ever reads
+in the runbook above that says so. `shep import pm2` only ever reads
 `dump.pm2` — pm2's own installation, its `~/.pm2` directory, and its
 running flock (until you choose to stop it) are untouched by every command
 here except `pm2 delete all && pm2 kill`, which is pm2's own command
