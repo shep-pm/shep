@@ -929,7 +929,7 @@ mod tests {
         app.update(Msg::Key(KeyPress::ListRemove));
         assert!(app.config_pane().unwrap().is_armed(), "d arms a removal");
         app.update(Msg::Key(KeyPress::Escape));
-        app.update(Msg::Key(KeyPress::ListMoveDown));
+        app.update(Msg::Key(KeyPress::StepDown));
         assert!(app.config_pane().unwrap().is_armed(), "J arms a move");
     }
 

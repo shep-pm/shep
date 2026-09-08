@@ -112,11 +112,12 @@ pub enum KeyPress {
     /// pane's list sub-screen. Bound nowhere else, and named for that
     /// screen so every other screen's own keymap reads as the no-op it is.
     ListRemove,
-    /// `K`: arms the element under the cursor moving up one place, on the
-    /// same sub-screen.
-    ListMoveUp,
-    /// `J`: the same, moving down.
-    ListMoveDown,
+    /// `K`. What a step means is the body's to decide: a config pane
+    /// reorders the list element under the cursor, the sheep pane walks to
+    /// the previous sheep.
+    StepUp,
+    /// `J`, the twin of [`Self::StepUp`].
+    StepDown,
     /// `F`: toggles the flock table between the flat list and grouping by
     /// fold.
     FoldView,
@@ -2514,15 +2515,15 @@ impl App {
             }
             // `TextChar`/`TextBackspace`/`TextApply`/`TextAbandon` reach here
             // only from text mode, already branched above. `map_key` also
-            // sends `ListRemove`/`ListMoveUp`/`ListMoveDown` from Normal mode
+            // sends `ListRemove`/`StepUp`/`StepDown` from Normal mode
             // (`d`/`K`/`J`), so those land here too, just inert.
             KeyPress::TextChar(_)
             | KeyPress::TextBackspace
             | KeyPress::TextApply
             | KeyPress::TextAbandon
             | KeyPress::ListRemove
-            | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown => Effect::None,
+            | KeyPress::StepUp
+            | KeyPress::StepDown => Effect::None,
             // The read, not the open: the screen opens only once
             // `Msg::Settings` lands.
             KeyPress::Settings => Effect::LoadSettings,
@@ -2758,8 +2759,8 @@ impl App {
             | KeyPress::Edit
             | KeyPress::Help
             | KeyPress::ListRemove
-            | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown
+            | KeyPress::StepUp
+            | KeyPress::StepDown
             // `F` and `z` belong to the flock table. Regrouping a table the
             // operator cannot see, while a log pane owns the screen, is a
             // change they would meet on closing it.
@@ -2888,8 +2889,8 @@ impl App {
             | KeyPress::TextAbandon
             | KeyPress::Help
             | KeyPress::ListRemove
-            | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown
+            | KeyPress::StepUp
+            | KeyPress::StepDown
             | KeyPress::FoldView
             | KeyPress::Collapse => {}
             KeyPress::StreamCycle
@@ -3081,8 +3082,8 @@ impl App {
             | KeyPress::TextApply
             | KeyPress::TextAbandon
             | KeyPress::ListRemove
-            | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown
+            | KeyPress::StepUp
+            | KeyPress::StepDown
             | KeyPress::FoldView
             | KeyPress::Collapse => {}
             KeyPress::StreamCycle
@@ -3186,8 +3187,8 @@ impl App {
             | KeyPress::TextApply
             | KeyPress::TextAbandon
             | KeyPress::ListRemove
-            | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown
+            | KeyPress::StepUp
+            | KeyPress::StepDown
             | KeyPress::FoldView
             | KeyPress::Collapse => Effect::None,
             KeyPress::StreamCycle
@@ -3558,11 +3559,11 @@ impl App {
                     pane.arm_list_removal(now);
                 }
             }
-            KeyPress::ListMoveUp | KeyPress::ListMoveDown => {
+            KeyPress::StepUp | KeyPress::StepDown => {
                 if self.authorize_write().is_none() {
                     return Effect::None;
                 }
-                let delta = if key == KeyPress::ListMoveUp { -1 } else { 1 };
+                let delta = if key == KeyPress::StepUp { -1 } else { 1 };
                 if let Some(pane) = self.config_pane_mut() {
                     pane.arm_list_reorder(delta, now);
                 }
@@ -3665,8 +3666,8 @@ impl App {
             | KeyPress::TextAbandon
             | KeyPress::Help
             | KeyPress::ListRemove
-            | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown
+            | KeyPress::StepUp
+            | KeyPress::StepDown
             | KeyPress::FoldView
             | KeyPress::Collapse => {}
             KeyPress::StreamCycle
@@ -10430,7 +10431,7 @@ mod tests {
         assert_eq!(key, "args");
         assert_eq!(value, serde_json::json!(["--port", "9090"]));
 
-        let _ = app.update(Msg::Key(KeyPress::ListMoveUp));
+        let _ = app.update(Msg::Key(KeyPress::StepUp));
         assert_eq!(
             armed_value(&app),
             serde_json::json!(["8080", "--port"]),
