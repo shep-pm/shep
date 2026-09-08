@@ -141,26 +141,28 @@ pub(crate) fn roll_age(paths: &ShepPaths) -> Option<Duration> {
     Some(Duration::from_millis(now.saturating_sub(roll.saved_at_ms)))
 }
 
+/// Test-only fixtures other `shep-cli` modules' tests reuse, so a roll and a
+/// [`ProcessInfo`] fixture only need building once.
 #[cfg(test)]
-mod tests {
+pub(crate) mod test_support {
     use std::path::Path;
 
     use shep_core::config::AppConfig;
+    use shep_core::paths::ShepPaths;
+    use shep_core::protocol::ProcessInfo;
     use shep_core::status::ProcStatus;
     use shep_daemon::snapshot::{FlockSnapshot, SavedApp};
-
-    use super::*;
 
     /// `$SHEP_HOME` pinned to `dir` itself, matching the pattern
     /// `describe`'s own tests use (`crate::commands::query`): these tests
     /// write `paths.snapshot` directly, and the default `.shep`
     /// subdirectory is never created outside a real boot.
-    fn paths_under(dir: &Path) -> ShepPaths {
+    pub(crate) fn paths_under(dir: &Path) -> ShepPaths {
         let home = dir.display().to_string();
         ShepPaths::resolve(&move |key| (key == "SHEP_HOME").then(|| home.clone()), dir)
     }
 
-    fn write_roll(paths: &ShepPaths, apps: &[AppConfig]) {
+    pub(crate) fn write_roll(paths: &ShepPaths, apps: &[AppConfig]) {
         let roll = FlockSnapshot {
             version: 1,
             saved_at_ms: 0,
@@ -176,13 +178,21 @@ mod tests {
         std::fs::write(&paths.snapshot, serde_json::to_vec(&roll).unwrap()).unwrap();
     }
 
-    fn online(name: &str) -> ProcessInfo {
+    pub(crate) fn online(name: &str) -> ProcessInfo {
         ProcessInfo::builder(1, name, ProcStatus::Online).build()
     }
 
-    fn stopped(name: &str) -> ProcessInfo {
+    pub(crate) fn stopped(name: &str) -> ProcessInfo {
         ProcessInfo::builder(1, name, ProcStatus::Stopped).build()
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use shep_core::config::AppConfig;
+
+    use super::test_support::{online, paths_under, stopped, write_roll};
+    use super::*;
 
     #[test]
     fn an_app_naming_no_reference_is_left_out() {

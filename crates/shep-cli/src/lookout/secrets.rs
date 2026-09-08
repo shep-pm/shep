@@ -165,7 +165,10 @@ fn row(
 mod tests {
     use std::path::Path;
 
-    use shep_core::secrets::{Resolution, SecretRef, SecretView};
+    use shep_core::config::AppConfig;
+    use shep_core::secrets::{PROVIDER_CACHE_VERSION, Resolution, SecretRef, SecretView};
+
+    use crate::secret_readers::test_support::{online, write_roll};
 
     use super::*;
 
@@ -296,6 +299,63 @@ mod tests {
         assert!(
             !format!("{row:?}").contains("hunter2"),
             "the row must not carry the value: {row:?}"
+        );
+    }
+
+    #[test]
+    fn a_provider_row_is_qualified_and_sourced_by_its_namespace() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_under(dir.path());
+        std::fs::write(
+            &paths.secrets_cache,
+            format!(
+                r#"{{"version":{PROVIDER_CACHE_VERSION},"namespaces":{{"vercel":{{"API_TOKEN":{{"production":"tok"}}}}}},"pushed":{{"vercel":["production"]}}}}"#
+            ),
+        )
+        .unwrap();
+
+        let built = model(&paths, &[], "production");
+
+        let row = built
+            .rows
+            .iter()
+            .find(|row| row.key == "vercel/API_TOKEN")
+            .unwrap_or_else(|| panic!("no qualified row among {:?}", built.rows));
+        assert_eq!(row.source, Source::Namespace("vercel".to_string()));
+    }
+
+    #[test]
+    fn a_readers_key_must_match_the_row_key_operator_and_provider_alike() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_under(dir.path());
+        secrets::set(&paths.secrets, "PLAIN", ALL_ENVIRONMENTS, "a").unwrap();
+        std::fs::write(
+            &paths.secrets_cache,
+            format!(
+                r#"{{"version":{PROVIDER_CACHE_VERSION},"namespaces":{{"vercel":{{"API_TOKEN":{{"all":"tok"}}}}}},"pushed":{{"vercel":["all"]}}}}"#
+            ),
+        )
+        .unwrap();
+        let mut operator_app = AppConfig::minimal("operator-app", "./srv");
+        operator_app
+            .env
+            .insert("A".into(), "{{secret:PLAIN}}".into());
+        let mut provider_app = AppConfig::minimal("provider-app", "./srv");
+        provider_app
+            .env
+            .insert("B".into(), "{{secret:vercel/API_TOKEN}}".into());
+        write_roll(&paths, &[operator_app, provider_app]);
+
+        let procs = [online("operator-app"), online("provider-app")];
+        let built = model(&paths, &procs, "production");
+
+        let row_named = |key: &str| built.rows.iter().find(|row| row.key == key).unwrap();
+        assert_eq!(row_named("PLAIN").readers.len(), 1);
+        assert_eq!(
+            row_named("vercel/API_TOKEN").readers.len(),
+            1,
+            "a provider row's key must match the reference by_reference stored, or \
+             every provider row silently shows no readers"
         );
     }
 }
