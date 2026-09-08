@@ -20,7 +20,7 @@ use shep_core::config::ApplyGroup;
 
 use super::super::app::{App, PaneMenu};
 use super::super::pane::{
-    ConfigPane, EnvPane, EnvRow, ListPane, ListRow, Lock, PanePending, PaneRow, PaneTarget,
+    ConfigPane, EnvPane, EnvRow, ListPane, ListRow, Lock, PaneRow, PaneTarget,
 };
 use super::super::theme::Palette;
 use super::flock::{fit, mark};
@@ -171,10 +171,10 @@ fn field_line(
     // typed, cursor included. The same `\u{258f}` every text box in
     // lookout draws; a character rather than a reversed cell because the
     // ANSI gallery renders foregrounds only.
-    let typing = match pane.pending_edit() {
-        Some(PanePending::Typing { key, buffer }) if *key == field.key => Some(buffer),
-        _ => None,
-    };
+    let typing = pane
+        .typing()
+        .filter(|typing| typing.key == field.key)
+        .map(|typing| &typing.buffer);
     let value = match typing {
         Some(buffer) => format!("{buffer}\u{258f}"),
         None if field.secret && raw != "(unset)" => "<set>".to_owned(),
@@ -210,16 +210,6 @@ fn field_line(
     }
 }
 
-/// The question an armed edit reads as, or the one already sent. [`None`]
-/// while nothing is in flight and while an editor is open, since an editor
-/// draws in its own field's row instead ([`field_line`]).
-fn confirm_text(pane: &ConfigPane) -> Option<&str> {
-    match pane.pending_edit()? {
-        PanePending::Armed { text, .. } | PanePending::Sent { text, .. } => Some(text),
-        PanePending::Typing { .. } => None,
-    }
-}
-
 /// The apply menu's own sentence.
 ///
 /// Says "saved" in its first three words on purpose. Every one of these
@@ -239,13 +229,12 @@ fn menu_text(menu: PaneMenu) -> String {
 }
 
 /// The one line the field list reserves under its title: the apply menu
-/// while it is up, else an armed or in-flight question, else the selected
-/// field's own help text while `h` has it open. [`None`] when none applies.
+/// while it is up, else the selected field's own help text while `h` has
+/// it open. [`None`] when neither applies.
 ///
-/// A question outranks help: it is what the operator's next keystroke
+/// The menu outranks help: it is what the operator's next keystroke
 /// answers, and help is dismissed by a keystroke of the operator's own
-/// choosing, so it can wait for the slot back. The menu outranks both, for
-/// the same reason and because it is on its way off the screen.
+/// choosing, so it can wait for the slot back.
 ///
 /// One line, and one already counted, so a menu costs the field list
 /// nothing: [`super::scroll`]'s walk sees the same budget either way.
@@ -256,9 +245,6 @@ fn top_line(
 ) -> Option<(String, Style)> {
     if let Some(menu) = menu {
         return Some((menu_text(*menu), palette.attention()));
-    }
-    if let Some(text) = confirm_text(pane) {
-        return Some((text.to_owned(), palette.attention()));
     }
     if pane.help_open()
         && let Some(PaneRow::Field(index)) = pane.cursor()
@@ -295,20 +281,7 @@ fn env_lines(
         ),
         palette.muted(),
     ))];
-    let mut body_budget = budget - 1;
-    // The same echo the field list draws under its own title, and the same
-    // belt-not-a-second-source-of-truth argument: `view::status` puts this
-    // sentence on a row the layout never cuts, and both read
-    // `ConfigPane::pending_edit`.
-    if let Some(text) = confirm_text(pane)
-        && body_budget > 0
-    {
-        lines.push(Line::from(Span::styled(
-            format!("  {}", fit(text, body_width(width))),
-            palette.attention(),
-        )));
-        body_budget -= 1;
-    }
+    let body_budget = budget - 1;
     if body_budget == 0 {
         return lines;
     }
@@ -435,19 +408,7 @@ fn list_lines(
         ),
         palette.muted(),
     ))];
-    let mut body_budget = budget - 1;
-    // The same echo the field list draws under its own title, counted the
-    // same way. It is the whole array rather than the one element, which
-    // is what the write carries.
-    if let Some(text) = confirm_text(pane)
-        && body_budget > 0
-    {
-        lines.push(Line::from(Span::styled(
-            format!("  {}", fit(text, body_width(width))),
-            palette.attention(),
-        )));
-        body_budget -= 1;
-    }
+    let body_budget = budget - 1;
     if body_budget == 0 {
         return lines;
     }
@@ -614,11 +575,9 @@ pub fn pane_lines(
     // is a committed file with 40 properties, but a dog answers `--schema`
     // for itself) leaves the title as the whole pane.
     let mut body_budget = budget - 1;
-    // The confirm echoed under the title, the same redundancy the settings
-    // screen has: `view::status` draws the same sentence on a fixed row,
-    // and both read `ConfigPane::pending_edit`. Subtracted from the
-    // budget rather than appended, per `body_from`'s own doc on markers.
-    // `h`'s help text shares the slot: see `top_line`.
+    // The apply menu, or `h`'s help text, on the line under the title.
+    // Subtracted from the budget rather than appended, per `body_from`'s
+    // own doc on markers. See `top_line`.
     if let Some((text, style)) = top_line(pane, menu, palette)
         && body_budget > 0
     {
@@ -631,7 +590,7 @@ pub fn pane_lines(
     // The one line a dog pane has that a sheep pane does not: shep does not
     // know what a dog's field costs, so every row's COST cell is empty.
     // Reserved out of the budget before rows are laid out, for the same
-    // reason the confirm echo is: a footer appended afterwards is a line
+    // reason the top line is: a footer appended afterwards is a line
     // nothing counted.
     let footer = match pane.target() {
         PaneTarget::Sheep { .. } => None,
@@ -1099,21 +1058,22 @@ mod tests {
         }
     }
 
-    /// `view::status` draws the same sentence on a fixed row; this is the
-    /// belt beside that brace, and both read `ConfigPane::pending_edit`.
+    /// Nothing is armed and nothing is in flight, so the slot under the
+    /// title carries no question. A filed edit shows in its own row's
+    /// value cell, which is where the operator is already looking.
     #[test]
-    fn an_armed_edit_is_echoed_under_the_title() {
+    fn a_filed_edit_draws_no_question_under_the_title() {
         let mut pane = web_pane();
         pane.move_to_key("autorestart");
-        pane.cycle(Instant::now());
+        pane.cycle();
         let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
-        assert!(text[1].contains("set autorestart = false"), "{:?}", text[1]);
-
-        pane.take_armed(0);
-        let sent = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
-        assert_eq!(
-            sent[1], text[1],
-            "the wording must not change between the question and its answer"
+        assert!(
+            !text.iter().any(|line| line.contains("enter confirms")),
+            "{text:?}"
+        );
+        assert!(
+            !text.iter().any(|line| line.contains("set autorestart")),
+            "{text:?}"
         );
     }
 
@@ -1145,17 +1105,21 @@ mod tests {
         );
     }
 
-    /// A question is what the operator's next keystroke answers; help is
-    /// dismissed on the operator's own schedule, so it waits for the slot
-    /// back rather than fighting the confirm for it.
+    /// Help keeps the shared slot through an edit: nothing competes for
+    /// it any more, so a filed edit must not blank a note the operator has
+    /// not dismissed.
     #[test]
-    fn an_armed_edit_outranks_open_help_for_the_shared_slot() {
+    fn open_help_survives_a_filed_edit() {
         let mut pane = web_pane();
         pane.move_to_key("autorestart");
         pane.toggle_help();
-        pane.cycle(Instant::now());
+        pane.cycle();
         let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
-        assert!(text[1].contains("set autorestart"), "{:?}", text[1]);
+        assert!(
+            text[1].contains("Restarts the process automatically"),
+            "{:?}",
+            text[1]
+        );
     }
 
     /// The hard constraint this item's brief calls out: a line drawn into
@@ -1338,11 +1302,11 @@ mod tests {
             assert!(row.contains(column), "{key}: {row:?}");
 
             app.update(Msg::Key(KeyPress::Cycle));
-            let Effect::Send(sent) = app.update(Msg::Key(KeyPress::Confirm)) else {
-                panic!("{key}: the confirm sends");
+            let Effect::SendAll(mut batch) = app.update(Msg::Key(KeyPress::Escape)) else {
+                panic!("{key}: closing the pane sends");
             };
             app.update(Msg::Replied {
-                sent,
+                sent: batch.remove(0),
                 result: Ok(shep_core::protocol::Response::SheepFieldSet {
                     name: "web".to_string(),
                     key: key.to_string(),
@@ -1456,8 +1420,10 @@ mod tests {
         insta::assert_snapshot!("env_sub_screen", text_of(&lines).join("\n"));
     }
 
+    /// A filed env write draws nothing at all on this screen, and above
+    /// all not the value that was typed into it.
     #[test]
-    fn an_armed_env_write_is_echoed_and_never_quotes_the_value() {
+    fn a_filed_env_write_never_reaches_the_screen() {
         let mut pane = web_pane();
         pane.open_env();
         pane.env_mut().unwrap().begin_typing();
@@ -1465,9 +1431,8 @@ mod tests {
             pane.env_mut().unwrap().type_char(typed);
         }
         let (key, value) = pane.env_mut().unwrap().apply_typing().unwrap();
-        pane.arm_env(key, value.map(Into::into), Instant::now());
+        pane.file_env(key, value.map(Into::into));
         let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
-        assert!(text[1].contains("set env DB_HOST"), "{:?}", text[1]);
         assert!(!text.join("\n").contains("hunter2"), "{text:?}");
     }
 
@@ -1698,7 +1663,7 @@ mod tests {
         ]));
         pane.move_to_key("args");
         pane.open_list();
-        pane.arm_list_removal(Instant::now());
+        pane.file_list_removal();
         for height in 1..=20u16 {
             pane.list_mut().unwrap().move_to_first();
             let total = pane.list().unwrap().rows().len();

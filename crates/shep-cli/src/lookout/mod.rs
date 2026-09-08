@@ -421,6 +421,21 @@ where
                 }
                 dirty = true;
             }
+            // The arm above, once per request, and nothing else: no lock
+            // is taken and nothing blocks, so a batch of five costs five
+            // `try_send` calls on this task. Each entry reports its own
+            // failure, so a channel that fills halfway through says which
+            // fields did not go.
+            Effect::SendAll(batch) => {
+                for sent in batch {
+                    if let Err(err) = requests.try_send(sent) {
+                        let (mpsc::error::TrySendError::Full(sent)
+                        | mpsc::error::TrySendError::Closed(sent)) = err;
+                        let _ = app.update(Msg::Unsent { sent });
+                    }
+                }
+                dirty = true;
+            }
             // Off this task: `spawn_blocking` even though the read takes no
             // lock, and pushed into `inflight` rather than awaited, as
             // `Effect::WriteSetting` does. The style is `app.style()`, already

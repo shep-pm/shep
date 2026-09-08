@@ -1053,3 +1053,63 @@ pub fn app_in_sheep_pane() -> App {
     });
     app
 }
+
+/// Walks an open config pane's cursor onto `key`, the way an operator
+/// walks it: no fixture reaches into the pane to place it.
+///
+/// Panics if the pane is closed or has no field by that name, which is a
+/// fixture bug rather than a failure the test is about.
+pub fn select_field(app: &mut App, key: &str) {
+    let index = app
+        .config_pane()
+        .expect("the pane is open")
+        .fields()
+        .fields()
+        .iter()
+        .position(|field| field.key == key)
+        .unwrap_or_else(|| panic!("no field named {key}"));
+    app.update(Msg::Key(KeyPress::SelectFirst));
+    for _ in 0..index {
+        app.update(Msg::Key(KeyPress::SelectDown));
+    }
+}
+
+/// [`app_in_sheep_pane_with_nothing_parked`] with two edits filed, driven
+/// by real key presses: `cwd` typed, and `max_restarts` typed.
+///
+/// Two, and not one, because a batch of one cannot tell a loop from a
+/// `take(1)`. Two different fields rather than two shapes of edit, since
+/// the set is keyed by field and a second edit to one key replaces it.
+///
+/// Nothing parked, so `Escape` writes and leaves rather than stopping to
+/// offer the apply menu.
+pub fn app_in_sheep_pane_with_two_edits() -> App {
+    let mut app = app_in_sheep_pane_with_nothing_parked();
+    for (key, typed) in [("cwd", "/srv/web"), ("max_restarts", "40")] {
+        select_field(&mut app, key);
+        app.update(Msg::Key(KeyPress::Confirm));
+        for _ in 0..64 {
+            app.update(Msg::Key(KeyPress::TextBackspace));
+        }
+        for character in typed.chars() {
+            app.update(Msg::Key(KeyPress::TextChar(character)));
+        }
+        app.update(Msg::Key(KeyPress::TextApply));
+    }
+    assert_eq!(
+        app.config_pane().expect("the pane is open").edits().len(),
+        2,
+        "the fixture files two edits"
+    );
+    app
+}
+
+/// The shepherd's refusal of one write, for the tests about what a reply
+/// says once the pane that asked for it has gone.
+pub fn a_refusal() -> RequestError {
+    RequestError::Rpc(shep_core::protocol::RpcError {
+        code: shep_core::protocol::RpcErrorCode::InvalidConfig,
+        message: "the store is locked by another shep".to_owned(),
+        daemon_version: None,
+    })
+}

@@ -7,10 +7,9 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use super::super::app::{
-    ActionState, App, Control, Grouping, InputMode, Link, RowKey, Settings, SettingsPrompt,
-    retrying_sentence,
+    ActionState, App, Control, Grouping, InputMode, Link, RowKey, Settings, retrying_sentence,
 };
-use super::super::pane::{ConfigPane, PanePending};
+use super::super::pane::ConfigPane;
 use super::super::pane_bleats::BleatsPane;
 use super::cell;
 use super::flock::fit;
@@ -43,6 +42,10 @@ pub fn banner_line(app: &App) -> Option<Line<'static>> {
 /// action, the applied filter line, then the key hint. Control state
 /// always renders on the right.
 ///
+/// The config pane has no prompt slot of its own: nothing it edits is
+/// armed and nothing is in flight, so there is no question waiting for an
+/// answer. Its free-text editor still takes the editor slot.
+///
 /// The editor slot outranks the filter box: `Settings::typing` is `Some`
 /// only while the settings screen owns `InputMode::Text`, while
 /// `App::filter` stays untouched. A fixed row the layout never cuts; the
@@ -56,17 +59,6 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // sentence once sent. Opening clears `self.action`. `on_key` routes
         // to the settings keymap, so no dashboard confirm can arm while it
         // stays open.
-        let text = if prompt.sent {
-            format!("{}  sent, waiting for the shepherd", prompt.text)
-        } else {
-            format!("{}  enter confirms, any other key cancels", prompt.text)
-        };
-        (text, palette.attention())
-    } else if let Some(prompt) = app.config_pane().and_then(pane_prompt) {
-        // Slot 1b. The config pane's own armed edit or in-flight sentence,
-        // on the fixed row the layout never cuts, so an operator can never
-        // press Enter into a change nothing showed them. The pane and the
-        // settings screen cannot both be open, so they never compete for it.
         let text = if prompt.sent {
             format!("{}  sent, waiting for the shepherd", prompt.text)
         } else {
@@ -260,19 +252,6 @@ fn in_flight_text(action: &ActionState<'_>) -> String {
     }
 }
 
-/// The config pane's armed or in-flight question, or [`None`].
-///
-/// Reuses [`SettingsPrompt`] rather than declaring a second two-field
-/// struct that says the same thing: the bar asks one question of both
-/// screens, what is the sentence and has it gone out.
-fn pane_prompt(pane: &ConfigPane) -> Option<SettingsPrompt<'_>> {
-    match pane.pending_edit()? {
-        PanePending::Armed { text, .. } => Some(SettingsPrompt { text, sent: false }),
-        PanePending::Sent { text, .. } => Some(SettingsPrompt { text, sent: true }),
-        PanePending::Typing { .. } => None,
-    }
-}
-
 /// What the pane's open editor is labelled, and what is in it.
 ///
 /// Three editors, one slot: a field edit is labelled with the field, an
@@ -292,10 +271,8 @@ fn pane_editor(pane: &ConfigPane) -> Option<(String, &str)> {
             (None, buffer) => Some(("new env KEY=value".to_owned(), buffer)),
         };
     }
-    match pane.pending_edit()? {
-        PanePending::Typing { key, buffer } => Some((format!("editing {key}"), buffer.as_str())),
-        PanePending::Armed { .. } | PanePending::Sent { .. } => None,
-    }
+    let typing = pane.typing()?;
+    Some((format!("editing {}", typing.key), typing.buffer.as_str()))
 }
 
 /// The bleats pane's key hint: the design's own status-bar line, plus `m`
@@ -866,22 +843,18 @@ mod tests {
         ));
     }
 
+    /// Nothing the config pane files is armed or in flight, so the bar
+    /// keeps its key hint rather than asking a question the operator's
+    /// next keystroke does not answer.
     #[test]
-    fn an_armed_pane_edit_reaches_the_status_bar_and_says_so_once_sent() {
+    fn a_filed_pane_edit_leaves_the_status_bar_on_its_key_hint() {
         let mut app = super::super::fixtures::app_in_sheep_pane_with_control();
         pane_to(&mut app, "autorestart");
         app.update(Msg::Key(KeyPress::Cycle));
-        let armed = rendered(&status_line(&app, 200));
-        assert!(armed.contains("set autorestart = false"), "got {armed:?}");
-        assert!(armed.contains("enter confirms"), "got {armed:?}");
-
-        app.update(Msg::Key(KeyPress::Confirm));
-        let sent = rendered(&status_line(&app, 200));
-        assert!(sent.contains("set autorestart = false"), "got {sent:?}");
-        assert!(
-            sent.contains("sent, waiting for the shepherd"),
-            "got {sent:?}"
-        );
+        let bar = rendered(&status_line(&app, 200));
+        assert!(!bar.contains("enter confirms"), "got {bar:?}");
+        assert!(!bar.contains("sent, waiting"), "got {bar:?}");
+        assert!(bar.contains("esc close"), "got {bar:?}");
     }
 
     #[test]
@@ -915,6 +888,21 @@ mod tests {
         assert!(!bar.contains("s settings"), "got {bar:?}");
     }
 
+    /// What the pane has filed for `args`, or [`None`].
+    fn filed_args(app: &App) -> Option<serde_json::Value> {
+        use super::super::super::edits::EditKey;
+        use super::super::super::pane::PaneEdit;
+        match app
+            .config_pane()?
+            .edits()
+            .get(&EditKey::Field("args".to_owned()))?
+            .edit()
+        {
+            PaneEdit::Set { value, .. } => Some(value.as_value().clone()),
+            PaneEdit::SetEnv { .. } => None,
+        }
+    }
+
     /// The three keys the list sub-screen binds that no other screen
     /// does, each pressed rather than called.
     #[test]
@@ -927,10 +915,17 @@ mod tests {
         assert!(bar.contains("d remove"), "got {bar:?}");
         assert!(bar.contains("K/J move"), "got {bar:?}");
         app.update(Msg::Key(KeyPress::Remove));
-        assert!(app.config_pane().unwrap().is_armed(), "d arms a removal");
-        app.update(Msg::Key(KeyPress::Escape));
+        assert_eq!(
+            filed_args(&app),
+            Some(serde_json::json!(["8080"])),
+            "d files the array without the element under the cursor"
+        );
         app.update(Msg::Key(KeyPress::ListMoveDown));
-        assert!(app.config_pane().unwrap().is_armed(), "J arms a move");
+        assert_eq!(
+            filed_args(&app),
+            Some(serde_json::json!(["8080", "--port"])),
+            "J files the array with the element moved down"
+        );
     }
 
     /// The bleats pane's match box gets the status bar, not the dashboard's

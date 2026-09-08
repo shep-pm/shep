@@ -147,9 +147,14 @@ impl Edits {
     /// or nothing in it is classified.
     ///
     /// This is what decides whether the close dialog appears at all.
-    /// [`ApplyGroup::Structural`] cannot appear: those fields carry
-    /// [`Lock::Refused`](super::pane::Lock::Refused) and no key reaches
-    /// them.
+    ///
+    /// [`ApplyGroup::Structural`] cannot appear, and nothing in this
+    /// module is what stops it. `ConfigPane::sheep` marks every
+    /// Structural field not editable, `ConfigPane::lock` answers
+    /// [`Lock::Refused`](super::pane::Lock::Refused) for them, and every
+    /// door that files an edit checks that lock first. `pane.rs`'s
+    /// `no_key_files_an_edit_for_a_structural_field` is what holds the
+    /// claim up.
     #[must_use]
     pub fn worst_impact(&self) -> Option<ApplyGroup> {
         self.entries
