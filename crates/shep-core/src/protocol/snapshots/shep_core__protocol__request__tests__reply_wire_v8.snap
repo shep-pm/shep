@@ -30,6 +30,7 @@ expression: replies
             "err_file": "/home/ada/.shep/logs/web-0-err.log",
             "cpu_percent": 12.5,
             "memory_bytes": 50331648,
+            "cpu_ms": null,
             "dog": null,
             "lambs": null,
             "last_exit": {
@@ -104,6 +105,7 @@ expression: replies
             "err_file": "/home/ada/.shep/logs/web-0-err.log",
             "cpu_percent": 12.5,
             "memory_bytes": 50331648,
+            "cpu_ms": null,
             "dog": {
               "kind": "adopted",
               "path": "/usr/local/bin/shep-otel"
@@ -152,6 +154,7 @@ expression: replies
           "err_file": "/home/ada/.shep/logs/web-0-err.log",
           "cpu_percent": 12.5,
           "memory_bytes": 50331648,
+          "cpu_ms": null,
           "dog": {
             "kind": "built_in"
           },
@@ -336,6 +339,7 @@ expression: replies
             "err_file": "/home/ada/.shep/logs/web-0-err.log",
             "cpu_percent": 12.5,
             "memory_bytes": 50331648,
+            "cpu_ms": null,
             "dog": null,
             "lambs": null,
             "last_exit": {
@@ -403,6 +407,7 @@ expression: replies
             "err_file": null,
             "cpu_percent": null,
             "memory_bytes": null,
+            "cpu_ms": null,
             "dog": null,
             "lambs": [
               {
@@ -444,6 +449,7 @@ expression: replies
             "err_file": null,
             "cpu_percent": null,
             "memory_bytes": null,
+            "cpu_ms": null,
             "dog": null,
             "lambs": null,
             "last_exit": {
@@ -479,6 +485,7 @@ expression: replies
             "err_file": null,
             "cpu_percent": null,
             "memory_bytes": null,
+            "cpu_ms": null,
             "dog": null,
             "lambs": null,
             "last_exit": null,
@@ -535,6 +542,7 @@ expression: replies
             "err_file": null,
             "cpu_percent": null,
             "memory_bytes": null,
+            "cpu_ms": null,
             "dog": null,
             "lambs": null,
             "last_exit": null,
@@ -605,6 +613,7 @@ expression: replies
             "err_file": null,
             "cpu_percent": null,
             "memory_bytes": null,
+            "cpu_ms": null,
             "dog": {
               "kind": "adopted",
               "path": "/usr/local/bin/shep-log-rotate"
@@ -640,6 +649,7 @@ expression: replies
             "err_file": null,
             "cpu_percent": null,
             "memory_bytes": null,
+            "cpu_ms": null,
             "dog": {
               "kind": "adopted",
               "path": "/usr/local/bin/shep-log-rotate"

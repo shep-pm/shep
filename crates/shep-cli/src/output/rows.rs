@@ -145,6 +145,9 @@ impl Render for FlockRows {
         // MEM already reports the raw reading; a gauge against this ceiling
         // is lookout's, not this table's.
         "max_memory",
+        // CPU already reports the percentage; the raw counter behind it is
+        // for a client differencing its own polls, not this table.
+        "cpu_ms",
     ];
 
     // Parallel to `headers()`. The rest survive in ascending order. CFG ties
@@ -801,6 +804,9 @@ impl Render for DogRows {
         // A sheep concept: a dog has no `AppConfig` and so no ceiling to
         // report; always `null` here.
         "max_memory",
+        // CPU already reports the percentage; the raw counter behind it is
+        // for a client differencing its own polls, not this table.
+        "cpu_ms",
     ];
 
     // Parallel to `headers()`. The nine shared columns carry the numbers
@@ -1193,6 +1199,8 @@ impl Render for FlushedRows {
         "fold",
         "cpu_percent",
         "memory_bytes",
+        // The raw counter behind `cpu_percent`, same reason.
+        "cpu_ms",
         // Every row is a sheep: no `dog`, no handshake, and nothing for a
         // shepherd to give up on.
         "dog",

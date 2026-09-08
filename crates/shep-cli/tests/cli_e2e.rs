@@ -1253,11 +1253,20 @@ fn normalize_process_info(info: &mut serde_json::Value, home: &Path, name: &str,
                 bytes > 0,
                 "a running sheep's tree cannot be 0 bytes: {info}"
             );
+            info["cpu_ms"]
+                .as_u64()
+                .unwrap_or_else(|| panic!("cpu_ms must be a live reading off the host: {info}"));
         }
-        Samples::None => assert!(
-            info["memory_bytes"].is_null(),
-            "a verb that takes no live sample must report no memory: {info}"
-        ),
+        Samples::None => {
+            assert!(
+                info["memory_bytes"].is_null(),
+                "a verb that takes no live sample must report no memory: {info}"
+            );
+            assert!(
+                info["cpu_ms"].is_null(),
+                "a verb that takes no live sample must report no CPU counter: {info}"
+            );
+        }
     }
     // `cpu_percent` needs a periodic baseline, so whether one exists depends on
     // the daemon living through a poll interval: a clock race either way.
@@ -1267,6 +1276,7 @@ fn normalize_process_info(info: &mut serde_json::Value, home: &Path, name: &str,
     info["err_file"] = serde_json::Value::Null;
     info["cpu_percent"] = serde_json::Value::Null;
     info["memory_bytes"] = serde_json::Value::Null;
+    info["cpu_ms"] = serde_json::Value::Null;
     // `lambs[].pid` races the same way. `lambs[].name` stays: it is
     // deterministic once the walk has caught the lamb.
     if let Some(lambs) = info["lambs"].as_array_mut() {

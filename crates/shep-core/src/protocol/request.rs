@@ -741,6 +741,16 @@ pub struct ProcessInfo {
     /// under the same three conditions as [`Self::cpu_percent`], minus the
     /// window one: memory needs no baseline.
     pub memory_bytes: Option<u64>,
+    /// The tree's cumulative CPU-milliseconds, absent under the same
+    /// conditions as [`Self::cpu_percent`].
+    ///
+    /// The counter rather than a rate, so a client polling faster than the
+    /// shepherd's own sampling interval can difference two readings and get
+    /// the mean over its own interval. [`Self::cpu_percent`] cannot serve
+    /// that: it is measured against a baseline the shepherd rewrites on its
+    /// own schedule, so consecutive readings share one and each is a running
+    /// mean over a window that grows and then resets.
+    pub cpu_ms: Option<u64>,
     /// Set when this entry is a dog, naming where the dog came from;
     /// `None` for a sheep.
     ///
@@ -870,6 +880,7 @@ impl ProcessInfo {
                 err_file: None,
                 cpu_percent: None,
                 memory_bytes: None,
+                cpu_ms: None,
                 dog: None,
                 lambs: None,
                 last_exit: None,
@@ -951,6 +962,12 @@ impl ProcessInfoBuilder {
     /// Sets tree resident set size in bytes.
     pub fn memory_bytes(mut self, memory_bytes: Option<u64>) -> Self {
         self.info.memory_bytes = memory_bytes;
+        self
+    }
+
+    /// Sets the tree's cumulative CPU-milliseconds; `None` when unsampled.
+    pub fn cpu_ms(mut self, cpu_ms: Option<u64>) -> Self {
+        self.info.cpu_ms = cpu_ms;
         self
     }
 
@@ -1909,6 +1926,7 @@ mod tests {
             // for a float the binary representation holds exactly.
             cpu_percent: Some(12.5),
             memory_bytes: Some(48 * 1024 * 1024),
+            cpu_ms: None,
             dog: None,
             lambs: None,
             last_exit: Some(ExitInfo {
@@ -1943,9 +1961,30 @@ mod tests {
         assert_eq!(info.err_file, None);
         assert_eq!(info.cpu_percent, None);
         assert_eq!(info.memory_bytes, None);
+        assert_eq!(info.cpu_ms, None);
         assert_eq!(info.dog, None);
         assert_eq!(info.lambs, None);
         assert_eq!(info.last_exit, None);
+    }
+
+    /// The raw counter rides the wire beside the percent. A client polling
+    /// faster than the shepherd's own sampling interval differences two of
+    /// these; `cpu_percent` cannot serve it, because consecutive readings
+    /// share a baseline.
+    #[test]
+    fn a_process_info_carries_the_cpu_counter() {
+        let info = ProcessInfo::builder(3, "web", ProcStatus::Online)
+            .cpu_ms(Some(1_234))
+            .build();
+        assert_eq!(info.cpu_ms, Some(1_234));
+    }
+
+    /// Absent by default, like every other sampled field: a lifecycle verb's
+    /// answer carries no reading.
+    #[test]
+    fn a_process_info_without_a_reading_has_no_counter() {
+        let info = ProcessInfo::builder(3, "web", ProcStatus::Online).build();
+        assert_eq!(info.cpu_ms, None);
     }
 
     /// Every field is given a value distinct from every other field's

@@ -71,6 +71,9 @@ pub struct SheepRow {
     pub cpu_percent: Option<f32>,
     /// Tree resident set size in bytes.
     pub memory_bytes: Option<u64>,
+    /// The tree's cumulative CPU-milliseconds, absent under the same
+    /// conditions as [`Self::cpu_percent`].
+    pub cpu_ms: Option<u64>,
     /// Present when this row is a dog rather than a sheep.
     pub dog: Option<DogRow>,
     /// Process-tree members, when the reply walked for them (`describe`
@@ -184,6 +187,7 @@ impl From<&ProcessInfo> for SheepRow {
             err_file: info.err_file.clone(),
             cpu_percent: info.cpu_percent,
             memory_bytes: info.memory_bytes,
+            cpu_ms: info.cpu_ms,
             dog: info.dog.as_ref().map(DogRow::from),
             lambs: info
                 .lambs
