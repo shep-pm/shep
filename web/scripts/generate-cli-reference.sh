@@ -36,7 +36,9 @@ fi
 # Verb order matches the Commands enum's declaration order. `resurrect`, a
 # hidden alias of `muster` (clap `alias`, not `visible_alias`), stays out on
 # purpose so it doesn't appear in generated docs. `help` is clap's own and
-# is the other deliberate omission.
+# is the other deliberate omission. `import pm2` and `import env` sit right
+# after `import` itself: `import` is a subcommand host now, so `shep import
+# --help` only lists them, and each entry's own flags need their own block.
 #
 # `every_visible_verb_reaches_the_docs_site_generator` in cli.rs checks this
 # list against the binary's own visible subcommands, so a new verb fails a
@@ -45,7 +47,8 @@ VERBS=(
   start add serve stop restart reload delete stock flock dogs enable disable
   adopt rehome describe trigger signal whisper fold bleats lookout whistle
   reopen flush barks set get unset secret ping kill save muster runtime dev
-  import startup unstartup completions init style welcome
+  import "import pm2" "import env" startup unstartup completions init style
+  welcome
 )
 
 {
@@ -56,7 +59,10 @@ VERBS=(
   shep --help
   for v in "${VERBS[@]}"; do
     echo "@@VERB:$v@@"
-    shep "$v" --help
+    # shellcheck disable=SC2086 -- word-splitting is the point: a
+    # multi-word entry like "import pm2" is two separate arguments to shep,
+    # not a literal verb name.
+    shep $v --help
   done
 } > "$OUT"
 

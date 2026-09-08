@@ -88,6 +88,8 @@ const VERB_NAMES = [
   "runtime",
   "dev",
   "import",
+  "import pm2",
+  "import env",
   "startup",
   "unstartup",
   "completions",
