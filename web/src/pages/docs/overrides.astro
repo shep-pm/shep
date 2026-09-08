@@ -539,15 +539,22 @@ const store = `$ cat $SHEP_HOME/overrides.json
       <code>CFG</code> counts.
     </p>
     <p>
-      The door that writes <code>fields</code> is{" "}
+      Two doors write <code>fields</code>. The first is{" "}
       <a href="/docs/lookout">the config pane</a>: <code>e</code> on a sheep
       in <code>shep lookout</code>, behind <code>--allow-control</code>. One
       key at a time, and the value is recorded as yours rather than spent,
       so the key keeps its <code>*</code> and a later <code>shep start</code>{" "}
-      of the app's Flockfile leaves it alone. There is no flag on{" "}
-      <code>shep start</code> that sets one field: a load is a template
-      arriving through a pull request, and an operator's own value is not a
-      thing a template says.
+      of the app's Flockfile leaves it alone. The second is a leading{" "}
+      <code>NAME=VALUE</code> on <code>shep start</code> or{" "}
+      <code>shep add</code>, which records the same way and reaches{" "}
+      <code>env</code> alone.
+    </p>
+    <p>
+      Neither is a flag, and there is still no flag on{" "}
+      <code>shep start</code> that sets an arbitrary field: a load is a
+      template arriving through a pull request, and an operator's own value
+      is not a thing a template says. An assignment gets past that because
+      it is the operator speaking rather than the file.
     </p>
     <p class="fine">
       A pane edit is not a <code>--reset=file</code> at one key, which is
