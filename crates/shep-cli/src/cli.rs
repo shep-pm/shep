@@ -1342,9 +1342,9 @@ pub enum ImportCommand {
     ///
     /// Any collision, any pattern that matches nothing, and any line the
     /// grammar does not accept refuses the whole import. A refusal reached
-    /// before either store is written says so and leaves both alone; one
-    /// reached after the secret store is written counts the keys it left
-    /// there, which nothing references until the import is re-run.
+    /// before the secret store is written leaves both stores alone; one
+    /// reached after counts the keys it left there, which nothing
+    /// references until the import is re-run.
     Env(ImportEnvArgs),
 }
 
