@@ -2077,6 +2077,7 @@ dependencies = [
  "clap_complete",
  "crossterm",
  "futures-util",
+ "globset",
  "insta",
  "instability",
  "lazy_static",
