@@ -6,6 +6,7 @@
 //! running shepherd. They are separate verbs because their inputs, their
 //! outputs and their flags are all separate; see the design doc.
 
+pub(crate) mod dotenv;
 pub(crate) mod pm2;
 
 use crate::cli::{ImportArgs, ImportCommand};
