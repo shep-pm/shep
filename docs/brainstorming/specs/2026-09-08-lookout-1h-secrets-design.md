@@ -133,20 +133,20 @@ not write. A controlling lookout without it can rotate a secret it cannot read.
    store $SHEP_HOME/secrets.json · not encrypted · never printed to a log, never carried in a bleat · read at spawn, not now
    reveal  [secrets] allow_read = false in shep.toml · change  lookout.allow_control = true
 
-   all │ [production] │ staging │ ci                        3 environments in this store · ←/→ or tab
+   all │ [production] │ staging │ ci                        4 environments in this store · ←/→ or tab
 
   KEY                         VALUE                         IN FORCE      SET IN                READ BY               LANDS
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 ██ OPERATOR   17 keys · you set these
-  DB_PASSWORD                 ██████ 12 bytes               production    3 of 3                2 sheep · 2 online    at next start of catcher, web
-> SENTRY_DSN                  hunter2-not-really            all           1 of 3 · all          1 sheep · 1 online    visible 6s ███████░░░
-  STRIPE_KEY                  not set here                  -             1 of 3 · ci           nothing reads it      no sheep names it yet
-  OLD_TOKEN                   ████ 31 bytes                 production    1 of 3 · production   nothing reads it      no sheep names it yet
+  DB_PASSWORD                 ██████ 12 bytes               production    3 of 4                2 sheep · 2 online    at next start of catcher, web
+> SENTRY_DSN                  hunter2-not-really            all           1 of 4 · all          1 sheep · 1 online    visible 6s ███████░░░
+  STRIPE_KEY                  not set here                  -             1 of 4 · ci           nothing reads it      no sheep names it yet
+  OLD_TOKEN                   ████ 31 bytes                 production    1 of 4 · production   nothing reads it      no sheep names it yet
   + new key                   NEW_KEY_█                                   letters, digits, . _ -                      up to 128 bytes, not starting with a dot
 
 ██ vercel (dog)   4 keys · pushed by a provider · read-only here
-  vercel/API_TOKEN            ████████ 40 bytes             production    2 of 3 · all, produ…  1 sheep · 0 online    at next start of api
-  vercel/PROJECT_ID           ████ 24 bytes                 all           1 of 3 · all          1 sheep · 0 online    at next start of api
+  vercel/API_TOKEN            ████████ 40 bytes             production    2 of 4 · all, produ…  1 sheep · 0 online    at next start of api
+  vercel/PROJECT_ID           ████ 24 bytes                 all           1 of 4 · all          1 sheep · 0 online    at next start of api
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 FOCUSED  SENTRY_DSN                                                                     WHO READS IT  SENTRY_DSN
@@ -172,6 +172,11 @@ frame's.
 | `SET IN` | 16 | 22 | was `LAST SET`. The list needs the room |
 | `READ BY` | 26 | 22 | a count here, names in the panel |
 | `LANDS` | 44 | 42 | |
+
+`SET IN`'s denominator is the number of tabs, `all` included. `all` is a slot a
+key can hold and a tab an operator can select, so counting it keeps the number on
+screen checkable against the row above it. Excluding it produces `1 of 3 · all`,
+which names a slot outside its own denominator.
 
 `IN FORCE` names the slot supplying this tab's value: the exact environment, or
 `all` as fallback, or `-` when nothing resolves here. It mirrors
