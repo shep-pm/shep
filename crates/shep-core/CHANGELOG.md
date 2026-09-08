@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-09-08
+
+### Changed
+
+- Fold five copies of the store lock into one file_lock ([#183](https://github.com/shep-pm/shep/pull/183))
+
+
 ## [0.6.3] - 2026-09-08
 
 
