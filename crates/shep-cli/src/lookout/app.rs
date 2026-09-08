@@ -2790,8 +2790,8 @@ impl App {
                 Effect::None
             }
             KeyPress::TabPrev | KeyPress::TabNext => {
-                let Body::Secrets(pane) = &mut self.body else {
-                    unreachable!("on_secrets_key is only reached with Body::Secrets");
+                let Some(pane) = self.secrets_pane_mut() else {
+                    return Effect::None;
                 };
                 let last = pane.model.environments.len().saturating_sub(1);
                 pane.tab = if key == KeyPress::TabPrev {
@@ -2802,10 +2802,8 @@ impl App {
                 Effect::LoadSecrets
             }
             KeyPress::Collapse => {
-                let Body::Secrets(pane) = &mut self.body else {
-                    unreachable!("on_secrets_key is only reached with Body::Secrets");
-                };
-                if let Some(row) = pane.model.rows.get(pane.selected)
+                if let Some(pane) = self.secrets_pane_mut()
+                    && let Some(row) = pane.model.rows.get(pane.selected)
                     && let super::secrets::Source::Namespace(namespace) = &row.source
                 {
                     let namespace = namespace.clone();
@@ -5282,6 +5280,15 @@ impl App {
         match &mut self.body {
             Body::Bleats(pane) => Some(pane),
             Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) | Body::Secrets(_) => None,
+        }
+    }
+
+    /// The open secrets pane, or `None` on any other screen, for
+    /// `on_secrets_key`'s handlers.
+    fn secrets_pane_mut(&mut self) -> Option<&mut SecretsPane> {
+        match &mut self.body {
+            Body::Secrets(pane) => Some(pane),
+            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) | Body::Bleats(_) => None,
         }
     }
 

@@ -449,13 +449,11 @@ where
             // the store's own lock (`ShepToml::try_edit`'s cousin over
             // `secrets.json`) acquires with no deadline.
             //
-            // `paths` is `run_ui`'s own parameter, not rebuilt from `home`:
-            // `ShepPaths::resolve` is the one place the `$SHEP_HOME` layout
-            // is derived. The environment is the current tab's, once there is
-            // one; before the first load lands there is no tab yet, so this
-            // reads the daemon's own configured default instead, and
-            // `Msg::Secrets` echoes back whichever it used so the reducer
-            // can find that environment's tab once the model arrives.
+            // The environment is the current tab's, once there is one;
+            // before the first load lands there is no tab yet, so this reads
+            // the daemon's own configured default instead, and `Msg::Secrets`
+            // echoes back whichever it used so the reducer can find that
+            // environment's tab once the model arrives.
             Effect::LoadSecrets => {
                 let paths = paths.clone();
                 // `all_rows`, not the filtered `rows`: READ BY has to name
