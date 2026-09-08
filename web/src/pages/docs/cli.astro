@@ -133,9 +133,13 @@ if (coveredCount !== cliReference.verbs.length) {
       "Every verb, at a glance" for exactly how they render on each one.
     </Callout>
 
-    <Callout variant="careful">
-      Windows isn't supported yet. Every verb here prints an error naming that
-      and exits 1 on that platform. There's no partial subset that works.
+    <Callout variant="note">
+      Windows runs every verb on this page, with two exceptions.{" "}
+      <code>shep startup</code> is not built there, and <code>shep stop</code>{" "}
+      has no graceful signal to send unless your app reads the shepherd
+      channel. Windows sets no <code>HOME</code>, so the default flock home
+      comes from <code>%USERPROFILE%</code>, then{" "}
+      <code>%HOMEDRIVE%%HOMEPATH%</code>.
     </Callout>
 
     <h2>Aliases at a glance</h2>
