@@ -13,6 +13,10 @@
  * parks nothing, and on macOS a /tmp path and its /private/tmp resolution
  * differ enough to park one for a reason no reader could reproduce.
  *
+ * `assignment` and `fillIn` were run on 2026-09-07, each in a throwaway
+ * $SHEP_HOME of its own, when a leading `NAME=VALUE` became something
+ * `shep start` and `shep add` accept.
+ *
  * `addFirst` is the exception: run on 2026-09-03, when `shep add` shipped,
  * in a throwaway $SHEP_HOME of its own. Its RESTARTS column reads 1 on the
  * third command and that is the real output, not a paste error. `shep start
@@ -117,6 +121,34 @@ ID  NAME   STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM   UPTIME  FOLD  SMIT
 $ shep flock
 ID  NAME  STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM   UPTIME  FOLD  SMIT
 0   web   online  96556  0         -     -    -    1.2M  5s      -     -`;
+
+const assignment = `$ shep start KOJI_TOKEN=s3cret ./koji --name koji
+ID  NAME  STATUS  PID   RESTARTS  EXIT  CFG  CPU  MEM    UPTIME  FOLD  SMIT
+0   koji  online  9970  0         -     *1   -    32.0K  0s      -     -
+
+$ cat $SHEP_HOME/overrides.json
+{
+  "version": 1,
+  "apps": {
+    "koji": {
+      "fields": {
+        "env": {
+          "KOJI_TOKEN": "s3cret"
+        }
+      },
+      "declared": [],
+      "declared_env": []
+    }
+  }
+}`;
+
+const fillIn = `$ shep add Flockfile.toml
+ID  NAME  STATUS   PID  RESTARTS  EXIT  CFG  CPU  MEM  UPTIME  FOLD  SMIT
+0   web   stopped  -    0         -     -    -    -    0s      -     -
+
+$ shep start DB_HOST=db.internal web
+ID  NAME  STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM    UPTIME  FOLD  SMIT
+0   web   online  16628  1         -     *1   -    32.0K  0s      -     -`;
 
 const store = `$ cat $SHEP_HOME/overrides.json
 {
@@ -406,15 +438,19 @@ const store = `$ cat $SHEP_HOME/overrides.json
       through the same request <code>shep restart</code> uses, and has
       counted it that way since before this verb existed.
     </p>
-    <Callout variant="careful">
-      The middle step is the one shep has no verb for yet, for an
-      established key holding a plain value. Filling one in today means
-      editing the Flockfile and loading it with <code>--reset=env</code>,
-      which hands <code>env</code> back to the file and touches nothing
+    <p>
+      The middle step is an assignment on the start that brings it up, and it
+      works for a key the file established as well as one nobody has spoken
+      for:
+    </p>
+    <CodeBlock>{fillIn}</CodeBlock>
+    <p class="fine">
+      <code>--reset=env</code> is the other direction, handing{" "}
+      <code>env</code> back to whatever the file says and touching nothing
       else, not even <code>instances</code>. A key holding a{" "}
-      <code>{'{{secret:...}}'}</code> reference does not have this gap: the
-      Flockfile never needs a second edit, only <code>shep secret set</code>.
-    </Callout>
+      <code>{'{{secret:...}}'}</code> reference needs neither: the Flockfile
+      is written once and <code>shep secret set</code> carries the value.
+    </p>
     <p>
       Running <code>shep add</code> again changes nothing and prints nothing,
       the way a second load of an unchanged file does. Naming a sheep instead
@@ -422,6 +458,48 @@ const store = `$ cat $SHEP_HOME/overrides.json
       and leaves nothing to register:{" "}
       <code>notice[add]: web is already registered; nothing to add.</code>
     </p>
+
+    <h2>Setting one from the command line</h2>
+    <p>
+      An assignment in front of a target is an override, written the way a
+      shell writes one:
+    </p>
+    <CodeBlock>{assignment}</CodeBlock>
+    <p>
+      The value lands twice and both halves matter. In the sheep's{" "}
+      <code>env</code>, so the first spawn carries it and a later{" "}
+      <code>shep stop koji</code> and <code>shep start koji</code> need no
+      assignment. And in the store above, so a Flockfile that later declares{" "}
+      <code>KOJI_TOKEN</code> is skipped rather than obeyed. Without that
+      second half a template arriving through the app's own repository would
+      win at the next spawn, which is the thing this page exists to stop.
+    </p>
+    <p>
+      The name follows the shell's rule: a letter or <code>_</code>, then
+      letters, digits or <code>_</code>. That is what makes{" "}
+      <code>./A=1</code> a path and <code>1A=1</code> a target rather than an
+      assignment, so a file called <code>A=1</code> is reached here the same
+      way it is reached in a shell. Only the first <code>=</code> separates
+      the two, so <code>A=x=y</code> is the value <code>x=y</code>, and a
+      repeated name takes its last value.
+    </p>
+    <p>
+      One target, and it is a script path or a sheep the flock already has. A
+      Flockfile or a fold can name several sheep and an assignment names none
+      of them, so both refuse. So does a single quoted{" "}
+      <code>"A=1 ./koji"</code>: quoting is what stops a shell splitting, and
+      splitting it a second time would need shep to invent its own quoting
+      rules for a value holding a space.
+    </p>
+    <Callout variant="careful">
+      The value passes through shep's own command line, so it is in{" "}
+      <code>ps</code> for as long as that command runs and in this shell's
+      history for good. It is not in <code>ps</code> for the sheep, which
+      holds it in <code>env</code> rather than <code>args</code>. For a
+      credential, write{" "}
+      <code>KOJI_TOKEN={'{{secret:KOJI_TOKEN}}'}</code> and let{" "}
+      <a href="/docs/secrets">secrets</a> carry the value instead.
+    </Callout>
 
     <h2>A template may add, never overwrite</h2>
     <p>
