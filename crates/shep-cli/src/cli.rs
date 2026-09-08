@@ -1341,7 +1341,10 @@ pub enum ImportCommand {
     /// which is per sheep. Run `shep start` first.
     ///
     /// Any collision, any pattern that matches nothing, and any line the
-    /// grammar does not accept refuses the whole import and writes nothing.
+    /// grammar does not accept refuses the whole import. A refusal reached
+    /// before either store is written says so and leaves both alone; one
+    /// reached after the secret store is written counts the keys it left
+    /// there, which nothing references until the import is re-run.
     Env(ImportEnvArgs),
 }
 
