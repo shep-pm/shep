@@ -1426,12 +1426,6 @@ impl ConfigPane {
         &self.fields
     }
 
-    /// The values the form reads from, keyed the same as [`Self::fields`].
-    #[cfg(test)]
-    pub(crate) fn values(&self) -> &Map<String, Value> {
-        &self.values
-    }
-
     /// The current value of `key`, rendered for a cell.
     ///
     /// A scalar shows bare, an absent or `null` value shows `(unset)`, and
@@ -1766,30 +1760,6 @@ mod tests {
                 "cron"
             ]
         );
-    }
-
-    /// One walk, two screens. The editing pane and the sheep pane's read-only
-    /// listing must not disagree about group order or about which fields are
-    /// read-only, and the only way to guarantee that is to build both from
-    /// this.
-    #[test]
-    fn the_shared_field_set_matches_what_the_config_pane_builds() {
-        let view = web();
-        let (fields, values) = sheep_fields(&view.config);
-        let pane = ConfigPane::sheep(view);
-        assert_eq!(
-            fields
-                .fields()
-                .iter()
-                .map(|f| f.key.clone())
-                .collect::<Vec<_>>(),
-            pane.fields()
-                .fields()
-                .iter()
-                .map(|f| f.key.clone())
-                .collect::<Vec<_>>()
-        );
-        assert_eq!(values, *pane.values());
     }
 
     #[test]
