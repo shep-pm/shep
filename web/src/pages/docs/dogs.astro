@@ -56,9 +56,9 @@ const dogLogDemo = `2026-09-02T14:22:31.412+02:00 [shep] shep started this dog; 
     <ReferencePills slug="dogs" />
     <p class="lede">
       A dog is a process the shepherd runs for its own sake, not for yours.
-      It watches the flock instead of being part of it. Two ship inside the
+      It watches the flock instead of being part of it. Two ship inside the{" "}
       <code>shep</code> binary: <code>metrics</code>, a Prometheus endpoint,
-      and <code>bark</code>, webhook alerts. You can also point
+      and <code>bark</code>, webhook alerts. You can also point{" "}
       <code>shep adopt</code> at a binary of your own and the shepherd will
       supervise it the same way.
     </p>
@@ -67,7 +67,7 @@ const dogLogDemo = `2026-09-02T14:22:31.412+02:00 [shep] shep started this dog; 
       A dog is not the same thing as a sheep with a shepherd channel: see{" "}
       <a href="/docs/shepherd-channel">the shepherd channel</a> for that.
       A sheep opens fd 3 and talks newline JSON to the daemon that already
-      owns it. A dog is a separate client: it connects to
+      owns it. A dog is a separate client: it connects to{" "}
       <code>shep.sock</code> and speaks the same wire protocol{" "}
       <code>shep flock</code> or <code>shep describe</code> would.
     </Callout>
@@ -104,7 +104,7 @@ const dogLogDemo = `2026-09-02T14:22:31.412+02:00 [shep] shep started this dog; 
       </p>
       <p>
         Takes a built-in name or one <code>shep adopt</code> has recorded,
-        and refuses anything else before it writes. A refused enable leaves
+        and refuses anything else before it writes. A refused enable leaves{" "}
         <code>shep.toml</code> untouched. The check reads{" "}
         <code>[daemon] adopted_dogs</code> rather than the shepherd, so it
         holds with nothing listening.
@@ -149,15 +149,15 @@ $ shep disable metrics`}</CodeBlock>
     <p class="fine">
       The dogs table shares its column order with the sheep table above it,
       so a dog and a sheep read the same way. <code>SOURCE</code> is the one
-      column only dogs have, and <code>CFG</code>, <code>FOLD</code> and
+      column only dogs have, and <code>CFG</code>, <code>FOLD</code> and{" "}
       <code>SMIT</code> the three only sheep have. See <a href="/docs/output#the-dogs-table">terminal
       output</a>.
     </p>
     <p class="fine">
       A dog whose <code>STATUS</code> reads <code>silent</code> is running
-      but has never spoken to the shepherd, usually because a
+      but has never spoken to the shepherd, usually because a{" "}
       <code>cargo install</code> replaced its binary and the old process is
-      still up. <code>shep bleats &lt;dog&gt;</code> has the refusal;
+      still up. <code>shep bleats &lt;dog&gt;</code> has the refusal;{" "}
       <code>shep restart &lt;dog&gt;</code> is the fix. See <a
       href="/docs/output#a-dog-that-never-answers">terminal output</a>.
     </p>
@@ -437,7 +437,7 @@ sinks = ["oncall"]`}</CodeBlock>
         built-in verb or alias, since such a dog could never be reached.
         Passing all of that, it actually spawns the binary and kills it
         immediately, because the only honest way to know whether this kernel
-        can exec a file is to ask this kernel. The <code>--version</code>
+        can exec a file is to ask this kernel. The <code>--version</code>{" "}
         probe below is that spawn, so the exec proof and the version answer
         cost one child rather than two.
       </p>
@@ -447,7 +447,7 @@ sinks = ["oncall"]`}</CodeBlock>
         <code>disable</code>'s counterpart for a third-party dog: stops it
         if running and forgets it entirely, rather than leaving it
         disabled-but-known. That is both files, the registration in{" "}
-        <code>shep.toml</code> and the dog's own <code>[&lt;name&gt;]</code>
+        <code>shep.toml</code> and the dog's own <code>[&lt;name&gt;]</code>{" "}
         section in <code>dogs.toml</code>, webhook URLs and all.{" "}
         <code>disable</code> keeps that section on purpose;{" "}
         <code>rehome</code> is the verb that does not.
@@ -755,7 +755,7 @@ protocol 6, or reinstall the dog against protocol 8, and restart it again`}</Cod
         subscription, before the process is killed.
       </p>
       <p>
-        Only dogs that ignore the flag are affected. A dog that recognises
+        Only dogs that ignore the flag are affected. A dog that recognises{" "}
         <code>--version</code> and exits, even without naming a protocol,
         does no work: its protocol is unknown and nothing overlaps. The
         trade is deliberate: the command is about to restart that dog anyway, so the
@@ -786,7 +786,7 @@ protocol 6, or reinstall the dog against protocol 8, and restart it again`}</Cod
     <p class="fine">
       <code>&lt;crate&gt;</code> is the package name on crates.io, which is not
       always what you call the dog. A dog's adopted name, its binary name and
-      its crate name are three separate things: <code>shep-log-rotate</code>
+      its crate name are three separate things: <code>shep-log-rotate</code>{" "}
       installs a binary of the same name that is usually adopted as{" "}
       <code>log-rotate</code>. Cargo wants the crate.
     </p>

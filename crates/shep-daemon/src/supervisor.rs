@@ -332,6 +332,26 @@ pub(crate) enum Command {
         /// store itself could not be read or written.
         reply: oneshot::Sender<Result<Option<ResolvedApp>, SupervisorError>>,
     },
+    /// Several env keys on one sheep, applied as one write. See
+    /// [`Actor::handle_set_sheep_env_batch`].
+    SetSheepEnvBatch {
+        /// The sheep's name, not a selector, for [`Self::Scale`]'s reason.
+        name: String,
+        /// The keys and their values.
+        ///
+        /// [`EnvValue`], not bare strings, for [`Self::SetSheepEnv`]'s
+        /// reason: this enum derives `Debug` and a map of env values is the
+        /// most secret-dense thing that reaches it (IR-41).
+        entries: BTreeMap<String, EnvValue>,
+        /// Overwrite colliding keys instead of refusing the batch.
+        force: bool,
+        /// Compute the three lists and write nothing.
+        dry_run: bool,
+        /// Answers what was written and what collided, or `None` when no
+        /// sheep has that name. An error only when the request is refused
+        /// or the override store could not be read or written.
+        reply: oneshot::Sender<Result<Option<EnvBatch>, SupervisorError>>,
+    },
     /// See [`Actor::handle_set_sheep_field`].
     SetSheepField {
         /// The sheep's name, not a selector, for [`Self::Scale`]'s reason.
@@ -710,6 +730,23 @@ pub(crate) struct FieldSet {
     pub(crate) pending: bool,
 }
 
+/// What a [`Command::SetSheepEnvBatch`] did.
+///
+/// `Debug` is derived: every field is a key name, and [`ResolvedApp`] wraps
+/// an [`AppConfig`], whose own manual `Debug` redacts `env`.
+#[derive(Debug, Clone)]
+pub(crate) struct EnvBatch {
+    /// The parked config, for `rpc.rs` to hand the registry. `None` when
+    /// nothing was written, which is a dry run or an unforced collision.
+    pub(crate) app: Option<ResolvedApp>,
+    /// Keys written.
+    pub(crate) set: Vec<String>,
+    /// Keys that already held this value.
+    pub(crate) unchanged: Vec<String>,
+    /// Keys that held a different value.
+    pub(crate) collisions: Vec<String>,
+}
+
 /// Handle to a running supervisor actor.
 ///
 /// Cloning shares the same actor; every clone's commands are serialized
@@ -900,6 +937,48 @@ impl SupervisorHandle {
                 name,
                 key,
                 value,
+                reply,
+            }))
+            .await
+            .map_err(|_| SupervisorError::EngineStopped)?;
+        rx.await.map_err(|_| SupervisorError::EngineStopped)?
+    }
+
+    /// Sets several env keys on one sheep as operator overrides, in one
+    /// write.
+    ///
+    /// [`Actor::handle_set_sheep_env_batch`] states what `force` and
+    /// `dry_run` do and when the batch is refused whole. The `Some` carries
+    /// [`EnvBatch`], whose `app` is the config now parked for that sheep's
+    /// next spawn and is `None` whenever nothing was written; `rpc.rs` hands
+    /// it to the registry for [`Self::set_sheep_env`]'s reason.
+    ///
+    /// # Errors
+    ///
+    /// - [`SupervisorError::IsADog`] - the name is a dog's, and a dog's
+    ///   config is not an operator's to edit through a pane.
+    /// - [`SupervisorError::InvalidEnv`] - `normalize` refuses the result.
+    /// - [`SupervisorError::Overrides`] - the override store could not be
+    ///   read or written, so nothing was recorded and nothing parked.
+    /// - [`SupervisorError::EngineStopped`] - the actor is gone.
+    pub(crate) async fn set_sheep_env_batch(
+        &self,
+        name: String,
+        entries: BTreeMap<String, String>,
+        force: bool,
+        dry_run: bool,
+    ) -> Result<Option<EnvBatch>, SupervisorError> {
+        let entries = entries
+            .into_iter()
+            .map(|(key, value)| (key, EnvValue::from(value)))
+            .collect();
+        let (reply, rx) = oneshot::channel();
+        self.tx
+            .send(Msg::Command(Command::SetSheepEnvBatch {
+                name,
+                entries,
+                force,
+                dry_run,
                 reply,
             }))
             .await
@@ -2075,6 +2154,30 @@ struct SheepSlot {
 }
 
 impl SheepSlot {
+    /// A registered sheep with nothing attached: no mailboxes, no marker, no
+    /// timer, at epoch zero.
+    ///
+    /// The base every literal in this module builds from, so a field added
+    /// here is written once and a caller overwrites only what it owns. Not a
+    /// `Default`: `entry` has no blank value.
+    fn new(entry: ProcessEntry) -> Self {
+        Self {
+            entry,
+            ctl: None,
+            log_ctl: None,
+            to_child: None,
+            signals: None,
+            to_stdin: None,
+            manual: None,
+            pending_delete: false,
+            epoch: 0,
+            ready_tx: None,
+            actions: ActionWaits::default(),
+            ready_failed: false,
+            restart_due: None,
+        }
+    }
+
     /// This sheep's shepherd-channel sender while something is still there to
     /// receive on it, and `None` when nothing is.
     ///
@@ -2442,6 +2545,32 @@ fn dog_config_refusal(name: &str) -> String {
     )
 }
 
+/// `record`'s stored `env` override, created empty when it has none.
+///
+/// A flat JSON object under the `env` key, which is the shape
+/// [`merge_declared`] reads to decide which env keys an operator has
+/// established. Anything else there is a store this build cannot act on, and
+/// overwriting it would silently discard whatever a later shep wrote
+/// ([`AppOverrides::fields`]' own doc argues the rule).
+///
+/// # Errors
+///
+/// [`SupervisorError::Overrides`] - the `env` key holds something other than
+/// an object. Both callers refuse on it, so they say it once here.
+fn env_override_map<'a>(
+    record: &'a mut AppOverrides,
+    name: &str,
+) -> Result<&'a mut serde_json::Map<String, serde_json::Value>, SupervisorError> {
+    record
+        .fields
+        .entry("env".to_string())
+        .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()))
+        .as_object_mut()
+        .ok_or_else(|| {
+            SupervisorError::Overrides(format!("{name}'s stored `env` override is not an object"))
+        })
+}
+
 /// `app` with its instance count set to `instances`, or `None` if the result
 /// does not normalize.
 ///
@@ -2638,6 +2767,21 @@ impl<R: ProcessRunner> Actor<R> {
                     &key,
                     value.as_ref().map(EnvValue::as_str),
                 ));
+                false
+            }
+            Command::SetSheepEnvBatch {
+                name,
+                entries,
+                force,
+                dry_run,
+                reply,
+            } => {
+                let entries: BTreeMap<String, String> = entries
+                    .into_iter()
+                    .map(|(key, value)| (key, value.as_str().to_string()))
+                    .collect();
+                let _ =
+                    reply.send(self.handle_set_sheep_env_batch(&name, &entries, force, dry_run));
                 false
             }
             Command::SetSheepField {
@@ -3105,24 +3249,7 @@ impl<R: ProcessRunner> Actor<R> {
             last_exit: None,
         };
         let info = to_info(&entry, &self.smits);
-        self.sheep.insert(
-            id,
-            SheepSlot {
-                entry,
-                ctl: None,
-                log_ctl: None,
-                to_child: None,
-                signals: None,
-                to_stdin: None,
-                manual: None,
-                pending_delete: false,
-                epoch: 0,
-                ready_tx: None,
-                actions: ActionWaits::default(),
-                ready_failed: false,
-                restart_due: None,
-            },
-        );
+        self.sheep.insert(id, SheepSlot::new(entry));
         Registration::Fresh(info)
     }
 
@@ -3201,24 +3328,7 @@ impl<R: ProcessRunner> Actor<R> {
                     dog,
                     last_exit: None,
                 };
-                self.sheep.insert(
-                    id,
-                    SheepSlot {
-                        entry,
-                        ctl: None,
-                        log_ctl: None,
-                        to_child: None,
-                        signals: None,
-                        to_stdin: None,
-                        manual: None,
-                        pending_delete: false,
-                        epoch: 0,
-                        ready_tx: None,
-                        actions: ActionWaits::default(),
-                        ready_failed: false,
-                        restart_due: None,
-                    },
-                );
+                self.sheep.insert(id, SheepSlot::new(entry));
                 let info = self.refuse_spawn(id, true, &err);
                 // A retriable refusal is not a failed start: the sheep is
                 // registered, waiting, and comes up on its own once the
@@ -3305,19 +3415,13 @@ impl<R: ProcessRunner> Actor<R> {
                 self.sheep.insert(
                     id,
                     SheepSlot {
-                        entry,
                         ctl: Some(handles.ctl),
                         log_ctl: Some(log_ctl),
                         to_child: Some(to_child),
                         signals: Some(handles.signals),
                         to_stdin: Some(to_stdin),
-                        manual: None,
-                        pending_delete: false,
-                        epoch: 0,
                         ready_tx,
-                        actions: ActionWaits::default(),
-                        ready_failed: false,
-                        restart_due: None,
+                        ..SheepSlot::new(entry)
                     },
                 );
                 self.emit(ProcessEventKind::Start, info.clone(), true);
@@ -3349,24 +3453,7 @@ impl<R: ProcessRunner> Actor<R> {
                     last_exit: None,
                 };
                 let info = to_info(&entry, &self.smits);
-                self.sheep.insert(
-                    id,
-                    SheepSlot {
-                        entry,
-                        ctl: None,
-                        log_ctl: None,
-                        to_child: None,
-                        signals: None,
-                        to_stdin: None,
-                        manual: None,
-                        pending_delete: false,
-                        epoch: 0,
-                        ready_tx: None,
-                        actions: ActionWaits::default(),
-                        ready_failed: false,
-                        restart_due: None,
-                    },
-                );
+                self.sheep.insert(id, SheepSlot::new(entry));
                 self.emit(ProcessEventKind::Errored, info, true);
                 // `error` names neither the app nor the path, and the caller
                 // adds the name. `spec.program` and `spec.cwd` verbatim: they
@@ -3506,12 +3593,6 @@ impl<R: ProcessRunner> Actor<R> {
             self.sheep.insert(
                 id,
                 SheepSlot {
-                    entry,
-                    ctl: None,
-                    log_ctl: None,
-                    to_child: None,
-                    signals: None,
-                    to_stdin: None,
                     // A marker is only claimed against a sheep with a live
                     // task: there is no ladder here to re-arm and no
                     // `Msg::Exited` coming to clear one.
@@ -3520,8 +3601,6 @@ impl<R: ProcessRunner> Actor<R> {
                     // that consumes it is this slot's next spawn's.
                     pending_delete: carried.pending_delete().unwrap_or(false),
                     epoch: carried.epoch(),
-                    ready_tx: None,
-                    actions: ActionWaits::default(),
                     // Restored: it needs no task to act on it, and `respawn`
                     // clears it at the spawn that answers it.
                     ready_failed,
@@ -3529,6 +3608,7 @@ impl<R: ProcessRunner> Actor<R> {
                     // wait does not start the delay over: the re-arm below
                     // computes a fresh timer from this absolute moment.
                     restart_due: carried.restart_due(),
+                    ..SheepSlot::new(entry)
                 },
             );
             // Nothing but this raises `Msg::RestartDue`, so a carried
@@ -3607,7 +3687,6 @@ impl<R: ProcessRunner> Actor<R> {
         self.sheep.insert(
             id,
             SheepSlot {
-                entry,
                 ctl: Some(handles.ctl),
                 log_ctl: Some(log_ctl),
                 to_child: Some(to_child),
@@ -3619,7 +3698,6 @@ impl<R: ProcessRunner> Actor<R> {
                 pending_delete: carried.pending_delete().unwrap_or(false),
                 epoch: carried.epoch(),
                 ready_tx,
-                actions: ActionWaits::default(),
                 // Restored: `reload_eligible` reads it beside the status, so a
                 // rollback reload can replace an instance that never reached
                 // `Online`.
@@ -3627,6 +3705,7 @@ impl<R: ProcessRunner> Actor<R> {
                 // Restored verbatim, though always `None` in practice: a sheep
                 // with a pid is not `WaitingRestart`.
                 restart_due: carried.restart_due(),
+                ..SheepSlot::new(entry)
             },
         );
         // The ladder that would kill a carried `manual` sheep went with the
@@ -4618,22 +4697,9 @@ impl<R: ProcessRunner> Actor<R> {
         let mut record = overrides::get(&self.paths.overrides, name)
             .map_err(|err| SupervisorError::Overrides(err.to_string()))?
             .unwrap_or_default();
-        // Read before the `entry` below borrows the record mutably.
+        // Read before `env_override_map` borrows the record mutably.
         let file_declares = record.declared_env.contains(key);
-        // A flat JSON object under the `env` key, which is the shape
-        // `merge_declared` reads to decide which env keys an operator has
-        // established. Anything else there is a store this build cannot act
-        // on, and overwriting it would silently discard whatever a later
-        // shep wrote (`AppOverrides::fields`' own doc argues the rule).
-        let env = record
-            .fields
-            .entry("env".to_string())
-            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-        let Some(map) = env.as_object_mut() else {
-            return Err(SupervisorError::Overrides(format!(
-                "{name}'s stored `env` override is not an object"
-            )));
-        };
+        let map = env_override_map(&mut record, name)?;
         let was_overridden = map.contains_key(key);
         // A tombstone is left alone rather than removed and re-inserted,
         // which makes a second removal of the same key a no-op instead of a
@@ -4708,6 +4774,143 @@ impl<R: ProcessRunner> Actor<R> {
             slot.entry.overridden.clone_from(&overridden);
         }
         Ok(Some(parked))
+    }
+
+    /// Records several env keys on `name` as operator overrides in one
+    /// write, and parks them for the next spawn.
+    ///
+    /// `Ok(None)` when no sheep has that name.
+    ///
+    /// # Why this is not a loop over [`Self::handle_set_sheep_env`]
+    ///
+    /// That function writes the store once per key. Twenty keys would be
+    /// twenty read-modify-writes, and a failure at the eleventh would leave
+    /// half an import applied with no record of which half. This validates
+    /// every key against the intended config first, then writes once.
+    ///
+    /// # Collisions
+    ///
+    /// A key already holding a different value in the intended config
+    /// collides. Without `force`, one collision refuses the whole batch and
+    /// nothing is written. A key holding the same value is `unchanged` and
+    /// is not rewritten, so a repeated identical batch is a no-op.
+    ///
+    /// # What a dry run answers
+    ///
+    /// Everything the real send would, refusals included: `normalize` runs
+    /// on the merged config before this returns, so a preview that reports
+    /// a key as `set` is one the real send takes. `app` is `None` here, as
+    /// it is for a refused batch and for one whose keys were all
+    /// `unchanged`: nothing was written for the caller to record.
+    ///
+    /// # Errors
+    ///
+    /// - [`SupervisorError::IsADog`] - the name is a dog's. Raised before
+    ///   the store is read, for [`Self::handle_set_sheep_env`]'s reason.
+    /// - [`SupervisorError::InvalidEnv`] - the resulting config is one
+    ///   `normalize` refuses. Nothing was written, on a dry run or a real
+    ///   send alike.
+    /// - [`SupervisorError::Overrides`] - the store could not be read or
+    ///   written. Nothing was parked.
+    fn handle_set_sheep_env_batch(
+        &mut self,
+        name: &str,
+        entries: &BTreeMap<String, String>,
+        force: bool,
+        dry_run: bool,
+    ) -> Result<Option<EnvBatch>, SupervisorError> {
+        let Some(id) = self.representative_id(name) else {
+            return Ok(None);
+        };
+        // Before the store is read, for `handle_set_sheep_env`'s reason: a
+        // dog runs at the daemon's own trust level.
+        if self
+            .sheep
+            .get(&id)
+            .is_some_and(|slot| slot.entry.dog.is_some())
+        {
+            return Err(SupervisorError::IsADog(dog_config_refusal(name)));
+        }
+        let Some(mut intended) = self.intended_spec(id).map(|spec| spec.config().clone()) else {
+            return Ok(None);
+        };
+
+        let mut set = Vec::new();
+        let mut unchanged = Vec::new();
+        let mut collisions = Vec::new();
+        for (key, value) in entries {
+            match intended.env.get(key) {
+                Some(current) if current == value => unchanged.push(key.clone()),
+                Some(_) => {
+                    collisions.push(key.clone());
+                    if force {
+                        set.push(key.clone());
+                    }
+                }
+                None => set.push(key.clone()),
+            }
+        }
+
+        // A refused batch changes nothing, so what the merged config would
+        // normalize to is moot and the collision report is the whole answer.
+        if !collisions.is_empty() && !force {
+            return Ok(Some(EnvBatch {
+                app: None,
+                set: Vec::new(),
+                unchanged,
+                collisions,
+            }));
+        }
+
+        // Before the `dry_run` return, not after it: `normalize` is this
+        // door's only validation, so a preview that skipped it would report
+        // a key as `set` and then fail on the real send.
+        for key in &set {
+            intended.env.insert(key.clone(), entries[key].clone());
+        }
+        let parked =
+            normalize(intended).map_err(|err| SupervisorError::InvalidEnv(err.to_string()))?;
+
+        // `set` empty means every key was already held at this value, so
+        // there is nothing to write and nothing for `rpc.rs` to record:
+        // `app` is `Some` only when the store moved.
+        if dry_run || set.is_empty() {
+            return Ok(Some(EnvBatch {
+                app: None,
+                set,
+                unchanged,
+                collisions,
+            }));
+        }
+
+        let mut record = overrides::get(&self.paths.overrides, name)
+            .map_err(|err| SupervisorError::Overrides(err.to_string()))?
+            .unwrap_or_default();
+        let map = env_override_map(&mut record, name)?;
+        for key in &set {
+            map.insert(key.clone(), serde_json::Value::String(entries[key].clone()));
+        }
+        // No tombstone handling and no `emptied` branch: this door only
+        // ever inserts, so the map cannot come out empty and no key can
+        // stop being held.
+        let overridden: Vec<String> = record.fields.keys().cloned().collect();
+        let changes = BTreeMap::from([(name.to_string(), Some(record))]);
+        overrides::update(&self.paths.overrides, &changes)
+            .map_err(|err| SupervisorError::Overrides(err.to_string()))?;
+
+        for id in self.ids_of_name(name) {
+            let Some(slot) = self.sheep.get_mut(&id) else {
+                continue;
+            };
+            slot.entry.pending = Some(parked.clone());
+            slot.entry.overridden.clone_from(&overridden);
+        }
+        Ok(Some(EnvBatch {
+            app: Some(parked),
+            set,
+            unchanged,
+            collisions,
+        }))
     }
 
     /// Records `key` on `name` as an operator override, applies what can
@@ -5690,19 +5893,13 @@ impl<R: ProcessRunner> Actor<R> {
                 self.sheep.insert(
                     new_id,
                     SheepSlot {
-                        entry,
                         ctl: Some(handles.ctl),
                         log_ctl: Some(log_ctl),
                         to_child: Some(to_child),
                         signals: Some(handles.signals),
                         to_stdin: Some(to_stdin),
-                        manual: None,
-                        pending_delete: false,
-                        epoch: 0,
                         ready_tx: Some(ready_tx),
-                        actions: ActionWaits::default(),
-                        ready_failed: false,
-                        restart_due: None,
+                        ..SheepSlot::new(entry)
                     },
                 );
                 // The instance being replaced announces itself before its
@@ -8377,6 +8574,42 @@ mod tests {
         }
     }
 
+    /// A bare actor over `sheep`, running `scripts` and reachable at `tx`.
+    ///
+    /// The bus receiver is dropped here, as every fixture already dropped its
+    /// own: a bus with no subscriber still takes every send.
+    ///
+    /// `next_id` is one past the slots, which the contiguous ids every fixture
+    /// assigns make right. A case that needs another value, or `extras`,
+    /// writes it with struct-update syntax over this.
+    fn test_actor(
+        paths: ShepPaths,
+        scripts: Vec<ProcScript>,
+        sheep: HashMap<u32, SheepSlot>,
+        tx: mpsc::Sender<Msg>,
+    ) -> Actor<ScriptedRunner> {
+        let (events, _events_rx) = crate::bus::test_bus(64);
+        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
+        Actor {
+            runner: ScriptedRunner::new(scripts),
+            next_id: sheep.len() as u32,
+            paths,
+            events,
+            host_environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets,
+            tx,
+            sheep,
+            next_deadline: 0,
+            next_action_stamp: 0,
+            pending: Vec::new(),
+            shutting_down: false,
+            extras: None,
+            registry: ExtrasRegistry::default(),
+            reloads: HashMap::new(),
+            smits: Smits::new(),
+        }
+    }
+
     // --- The readiness gate ---
 
     #[tokio::test(start_paused = true)]
@@ -9749,43 +9982,14 @@ mod tests {
         entry.status = ProcStatus::Stopping;
         let (ctl_tx, ctl_rx) = mpsc::channel(1);
         let slot = SheepSlot {
-            entry,
             ctl: Some(ctl_tx),
-            log_ctl: None,
-            to_child: None,
-            signals: None,
-            to_stdin: None,
-            manual: None,
-            pending_delete: false,
             epoch,
-            ready_tx: None,
-            actions: ActionWaits::default(),
-            ready_failed: false,
-            restart_due: None,
+            ..SheepSlot::new(entry)
         };
         let mut sheep = HashMap::new();
         sheep.insert(0, slot);
-        let (events, _events_rx) = crate::bus::test_bus(16);
         let (tx, _rx) = mpsc::channel(16);
-        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
-        let actor = Actor {
-            runner: ScriptedRunner::new(vec![]),
-            paths,
-            events,
-            host_environment: DEFAULT_ENVIRONMENT.to_string(),
-            provider_secrets,
-            tx,
-            sheep,
-            next_id: 1,
-            next_deadline: 0,
-            next_action_stamp: 0,
-            pending: Vec::new(),
-            shutting_down: false,
-            extras: None,
-            registry: ExtrasRegistry::default(),
-            reloads: HashMap::new(),
-            smits: Smits::new(),
-        };
+        let actor = test_actor(paths, Vec::new(), sheep, tx);
         (actor, ctl_rx)
     }
 
@@ -9859,42 +10063,12 @@ mod tests {
         sheep.insert(
             0,
             SheepSlot {
-                entry,
                 ctl: Some(ctl_tx),
-                log_ctl: None,
-                to_child: None,
-                signals: None,
-                to_stdin: None,
-                manual: None,
-                pending_delete: false,
-                epoch: 0,
-                ready_tx: None,
-                actions: ActionWaits::default(),
-                ready_failed: false,
-                restart_due: None,
+                ..SheepSlot::new(entry)
             },
         );
-        let (events, _events_rx) = crate::bus::test_bus(16);
         let (tx, _mailbox) = mpsc::channel(16);
-        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
-        let mut actor = Actor {
-            runner: ScriptedRunner::new(vec![]),
-            paths,
-            events,
-            host_environment: DEFAULT_ENVIRONMENT.to_string(),
-            provider_secrets,
-            tx,
-            sheep,
-            next_id: 1,
-            next_deadline: 0,
-            next_action_stamp: 0,
-            pending: Vec::new(),
-            shutting_down: false,
-            extras: None,
-            registry: ExtrasRegistry::default(),
-            reloads: HashMap::new(),
-            smits: Smits::new(),
-        };
+        let mut actor = test_actor(paths, Vec::new(), sheep, tx);
         let entry = actor
             .sheep
             .get(&0)
@@ -10515,45 +10689,9 @@ mod tests {
         let paths = test_paths(dir);
         let app = normalize(app).unwrap();
         let mut sheep = HashMap::new();
-        sheep.insert(
-            0,
-            SheepSlot {
-                entry: armed_entry(0, 0, 1111, app, &paths),
-                ctl: None,
-                log_ctl: None,
-                to_child: None,
-                signals: None,
-                to_stdin: None,
-                manual: None,
-                pending_delete: false,
-                epoch: 0,
-                ready_tx: None,
-                actions: ActionWaits::default(),
-                ready_failed: false,
-                restart_due: None,
-            },
-        );
-        let (events, _events_rx) = crate::bus::test_bus(64);
+        sheep.insert(0, SheepSlot::new(armed_entry(0, 0, 1111, app, &paths)));
         let (tx, rx) = mpsc::channel(MAILBOX_CAPACITY);
-        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
-        let actor = Actor {
-            runner: ScriptedRunner::new(scripts),
-            paths,
-            events,
-            host_environment: DEFAULT_ENVIRONMENT.to_string(),
-            provider_secrets,
-            tx,
-            sheep,
-            next_id: 1,
-            next_deadline: 0,
-            next_action_stamp: 0,
-            pending: Vec::new(),
-            shutting_down: false,
-            extras: None,
-            registry: ExtrasRegistry::default(),
-            reloads: HashMap::new(),
-            smits: Smits::new(),
-        };
+        let actor = test_actor(paths, scripts, sheep, tx);
         (actor, rx)
     }
 
@@ -10577,46 +10715,10 @@ mod tests {
             let app = app_with(name, |config| config.fold = Some("svc".to_string()));
             let mut entry = armed_entry(id, 0, 1111 + id, app, &paths);
             entry.dog = dog;
-            sheep.insert(
-                id,
-                SheepSlot {
-                    entry,
-                    ctl: None,
-                    log_ctl: None,
-                    to_child: None,
-                    signals: None,
-                    to_stdin: None,
-                    manual: None,
-                    pending_delete: false,
-                    epoch: 0,
-                    ready_tx: None,
-                    actions: ActionWaits::default(),
-                    ready_failed: false,
-                    restart_due: None,
-                },
-            );
+            sheep.insert(id, SheepSlot::new(entry));
         }
-        let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, rx) = mpsc::channel(MAILBOX_CAPACITY);
-        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
-        let actor = Actor {
-            runner: ScriptedRunner::new(Vec::new()),
-            paths,
-            events,
-            host_environment: DEFAULT_ENVIRONMENT.to_string(),
-            provider_secrets,
-            tx,
-            sheep,
-            next_id: DOG_ID + 1,
-            next_deadline: 0,
-            next_action_stamp: 0,
-            pending: Vec::new(),
-            shutting_down: false,
-            extras: None,
-            registry: ExtrasRegistry::default(),
-            reloads: HashMap::new(),
-            smits: Smits::new(),
-        };
+        let actor = test_actor(paths, Vec::new(), sheep, tx);
         (actor, rx)
     }
 
@@ -10760,44 +10862,17 @@ mod tests {
         for instance in 0..instances {
             sheep.insert(
                 instance,
-                SheepSlot {
-                    entry: armed_entry(instance, instance, 1111 + instance, app.clone(), &paths),
-                    ctl: None,
-                    log_ctl: None,
-                    to_child: None,
-                    signals: None,
-                    to_stdin: None,
-                    manual: None,
-                    pending_delete: false,
-                    epoch: 0,
-                    ready_tx: None,
-                    actions: ActionWaits::default(),
-                    ready_failed: false,
-                    restart_due: None,
-                },
+                SheepSlot::new(armed_entry(
+                    instance,
+                    instance,
+                    1111 + instance,
+                    app.clone(),
+                    &paths,
+                )),
             );
         }
-        let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, _rx) = mpsc::channel(MAILBOX_CAPACITY);
-        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
-        Actor {
-            runner: ScriptedRunner::new(scripts),
-            paths,
-            events,
-            host_environment: DEFAULT_ENVIRONMENT.to_string(),
-            provider_secrets,
-            tx,
-            sheep,
-            next_id: instances,
-            next_deadline: 0,
-            next_action_stamp: 0,
-            pending: Vec::new(),
-            shutting_down: false,
-            extras: None,
-            registry: ExtrasRegistry::default(),
-            reloads: HashMap::new(),
-            smits: Smits::new(),
-        }
+        test_actor(paths, scripts, sheep, tx)
     }
 
     /// Every registered slot's stored instance count, ascending by id.
@@ -13648,19 +13723,8 @@ mod tests {
         actor.sheep.insert(
             id,
             SheepSlot {
-                entry: armed_entry(id, 0, 2000 + id, app, &paths),
-                ctl: None,
-                log_ctl: None,
                 to_child,
-                signals: None,
-                to_stdin: None,
-                manual: None,
-                pending_delete: false,
-                epoch: 0,
-                ready_tx: None,
-                actions: ActionWaits::default(),
-                ready_failed: false,
-                restart_due: None,
+                ..SheepSlot::new(armed_entry(id, 0, 2000 + id, app, &paths))
             },
         );
         id
@@ -15277,28 +15341,9 @@ mod tests {
         dir: &tempfile::TempDir,
         scripts: Vec<ProcScript>,
     ) -> Actor<ScriptedRunner> {
-        let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, _rx) = mpsc::channel(MAILBOX_CAPACITY);
         let paths = test_paths(dir);
-        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
-        Actor {
-            runner: ScriptedRunner::new(scripts),
-            paths,
-            events,
-            host_environment: DEFAULT_ENVIRONMENT.to_string(),
-            provider_secrets,
-            tx,
-            sheep: HashMap::new(),
-            next_id: 0,
-            next_deadline: 0,
-            next_action_stamp: 0,
-            pending: Vec::new(),
-            shutting_down: false,
-            extras: None,
-            registry: ExtrasRegistry::default(),
-            reloads: HashMap::new(),
-            smits: Smits::new(),
-        }
+        test_actor(paths, scripts, HashMap::new(), tx)
     }
 
     /// The name this test process is already running under, the only user a
@@ -17944,21 +17989,13 @@ mod tests {
                 next_id += 1;
                 sheep.insert(
                     id,
-                    SheepSlot {
-                        entry: armed_entry(id, instance, APPLY_FIRST_PID + id, app.clone(), &paths),
-                        ctl: None,
-                        log_ctl: None,
-                        to_child: None,
-                        signals: None,
-                        to_stdin: None,
-                        manual: None,
-                        pending_delete: false,
-                        epoch: 0,
-                        ready_tx: None,
-                        actions: ActionWaits::default(),
-                        ready_failed: false,
-                        restart_due: None,
-                    },
+                    SheepSlot::new(armed_entry(
+                        id,
+                        instance,
+                        APPLY_FIRST_PID + id,
+                        app.clone(),
+                        &paths,
+                    )),
                 );
             }
         }
@@ -17975,28 +18012,13 @@ mod tests {
             },
             stats: idle_stats(),
         };
-        let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, _rx) = mpsc::channel(MAILBOX_CAPACITY);
-        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
+        // Enough scripts for a scale-up to come up: without them a case
+        // that scales would assert on a shortfall rather than the apply.
+        let scripts = vec![ProcScript::never_exits(); 4];
         let actor = Actor {
-            // Enough scripts for a scale-up to come up: without them a case
-            // that scales would assert on a shortfall rather than the apply.
-            runner: ScriptedRunner::new(vec![ProcScript::never_exits(); 4]),
-            paths,
-            events,
-            host_environment: DEFAULT_ENVIRONMENT.to_string(),
-            provider_secrets,
-            tx,
-            sheep,
-            next_id,
-            next_deadline: 0,
-            next_action_stamp: 0,
-            pending: Vec::new(),
-            shutting_down: false,
             extras: Some(extras),
-            registry: ExtrasRegistry::default(),
-            reloads: HashMap::new(),
-            smits: Smits::new(),
+            ..test_actor(paths, scripts, sheep, tx)
         };
         (actor, enforcer)
     }
@@ -20779,5 +20801,276 @@ mod tests {
             err.to_string().contains("TYPO"),
             "names the reference: {err}"
         );
+    }
+
+    /// A started `web` and a registered dog, for the batch tests below. Two
+    /// scripts because the dog is a spawn of its own.
+    async fn env_batch_harness() -> Harness {
+        let h = harness(vec![ProcScript::never_exits(); 2]);
+        start_app(&h, AppConfig::minimal("web", "./srv")).await;
+        h.ctx
+            .supervisor
+            .start_dog(dog_app("bark"), DogSource::BuiltIn)
+            .await
+            .unwrap();
+        h
+    }
+
+    /// The stored env of `name`, or a panic naming what was there instead.
+    fn stored_env(h: &Harness, name: &str) -> serde_json::Map<String, serde_json::Value> {
+        let record = shep_core::overrides::get(&h.ctx.paths.overrides, name)
+            .unwrap()
+            .expect("an override record");
+        record.fields["env"]
+            .as_object()
+            .expect("a flat env object")
+            .clone()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_batch_writes_every_key_under_one_lock() {
+        let h = env_batch_harness().await;
+        let batch = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([
+                    ("A".to_string(), "1".to_string()),
+                    ("B".to_string(), "2".to_string()),
+                ]),
+                false,
+                false,
+            )
+            .await
+            .unwrap()
+            .expect("web exists");
+        assert_eq!(batch.set, ["A", "B"]);
+        assert!(batch.collisions.is_empty());
+        let env = stored_env(&h, "web");
+        assert_eq!(env["A"], "1");
+        assert_eq!(env["B"], "2");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_identical_value_is_unchanged_rather_than_a_collision() {
+        let h = env_batch_harness().await;
+        let entries = BTreeMap::from([("A".to_string(), "1".to_string())]);
+        h.ctx
+            .supervisor
+            .set_sheep_env_batch("web".to_string(), entries.clone(), false, false)
+            .await
+            .unwrap();
+        let batch = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch("web".to_string(), entries, false, false)
+            .await
+            .unwrap()
+            .expect("web exists");
+        assert!(batch.set.is_empty());
+        assert_eq!(batch.unchanged, ["A"]);
+        assert!(batch.collisions.is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_collision_without_force_writes_nothing_at_all() {
+        let h = env_batch_harness().await;
+        h.ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([("A".to_string(), "1".to_string())]),
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        let batch = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([
+                    ("A".to_string(), "2".to_string()),
+                    ("B".to_string(), "9".to_string()),
+                ]),
+                false,
+                false,
+            )
+            .await
+            .unwrap()
+            .expect("web exists");
+        assert_eq!(batch.collisions, ["A"]);
+        assert!(batch.set.is_empty());
+        assert!(batch.app.is_none());
+        let env = stored_env(&h, "web");
+        assert_eq!(env["A"], "1", "the colliding key kept its value");
+        assert!(
+            !env.contains_key("B"),
+            "the clean key was not written either"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn force_overwrites_and_reports_the_collision_in_both_lists() {
+        let h = env_batch_harness().await;
+        h.ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([("A".to_string(), "1".to_string())]),
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        let batch = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([("A".to_string(), "2".to_string())]),
+                true,
+                false,
+            )
+            .await
+            .unwrap()
+            .expect("web exists");
+        assert_eq!(batch.set, ["A"]);
+        assert_eq!(batch.collisions, ["A"]);
+        assert_eq!(stored_env(&h, "web")["A"], "2");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_dry_run_answers_and_writes_nothing() {
+        let h = env_batch_harness().await;
+        let batch = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([("A".to_string(), "1".to_string())]),
+                false,
+                true,
+            )
+            .await
+            .unwrap()
+            .expect("web exists");
+        assert_eq!(batch.set, ["A"]);
+        assert!(batch.app.is_none());
+        assert!(
+            shep_core::overrides::get(&h.ctx.paths.overrides, "web")
+                .unwrap()
+                .is_none(),
+            "a dry run left a store behind"
+        );
+    }
+
+    /// A preview that does not match the outcome is worse than no preview:
+    /// `normalize` is this door's only validation, so a dry run that skipped
+    /// it would report `SHEP_NAME` as `set` and then fail on the real send,
+    /// after the caller had acted on the preview.
+    #[tokio::test(start_paused = true)]
+    async fn a_dry_run_refuses_what_the_real_send_would_refuse() {
+        let h = env_batch_harness().await;
+        let err = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([("SHEP_NAME".to_string(), "nope".to_string())]),
+                false,
+                true,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, SupervisorError::InvalidEnv(_)), "{err:?}");
+        assert!(
+            shep_core::overrides::get(&h.ctx.paths.overrides, "web")
+                .unwrap()
+                .is_none(),
+            "a refused dry run left a store behind"
+        );
+    }
+
+    /// A refused batch changes nothing, so validating the merged config is
+    /// moot and the collision report is the whole answer.
+    #[tokio::test(start_paused = true)]
+    async fn a_refused_collision_reports_rather_than_validating() {
+        let h = env_batch_harness().await;
+        h.ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([("A".to_string(), "1".to_string())]),
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        let batch = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([
+                    ("A".to_string(), "2".to_string()),
+                    ("SHEP_NAME".to_string(), "nope".to_string()),
+                ]),
+                false,
+                false,
+            )
+            .await
+            .unwrap()
+            .expect("web exists");
+        assert_eq!(batch.collisions, ["A"]);
+        assert!(batch.set.is_empty());
+        assert!(batch.app.is_none());
+    }
+
+    /// The contract says `app` is `Some` only when something was written.
+    /// A batch every key of which is already held writes nothing, so
+    /// `rpc.rs` must not record a no-op and rewrite the muster roll for it.
+    #[tokio::test(start_paused = true)]
+    async fn a_batch_that_changes_nothing_parks_nothing() {
+        let h = env_batch_harness().await;
+        let entries = BTreeMap::from([("A".to_string(), "1".to_string())]);
+        h.ctx
+            .supervisor
+            .set_sheep_env_batch("web".to_string(), entries.clone(), false, false)
+            .await
+            .unwrap();
+        let batch = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch("web".to_string(), entries, false, false)
+            .await
+            .unwrap()
+            .expect("web exists");
+        assert!(batch.set.is_empty());
+        assert_eq!(batch.unchanged, ["A"]);
+        assert!(batch.app.is_none(), "nothing was written to record");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_batch_refuses_a_dog_and_an_unknown_name() {
+        let h = env_batch_harness().await;
+        let entries = BTreeMap::from([("A".to_string(), "1".to_string())]);
+        assert!(
+            h.ctx
+                .supervisor
+                .set_sheep_env_batch("absent".to_string(), entries.clone(), false, false)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let err = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch("bark".to_string(), entries, false, false)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, SupervisorError::IsADog(_)));
     }
 }

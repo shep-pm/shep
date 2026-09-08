@@ -33,8 +33,8 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
     <ReferencePills slug="containers" />
     <p class="lede">
       Two verbs, one shape: run one Flockfile's flock in the foreground, no
-      daemonization, exit when there's nothing left to supervise.
-      <code>shep runtime</code> is that shape for a container.
+      daemonization, exit when there's nothing left to supervise.{" "}
+      <code>shep runtime</code> is that shape for a container.{" "}
       <code>shep dev</code> is the same shape for a laptop, with isolation
       swapped in for the container's own kind of disposability.
     </p>
@@ -42,19 +42,19 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
     <h2>shep runtime: the container entrypoint</h2>
     <p>
       <code>shep runtime</code> boots a shepherd in-process, runs one
-      Flockfile's flock, and exits once nothing is left online.
+      Flockfile's flock, and exits once nothing is left online.{" "}
       <code>--no-restore</code> is always on. A container starts fresh from
       its Flockfile every time, never from a muster roll left on the image by
-      a previous run. Bleats stream to this process's own stdout/stderr, so
+      a previous run. Bleats stream to this process's own stdout/stderr, so{" "}
       <code>docker logs</code> is the flock's log with no extra plumbing, and
-      the shepherd is still reachable over its own socket the whole time:
-      <code>shep flock</code> from a second terminal, or
+      the shepherd is still reachable over its own socket the whole time:{" "}
+      <code>shep flock</code> from a second terminal, or{" "}
       <code>docker exec</code>, works exactly as it would against a
       daemonized one.
     </p>
     <CodeBlock label="Dockerfile">{dockerfile}</CodeBlock>
     <p class="fine">
-      <code>shep-runtime</code> is a separate binary alias for
+      <code>shep-runtime</code> is a separate binary alias for{" "}
       <code>shep runtime</code>, built so <code>ENTRYPOINT</code> doesn't need
       to spell the subcommand out. <code>SHEP_HOME</code> is never defaulted
       for you inside a container. An unset one fails fast naming the flag,
@@ -64,9 +64,9 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
     <h3>Exit codes an orchestrator can act on</h3>
     <p>
       <code>shep runtime</code> exits <strong>0</strong> once the flock has
-      been empty and clean (every sheep <code>stopped</code>, none
+      been empty and clean (every sheep <code>stopped</code>, none{" "}
       <code>errored</code>) for three consecutive two-second polls: a batch
-      job finishing its work. It exits <strong>11</strong>
+      job finishing its work. It exits <strong>11</strong>{" "}
       (<code>flock_empty</code>) instead when the flock emptied with at least
       one sheep <code>errored</code> (a restart budget exhausted, or a spawn
       that never came up), so an orchestrator reading the exit status can
@@ -81,11 +81,11 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
       supervisor's own process. An in-process subreaper loop would race
       tokio's own child reaping and corrupt the exact exit statuses shep
       promises elsewhere. The init instead relies on the kernel already
-      treating real PID 1 as the implicit subreaper (it never calls
-      <code>set_child_subreaper</code>), forwards
-      <code>SIGTERM</code>/<code>SIGINT</code>/<code>SIGHUP</code>/<code>SIGQUIT</code>
+      treating real PID 1 as the implicit subreaper (it never calls{" "}
+      <code>set_child_subreaper</code>), forwards{" "}
+      <code>SIGTERM</code>/<code>SIGINT</code>/<code>SIGHUP</code>/<code>SIGQUIT</code>{" "}
       to the supervisor it spawns, and reaps every orphan itself. A container
-      that skipped this step would accumulate zombies until
+      that skipped this step would accumulate zombies until{" "}
       <code>docker stop</code> waited out the full grace period before
       SIGKILLing everything mid-shutdown.
     </p>
@@ -93,7 +93,7 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
     <h2>shep dev: the same shape for a laptop</h2>
     <p>
       <code>shep dev</code> runs one Flockfile's flock in an isolated,
-      throwaway foreground session: <code>$SHEP_DEV_HOME</code> (default
+      throwaway foreground session: <code>$SHEP_DEV_HOME</code> (default{" "}
       <code>~/.shep-dev</code>), forced <code>watch = true</code> on every
       app regardless of what the Flockfile says, and a full stop-and-delete
       teardown the moment the flock empties or the process is signalled,
@@ -106,7 +106,7 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
       <strong><code>--home</code> and <code>$SHEP_HOME</code> are
       ignored</strong>, on purpose. Isolation is the whole feature. Without
       this, an operator who exports <code>$SHEP_HOME</code> for their real
-      flock would get a "dev" session that shares it and silently forces
+      flock would get a "dev" session that shares it and silently forces{" "}
       <code>watch = true</code> onto production apps.
     </Callout>
     <h2>Where to go next</h2>

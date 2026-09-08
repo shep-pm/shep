@@ -89,7 +89,7 @@ const groups = [
   },
   {
     title: "Migrating and deploying",
-    verbs: ["import", "startup", "unstartup"],
+    verbs: ["import", "import pm2", "import env", "startup", "unstartup"],
   },
   {
     title: "Getting oriented",
@@ -121,13 +121,13 @@ if (coveredCount !== cliReference.verbs.length) {
     <h1>CLI reference</h1>
     <ReferencePills slug="cli" />
     <p class="lede">
-      Every verb <code>shep {workspaceVersion}</code>
+      Every verb <code>shep {workspaceVersion}</code>{" "}
       understands, generated from the binary's own <code>--help</code>. Nothing
       below is hand-typed.
     </p>
 
     <Callout variant="note">
-      <code>--home</code>, <code>--format table|json</code> and <code>-q</code>/<code>--quiet</code>
+      <code>--home</code>, <code>--format table|json</code> and <code>-q</code>/<code>--quiet</code>{" "}
       work on every verb on this page. They're global flags, flattened onto each
       subcommand rather than repeated in the prose below. See the full dump under
       "Every verb, at a glance" for exactly how they render on each one.

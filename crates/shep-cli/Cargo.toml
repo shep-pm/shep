@@ -166,6 +166,10 @@ tempfile.workspace = true
 # sequences. Adds zero crates: shep-core already resolves `anstyle` through
 # its own `cfg(any())` floor-forcing block.
 anstyle.workspace = true
+# Matching --secret and --only against a .env's keys, the same anchored-glob
+# rule shep-core's sheep-name selector uses. Compiling three lines of matcher
+# here beats a new public API on a published crate.
+globset.workspace = true
 
 # The lookout TUI, the MCP server behind `shep whistle`, and the schema
 # generator beside it: unconditional, since `src/lookout/` and `src/whistle/`
@@ -182,6 +186,10 @@ schemars.workspace = true
 # see the workspace `Cargo.toml`'s comments on each.
 time.workspace = true
 instability.workspace = true
+# The bleats pane's match axis: an operator can give `/pattern/` to search
+# by regex instead of literal text. Adds zero crates: shep-core already
+# resolves this version for its own selector matching.
+regex.workspace = true
 
 [dev-dependencies]
 # `test-util` for `#[tokio::test(start_paused = true)]`, `crate::http`'s "a

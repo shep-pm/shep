@@ -105,8 +105,8 @@ mod tests {
     use shep_core::config::{FlockFormat, Flockfile};
 
     use super::*;
-    use crate::commands::import::convert::convert;
-    use crate::commands::import::dump;
+    use crate::commands::import::pm2::convert::convert;
+    use crate::commands::import::pm2::dump;
 
     #[test]
     fn flockfile_round_trips_through_the_real_parser() {

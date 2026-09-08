@@ -170,6 +170,13 @@ out  GET /v1/orders/8821 200 9ms
 out  connection pool: 14/50 in use
 q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled`;
 
+const bleatsFull = `shep lookout   /home/ada/.shep                                                        6 in the flock
+ ██ api  out /home/ada/.shep/logs/api-2-out.log  err /home/ada/.shep/logs/api-2-err.log
+ stream out   level ≥ warn   match /retry|jitter/ (regex)  1 of 16 lines in the window: all three m…
+out  WARN retrying upstream payment gateway after a timeout, backing off 500ms before trying again w
+     ith jitter added so the whole fleet does not retry at once
+esc back   j/k line   ctrl-d/u page   G end   / search   n/N match   f follow   w wrap … █ following`;
+
 const filterActive = `shep lookout   /home/ada/.shep                                                   2 of 6 in the flock
 host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 error…
 ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -322,7 +329,7 @@ esc/s close   j/k select   g… control enabled`;
 
     <h2>The flock table</h2>
     <p>
-      Every frame below is real: rendered headlessly through ratatui's
+      Every frame below is real: rendered headlessly through ratatui's{" "}
       <code>TestBackend</code> by a pinned snapshot test, not mocked up for
       this page. A <code>&gt;</code> gutter to the left of ID marks the
       selected sheep. <code>j</code>/<code>k</code> move the selection one
@@ -440,11 +447,40 @@ esc/s close   j/k select   g… control enabled`;
     </p>
     <CodeBlock>{feedExcerpt}</CodeBlock>
 
+    <h2>The bleats pane, full screen</h2>
+    <p>
+      <code>b</code> opens the selected sheep's feed full screen and pins it
+      there. There's no table on screen anymore to change the selection
+      with, so the pane keeps describing that one sheep until it closes. It
+      reads the same log files the corner feed does, just polled faster
+      while it has focus.
+    </p>
+    <p>
+      Three filters stack on top of the feed, and a line has to pass all
+      three to show. <code>o</code> cycles the stream (out, err, or both),{" "}
+      <code>m</code> cycles a minimum level, and <code>/</code> opens a box
+      for a text or regex match, with matches highlighted. A line with no
+      detectable level always shows, whatever the minimum is: most app
+      output carries no level word at all, and hiding it would defeat the
+      reason the pane exists. The filter row names which axes are set and
+      counts how many lines in the current window survive them.
+    </p>
+    <CodeBlock label="100×14, filtered and wrapped">{bleatsFull}</CodeBlock>
+    <p>
+      <code>esc</code> drops the newest filter first, one at a time, and
+      only closes the pane once none are left. <code>j</code>/<code>k</code>{" "}
+      scroll a line, <code>ctrl-d</code>/<code>ctrl-u</code> a page,{" "}
+      <code>G</code> jumps to the end and starts following again,{" "}
+      <code>f</code> toggles following, <code>w</code> wraps long lines
+      instead of truncating them, and <code>n</code>/<code>N</code> step
+      between matches.
+    </p>
+
     <h2>Filtering the table</h2>
     <p>
       <code>/</code> opens a query box in the status bar; typing narrows the
-      table to sheep whose name contains it, case-insensitively, as you type.
-      <code>Enter</code> applies the query and closes the box, <code>Esc</code>
+      table to sheep whose name contains it, case-insensitively, as you type.{" "}
+      <code>Enter</code> applies the query and closes the box, <code>Esc</code>{" "}
       clears it back to the whole flock, and both leave the cursor on a real
       row: if the sheep it was on drops out of the narrowed set, the
       selection moves to whatever now sits in the same position rather than
@@ -465,11 +501,11 @@ esc/s close   j/k select   g… control enabled`;
       detail pane goes (everything on it but the log paths already sits in
       the row above it). Below 18 the feed goes with it, and below 14 the
       host strip goes too, leaving only the flock table. Within the table,
-      narrow widths drop columns one at a time, in this order:
+      narrow widths drop columns one at a time, in this order:{" "}
       <code>MEM/CEIL</code>, <code>CPU 20s</code>, CFG, SMIT, FOLD, EXIT,
-      RESTARTS, PID, MEM, CPU, and finally UPTIME, leaving
+      RESTARTS, PID, MEM, CPU, and finally UPTIME, leaving{" "}
       <code>ID NAME STATUS</code> as the floor. <code>MEM/CEIL</code> is a
-      gauge of a sheep's memory against its ceiling and <code>CPU 20s</code>
+      gauge of a sheep's memory against its ceiling and <code>CPU 20s</code>{" "}
       is a sparkline of its CPU history; both restate a number CPU and MEM
       already carry, so they go first. A terminal needs 148 columns for the
       gauge and 136 for the sparkline, wider than every frame on this page,
@@ -479,10 +515,10 @@ esc/s close   j/k select   g… control enabled`;
       its own column.
     </p>
     <p class="fine">
-      <code>CFG</code> drops third, right after <code>MEM/CEIL</code> and
+      <code>CFG</code> drops third, right after <code>MEM/CEIL</code> and{" "}
       <code>CPU 20s</code> and still ahead of <code>SMIT</code>, which is
       not where the <a href="/docs/output">CLI table</a> puts it. The frames
-      on this page are 120 columns wide, and tying <code>CFG</code> to
+      on this page are 120 columns wide, and tying <code>CFG</code> to{" "}
       <code>EXIT</code>'s tier the way that table does would have pushed the
       full set past 120 and quietly taken <code>SMIT</code> off every frame
       in the gallery. Dropping <code>CFG</code> on its own leaves a
@@ -532,8 +568,8 @@ esc/s close   j/k select   g… control enabled`;
     </p>
     <CodeBlock label="120×30, gate closed">{refused}</CodeBlock>
     <p>
-      With the gate open, three keys arm an action on the selected sheep:
-      <code>x</code> stops it, <code>R</code> restarts it, <code>L</code>
+      With the gate open, three keys arm an action on the selected sheep:{" "}
+      <code>x</code> stops it, <code>R</code> restarts it, <code>L</code>{" "}
       reloads it. There's no <code>start</code> key; lookout only ever acts
       on a sheep already in the flock. Arming doesn't send anything by
       itself, it puts a question in the status bar naming the verb and the
@@ -558,17 +594,17 @@ esc/s close   j/k select   g… control enabled`;
     <p>
       This is a fat-finger catch, not a security boundary: lookout runs as
       your own process under your own uid, so the shepherd has no way to
-      refuse a keystroke it can't tell apart from you typing
+      refuse a keystroke it can't tell apart from you typing{" "}
       <code>shep stop</code> yourself. Every color on screen is also
       redundant with text, so <code>NO_COLOR</code> and a 16-color terminal
       lose decoration, never information.
     </p>
     <h2>Settings</h2>
     <p>
-      <code>s</code> opens a full-screen settings view over
+      <code>s</code> opens a full-screen settings view over{" "}
       <code>shep.toml</code>: the four daemon fields, the whistle gate, the
       style level, and the dogs table's own enable/disable, each with a
-      SOURCE column and a note on what it takes to apply. <code>s</code>
+      SOURCE column and a note on what it takes to apply. <code>s</code>{" "}
       or <code>Esc</code> closes it again, back to the flock table.
     </p>
     <p>
@@ -579,10 +615,10 @@ esc/s close   j/k select   g… control enabled`;
     </p>
     <CodeBlock label="120×30, a fresh $SHEP_HOME">{settingsFresh}</CodeBlock>
     <p>
-      SOURCE reads <code>the default</code> when <code>shep.toml</code>
+      SOURCE reads <code>the default</code> when <code>shep.toml</code>{" "}
       doesn't mention the field at all, and the VALUE column shows the
-      compiled fallback instead of anything from disk. A fresh
-      <code>$SHEP_HOME</code> ships a <code>shep.toml</code> holding only
+      compiled fallback instead of anything from disk. A fresh{" "}
+      <code>$SHEP_HOME</code> ships a <code>shep.toml</code> holding only{" "}
       <code>[interpreters]</code>, so this is the state you land in the
       first time you open the screen: every field on it is a guess about
       what the daemon assumes, not a record of what anyone wrote. Once a
@@ -595,24 +631,24 @@ esc/s close   j/k select   g… control enabled`;
       story: IN FILE says whether <code>[daemon] enabled_dogs</code> names
       the dog, SOURCE says whether it's built in or adopted from a path, and
       RUNNING joins both against the live flock. The three can disagree, and
-      when they do that's the point of showing all three: <code>otel</code>
+      when they do that's the point of showing all three: <code>otel</code>{" "}
       above is running with nothing enabling it, <code>ledger</code> is
       enabled and not running, and <code>bark</code> is enabled, running,
-      and still <code>silent</code> because it never finished a handshake.
-      <code>space</code> arms a toggle on the selected dog and <code>Enter</code>
+      and still <code>silent</code> because it never finished a handshake.{" "}
+      <code>space</code> arms a toggle on the selected dog and <code>Enter</code>{" "}
       sends it; unlike a scalar edit, this reaches the shepherd directly and
       needs no reload.
     </p>
     <Callout variant="careful">
       A <code>[daemon]</code> edit only ever changes <code>shep.toml</code>.
-      The shepherd itself can be started with <code>SHEP_LOG_LEVEL</code>,
+      The shepherd itself can be started with <code>SHEP_LOG_LEVEL</code>,{" "}
       <code>SHEP_SOCKET</code>, or the matching <code>--log-level</code> /
       <code>--socket</code> flags, and shep's own precedence puts those above
       the file. Lookout has no way to see what the shepherd was booted with,
-      so setting <code>log_level</code> here and running
+      so setting <code>log_level</code> here and running{" "}
       <code>shep daemon reload</code> can do nothing at all if the process
       was started with <code>SHEP_LOG_LEVEL</code> set, and nothing on
-      screen will say so. <code>[style]</code> is not an exception:
+      screen will say so. <code>[style]</code> is not an exception:{" "}
       <code>--style</code> and <code>$SHEP_STYLE</code> outrank the file
       there too. The difference is that those layers belong to lookout's own
       process, so lookout can see them. SOURCE names the one in force, the
@@ -621,19 +657,19 @@ esc/s close   j/k select   g… control enabled`;
       winning.
     </Callout>
     <p>
-      The confirm names exactly this risk when it's <code>[daemon]</code>
+      The confirm names exactly this risk when it's <code>[daemon]</code>{" "}
       that's armed:
     </p>
     <CodeBlock label="180×30, armed">{settingsConfirm}</CodeBlock>
     <p>
-      <code>log_level</code>, <code>log_json</code>, and
+      <code>log_level</code>, <code>log_json</code>, and{" "}
       <code>allow_control</code> cycle through a fixed set of values, and the
-      cycle only ever moves a field from <code>the default</code> to
+      cycle only ever moves a field from <code>the default</code> to{" "}
       <code>shep.toml</code>, never back: <code>space</code> proposes the
-      next value, it's never "unset". <code>socket</code> and
+      next value, it's never "unset". <code>socket</code> and{" "}
       <code>max_cron_sleep</code> are the only two fields this screen can put
       back to the default, because they're free text, and clearing the
-      editor back to an empty line is what unsets them. <code>style level</code>
+      editor back to an empty line is what unsets them. <code>style level</code>{" "}
       is optional too, but <code>shep style</code> is what owns it and can't
       clear it either, so this screen doesn't offer to.
     </p>
@@ -659,7 +695,7 @@ esc/s close   j/k select   g… control enabled`;
       <li><code>r</code> re-reads <code>shep.toml</code> from disk</li>
     </ul>
     <p class="fine">
-      An armed candidate is cancelled, not acted on, by any movement key, by
+      An armed candidate is cancelled, not acted on, by any movement key, by{" "}
       <code>r</code>, or by <code>s</code>: the same rule the dashboard's own
       action keys follow, where a stray keystroke right after arming backs
       out of the question instead of both dismissing it and doing something
@@ -673,14 +709,14 @@ esc/s close   j/k select   g… control enabled`;
       every Flockfile field, the value in force, and what changing it would
       cost. Fields sit under eight headers: process, logging, inputs,
       restart, readiness, shutdown, watch, cron. It writes as well, behind
-      the same gate. Under
-      <code>--read-only</code> the edit keys refuse the same way
+      the same gate. Under{" "}
+      <code>--read-only</code> the edit keys refuse the same way{" "}
       <code>x</code> does. A row
       marked <code>=</code> or <code>~</code> gives its own reason instead,
       in both states, because the flag would not have helped it.
     </p>
     <p class="fine">
-      A field whose grammar accepts a bare number, such as
+      A field whose grammar accepts a bare number, such as{" "}
       <code>max_memory</code> or <code>kill_timeout</code>, shows its
       resolved value rather than the digits on disk: <code>64</code> reads
       as <code>64 B</code>, and <code>1600</code> as <code>1600ms</code>,
@@ -708,13 +744,13 @@ esc/s close   j/k select   g… control enabled`;
         <code>~</code> the pane has no widget for the shape, and nothing
         more. A Flockfile writes these the usual way, so the cost column
         beside them reports a real cost rather than <code>read-only</code>.
-        Two fields: <code>liveness_probe</code> and
+        Two fields: <code>liveness_probe</code> and{" "}
         <code>readiness_probe</code>.
       </li>
     </ul>
     <p class="fine">
       Both are glyphs rather than a colour on purpose. The narrowest terminal
-      the pane draws into has already dropped the cost column, and
+      the pane draws into has already dropped the cost column, and{" "}
       <code>plain</code> style has no colour to read, so a greyed-out row
       would be the only signal left in the case where it says least.
     </p>
@@ -739,12 +775,12 @@ esc/s close   j/k select   g… control enabled`;
     </ul>
     <p class="fine">
       Read it before you write, not after. It says what kind of field this
-      is, and a particular write can land differently: <code>watch</code>
-      says <code>now</code> and waits for a reload if the
-      <code>cwd</code> it needs is itself still parked, and
+      is, and a particular write can land differently: <code>watch</code>{" "}
+      says <code>now</code> and waits for a reload if the{" "}
+      <code>cwd</code> it needs is itself still parked, and{" "}
       <code>autostart</code> says <code>next start</code> and takes effect
       immediately, because shep reads it at muster. The status bar after the
-      write is the one that reports what actually happened, and the
+      write is the one that reports what actually happened, and the{" "}
       <code>!</code> flag on the row carries it afterwards.
     </p>
     <p>Keys, local to the pane while it's open:</p>
@@ -757,7 +793,7 @@ esc/s close   j/k select   g… control enabled`;
       </li>
       <li>
         <code>space</code> proposes the other value for a bool, the next one
-        for a choice, or the next suggestion for <code>kill_signal</code>
+        for a choice, or the next suggestion for <code>kill_signal</code>{" "}
         and <code>cron_restart</code>. Press it again to walk another step.
         A suggestion is not a closed list: <code>e</code> still types
         anything else.
@@ -770,9 +806,9 @@ esc/s close   j/k select   g… control enabled`;
       </li>
       <li>
         <code>e</code> or <code>Enter</code> on an array field opens a list
-        sub-screen instead: <code>d</code> removes the selected element,
+        sub-screen instead: <code>d</code> removes the selected element,{" "}
         <code>K</code>/<code>J</code> move it, and <code>e</code>/
-        <code>Enter</code> edits it, or adds one from the
+        <code>Enter</code> edits it, or adds one from the{" "}
         <code>+ new</code> row. Each arms the whole array, same as a
         scalar; a second <code>e</code>/<code>Enter</code> sends it.
       </li>
@@ -789,16 +825,16 @@ esc/s close   j/k select   g… control enabled`;
     </ul>
     <p>
       One edit changes one field, and it is recorded as yours: the key picks
-      up the <code>*</code> marker here and in <code>shep flock</code>'s
+      up the <code>*</code> marker here and in <code>shep flock</code>'s{" "}
       <code>CFG</code> column, and a later <code>shep start</code> of the
-      app's Flockfile leaves it alone. Nothing else in the config moves,
+      app's Flockfile leaves it alone. Nothing else in the config moves,{" "}
       <code>instances</code> included.
     </p>
     <p class="fine">
       A field the running child already holds parks until the next spawn. The
       status bar says which of the two happened. <code>Esc</code> on a pane
-      with anything still parked offers to close the gap there and then:
-      <code>L</code> reloads the sheep, <code>R</code> restarts it, and
+      with anything still parked offers to close the gap there and then:{" "}
+      <code>L</code> reloads the sheep, <code>R</code> restarts it, and{" "}
       <code>Esc</code> again leaves the fields parked. Nothing is at risk
       either way, since every one of them is already sitting in the
       override store; the offer only decides when the running sheep catches
@@ -809,10 +845,10 @@ esc/s close   j/k select   g… control enabled`;
     <p>
       <code>e</code> or <code>Enter</code> on the <code>env</code> row opens
       a sub-screen of that sheep's env key names. No value ever appears
-      there, because the shepherd never sends one: every key reads
+      there, because the shepherd never sends one: every key reads{" "}
       <code>&lt;set&gt;</code>. <code>e</code> or <code>Enter</code> on a
       key types a new value for it, and applying an empty one removes the
-      key. Either on the <code>+ new</code> row takes
+      key. Either on the <code>+ new</code> row takes{" "}
       <code>KEY=value</code>. <code>Esc</code> goes back to the field list;
       a second <code>Esc</code> from there closes the pane.
     </p>
@@ -834,18 +870,18 @@ esc/s close   j/k select   g… control enabled`;
 
     <h2>The dog config pane</h2>
     <p>
-      <code>e</code> on a dog row opens its config, over that dog's
+      <code>e</code> on a dog row opens its config, over that dog's{" "}
       <code>[&lt;name&gt;]</code> section in <code>dogs.toml</code>. It
-      works the same whether the row sits in the dashboard's own
+      works the same whether the row sits in the dashboard's own{" "}
       <code>Dogs</code> section or the settings screen's dogs table. It
       used to refuse there and point you at <code>s</code> for settings
-      instead; now the row itself is enough. Inside the pane,
+      instead; now the row itself is enough. Inside the pane,{" "}
       <code>e</code> is the field list's own edit key, the same as on a
       sheep's config; only <code>Esc</code> closes it.
     </p>
     <p>
       The form comes from the dog. Shep asks the binary for its schema when
-      the pane opens rather than reading one it stored, because
+      the pane opens rather than reading one it stored, because{" "}
       <code>cargo install</code> replaces a dog with nothing watching and a
       stale schema mislabels which field is a credential. A built-in dog
       answers without being spawned at all. A dog that publishes no schema
@@ -868,16 +904,16 @@ esc/s close   j/k select   g… control enabled`;
     </p>
     <CodeBlock>{`shep publishes the change; bark decides what to reload`}</CodeBlock>
     <p>
-      A field the dog marks as a credential reads <code>&lt;set&gt;</code>
+      A field the dog marks as a credential reads <code>&lt;set&gt;</code>{" "}
       and never its value, and the editor on it opens empty. Typing a new one
       replaces it; nothing here can show you what it replaced. A table or a
-      list gets <code>~</code>, the same glyph a sheep's
+      list gets <code>~</code>, the same glyph a sheep's{" "}
       <code>args</code> gets and for the same reason.
     </p>
     <p>
-      A write sends the section whole, so the comments and key order in
+      A write sends the section whole, so the comments and key order in{" "}
       <code>dogs.toml</code> survive it. Applying an empty value removes the
-      key, which puts the dog back on its own default. Neither
+      key, which puts the dog back on its own default. Neither{" "}
       <code>*</code> nor <code>!</code> appears: a dog has no Flockfile to
       differ from, and <code>dogs.toml</code> is the one copy of its
       settings.
@@ -893,7 +929,7 @@ esc/s close   j/k select   g… control enabled`;
       <a href="/docs/kv" class="next-card">
         <div class="next-title">The KV store →</div>
         <div class="next-body">
-          <code>lookout.allow_control</code> lives here too: the same store
+          <code>lookout.allow_control</code> lives here too: the same store{" "}
           <code>shep set</code>/<code>get</code>/<code>unset</code> read and
           write directly, no shepherd required.
         </div>

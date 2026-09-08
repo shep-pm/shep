@@ -30,7 +30,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       shep is pre-1.0, so anything here can still change. macOS, Linux and
       Windows all work; the Windows tier is newer, and two limits are worth
       knowing before you rely on it — <code>shep stop</code> has no graceful
-      signal to send unless your app reads the shepherd channel, and
+      signal to send unless your app reads the shepherd channel, and{" "}
       <code>shep startup</code> is not built there.
     </Callout>
 
@@ -47,18 +47,18 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       <div><span class="prompt">$</span> ./target/release/shep --help</div>
     </div>
     <p class="fine">
-      Rust 1.88 or newer, edition 2024, if you build from source. Put
+      Rust 1.88 or newer, edition 2024, if you build from source. Put{" "}
       <code>target/release/shep</code> on your PATH, or keep typing the full
       path. Everything below works either way.
     </p>
     <p class="fine">
-      Two more things that belong to this step.
+      Two more things that belong to this step.{" "}
       <code>shep completions &lt;shell&gt;</code> prints a completion script
       for bash, elvish, fish, powershell or zsh, to redirect wherever your
       shell reads them from. It completes verbs and flags and stops there:
       sheep names, fold names and anything else the shepherd knows are never
-      completed, because the script never talks to one. And
-      <code>shep welcome</code> reprints the greeting a fresh
+      completed, because the script never talks to one. And{" "}
+      <code>shep welcome</code> reprints the greeting a fresh{" "}
       <code>$SHEP_HOME</code> shows once on its own: the sheep, the home it
       set up, and the five commands worth knowing.
     </p>
@@ -108,7 +108,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       predates the handover and has nothing to hand over with.
     </p>
     <Callout variant="careful">
-      Skip <code>shep daemon reload</code> and the new binary answers
+      Skip <code>shep daemon reload</code> and the new binary answers{" "}
       <code>shep --version</code> while the running shepherd is still the
       old one. shep refuses most verbs against a version-skewed shepherd and
       names this exact command as the fix.
@@ -131,11 +131,11 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
 
     <h2>2. Write a Flockfile</h2>
     <p>
-      Two fields is a complete one. <code>Flockfile.toml</code>,
+      Two fields is a complete one. <code>Flockfile.toml</code>,{" "}
       <code>.yaml</code>, <code>.json</code> and <code>.json5</code> all
-      work. <code>shep start</code> below takes the path explicitly;
+      work. <code>shep start</code> below takes the path explicitly;{" "}
       <code>shep runtime</code> and <code>shep dev</code> can find one on
-      their own instead, by searching ten filenames in a fixed order: see
+      their own instead, by searching ten filenames in a fixed order: see{" "}
       <a href="/docs/first-flockfile">Your first Flockfile</a>.
     </p>
     <div class="file-panel">
@@ -148,15 +148,15 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
     </div>
     <Callout variant="note">
       Unknown fields are a parse error, not a shrug. A typo tells you at
-      load instead of at 3am. Durations and sizes are strict on purpose:
-      <code>512M</code> and <code>30s</code> parse; <code>512MB</code>,
+      load instead of at 3am. Durations and sizes are strict on purpose:{" "}
+      <code>512M</code> and <code>30s</code> parse; <code>512MB</code>,{" "}
       <code>1.5G</code> and <code>30S</code> do not.
     </Callout>
 
     <h3>Scripts that need an interpreter</h3>
     <p>
       <code>script</code> is run directly, so a compiled binary or a file
-      with a shebang and the executable bit needs nothing further. A plain
+      with a shebang and the executable bit needs nothing further. A plain{" "}
       <code>server.js</code> has neither, and shep will not guess: guessing
       is how a process manager ends up with opinions you did not ask for.
     </p>
@@ -172,7 +172,7 @@ sh = "sh"`}</CodeBlock>
     <p>
       From then on <code>shep start server.js</code> works. Edit the table,
       add an extension, or delete the whole thing to turn it off. An
-      individual app can override it with its own
+      individual app can override it with its own{" "}
       <code>interpreter</code> field, and a single run can override both
       with <code>--interpreter</code>; the last one named wins.
     </p>
@@ -201,15 +201,15 @@ sh = "sh"`}</CodeBlock>
       The CPU column prints <code>-</code> rather than <code>0.0%</code> when
       a reading is unavailable, because a confident zero is worse than an
       obvious blank. <code>EXIT</code> uses the same convention, and shows
-      why a stopped sheep stopped. <code>CFG</code> reads <code>-</code>
-      until a sheep has config waiting on it; see
+      why a stopped sheep stopped. <code>CFG</code> reads <code>-</code>{" "}
+      until a sheep has config waiting on it; see{" "}
       <a href="/docs/overrides">Overrides</a>.
     </p>
 
     <h2>4. Watch what it prints</h2>
     <p>
-      <code>shep bleats</code> follows the logs; <code>--no-follow</code>
-      prints the tail and exits. If you prefer the boring word,
+      <code>shep bleats</code> follows the logs; <code>--no-follow</code>{" "}
+      prints the tail and exits. If you prefer the boring word,{" "}
       <code>shep logs</code> is the same command and always will be.
     </p>
     <div class="alias-grid">

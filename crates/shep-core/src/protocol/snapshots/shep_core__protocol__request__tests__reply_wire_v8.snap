@@ -808,5 +808,26 @@ expression: replies
         }
       }
     }
+  },
+  {
+    "id": 39,
+    "result": {
+      "Ok": {
+        "kind": "sheep_env_batch",
+        "data": {
+          "name": "web",
+          "set": [
+            "DATABASE_URL",
+            "API_KEY"
+          ],
+          "unchanged": [
+            "LOG_LEVEL"
+          ],
+          "collisions": [
+            "API_KEY"
+          ]
+        }
+      }
+    }
   }
 ]

@@ -13,6 +13,10 @@
  * parks nothing, and on macOS a /tmp path and its /private/tmp resolution
  * differ enough to park one for a reason no reader could reproduce.
  *
+ * `assignment` and `fillIn` were run on 2026-09-07, each in a throwaway
+ * $SHEP_HOME of its own, when a leading `NAME=VALUE` became something
+ * `shep start` and `shep add` accept.
+ *
  * `addFirst` is the exception: run on 2026-09-03, when `shep add` shipped,
  * in a throwaway $SHEP_HOME of its own. Its RESTARTS column reads 1 on the
  * third command and that is the real output, not a paste error. `shep start
@@ -118,6 +122,34 @@ $ shep flock
 ID  NAME  STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM   UPTIME  FOLD  SMIT
 0   web   online  96556  0         -     -    -    1.2M  5s      -     -`;
 
+const assignment = `$ shep start KOJI_TOKEN=s3cret ./koji --name koji
+ID  NAME  STATUS  PID   RESTARTS  EXIT  CFG  CPU  MEM    UPTIME  FOLD  SMIT
+0   koji  online  9970  0         -     *1   -    32.0K  0s      -     -
+
+$ cat $SHEP_HOME/overrides.json
+{
+  "version": 1,
+  "apps": {
+    "koji": {
+      "fields": {
+        "env": {
+          "KOJI_TOKEN": "s3cret"
+        }
+      },
+      "declared": [],
+      "declared_env": []
+    }
+  }
+}`;
+
+const fillIn = `$ shep add Flockfile.toml
+ID  NAME  STATUS   PID  RESTARTS  EXIT  CFG  CPU  MEM  UPTIME  FOLD  SMIT
+0   web   stopped  -    0         -     -    -    -    0s      -     -
+
+$ shep start DB_HOST=db.internal web
+ID  NAME  STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM    UPTIME  FOLD  SMIT
+0   web   online  16628  1         -     *1   -    32.0K  0s      -     -`;
+
 const store = `$ cat $SHEP_HOME/overrides.json
 {
   "version": 1,
@@ -158,7 +190,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
 
     <h2>Why a template and not just config</h2>
     <p>
-      The alternative was letting <code>shep start Flockfile.toml</code>
+      The alternative was letting <code>shep start Flockfile.toml</code>{" "}
       overwrite whatever it found. That reads fine on a laptop and is
       indefensible on a host: a Flockfile arrives through the app's own
       repository, so anybody who can merge a pull request could lower a
@@ -168,14 +200,14 @@ const store = `$ cat $SHEP_HOME/overrides.json
     <p>
       So a load appends. It writes the settings nobody has established yet
       and leaves everything else exactly as it is, which means the worst a
-      merged change can do to a running flock is nothing.
+      merged change can do to a running flock is nothing.{" "}
       <code>--reset=&lt;mode&gt;</code> is how you say the file wins, and it is
       something a person types.
     </p>
     <Callout variant="note">
-      A Flockfile is read when you name a file, or when
+      A Flockfile is read when you name a file, or when{" "}
       <code>shep start</code> with no target finds one in the directory you
-      ran it from. Naming a <em>sheep</em> reads no file at all:
+      ran it from. Naming a <em>sheep</em> reads no file at all:{" "}
       <code>shep start web</code> starts <code>web</code> from the config the
       shepherd already holds, and cannot be turned into a load by anything
       sitting in the current directory.
@@ -191,12 +223,12 @@ const store = `$ cat $SHEP_HOME/overrides.json
       All three are about the load a merged pull request can cause, which is
       the one with no flag on it, and that is the bound worth knowing: an
       unreviewed template cannot cost you a process. <code>--reset</code> is a
-      person asking for the template's shape, and a shape includes a count.
+      person asking for the template's shape, and a shape includes a count.{" "}
       <a href="#the-reset-flags-reshape-the-flock">Three of the four modes can
       kill</a>, and it has a section of its own below.
     </p>
     <p class="fine">
-      A dog is refused outright, at every depth. A Flockfile that names
+      A dog is refused outright, at every depth. A Flockfile that names{" "}
       <code>metrics</code> gets <code>metrics is a dog, and a dog's config
       comes from `shep adopt` rather than from a Flockfile</code> and nothing
       merges. A dog runs at the shepherd's own trust level, so a file that
@@ -212,9 +244,9 @@ const store = `$ cat $SHEP_HOME/overrides.json
     <CodeBlock label="Flockfile.toml">{template}</CodeBlock>
     <CodeBlock>{firstLoad}</CodeBlock>
     <p>
-      Nothing to report on a first load: the app was not in the flock, so
+      Nothing to report on a first load: the app was not in the flock, so{" "}
       <code>shep start</code> registered and started it, and every key in the
-      file became one somebody has now spoken for. Add a
+      file became one somebody has now spoken for. Add a{" "}
       <code>max_memory</code> and a <code>cwd</code> pointing somewhere else,
       and load the same file again:
     </p>
@@ -233,7 +265,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
     <p>
       <code>!1</code> in <code>CFG</code> means one field is parked on this
       sheep. <code>*1</code> means one field an operator has taken ownership
-      of, whether or not the current Flockfile declares it, and
+      of, whether or not the current Flockfile declares it, and{" "}
       <code>-</code> means neither.
       It is a count rather than a list because the cell is three characters
       wide; <code>shep describe</code> is where the names are:
@@ -252,7 +284,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
     </p>
     <CodeBlock>{promote}</CodeBlock>
     <p class="fine">
-      Identity is the one thing a promotion re-resolves. Changing
+      Identity is the one thing a promotion re-resolves. Changing{" "}
       <code>user</code> or <code>group</code> sends shep back to the passwd
       database, because an operator who changed who a sheep runs as means
       it; every other promotion reuses the credentials resolved at the
@@ -261,7 +293,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
 
     <h2>A second load does not repeat the first</h2>
     <p>
-      Once a key has been established, the file stops speaking for it. Move
+      Once a key has been established, the file stops speaking for it. Move{" "}
       <code>max_memory</code> to <code>2G</code> and load again and shep says
       nothing at all, because the key is one somebody has already set:
     </p>
@@ -288,7 +320,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       <div class="row"><span><code>--reset=all</code></span><span>Everything goes back to the file, <code>env</code> and the instance count included, and the sheep's override record is dropped.</span></div>
     </div>
     <p>
-      <code>env</code> is the axis that splits data from policy.
+      <code>env</code> is the axis that splits data from policy.{" "}
       <code>env</code> is the one field holding something an operator
       supplied rather than tuned, and a reset that took an app's database
       credentials away as a side effect of putting its restart budget back
@@ -311,16 +343,16 @@ const store = `$ cat $SHEP_HOME/overrides.json
     <p>
       <code>instances</code> is the one setting that changes the shape of a
       flock rather than the value of a field, which is why a plain load holds
-      it out of scope however unestablished it is. <code>file</code>,
+      it out of scope however unestablished it is. <code>file</code>,{" "}
       <code>policy</code> and <code>all</code> do not. Each puts the count
       back to what it resolves to under that mode, and putting a count back
-      down deletes the instances above it, through the same path
+      down deletes the instances above it, through the same path{" "}
       <code>shep delete</code> takes. Only <code>env</code> leaves it alone,
       the same as a plain load.
     </p>
     <p>
       <code>file</code> and the other two resolve an undeclared count
-      differently, and that difference is the whole reason <code>file</code>
+      differently, and that difference is the whole reason <code>file</code>{" "}
       exists. A Flockfile that declares <code>instances</code> gets it applied
       under any of the three, the same as any other declared key.
     </p>
@@ -329,29 +361,29 @@ const store = `$ cat $SHEP_HOME/overrides.json
       something about it under <code>policy</code> or <code>all</code>: it
       says 1, because that is what a fresh start off that file would run. So
       an app you scaled to four with <code>shep stock</code> goes to one
-      against a file that has no opinion about instances at all.
+      against a file that has no opinion about instances at all.{" "}
       <code>--reset=file</code> is the mode that survives exactly this case:
-      it only puts back what the template declares, so an undeclared
+      it only puts back what the template declares, so an undeclared{" "}
       <code>instances</code> is left running at whatever count it already
-      had. Write the count you want into the template and
+      had. Write the count you want into the template and{" "}
       <code>--reset=file</code> applies it like any other declared field.
     </Callout>
     <CodeBlock>{resetScales}</CodeBlock>
     <p>
       Four instances, a <code>policy</code> reset against a two-line
       Flockfile that does not mention <code>instances</code>, one instance
-      left. Nothing there is a bug and nothing was silent: the report names
-      <code>instances</code> among what it applied.
+      left. Nothing there is a bug and nothing was silent: the report names{" "}
+      <code>instances</code> among what it applied.{" "}
       <code>--reset=file</code> against the same file would have left all
       four running, because the file says nothing to put back. Against a
       file that declares <code>instances = 2</code>, <code>file</code> would
-      have settled at two, the same as <code>policy</code> or <code>all</code>
+      have settled at two, the same as <code>policy</code> or <code>all</code>{" "}
       would have.
     </p>
     <p class="fine">
       The table <code>start</code> prints is a snapshot taken while the
       departures are still leaving, which is why it can still show a row on
-      its way out with <code>0B</code> against it. The
+      its way out with <code>0B</code> against it. The{" "}
       <code>shep flock</code> underneath is the settled count.
     </p>
 
@@ -395,33 +427,79 @@ const store = `$ cat $SHEP_HOME/overrides.json
     <CodeBlock>{addFirst}</CodeBlock>
     <p>
       The empty values above are why it exists. Starting that file spawns a
-      process against an empty database URL: it crashes,
+      process against an empty database URL: it crashes,{" "}
       <code>autorestart</code> spends the restart budget on it, and the app
       has to be stopped before anyone can configure it. Registering first
       puts the steps in the order they belong.
     </p>
     <p class="fine">
-      The <code>1</code> under RESTARTS is not something <code>add</code>
+      The <code>1</code> under RESTARTS is not something <code>add</code>{" "}
       did. <code>shep start &lt;name&gt;</code> brings a stopped sheep up
       through the same request <code>shep restart</code> uses, and has
       counted it that way since before this verb existed.
     </p>
-    <Callout variant="careful">
-      The middle step is the one shep has no verb for yet, for an
-      established key holding a plain value. Filling one in today means
-      editing the Flockfile and loading it with <code>--reset=env</code>,
-      which hands <code>env</code> back to the file and touches nothing
+    <p>
+      The middle step is an assignment on the start that brings it up, and it
+      works for a key the file established as well as one nobody has spoken
+      for:
+    </p>
+    <CodeBlock>{fillIn}</CodeBlock>
+    <p class="fine">
+      <code>--reset=env</code> is the other direction, handing{" "}
+      <code>env</code> back to whatever the file says and touching nothing
       else, not even <code>instances</code>. A key holding a{" "}
-      <code>{'{{secret:...}}'}</code> reference does not have this gap: the
-      Flockfile never needs a second edit, only <code>shep secret set</code>.
-    </Callout>
+      <code>{'{{secret:...}}'}</code> reference needs neither: the Flockfile
+      is written once and <code>shep secret set</code> carries the value.
+    </p>
     <p>
       Running <code>shep add</code> again changes nothing and prints nothing,
       the way a second load of an unchanged file does. Naming a sheep instead
       of a file says so out loud, because a name reads no Flockfile at all
-      and leaves nothing to register:
+      and leaves nothing to register:{" "}
       <code>notice[add]: web is already registered; nothing to add.</code>
     </p>
+
+    <h2>Setting one from the command line</h2>
+    <p>
+      An assignment in front of a target is an override, written the way a
+      shell writes one:
+    </p>
+    <CodeBlock>{assignment}</CodeBlock>
+    <p>
+      The value lands twice and both halves matter. In the sheep's{" "}
+      <code>env</code>, so the first spawn carries it and a later{" "}
+      <code>shep stop koji</code> and <code>shep start koji</code> need no
+      assignment. And in the store above, so a Flockfile that later declares{" "}
+      <code>KOJI_TOKEN</code> is skipped rather than obeyed. Without that
+      second half a template arriving through the app's own repository would
+      win at the next spawn, which is the thing this page exists to stop.
+    </p>
+    <p>
+      The name follows the shell's rule: a letter or <code>_</code>, then
+      letters, digits or <code>_</code>. That is what makes{" "}
+      <code>./A=1</code> a path and <code>1A=1</code> a target rather than an
+      assignment, so a file called <code>A=1</code> is reached here the same
+      way it is reached in a shell. Only the first <code>=</code> separates
+      the two, so <code>A=x=y</code> is the value <code>x=y</code>, and a
+      repeated name takes its last value.
+    </p>
+    <p>
+      One target, and it is a script path or a sheep the flock already has. A
+      Flockfile or a fold can name several sheep and an assignment names none
+      of them, so both refuse. So does a single quoted{" "}
+      <code>"A=1 ./koji"</code>: quoting is what stops a shell splitting, and
+      splitting it a second time would need shep to invent its own quoting
+      rules for a value holding a space.
+    </p>
+    <Callout variant="careful">
+      The value passes through shep's own command line, so it is in{" "}
+      <code>ps</code> for as long as that command runs and in this shell's
+      history for good. It is not in <code>ps</code> for the sheep, which
+      holds it in <code>env</code> rather than <code>args</code>. For a
+      credential, write{" "}
+      <code>KOJI_TOKEN={'{{secret:KOJI_TOKEN}}'}</code> and let{" "}
+      <a href="/docs/secrets">secrets</a> carry the value instead.
+    </Callout>
 
     <h2>A template may add, never overwrite</h2>
     <p>
@@ -435,9 +513,9 @@ const store = `$ cat $SHEP_HOME/overrides.json
       The awkward consequence is deletion. Removing a line from a Flockfile
       does not remove the setting, once the setting is established: the file
       has stopped mentioning it, and a load that acted on an absence would
-      be overwriting by omission. <code>--reset=policy</code> or
+      be overwriting by omission. <code>--reset=policy</code> or{" "}
       <code>--reset=all</code> puts a deleted setting back to shep's own
-      default, since it is now a key the file is silent on; <code>all</code>
+      default, since it is now a key the file is silent on; <code>all</code>{" "}
       does the same for a deleted <code>env</code> key.
     </p>
 
@@ -457,25 +535,53 @@ const store = `$ cat $SHEP_HOME/overrides.json
       later load can tell "the file used to say this and no longer does"
       apart from "the file never mentioned it". <code>fields</code> is the
       other half: settings an operator has taken ownership of, whether or
-      not the current file declares them, which is what a <code>*N</code> in
+      not the current file declares them, which is what a <code>*N</code> in{" "}
       <code>CFG</code> counts.
     </p>
     <p>
-      The door that writes <code>fields</code> is
+      Two doors write <code>fields</code>. The first is{" "}
       <a href="/docs/lookout">the config pane</a>: <code>e</code> on a sheep
       in <code>shep lookout</code>, behind <code>--allow-control</code>. One
       key at a time, and the value is recorded as yours rather than spent,
-      so the key keeps its <code>*</code> and a later <code>shep start</code>
-      of the app's Flockfile leaves it alone. There is no flag on
-      <code>shep start</code> that sets one field: a load is a template
-      arriving through a pull request, and an operator's own value is not a
-      thing a template says.
+      so the key keeps its <code>*</code> and a later <code>shep start</code>{" "}
+      of the app's Flockfile leaves it alone. The second is a leading{" "}
+      <code>NAME=VALUE</code> on <code>shep start</code> or{" "}
+      <code>shep add</code>, which records the same way and reaches{" "}
+      <code>env</code> alone.
+    </p>
+    <p>
+      Neither is a flag, and there is still no flag on{" "}
+      <code>shep start</code> that sets an arbitrary field: a load is a
+      template arriving through a pull request, and an operator's own value
+      is not a thing a template says. An assignment gets past that because
+      it is the operator speaking rather than the file.
     </p>
     <p class="fine">
       A pane edit is not a <code>--reset=file</code> at one key, which is
       what it used to send. That merge is a template load, so it moved the
-      field correctly and then dropped the override for it, and the
+      field correctly and then dropped the override for it, and the{" "}
       <code>*</code> the operator had just earned never appeared.
+    </p>
+    <p>
+      <code>shep import env</code> is a third door, beside a Flockfile load
+      and a pane edit: it writes a sheep's env override directly, in one
+      write, for every key the file held or the narrower set{" "}
+      <code>--only</code> names. A key already holding the same value is
+      reported unchanged rather than rewritten. The keys it writes survive a
+      later template load the same way a pane edit's do. A key it did not
+      mark{" "}
+      <code>--secret</code> is stored in the clear, and is copied into{" "}
+      <code>flock.json</code> and the handover blob with the rest of the
+      sheep's config, same as any other override. See{" "}
+      <a href="/docs/secrets">Secrets</a>.
+    </p>
+    <p class="fine">
+      A plain value's own <code>{'{{'}</code> and <code>{'}}'}</code> are
+      doubled going in, so what lands in <code>overrides.json</code> and{" "}
+      <code>flock.json</code> is not what the <code>.env</code> wrote: a line
+      reading <code>hello {'{{world}}'}</code> is stored as{" "}
+      <code>hello {'{{{{world}}}}'}</code>. Reading or hand-editing either
+      file, expect the doubled form.
     </p>
     <p class="fine">
       A store carrying a version number higher than this shep understands is
@@ -489,7 +595,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       Per app, and the rest of the file still loads: one bad app in a file of
       eleven costing the other ten their load is the failure that would make
       people stop running this against anything real. What changes is the
-      exit code, which goes non-zero the moment any app was refused, so
+      exit code, which goes non-zero the moment any app was refused, so{" "}
       <code>shep start Flockfile.toml &amp;&amp; deploy</code> stops instead
       of carrying on with a config that did not land.
     </p>
