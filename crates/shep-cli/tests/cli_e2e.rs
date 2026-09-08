@@ -3838,6 +3838,14 @@ fn import_env_refuses_a_changed_value_without_force() {
         err.contains("PORT"),
         "the colliding key was not named: {err}"
     );
+    // The daemon compares against the sheep's intended config, so a key a
+    // Flockfile declares collides without the override store holding it.
+    // A line naming an "env store" sends the operator to a file the value
+    // need not be in.
+    assert!(
+        err.contains("the sheep's env"),
+        "the refusal must name what actually holds the key: {err}"
+    );
     assert!(!err.contains("9090"), "the value reached stderr: {err}");
     // The refusal's whole claim is that nothing moved, and this is the only
     // case where a store could have been written before it: the two

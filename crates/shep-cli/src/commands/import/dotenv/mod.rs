@@ -43,10 +43,19 @@ use crate::commands::secret::{daemon_config, exit_code_for};
 use crate::exit::ExitCode;
 use crate::output::{ImportEnvRow, ImportEnvRows, Streams, emit, write_outcome};
 
-/// The `store` cell, and the word each collision line names.
+/// The `store` cell for a secret key.
 const SECRET_STORE: &str = "secret";
 /// The other one. An env key has no environment slot, so its `slot` is `-`.
 const ENV_STORE: &str = "env";
+
+/// What a collision line says already holds the env key.
+///
+/// The daemon compares against the sheep's intended config, which is its
+/// declared env merged with any override, so `overrides.json` need not hold
+/// the value at all: a Flockfile that declares `PORT` collides on its own.
+const ENV_HOLDER: &str = "the sheep's env, from its Flockfile or an earlier override";
+/// And the secret key, where the store really is the only place to look.
+const SECRET_HOLDER: &str = "the secret store";
 
 /// Reads `args.file` into the secret store and `args.app`'s own env.
 ///
@@ -298,19 +307,19 @@ fn report_collisions(
     )
 }
 
-/// One `collision` aside per key, naming the key and the store that already
-/// holds something else. Never a value.
+/// One `collision` aside per key, naming the key and what already holds
+/// something else under it. Never a value.
 fn name_collisions(
     streams: &mut Streams<'_>,
     env_collisions: &[String],
     secret_collisions: &[String],
 ) {
-    for (keys, store) in [
-        (env_collisions, ENV_STORE),
-        (secret_collisions, SECRET_STORE),
+    for (keys, holder) in [
+        (env_collisions, ENV_HOLDER),
+        (secret_collisions, SECRET_HOLDER),
     ] {
         for key in keys {
-            let message = format!("`{key}` already holds a different value in the {store} store");
+            let message = format!("`{key}` already holds a different value in {holder}");
             streams.aside("collision", &message);
         }
     }
