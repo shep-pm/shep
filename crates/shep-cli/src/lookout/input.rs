@@ -60,6 +60,8 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char('K') => Some(KeyPress::ListMoveUp),
         KeyCode::Char('J') => Some(KeyPress::ListMoveDown),
         KeyCode::Char('b') => Some(KeyPress::Bleats),
+        KeyCode::Char('o') => Some(KeyPress::StreamCycle),
+        KeyCode::Char('m') => Some(KeyPress::LevelCycle),
         KeyCode::Enter => Some(KeyPress::Confirm),
         _ => None,
     }
@@ -262,6 +264,22 @@ mod tests {
         assert_eq!(
             map_key(&shifted, InputMode::Text),
             Some(KeyPress::TextChar('W'))
+        );
+    }
+
+    /// `o` and `m` are global bindings, taken here so the bleats pane can
+    /// cycle its stream and minimum-level axes; a key taken in `map_key` is
+    /// taken everywhere in `Normal`, the same note `b_opens_the_bleats_pane`
+    /// makes.
+    #[test]
+    fn o_and_m_cycle_the_stream_and_level_axes() {
+        assert_eq!(
+            map_key(&key(KeyCode::Char('o')), InputMode::Normal),
+            Some(KeyPress::StreamCycle)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('m')), InputMode::Normal),
+            Some(KeyPress::LevelCycle)
         );
     }
 

@@ -13,16 +13,7 @@ use super::tail::{Stream, TailLine};
 /// deriving "newest" from the three fields directly: nothing about a
 /// `Stream`, a `Level` or a `String` says when it was set, so
 /// [`BleatsPane::drop_newest_chip`] needs an explicit order to pop from.
-///
-/// No non-test caller for the setters that construct a variant yet:
-/// `#[allow(dead_code)]` on them says so rather than inventing one.
-/// [`BleatsPane::set_stream`], [`BleatsPane::set_min_level`] and
-/// [`BleatsPane::set_match`] each construct one, but no task in this plan
-/// binds a key to any of the three — the filter row (this task) only reads
-/// `Filters`, it does not set it. Whichever task wires the keys is the
-/// first production caller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 enum Axis {
     /// The stream axis: `out`, `err`, or both.
     Stream,
@@ -159,15 +150,6 @@ pub struct Filters {
 impl Filters {
     /// Records that `axis` just turned on or off, keeping [`Self::order`] in
     /// sync without letting an axis appear in it twice.
-    ///
-    /// No non-test caller yet in this plan: `#[allow(dead_code)]` says so
-    /// rather than inventing one. `set_stream`, `set_min_level` and
-    /// `set_match` call this, and Task 4 (this task) exercises all three
-    /// from its own test fixture, but no task in this plan wires an actual
-    /// key to any of them — the filter row this task draws only *reads*
-    /// `Filters`. Whichever task ends up binding the keys is this method's
-    /// first production caller.
-    #[allow(dead_code)]
     fn note_axis(&mut self, axis: Axis, now_set: bool) {
         let already_set = self.order.contains(&axis);
         if now_set && !already_set {
@@ -247,14 +229,19 @@ impl Filters {
 /// Holds the sheep it opened on rather than reading the dashboard's
 /// selection: full screen leaves no table on which to change one, so the
 /// pane describes a single sheep for as long as it is open. Also holds the
-/// filters an operator has stacked on top of that sheep's feed.
+/// filters an operator has stacked on top of that sheep's feed, and, while
+/// the match box is open, what the match axis held before the edit began.
 ///
-/// `Debug` is derived. A row key, a filter set and a cursor position carry
-/// no env, no path and no argument vector.
+/// `Debug` is derived. A row key, a filter set and a snapshot of typed
+/// search text carry no env, no path and no argument vector.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BleatsPane {
     sheep: RowKey,
     filters: Filters,
+    /// `Some` while the match box owns `InputMode::Text`; the match axis's
+    /// text as it stood before this edit started, so [`Self::abandon_match_edit`]
+    /// can restore it. `None` the rest of the time.
+    match_snapshot: Option<Option<String>>,
 }
 
 impl BleatsPane {
@@ -264,6 +251,7 @@ impl BleatsPane {
         Self {
             sheep,
             filters: Filters::default(),
+            match_snapshot: None,
         }
     }
 
@@ -283,12 +271,6 @@ impl BleatsPane {
     }
 
     /// Restricts the feed to one stream, or both when `stream` is `None`.
-    ///
-    /// No non-test caller yet: `#[allow(dead_code)]` says so rather than
-    /// inventing one. This plan's filter row (drawn by
-    /// [`super::view::bleats_full::draw`]) only reads [`Filters`]; no task
-    /// in it binds a key to this setter.
-    #[allow(dead_code)]
     pub fn set_stream(&mut self, stream: Option<Stream>) {
         self.filters.note_axis(Axis::Stream, stream.is_some());
         self.filters.stream = stream;
@@ -296,10 +278,6 @@ impl BleatsPane {
 
     /// Sets the minimum level a line must meet to show, or clears the floor
     /// when `level` is `None`.
-    ///
-    /// No non-test caller yet: `#[allow(dead_code)]` says so rather than
-    /// inventing one. See [`Self::set_stream`]'s doc for why.
-    #[allow(dead_code)]
     pub fn set_min_level(&mut self, level: Option<Level>) {
         self.filters.note_axis(Axis::Level, level.is_some());
         self.filters.min_level = level;
@@ -312,14 +290,32 @@ impl BleatsPane {
     /// there is no chip an operator can point at for "match nothing
     /// typed yet", so an empty search box behaves as if the axis were
     /// never set.
-    ///
-    /// No non-test caller yet: `#[allow(dead_code)]` says so rather than
-    /// inventing one. See [`Self::set_stream`]'s doc for why.
-    #[allow(dead_code)]
     pub fn set_match(&mut self, text: String) {
         let matcher = (!text.is_empty()).then_some(text);
         self.filters.note_axis(Axis::Match, matcher.is_some());
         self.filters.matcher = matcher;
+    }
+
+    /// Opens the match box, remembering the match axis's current text so
+    /// [`Self::abandon_match_edit`] can restore it.
+    pub fn begin_match_edit(&mut self) {
+        self.match_snapshot = Some(self.filters.matcher.clone());
+    }
+
+    /// Ends the match box, keeping whatever [`Self::set_match`] already
+    /// applied on the way in: `TextChar` and `TextBackspace` narrow the
+    /// axis live, so there is nothing left for this to write.
+    pub fn commit_match_edit(&mut self) {
+        self.match_snapshot = None;
+    }
+
+    /// Restores the match axis to what [`Self::begin_match_edit`] saw,
+    /// discarding whatever was typed since. A no-op if the match box was
+    /// never opened.
+    pub fn abandon_match_edit(&mut self) {
+        if let Some(previous) = self.match_snapshot.take() {
+            self.set_match(previous.unwrap_or_default());
+        }
     }
 
     /// The lines from `lines` that survive every filter axis currently set.

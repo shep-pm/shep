@@ -23,8 +23,10 @@ use shep_core::protocol::{
 use shep_core::status::ProcStatus;
 
 use super::field::{FieldKind, FieldSet};
+use super::level::Level;
 use super::pane::{ConfigPane, FieldValue, Lock, PaneEdit, PanePending, PaneTarget, ReloadKind};
 use super::pane_bleats::BleatsPane;
+use super::tail::Stream;
 use super::theme::Palette;
 use super::viewport::Viewport;
 use crate::commands::settings::{SettingEdit, SettingField, SettingsSnapshot, settings_field_set};
@@ -118,6 +120,16 @@ pub enum KeyPress {
     /// `b`: opens the full-screen bleats pane on the selected sheep. Does
     /// nothing with no sheep selected, the way `e` does.
     Bleats,
+    /// `o`: cycles the bleats pane's stream axis, `None` (both) → `Out` →
+    /// `Err` → `None`. A global binding, so the dashboard sees it too, and
+    /// ignores it: there is no stream axis outside the pane.
+    StreamCycle,
+    /// `m`: cycles the bleats pane's minimum-level axis through every
+    /// [`super::level::Level`] in ascending order, then back to `None`.
+    /// Chosen over a design-named key because the status bar's own list
+    /// names none for this axis; a global binding, ignored on the
+    /// dashboard the same way [`Self::StreamCycle`] is.
+    LevelCycle,
 }
 
 /// Everything that can change the dashboard.
@@ -2390,6 +2402,11 @@ impl App {
             // Opens on the selected sheep, or does nothing without one, the
             // same shape `KeyPress::Edit` follows above.
             KeyPress::Bleats => self.ask_for_bleats(),
+            // Both cycle a bleats-pane filter axis, and the dashboard has no
+            // such axis; named here rather than left to fall through the
+            // arm above, the same way `KeyPress::Bleats` would be ignored
+            // on a screen with no bleats pane.
+            KeyPress::StreamCycle | KeyPress::LevelCycle => Effect::None,
         }
     }
 
@@ -2420,6 +2437,47 @@ impl App {
                 }
                 Effect::None
             }
+            // Opens the match box: `on_text_key` routes the keystrokes that
+            // follow to `on_bleats_text_key` once this pane owns
+            // `InputMode::Text`. `begin_match_edit` remembers what the axis
+            // held, so an abandoned edit restores it rather than losing it.
+            KeyPress::FilterStart => {
+                if let Some(pane) = self.bleats_pane_mut() {
+                    pane.begin_match_edit();
+                }
+                self.mode = InputMode::Text;
+                Effect::None
+            }
+            // `o`: `None` (both streams) -> `Out` -> `Err` -> `None`.
+            KeyPress::StreamCycle => {
+                if let Some(pane) = self.bleats_pane_mut() {
+                    let next = match pane.filters().stream {
+                        None => Some(Stream::Out),
+                        Some(Stream::Out) => Some(Stream::Err),
+                        Some(Stream::Err) => None,
+                    };
+                    pane.set_stream(next);
+                }
+                Effect::None
+            }
+            // `m`: every `Level` in ascending order, then back to `None`.
+            // The cycle must reach `None` again, or an operator who sets a
+            // minimum can never see an unclassifiable line again without
+            // closing the pane.
+            KeyPress::LevelCycle => {
+                if let Some(pane) = self.bleats_pane_mut() {
+                    let next = match pane.filters().min_level {
+                        None => Some(Level::Trace),
+                        Some(Level::Trace) => Some(Level::Debug),
+                        Some(Level::Debug) => Some(Level::Info),
+                        Some(Level::Info) => Some(Level::Warn),
+                        Some(Level::Warn) => Some(Level::Error),
+                        Some(Level::Error) => None,
+                    };
+                    pane.set_min_level(next);
+                }
+                Effect::None
+            }
             KeyPress::SelectUp
             | KeyPress::SelectDown
             | KeyPress::SelectFirst
@@ -2427,7 +2485,9 @@ impl App {
             | KeyPress::Refresh
             | KeyPress::Action(_)
             | KeyPress::Confirm
-            | KeyPress::FilterStart
+            // Reach here only from text mode, already branched above in
+            // `on_key`; listed so a new `KeyPress` variant cannot fall
+            // silently into an arm that ignores it.
             | KeyPress::TextChar(_)
             | KeyPress::TextBackspace
             | KeyPress::TextApply
@@ -2440,6 +2500,50 @@ impl App {
             | KeyPress::ListMoveUp
             | KeyPress::ListMoveDown
             | KeyPress::Bleats => Effect::None,
+        }
+    }
+
+    /// The bleats pane's match box, in force while it owns
+    /// [`InputMode::Text`]. Follows the flock table's own text keymap
+    /// ([`Self::on_filter_text_key`]) with one difference the design calls
+    /// for: typing narrows live through [`BleatsPane::set_match`], but
+    /// `TextAbandon` restores whatever [`BleatsPane::begin_match_edit`] saw
+    /// rather than clearing the axis outright, since the axis may already
+    /// have held a chip from an earlier edit.
+    fn on_bleats_text_key(&mut self, key: KeyPress) -> Effect {
+        match key {
+            KeyPress::Quit => Effect::Quit,
+            KeyPress::TextChar(typed) => {
+                if let Some(pane) = self.bleats_pane_mut() {
+                    let mut text = pane.filters().matcher.clone().unwrap_or_default();
+                    text.push(typed);
+                    pane.set_match(text);
+                }
+                Effect::None
+            }
+            KeyPress::TextBackspace => {
+                if let Some(pane) = self.bleats_pane_mut() {
+                    let mut text = pane.filters().matcher.clone().unwrap_or_default();
+                    text.pop();
+                    pane.set_match(text);
+                }
+                Effect::None
+            }
+            KeyPress::TextApply => {
+                self.mode = InputMode::Normal;
+                if let Some(pane) = self.bleats_pane_mut() {
+                    pane.commit_match_edit();
+                }
+                Effect::None
+            }
+            KeyPress::TextAbandon => {
+                self.mode = InputMode::Normal;
+                if let Some(pane) = self.bleats_pane_mut() {
+                    pane.abandon_match_edit();
+                }
+                Effect::None
+            }
+            _ => Effect::None,
         }
     }
 
@@ -2520,6 +2624,8 @@ impl App {
             | KeyPress::ListRemove
             | KeyPress::ListMoveUp
             | KeyPress::ListMoveDown
+            | KeyPress::StreamCycle
+            | KeyPress::LevelCycle
             | KeyPress::Bleats => {}
         }
         Effect::None
@@ -2703,6 +2809,8 @@ impl App {
             | KeyPress::ListRemove
             | KeyPress::ListMoveUp
             | KeyPress::ListMoveDown
+            | KeyPress::StreamCycle
+            | KeyPress::LevelCycle
             | KeyPress::Bleats => {}
         }
         Effect::None
@@ -2798,6 +2906,8 @@ impl App {
             | KeyPress::ListRemove
             | KeyPress::ListMoveUp
             | KeyPress::ListMoveDown
+            | KeyPress::StreamCycle
+            | KeyPress::LevelCycle
             | KeyPress::Bleats => Effect::None,
         }
     }
@@ -3176,6 +3286,8 @@ impl App {
             | KeyPress::TextApply
             | KeyPress::TextAbandon
             | KeyPress::Help
+            | KeyPress::StreamCycle
+            | KeyPress::LevelCycle
             | KeyPress::Bleats => {}
         }
         Effect::None
@@ -3257,6 +3369,8 @@ impl App {
             | KeyPress::ListRemove
             | KeyPress::ListMoveUp
             | KeyPress::ListMoveDown
+            | KeyPress::StreamCycle
+            | KeyPress::LevelCycle
             | KeyPress::Bleats => {}
         }
         Effect::None
@@ -3735,16 +3849,20 @@ impl App {
     /// closed, [`Self::on_settings_text_key`]'s editor while it is open. The
     /// two never both own [`InputMode::Text`].
     fn on_text_key(&mut self, key: KeyPress) -> Effect {
-        // Three now, and the split is still total: the config pane and the
-        // settings screen cannot both be open (`e` reaches the dashboard
-        // only from the dashboard, and `s` only from there too), and
-        // neither can coexist with the filter box, which `Msg::Settings`'s
-        // own arm closed the window on.
+        // Four now, and the split is still total: the config pane, the
+        // settings screen and the bleats pane cannot coexist with each
+        // other (`e` and `s` reach the dashboard only from the dashboard,
+        // and `b` only from there too), and none of them coexist with the
+        // dashboard's own filter box, which `Msg::Settings`'s own arm
+        // closed the window on.
         if self.config_pane().is_some() {
             return self.on_pane_text_key(key);
         }
         if self.settings().is_some() {
             return self.on_settings_text_key(key);
+        }
+        if self.bleats_pane().is_some() {
+            return self.on_bleats_text_key(key);
         }
         self.on_filter_text_key(key)
     }
@@ -7207,6 +7325,158 @@ mod tests {
             matches!(app.body(), Body::FlockTable),
             "with no chips left the next Escape closes"
         );
+    }
+
+    /// `o` cycles the stream axis through its three states and back. Three
+    /// presses return to where it began, which is what makes it a cycle
+    /// rather than a toggle that strands the operator on `err`.
+    #[test]
+    fn o_cycles_the_stream_axis_and_returns_to_both() {
+        let mut app =
+            fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        assert!(app.bleats_pane().expect("open").filters().stream.is_none());
+        let _ = app.update(Msg::Key(KeyPress::StreamCycle));
+        let first = app.bleats_pane().expect("open").filters().stream;
+        assert!(first.is_some(), "one press sets an axis");
+        let _ = app.update(Msg::Key(KeyPress::StreamCycle));
+        let _ = app.update(Msg::Key(KeyPress::StreamCycle));
+        assert!(
+            app.bleats_pane().expect("open").filters().stream.is_none(),
+            "three presses land back on both"
+        );
+    }
+
+    /// `m` raises the minimum level and eventually clears it. The unset state
+    /// has to be reachable by key, or an operator who sets a minimum can never
+    /// see unlevelled output again without closing the pane.
+    #[test]
+    fn m_cycles_the_level_axis_back_to_unset() {
+        let mut app =
+            fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let mut seen_some = false;
+        for _ in 0..8 {
+            let _ = app.update(Msg::Key(KeyPress::LevelCycle));
+            if app
+                .bleats_pane()
+                .expect("open")
+                .filters()
+                .min_level
+                .is_some()
+            {
+                seen_some = true;
+            }
+        }
+        assert!(seen_some, "the cycle passes through a set minimum");
+        // Whatever the cycle length, it must return to unset within one lap.
+        let mut cleared = false;
+        for _ in 0..8 {
+            let _ = app.update(Msg::Key(KeyPress::LevelCycle));
+            if app
+                .bleats_pane()
+                .expect("open")
+                .filters()
+                .min_level
+                .is_none()
+            {
+                cleared = true;
+                break;
+            }
+        }
+        assert!(cleared, "the cycle returns to unset");
+    }
+
+    /// `/` opens the match input rather than doing nothing, which is what it
+    /// did when this pane first shipped.
+    #[test]
+    fn slash_opens_the_match_input_in_the_bleats_pane() {
+        let mut app =
+            fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let _ = app.update(Msg::Key(KeyPress::FilterStart));
+        assert_eq!(app.mode(), InputMode::Text, "typing goes to the pane");
+    }
+
+    /// Typing into the match box narrows live, the same as the flock
+    /// table's own `/` box: the operator sees the filter row react to every
+    /// keystroke rather than only after `Enter`.
+    #[test]
+    fn typing_in_the_match_box_narrows_live() {
+        let mut app =
+            fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let _ = app.update(Msg::Key(KeyPress::FilterStart));
+        let _ = app.update(Msg::Key(KeyPress::TextChar('p')));
+        let _ = app.update(Msg::Key(KeyPress::TextChar('o')));
+        assert_eq!(
+            app.bleats_pane()
+                .expect("open")
+                .filters()
+                .matcher
+                .as_deref(),
+            Some("po")
+        );
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+        assert_eq!(app.mode(), InputMode::Normal);
+        assert_eq!(
+            app.bleats_pane()
+                .expect("open")
+                .filters()
+                .matcher
+                .as_deref(),
+            Some("po"),
+            "TextApply keeps what was already applied live"
+        );
+    }
+
+    /// `TextAbandon` restores the match axis to what it held before the box
+    /// opened, discarding whatever was typed since, rather than clearing it
+    /// outright the way the flock table's own filter box does.
+    #[test]
+    fn abandoning_the_match_box_restores_the_axis_it_had_before() {
+        let mut app =
+            fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        app.bleats_pane_mut()
+            .expect("open")
+            .set_match("pool".to_string());
+
+        let _ = app.update(Msg::Key(KeyPress::FilterStart));
+        let _ = app.update(Msg::Key(KeyPress::TextChar('x')));
+        assert_eq!(
+            app.bleats_pane()
+                .expect("open")
+                .filters()
+                .matcher
+                .as_deref(),
+            Some("poolx"),
+            "typing narrowed live"
+        );
+        let _ = app.update(Msg::Key(KeyPress::TextAbandon));
+        assert_eq!(app.mode(), InputMode::Normal);
+        assert_eq!(
+            app.bleats_pane()
+                .expect("open")
+                .filters()
+                .matcher
+                .as_deref(),
+            Some("pool"),
+            "abandon restores what the axis held before the edit"
+        );
+    }
+
+    /// `o` and `m` are global bindings, so the dashboard sees them too; with
+    /// no bleats pane open there is no stream or level axis to cycle, and
+    /// the reducer says so explicitly rather than falling through to a
+    /// wildcard, the same way it already does for `KeyPress::Bleats` here.
+    #[test]
+    fn stream_and_level_cycle_are_inert_on_the_dashboard() {
+        let mut app =
+            fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        assert_eq!(app.update(Msg::Key(KeyPress::StreamCycle)), Effect::None);
+        assert_eq!(app.update(Msg::Key(KeyPress::LevelCycle)), Effect::None);
+        assert!(matches!(app.body(), Body::FlockTable));
     }
 
     /// `b` with nothing selected asks for nothing, the way `e` does.
