@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-08
+
+### Added
+
+- Import a .env into the secret store and a sheep's env ([#187](https://github.com/shep-pm/shep/pull/187)) **(BREAKING)**
+
+
 ## [0.6.5] - 2026-09-08
 
 ### Added
