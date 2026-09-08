@@ -8028,16 +8028,15 @@ mod tests {
         assert!(reveal_of(&app).is_none(), "the gate shut while it was read");
     }
 
-    /// Every other reason the answer is no longer wanted. Each of these
-    /// hides through [`SecretsPane::hide`], so the value has to be dropped
-    /// rather than land on a pane the operator has moved on from.
+    /// A selection move or a tab move, each hiding through
+    /// [`SecretsPane::hide`]: the pane is still on screen, still pending
+    /// nothing, and a late answer has to find that out rather than land on
+    /// a row or a tab the operator has moved past.
     #[test]
     fn a_reveal_that_lands_after_its_reason_went_away_shows_nothing() {
         for (name, press) in [
             ("selection", KeyPress::SelectDown),
             ("tab", KeyPress::TabNext),
-            ("close", KeyPress::Secrets),
-            ("escape", KeyPress::Escape),
         ] {
             let dir = tempfile::tempdir().unwrap();
             let mut app = fixtures::app_with_secrets_and_reads(dir.path(), true);
@@ -8049,6 +8048,35 @@ mod tests {
             assert!(
                 reveal_of(&app).is_none(),
                 "{name} moved on and the answer put the value back"
+            );
+        }
+    }
+
+    /// `close` and `escape` do not leave `SecretsPane` in place the way a
+    /// selection or a tab move does: they replace `self.body` with
+    /// `Body::FlockTable` outright, so a late answer landing there has
+    /// nowhere to write and would show nothing whether or not the guard
+    /// works. Reopening the pane before delivering it puts a real
+    /// `SecretsPane` back on screen — one with no pending reveal of its
+    /// own — so the guard actually has something to refuse.
+    #[test]
+    fn a_reveal_that_lands_after_the_pane_closed_and_reopened_shows_nothing() {
+        for (name, press) in [("close", KeyPress::Secrets), ("escape", KeyPress::Escape)] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut app = fixtures::app_with_secrets_and_reads(dir.path(), true);
+            let answer = fixtures::ask_to_reveal(&mut app);
+            let _ = app.update(Msg::Key(press));
+
+            let _ = app.update(Msg::Key(KeyPress::Secrets));
+            let _ = app.update(Msg::Secrets {
+                environment: "production".to_string(),
+                result: Ok(Box::new(fixtures::secrets_model(dir.path(), true))),
+            });
+            let _ = app.update(answer);
+
+            assert!(
+                reveal_of(&app).is_none(),
+                "{name} reopened a pane the stale answer names no pending read for"
             );
         }
     }
