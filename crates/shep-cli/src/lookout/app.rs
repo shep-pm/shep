@@ -2530,7 +2530,7 @@ impl App {
                 Effect::None
             }
             // `ctrl-u`: a page toward older lines. Sized through
-            // `page_amount` rather than `pane.body_rows()` directly: see
+            // `page_amount_up` rather than `pane.body_rows()` directly: see
             // that function's own doc for why a page is a line count under
             // wrap, not a raw row count.
             KeyPress::PageUp => {
@@ -4682,9 +4682,9 @@ impl App {
         }
     }
 
-    /// [`Self::bleats_pane_mut`], exposed past this module: the only route a
-    /// fixture has to stack filters onto a pane it opened, since setting one
-    /// is not yet reachable through any key.
+    /// [`Self::bleats_pane_mut`], exposed past this module so a fixture can
+    /// stack filters onto a pane it opened without walking `o` and `m`
+    /// through their cycles or typing into the match box.
     #[cfg(test)]
     pub(crate) fn bleats_pane_mut_for_tests(&mut self) -> Option<&mut BleatsPane> {
         self.bleats_pane_mut()

@@ -9,14 +9,15 @@ use ratatui::text::{Line, Span};
 
 use super::super::app::{App, RowKey};
 use super::super::pane_bleats::{BleatsPane, Filters, MatchKind};
-use super::super::tail::{Stream, TailLine};
+use super::super::tail::{FEED_WINDOW_BYTES, Stream, TailLine};
 use super::cell;
 use super::flock::fit;
+use crate::output::human_bytes;
 use crate::output::width::char_columns;
 use crate::vocabulary::Role;
 
 /// The stream tag's own width, shared by [`feed_line_rows`] (what it
-/// indents a wrapped line's continuation rows under) and [`page_amount`]
+/// indents a wrapped line's continuation rows under) and [`page_amount_up`]
 /// (what it reserves before measuring a line's row cost): `"out  "` and
 /// `"err  "` are both three letters and two trailing spaces.
 const TAG_PREFIX_WIDTH: u16 = 5;
@@ -54,7 +55,10 @@ pub fn draw(app: &App, pane: &BleatsPane, area: Rect, buffer: &mut Buffer) {
 /// Panics if `app`'s body is not the bleats pane. Every caller only reaches
 /// this after opening it.
 ///
-/// `#[cfg(test)]`: this module's own tests are the only caller today.
+/// `#[cfg(test)]`: reached from this module's tests, from
+/// `view::fixtures::draw_lines`, and from roughly a dozen tests in `app.rs`
+/// through that. It said "this module's own tests are the only caller" until
+/// the pane grew keys, and the tests that drive them live in `app.rs`.
 #[cfg(test)]
 #[must_use]
 pub(crate) fn draw_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
@@ -447,9 +451,12 @@ fn filter_row_line(
         spans.push(Span::raw(" "));
         used += 1;
     }
+    // Three clauses, the third of which the design states and this row used
+    // to omit: `esc` is the one non-obvious key in the pane, and nothing else
+    // on screen says it spends a chip rather than closing.
     let sentence = format!(
-        "{} of {} lines in the window: all three must hold, and a line with no \
-         detectable level always shows",
+        "{} of {} lines in the window: all three must hold, a line with no \
+         detectable level always shows, esc drops the newest chip",
         group_thousands(survivors),
         group_thousands(total),
     );
@@ -507,12 +514,31 @@ fn group_thousands(mut n: usize) -> String {
 /// [`Role::Meadow`].
 fn title_line(app: &App, pane: &BleatsPane, width: u16) -> Line<'static> {
     let text = match sheep_id(pane).and_then(|id| app.row(id)) {
-        Some(row) => format!(
-            "{}  out {}  err {}",
-            row.info.name,
-            row.info.out_file.as_deref().unwrap_or("-"),
-            row.info.err_file.as_deref().unwrap_or("-"),
-        ),
+        Some(row) => {
+            let feed = app.feed();
+            // The window that was read, and what fell below it. `rulings.md`
+            // dropped the whole-file line count, the absolute line numbers
+            // and the density gutter, all three of which need reading the
+            // file to say anything. Bytes below the window are not that:
+            // `tail.rs` already knows them exactly because it seeked past
+            // them, and the four-line corner strip this pane replaces
+            // already surfaces the same figures.
+            let window = format!(
+                "{} window, {} read",
+                human_bytes(FEED_WINDOW_BYTES),
+                human_bytes(feed.read_bytes),
+            );
+            let below = match feed.missed_bytes {
+                0 => String::new(),
+                bytes => format!("  {} below the window, unread", human_bytes(bytes)),
+            };
+            format!(
+                "{}  out {}  err {}  {window}{below}",
+                row.info.name,
+                row.info.out_file.as_deref().unwrap_or("-"),
+                row.info.err_file.as_deref().unwrap_or("-"),
+            )
+        }
         None => match sheep_id(pane) {
             Some(id) => format!("sheep {id}: it is no longer in the flock"),
             None => "no sheep is selected".to_string(),
@@ -833,6 +859,82 @@ mod tests {
         assert!(
             plain.is_some(),
             "the rest of the line must stay unstyled, for contrast: {survivor:?}"
+        );
+    }
+
+    /// `group_thousands` groups, pads and orders.
+    ///
+    /// Every survivor count in every other test is under a thousand, so the
+    /// separator branch never ran: dropping the `{:03}` pad passed, and so
+    /// did dropping the `reverse()`. The spec's own example is `2,847`, which
+    /// is exactly the untested path.
+    #[test]
+    fn group_thousands_pads_and_orders_its_groups() {
+        assert_eq!(group_thousands(0), "0");
+        assert_eq!(group_thousands(999), "999");
+        assert_eq!(group_thousands(2_847), "2,847");
+        // The pad: without `{:03}` this is `1,7`.
+        assert_eq!(group_thousands(1_007), "1,007");
+        // The order: reversed, this is `847,12`.
+        assert_eq!(group_thousands(12_847), "12,847");
+        assert_eq!(group_thousands(1_000_000), "1,000,000");
+    }
+
+    /// The filter row states all three clauses the design gives it.
+    ///
+    /// The third was missing: `esc` is the one non-obvious key in this pane,
+    /// and with it absent nothing on screen said the key spends a chip
+    /// rather than closing. The status bar says `esc back`, which is the
+    /// design's own wording and true of a pane with no chips set.
+    #[test]
+    fn the_filter_row_states_all_three_of_its_clauses() {
+        let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        app.update(Msg::Key(KeyPress::Bleats));
+        app.bleats_pane_mut_for_tests()
+            .expect("open")
+            .set_min_level(Some(Level::Warn));
+        let text = render_all(&draw_lines(&app, 200, 40));
+        assert!(text.contains("all three must hold"), "got {text}");
+        assert!(
+            text.contains("no detectable level always shows"),
+            "got {text}"
+        );
+        assert!(text.contains("esc drops the newest chip"), "got {text}");
+    }
+
+    /// The title names the window it read and what fell below it.
+    ///
+    /// `rulings.md` dropped the whole-file line count, the absolute line
+    /// numbers and the density gutter, all three of which need reading the
+    /// file. Bytes below the window are not in that set: `tail.rs` knows
+    /// them exactly because it seeked past them, and the design asks row 1
+    /// for them.
+    #[test]
+    fn the_title_names_the_window_and_what_fell_below_it() {
+        let mut app = with_selection(
+            ProcessInfo::builder(9, "web", ProcStatus::Online)
+                .out_file(Some("/logs/web-out.log".to_string()))
+                .build(),
+        );
+        app.update(Msg::Bleats {
+            tail: Tail {
+                lines: vec![TailLine {
+                    stream: Stream::Out,
+                    text: "listening".to_string(),
+                }],
+                missed_lines: 0,
+                missed_bytes: 831 * 1024,
+                read_bytes: 4096,
+                note: None,
+            },
+        });
+        app.update(Msg::Key(KeyPress::Bleats));
+        let text = render_all(&draw_lines(&app, 200, 40));
+        assert!(text.contains("64.0K window"), "the window it reads: {text}");
+        assert!(text.contains("4.0K read"), "and what it read: {text}");
+        assert!(
+            text.contains("below the window, unread"),
+            "and what it could not: {text}"
         );
     }
 

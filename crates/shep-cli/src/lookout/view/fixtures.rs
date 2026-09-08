@@ -313,7 +313,8 @@ pub fn full_app() -> App {
 /// the filter row's own tests.
 ///
 /// Filters are stacked through [`App::bleats_pane_mut_for_tests`] rather
-/// than a key: no key sets one yet (see that method's own doc).
+/// than through `o`, `m` and `/`, so a test naming the axes it wants does not
+/// have to walk each cycle to reach them.
 pub fn bleats_pane_with_filters() -> App {
     let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
     app.update(Msg::Bleats {
@@ -366,7 +367,7 @@ pub fn bleats_pane_with_lines(n: u32) -> App {
 /// page sized from the tail is far too many lines once the view is scrolled
 /// back into the long stretch.
 ///
-/// The shape a wrap-aware page step has to survive: `page_amount` measures
+/// The shape a wrap-aware page step has to survive: `page_amount_up` measures
 /// from the tail, and a tail of one-row lines says "a page is N lines" while
 /// the older region draws each of those lines as three rows.
 #[must_use]

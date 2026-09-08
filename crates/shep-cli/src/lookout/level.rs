@@ -3,12 +3,23 @@
 /// `Ord` is derived and the declaration order is the ordering: `Trace` is
 /// the lowest and `Error` the highest, so `level >= minimum` reads the way
 /// an operator setting `level >= warn` expects.
+///
+/// `Debug` is derived and is operator-facing rather than diagnostic: the
+/// bleats filter row renders the chip through `format!("{min:?}")`
+/// lowercased, so these variant names are the words on screen. Renaming one
+/// changes what an operator reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Level {
+    /// The lowest, and the only one an app has to opt into emitting.
     Trace,
+    /// Below `Info`, and the usual floor for an app's own noise.
     Debug,
+    /// The default an operator reads when nothing is filtered.
     Info,
+    /// Something an operator should look at, without the sheep being broken.
     Warn,
+    /// The highest. `fatal` parses to this too, since a line saying it is
+    /// fatal is not saying something milder than one saying error.
     Error,
 }
 

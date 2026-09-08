@@ -262,7 +262,7 @@ pub struct BleatsPane {
     body_rows: usize,
     /// The area's own column width, set from
     /// [`super::app::App::note_body_width`]. `0` until the first draw, which
-    /// [`super::view::bleats_full::page_amount`] reads as "no column count
+    /// [`super::view::bleats_full::page_amount_up`] reads as "no column count
     /// to wrap against" and falls back to [`Self::body_rows`] unmodified,
     /// the same amount a page always moved by before wrap existed.
     width: u16,
@@ -394,13 +394,13 @@ impl BleatsPane {
     }
 
     /// The body rows last recorded through [`Self::set_rows`], for
-    /// [`super::view::bleats_full::page_amount`] to size a page by.
+    /// [`super::view::bleats_full::page_amount_up`] to size a page by.
     #[must_use]
     pub(crate) fn body_rows(&self) -> usize {
         self.body_rows
     }
 
-    /// Records the body rows available, for [`super::view::bleats_full::page_amount`],
+    /// Records the body rows available, for [`super::view::bleats_full::page_amount_up`],
     /// which [`super::app::App::on_bleats_key`] reads before every
     /// `ctrl-u`/`ctrl-d`. Called from [`super::app::App::note_body_rows`]
     /// before every draw, the same way the config pane and settings screen
@@ -416,7 +416,7 @@ impl BleatsPane {
         self.width
     }
 
-    /// Records the area's column width, for [`super::view::bleats_full::page_amount`]
+    /// Records the area's column width, for [`super::view::bleats_full::page_amount_up`]
     /// to measure a wrapped line's row cost against. Called from
     /// [`super::app::App::note_body_width`] before every draw.
     pub fn set_width(&mut self, width: u16) {

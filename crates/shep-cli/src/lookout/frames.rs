@@ -477,6 +477,13 @@ impl Scene {
             // would no longer pin that arithmetic. 14 rows, the same tier
             // `Confirm` and its siblings use: a title, a filter row and two
             // wrapped rows fit inside `body_rows`'s 12 with room to spare.
+            //
+            // The title truncates here and that is the honest render: two
+            // full log paths plus the window figures do not fit 100 columns,
+            // and `fit` cuts what a real terminal would. Widening to show
+            // them whole would unpin the wrap arithmetic above, which is what
+            // this scene exists for. `the_title_names_the_window_and_what_
+            // fell_below_it` covers the figures at a width that fits them.
             Self::Bleats => (100, 14),
             // HealthyWide, Errored, Grouped, WithDogs, Retrying, Frozen,
             // Refused, FeedGap, FeedMissing, HostUnknown, Lambs, LambsUnknown:

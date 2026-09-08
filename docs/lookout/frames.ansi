@@ -1046,7 +1046,7 @@ The same screen at 14 rows, which is fewer than it has to draw. The cursor is on
 The full-screen bleats pane, pinned to api, with a stream, a minimum level and a regex all stacked: only out, only warn and above, only a line mentioning retrying or jitter. The filter row states the composition and counts one surviving line out of sixteen, and that one line is also the longest in the fixture, so wrapping is on and its full text runs onto a second row instead of an ellipsis.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                        6 in the flock[0m
-[0m[7m[38;5;29m ██ api  out /home/ada/.shep/logs/api-2-out.log  err /home/ada/.shep/logs/api-2-err.log             [0m
+[0m[7m[38;5;29m ██ api  out /home/ada/.shep/logs/api-2-out.log  err /home/ada/.shep/logs/api-2-err.log  64.0K wind…[0m
 [0m[48;5;235m stream out [0m [0m[48;5;235m level ≥ warn [0m [0m[48;5;235m match /retry|jitter/ (regex) [0m [0m[38;5;245m1 of 16 lines in the window: all three m…[0m
 [0m[38;5;245mout  [0mWARN [0m[7m[38;5;221mretry[0ming upstream payment gateway after a timeout, backing off 500ms before trying again w[0m
 [0m[38;5;245m     [0mith [0m[7m[38;5;221mjitter[0m added so the whole fleet does not [0m[7m[38;5;221mretry[0m at once                                     [0m

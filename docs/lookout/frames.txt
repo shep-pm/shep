@@ -1011,7 +1011,7 @@ esc/s close   j/k select   g/G first/last   r refresh   space cycle   enter appl
 The full-screen bleats pane, pinned to api, with a stream, a minimum level and a regex all stacked: only out, only warn and above, only a line mentioning retrying or jitter. The filter row states the composition and counts one surviving line out of sixteen, and that one line is also the longest in the fixture, so wrapping is on and its full text runs onto a second row instead of an ellipsis.
 
 shep lookout   /home/ada/.shep                                                        6 in the flock
- ██ api  out /home/ada/.shep/logs/api-2-out.log  err /home/ada/.shep/logs/api-2-err.log             
+ ██ api  out /home/ada/.shep/logs/api-2-out.log  err /home/ada/.shep/logs/api-2-err.log  64.0K wind…
  stream out   level ≥ warn   match /retry|jitter/ (regex)  1 of 16 lines in the window: all three m…
 out  WARN retrying upstream payment gateway after a timeout, backing off 500ms before trying again w
      ith jitter added so the whole fleet does not retry at once                                     
