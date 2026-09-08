@@ -713,14 +713,15 @@ pub struct SpawnSpec {
     pub credentials: Option<Credentials>,
 }
 
-/// Redacted: `env` carries whatever the operator configured, and this type is
-/// the one handed to `Command::envs` at exec.
+/// Redacted: `env` and `args` both carry whatever the operator configured,
+/// a resolved `{{secret:...}}` included, and this type is the one handed to
+/// `Command::envs` at exec.
 impl fmt::Debug for SpawnSpec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SpawnSpec")
             .field("name", &self.name)
             .field("program", &self.program)
-            .field("args", &self.args)
+            .field("args", &format_args!("<{} args>", self.args.len()))
             .field("cwd", &self.cwd)
             .field("env", &format_args!("<{} vars>", self.env.len()))
             .finish_non_exhaustive()
@@ -893,13 +894,16 @@ mod tests {
 
     /// This type sits on the exec boundary, so a `tracing` call that
     /// formatted it would put every configured secret in the daemon's log.
-    /// Exact string pinned so a `derive(Debug)` refactor fails here.
+    /// `args` counts as much as `env` now that a `{{secret:...}}` resolves
+    /// into it: `--token=<value>` on an argv is a value the same way
+    /// `TOKEN=<value>` on an environment is. Exact string pinned so a
+    /// `derive(Debug)` refactor fails here (IR-41).
     #[test]
-    fn debug_redacts_env_values() {
+    fn debug_redacts_env_values_and_args() {
         let mut spec = SpawnSpec {
             name: "web".to_string(),
             program: "./srv".to_string(),
-            args: Vec::new(),
+            args: vec!["--token=sk-live-abc".to_string(), "--port=8080".to_string()],
             cwd: None,
             env: BTreeMap::new(),
             out_file: PathBuf::from("/tmp/web-out.log"),
@@ -917,8 +921,8 @@ mod tests {
 
         assert_eq!(
             format!("{spec:?}"),
-            "SpawnSpec { name: \"web\", program: \"./srv\", args: [], cwd: None, env: <2 vars>, \
-             .. }"
+            "SpawnSpec { name: \"web\", program: \"./srv\", args: <2 args>, cwd: None, \
+             env: <2 vars>, .. }"
         );
     }
 }

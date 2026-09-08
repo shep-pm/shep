@@ -255,6 +255,27 @@ where an operator reads. `every_exempt_verb_is_one_of_the_documented_recovery_ve
 pins `add` at `Enforce`, since it reaches that through the `_` arm rather
 than by being named.
 
+**`PROTOCOL_VERSION` and `MIN_SUPPORTED` moved to 8 on 2026-09-07, for
+`AppConfig::environment`.** Not for `Request::PutSecrets` and
+`Response::SecretsPut`, which arrived on the same branch and moved nothing.
+The secrets branch had bumped 4 to 5 for exactly those two, on the grounds
+the two paragraphs below give, and #173 took that reason away: `Request`
+grows a `#[serde(other)] Unrecognized` variant, so a daemon that has never
+heard of `put_secrets` decodes it, answers `unsupported` naming its own
+protocol, and keeps serving the connection. An addition is free now.
+
+What is not free is a new field on a `deny_unknown_fields` struct. An older
+peer refuses the whole payload rather than ignoring a key it does not know,
+which is why `depends_on` moved the number to 5 and `environment` moved it
+to 8. `MIN_SUPPORTED` goes with it, since the handshake compares against
+the floor. 6 and 7 came from a third cause again, a retype:
+`Response::Reloading` and `Response::Restarted` became struct variants, so
+they serialize as an object where an older peer reads an array.
+
+Three causes, and only the first is exempt: an addition is free, a field on
+a `deny_unknown_fields` struct bumps, a retype bumps. The two paragraphs
+below predate the tolerant decode and record the rule it replaced.
+
 **`PROTOCOL_VERSION` moved to 4 on 2026-09-04.** It went to 3 first, for
 `ApplyConfig`'s payload rename described below, and then to 4 for the four
 requests the lookout config panes needed. The second move is argued in

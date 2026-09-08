@@ -154,6 +154,26 @@ migrated, so check `dogs.toml` first. An empty `[dog.<name>]`, which
 nothing. A dog present in only one file migrates or starts normally
 either way.
 
+**A dog can also push, not only be configured.** A provider dog sends
+`Request::PutSecrets` with its own registered name as the namespace,
+replacing whatever that namespace held for one environment rather than
+merging into it. Pushed values are cached to
+`$SHEP_HOME/secrets-cache.json` by default, so a reboot does not leave
+every sheep that reads them waiting on the dog and a network round trip;
+`persist = false` in the dog's own `[<name>]` section of `dogs.toml` turns
+that off. See `docs/brainstorming/specs/2026-09-06-secrets-store-design.md`
+for the design and `web/src/pages/docs/secrets.astro` for the operator
+account of what a namespace does and does not defend against.
+
+A namespace can legally contain a dot, and an unquoted section header does
+not mean what it looks like: `[vercel.prod]` in `dogs.toml` parses as a
+nested TOML table, key `prod` inside table `vercel`, not as one literal
+section named `vercel.prod`. A namespace with a dot in it needs a quoted
+header, `["vercel.prod"]`, or the section never matches and `persist`
+silently falls back to its default of `true`. Ordinary TOML, and the same
+trap catches any dog name with a dot in it, not only a provider's
+namespace.
+
 ## When a dog starts
 
 Every dog starts after the flock by default, so a metrics dog does not answer
@@ -390,8 +410,12 @@ that reads wrong rather than an outage.
 Those two are what shep ADDS, not the whole environment. A dog is a
 supervised process like any other, so it also starts from the small base
 every sheep gets: `PATH`, plus whichever of `HOME`, `USER`, `LANG` and `TZ`
-the shepherd itself has, plus `SHEP_INSTANCE`. Nothing from `[<name>]`
-is in there.
+the shepherd itself has, plus `SHEP_INSTANCE`, `SHEP_NAME` and
+`SHEP_ENVIRONMENT`. `SHEP_NAME` carries the same value `SHEP_DOG_NAME`
+does. `SHEP_ENVIRONMENT` is what a provider dog reads to decide which
+environment to fetch and push for: a dog has no `environment` field of its
+own, so it resolves the same way a sheep with none does, against
+`[daemon] environment`. Nothing from `[<name>]` is in there.
 
 **Read `$SHEP_DOG_NAME` rather than hardcoding a name.** It holds the name
 you are registered under, which is the operator's `--name` if they gave one
@@ -443,7 +467,7 @@ The format is line-oriented text:
 
 ```
 shep-log-rotate 0.1.3
-shep-protocol: 7
+shep-protocol: 8
 ```
 
 - Line 1 is `<name> <version>`. Shep takes the last whitespace-separated
@@ -479,7 +503,7 @@ The refusal names both numbers and both ways out:
 
 ```
 /usr/local/bin/shep-otel: this dog was built for shep protocol 6, and this
-shep needs 7 or newer; reinstall the dog without --locked so it builds
+shep needs 8 or newer; reinstall the dog without --locked so it builds
 against the current shep-core, or run a shep that accepts protocol 6
 ```
 
@@ -541,9 +565,9 @@ the upgrade.
 
 ```
 notice[dog_binary_skew]: `log-rotate`'s binary at /usr/local/bin/shep-log-rotate
-was built for shep protocol 6, and this shep needs 7 or newer; restarting it
+was built for shep protocol 6, and this shep needs 8 or newer; restarting it
 brings it back on that binary, unable to connect. Run a shep that accepts
-protocol 6, or reinstall the dog against protocol 7, and restart it again
+protocol 6, or reinstall the dog against protocol 8, and restart it again
 ```
 
 Then it restarts the dog. This is a warning and never a refusal: the
@@ -622,10 +646,10 @@ question here for a contract to answer:
 ```
 $ shep --version
 shep 0.1.24
-speaks protocol 7, accepts 7 and newer
+speaks protocol 8, accepts 8 and newer
 $ shep dog metrics --version
 shep-dog 0.1.24
-speaks protocol 7, accepts 7 and newer
+speaks protocol 8, accepts 8 and newer
 ```
 
 Neither prints the `shep-protocol:` line an external dog's probe answers
@@ -769,7 +793,7 @@ Shep now writes its own account into the dog's log as well, marked
 
 ```
 2026-09-02T14:22:31.412+02:00 [shep] shep started this dog; its process is pid 5512
-2026-09-02T14:22:31.480+02:00 [shep] shep accepted this dog's handshake; it is registered with this shepherd as `log-rotate`, on protocol 7
+2026-09-02T14:22:31.480+02:00 [shep] shep accepted this dog's handshake; it is registered with this shepherd as `log-rotate`, on protocol 8
 2026-09-02T14:22:31.492+02:00 rotating web-0-out.log (12.4 MiB)
 ```
 

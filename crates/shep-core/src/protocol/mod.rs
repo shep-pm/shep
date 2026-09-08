@@ -1,4 +1,4 @@
-//! The client<->daemon wire protocol (version 7).
+//! The client<->daemon wire protocol (version 8).
 //!
 //! Typed request/response enums plus bus events. Framing lives in
 //! [`wire`]; a serialized shape change bumps [`PROTOCOL_VERSION`].
@@ -10,8 +10,13 @@
 //! an object where an older peer reads an array. Version 7 bumped on the
 //! same retype applied to [`Response::Restarted`], which a staged restart
 //! refuses apps of for the same reason and had nowhere to name them.
+//! Version 8 bumped on a second new `AppConfig` field, `environment`, for
+//! the reason version 5 did. [`Request::PutSecrets`] rode in on the same
+//! commit and forced nothing: it is an additive variant, and a daemon that
+//! has never heard of it decodes [`Request::Unrecognized`] and refuses by
+//! name.
 //!
-//! A `*_wire_v7` test pins today's shape. A
+//! A `*_wire_v8` test pins today's shape. A
 //! `v1_*_fixture_still_deserializes` test pins an old peer's payload and
 //! never renames.
 
@@ -47,7 +52,7 @@ pub mod channel {
 /// renaming, or retyping anything serialized bumps it, recorded in the
 /// CHANGELOG. Byte fixtures in each protocol module pin the deserialize
 /// direction.
-pub const PROTOCOL_VERSION: u32 = 7;
+pub const PROTOCOL_VERSION: u32 = 8;
 
 /// The oldest protocol this build accepts from a peer.
 ///
@@ -56,20 +61,22 @@ pub const PROTOCOL_VERSION: u32 = 7;
 /// when a message shape changes such that an older peer cannot read it,
 /// and raising it refuses every peer built below it, which is why the
 /// rules in the spec exist to make that rare.
-pub const MIN_SUPPORTED: u32 = 7;
+pub const MIN_SUPPORTED: u32 = 8;
 
 #[cfg(test)]
 mod tests {
     use super::{MIN_SUPPORTED, PROTOCOL_VERSION};
 
     #[test]
-    fn a_retyped_restarted_forced_the_protocol_version_up() {
-        // fails if `Response::Restarted` becomes a struct variant without
-        // the bump, the same way `Response::Reloading` forced 6. The
-        // variant serializes as an object now where it used to serialize
-        // as an array, so an older peer decodes neither, and the handshake
-        // is the only place that can say so.
-        assert_eq!(PROTOCOL_VERSION, 7);
+    fn a_new_app_config_field_forced_the_protocol_version_up() {
+        // fails if a field is added to `AppConfig` without the bump, the
+        // same way `depends_on` forced 5 and `environment` forced 8. That
+        // struct is `deny_unknown_fields`, so an older peer refuses the
+        // whole payload rather than ignoring a key it does not know, and
+        // the handshake is the only place that can say so. The retypes of
+        // `Response::Reloading` and `Response::Restarted` forced 6 and 7
+        // for the separate reason that an object is not an array.
+        assert_eq!(PROTOCOL_VERSION, 8);
     }
 
     #[test]

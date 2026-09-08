@@ -132,9 +132,19 @@ impl RestartBudget {
             self.unstable_count = 0;
             Stability::Stable
         } else {
-            self.unstable_count += 1;
+            self.note_failed_start();
             Stability::Unstable
         }
+    }
+
+    /// Record a spawn that never produced a process.
+    ///
+    /// Always unstable, since there is no uptime to classify: an app with
+    /// `min_uptime = 0` put through `note_exit` with a zero uptime would be
+    /// called stable, and a stable count buys an immediate retry, which for
+    /// a failure that repeats is a loop with nothing between its turns.
+    pub fn note_failed_start(&mut self) {
+        self.unstable_count += 1;
     }
 
     /// Get the current consecutive-unstable-exit count

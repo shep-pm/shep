@@ -25,6 +25,7 @@ pub mod query;
 pub(crate) mod reap;
 pub mod runtime;
 pub mod schema;
+pub mod secret;
 pub(crate) mod selector;
 pub mod serve;
 pub(crate) mod settings;

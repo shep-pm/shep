@@ -85,6 +85,13 @@ pub struct ShepPaths {
     pub kv: PathBuf,
     /// Operator override store: `overrides.json`
     pub overrides: PathBuf,
+    /// Secret store: `secrets.json`
+    pub secrets: PathBuf,
+    /// Cached provider values: `secrets-cache.json`
+    ///
+    /// Derived and safe to delete, unlike [`Self::secrets`]: a provider dog
+    /// rewrites it on its next push.
+    pub secrets_cache: PathBuf,
 }
 
 /// FNV-1a, 64-bit, over `bytes`
@@ -151,6 +158,8 @@ impl ShepPaths {
             barks: home.join("barks.jsonl"),
             kv: home.join("kv.json"),
             overrides: home.join("overrides.json"),
+            secrets: home.join("secrets.json"),
+            secrets_cache: home.join("secrets-cache.json"),
             run,
             home,
         };
@@ -242,6 +251,11 @@ mod tests {
         assert_eq!(p.barks, Path::new("/home/ada/.shep/barks.jsonl"));
         assert_eq!(p.kv, Path::new("/home/ada/.shep/kv.json"));
         assert_eq!(p.overrides, Path::new("/home/ada/.shep/overrides.json"));
+        assert_eq!(p.secrets, Path::new("/home/ada/.shep/secrets.json"));
+        assert_eq!(
+            p.secrets_cache,
+            Path::new("/home/ada/.shep/secrets-cache.json")
+        );
     }
 
     /// Asserted per-platform rather than skipped on Windows: a silent

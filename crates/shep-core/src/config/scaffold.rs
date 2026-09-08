@@ -567,19 +567,21 @@ mod tests {
     }
 
     #[test]
-    fn the_all_depth_toml_scaffold_is_eighty_four_lines() {
+    fn the_all_depth_toml_scaffold_is_eighty_six_lines() {
         // Nothing else pins this number, so a field added to AppConfig
         // without a matching line in the scaffold's own layout drifts
         // silently; a docs page said 84 once and had no way to notice it
-        // had become something else. This is the red test that page needed.
+        // had become something else. This is the red test that page needed,
+        // and it went red exactly as intended when `depends_on` and
+        // `environment` each added a line.
         let text = Scaffold::new(FlockFormat::Toml, Depth::All)
             .build()
             .expect("builds");
         assert_eq!(
             text.lines().count(),
-            84,
+            86,
             "the --all TOML scaffold's line count moved; update this and the \
-             84-line figure in web/src/pages/docs/first-flockfile.astro"
+             86-line figure in web/src/pages/docs/first-flockfile.astro"
         );
     }
 

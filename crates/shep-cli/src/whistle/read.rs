@@ -242,6 +242,8 @@ mod tests {
             barks,
             kv: std::path::PathBuf::new(),
             overrides: std::path::PathBuf::new(),
+            secrets: std::path::PathBuf::new(),
+            secrets_cache: std::path::PathBuf::new(),
         }
     }
 

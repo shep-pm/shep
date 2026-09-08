@@ -2,19 +2,27 @@
 //!
 //! The assembler takes a validated `ResolvedApp` and produces a fully-resolved
 //! [`SpawnSpec`] ready for [`ProcessRunner::spawn`](crate::runner::ProcessRunner::spawn).
-//! No I/O here: all defaults, env vars, and paths are pre-resolved by the
-//! daemon before assembler is called (environment comes in via `ResolvedApp`).
+//! No I/O here: the defaults, the process env, the paths, the credentials and
+//! the secret store are all read by the daemon before the assembler is called.
+//!
+//! Two builders, and only one of them may be spawned. [`assemble`] resolves
+//! every `{{secret:...}}` and refuses the spec when one will not; the private
+//! `describe` is for the callers that read a spec's log paths or build its
+//! prober without ever starting a process.
 //!
 //! Public for its two out-of-crate readers and nothing else: `tests/real_runner.rs`
 //! calls [`assemble`] to build a spec it then spawns for real, and
 //! [`instance_slots`]'s doc example is compiled as its own crate.
 
+use core::convert::Infallible;
+use core::fmt;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use shep_core::config::ResolvedApp;
-use shep_core::config::template;
+use shep_core::config::template::{self, RenderError};
 use shep_core::paths::ShepPaths;
+use shep_core::secrets::SecretView;
 
 use crate::privilege::Credentials;
 use crate::runner::SpawnSpec;
@@ -115,35 +123,174 @@ const INHERITED: &[&str] = &[
     "TZ",
 ];
 
+/// Which of an app's fields carried a `{{secret:...}}` that would not
+/// resolve, and why.
+///
+/// Redacted by construction (IR-41): `field` is an env key or a field's own
+/// name, and [`RenderError`] quotes only the reference, the namespace and
+/// the environment. Neither half can hold a secret's value.
+#[non_exhaustive]
+#[derive(Debug)]
+pub enum AssembleError {
+    /// A template in `field` could not be rendered.
+    Template {
+        /// The env key it was in, or the field's own name (`args`,
+        /// `out_file`, `err_file`).
+        field: String,
+        /// Why.
+        source: RenderError,
+    },
+}
+
+impl AssembleError {
+    /// Whether waiting could make this spec assemble.
+    ///
+    /// `true` only for a namespace no provider dog has pushed to yet; see
+    /// [`RenderError::is_retriable`]. A caller that calls every refusal
+    /// retriable turns a key nobody has set into a crash loop.
+    #[must_use]
+    pub fn is_retriable(&self) -> bool {
+        match self {
+            Self::Template { source, .. } => source.is_retriable(),
+        }
+    }
+}
+
+impl fmt::Display for AssembleError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Template { field, source } => write!(f, "`{field}`: {source}"),
+        }
+    }
+}
+
+impl core::error::Error for AssembleError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::Template { source, .. } => Some(source),
+        }
+    }
+}
+
 /// Assembles a [`SpawnSpec`] from a validated app config and instance slot.
 ///
-/// `credentials` is resolved by the caller, since passwd/group lookups are
-/// real I/O and this function otherwise stays pure. `interpreter = None` or
-/// `Some("none")` runs the script directly; `Some(path)` runs `path` with
-/// `[script, ...args]`.
+/// `credentials` and `secrets` are both resolved by the caller, since a
+/// passwd lookup and a store read are real I/O and this function otherwise
+/// stays pure. `interpreter = None` or `Some("none")` runs the script
+/// directly; `Some(path)` runs `path` with `[script, ...args]`.
 ///
 /// Explicit `out_file`/`err_file` win over the default log path and render
-/// through the same `{{instance}}`/`{{name}}` grammar as `env` and `args`;
-/// normalize already refused a path that collides across instances unless
-/// `merge_logs` asked for it. `SpawnSpec::stdin` carries `config.stdin`
-/// straight through: unlike `channel`, nothing else turns it on.
-#[must_use]
+/// `{{instance}}` and `{{name}}` the way `env` and `args` do; normalize
+/// refuses a `{{secret:...}}` in either, and a path that collides across
+/// instances unless `merge_logs` asked for it.
+/// `SpawnSpec::stdin` carries `config.stdin` straight through: unlike
+/// `channel`, nothing else turns it on.
+///
+/// The spec a child is spawned from, and the only one that may be: every
+/// `{{secret:...}}` in it resolved. The crate-private `describe` is for a
+/// caller reading a spec it will not spawn.
+///
+/// # Errors
+///
+/// - [`AssembleError::Template`]: an `env` value or an arg names a secret
+///   this view cannot resolve. [`AssembleError::is_retriable`] says whether
+///   waiting would help. A log path cannot reach here: normalize refuses a
+///   secret in one.
 pub fn assemble(
     app: &ResolvedApp,
     instance: u32,
     paths: &ShepPaths,
     credentials: Option<Credentials>,
+    secrets: &SecretView,
+) -> Result<SpawnSpec, AssembleError> {
+    let name = app.config().name.clone();
+    build(
+        app,
+        instance,
+        paths,
+        credentials,
+        secrets.environment(),
+        |value, field| {
+            template::render(value, &name, instance, secrets).map_err(|source| {
+                AssembleError::Template {
+                    field: field.to_string(),
+                    source,
+                }
+            })
+        },
+    )
+}
+
+/// [`assemble`] for a caller reading a spec rather than spawning one: a
+/// value holding a `{{secret:...}}` this view cannot resolve keeps its
+/// references as written instead of refusing.
+///
+/// Never spawn this sheep's own program from what this returns. Its callers
+/// name a sheep's log files, preflight the program exec will find, or build
+/// a prober, and a refusal there would cost an operator the sheep itself:
+/// `shep add` exists to register a template whose secrets nobody has filled
+/// in yet, and an adoption that refused one would strand a running flock.
+///
+/// A prober is the caller that does spawn something. `OsProber` runs an
+/// exec probe's own command in this spec's `cwd` with this spec's `env`, so
+/// a value that fell back reaches that command as the reference itself:
+/// `PW={{secret:KEY}}`, not the value and not an empty string. Only a sheep
+/// that already spawned is armed with a probe, so the fallback is reachable
+/// there just while the store has stopped answering something it answered
+/// at the spawn.
+///
+/// The whole value falls back, not the one reference in it that missed, so a
+/// caller cannot read a half-resolved value as a resolved one.
+#[must_use]
+pub(crate) fn describe(
+    app: &ResolvedApp,
+    instance: u32,
+    paths: &ShepPaths,
+    credentials: Option<Credentials>,
+    secrets: &SecretView,
 ) -> SpawnSpec {
+    let name = app.config().name.clone();
+    let built: Result<SpawnSpec, Infallible> = build(
+        app,
+        instance,
+        paths,
+        credentials,
+        secrets.environment(),
+        |value, _| {
+            Ok(template::render(value, &name, instance, secrets)
+                .unwrap_or_else(|_| template::render_positional(value, &name, instance)))
+        },
+    );
+    match built {
+        Ok(spec) => spec,
+        Err(never) => match never {},
+    }
+}
+
+/// [`assemble`] and [`describe`] over one body: `render` is handed each
+/// templated value with the field name to blame, and decides what an
+/// unresolvable `{{secret:...}}` costs.
+///
+/// # Errors
+///
+/// Whatever `render` returns, at the first value it refuses.
+fn build<E>(
+    app: &ResolvedApp,
+    instance: u32,
+    paths: &ShepPaths,
+    credentials: Option<Credentials>,
+    environment: &str,
+    mut render: impl FnMut(&str, &str) -> Result<String, E>,
+) -> Result<SpawnSpec, E> {
     let config = app.config();
     let name = config.name.clone();
 
-    // Args carry the `{{instance}}`/`{{name}}` grammar too, rendered once
-    // here before the interpreter logic below decides where they land.
-    let rendered_args: Vec<String> = config
-        .args
-        .iter()
-        .map(|value| template::render(value, &name, instance))
-        .collect();
+    // Args carry the same grammar as `env`, rendered once here before the
+    // interpreter logic below decides where they land.
+    let mut rendered_args = Vec::with_capacity(config.args.len());
+    for value in &config.args {
+        rendered_args.push(render(value, "args")?);
+    }
 
     let (program, args) = match &config.interpreter {
         None => (config.script.clone(), rendered_args),
@@ -156,19 +303,19 @@ pub fn assemble(
     };
 
     // Anything not seeded here is invisible to the child: tokio_runner.rs
-    // calls env_clear() then envs(&spec.env). Each value renders through
-    // the {{instance}}/{{name}} grammar as it is inserted.
+    // calls env_clear() then envs(&spec.env). Each value renders through the
+    // grammar as it is inserted.
     let mut env = base_env();
-    env.extend(
-        config
-            .env
-            .iter()
-            .map(|(key, value)| (key.clone(), template::render(value, &name, instance))),
-    );
+    for (key, value) in &config.env {
+        let value = render(value, key)?;
+        env.insert(key.clone(), value);
+    }
     // Fixed names, always injected: an app that wants the slot under its
-    // own var can template it, e.g. `MY_VAR = "{{instance}}"`.
+    // own var can template it, e.g. `MY_VAR = "{{instance}}"`. After the
+    // app's own map, and refused by normalize, so neither can be shadowed.
     env.insert("SHEP_INSTANCE".to_string(), instance.to_string());
     env.insert("SHEP_NAME".to_string(), name.clone());
+    env.insert("SHEP_ENVIRONMENT".to_string(), environment.to_string());
 
     let cwd = config.cwd.as_ref().map(PathBuf::from);
 
@@ -178,16 +325,14 @@ pub fn assemble(
         format!("{}-{}-", name, instance)
     };
 
-    let out_file = if let Some(ref explicit) = config.out_file {
-        PathBuf::from(template::render(explicit, &name, instance))
-    } else {
-        paths.logs.join(format!("{}out.log", log_stem))
+    let out_file = match &config.out_file {
+        Some(explicit) => PathBuf::from(render(explicit, "out_file")?),
+        None => paths.logs.join(format!("{}out.log", log_stem)),
     };
 
-    let err_file = if let Some(ref explicit) = config.err_file {
-        PathBuf::from(template::render(explicit, &name, instance))
-    } else {
-        paths.logs.join(format!("{}err.log", log_stem))
+    let err_file = match &config.err_file {
+        Some(explicit) => PathBuf::from(render(explicit, "err_file")?),
+        None => paths.logs.join(format!("{}err.log", log_stem)),
     };
 
     // Also implied by wait_ready or shutdown_with_message: widening this
@@ -195,7 +340,7 @@ pub fn assemble(
     // an app that relied on it implying the channel.
     let channel = config.channel || config.wait_ready || config.shutdown_with_message;
 
-    SpawnSpec {
+    Ok(SpawnSpec {
         name,
         program,
         args,
@@ -206,7 +351,7 @@ pub fn assemble(
         channel,
         stdin: config.stdin,
         credentials,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -227,7 +372,26 @@ mod tests {
             barks: PathBuf::from("/home/ada/.shep/barks.jsonl"),
             kv: PathBuf::from("/home/ada/.shep/kv.json"),
             overrides: PathBuf::from("/home/ada/.shep/overrides.json"),
+            secrets: PathBuf::from("/home/ada/.shep/secrets.json"),
+            secrets_cache: PathBuf::from("/home/ada/.shep/secrets-cache.json"),
         }
+    }
+
+    /// A view holding nothing, in the environment a host defaults to.
+    fn no_secrets() -> SecretView {
+        SecretView::empty("production".to_string())
+    }
+
+    /// A view holding exactly `key` in `environment`, and nothing else.
+    fn view_with(environment: &str, key: &str, value: &str) -> SecretView {
+        SecretView::new(
+            environment.to_string(),
+            BTreeMap::from([(
+                key.to_string(),
+                BTreeMap::from([(environment.to_string(), value.to_string())]),
+            )]),
+            shep_core::secrets::ProviderCache::default(),
+        )
     }
 
     #[test]
@@ -254,7 +418,7 @@ mod tests {
         let app = normalize(app_config).unwrap();
         let paths = test_paths();
 
-        let spec = assemble(&app, 1, &paths, None);
+        let spec = assemble(&app, 1, &paths, None, &no_secrets()).unwrap();
 
         assert!(spec.env.contains_key("SHEP_INSTANCE"));
         assert_eq!(spec.env.get("SHEP_INSTANCE").map(|s| s.as_str()), Some("1"));
@@ -268,7 +432,7 @@ mod tests {
             ..Default::default()
         })
         .unwrap();
-        let spec = assemble(&app, 3, &test_paths(), None);
+        let spec = assemble(&app, 3, &test_paths(), None, &no_secrets()).unwrap();
         assert_eq!(spec.env.get("SHEP_INSTANCE").map(String::as_str), Some("3"));
         assert_eq!(
             spec.env.get("SHEP_NAME").map(String::as_str),
@@ -288,7 +452,7 @@ mod tests {
         let app = normalize(app_config).unwrap();
         let paths = test_paths();
 
-        let spec = assemble(&app, 0, &paths, None);
+        let spec = assemble(&app, 0, &paths, None, &no_secrets()).unwrap();
 
         assert_eq!(spec.program, "/opt/bin/server");
         assert_eq!(spec.args, vec!["--port", "8080"]);
@@ -306,7 +470,7 @@ mod tests {
         let app = normalize(app_config).unwrap();
         let paths = test_paths();
 
-        let spec = assemble(&app, 0, &paths, None);
+        let spec = assemble(&app, 0, &paths, None, &no_secrets()).unwrap();
 
         assert_eq!(spec.program, "server.py");
         assert_eq!(spec.args, vec!["--verbose"]);
@@ -324,7 +488,7 @@ mod tests {
         let app = normalize(app_config).unwrap();
         let paths = test_paths();
 
-        let spec = assemble(&app, 0, &paths, None);
+        let spec = assemble(&app, 0, &paths, None, &no_secrets()).unwrap();
 
         assert_eq!(spec.program, "node");
         assert_eq!(spec.args, vec!["app.js", "--debug", "true"]);
@@ -342,7 +506,7 @@ mod tests {
         let app = normalize(app_config).unwrap();
         let paths = test_paths();
 
-        let spec = assemble(&app, 2, &paths, None);
+        let spec = assemble(&app, 2, &paths, None, &no_secrets()).unwrap();
 
         assert_eq!(
             spec.out_file,
@@ -366,7 +530,7 @@ mod tests {
         let app = normalize(app_config).unwrap();
         let paths = test_paths();
 
-        let spec = assemble(&app, 1, &paths, None);
+        let spec = assemble(&app, 1, &paths, None, &no_secrets()).unwrap();
 
         assert_eq!(
             spec.out_file,
@@ -391,7 +555,7 @@ mod tests {
         let app = normalize(app_config).unwrap();
         let paths = test_paths();
 
-        let spec = assemble(&app, 0, &paths, None);
+        let spec = assemble(&app, 0, &paths, None, &no_secrets()).unwrap();
 
         assert_eq!(spec.out_file, PathBuf::from("/var/log/myapp.log"));
         assert_eq!(
@@ -415,7 +579,7 @@ mod tests {
         let app = normalize(app_config).unwrap();
         let paths = test_paths();
 
-        let spec = assemble(&app, 0, &paths, None);
+        let spec = assemble(&app, 0, &paths, None, &no_secrets()).unwrap();
 
         assert!(spec.channel);
     }
@@ -435,7 +599,7 @@ mod tests {
         let app = normalize(app_config).unwrap();
         let paths = test_paths();
 
-        let spec = assemble(&app, 0, &paths, None);
+        let spec = assemble(&app, 0, &paths, None, &no_secrets()).unwrap();
 
         assert!(spec.channel);
     }
@@ -456,7 +620,7 @@ mod tests {
         let app = normalize(app_config).unwrap();
         let paths = test_paths();
 
-        let spec = assemble(&app, 0, &paths, None);
+        let spec = assemble(&app, 0, &paths, None, &no_secrets()).unwrap();
 
         assert!(spec.channel);
     }
@@ -477,7 +641,7 @@ mod tests {
         let app = normalize(app_config).unwrap();
         let paths = test_paths();
 
-        let spec = assemble(&app, 0, &paths, None);
+        let spec = assemble(&app, 0, &paths, None, &no_secrets()).unwrap();
 
         assert!(!spec.channel);
     }
@@ -495,7 +659,7 @@ mod tests {
             ..Default::default()
         };
         let app = normalize(app_config).unwrap();
-        let spec = assemble(&app, 0, &test_paths(), None);
+        let spec = assemble(&app, 0, &test_paths(), None, &no_secrets()).unwrap();
         let path = spec
             .env
             .get("PATH")
@@ -519,7 +683,7 @@ mod tests {
             .env
             .insert("PATH".to_string(), "/opt/custom/bin".to_string());
         let app = normalize(app_config).unwrap();
-        let spec = assemble(&app, 0, &test_paths(), None);
+        let spec = assemble(&app, 0, &test_paths(), None, &no_secrets()).unwrap();
         assert_eq!(
             spec.env.get("PATH").map(String::as_str),
             Some("/opt/custom/bin")
@@ -532,7 +696,14 @@ mod tests {
     fn the_stdin_flag_reaches_the_spawn_spec() {
         let mut app = AppConfig::minimal("repl", "./repl");
         app.stdin = true;
-        let spec = assemble(&normalize(app).unwrap(), 0, &test_paths(), None);
+        let spec = assemble(
+            &normalize(app).unwrap(),
+            0,
+            &test_paths(),
+            None,
+            &no_secrets(),
+        )
+        .unwrap();
         assert!(spec.stdin);
     }
 
@@ -554,7 +725,7 @@ mod tests {
         );
 
         let app = normalize(config).unwrap();
-        let spec = assemble(&app, 2, &test_paths(), None);
+        let spec = assemble(&app, 2, &test_paths(), None, &no_secrets()).unwrap();
 
         assert_eq!(spec.env.get("Z_WORKER_ID").map(String::as_str), Some("z-2"));
         assert_eq!(
@@ -574,7 +745,7 @@ mod tests {
             ..Default::default()
         })
         .unwrap();
-        let spec = assemble(&app, 2, &test_paths(), None);
+        let spec = assemble(&app, 2, &test_paths(), None, &no_secrets()).unwrap();
         assert_eq!(spec.out_file, PathBuf::from("/var/log/web-2.log"));
     }
 
@@ -586,8 +757,189 @@ mod tests {
         app.channel = true;
         app.wait_ready = true;
         app.shutdown_with_message = true;
-        let spec = assemble(&normalize(app).unwrap(), 0, &test_paths(), None);
+        let spec = assemble(
+            &normalize(app).unwrap(),
+            0,
+            &test_paths(),
+            None,
+            &no_secrets(),
+        )
+        .unwrap();
         assert!(spec.channel, "the fixture should still open a channel");
         assert!(!spec.stdin);
+    }
+
+    #[test]
+    fn a_resolved_secret_reaches_the_child_env() {
+        let mut config = AppConfig::minimal("web", "./srv");
+        config
+            .env
+            .insert("PW".into(), "{{secret:DB_PASSWORD}}".into());
+        let app = normalize(config).unwrap();
+        let spec = assemble(
+            &app,
+            0,
+            &test_paths(),
+            None,
+            &view_with("production", "DB_PASSWORD", "hunter2"),
+        )
+        .unwrap();
+        assert_eq!(spec.env.get("PW").map(String::as_str), Some("hunter2"));
+    }
+
+    #[test]
+    fn shep_environment_is_injected_and_matches_the_view() {
+        let app = normalize(AppConfig::minimal("web", "./srv")).unwrap();
+        let spec = assemble(
+            &app,
+            0,
+            &test_paths(),
+            None,
+            &SecretView::empty("staging".into()),
+        )
+        .unwrap();
+        assert_eq!(
+            spec.env.get("SHEP_ENVIRONMENT").map(String::as_str),
+            Some("staging")
+        );
+    }
+
+    #[test]
+    fn a_missing_key_refuses_the_spawn_and_names_the_field() {
+        let mut config = AppConfig::minimal("web", "./srv");
+        config.env.insert("PW".into(), "{{secret:ABSENT}}".into());
+        let app = normalize(config).unwrap();
+        let err = assemble(
+            &app,
+            0,
+            &test_paths(),
+            None,
+            &SecretView::empty("production".into()),
+        )
+        .unwrap_err();
+        assert!(!err.is_retriable());
+        // Exact strings for both renderings (IR-41): the type is meant to
+        // carry a field name and a reference and never a value, and a
+        // substring check cannot see a field it was never told about.
+        assert_eq!(
+            err.to_string(),
+            "`PW`: `{{secret:ABSENT}}` has no value in the `production` environment"
+        );
+        assert_eq!(
+            format!("{err:?}"),
+            "Template { field: \"PW\", source: Unresolved { reference: \"{{secret:ABSENT}}\", \
+             environment: \"production\" } }"
+        );
+        let rendered = err.to_string();
+        assert!(
+            !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
+            "no em or en dash in copy a user reads: {rendered}"
+        );
+    }
+
+    #[test]
+    fn an_unready_namespace_refuses_retriably() {
+        let mut config = AppConfig::minimal("web", "./srv");
+        config.env.insert("PW".into(), "{{secret:vault/K}}".into());
+        let app = normalize(config).unwrap();
+        let err = assemble(
+            &app,
+            0,
+            &test_paths(),
+            None,
+            &SecretView::empty("production".into()),
+        )
+        .unwrap_err();
+        assert!(err.is_retriable());
+    }
+
+    /// Args carry the same grammar `env` does. A log path does not, and
+    /// `normalize` is what refuses one there; see
+    /// `a_secret_in_a_log_path_is_refused` in shep-core.
+    #[test]
+    fn a_secret_resolves_in_args() {
+        let mut config = AppConfig::minimal("web", "./srv");
+        config.args = vec!["--token={{secret:K}}".into()];
+        let app = normalize(config).unwrap();
+        let spec = assemble(
+            &app,
+            0,
+            &test_paths(),
+            None,
+            &view_with("production", "K", "v"),
+        )
+        .unwrap();
+        assert_eq!(spec.args, vec!["--token=v".to_string()]);
+    }
+
+    #[test]
+    fn an_app_cannot_set_shep_environment_by_hand() {
+        let mut config = AppConfig::minimal("web", "./srv");
+        config
+            .env
+            .insert("SHEP_ENVIRONMENT".into(), "sneaky".into());
+        // normalize refuses it, the same way it refuses SHEP_NAME.
+        assert!(normalize(config).is_err());
+    }
+
+    /// The half of the store a namespace reads is refused apart from the
+    /// operator's own, since only one of the two clears itself.
+    #[test]
+    fn the_two_refusal_shapes_stay_apart() {
+        let mut absent = AppConfig::minimal("a", "./srv");
+        absent.env.insert("K".into(), "{{secret:NOPE}}".into());
+        let mut unready = AppConfig::minimal("b", "./srv");
+        unready.env.insert("K".into(), "{{secret:ns/NOPE}}".into());
+        let view = SecretView::empty("production".to_string());
+        let of = |config| {
+            assemble(&normalize(config).unwrap(), 0, &test_paths(), None, &view)
+                .unwrap_err()
+                .is_retriable()
+        };
+        assert!(!of(absent), "a key nobody set waits on a person");
+        assert!(of(unready), "a namespace no dog pushed to clears itself");
+    }
+
+    /// `describe` is what registration, adoption and every prober site read,
+    /// and each of those has a live sheep to lose if a store read refuses.
+    #[test]
+    fn describe_keeps_an_unresolvable_reference_rather_than_refusing() {
+        let mut config = AppConfig::minimal("web", "./srv");
+        config.env.insert("PW".into(), "{{secret:ABSENT}}".into());
+        config.out_file = Some("/tmp/{{name}}.log".into());
+        config.merge_logs = true;
+        let app = normalize(config).unwrap();
+        let spec = describe(
+            &app,
+            0,
+            &test_paths(),
+            None,
+            &SecretView::empty("staging".into()),
+        );
+        assert_eq!(
+            spec.env.get("PW").map(String::as_str),
+            Some("{{secret:ABSENT}}")
+        );
+        assert_eq!(spec.out_file, PathBuf::from("/tmp/web.log"));
+        assert_eq!(
+            spec.env.get("SHEP_ENVIRONMENT").map(String::as_str),
+            Some("staging"),
+            "a described spec still names its environment"
+        );
+    }
+
+    /// A value that resolves is identical either way, so the two builders
+    /// cannot drift on anything but a refusal.
+    #[test]
+    fn describe_matches_assemble_when_every_reference_resolves() {
+        let mut config = AppConfig::minimal("web", "./srv");
+        config.env.insert("PW".into(), "{{secret:K}}".into());
+        let app = normalize(config).unwrap();
+        let view = view_with("production", "K", "v");
+        let assembled = assemble(&app, 2, &test_paths(), None, &view).unwrap();
+        let described = describe(&app, 2, &test_paths(), None, &view);
+        assert_eq!(assembled.env, described.env);
+        assert_eq!(assembled.out_file, described.out_file);
+        assert_eq!(assembled.args, described.args);
     }
 }

@@ -239,6 +239,7 @@ pub fn boot_options(
         socket: config.daemon.socket.clone(),
         ready_fd: None,
         restore: !args.no_restore,
+        environment: Some(config.daemon.environment.clone()),
         max_cron_sleep: config.daemon.max_cron_sleep.map(UpDuration::as_duration),
         notify_socket: notify_socket
             .filter(|_| args.foreground)
@@ -1141,6 +1142,36 @@ otel = "/usr/local/bin/shep-otel"
             .max_cron_sleep,
             None,
             "an unset knob must stay None: the daemon owns the default"
+        );
+    }
+
+    #[test]
+    fn boot_options_carry_the_configured_environment_and_default_to_production() {
+        // The host default every sheep naming no `environment` of its own
+        // resolves its `{{secret:...}}` references in, so an unset file
+        // reaching the supervisor as anything but `production` would move
+        // every such sheep to a different slot of the store.
+        let args = || DaemonArgs {
+            cmd: None,
+            no_restore: false,
+            foreground: false,
+            log_json: None,
+            log_level: None,
+            socket: None,
+            max_cron_sleep: None,
+        };
+
+        let configured =
+            DaemonConfig::load(Some("[daemon]\nenvironment = \"staging\"\n"), &|_| None).unwrap();
+        assert_eq!(
+            boot_options(&configured, &args(), None).environment,
+            Some("staging".to_string())
+        );
+
+        let unset = DaemonConfig::load(None, &|_| None).unwrap();
+        assert_eq!(
+            boot_options(&unset, &args(), None).environment,
+            Some("production".to_string())
         );
     }
 
