@@ -838,9 +838,6 @@ mod tests {
         assert_eq!(unpainted, 0, "an unselected row carries no ground at all");
     }
 
-    /// Last values stay on screen, with a sentence admitting they are
-    /// stale.
-    #[test]
     /// Also found by capturing a real screen: at 90 columns the row under
     /// the band ran off the edge mid-word while the five lines below it all
     /// marked their own cuts, which reads as a rendering fault rather than
@@ -893,6 +890,8 @@ mod tests {
         assert!(bar.contains("\u{2588} frozen"), "{bar:?}");
     }
 
+    /// Last values stay on screen, under a band that says in words how
+    /// stale they are.
     #[test]
     fn a_frozen_link_says_so_in_the_band_and_keeps_the_home_path_below_it() {
         let mut app = App::new(
@@ -1169,8 +1168,11 @@ mod tests {
                     );
                     // The row above the status bar belongs to the bottom-most
                     // pane that is up, so it is never blank: a blank one means
-                    // the upward layout left a hole.
-                    if (panes.feed || panes.detail) && !(frozen && !panes.feed) {
+                    // the upward layout left a hole. One condition for both
+                    // link states: `PANE_TIERS` never gives a terminal the
+                    // detail band without the feed, and the link panel draws
+                    // at the feed's own tier.
+                    if panes.feed || panes.detail {
                         let above = lines[lines.len() - 2];
                         assert!(
                             !above.trim().is_empty(),
