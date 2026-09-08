@@ -2075,6 +2075,30 @@ struct SheepSlot {
 }
 
 impl SheepSlot {
+    /// A registered sheep with nothing attached: no mailboxes, no marker, no
+    /// timer, at epoch zero.
+    ///
+    /// The base every literal in this module builds from, so a field added
+    /// here is written once and a caller overwrites only what it owns. Not a
+    /// `Default`: `entry` has no blank value.
+    fn new(entry: ProcessEntry) -> Self {
+        Self {
+            entry,
+            ctl: None,
+            log_ctl: None,
+            to_child: None,
+            signals: None,
+            to_stdin: None,
+            manual: None,
+            pending_delete: false,
+            epoch: 0,
+            ready_tx: None,
+            actions: ActionWaits::default(),
+            ready_failed: false,
+            restart_due: None,
+        }
+    }
+
     /// This sheep's shepherd-channel sender while something is still there to
     /// receive on it, and `None` when nothing is.
     ///
@@ -3105,24 +3129,7 @@ impl<R: ProcessRunner> Actor<R> {
             last_exit: None,
         };
         let info = to_info(&entry, &self.smits);
-        self.sheep.insert(
-            id,
-            SheepSlot {
-                entry,
-                ctl: None,
-                log_ctl: None,
-                to_child: None,
-                signals: None,
-                to_stdin: None,
-                manual: None,
-                pending_delete: false,
-                epoch: 0,
-                ready_tx: None,
-                actions: ActionWaits::default(),
-                ready_failed: false,
-                restart_due: None,
-            },
-        );
+        self.sheep.insert(id, SheepSlot::new(entry));
         Registration::Fresh(info)
     }
 
@@ -3201,24 +3208,7 @@ impl<R: ProcessRunner> Actor<R> {
                     dog,
                     last_exit: None,
                 };
-                self.sheep.insert(
-                    id,
-                    SheepSlot {
-                        entry,
-                        ctl: None,
-                        log_ctl: None,
-                        to_child: None,
-                        signals: None,
-                        to_stdin: None,
-                        manual: None,
-                        pending_delete: false,
-                        epoch: 0,
-                        ready_tx: None,
-                        actions: ActionWaits::default(),
-                        ready_failed: false,
-                        restart_due: None,
-                    },
-                );
+                self.sheep.insert(id, SheepSlot::new(entry));
                 let info = self.refuse_spawn(id, true, &err);
                 // A retriable refusal is not a failed start: the sheep is
                 // registered, waiting, and comes up on its own once the
@@ -3305,19 +3295,13 @@ impl<R: ProcessRunner> Actor<R> {
                 self.sheep.insert(
                     id,
                     SheepSlot {
-                        entry,
                         ctl: Some(handles.ctl),
                         log_ctl: Some(log_ctl),
                         to_child: Some(to_child),
                         signals: Some(handles.signals),
                         to_stdin: Some(to_stdin),
-                        manual: None,
-                        pending_delete: false,
-                        epoch: 0,
                         ready_tx,
-                        actions: ActionWaits::default(),
-                        ready_failed: false,
-                        restart_due: None,
+                        ..SheepSlot::new(entry)
                     },
                 );
                 self.emit(ProcessEventKind::Start, info.clone(), true);
@@ -3349,24 +3333,7 @@ impl<R: ProcessRunner> Actor<R> {
                     last_exit: None,
                 };
                 let info = to_info(&entry, &self.smits);
-                self.sheep.insert(
-                    id,
-                    SheepSlot {
-                        entry,
-                        ctl: None,
-                        log_ctl: None,
-                        to_child: None,
-                        signals: None,
-                        to_stdin: None,
-                        manual: None,
-                        pending_delete: false,
-                        epoch: 0,
-                        ready_tx: None,
-                        actions: ActionWaits::default(),
-                        ready_failed: false,
-                        restart_due: None,
-                    },
-                );
+                self.sheep.insert(id, SheepSlot::new(entry));
                 self.emit(ProcessEventKind::Errored, info, true);
                 // `error` names neither the app nor the path, and the caller
                 // adds the name. `spec.program` and `spec.cwd` verbatim: they
@@ -3506,12 +3473,6 @@ impl<R: ProcessRunner> Actor<R> {
             self.sheep.insert(
                 id,
                 SheepSlot {
-                    entry,
-                    ctl: None,
-                    log_ctl: None,
-                    to_child: None,
-                    signals: None,
-                    to_stdin: None,
                     // A marker is only claimed against a sheep with a live
                     // task: there is no ladder here to re-arm and no
                     // `Msg::Exited` coming to clear one.
@@ -3520,8 +3481,6 @@ impl<R: ProcessRunner> Actor<R> {
                     // that consumes it is this slot's next spawn's.
                     pending_delete: carried.pending_delete().unwrap_or(false),
                     epoch: carried.epoch(),
-                    ready_tx: None,
-                    actions: ActionWaits::default(),
                     // Restored: it needs no task to act on it, and `respawn`
                     // clears it at the spawn that answers it.
                     ready_failed,
@@ -3529,6 +3488,7 @@ impl<R: ProcessRunner> Actor<R> {
                     // wait does not start the delay over: the re-arm below
                     // computes a fresh timer from this absolute moment.
                     restart_due: carried.restart_due(),
+                    ..SheepSlot::new(entry)
                 },
             );
             // Nothing but this raises `Msg::RestartDue`, so a carried
@@ -3607,7 +3567,6 @@ impl<R: ProcessRunner> Actor<R> {
         self.sheep.insert(
             id,
             SheepSlot {
-                entry,
                 ctl: Some(handles.ctl),
                 log_ctl: Some(log_ctl),
                 to_child: Some(to_child),
@@ -3619,7 +3578,6 @@ impl<R: ProcessRunner> Actor<R> {
                 pending_delete: carried.pending_delete().unwrap_or(false),
                 epoch: carried.epoch(),
                 ready_tx,
-                actions: ActionWaits::default(),
                 // Restored: `reload_eligible` reads it beside the status, so a
                 // rollback reload can replace an instance that never reached
                 // `Online`.
@@ -3627,6 +3585,7 @@ impl<R: ProcessRunner> Actor<R> {
                 // Restored verbatim, though always `None` in practice: a sheep
                 // with a pid is not `WaitingRestart`.
                 restart_due: carried.restart_due(),
+                ..SheepSlot::new(entry)
             },
         );
         // The ladder that would kill a carried `manual` sheep went with the
@@ -5690,19 +5649,13 @@ impl<R: ProcessRunner> Actor<R> {
                 self.sheep.insert(
                     new_id,
                     SheepSlot {
-                        entry,
                         ctl: Some(handles.ctl),
                         log_ctl: Some(log_ctl),
                         to_child: Some(to_child),
                         signals: Some(handles.signals),
                         to_stdin: Some(to_stdin),
-                        manual: None,
-                        pending_delete: false,
-                        epoch: 0,
                         ready_tx: Some(ready_tx),
-                        actions: ActionWaits::default(),
-                        ready_failed: false,
-                        restart_due: None,
+                        ..SheepSlot::new(entry)
                     },
                 );
                 // The instance being replaced announces itself before its
@@ -9749,19 +9702,9 @@ mod tests {
         entry.status = ProcStatus::Stopping;
         let (ctl_tx, ctl_rx) = mpsc::channel(1);
         let slot = SheepSlot {
-            entry,
             ctl: Some(ctl_tx),
-            log_ctl: None,
-            to_child: None,
-            signals: None,
-            to_stdin: None,
-            manual: None,
-            pending_delete: false,
             epoch,
-            ready_tx: None,
-            actions: ActionWaits::default(),
-            ready_failed: false,
-            restart_due: None,
+            ..SheepSlot::new(entry)
         };
         let mut sheep = HashMap::new();
         sheep.insert(0, slot);
@@ -9859,19 +9802,8 @@ mod tests {
         sheep.insert(
             0,
             SheepSlot {
-                entry,
                 ctl: Some(ctl_tx),
-                log_ctl: None,
-                to_child: None,
-                signals: None,
-                to_stdin: None,
-                manual: None,
-                pending_delete: false,
-                epoch: 0,
-                ready_tx: None,
-                actions: ActionWaits::default(),
-                ready_failed: false,
-                restart_due: None,
+                ..SheepSlot::new(entry)
             },
         );
         let (events, _events_rx) = crate::bus::test_bus(16);
@@ -10515,24 +10447,7 @@ mod tests {
         let paths = test_paths(dir);
         let app = normalize(app).unwrap();
         let mut sheep = HashMap::new();
-        sheep.insert(
-            0,
-            SheepSlot {
-                entry: armed_entry(0, 0, 1111, app, &paths),
-                ctl: None,
-                log_ctl: None,
-                to_child: None,
-                signals: None,
-                to_stdin: None,
-                manual: None,
-                pending_delete: false,
-                epoch: 0,
-                ready_tx: None,
-                actions: ActionWaits::default(),
-                ready_failed: false,
-                restart_due: None,
-            },
-        );
+        sheep.insert(0, SheepSlot::new(armed_entry(0, 0, 1111, app, &paths)));
         let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, rx) = mpsc::channel(MAILBOX_CAPACITY);
         let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
@@ -10577,24 +10492,7 @@ mod tests {
             let app = app_with(name, |config| config.fold = Some("svc".to_string()));
             let mut entry = armed_entry(id, 0, 1111 + id, app, &paths);
             entry.dog = dog;
-            sheep.insert(
-                id,
-                SheepSlot {
-                    entry,
-                    ctl: None,
-                    log_ctl: None,
-                    to_child: None,
-                    signals: None,
-                    to_stdin: None,
-                    manual: None,
-                    pending_delete: false,
-                    epoch: 0,
-                    ready_tx: None,
-                    actions: ActionWaits::default(),
-                    ready_failed: false,
-                    restart_due: None,
-                },
-            );
+            sheep.insert(id, SheepSlot::new(entry));
         }
         let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, rx) = mpsc::channel(MAILBOX_CAPACITY);
@@ -10760,21 +10658,13 @@ mod tests {
         for instance in 0..instances {
             sheep.insert(
                 instance,
-                SheepSlot {
-                    entry: armed_entry(instance, instance, 1111 + instance, app.clone(), &paths),
-                    ctl: None,
-                    log_ctl: None,
-                    to_child: None,
-                    signals: None,
-                    to_stdin: None,
-                    manual: None,
-                    pending_delete: false,
-                    epoch: 0,
-                    ready_tx: None,
-                    actions: ActionWaits::default(),
-                    ready_failed: false,
-                    restart_due: None,
-                },
+                SheepSlot::new(armed_entry(
+                    instance,
+                    instance,
+                    1111 + instance,
+                    app.clone(),
+                    &paths,
+                )),
             );
         }
         let (events, _events_rx) = crate::bus::test_bus(64);
@@ -13648,19 +13538,8 @@ mod tests {
         actor.sheep.insert(
             id,
             SheepSlot {
-                entry: armed_entry(id, 0, 2000 + id, app, &paths),
-                ctl: None,
-                log_ctl: None,
                 to_child,
-                signals: None,
-                to_stdin: None,
-                manual: None,
-                pending_delete: false,
-                epoch: 0,
-                ready_tx: None,
-                actions: ActionWaits::default(),
-                ready_failed: false,
-                restart_due: None,
+                ..SheepSlot::new(armed_entry(id, 0, 2000 + id, app, &paths))
             },
         );
         id
@@ -17944,21 +17823,13 @@ mod tests {
                 next_id += 1;
                 sheep.insert(
                     id,
-                    SheepSlot {
-                        entry: armed_entry(id, instance, APPLY_FIRST_PID + id, app.clone(), &paths),
-                        ctl: None,
-                        log_ctl: None,
-                        to_child: None,
-                        signals: None,
-                        to_stdin: None,
-                        manual: None,
-                        pending_delete: false,
-                        epoch: 0,
-                        ready_tx: None,
-                        actions: ActionWaits::default(),
-                        ready_failed: false,
-                        restart_due: None,
-                    },
+                    SheepSlot::new(armed_entry(
+                        id,
+                        instance,
+                        APPLY_FIRST_PID + id,
+                        app.clone(),
+                        &paths,
+                    )),
                 );
             }
         }
