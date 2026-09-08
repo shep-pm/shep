@@ -668,9 +668,13 @@ mod tests {
         let text = render_all(&detail_lines(&app, 200));
         assert!(text.contains("fold edge \u{d7}2"), "got {text}");
         assert!(
-            !text.contains("out  "),
-            "a fold has no single log path: {text}"
+            text.contains("restarts") && text.contains("uptime") && text.contains("cpu"),
+            "the rollup a fold shows in place of one sheep's fields: {text}"
         );
+        // Not `!contains("out  ")`, which cannot fail: `log_row` reaches the
+        // log paths through `selected_row`, and that is `None` for a fold, so
+        // the label can only be absent. Asserting the rollup IS present is
+        // what catches `fold_lines` drifting toward a sheep's own shape.
     }
 
     /// Drives both panes off the same [`App`] built from the same row, the

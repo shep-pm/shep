@@ -4235,22 +4235,7 @@ impl App {
     /// over [`Self::fold_members`] instead of [`Self::group_members`].
     #[must_use]
     pub fn fold_status_text(&self, fold: &str) -> String {
-        let members = self.fold_members(fold);
-        let Some(first) = members.first().map(|row| row.info.status) else {
-            return String::new();
-        };
-        if members.iter().all(|row| row.info.status == first) {
-            return first.to_string();
-        }
-        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-        for row in &members {
-            *counts.entry(row.info.status.to_string()).or_default() += 1;
-        }
-        counts
-            .into_iter()
-            .map(|(status, n)| format!("{n} {status}"))
-            .collect::<Vec<_>>()
-            .join(", ")
+        Self::status_text_for(&self.fold_members(fold))
     }
 
     /// `fold`'s status when every member agrees on one.
@@ -4258,12 +4243,7 @@ impl App {
     /// name.
     #[must_use]
     pub fn fold_uniform_status(&self, fold: &str) -> Option<ProcStatus> {
-        let members = self.fold_members(fold);
-        let first = members.first()?.info.status;
-        members
-            .iter()
-            .all(|row| row.info.status == first)
-            .then_some(first)
+        Self::uniform_status_for(&self.fold_members(fold))
     }
 
     /// The shared rollup [`Self::group_totals`] and [`Self::fold_totals`]
@@ -4295,7 +4275,17 @@ impl App {
     /// stocked to several instances, so a group has no handshake to report.
     #[must_use]
     pub fn group_status_text(&self, name: &str) -> String {
-        let members = self.group_members(name);
+        Self::status_text_for(&self.group_members(name))
+    }
+
+    /// The status sentence [`Self::group_status_text`] and
+    /// [`Self::fold_status_text`] both build, over whichever members each
+    /// selects. One word when they agree, otherwise a count per status.
+    ///
+    /// Shares its shape with [`Self::totals_for`] deliberately: these are the
+    /// same rollup question asked of two different member sets, and a second
+    /// copy of the walk is how the fourth one gets written.
+    fn status_text_for(members: &[&Row]) -> String {
         let Some(first) = members.first().map(|row| row.info.status) else {
             return String::new();
         };
@@ -4303,7 +4293,7 @@ impl App {
             return first.to_string();
         }
         let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-        for row in &members {
+        for row in members {
             *counts.entry(row.info.status.to_string()).or_default() += 1;
         }
         counts
@@ -4318,7 +4308,13 @@ impl App {
     /// plain count text wears no colour.
     #[must_use]
     pub fn group_uniform_status(&self, name: &str) -> Option<ProcStatus> {
-        let members = self.group_members(name);
+        Self::uniform_status_for(&self.group_members(name))
+    }
+
+    /// The one status every member agrees on, or `None` when they differ.
+    /// [`Self::group_uniform_status`] and [`Self::fold_uniform_status`] both
+    /// key their colouring off this.
+    fn uniform_status_for(members: &[&Row]) -> Option<ProcStatus> {
         let first = members.first()?.info.status;
         members
             .iter()
