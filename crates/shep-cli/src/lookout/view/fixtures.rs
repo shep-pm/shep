@@ -1,7 +1,7 @@
 //! Fixtures the pane test modules share.
 
 use std::ffi::OsStr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use ratatui::Terminal;
@@ -14,7 +14,7 @@ use shep_core::protocol::{BusEvent, DogSource, Lamb, ProcessInfo, Response, Shee
 use shep_core::status::ProcStatus;
 
 use super::super::app::{
-    ActionVerb, App, Control, KeyPress, LambWalk, Msg, RowKey, Sent, SettingsRow,
+    ActionVerb, App, Body, Control, KeyPress, LambWalk, Msg, RowKey, Sent, SettingsRow,
 };
 use super::super::level::Level;
 use super::super::secrets::{SecretRow, SecretsModel, Source};
@@ -1180,5 +1180,71 @@ pub fn app_with_a_pushed_secret() -> App {
             ..SecretsModel::default()
         })),
     });
+    app
+}
+
+/// The value [`app_with_secrets_and_reads`] stores, and so the exact text a
+/// reveal has to put on screen.
+pub const REVEALED_VALUE: &str = "hunter2-not-really";
+
+/// The secrets pane over a real store under `home`, `DB_PASSWORD` selected
+/// and the reveal gate set by `allow_read`.
+///
+/// A file on disk rather than a hand-built model, because a reveal reads
+/// its one value back out of the store: a fixture that only listed rows
+/// could not exercise one. The caller owns `home` and has to keep it alive
+/// for as long as the app.
+pub fn app_with_secrets_and_reads(home: &Path, allow_read: bool) -> App {
+    let store = home.join("secrets.json");
+    shep_core::secrets::set(&store, "DB_PASSWORD", "production", REVEALED_VALUE).unwrap();
+    let mut app = full_app();
+    app.update(Msg::Key(KeyPress::Secrets));
+    app.update(Msg::Secrets {
+        environment: "production".to_string(),
+        result: Ok(Box::new(SecretsModel {
+            environments: vec!["all".to_string(), "production".to_string()],
+            rows: vec![
+                SecretRow {
+                    key: "DB_PASSWORD".to_string(),
+                    source: Source::Operator,
+                    in_force: Some("production".to_string()),
+                    set_in: vec!["production".to_string()],
+                    byte_len: Some(REVEALED_VALUE.len()),
+                    readers: Vec::new(),
+                },
+                // Never selected, so a test can hold one row against the
+                // other and see that a reveal reaches exactly one of them.
+                SecretRow {
+                    key: "OTHER_KEY".to_string(),
+                    source: Source::Operator,
+                    in_force: Some("production".to_string()),
+                    set_in: vec!["production".to_string()],
+                    byte_len: Some(3),
+                    readers: Vec::new(),
+                },
+            ],
+            allow_read,
+            store,
+            ..SecretsModel::default()
+        })),
+    });
+    app
+}
+
+/// The same pane with `DB_PASSWORD` already on screen, revealed the way an
+/// operator reveals it.
+///
+/// # Panics
+///
+/// If the reveal did not land, so a test asserting that some trigger clears
+/// one cannot pass against an app that never revealed anything.
+#[track_caller]
+pub fn app_revealing(home: &Path) -> App {
+    let mut app = app_with_secrets_and_reads(home, true);
+    app.update(Msg::Key(KeyPress::Reveal));
+    assert!(
+        matches!(app.body(), Body::Secrets(pane) if pane.reveal.is_some()),
+        "the fixture starts with a value on screen"
+    );
     app
 }

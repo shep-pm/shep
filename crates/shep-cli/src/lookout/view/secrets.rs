@@ -7,12 +7,14 @@
 //! back by stepping [`Column::width`] alone, so a gap here would be a gap
 //! `cell` never accounts for.
 
+use std::time::Instant;
+
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::super::app::{App, Control, SecretsPane};
+use super::super::app::{App, Control, REVEAL_HOLDS, Reveal, SecretsPane};
 use super::super::secrets::{SecretRow, Source};
 use super::super::theme::Palette;
 use super::flock::{GUTTER, fit, gutter};
@@ -147,9 +149,9 @@ pub(super) fn columns_for(width: u16) -> &'static [Column] {
 /// column is 30 cells against `MAX_VALUE_BYTES`'s 4096, so an equal run
 /// cannot be drawn. It stops one cell short of `width` so it never touches
 /// `IN FORCE`'s own text.
-fn value_cell(row: &SecretRow, revealed: Option<&str>, width: u16) -> String {
-    if let Some(plain) = revealed {
-        return fit(plain, width);
+fn value_cell(row: &SecretRow, revealed: Option<&Reveal>, width: u16) -> String {
+    if let Some(reveal) = revealed {
+        return fit(&reveal.value, width);
     }
     let Some(len) = row.byte_len else {
         return "not set here".to_string();
@@ -181,16 +183,43 @@ fn set_in_cell(row: &SecretRow, environment_count: usize) -> String {
     }
 }
 
+/// The reveal countdown's gauge, in cells.
+const GAUGE_CELLS: usize = 10;
+
+/// How long a revealed value has left, in words and in blocks.
+///
+/// The gauge is scaled from the number printed beside it rather than from
+/// the duration underneath, so the two can never read a second apart. That
+/// number rounds up: a part-second still on screen is a second the operator
+/// can still read the value in.
+fn countdown(until: Instant, now: Instant) -> String {
+    let left = until
+        .saturating_duration_since(now)
+        .as_millis()
+        .div_ceil(1000);
+    let hold = u128::from(REVEAL_HOLDS.as_secs()).max(1);
+    let cells = u128::try_from(GAUGE_CELLS).unwrap_or(0);
+    let filled = usize::try_from(left * cells / hold)
+        .unwrap_or(0)
+        .min(GAUGE_CELLS);
+    format!(
+        "visible {left}s {}{}",
+        "\u{2588}".repeat(filled),
+        "\u{2591}".repeat(GAUGE_CELLS - filled)
+    )
+}
+
 /// One data row's text for `column`.
 ///
-/// `Lands` has no source yet: nothing in [`SecretRow`] carries a propagation
-/// ETA. Task 6 gives it one; until then every cell reads `-`, matching
-/// `view/detail.rs`'s convention for an absent value.
+/// `Lands` carries the reveal's own countdown for the revealed row and `-`
+/// everywhere else: no [`SecretRow`] field carries a propagation ETA yet,
+/// and `-` is `view/detail.rs`'s convention for an absent value.
 fn row_cell(
     row: &SecretRow,
     column: Column,
-    revealed: Option<&str>,
+    revealed: Option<&Reveal>,
     environment_count: usize,
+    now: Instant,
 ) -> String {
     match column {
         Column::Key => row.key.clone(),
@@ -205,7 +234,9 @@ fn row_cell(
                 format!("{} ({online} online)", row.readers.len())
             }
         }
-        Column::Lands => "-".to_string(),
+        Column::Lands => {
+            revealed.map_or_else(|| "-".to_string(), |reveal| countdown(reveal.until, now))
+        }
     }
 }
 
@@ -219,23 +250,20 @@ fn row_line(
     width: u16,
     palette: Palette,
     selected: bool,
+    now: Instant,
 ) -> Line<'static> {
     let ground = if selected {
         palette.ground()
     } else {
         Style::default()
     };
-    let revealed = pane
-        .reveal
-        .as_ref()
-        .filter(|reveal| reveal.key == row.key)
-        .map(|reveal| reveal.value.as_str());
+    let revealed = pane.reveal.as_ref().filter(|reveal| reveal.key == row.key);
     let environment_count = pane.model.environments.len();
     let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len());
     let mut used = 0u16;
     for column in columns {
         let text = fit(
-            &row_cell(row, *column, revealed, environment_count),
+            &row_cell(row, *column, revealed, environment_count, now),
             column.width(),
         );
         spans.push(Span::styled(text, ground));
@@ -465,7 +493,15 @@ pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
         buffer.set_line(
             area.x + GUTTER,
             y,
-            &row_line(pane, row, columns, table_width, palette, selected),
+            &row_line(
+                pane,
+                row,
+                columns,
+                table_width,
+                palette,
+                selected,
+                app.now(),
+            ),
             table_width,
         );
         y += 1;
@@ -495,7 +531,10 @@ pub(super) fn cell(buffer: &Buffer, row: u16, column: Column) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
+    use crate::lookout::app::Msg;
     use crate::lookout::view::fixtures;
 
     /// The first data row `draw` places, fixed regardless of which source
@@ -704,6 +743,65 @@ mod tests {
         assert_eq!(
             cell(&buffer, row, Column::SetIn).trim(),
             format!("{header_count} of {header_count}")
+        );
+    }
+
+    /// The two cells a reveal changes, and the one row it changes them on.
+    #[test]
+    fn a_revealed_row_prints_its_value_and_its_countdown() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = fixtures::app_revealing(dir.path());
+
+        let buffer = fixtures::render(&app, 160, 48);
+
+        let revealed = row_of(&buffer, "DB_PASSWORD");
+        assert_eq!(
+            cell(&buffer, revealed, Column::Value).trim(),
+            fixtures::REVEALED_VALUE
+        );
+        assert_eq!(
+            cell(&buffer, revealed, Column::Lands).trim(),
+            "visible 10s \u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}"
+        );
+
+        let untouched = row_of(&buffer, "OTHER_KEY");
+        assert_eq!(
+            cell(&buffer, untouched, Column::Value).trim(),
+            "\u{2588}\u{2588}\u{2588} 3 bytes",
+            "a reveal reaches one row, not the pane"
+        );
+        assert_eq!(cell(&buffer, untouched, Column::Lands).trim(), "-");
+    }
+
+    /// The words and the blocks come off one remaining duration, so a
+    /// partly-spent reveal has to agree with itself: four seconds left is
+    /// four of ten cells.
+    #[test]
+    fn the_countdown_and_its_gauge_spend_together() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = fixtures::app_revealing(dir.path());
+        let start = app.now();
+        let _ = app.update(Msg::Tick {
+            now: start + Duration::from_secs(6),
+        });
+
+        let buffer = fixtures::render(&app, 160, 48);
+
+        assert_eq!(
+            cell(&buffer, row_of(&buffer, "DB_PASSWORD"), Column::Lands).trim(),
+            "visible 4s \u{2588}\u{2588}\u{2588}\u{2588}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}"
+        );
+
+        // Half a second later the number has not changed, so neither has
+        // the gauge: rounding one and truncating the other would read `4s`
+        // against three blocks here.
+        let _ = app.update(Msg::Tick {
+            now: start + Duration::from_millis(6_500),
+        });
+        let buffer = fixtures::render(&app, 160, 48);
+        assert_eq!(
+            cell(&buffer, row_of(&buffer, "DB_PASSWORD"), Column::Lands).trim(),
+            "visible 4s \u{2588}\u{2588}\u{2588}\u{2588}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}"
         );
     }
 }

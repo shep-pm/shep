@@ -64,6 +64,7 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char('L') => Some(KeyPress::Action(ActionVerb::Reload)),
         KeyCode::Char('s') => Some(KeyPress::Settings),
         KeyCode::Char('S') => Some(KeyPress::Secrets),
+        KeyCode::Char('v') => Some(KeyPress::Reveal),
         KeyCode::Left => Some(KeyPress::TabPrev),
         KeyCode::Right => Some(KeyPress::TabNext),
         KeyCode::Char('e') => Some(KeyPress::Edit),
@@ -250,6 +251,19 @@ mod tests {
             map_key(&key(KeyCode::Char('g')), InputMode::Normal),
             Some(KeyPress::SelectFirst),
             "the frame wanted `g` for secrets; `g` is still SelectFirst"
+        );
+    }
+
+    #[test]
+    fn lower_v_is_the_reveal() {
+        assert_eq!(
+            map_key(&key(KeyCode::Char('v')), InputMode::Normal),
+            Some(KeyPress::Reveal)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('V')), InputMode::Normal),
+            None,
+            "one key puts a value on screen, and it is not a shifted one"
         );
     }
 

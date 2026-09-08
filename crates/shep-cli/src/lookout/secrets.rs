@@ -1,9 +1,11 @@
 //! What the secrets pane draws, computed off the files it reads.
 //!
-//! No value reaches this module. A row carries a length, and the value
-//! itself is fetched only by an explicit reveal, which is Task 6's job.
+//! No value reaches the model. A row carries a length, and the value
+//! itself is read back one at a time by [`stored_value`], for a reveal that
+//! has already passed the gate.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use shep_core::config::DaemonConfig;
@@ -68,6 +70,10 @@ pub(crate) struct SecretsModel {
     /// unreadable both read as `false`, mirroring
     /// `whistle::gate::resolve_control`'s fail-closed default.
     pub allow_read: bool,
+    /// The operator store these rows came from, for [`stored_value`].
+    pub store: PathBuf,
+    /// The provider cache these rows came from, for [`stored_value`].
+    pub provider_cache: PathBuf,
 }
 
 impl SecretsModel {
@@ -131,6 +137,37 @@ pub(crate) fn model(paths: &ShepPaths, procs: &[ProcessInfo], environment: &str)
         unreadable,
         roll_age: secret_readers::roll_age(paths),
         allow_read,
+        store: paths.secrets.clone(),
+        provider_cache: paths.secrets_cache.clone(),
+    }
+}
+
+/// The one value behind `row`, read back off disk for a reveal.
+///
+/// `None` when nothing resolves in this tab, when the store will not read,
+/// and when the slot has gone since the model was built. Read on demand
+/// rather than carried in the model: a value the pane holds for its whole
+/// life is a value in every core dump of it, and the pane's life is as long
+/// as the operator leaves it open.
+///
+/// The gate is the caller's ([`crate::lookout::app::App::reveal_gate_open`]):
+/// this function does not check it.
+pub(crate) fn stored_value(model: &SecretsModel, row: &SecretRow) -> Option<String> {
+    let environment = row.in_force.as_deref()?;
+    match &row.source {
+        Source::Operator => secrets::get(&model.store, &row.key, environment)
+            .ok()
+            .flatten(),
+        // The row's key is `namespace/KEY`; the cache nests the two.
+        Source::Namespace(namespace) => {
+            let bare = row.key.strip_prefix(namespace)?.strip_prefix('/')?;
+            secrets::provider_cache_on_disk(&model.provider_cache)
+                .values
+                .get(namespace)?
+                .get(bare)?
+                .get(environment)
+                .cloned()
+        }
     }
 }
 
@@ -314,6 +351,51 @@ mod tests {
             .find(|row| row.key == "vercel/API_TOKEN")
             .unwrap_or_else(|| panic!("no qualified row among {:?}", built.rows));
         assert_eq!(row.source, Source::Namespace("vercel".to_string()));
+    }
+
+    /// Both stores, since a row's value lives in whichever one its source
+    /// names and the provider cache nests the namespace the row key spells
+    /// with a slash.
+    #[test]
+    fn stored_value_reads_an_operator_row_and_a_provider_row_out_of_their_own_stores() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_under(dir.path());
+        secrets::set(&paths.secrets, "PLAIN", "production", "hunter2").unwrap();
+        std::fs::write(
+            &paths.secrets_cache,
+            format!(
+                r#"{{"version":{PROVIDER_CACHE_VERSION},"namespaces":{{"vercel":{{"API_TOKEN":{{"production":"tok"}}}}}},"pushed":{{"vercel":["production"]}}}}"#
+            ),
+        )
+        .unwrap();
+        let built = model(&paths, &[], "production");
+        let value_of = |key: &str| {
+            let row = built
+                .rows
+                .iter()
+                .find(|row| row.key == key)
+                .unwrap_or_else(|| panic!("no {key} among {:?}", built.rows));
+            stored_value(&built, row)
+        };
+
+        assert_eq!(value_of("PLAIN").as_deref(), Some("hunter2"));
+        assert_eq!(value_of("vercel/API_TOKEN").as_deref(), Some("tok"));
+    }
+
+    /// A tab the key has no slot in resolves to nothing, so there is no
+    /// value to ask the store for: `secrets::get` would answer for a
+    /// sibling environment if it were asked with one.
+    #[test]
+    fn stored_value_is_none_when_nothing_resolves_in_this_tab() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_under(dir.path());
+        secrets::set(&paths.secrets, "PLAIN", "ci", "hunter2").unwrap();
+
+        let built = model(&paths, &[], "production");
+
+        let row = built.rows.iter().find(|row| row.key == "PLAIN").unwrap();
+        assert_eq!(row.in_force, None);
+        assert_eq!(stored_value(&built, row), None);
     }
 
     #[test]

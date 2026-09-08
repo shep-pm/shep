@@ -313,10 +313,12 @@ const BLEATS_HINT: &str = "esc back   j/k line   ctrl-d/u page   G end   \
 
 /// The secrets pane's own key hint.
 ///
-/// Names only what `on_secrets_key` answers today: reveal, set and delete
-/// are Tasks 6-8's, and a hint naming a key that does nothing teaches the
-/// operator the key is broken.
-const SECRETS_HINT: &str = "esc/S close   \u{2190}/\u{2192} tab   z collapse   q quit";
+/// Names only what `on_secrets_key` answers today: set and delete are Tasks
+/// 7-8's, and a hint naming a key that does nothing teaches the operator the
+/// key is broken. `v` names no gate, which the pane's own gates row two
+/// lines above the table already states.
+const SECRETS_HINT: &str =
+    "esc/S close   \u{2190}/\u{2192} tab   z collapse   v reveal for 10s   q quit";
 
 /// The config pane's own key hint.
 ///

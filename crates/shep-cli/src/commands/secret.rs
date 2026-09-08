@@ -31,7 +31,7 @@ use crate::output::{
 /// [`crate::whistle::gate::Control::how_to_open`]'s reason: an operator
 /// told only that reading is off will guess, and the likeliest guess is a
 /// flag that does not exist.
-const HOW_TO_ALLOW_READ: &str = "printing a stored secret back is off; add `[secrets]` with \
+pub(crate) const HOW_TO_ALLOW_READ: &str = "printing a stored secret back is off; add `[secrets]` with \
      `allow_read = true` to $SHEP_HOME/shep.toml";
 
 /// The exit code each [`SecretError`] maps to.

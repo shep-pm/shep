@@ -26,7 +26,7 @@ use super::field::{FieldKind, FieldSet};
 use super::level::Level;
 use super::pane::{ConfigPane, FieldValue, Lock, PaneEdit, PanePending, PaneTarget, ReloadKind};
 use super::pane_bleats::BleatsPane;
-use super::secrets::SecretsModel;
+use super::secrets::{self, SecretsModel};
 use super::tail::Stream;
 use super::theme::Palette;
 use super::viewport::Viewport;
@@ -104,6 +104,10 @@ pub enum KeyPress {
     /// neighbour, both change-screens over the shepherd's own
     /// configuration.
     Secrets,
+    /// `v`: shows the selected secret's value for [`REVEAL_HOLDS`], in the
+    /// secrets pane. Refuses when `[secrets] allow_read` is off, naming the
+    /// gate. Ignored on every other screen.
+    Reveal,
     /// `Left`: the previous environment tab, in the secrets pane. Stops at
     /// the first rather than wrapping. Ignored elsewhere.
     TabPrev,
@@ -1314,6 +1318,11 @@ pub(super) fn retrying_sentence(attempt: u32) -> String {
 /// The sentence every closed-gate refusal gives, dashboard and settings alike.
 const READ_ONLY_REFUSAL: &str = "read-only: from --read-only or lookout.allow_control";
 
+/// How long a revealed value stays on screen.
+///
+/// The pane prints this number, so the two cannot drift.
+pub(crate) const REVEAL_HOLDS: Duration = Duration::from_secs(10);
+
 /// The widest window any pane draws, in samples.
 ///
 /// The landing pane's sparkline needs ten. 1d's charts want six minutes,
@@ -1389,6 +1398,17 @@ pub(crate) struct SecretsPane {
     pub typing: Option<Typing>,
 }
 
+impl SecretsPane {
+    /// Takes the value off the screen.
+    ///
+    /// One method rather than an assignment at each trigger: a trigger added
+    /// later has one thing to call, and the ones that exist cannot drift
+    /// apart.
+    pub(crate) fn hide(&mut self) {
+        self.reveal = None;
+    }
+}
+
 /// Redacted (IR-41): `reveal` and `typing` hold a plaintext value.
 impl fmt::Debug for SecretsPane {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1405,19 +1425,12 @@ impl fmt::Debug for SecretsPane {
 }
 
 /// A value on screen, and the instant it leaves.
-///
-/// Placeholder: Task 6 gives this fields real use, but declares nothing
-/// itself. Nothing constructs one outside a test yet.
 pub(crate) struct Reveal {
     /// The key it belongs to.
     pub key: String,
     /// The plaintext.
     pub value: String,
-    /// When it clears.
-    ///
-    /// No reader yet: the tick that expires a reveal is Task 6's. `#[allow]`
-    /// says so rather than inventing one.
-    #[allow(dead_code)]
+    /// When it clears, [`REVEAL_HOLDS`] after the keypress.
     pub until: Instant,
 }
 
@@ -1730,6 +1743,18 @@ impl App {
                         .is_some_and(|at| now.saturating_duration_since(at) >= CONFIRM_EXPIRY)
                 {
                     pane.cancel();
+                }
+                // Outside the link guard for the same reason, and one more:
+                // `until` was set off `self.now`, which a dead link stops
+                // advancing, so the tick's own `now` is what expires a
+                // reveal at all once the link has gone.
+                if let Some(pane) = self.secrets_pane_mut()
+                    && pane
+                        .reveal
+                        .as_ref()
+                        .is_some_and(|reveal| now >= reveal.until)
+                {
+                    pane.hide();
                 }
                 // The bleats pane has no timer of its own; it rides every
                 // tick instead of the dashboard's own cadence, which is
@@ -2710,8 +2735,9 @@ impl App {
             }
             // Meaningful only inside the secrets pane, which owns the
             // keyboard while `self.body` is `Body::Secrets`; reached here
-            // only from the dashboard, where there is no tab to move.
-            KeyPress::TabPrev | KeyPress::TabNext => Effect::None,
+            // only from the dashboard, where there is no tab to move and no
+            // secret selected to show.
+            KeyPress::TabPrev | KeyPress::TabNext | KeyPress::Reveal => Effect::None,
             // Also the read, not the open: the pane shows the shepherd's
             // answer or nothing. `selected_row` is `None` for a group too,
             // but a group's name is what `Request::SheepConfig` wants, so
@@ -2788,12 +2814,21 @@ impl App {
             // Mirrors `on_bleats_key`'s own arm: every full-screen pane
             // answers `q`/`ctrl-c`, the one key a cancelling armed action
             // does not swallow either (`on_key`'s own comment on that).
-            KeyPress::Quit => Effect::Quit,
+            // The `hide` here buys nothing on screen, since nothing is drawn
+            // after this: it drops the plaintext a moment before the whole
+            // `App` goes.
+            KeyPress::Quit => {
+                self.hide_revealed();
+                Effect::Quit
+            }
             KeyPress::Secrets | KeyPress::Escape => {
+                self.hide_revealed();
                 self.body = Body::FlockTable;
                 Effect::None
             }
+            KeyPress::Reveal => self.reveal_selected(),
             KeyPress::TabPrev | KeyPress::TabNext => {
+                self.hide_revealed();
                 let Some(pane) = self.secrets_pane_mut() else {
                     return Effect::None;
                 };
@@ -2817,16 +2852,22 @@ impl App {
                 }
                 Effect::None
             }
-            // Nothing else means anything here yet: reveal, arm and typing
-            // land in Tasks 6-8. Listed rather than a wildcard, so a new
-            // `KeyPress` variant cannot fall silently into an arm that
-            // ignores it.
+            // The cursor does not move yet, but these are the keys an
+            // operator reaches for to leave a row, and the value on screen
+            // belongs to the row it was revealed from. `Refresh` rebuilds
+            // nothing here yet either, and clears for the same reason.
             KeyPress::SelectUp
             | KeyPress::SelectDown
             | KeyPress::SelectFirst
             | KeyPress::SelectLast
-            | KeyPress::Refresh
-            | KeyPress::Action(_)
+            | KeyPress::Refresh => {
+                self.hide_revealed();
+                Effect::None
+            }
+            // Nothing else means anything here yet: arm and typing land in
+            // Tasks 7-8. Listed rather than a wildcard, so a new `KeyPress`
+            // variant cannot fall silently into an arm that ignores it.
+            KeyPress::Action(_)
             | KeyPress::Confirm
             | KeyPress::FilterStart
             | KeyPress::TextChar(_)
@@ -3034,6 +3075,7 @@ impl App {
             // The secrets pane's own keys; nothing to move or reload while
             // the bleats pane owns the screen instead.
             | KeyPress::Secrets
+            | KeyPress::Reveal
             | KeyPress::TabPrev
             | KeyPress::TabNext => Effect::None,
         }
@@ -3162,6 +3204,7 @@ impl App {
             | KeyPress::ListMoveDown
             | KeyPress::FoldView
             | KeyPress::Secrets
+            | KeyPress::Reveal
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::Collapse => {}
@@ -3358,6 +3401,7 @@ impl App {
             | KeyPress::ListMoveDown
             | KeyPress::FoldView
             | KeyPress::Secrets
+            | KeyPress::Reveal
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::Collapse => {}
@@ -3466,6 +3510,7 @@ impl App {
             | KeyPress::ListMoveDown
             | KeyPress::FoldView
             | KeyPress::Secrets
+            | KeyPress::Reveal
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::Collapse => Effect::None,
@@ -3857,6 +3902,7 @@ impl App {
             | KeyPress::Help
             | KeyPress::FoldView
             | KeyPress::Secrets
+            | KeyPress::Reveal
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::Collapse => {}
@@ -3951,6 +3997,7 @@ impl App {
             | KeyPress::ListMoveDown
             | KeyPress::FoldView
             | KeyPress::Secrets
+            | KeyPress::Reveal
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::Collapse => {}
@@ -5068,6 +5115,12 @@ impl App {
         &self.link
     }
 
+    /// The clock the view reads: the last [`Msg::Tick`]'s instant, or the
+    /// one the link froze at.
+    pub(crate) fn now(&self) -> Instant {
+        self.now
+    }
+
     /// The current notice, if the last message left one.
     #[must_use]
     pub fn notice(&self) -> Option<&Notice> {
@@ -5293,6 +5346,58 @@ impl App {
             Body::Secrets(pane) => Some(pane),
             Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) | Body::Bleats(_) => None,
         }
+    }
+
+    /// Takes any revealed value off the screen, on any screen: every
+    /// trigger calls this rather than reaching for [`SecretsPane::hide`]
+    /// through a pane it first has to find.
+    fn hide_revealed(&mut self) {
+        if let Some(pane) = self.secrets_pane_mut() {
+            pane.hide();
+        }
+    }
+
+    /// Whether `[secrets] allow_read` lets this pane show a value.
+    ///
+    /// Read off the model the last [`Effect::LoadSecrets`] built, so the
+    /// answer is the one `shep.toml` gave when the rows were gathered and
+    /// the pane never opens that file itself. Fails closed everywhere it
+    /// cannot be answered: a missing key, an unreadable file
+    /// (`super::secrets::model`) and no open pane all read as `false`.
+    pub(crate) fn reveal_gate_open(&self) -> bool {
+        matches!(&self.body, Body::Secrets(pane) if pane.model.allow_read)
+    }
+
+    /// `v`'s answer: the selected row's stored value on screen for
+    /// [`REVEAL_HOLDS`], or a refusal naming the gate and the file.
+    ///
+    /// Reads the store here rather than raising an effect, unlike every
+    /// write: `secrets::all` takes no lock (its own doc says why), so this
+    /// cannot block the UI task the way a `set` would, and a value that
+    /// arrived a frame later would be a value the operator did not press
+    /// for.
+    fn reveal_selected(&mut self) -> Effect {
+        if !self.reveal_gate_open() {
+            self.notice = Some(Notice {
+                text: crate::commands::secret::HOW_TO_ALLOW_READ.to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
+        let until = self.now + REVEAL_HOLDS;
+        let Some(pane) = self.secrets_pane_mut() else {
+            return Effect::None;
+        };
+        let Some((key, value)) = pane
+            .model
+            .rows
+            .get(pane.selected)
+            .and_then(|row| Some((row.key.clone(), secrets::stored_value(&pane.model, row)?)))
+        else {
+            return Effect::None;
+        };
+        pane.reveal = Some(Reveal { key, value, until });
+        Effect::None
     }
 
     /// [`Self::bleats_pane_mut`], exposed past this module so a fixture can
@@ -7507,6 +7612,152 @@ mod tests {
         );
         assert!(!format!("{:?}", pane.reveal).contains("hunter2"));
         assert!(!format!("{:?}", pane.typing).contains("hunter2"));
+    }
+
+    /// The value on screen, or `None`. Reads the pane rather than the
+    /// rendered frame: these tests are about when a value is held, and the
+    /// drawing of it has its own tests in `view::secrets`.
+    fn reveal_of(app: &App) -> Option<&Reveal> {
+        match app.body() {
+            Body::Secrets(pane) => pane.reveal.as_ref(),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn v_reveals_only_when_allow_read_is_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut shut = fixtures::app_with_secrets_and_reads(dir.path(), false);
+
+        let _ = shut.update(Msg::Key(KeyPress::Reveal));
+
+        assert!(reveal_of(&shut).is_none(), "the gate is shut");
+        assert!(
+            shut.notice()
+                .is_some_and(|notice| notice.to_string().contains("allow_read")),
+            "and it says which gate and where"
+        );
+
+        let mut open = fixtures::app_with_secrets_and_reads(dir.path(), true);
+
+        let _ = open.update(Msg::Key(KeyPress::Reveal));
+
+        assert_eq!(
+            reveal_of(&open).map(|reveal| reveal.key.as_str()),
+            Some("DB_PASSWORD")
+        );
+        assert_eq!(
+            reveal_of(&open).map(|reveal| reveal.value.as_str()),
+            Some(fixtures::REVEALED_VALUE),
+            "the value comes off the store, not out of the model"
+        );
+    }
+
+    #[test]
+    fn a_reveal_clears_on_every_one_of_its_triggers_that_exists_yet() {
+        for (name, press) in [
+            ("k", KeyPress::SelectUp),
+            ("j", KeyPress::SelectDown),
+            ("g", KeyPress::SelectFirst),
+            ("G", KeyPress::SelectLast),
+            ("shift-tab", KeyPress::TabPrev),
+            ("tab", KeyPress::TabNext),
+            ("escape", KeyPress::Escape),
+            ("close", KeyPress::Secrets),
+            ("refresh", KeyPress::Refresh),
+            ("quit", KeyPress::Quit),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut app = fixtures::app_revealing(dir.path());
+
+            let _ = app.update(Msg::Key(press));
+
+            assert!(reveal_of(&app).is_none(), "{name} left the value on screen");
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let mut timed = fixtures::app_revealing(dir.path());
+        let start = timed.now();
+
+        let _ = timed.update(Msg::Tick {
+            now: start + REVEAL_HOLDS,
+        });
+
+        assert!(
+            reveal_of(&timed).is_none(),
+            "the tenth second is the last one, so the value is gone by it"
+        );
+    }
+
+    /// Stops a clear-on-every-tick implementation passing the test above for
+    /// the wrong reason.
+    #[test]
+    fn a_reveal_survives_the_tick_before_it_expires() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = fixtures::app_revealing(dir.path());
+        let start = app.now();
+
+        let _ = app.update(Msg::Tick {
+            now: start + REVEAL_HOLDS - Duration::from_millis(1),
+        });
+
+        assert!(
+            reveal_of(&app).is_some(),
+            "clearing early makes the countdown a lie"
+        );
+    }
+
+    /// The expiry rides the tick's own clock, not `self.now`, which stops
+    /// advancing on a dead link. A value that outlived a link failure would
+    /// sit on screen until the operator pressed something.
+    #[test]
+    fn a_frozen_link_does_not_hold_a_value_on_screen() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = fixtures::app_revealing(dir.path());
+        let start = app.now();
+        let _ = app.update(Msg::Frozen {
+            at_local: "12:00:00".to_string(),
+        });
+
+        let _ = app.update(Msg::Tick {
+            now: start + REVEAL_HOLDS,
+        });
+
+        assert!(reveal_of(&app).is_none());
+    }
+
+    #[test]
+    fn a_key_with_no_value_in_this_tab_reveals_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("secrets.json");
+        let mut app = fixtures::app_with_secrets_and_reads(dir.path(), true);
+        // The same key, set only in an environment this tab is not showing:
+        // `secrets::get` would find a value under `ci` and must not be asked
+        // for one.
+        let _ = app.update(Msg::Secrets {
+            environment: "production".to_string(),
+            result: Ok(Box::new(SecretsModel {
+                environments: vec!["production".to_string()],
+                rows: vec![SecretRow {
+                    key: "DB_PASSWORD".to_string(),
+                    source: Source::Operator,
+                    in_force: None,
+                    set_in: vec!["ci".to_string()],
+                    byte_len: None,
+                    readers: Vec::new(),
+                }],
+                allow_read: true,
+                store,
+                ..SecretsModel::default()
+            })),
+        });
+
+        let _ = app.update(Msg::Key(KeyPress::Reveal));
+
+        assert!(
+            reveal_of(&app).is_none(),
+            "nothing resolves here, so there is nothing to show"
+        );
     }
 
     #[test]
