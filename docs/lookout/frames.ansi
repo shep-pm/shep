@@ -144,6 +144,41 @@ app web ×3  [0m[38;5;29monline[0m   restarts 3   uptime 15m   cpu 9.4%   mem
 [0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
+=== folds  (158x30) ===
+158 columns, wide enough for the full fold-view column set including SHARE and NOTES. `batch` and `core` are two folds of differing size, `batch` collapsed so only its header shows; `edge` is the largest, holding the grouped app `web` ×3 alongside standalone `api`, and the cursor is parked on its header. `cron` and `metrics` carry no fold and sit under a `no fold` band that is not selectable, and `bark`, a dog, sits under its own band because a dog is never in a fold. Each fold header sums its members' restarts, CPU and memory and takes the shortest of their uptimes, and its SHARE gauge and NOTES percentage both read that fold's share of the whole flock's memory.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                 10 in the flock[0m
+                                                                                                                                                              [0m
+[0m[38;5;245mhost  load  [0m[38;5;221m██░░░░░░░░[0m[38;5;245m 2.31 4.10 3.88 / 10 cores     host mem  [0m[38;5;74m████░░░░░░[0m[38;5;245m 12.4G / 32.0G     0 errored · 0 parked   flock cpu 20.6%        █   flock mem 928.0…[0m
+[0m[38;5;238m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+                                                                                                                                                              [0m
+  [0m[38;5;245mNAME      STATUS        SHARE                   MEM         CPU        UPTIME      RESTARTS  NOTES                                                          [0m
+  batch ×2  [0m[38;5;29monline      [0m  [0m[38;5;74m█[0m[38;5;236m░░░░░░░░░░░░░░░░░░░  [0m  32.0M       1.6%       1h 55m      3         3% of flock memory                                             [0m
+  core ×1   [0m[38;5;29monline      [0m  [0m[38;5;74m██[0m[38;5;236m░░░░░░░░░░░░░░░░░░  [0m  96.0M       2.0%       1h 58m      0         10% of flock memory                                            [0m
+  [0m[38;5;245mworker  [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m96.0M     [0m  [0m[38;5;245m2.0%     [0m  [0m[38;5;245m1h 58m    [0m  [0m[38;5;245m0       [0m  [0m[38;5;245m                                                               [0m
+[0m[48;5;235m [0m [0m[48;5;235medge ×4   [0m[38;5;29m[48;5;235monline      [0m[48;5;235m  [0m[38;5;74m[48;5;235m█████████████████[0m[38;5;236m[48;5;235m░░░  [0m[48;5;235m  781.0M      16.5%      15m         4         84% of flock memory                                            [0m
+  [0m[38;5;245mapi     [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m241.0M    [0m  [0m[38;5;245m7.1%     [0m  [0m[38;5;245m2h 4m     [0m  [0m[38;5;245m1       [0m  [0m[38;5;245m                                                               [0m
+  [0m[38;5;245mweb ×3  [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m540.0M    [0m  [0m[38;5;245m9.4%     [0m  [0m[38;5;245m15m       [0m  [0m[38;5;245m3       [0m  [0m[38;5;245m                                                               [0m
+  [0m[7m[38;5;29m ██ NO FOLD                                                                                                                                                 [0m
+  [0m[38;5;245mcron    [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m8.0M      [0m  [0m[38;5;245m0.1%     [0m  [0m[38;5;245m2h 6m     [0m  [0m[38;5;245m0       [0m  [0m[38;5;245m                                                               [0m
+  [0m[38;5;245mmetrics [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m11.0M     [0m  [0m[38;5;245m0.4%     [0m  [0m[38;5;245m2h 7m     [0m  [0m[38;5;245m0       [0m  [0m[38;5;245m                                                               [0m
+  [0m[7m[38;5;74m ██ DOGS                                                                                                                                                    [0m
+  [0m[38;5;245mbark    [0m  [0m[38;5;29monline      [0m  [0m[38;5;245m                      [0m  [0m[38;5;245m-         [0m  [0m[38;5;245m-        [0m  [0m[38;5;245m10m       [0m  [0m[38;5;245m0       [0m  [0m[38;5;245m                                                               [0m
+[0m[38;5;238m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+fold edge ×4  [0m[38;5;29monline[0m   restarts 4   uptime 15m   cpu 16.5%   mem 781.0M                                                                                       [0m
+[0m[38;5;245mlambs  a fold has no single process to walk; select one sheep                                                                                                 [0m
+                                                                                                                                                              [0m
+                                                                                                                                                              [0m
+[0m[38;5;238m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;245medge  follows one fold; select a sheep inside to see its log                                                                                       [0m
+                                                                                                                                                              [0m
+                                                                                                                                                              [0m
+                                                                                                                                                              [0m
+                                                                                                                                                              [0m
+                                                                                                                                                              [0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                                     [0m[38;5;245m[48;5;235m control enabled[0m
+
+
 === with_dogs  (120x30) ===
 Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it.
 
