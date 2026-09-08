@@ -13,6 +13,7 @@ use shep_core::status::ProcStatus;
 use super::super::app::{
     ActionVerb, App, Control, KeyPress, LambWalk, Msg, RowKey, Sent, SettingsRow,
 };
+use super::super::level::Level;
 use super::super::source::HostSample;
 use super::super::tail::{Stream, Tail, TailLine};
 use super::super::theme::Palette;
@@ -303,6 +304,39 @@ pub fn full_app() -> App {
             note: None,
         },
     });
+    app
+}
+
+/// The full-screen bleats pane, open on `web`, with all three filter axes
+/// set (stream `err`, level `warn`, match `pool`) over a feed mixing one
+/// line that survives every axis with three that each fail exactly one, for
+/// the filter row's own tests.
+///
+/// Filters are stacked through [`App::bleats_pane_mut_for_tests`] rather
+/// than a key: no key sets one yet (see that method's own doc).
+pub fn bleats_pane_with_filters() -> App {
+    let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+    app.update(Msg::Bleats {
+        tail: Tail {
+            lines: vec![
+                line(Stream::Err, "ERROR pool exhausted"), // all three hold
+                line(Stream::Out, "ERROR pool exhausted"), // wrong stream
+                line(Stream::Err, "INFO pool warming"),    // below the minimum
+                line(Stream::Err, "ERROR disk full"),      // no match
+            ],
+            missed_lines: 0,
+            missed_bytes: 0,
+            read_bytes: 128,
+            note: None,
+        },
+    });
+    app.update(Msg::Key(KeyPress::Bleats));
+    let pane = app
+        .bleats_pane_mut_for_tests()
+        .expect("Msg::Key(KeyPress::Bleats) opened the pane on the sheep selected above");
+    pane.set_stream(Some(Stream::Err));
+    pane.set_min_level(Some(Level::Warn));
+    pane.set_match("pool".to_string());
     app
 }
 

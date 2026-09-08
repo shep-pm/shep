@@ -4340,13 +4340,21 @@ impl App {
     }
 
     /// [`Self::bleats_pane`]'s mutable twin, for `Escape`'s chip-by-chip
-    /// backout and the filter-setting keys the reducer handles on
-    /// [`Body::Bleats`].
+    /// backout. No key sets a filter axis yet; whichever task wires one
+    /// needs this too.
     fn bleats_pane_mut(&mut self) -> Option<&mut BleatsPane> {
         match &mut self.body {
             Body::Bleats(pane) => Some(pane),
             Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) => None,
         }
+    }
+
+    /// [`Self::bleats_pane_mut`], exposed past this module: the only route a
+    /// fixture has to stack filters onto a pane it opened, since setting one
+    /// is not yet reachable through any key.
+    #[cfg(test)]
+    pub(crate) fn bleats_pane_mut_for_tests(&mut self) -> Option<&mut BleatsPane> {
+        self.bleats_pane_mut()
     }
 
     /// The apply offer over the open pane, or `None`.
