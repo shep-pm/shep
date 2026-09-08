@@ -841,6 +841,33 @@ mod tests {
     /// Last values stay on screen, with a sentence admitting they are
     /// stale.
     #[test]
+    /// Found by capturing a real dashboard rather than by any test here:
+    /// killing the shepherd leaves `the shepherd is shutting down` as a
+    /// notice, notices outrank the key hint, and the bar then spends the
+    /// rest of the session on a sentence about a process that is gone
+    /// instead of on the three keys that still work.
+    #[test]
+    fn a_freeze_clears_the_notice_that_would_sit_on_the_key_hint() {
+        let mut app = fixtures::full_app();
+        app.update(Msg::BusLagged { count: 4 });
+        assert!(app.notice().is_some(), "a notice to be cleared");
+
+        app.update(Msg::Frozen {
+            at_local: "2026-08-14 14:32:07".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
+        });
+        assert!(app.notice().is_none());
+
+        let bar = draw_to(&app, 160, 30)
+            .lines()
+            .next_back()
+            .expect("a status bar")
+            .to_string();
+        assert!(bar.contains("r retry the link"), "{bar:?}");
+        assert!(bar.contains("\u{2588} frozen"), "{bar:?}");
+    }
+
+    #[test]
     fn a_frozen_link_says_so_in_the_band_and_keeps_the_home_path_below_it() {
         let mut app = App::new(
             Palette::detect(None, None, None),

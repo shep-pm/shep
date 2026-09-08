@@ -1569,6 +1569,16 @@ impl App {
                 self.froze_at = Some(self.now);
                 self.frozen_for = Duration::ZERO;
                 self.disarm_on_link_change();
+                // Every notice is about a shepherd that no longer exists,
+                // and none of them can be acted on. Left standing, the last
+                // one outranks the key hint for the rest of the session
+                // (`view::status::status_line`'s own ordering), so an
+                // operator reads `the shepherd is shutting down` where the
+                // bar should be telling them `r` still dials. Whether the
+                // shutdown was clean is on the screen either way: the link
+                // panel quotes an error that says the socket was removed
+                // rather than refusing.
+                self.notice = None;
                 Effect::None
             }
             Msg::Tick { now } => {
