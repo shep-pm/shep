@@ -7,9 +7,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all thirty-five scenes through the same coloured
+frames.ansi renders all thirty-six scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same thirty-five scenes through the flattened NO_COLOR palette
+renders the same thirty-six scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -31,7 +31,8 @@ it read and dropped are counted exactly; bytes below its 64 KiB window were
 never read at all, so those are reported in bytes, because nothing counted the
 lines in them and guessing would be worse than saying so.
 
-The last seven frames are the settings screen, `s` from the dashboard. It owns
+The last frame is the full-screen bleats pane, `b` from the dashboard. The
+seven before it are the settings screen, `s` from the dashboard. It owns
 the whole body between the title and the status bar rather than sharing it
 with the flock table, so a fresh $SHEP_HOME, some scalars declared, an armed
 confirm, the socket editor mid-type, the dogs table's own drift, the same
@@ -1040,3 +1041,22 @@ The same screen at 14 rows, which is fewer than it has to draw. The cursor is on
 > bark                                                                yes      built-in                  silent         [0m
                                                                                                                         [0m
 [0m[38;5;221m[48;5;235mesc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit              [0m[38;5;245m[48;5;235m control enabled[0m
+
+
+=== bleats  (100x14) ===
+The full-screen bleats pane, pinned to api, with a stream, a minimum level and a regex all stacked: only out, only warn and above, only a line mentioning retrying or jitter. The filter row states the composition and counts one surviving line out of sixteen, and that one line is also the longest in the fixture, so wrapping is on and its full text runs onto a second row instead of an ellipsis.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                        6 in the flock[0m
+[0m[7m[38;5;29m ██ api  out /home/ada/.shep/logs/api-2-out.log  err /home/ada/.shep/logs/api-2-err.log  64.0K wind…[0m
+[0m[48;5;235m stream out [0m [0m[48;5;235m level ≥ warn [0m [0m[48;5;235m match /retry|jitter/ (regex) [0m [0m[38;5;245m1 of 16 lines in the window: all three m…[0m
+[0m[38;5;245mout  [0mWARN [0m[7m[38;5;221mretry[0ming upstream payment gateway after a timeout, backing off 500ms before trying again w[0m
+[0m[38;5;245m     [0mith [0m[7m[38;5;221mjitter[0m added so the whole fleet does not [0m[7m[38;5;221mretry[0m at once                                     [0m
+                                                                                                    [0m
+                                                                                                    [0m
+                                                                                                    [0m
+                                                                                                    [0m
+                                                                                                    [0m
+                                                                                                    [0m
+                                                                                                    [0m
+                                                                                                    [0m
+[0m[38;5;221m[48;5;235mesc back   j/k line   ctrl-d/u page   G end   / search   n/N match   f follow   w wrap …[0m[38;5;245m[48;5;235m █ following[0m

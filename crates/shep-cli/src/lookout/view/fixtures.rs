@@ -13,6 +13,7 @@ use shep_core::status::ProcStatus;
 use super::super::app::{
     ActionVerb, App, Control, KeyPress, LambWalk, Msg, RowKey, Sent, SettingsRow,
 };
+use super::super::level::Level;
 use super::super::source::HostSample;
 use super::super::tail::{Stream, Tail, TailLine};
 use super::super::theme::Palette;
@@ -304,6 +305,149 @@ pub fn full_app() -> App {
         },
     });
     app
+}
+
+/// The full-screen bleats pane, open on `web`, with all three filter axes
+/// set (stream `err`, level `warn`, match `pool`) over a feed mixing one
+/// line that survives every axis with three that each fail exactly one, for
+/// the filter row's own tests.
+///
+/// Filters are stacked through [`App::bleats_pane_mut_for_tests`] rather
+/// than through `o`, `m` and `/`, so a test naming the axes it wants does not
+/// have to walk each cycle to reach them.
+pub fn bleats_pane_with_filters() -> App {
+    let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+    app.update(Msg::Bleats {
+        tail: Tail {
+            lines: vec![
+                line(Stream::Err, "ERROR pool exhausted"), // all three hold
+                line(Stream::Out, "ERROR pool exhausted"), // wrong stream
+                line(Stream::Err, "INFO pool warming"),    // below the minimum
+                line(Stream::Err, "ERROR disk full"),      // no match
+            ],
+            missed_lines: 0,
+            missed_bytes: 0,
+            read_bytes: 128,
+            note: None,
+        },
+    });
+    app.update(Msg::Key(KeyPress::Bleats));
+    let pane = app
+        .bleats_pane_mut_for_tests()
+        .expect("Msg::Key(KeyPress::Bleats) opened the pane on the sheep selected above");
+    pane.set_stream(Some(Stream::Err));
+    pane.set_min_level(Some(Level::Warn));
+    pane.set_match("pool".to_string());
+    app
+}
+
+/// The full-screen bleats pane, open on `web`, over a feed of `n` lines
+/// numbered `line-0`..`line-{n-1}`, oldest first — enough to exceed any
+/// test's body height, for the scrolling and follow tests.
+pub fn bleats_pane_with_lines(n: u32) -> App {
+    let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+    app.update(Msg::Bleats {
+        tail: Tail {
+            lines: (0..n)
+                .map(|i| line(Stream::Out, &format!("line-{i}")))
+                .collect(),
+            missed_lines: 0,
+            missed_bytes: 0,
+            read_bytes: 1_024,
+            note: None,
+        },
+    });
+    app.update(Msg::Key(KeyPress::Bleats));
+    app
+}
+
+/// A feed whose newest lines are short and whose older ones are long, so a
+/// page sized from the tail is far too many lines once the view is scrolled
+/// back into the long stretch.
+///
+/// The shape a wrap-aware page step has to survive: `page_amount_up` measures
+/// from the tail, and a tail of one-row lines says "a page is N lines" while
+/// the older region draws each of those lines as three rows.
+#[must_use]
+pub fn bleats_pane_with_mixed_line_lengths() -> App {
+    let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+    // Heights cycling 1, 2, 3, 4 rows rather than a uniform block. Uniform
+    // costs make a backward count and a window's own length agree, which is
+    // exactly the case that hides a direction-mismatched page size; the gap
+    // only appears where consecutive lines wrap to different heights.
+    let mut lines: Vec<TailLine> = (0..40)
+        .map(|i| {
+            let padding = "y".repeat(50 * (i % 4));
+            line(Stream::Out, &format!("old-{i} {padding}"))
+        })
+        .collect();
+    lines.extend((0..40).map(|i| line(Stream::Out, &format!("new-{i}"))));
+    app.update(Msg::Bleats {
+        tail: Tail {
+            lines,
+            missed_lines: 0,
+            missed_bytes: 0,
+            read_bytes: 1_024,
+            note: None,
+        },
+    });
+    app.update(Msg::Key(KeyPress::Bleats));
+    app
+}
+
+/// A feed whose long line is double-width characters, so its wrapped height
+/// depends on display columns rather than `char` count.
+///
+/// Every other wrap fixture here is single-width ASCII, where `char_columns`
+/// and a naive per-`char` count agree. That makes them blind to the exact
+/// regression this repo has already fixed on two other branches: a
+/// full-width character occupies two columns, so 60 of them wrap to twice
+/// the rows 60 ASCII characters would.
+#[must_use]
+pub fn bleats_pane_with_a_wide_line() -> App {
+    let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+    app.update(Msg::Bleats {
+        tail: Tail {
+            lines: vec![line(Stream::Out, &"\u{5e83}".repeat(60))],
+            missed_lines: 0,
+            missed_bytes: 0,
+            read_bytes: 1_024,
+            note: None,
+        },
+    });
+    app.update(Msg::Key(KeyPress::Bleats));
+    app
+}
+
+/// The full-screen bleats pane, open on `web`, over a feed with one line
+/// comfortably wider than 80 columns, for the wrap tests.
+pub fn bleats_pane_with_long_line() -> App {
+    let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+    app.update(Msg::Bleats {
+        tail: Tail {
+            lines: vec![
+                line(Stream::Out, "short line"),
+                line(Stream::Out, &"x".repeat(200)),
+            ],
+            missed_lines: 0,
+            missed_bytes: 0,
+            read_bytes: 1_024,
+            note: None,
+        },
+    });
+    app.update(Msg::Key(KeyPress::Bleats));
+    app
+}
+
+/// [`super::bleats_full::draw`]'s own lines, for a test that needs the
+/// bleats pane's rendered rows without a [`Buffer`] round trip. Thin
+/// wrapper: [`super::bleats_full::draw_lines`] is `pub(crate)` for exactly
+/// this, but lives in a sibling module the top-level fixture callers in
+/// `app.rs` do not otherwise reach.
+///
+/// [`Buffer`]: ratatui::buffer::Buffer
+pub fn draw_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
+    super::bleats_full::draw_lines(app, width, rows)
 }
 
 /// One sheep, `catcher`, selected, with a two-line feed applied and its log

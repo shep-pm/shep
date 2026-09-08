@@ -12,7 +12,9 @@ use super::app::{ActionVerb, InputMode, KeyPress};
 /// Only `KeyEventKind::Press` counts: a terminal that reports repeats and
 /// releases would otherwise fire an action once per repeat of a held key.
 /// `Ctrl-C` is a binding in either mode, since raw mode delivers it as an
-/// ordinary key event and there is no `SIGINT` to catch.
+/// ordinary key event and there is no `SIGINT` to catch. `Ctrl-D`/`Ctrl-U`
+/// are `Normal`-only, so paging the bleats pane never fires behind an
+/// operator's back while they are typing a match.
 #[must_use]
 pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
     let Event::Key(key) = event else {
@@ -24,6 +26,14 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         return match key.code {
             KeyCode::Char('c') => Some(KeyPress::Quit),
+            // Guarded on `mode` here, unlike every other binding in this
+            // branch: this CONTROL match runs ahead of the `InputMode::Text`
+            // check below, so an unguarded `ctrl-d`/`ctrl-u` would page the
+            // pane behind an operator's back while they are typing a match
+            // into the bleats box. `ctrl-c` stays unguarded on purpose — it
+            // quits from the box too, the same way it always has.
+            KeyCode::Char('d') if mode == InputMode::Normal => Some(KeyPress::PageDown),
+            KeyCode::Char('u') if mode == InputMode::Normal => Some(KeyPress::PageUp),
             _ => None,
         };
     }
@@ -59,6 +69,13 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char('d') => Some(KeyPress::ListRemove),
         KeyCode::Char('K') => Some(KeyPress::ListMoveUp),
         KeyCode::Char('J') => Some(KeyPress::ListMoveDown),
+        KeyCode::Char('b') => Some(KeyPress::Bleats),
+        KeyCode::Char('o') => Some(KeyPress::StreamCycle),
+        KeyCode::Char('m') => Some(KeyPress::LevelCycle),
+        KeyCode::Char('f') => Some(KeyPress::FollowToggle),
+        KeyCode::Char('w') => Some(KeyPress::WrapToggle),
+        KeyCode::Char('n') => Some(KeyPress::MatchNext),
+        KeyCode::Char('N') => Some(KeyPress::MatchPrev),
         KeyCode::Enter => Some(KeyPress::Confirm),
         _ => None,
     }
@@ -159,6 +176,17 @@ mod tests {
         assert_eq!(map_key(&key(KeyCode::Char('z')), InputMode::Normal), None);
     }
 
+    /// `b` opens the full-screen bleats pane. Pinned because `map_key`
+    /// dispatches on mode rather than pane, so a key taken here is taken
+    /// everywhere in `Normal`.
+    #[test]
+    fn b_opens_the_bleats_pane() {
+        assert_eq!(
+            map_key(&key(KeyCode::Char('b')), InputMode::Normal),
+            Some(KeyPress::Bleats)
+        );
+    }
+
     #[test]
     fn the_movement_keys_are_unchanged_and_now_mean_selection() {
         assert_eq!(
@@ -253,11 +281,72 @@ mod tests {
         );
     }
 
+    /// `o` and `m` are global bindings, taken here so the bleats pane can
+    /// cycle its stream and minimum-level axes; a key taken in `map_key` is
+    /// taken everywhere in `Normal`, the same note `b_opens_the_bleats_pane`
+    /// makes.
+    #[test]
+    fn o_and_m_cycle_the_stream_and_level_axes() {
+        assert_eq!(
+            map_key(&key(KeyCode::Char('o')), InputMode::Normal),
+            Some(KeyPress::StreamCycle)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('m')), InputMode::Normal),
+            Some(KeyPress::LevelCycle)
+        );
+    }
+
+    /// `f` cycles the bleats pane's follow flag; a global binding, ignored
+    /// on the dashboard the same way `o`/`m` are.
+    #[test]
+    fn f_toggles_follow() {
+        assert_eq!(
+            map_key(&key(KeyCode::Char('f')), InputMode::Normal),
+            Some(KeyPress::FollowToggle)
+        );
+    }
+
+    /// `ctrl-d`/`ctrl-u` page the bleats pane, and only fire in `Normal`:
+    /// unguarded, they would page the pane behind an operator's back while
+    /// the match box owns `InputMode::Text`.
+    #[test]
+    fn ctrl_d_and_ctrl_u_page_only_in_normal_mode() {
+        let ctrl_d = Event::Key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL));
+        let ctrl_u = Event::Key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        assert_eq!(
+            map_key(&ctrl_d, InputMode::Normal),
+            Some(KeyPress::PageDown)
+        );
+        assert_eq!(map_key(&ctrl_u, InputMode::Normal), Some(KeyPress::PageUp));
+        assert_eq!(map_key(&ctrl_d, InputMode::Text), None);
+        assert_eq!(map_key(&ctrl_u, InputMode::Text), None);
+    }
+
     #[test]
     fn slash_opens_the_filter_in_normal_mode() {
         assert_eq!(
             map_key(&key(KeyCode::Char('/')), InputMode::Normal),
             Some(KeyPress::FilterStart)
+        );
+    }
+
+    /// `w` toggles the bleats pane's wrap; `n`/`N` step between matches. All
+    /// three are global bindings, the same way `o`/`m`/`f` are: `map_key`
+    /// dispatches on mode alone, ignored on the dashboard.
+    #[test]
+    fn w_and_n_and_shift_n_are_bound() {
+        assert_eq!(
+            map_key(&key(KeyCode::Char('w')), InputMode::Normal),
+            Some(KeyPress::WrapToggle)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('n')), InputMode::Normal),
+            Some(KeyPress::MatchNext)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('N')), InputMode::Normal),
+            Some(KeyPress::MatchPrev)
         );
     }
 }

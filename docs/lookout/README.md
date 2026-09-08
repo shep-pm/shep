@@ -16,10 +16,10 @@ phase before deciding what came next.
 
 ## Reading the frames
 
-- `frames.txt`, thirty-five scenes rendered through the flattened `NO_COLOR`
+- `frames.txt`, thirty-six scenes rendered through the flattened `NO_COLOR`
   palette, the one an operator with `$NO_COLOR` set or a 16-colour terminal
   actually gets. Open it in any editor.
-- `frames.ansi`, the same thirty-five scenes rendered through the coloured
+- `frames.ansi`, the same thirty-six scenes rendered through the coloured
   palette the pinned snapshot tests use. Read it with `less -R` so the
   escape codes render instead of printing literally.
 
@@ -174,3 +174,24 @@ debt.
   share a single row with a divider between them and the pair's combined
   size on disk after it, and the pane gained a `cfg !N pending` cell for a
   sheep still carrying an unapplied config change.
+
+## What 1i settled
+
+- **`b` opens the bleats feed full screen on the selected sheep, and pins
+  it.** There is no table on screen to change the selection with, so the
+  pane describes that one sheep for as long as it stays open. It reads the
+  same log files the corner feed does, not the bus, just polled faster
+  while the pane has focus.
+- **Three filter axes, and they compose with AND.** `o` cycles the stream
+  (out, err, or both), `m` cycles a minimum level, and `/` opens a box for
+  a text or regex match, with matches highlighted. A line with no
+  detectable level always shows, whatever the minimum is set to: most app
+  output carries no level at all, and hiding it would make the pane worse
+  at the job it was opened for. The filter row states the composition and
+  a survivor count scoped to the current window.
+- **`esc` drops the newest filter chip before it closes the pane.** One
+  axis at a time, newest first, and only once none are left does `esc`
+  close the pane and return to the table.
+- **`j`/`k` scroll a line, `ctrl-d`/`ctrl-u` a page, `G` jumps to the end
+  and resumes following, `f` toggles following, `w` wraps long lines
+  instead of truncating them, and `n`/`N` step between matches.**

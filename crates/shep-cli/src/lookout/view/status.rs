@@ -10,6 +10,7 @@ use super::super::app::{
     ActionState, App, Control, InputMode, Link, RowKey, Settings, SettingsPrompt, retrying_sentence,
 };
 use super::super::pane::{ConfigPane, PanePending};
+use super::super::pane_bleats::BleatsPane;
 use super::cell;
 use super::flock::fit;
 use super::settings::field_label;
@@ -71,6 +72,15 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             format!("{}  enter confirms, any other key cancels", prompt.text)
         };
         (text, palette.attention())
+    } else if let Some(buffer) = app.bleats_pane().and_then(BleatsPane::match_editing) {
+        // Ahead of the filter branch for the reason the comment below gives:
+        // the bleats pane's match box shares `InputMode::Text` with the
+        // dashboard's name filter, and falling through would label the
+        // dashboard's own untouched query as this pane's match.
+        (
+            format!("match  {buffer}\u{258f}   enter applies   esc cancels"),
+            palette.attention(),
+        )
     } else if let Some((label, buffer)) = app.config_pane().and_then(pane_editor) {
         // The pane's own free-text editor, and the env sub-screen's, ahead
         // of the filter branch: all three share `InputMode::Text`, and a
@@ -141,6 +151,14 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             pane_hint(app.control(), pane_screen(pane)).to_string(),
             palette.attention(),
         )
+    } else if app.bleats_pane().is_some() {
+        // Checked below the match box's own branch above, which owns this
+        // slot instead while it is open. The design's own status-bar line
+        // (docs/lookout/design-files/README.md:274) names every key here
+        // but the minimum-level axis's own `m`: that line lists no key for
+        // it at all, so it is appended rather than inserted, the same rule
+        // `hint_for`'s own doc gives for its dashboard forms.
+        (BLEATS_HINT.to_string(), palette.attention())
     } else if app.settings().is_none() && !app.filter().is_empty() {
         // Gated on the screen being closed: the filter survives the swap
         // into settings (`App::on_settings_key` never touches it), but `/`
@@ -159,10 +177,17 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
     };
     // Always rendered, in both states. An operator who does not know whether
     // their dashboard can act is one keystroke from finding out the wrong
-    // way.
-    let right = match app.control() {
-        Control::ReadOnly => "read-only",
-        Control::Allowed => "control enabled",
+    // way. The bleats pane borrows this slot while it is following the
+    // tail: control state means nothing on a screen with no action keys of
+    // its own, and whether the view is pinned to the newest line is the
+    // fact this screen's own operator needs a keystroke away from.
+    let right = if app.bleats_pane().is_some_and(BleatsPane::following) {
+        "\u{2588} following"
+    } else {
+        match app.control() {
+            Control::ReadOnly => "read-only",
+            Control::Allowed => "control enabled",
+        }
     };
     let right_len = u16::try_from(right.chars().count()).unwrap_or(0);
     // `+ 1` reserves one column of gap so a truncated left side's `…` never
@@ -261,6 +286,14 @@ fn pane_editor(pane: &ConfigPane) -> Option<(String, &str)> {
         PanePending::Armed { .. } | PanePending::Sent { .. } => None,
     }
 }
+
+/// The bleats pane's key hint: the design's own status-bar line, plus `m`
+/// for the minimum-level axis. The design names a key for every other axis
+/// (`o` for the stream) but none for this one, so `m` is this crate's own
+/// addition, appended after the design's own list rather than sorted into
+/// it.
+const BLEATS_HINT: &str = "esc back   j/k line   ctrl-d/u page   G end   \
+    / search   n/N match   f follow   w wrap   o out/err/both   m level";
 
 /// The config pane's own key hint.
 ///
@@ -374,6 +407,7 @@ mod tests {
     use super::super::fixtures::{
         acting_app, allowed_app, app_in_settings, app_in_settings_on, app_in_settings_with_control,
         armed_app, armed_app_with_a_filter_and_a_notice, editing_app, filtered_app, rendered,
+        with_selection,
     };
     use super::*;
     use crate::commands::settings::SettingField;
@@ -852,5 +886,80 @@ mod tests {
         app.update(Msg::Key(KeyPress::Escape));
         app.update(Msg::Key(KeyPress::ListMoveDown));
         assert!(app.config_pane().unwrap().is_armed(), "J arms a move");
+    }
+
+    /// The bleats pane's match box gets the status bar, not the dashboard's
+    /// name filter.
+    ///
+    /// Both own `InputMode::Text`, and the filter branch is a catch-all, so
+    /// without a branch of its own the bar labels the dashboard's untouched
+    /// query as this pane's match. The same trap the config pane's editor
+    /// sits ahead of the filter branch to avoid.
+    #[test]
+    fn the_bleats_match_box_owns_the_status_bar_while_it_is_open() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let _ = app.update(Msg::Key(KeyPress::FilterStart));
+        for typed in "pool".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        let bar = rendered(&status_line(&app, 160));
+        assert!(bar.contains("match  pool"), "got {bar}");
+        assert!(!bar.contains("filter"), "not the dashboard's box: {bar}");
+    }
+
+    /// The bleats pane's own hint carries the design's full line, plus `m`
+    /// for the minimum-level axis the design names no key for at all. Every
+    /// other key hint test in this module checks for its own screen's
+    /// keys the same way; a bare "the bar is non-empty" would pass for the
+    /// dashboard's hint too, since the title alone already renders.
+    #[test]
+    fn the_bleats_pane_gets_its_own_status_line() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let bar = rendered(&status_line(&app, 200));
+        for key in [
+            "esc back",
+            "j/k line",
+            "ctrl-d/u page",
+            "G end",
+            "/ search",
+            "n/N match",
+            "f follow",
+            "w wrap",
+            "o out/err/both",
+            "m level",
+        ] {
+            assert!(bar.contains(key), "missing {key:?}: got {bar}");
+        }
+    }
+
+    /// The right-aligned `█ following` indicator replaces the control-state
+    /// label while the bleats pane is pinned to the tail, and only then:
+    /// the design names it for this screen alone.
+    #[test]
+    fn the_following_indicator_replaces_control_state_while_pinned_to_the_tail() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let bar = rendered(&status_line(&app, 160));
+        assert!(bar.contains("\u{2588} following"), "got {bar}");
+        assert!(!bar.contains("read-only"), "got {bar}");
+
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        let scrolled = rendered(&status_line(&app, 160));
+        assert!(
+            !scrolled.contains("\u{2588} following"),
+            "scrolled back, no longer following: {scrolled}"
+        );
+        assert!(scrolled.contains("read-only"), "got {scrolled}");
     }
 }
