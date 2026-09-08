@@ -111,12 +111,8 @@ pub fn sparkline(samples: &[f32], cells: usize, ceiling: f32) -> String {
 #[must_use]
 #[allow(dead_code)]
 pub fn chart(samples: &[f32], ceiling: f32, cols: usize, rows: usize) -> Vec<String> {
-    if rows == 0 {
-        return Vec::new();
-    }
-    if cols == 0 {
-        return vec![String::new(); rows];
-    }
+    // A zero `cols` or `rows` degrades through the general path below with
+    // no guard needed: don't re-add one without a test proving it wrong.
     let window = &samples[samples.len().saturating_sub(cols)..];
     let pad = cols - window.len();
     let ceiling = if ceiling > 0.0 { ceiling } else { 1.0 };
@@ -244,6 +240,9 @@ mod tests {
 
     /// No samples is blank rather than a floor line, for `sparkline`'s reason:
     /// a flat line reads as measured and idle, blank reads as not measured yet.
+    /// `chart` has no empty-samples branch to mutate today, so this guards a
+    /// future one: if a later change adds an explicit `is_empty` arm mirroring
+    /// `sparkline`'s and gets it wrong, this is the test that would catch it.
     #[test]
     fn an_empty_chart_is_blank_rather_than_a_floor_line() {
         assert_eq!(chart(&[], 100.0, 3, 2), ["   ", "   "]);
