@@ -5,23 +5,19 @@
 //! through [`SecretView`], which reads the sheep's own environment and then
 //! [`ALL_ENVIRONMENTS`], never another named environment.
 //!
-//! Same on-disk shape as [`crate::kv`]: a read-modify-rename under an
-//! exclusive lock on a sibling `secrets.json.lock`, copied rather than
-//! shared since `KvLock` is private to its module.
+//! Same on-disk shape as [`crate::kv`]: a read-modify-rename under a
+//! [`crate::file_lock`] on a sibling `secrets.json.lock`.
 
 use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write as _;
 use std::path::Path;
-// `PathBuf` backs `lock_path` below, gated the same way for both platform
-// arms of `SecretLock`.
-#[cfg(any(unix, windows))]
-use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
 use crate::config::AppConfig;
 use crate::config::template;
+use crate::file_lock::FileLock;
 
 /// The on-disk format's version.
 ///
@@ -196,111 +192,6 @@ fn check_environment(environment: &str) -> Result<(), SecretError> {
     }
 }
 
-/// The lock file that guards `path`: its own name with `.lock` appended, so
-/// it sits in `$SHEP_HOME` next to the store and inherits that directory's
-/// `0700`.
-///
-/// `cfg(any(unix, windows))` alongside its two callers: [`SecretLock::acquire`]
-/// names a real lock file on both platforms, unix through `flock(2)` and
-/// windows through an exclusive `share_mode(0)` open.
-#[cfg(any(unix, windows))]
-fn lock_path(path: &Path) -> PathBuf {
-    let mut name = path
-        .file_name()
-        .map(std::ffi::OsStr::to_os_string)
-        .unwrap_or_default();
-    name.push(".lock");
-    path.parent().unwrap_or_else(|| Path::new(".")).join(name)
-}
-
-/// An exclusive advisory lock over one secret store, released when it drops,
-/// including by the kernel if the process dies holding it.
-///
-/// On a sibling `secrets.json.lock`, never on the store itself: `rename`
-/// replaces the store's inode, which would orphan a lock held on it.
-struct SecretLock {
-    /// `flock(2)` is released by this handle's `Drop`. Named with a leading
-    /// underscore because it is held, never read.
-    #[cfg(unix)]
-    _flock: nix::fcntl::Flock<std::fs::File>,
-    /// The lock file, opened with `share_mode(0)` so no other handle can
-    /// open it while this one is live; released by `Drop`, the same role
-    /// `_flock` plays on unix. Named with a leading underscore because it
-    /// is held, never read.
-    #[cfg(windows)]
-    _handle: std::fs::File,
-}
-
-impl SecretLock {
-    /// Blocks until this process holds the store's lock exclusively.
-    ///
-    /// # Errors
-    /// The lock file could not be created beside `path`, or `flock` failed
-    /// for a reason other than contention (contention blocks rather than
-    /// failing).
-    #[cfg(unix)]
-    fn acquire(path: &Path) -> std::io::Result<Self> {
-        use nix::fcntl::{Flock, FlockArg};
-        use std::os::unix::fs::OpenOptionsExt as _;
-
-        let file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(crate::atomic_file::OWNER_ONLY_FILE_MODE)
-            .open(lock_path(path))?;
-
-        Flock::lock(file, FlockArg::LockExclusive)
-            .map(|flock| Self { _flock: flock })
-            .map_err(|(_file, errno)| std::io::Error::from(errno))
-    }
-
-    /// Blocks until this process holds the store's lock exclusively.
-    ///
-    /// `share_mode(0)` denies every other open, in this process or another,
-    /// giving the same exclusivity as unix `flock`. A contended open fails
-    /// immediately with `ERROR_SHARING_VIOLATION` rather than blocking, so
-    /// this polls on a short sleep until it succeeds.
-    ///
-    /// # Errors
-    /// The lock file could not be created beside `path`, or the open failed
-    /// for a reason other than sharing contention (contention retries rather
-    /// than failing).
-    #[cfg(windows)]
-    fn acquire(path: &Path) -> std::io::Result<Self> {
-        use std::os::windows::fs::OpenOptionsExt as _;
-
-        /// Windows' `ERROR_SHARING_VIOLATION`: another handle already holds
-        /// share access this open's `share_mode(0)` denies. Hardcoded rather
-        /// than pulled from `windows-sys`, since this crate has no other
-        /// Windows-only dependency.
-        const ERROR_SHARING_VIOLATION: i32 = 32;
-
-        /// How long a contended retry sleeps before trying again. Short
-        /// enough that a lock held for a normal `set`/`unset`'s duration (a
-        /// handful of small file operations) costs this loop only a few
-        /// iterations, long enough not to spin the CPU while it waits.
-        const RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(2);
-
-        let lock_path = lock_path(path);
-        loop {
-            match std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(false)
-                .share_mode(0)
-                .open(&lock_path)
-            {
-                Ok(handle) => return Ok(Self { _handle: handle }),
-                Err(error) if error.raw_os_error() == Some(ERROR_SHARING_VIOLATION) => {
-                    std::thread::sleep(RETRY_INTERVAL);
-                }
-                Err(error) => return Err(error),
-            }
-        }
-    }
-}
-
 /// Reads whichever version of the store `path` currently names.
 ///
 /// A missing file reads as an empty, current-version store: reading against
@@ -408,7 +299,7 @@ pub fn set(path: &Path, key: &str, environment: &str, value: &str) -> Result<(),
         });
     }
 
-    let _lock = SecretLock::acquire(path)?;
+    let _lock = FileLock::acquire(path)?;
     let mut file = read_file(path)?;
     file.version = SECRETS_VERSION;
     file.entries
@@ -431,7 +322,7 @@ pub fn unset(path: &Path, key: &str, environment: &str) -> Result<bool, SecretEr
     check_key(key)?;
     check_environment(environment)?;
 
-    let _lock = SecretLock::acquire(path)?;
+    let _lock = FileLock::acquire(path)?;
     let mut file = read_file(path)?;
     let Some(by_environment) = file.entries.get_mut(key) else {
         return Ok(false);

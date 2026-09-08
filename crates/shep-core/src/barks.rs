@@ -7,15 +7,17 @@
 //! writer that dies mid-rewrite never leaves a fragment. [`read`] skips
 //! any unparseable line, since this file is read during an incident.
 //!
-//! The two writers are separate OS processes, so a shared advisory lock
-//! on a sibling `<path>.lock` serializes them; shep-core, not
-//! shep-daemon, is where that lock belongs.
+//! The two writers are separate OS processes, so a [`crate::file_lock`] on
+//! a sibling `<path>.lock` serializes them; shep-core, not shep-daemon, is
+//! where that lock belongs.
 
 use core::fmt;
 use std::io::Write as _;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+
+use crate::file_lock::FileLock;
 
 /// Cap the ring keeps itself under when nobody configured one.
 pub const DEFAULT_MAX_BYTES: u64 = 1024 * 1024;
@@ -121,7 +123,7 @@ impl From<serde_json::Error> for BarkError {
 pub fn append(path: &Path, bark: &Bark, max_bytes: u64) -> Result<(), BarkError> {
     // Held until this returns, so the read and the final rename are one
     // transaction as far as any other writer is concerned.
-    let _lock = RingLock::acquire(path)?;
+    let _lock = FileLock::acquire(path)?;
 
     let mut lines = read_lines(path)?;
     let new_line = serde_json::to_string(bark)?;
@@ -188,7 +190,7 @@ fn ring_bytes(lines: &[String]) -> u64 {
 ///
 /// The name is unique per call, not a fixed `<path>.tmp`: two writers
 /// racing on a shared name can have one `rename` consume the other's
-/// staging file. [`RingLock`] already keeps two appenders apart; this is
+/// staging file. [`FileLock`] already keeps two appenders apart; this is
 /// the second lock for a caller that reaches `write_ring` another way.
 fn write_ring(path: &Path, lines: &[String]) -> Result<(), BarkError> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
@@ -209,118 +211,6 @@ fn write_ring(path: &Path, lines: &[String]) -> Result<(), BarkError> {
     // published them durable.
     crate::atomic_file::sync_dir(parent)?;
     Ok(())
-}
-
-/// An exclusive advisory lock over one bark ring, held for as long as the
-/// value lives and released when it drops, including on an early `?` or
-/// if the process dies holding it.
-///
-/// The lock is on a sibling `<path>.lock`, never on the ring itself:
-/// `append` replaces the ring's inode with every `rename`, so a lock on
-/// the ring itself would guard an inode the next append immediately
-/// unlinks, excluding nothing. The lock file is never renamed, rewritten,
-/// or read, and stays on disk between appends so both writers keep
-/// agreeing on which file it is.
-struct RingLock {
-    /// `flock(2)` is released by this handle's `Drop`. Named with a
-    /// leading underscore because it is held, never read.
-    #[cfg(unix)]
-    _flock: nix::fcntl::Flock<std::fs::File>,
-    /// The lock file, opened with `share_mode(0)` so no other handle,
-    /// same-process or not, can open it while this one is live. Released
-    /// by this handle's `Drop`, named with a leading underscore because
-    /// it is held, never read.
-    #[cfg(windows)]
-    _handle: std::fs::File,
-}
-
-impl RingLock {
-    /// Blocks until this process holds the ring's lock exclusively.
-    ///
-    /// # Errors
-    /// The lock file could not be created beside `path`, or `flock` failed
-    /// for a reason other than contention (contention blocks rather than
-    /// failing).
-    #[cfg(unix)]
-    fn acquire(path: &Path) -> std::io::Result<Self> {
-        use nix::fcntl::{Flock, FlockArg};
-        use std::os::unix::fs::OpenOptionsExt as _;
-
-        let file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(crate::atomic_file::OWNER_ONLY_FILE_MODE)
-            .open(lock_path(path))?;
-
-        // `LockExclusive` blocks; the non-blocking variant would need a
-        // retry loop and a deadline, and an append that waits its turn is
-        // exactly the behaviour wanted here.
-        Flock::lock(file, FlockArg::LockExclusive)
-            .map(|flock| Self { _flock: flock })
-            .map_err(|(_file, errno)| std::io::Error::from(errno))
-    }
-
-    /// Blocks until this process holds the ring's lock exclusively.
-    ///
-    /// `share_mode(0)` denies every other handle, same process or not,
-    /// while this one is live: an OS-enforced exclusivity rather than
-    /// `flock`'s advisory one. It gives no blocking wait, though: a
-    /// contended open fails at once with `ERROR_SHARING_VIOLATION`, so
-    /// this polls on a short sleep until it succeeds.
-    ///
-    /// # Errors
-    /// The lock file could not be created beside `path`, or the open failed
-    /// for a reason other than sharing contention.
-    #[cfg(windows)]
-    fn acquire(path: &Path) -> std::io::Result<Self> {
-        use std::os::windows::fs::OpenOptionsExt as _;
-
-        /// Windows' `ERROR_SHARING_VIOLATION`: another handle already holds
-        /// share access this open's `share_mode(0)` denies. Hardcoded
-        /// since this crate has no other Windows-only dependency.
-        const ERROR_SHARING_VIOLATION: i32 = 32;
-
-        /// How long a contended retry sleeps before trying again. Short
-        /// enough that a lock held for one `append`'s duration (a read, a
-        /// write, a rename) costs this loop only a few iterations, long
-        /// enough not to spin the CPU while it waits.
-        const RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(2);
-
-        let lock_path = lock_path(path);
-        loop {
-            match std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(false)
-                .share_mode(0)
-                .open(&lock_path)
-            {
-                Ok(handle) => return Ok(Self { _handle: handle }),
-                Err(error) if error.raw_os_error() == Some(ERROR_SHARING_VIOLATION) => {
-                    std::thread::sleep(RETRY_INTERVAL);
-                }
-                Err(error) => return Err(error),
-            }
-        }
-    }
-}
-
-/// The lock file that guards `path`: its own name with `.lock` appended,
-/// so it sits in `$SHEP_HOME` next to the ring and inherits that
-/// directory's `0700`.
-///
-/// `cfg(any(unix, windows))`: [`RingLock::acquire`] locks it for real on
-/// both platforms, through `flock(2)` on unix and an exclusive
-/// `share_mode(0)` open on windows.
-#[cfg(any(unix, windows))]
-fn lock_path(path: &Path) -> std::path::PathBuf {
-    let mut name = path
-        .file_name()
-        .map(std::ffi::OsStr::to_os_string)
-        .unwrap_or_default();
-    name.push(".lock");
-    path.parent().unwrap_or_else(|| Path::new(".")).join(name)
 }
 
 #[cfg(test)]

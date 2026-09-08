@@ -4,9 +4,9 @@
 //! and dog runtime tweaks. Not the primary config path: a Flockfile
 //! configures a sheep, `shep.toml` the shepherd and its dogs. A file rather
 //! than an RPC, so `shep set`/`get`/`unset` work with no shepherd running.
-//! Every mutation is a read-modify-rename under an exclusive lock on a
-//! sibling `kv.json.lock`, staged through a temp file: the same shape
-//! `barks::append` uses, so do not reimplement it here.
+//! Every mutation is a read-modify-rename under a [`crate::file_lock`] on
+//! a sibling `kv.json.lock`, staged through a temp file: the same shape
+//! every other store uses, so do not reimplement it here.
 //!
 //! Keys match `[A-Za-z0-9._-]`, 1 to [`MAX_KEY_BYTES`], not starting with
 //! `.`; a dot is part of a key's name, not a path.
@@ -15,12 +15,10 @@ use core::fmt;
 use std::collections::BTreeMap;
 use std::io::Write as _;
 use std::path::Path;
-// `PathBuf` backs `lock_path` below, gated the same way for both platform
-// arms of `KvLock`.
-#[cfg(any(unix, windows))]
-use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
+
+use crate::file_lock::FileLock;
 
 /// The on-disk format's version.
 ///
@@ -143,111 +141,6 @@ fn check_key(key: &str) -> Result<(), KvError> {
     }
 }
 
-/// The lock file that guards `path`: its own name with `.lock` appended, so
-/// it sits in `$SHEP_HOME` next to the store and inherits that directory's
-/// `0700`.
-///
-/// `cfg(any(unix, windows))` alongside its two callers: [`KvLock::acquire`]
-/// names a real lock file on both platforms now, unix through `flock(2)` and
-/// windows through an exclusive `share_mode(0)` open.
-#[cfg(any(unix, windows))]
-fn lock_path(path: &Path) -> PathBuf {
-    let mut name = path
-        .file_name()
-        .map(std::ffi::OsStr::to_os_string)
-        .unwrap_or_default();
-    name.push(".lock");
-    path.parent().unwrap_or_else(|| Path::new(".")).join(name)
-}
-
-/// An exclusive advisory lock over one kv store, released when it drops,
-/// including by the kernel if the process dies holding it.
-///
-/// On a sibling `kv.json.lock`, never on the store itself: `rename`
-/// replaces the store's inode, which would orphan a lock held on it.
-struct KvLock {
-    /// `flock(2)` is released by this handle's `Drop`. Named with a leading
-    /// underscore because it is held, never read.
-    #[cfg(unix)]
-    _flock: nix::fcntl::Flock<std::fs::File>,
-    /// The lock file, opened with `share_mode(0)` so no other handle can
-    /// open it while this one is live; released by `Drop`, the same role
-    /// `_flock` plays on unix. Named with a leading underscore because it
-    /// is held, never read.
-    #[cfg(windows)]
-    _handle: std::fs::File,
-}
-
-impl KvLock {
-    /// Blocks until this process holds the store's lock exclusively.
-    ///
-    /// # Errors
-    /// The lock file could not be created beside `path`, or `flock` failed
-    /// for a reason other than contention (contention blocks rather than
-    /// failing).
-    #[cfg(unix)]
-    fn acquire(path: &Path) -> std::io::Result<Self> {
-        use nix::fcntl::{Flock, FlockArg};
-        use std::os::unix::fs::OpenOptionsExt as _;
-
-        let file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(crate::atomic_file::OWNER_ONLY_FILE_MODE)
-            .open(lock_path(path))?;
-
-        Flock::lock(file, FlockArg::LockExclusive)
-            .map(|flock| Self { _flock: flock })
-            .map_err(|(_file, errno)| std::io::Error::from(errno))
-    }
-
-    /// Blocks until this process holds the store's lock exclusively.
-    ///
-    /// `share_mode(0)` denies every other open, in this process or another,
-    /// giving the same exclusivity as unix `flock`. A contended open fails
-    /// immediately with `ERROR_SHARING_VIOLATION` rather than blocking, so
-    /// this polls on a short sleep until it succeeds.
-    ///
-    /// # Errors
-    /// The lock file could not be created beside `path`, or the open failed
-    /// for a reason other than sharing contention (contention retries rather
-    /// than failing).
-    #[cfg(windows)]
-    fn acquire(path: &Path) -> std::io::Result<Self> {
-        use std::os::windows::fs::OpenOptionsExt as _;
-
-        /// Windows' `ERROR_SHARING_VIOLATION`: another handle already holds
-        /// share access this open's `share_mode(0)` denies. Hardcoded rather
-        /// than pulled from `windows-sys`, since this crate has no other
-        /// Windows-only dependency.
-        const ERROR_SHARING_VIOLATION: i32 = 32;
-
-        /// How long a contended retry sleeps before trying again. Short
-        /// enough that a lock held for a normal `set`/`get`'s duration (a
-        /// handful of small file operations) costs this loop only a few
-        /// iterations, long enough not to spin the CPU while it waits.
-        const RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(2);
-
-        let lock_path = lock_path(path);
-        loop {
-            match std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(false)
-                .share_mode(0)
-                .open(&lock_path)
-            {
-                Ok(handle) => return Ok(Self { _handle: handle }),
-                Err(error) if error.raw_os_error() == Some(ERROR_SHARING_VIOLATION) => {
-                    std::thread::sleep(RETRY_INTERVAL);
-                }
-                Err(error) => return Err(error),
-            }
-        }
-    }
-}
-
 /// Reads `path` under the lock the caller already holds.
 ///
 /// A missing file reads as an empty, current-version store: `shep get`
@@ -300,7 +193,7 @@ fn write_file(path: &Path, file: &KvFile) -> Result<(), KvError> {
 pub fn all(path: &Path) -> Result<BTreeMap<String, String>, KvError> {
     // Taking the lock here too costs one extra `open`, but it orders this
     // read against `set`/`unset`'s read-modify-rename instead of racing it.
-    let _lock = KvLock::acquire(path)?;
+    let _lock = FileLock::acquire(path)?;
     Ok(read_file(path)?.entries)
 }
 
@@ -336,7 +229,7 @@ pub fn set(path: &Path, key: &str, value: &str) -> Result<(), KvError> {
         });
     }
 
-    let _lock = KvLock::acquire(path)?;
+    let _lock = FileLock::acquire(path)?;
     let mut file = read_file(path)?;
     file.version = KV_VERSION;
     file.entries.insert(key.to_string(), value.to_string());
@@ -352,7 +245,7 @@ pub fn set(path: &Path, key: &str, value: &str) -> Result<(), KvError> {
 pub fn unset(path: &Path, key: &str) -> Result<bool, KvError> {
     check_key(key)?;
 
-    let _lock = KvLock::acquire(path)?;
+    let _lock = FileLock::acquire(path)?;
     let mut file = read_file(path)?;
     let was_present = file.entries.remove(key).is_some();
     if was_present {
@@ -370,7 +263,7 @@ pub fn unset(path: &Path, key: &str) -> Result<bool, KvError> {
 /// store that does not exist clears to `0` rather than failing: `shep unset
 /// --all` on a fresh machine is a success that removed nothing.
 pub fn clear(path: &Path) -> Result<u32, KvError> {
-    let _lock = KvLock::acquire(path)?;
+    let _lock = FileLock::acquire(path)?;
     let file = read_file(path)?;
     let count = u32::try_from(file.entries.len()).unwrap_or(u32::MAX);
     if count > 0 {
