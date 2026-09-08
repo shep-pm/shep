@@ -1125,15 +1125,20 @@ mod tests {
         // The other half of the same property: the write was not cancelled by
         // the loop leaving. `spawn_blocking` runs its closure to completion
         // whatever happens to the handle, so releasing the lock here lets it
-        // land. Polled, with a ceiling so a failure reports rather than hangs.
+        // land.
+        // A bound so a lost write reports rather than hangs, 3_000 * 10ms =
+        // thirty seconds. Not a claim about speed: when the blocking pool
+        // reaches the closure is the runner's business, not shep's.
+        const WRITE_ATTEMPTS: usize = 3_000;
+        const WRITE_POLL: Duration = Duration::from_millis(10);
         drop(held);
         let mut written = false;
-        for _ in 0..500 {
+        for _ in 0..WRITE_ATTEMPTS {
             if std::fs::read_to_string(&config).unwrap().contains("debug") {
                 written = true;
                 break;
             }
-            std::thread::sleep(Duration::from_millis(2));
+            std::thread::sleep(WRITE_POLL);
         }
         assert!(written, "the write that was in flight still landed");
     }
