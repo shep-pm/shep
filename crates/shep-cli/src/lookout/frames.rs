@@ -331,7 +331,7 @@ impl Scene {
                 "Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a quarter of its limit and its MEM/CEIL gauge fills a little, web-hot sits at 94 percent of its own limit and its gauge fills almost all the way, and where there is colour the fuller gauge also switches to the butter warning role. batch-worker has no ceiling at all, so its gauge reads the same muted bar a stopped sheep's does. The cursor is parked on web-hot, the row this frame exists to show."
             }
             Self::CfgDrift => {
-                "140 columns: wide enough for the CFG and CPU 20s columns beside the ones every other scene shows. web has two fields parked for the next spawn and reads !2, api has one field an operator set that its Flockfile does not declare and reads *1, and cron has neither and reads a bare -. The status bar's own legend explains both glyphs; this is where they actually appear in a cell. web's CPU history carries ten distinct samples, so its sparkline draws a shape over time rather than one static bar, and the cursor is parked on web so the detail pane's own cfg !2 pending cell is on screen too."
+                "140 columns: wide enough for the CFG and CPU 20s columns beside the ones every other scene shows. web has two fields parked for the next spawn and reads !2, api has one field an operator set that its Flockfile does not declare and reads *1, and cron has neither and reads a bare -. The status bar's own legend explains both glyphs; this is where they actually appear in a cell. web's counter is differenced across several two-second polls at varying deltas, so its CPU history draws a shape over time rather than one static bar, and the cursor is parked on web so the detail pane's own cfg !2 pending cell is on screen too."
             }
             Self::Empty => {
                 "No sheep registered. Each of the three panes says why it is empty, and the three sentences are different because the three reasons are."
@@ -882,16 +882,23 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
                 Some(8 << 20),
                 None,
             );
-            // Nine snapshots ahead of the shared one below, each moving
-            // only `web`'s CPU reading, so its history holds ten distinct
-            // samples by the time the frame renders: a full, varying
-            // sparkline rather than a single bar padded with blanks.
-            for cpu in [1.0_f32, 6.0, 2.5, 8.0, 3.5, 7.0, 2.0, 5.0, 6.5] {
+            // Nine snapshots ahead of the shared one below, each two seconds
+            // apart and each moving `web`'s CPU counter by a distinct
+            // delta, so the sparkline differences into a varying shape
+            // rather than a single bar padded with blanks. The first of
+            // the nine only records a baseline (see `Self::record_samples`),
+            // so the history holds eight differenced samples plus the
+            // trailing one below, which carries no reading at all.
+            let mut cpu_ms = 0_u64;
+            let mut at = t0;
+            for delta_ms in [20_u64, 120, 50, 160, 70, 140, 40, 100, 130] {
+                cpu_ms += delta_ms;
+                at += Duration::from_secs(2);
                 let mut warming_up = pending_row.clone();
-                warming_up.cpu_percent = Some(cpu);
+                warming_up.cpu_ms = Some(cpu_ms);
                 app.update(Msg::Snapshot {
                     rows: vec![warming_up, overridden_row.clone(), plain_row.clone()],
-                    at: t0,
+                    at,
                 });
             }
             vec![pending_row, overridden_row, plain_row]

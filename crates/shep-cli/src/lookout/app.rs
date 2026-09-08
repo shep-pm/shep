@@ -1416,6 +1416,18 @@ pub struct App {
     /// The whole flock's summed CPU percent, one sample per poll, same
     /// depth and ordering as [`Self::cpu_history`].
     flock_cpu: VecDeque<f32>,
+    /// Each sheep's last [`HISTORY`] RSS samples, oldest first, keyed by
+    /// [`ProcessInfo::id`], on the same terms as [`Self::cpu_history`].
+    ///
+    /// Buffered as read rather than differenced: RSS is a reading at an
+    /// instant, and only CPU arrives as a counter.
+    rss_history: HashMap<u32, VecDeque<u64>>,
+    /// The previous CPU counter and the instant it was read, per sheep.
+    ///
+    /// What makes a sample a mean over one poll rather than over the
+    /// shepherd's own baseline window. Dropped when a sheep reports no
+    /// reading, so a stop is never differenced across.
+    cpu_last: HashMap<u32, (u64, Instant)>,
     /// How [`Self::visible_rows`] gathers the flock table, toggled by `F`.
     grouping: Grouping,
     /// Fold names `z` has collapsed: [`Self::visible_rows`] skips a
@@ -1497,6 +1509,8 @@ impl App {
             style: (StyleLevel::Full, StyleSource::Default),
             cpu_history: HashMap::new(),
             flock_cpu: VecDeque::new(),
+            rss_history: HashMap::new(),
+            cpu_last: HashMap::new(),
             grouping: Grouping::Flat,
             collapsed_folds: HashSet::new(),
         }
@@ -1516,7 +1530,7 @@ impl App {
                     .into_iter()
                     .map(|info| (info.id, Row { info, anchor: at }))
                     .collect();
-                self.record_cpu_samples();
+                self.record_samples(at);
                 self.reseat(previous);
                 self.forget_missing_target();
                 // Unconditional: the selected row's log paths can change even
@@ -4053,25 +4067,64 @@ impl App {
         }
     }
 
-    /// Appends one CPU sample per sheep in the current flock, plus the
-    /// flock-wide sum, and drops every history entry for a sheep the new
-    /// snapshot no longer carries.
+    /// Differences one CPU sample per sheep in the current flock against its
+    /// last reading, buffers RSS as read, appends the flock-wide CPU sum,
+    /// and drops every history entry (CPU, RSS and baseline) for a sheep the
+    /// new snapshot no longer carries.
     ///
     /// Called after `self.flock` is replaced, so it reads the fresh
-    /// snapshot rather than the one before it. A sheep with no reading
-    /// contributes `0.0`: skipping it would slide the whole window and
-    /// make an old spike look recent.
+    /// snapshot rather than the one before it. A sheep with no CPU reading
+    /// contributes `0.0` and forgets its baseline: skipping the sample would
+    /// slide the whole window and make an old spike look recent, and
+    /// keeping the baseline would difference the next live reading across
+    /// the gap.
     ///
-    /// Every touched deque is made contiguous here, while this method
-    /// still holds `&mut self`, so [`Self::cpu_history`] and
-    /// [`Self::flock_cpu_history`] can hand out a slice from `&self`
+    /// Every touched deque is made contiguous here, while this method still
+    /// holds `&mut self`, so [`Self::cpu_history`], [`Self::rss_history`]
+    /// and [`Self::flock_cpu_history`] can hand out a slice from `&self`
     /// alone.
-    fn record_cpu_samples(&mut self) {
+    fn record_samples(&mut self, at: Instant) {
+        // Collected first: the differencing below needs `&mut self.cpu_last`
+        // while a walk of `self.flock` would still be borrowing it.
+        let readings: Vec<(u32, Option<u64>, u64)> = self
+            .flock
+            .values()
+            .map(|row| {
+                (
+                    row.info.id,
+                    row.info.cpu_ms,
+                    row.info.memory_bytes.unwrap_or(0),
+                )
+            })
+            .collect();
         let mut sum = 0.0;
-        for row in self.flock.values() {
-            let cpu = row.info.cpu_percent.unwrap_or(0.0);
+        for (id, cpu_ms, rss) in readings {
+            let rss_history = self.rss_history.entry(id).or_default();
+            rss_history.push_back(rss);
+            if rss_history.len() > HISTORY {
+                rss_history.pop_front();
+            }
+            rss_history.make_contiguous();
+
+            let cpu = match cpu_ms {
+                None => {
+                    self.cpu_last.remove(&id);
+                    0.0
+                }
+                Some(now_ms) => match self.cpu_last.insert(id, (now_ms, at)) {
+                    // Nothing behind this reading to difference. The buffer
+                    // stays one short of the poll count rather than claiming
+                    // an idle sample it never measured.
+                    None => continue,
+                    Some((then_ms, then)) => shep_core::values::cpu_percent(
+                        now_ms.saturating_sub(then_ms),
+                        at.saturating_duration_since(then),
+                    )
+                    .unwrap_or(0.0),
+                },
+            };
             sum += cpu;
-            let history = self.cpu_history.entry(row.info.id).or_default();
+            let history = self.cpu_history.entry(id).or_default();
             history.push_back(cpu);
             if history.len() > HISTORY {
                 history.pop_front();
@@ -4079,6 +4132,14 @@ impl App {
             history.make_contiguous();
         }
         self.cpu_history.retain(|id, _| self.flock.contains_key(id));
+        self.rss_history.retain(|id, _| self.flock.contains_key(id));
+        // A departed sheep's baseline outlives its rows here unless dropped
+        // too: without this, a later id reused by an unrelated sheep would
+        // inherit a stranger's counter and difference its first honest
+        // reading against it, breaking the exact guarantee
+        // `Self::cpu_history`'s doc makes about a later id inheriting
+        // nothing.
+        self.cpu_last.retain(|id, _| self.flock.contains_key(id));
         self.flock_cpu.push_back(sum);
         if self.flock_cpu.len() > HISTORY {
             self.flock_cpu.pop_front();
@@ -4089,11 +4150,28 @@ impl App {
     /// One sheep's CPU-percent samples, oldest first, newest last.
     ///
     /// Empty for a sheep with no history yet, and for one that has left the
-    /// flock: [`Self::record_cpu_samples`] drops its entry entirely.
+    /// flock: [`Self::record_samples`] drops its entry entirely.
+    #[must_use]
     pub fn cpu_history(&self, id: u32) -> &[f32] {
         self.cpu_history
             .get(&id)
             .map_or(&[][..], |history| history.as_slices().0)
+    }
+
+    /// One sheep's RSS samples in bytes, oldest first, newest last.
+    ///
+    /// Empty for a sheep with no history yet and for one that has left the
+    /// flock, on [`Self::cpu_history`]'s terms.
+    ///
+    /// No non-test caller yet: the memory chart that reads this lands in a
+    /// later task, so `#[allow(dead_code)]` says so rather than inventing
+    /// one.
+    #[must_use]
+    #[allow(dead_code)]
+    pub fn rss_history(&self, id: u32) -> &[u64] {
+        self.rss_history
+            .get(&id)
+            .map_or(&[][..], |series| series.as_slices().0)
     }
 
     /// The whole flock's summed CPU-percent samples, oldest first, newest
@@ -5087,16 +5165,23 @@ mod tests {
             .build()
     }
 
-    /// One snapshot row for `id`, reporting `cpu` percent.
-    fn row_with_cpu(id: u32, cpu: f32) -> ProcessInfo {
+    /// One snapshot row for `id`, reporting `cpu_ms` CPU-milliseconds.
+    fn row_with_cpu_ms(id: u32, cpu_ms: u64) -> ProcessInfo {
         ProcessInfo::builder(id, format!("sheep-{id}"), ProcStatus::Online)
-            .cpu_percent(Some(cpu))
+            .cpu_ms(Some(cpu_ms))
             .build()
     }
 
     /// The same row with no CPU reading, which is what a stopped sheep sends.
     fn row_without_cpu(id: u32) -> ProcessInfo {
         ProcessInfo::builder(id, format!("sheep-{id}"), ProcStatus::Stopped).build()
+    }
+
+    /// One snapshot row for `id`, reporting `rss` bytes of resident memory.
+    fn row_with_rss(id: u32, rss: u64) -> ProcessInfo {
+        ProcessInfo::builder(id, format!("sheep-{id}"), ProcStatus::Online)
+            .memory_bytes(Some(rss))
+            .build()
     }
 
     /// A dashboard with an empty flock, for tests that only exercise the
@@ -5111,65 +5196,129 @@ mod tests {
     }
 
     impl App {
-        /// Drives [`Msg::Snapshot`] the way the poll does, anchored on the
-        /// app's own clock.
+        /// Drives `Msg::Snapshot` the way the poll does, two seconds after
+        /// the last one. The gap is load-bearing: a differenced sample over
+        /// a zero window has no honest value.
         fn on_snapshot(&mut self, rows: Vec<ProcessInfo>) {
+            self.now += Duration::from_secs(2);
             let at = self.now;
             self.update(Msg::Snapshot { rows, at });
         }
     }
 
+    /// The first reading has nothing behind it to difference, so it records a
+    /// baseline and appends nothing. A zero would claim an idle sample that
+    /// was never measured.
     #[test]
-    fn a_snapshot_appends_one_sample_per_sheep() {
+    fn the_first_reading_records_a_baseline_and_no_sample() {
         let mut app = fixture();
-        app.on_snapshot(vec![row_with_cpu(1, 10.0)]);
-        app.on_snapshot(vec![row_with_cpu(1, 20.0)]);
-        assert_eq!(app.cpu_history(1), &[10.0, 20.0]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0)]);
+        assert!(app.cpu_history(1).is_empty());
     }
 
+    /// 2000 CPU-milliseconds across a two-second poll is one core.
     #[test]
-    fn a_sheep_with_no_cpu_reading_appends_a_zero_rather_than_a_gap() {
-        // The sparkline is one cell per sample; a skipped sample would slide
-        // the whole window and make an old spike look recent.
+    fn two_readings_difference_into_one_sample() {
         let mut app = fixture();
-        app.on_snapshot(vec![row_with_cpu(1, 10.0)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 2_000)]);
+        assert_eq!(app.cpu_history(1), &[100.0]);
+    }
+
+    /// The 15s baseline is what this whole change exists to stop mattering. A
+    /// one-second burst reads once and then reads zero, rather than decaying
+    /// across the next seven polls.
+    #[test]
+    fn a_burst_does_not_smear_across_later_polls() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 1_000)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 1_000)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 1_000)]);
+        assert_eq!(app.cpu_history(1), &[50.0, 0.0, 0.0]);
+    }
+
+    /// A sheep with no reading appends a zero rather than a gap: the chart is
+    /// one cell per sample, and a skipped sample would slide the whole window
+    /// and make an old spike look recent. The stored reading goes with it, so
+    /// the next live reading is not differenced across the stop.
+    #[test]
+    fn an_unsampled_sheep_appends_a_zero_and_forgets_its_baseline() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 2_000)]);
         app.on_snapshot(vec![row_without_cpu(1)]);
-        assert_eq!(app.cpu_history(1), &[10.0, 0.0]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 9_000)]);
+        assert_eq!(app.cpu_history(1), &[100.0, 0.0]);
+    }
+
+    /// A respawn gives a new tree whose counter starts below the old one's.
+    /// Clamped to zero, the same rule the daemon applies, and it costs one
+    /// dropped sample rather than a negative spike.
+    #[test]
+    fn a_counter_that_went_backwards_reads_zero() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_cpu_ms(1, 9_000)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 12)]);
+        assert_eq!(app.cpu_history(1), &[0.0]);
+    }
+
+    /// RSS is sampled at an instant, so it is buffered as it arrives with no
+    /// differencing at all.
+    #[test]
+    fn rss_is_buffered_as_read() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_rss(1, 1_024)]);
+        app.on_snapshot(vec![row_with_rss(1, 2_048)]);
+        assert_eq!(app.rss_history(1), &[1_024, 2_048]);
+    }
+
+    /// Same depth and same drop-on-leave rule as the CPU buffer.
+    #[test]
+    fn a_sheep_that_leaves_takes_its_rss_history_too() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_rss(1, 1_024), row_with_rss(2, 512)]);
+        app.on_snapshot(vec![row_with_rss(1, 1_024)]);
+        assert!(app.rss_history(2).is_empty());
     }
 
     #[test]
     fn the_buffer_holds_at_most_a_hundred_and_forty_samples() {
-        // Each pushed value is distinct so a wrong-end eviction or a
-        // reversed order fails this, not just a wrong length.
+        // Each poll's counter climbs by a distinct step, so each differenced
+        // percent is distinct too; a wrong-end eviction or a reversed order
+        // fails this, not just a wrong length.
         let mut app = fixture();
-        for i in 0..200 {
-            app.on_snapshot(vec![row_with_cpu(1, i as f32)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0)]);
+        let mut counter: u64 = 0;
+        for i in 1..=200u64 {
+            counter += i * 20;
+            app.on_snapshot(vec![row_with_cpu_ms(1, counter)]);
         }
         let history = app.cpu_history(1);
         assert_eq!(history.len(), 140);
-        assert_eq!(history.first(), Some(&60.0), "oldest survivor");
-        assert_eq!(history.last(), Some(&199.0), "newest sample");
+        assert_eq!(history.first(), Some(&61.0), "oldest survivor");
+        assert_eq!(history.last(), Some(&200.0), "newest sample");
     }
 
     #[test]
     fn a_sheep_that_leaves_the_flock_takes_its_history_with_it() {
         let mut app = fixture();
-        app.on_snapshot(vec![row_with_cpu(1, 10.0), row_with_cpu(2, 5.0)]);
-        app.on_snapshot(vec![row_with_cpu(1, 10.0)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0), row_with_cpu_ms(2, 0)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 2_000)]);
         assert!(
             app.cpu_history(2).is_empty(),
             "a deleted sheep leaves no history behind"
         );
     }
 
+    /// The first poll only records a baseline for each sheep and contributes
+    /// nothing to the sum, so the series starts with a zero.
     #[test]
     fn the_flock_series_is_the_sum_of_the_snapshot() {
         let mut app = fixture();
-        app.on_snapshot(vec![row_with_cpu(1, 10.0), row_with_cpu(2, 5.5)]);
-        // Sheep 2 leaves on the second poll; the next sample must sum only
-        // the sheep still present, not carry the departed one along.
-        app.on_snapshot(vec![row_with_cpu(1, 10.0)]);
-        assert_eq!(app.flock_cpu_history(), &[15.5, 10.0]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0), row_with_cpu_ms(2, 0)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 2_000), row_with_cpu_ms(2, 1_000)]);
+        assert_eq!(app.flock_cpu_history(), &[0.0, 150.0]);
     }
 
     fn started() -> (App, Instant) {
