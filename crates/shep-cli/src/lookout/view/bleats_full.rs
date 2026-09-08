@@ -375,7 +375,7 @@ fn filter_row_line(
         used += 1;
     }
     let sentence = format!(
-        "{} of {} lines in the window — all three must hold, and a line with no \
+        "{} of {} lines in the window: all three must hold, and a line with no \
          detectable level always shows",
         group_thousands(survivors),
         group_thousands(total),
