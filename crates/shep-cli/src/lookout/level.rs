@@ -95,10 +95,14 @@ mod tests {
     /// The full extra-word variants of warn/error, not just the short
     /// forms. Dropping either from the match still passes every other
     /// test in this file, so each needs its own pin.
+    ///
+    /// Neither line may contain a second level word. `a fatal error
+    /// occurred` pins nothing: drop the `fatal` arm and `find_map` reaches
+    /// `error` on the next word for the same answer.
     #[test]
     fn the_long_forms_of_warn_and_error_are_recognised() {
         assert_eq!(level_of("a warning was logged"), Some(Level::Warn));
-        assert_eq!(level_of("a fatal error occurred"), Some(Level::Error));
+        assert_eq!(level_of("a fatal crash occurred"), Some(Level::Error));
     }
 
     /// A digit touching the word means it was never a level token: an
