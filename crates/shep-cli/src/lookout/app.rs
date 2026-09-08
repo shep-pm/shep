@@ -26,7 +26,7 @@ use super::field::{FieldKind, FieldSet};
 use super::level::Level;
 use super::pane::{ConfigPane, FieldValue, Lock, PaneEdit, PanePending, PaneTarget, ReloadKind};
 use super::pane_bleats::BleatsPane;
-use super::secrets::{SecretRow, SecretsModel};
+use super::secrets::{SecretRow, SecretsModel, Source};
 use super::tail::Stream;
 use super::theme::Palette;
 use super::viewport::Viewport;
@@ -1454,6 +1454,78 @@ impl SecretsPane {
     /// The environment tab showing, or `None` before the first load.
     pub(crate) fn environment(&self) -> Option<&str> {
         self.model.environments.get(self.tab).map(String::as_str)
+    }
+
+    /// Whether `source`'s rows are folded away: only a provider namespace
+    /// can be, mirroring `on_secrets_key`'s `Collapse` arm.
+    ///
+    /// `pub(crate)` so `view::secrets::draw` reads the same answer this
+    /// pane's own cursor does, rather than a second copy of the match.
+    pub(crate) fn is_collapsed(&self, source: &Source) -> bool {
+        match source {
+            Source::Operator => false,
+            Source::Namespace(namespace) => self.collapsed.contains(namespace),
+        }
+    }
+
+    /// Every index into `model.rows` this pane currently draws: a
+    /// collapsed namespace's members contribute none, the same rows
+    /// `view::secrets::draw` skips on screen.
+    fn visible_row_indices(&self) -> Vec<usize> {
+        self.model
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| !self.is_collapsed(&row.source))
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    /// Moves `selected` by `delta` positions over [`Self::visible_row_indices`],
+    /// clamped rather than wrapping: the same rule the flock table and every
+    /// other pane's cursor follows. A no-op with nothing on screen.
+    ///
+    /// A selection `z` just folded away is not itself in that list: rather
+    /// than guess where inside it the old position belonged, this lands on
+    /// whichever end `delta` points toward.
+    pub(crate) fn move_by(&mut self, delta: isize) {
+        let visible = self.visible_row_indices();
+        if visible.is_empty() {
+            return;
+        }
+        self.selected = match visible.iter().position(|&index| index == self.selected) {
+            Some(position) => {
+                let next = position.saturating_add_signed(delta).min(visible.len() - 1);
+                visible[next]
+            }
+            // The selection itself just went hidden (`z` folded its own
+            // group away): land on the nearest visible neighbour in the
+            // direction requested, rather than guessing a position inside
+            // a list the old selection is not part of. Only a single step
+            // (`j`/`k`) ever reaches this arm.
+            None => {
+                let boundary = visible.partition_point(|&index| index < self.selected);
+                if delta < 0 {
+                    visible[boundary.saturating_sub(1).min(visible.len() - 1)]
+                } else {
+                    visible[boundary.min(visible.len() - 1)]
+                }
+            }
+        };
+    }
+
+    /// Jumps `selected` to the first visible row, `g`'s effect.
+    pub(crate) fn move_to_first(&mut self) {
+        if let Some(&index) = self.visible_row_indices().first() {
+            self.selected = index;
+        }
+    }
+
+    /// Jumps `selected` to the last visible row, `G`'s effect.
+    pub(crate) fn move_to_last(&mut self) {
+        if let Some(&index) = self.visible_row_indices().last() {
+            self.selected = index;
+        }
     }
 }
 
@@ -2919,7 +2991,7 @@ impl App {
             KeyPress::Collapse => {
                 if let Some(pane) = self.secrets_pane_mut()
                     && let Some(row) = pane.model.rows.get(pane.selected)
-                    && let super::secrets::Source::Namespace(namespace) = &row.source
+                    && let Source::Namespace(namespace) = &row.source
                 {
                     let namespace = namespace.clone();
                     if !pane.collapsed.remove(&namespace) {
@@ -2928,17 +3000,34 @@ impl App {
                 }
                 Effect::None
             }
-            // The cursor does not move yet, but these are the keys an
-            // operator reaches for to leave a row, and the value on screen
-            // belongs to the row it was revealed from. `Refresh` rebuilds
-            // nothing here yet either, and clears for the same reason.
+            // `j`/`k`/`g`/`G` move over the pane's visible rows
+            // ([`SecretsPane::move_by`] and friends), the same clamped
+            // rule every other pane's cursor follows. The value on screen
+            // belongs to the row it was revealed from, so every one of
+            // these clears it first, the way a tab move already does.
             KeyPress::SelectUp
             | KeyPress::SelectDown
             | KeyPress::SelectFirst
-            | KeyPress::SelectLast
-            | KeyPress::Refresh => {
+            | KeyPress::SelectLast => {
                 self.hide_revealed();
+                if let Some(pane) = self.secrets_pane_mut() {
+                    match key {
+                        KeyPress::SelectUp => pane.move_by(-1),
+                        KeyPress::SelectDown => pane.move_by(1),
+                        KeyPress::SelectFirst => pane.move_to_first(),
+                        KeyPress::SelectLast => pane.move_to_last(),
+                        _ => unreachable!(),
+                    }
+                }
                 Effect::None
+            }
+            // `r`: re-reads the store, the provider cache and the roll,
+            // the same effect a tab move already returns and for the same
+            // reason — `in_force`, the value and the byte length are read
+            // off disk, not derived from what is already on screen.
+            KeyPress::Refresh => {
+                self.hide_revealed();
+                Effect::LoadSecrets
             }
             // Nothing else means anything here yet: arm and typing land in
             // Tasks 7-8. Listed rather than a wildcard, so a new `KeyPress`
@@ -7639,7 +7728,7 @@ mod tests {
         let mut app = fixtures::full_app();
         let _ = app.update(Msg::Key(KeyPress::Secrets));
         // The only row, so it is `pane.selected`'s default (0) with no
-        // navigation key needed: this task does not bind one yet.
+        // navigation key needed.
         let row = SecretRow {
             key: "vercel/API_TOKEN".to_string(),
             source: Source::Namespace("vercel".to_string()),
@@ -7671,6 +7760,131 @@ mod tests {
         assert!(
             pane.collapsed.is_empty(),
             "and pressing it again undoes that"
+        );
+    }
+
+    /// A row for [`SecretsModel::rows`] carrying no value: every field
+    /// besides `key` and `source` is irrelevant to where the cursor lands.
+    fn plain_row(key: &str, source: Source) -> SecretRow {
+        SecretRow {
+            key: key.to_string(),
+            source,
+            in_force: None,
+            set_in: Vec::new(),
+            byte_len: None,
+            readers: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn j_k_g_and_shift_g_move_the_selection_over_the_pane_s_rows() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let rows = ["FIRST", "SECOND", "THIRD"]
+            .into_iter()
+            .map(|key| plain_row(key, Source::Operator))
+            .collect();
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                rows,
+                ..SecretsModel::default()
+            })),
+        });
+
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(pane.selected, 1, "j moves one row down");
+
+        for _ in 0..5 {
+            let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        }
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(pane.selected, 2, "clamped at the last row, not wrapping");
+
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(pane.selected, 1, "k moves one row up");
+
+        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(pane.selected, 0, "g jumps to the first row");
+
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(pane.selected, 2, "G jumps to the last row");
+    }
+
+    /// A cursor that stepped over `model.rows` itself, one index at a
+    /// time, would land inside a namespace `z` just folded away: the two
+    /// hidden rows between `FIRST` and `LAST` are exactly wide enough that
+    /// a blind `+1` cannot reach `LAST` by accident. Only a `move_by` that
+    /// walks [`SecretsPane::visible_row_indices`] does.
+    #[test]
+    fn selecting_down_skips_a_namespace_z_has_collapsed() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                rows: vec![
+                    plain_row("FIRST", Source::Operator),
+                    plain_row("vercel/A", Source::Namespace("vercel".to_string())),
+                    plain_row("vercel/B", Source::Namespace("vercel".to_string())),
+                    plain_row("LAST", Source::Operator),
+                ],
+                ..SecretsModel::default()
+            })),
+        });
+
+        // Select a member of the group before folding it: `Collapse` acts
+        // on the selected row's own source.
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let _ = app.update(Msg::Key(KeyPress::Collapse));
+        // Back to `FIRST`, a row `visible_row_indices` never hid, so the
+        // step below tests `move_by`'s ordinary case rather than its
+        // hidden-selection fallback.
+        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
+
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(
+            pane.model.rows[pane.selected].key, "LAST",
+            "the two collapsed rows in between are not a landing row"
+        );
+    }
+
+    #[test]
+    fn r_reloads_and_clears_a_revealed_value() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                rows: vec![plain_row("KEY", Source::Operator)],
+                ..SecretsModel::default()
+            })),
+        });
+
+        let effect = app.update(Msg::Key(KeyPress::Refresh));
+
+        assert_eq!(
+            effect,
+            Effect::LoadSecrets,
+            "`r` re-reads the store, the provider cache and the roll"
         );
     }
 

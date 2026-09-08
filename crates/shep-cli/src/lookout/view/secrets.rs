@@ -382,15 +382,6 @@ fn group_header_line(
     Line::from(Span::styled(fit(&text, width), palette.muted()))
 }
 
-/// Whether `source`'s rows are folded away: only a provider namespace can
-/// be, mirroring `on_secrets_key`'s `Collapse` arm.
-fn is_collapsed(pane: &SecretsPane, source: &Source) -> bool {
-    match source {
-        Source::Operator => false,
-        Source::Namespace(namespace) => pane.collapsed.contains(namespace),
-    }
-}
-
 /// Draws the secrets pane into `area`, straight into `buffer`.
 ///
 /// Seven rows of chrome before the first group header: this pane's own
@@ -479,7 +470,7 @@ pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
                 break;
             }
         }
-        if is_collapsed(pane, &row.source) {
+        if pane.is_collapsed(&row.source) {
             continue;
         }
         let selected = index == pane.selected;
