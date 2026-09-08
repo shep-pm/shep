@@ -178,42 +178,61 @@ mod tests {
         }
     }
 
+    /// How many forms a `text` names.
+    ///
+    /// Commas and the word "or", because `BOOL_FORMS` separates with the
+    /// second and a comma count alone reads "true or false" as one form.
+    fn forms_named(text: &str) -> usize {
+        text.split(',').flat_map(|part| part.split(" or ")).count()
+    }
+
     /// Every form the text names has a corresponding example in examples,
-    /// since that is the hole being closed. Exempt DURATION_REFUSALS and
-    /// INTEGER_FORMS: DURATION_REFUSALS describes a single category in prose
-    /// and takes one example each, and INTEGER_FORMS is not parser-backed.
+    /// since that is the hole being closed. A text may name several forms,
+    /// and every one of them has to be provable from the examples list.
     #[test]
     fn every_form_the_text_names_has_an_example() {
         for form in DURATION_FORMS {
-            let comma_count = form.text.matches(',').count();
-            let expected_count = comma_count + 1;
             assert!(
-                expected_count <= form.examples.len(),
-                "text \"{}\" names {} forms but examples has only {}",
+                forms_named(form.text) <= form.examples.len(),
+                "DURATION_FORMS: text \"{}\" names {} forms but examples has only {}",
                 form.text,
-                expected_count,
+                forms_named(form.text),
+                form.examples.len()
+            );
+        }
+        for form in DURATION_REFUSALS {
+            assert!(
+                forms_named(form.text) <= form.examples.len(),
+                "DURATION_REFUSALS: text \"{}\" names {} forms but examples has only {}",
+                form.text,
+                forms_named(form.text),
                 form.examples.len()
             );
         }
         for form in MEMORY_FORMS {
-            let comma_count = form.text.matches(',').count();
-            let expected_count = comma_count + 1;
             assert!(
-                expected_count <= form.examples.len(),
-                "text \"{}\" names {} forms but examples has only {}",
+                forms_named(form.text) <= form.examples.len(),
+                "MEMORY_FORMS: text \"{}\" names {} forms but examples has only {}",
                 form.text,
-                expected_count,
+                forms_named(form.text),
                 form.examples.len()
             );
         }
         for form in BOOL_FORMS {
-            let comma_count = form.text.matches(',').count();
-            let expected_count = comma_count + 1;
             assert!(
-                expected_count <= form.examples.len(),
-                "text \"{}\" names {} forms but examples has only {}",
+                forms_named(form.text) <= form.examples.len(),
+                "BOOL_FORMS: text \"{}\" names {} forms but examples has only {}",
                 form.text,
-                expected_count,
+                forms_named(form.text),
+                form.examples.len()
+            );
+        }
+        for form in INTEGER_FORMS {
+            assert!(
+                forms_named(form.text) <= form.examples.len(),
+                "INTEGER_FORMS: text \"{}\" names {} forms but examples has only {}",
+                form.text,
+                forms_named(form.text),
                 form.examples.len()
             );
         }
