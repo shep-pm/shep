@@ -86,10 +86,16 @@ fn lines(app: &App, pane: &BleatsPane, width: u16, rows: usize) -> Vec<Line<'sta
     }
 
     let body_rows = rows.saturating_sub(out.len());
-    // The last surviving lines that fit, oldest first, so the newest one
-    // lands on the bottom row: the same order `view::bleats::feed_lines`
-    // renders in.
-    let skip = survivors.len().saturating_sub(body_rows);
+    // The window `pane.scroll_offset()` names, oldest first, so the newest
+    // one lands on the bottom row when the offset is `0`: the same order
+    // `view::bleats::feed_lines` renders in. `saturating_sub` is the clamp
+    // the offset itself is never trusted to carry on its own: a filter that
+    // just narrowed, or an offset a shrunk feed has outgrown, both fall
+    // out of view here rather than panicking or reading past the end.
+    let skip = survivors
+        .len()
+        .saturating_sub(body_rows)
+        .saturating_sub(pane.scroll_offset());
     for line in survivors.iter().skip(skip).take(body_rows) {
         out.push(feed_line(app, filters, line, width));
     }

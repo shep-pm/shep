@@ -130,6 +130,17 @@ pub enum KeyPress {
     /// names none for this axis; a global binding, ignored on the
     /// dashboard the same way [`Self::StreamCycle`] is.
     LevelCycle,
+    /// `Ctrl-d`: scrolls the bleats pane forward (toward the newest line) by
+    /// a body height. A global binding, ignored on the dashboard the same
+    /// way [`Self::StreamCycle`] is.
+    PageDown,
+    /// `Ctrl-u`: scrolls the bleats pane backward (toward the oldest
+    /// surviving line) by a body height, and stops it following the tail,
+    /// the same way [`Self::SelectUp`] does. Ignored on the dashboard.
+    PageUp,
+    /// `f`: toggles whether the bleats pane follows the tail. Ignored on the
+    /// dashboard.
+    FollowToggle,
 }
 
 /// Everything that can change the dashboard.
@@ -2402,11 +2413,16 @@ impl App {
             // Opens on the selected sheep, or does nothing without one, the
             // same shape `KeyPress::Edit` follows above.
             KeyPress::Bleats => self.ask_for_bleats(),
-            // Both cycle a bleats-pane filter axis, and the dashboard has no
-            // such axis; named here rather than left to fall through the
-            // arm above, the same way `KeyPress::Bleats` would be ignored
-            // on a screen with no bleats pane.
-            KeyPress::StreamCycle | KeyPress::LevelCycle => Effect::None,
+            // All four scroll or cycle a bleats-pane axis, and the
+            // dashboard has neither a filter axis nor a feed to scroll;
+            // named here rather than left to fall through the arm above,
+            // the same way `KeyPress::Bleats` would be ignored on a screen
+            // with no bleats pane.
+            KeyPress::StreamCycle
+            | KeyPress::LevelCycle
+            | KeyPress::PageDown
+            | KeyPress::PageUp
+            | KeyPress::FollowToggle => Effect::None,
         }
     }
 
@@ -2422,9 +2438,10 @@ impl App {
     }
 
     /// The bleats pane's own keymap, in force while [`Self::bleats_pane`] is
-    /// `Some`. There is nothing on this screen to move or edit: `Escape`
-    /// drops the newest filter chip first, one axis at a time, and only
-    /// closes the pane once none are left.
+    /// `Some`. `Escape` drops the newest filter chip first, one axis at a
+    /// time, and only closes the pane once none are left. `j`/`k` scroll a
+    /// line, `ctrl-d`/`ctrl-u` a page, `G` jumps to the tail and resumes
+    /// following, and `f` toggles following explicitly.
     fn on_bleats_key(&mut self, key: KeyPress) -> Effect {
         match key {
             KeyPress::Quit => Effect::Quit,
@@ -2478,10 +2495,54 @@ impl App {
                 }
                 Effect::None
             }
-            KeyPress::SelectUp
-            | KeyPress::SelectDown
-            | KeyPress::SelectFirst
-            | KeyPress::SelectLast
+            // `k`/`Up`: one line toward older lines.
+            KeyPress::SelectUp => {
+                if let Some(pane) = self.bleats_pane_mut() {
+                    pane.scroll_up(1);
+                }
+                Effect::None
+            }
+            // `j`/`Down`: one line toward the newest.
+            KeyPress::SelectDown => {
+                if let Some(pane) = self.bleats_pane_mut() {
+                    pane.scroll_down(1);
+                }
+                Effect::None
+            }
+            // `G`/`End`: the tail, and following resumes — that is what an
+            // operator means by "go to the end".
+            KeyPress::SelectLast => {
+                if let Some(pane) = self.bleats_pane_mut() {
+                    pane.jump_to_end();
+                }
+                Effect::None
+            }
+            // `ctrl-u`: a page toward older lines.
+            KeyPress::PageUp => {
+                if let Some(pane) = self.bleats_pane_mut() {
+                    pane.page_up();
+                }
+                Effect::None
+            }
+            // `ctrl-d`: a page toward the newest line.
+            KeyPress::PageDown => {
+                if let Some(pane) = self.bleats_pane_mut() {
+                    pane.page_down();
+                }
+                Effect::None
+            }
+            // `f`: toggles following explicitly.
+            KeyPress::FollowToggle => {
+                if let Some(pane) = self.bleats_pane_mut() {
+                    pane.toggle_follow();
+                }
+                Effect::None
+            }
+            // There is nothing on this screen `g`/`Home` can move to: the
+            // window has no fixed start, only a tail. Left unbound rather
+            // than aliased to `ctrl-u`'s page, which would give one key two
+            // different meanings depending on how far a page happens to be.
+            KeyPress::SelectFirst
             | KeyPress::Refresh
             | KeyPress::Action(_)
             | KeyPress::Confirm
@@ -2626,6 +2687,9 @@ impl App {
             | KeyPress::ListMoveDown
             | KeyPress::StreamCycle
             | KeyPress::LevelCycle
+            | KeyPress::PageDown
+            | KeyPress::PageUp
+            | KeyPress::FollowToggle
             | KeyPress::Bleats => {}
         }
         Effect::None
@@ -2811,6 +2875,9 @@ impl App {
             | KeyPress::ListMoveDown
             | KeyPress::StreamCycle
             | KeyPress::LevelCycle
+            | KeyPress::PageDown
+            | KeyPress::PageUp
+            | KeyPress::FollowToggle
             | KeyPress::Bleats => {}
         }
         Effect::None
@@ -2908,6 +2975,9 @@ impl App {
             | KeyPress::ListMoveDown
             | KeyPress::StreamCycle
             | KeyPress::LevelCycle
+            | KeyPress::PageDown
+            | KeyPress::PageUp
+            | KeyPress::FollowToggle
             | KeyPress::Bleats => Effect::None,
         }
     }
@@ -3288,6 +3358,9 @@ impl App {
             | KeyPress::Help
             | KeyPress::StreamCycle
             | KeyPress::LevelCycle
+            | KeyPress::PageDown
+            | KeyPress::PageUp
+            | KeyPress::FollowToggle
             | KeyPress::Bleats => {}
         }
         Effect::None
@@ -3371,6 +3444,9 @@ impl App {
             | KeyPress::ListMoveDown
             | KeyPress::StreamCycle
             | KeyPress::LevelCycle
+            | KeyPress::PageDown
+            | KeyPress::PageUp
+            | KeyPress::FollowToggle
             | KeyPress::Bleats => {}
         }
         Effect::None
@@ -4436,6 +4512,14 @@ impl App {
             if let Some(list) = pane.list_mut() {
                 list.set_rows(body);
             }
+        }
+        if let Some(pane) = self.bleats_pane_mut() {
+            // One less than the whole body, the same discount the config
+            // pane takes above: the title band costs a line before any
+            // feed line is drawn. The filter row, when one is showing,
+            // costs a second; not deducted here, since `page_up`/`page_down`
+            // only need a page-sized jump, not an exact one.
+            pane.set_rows(usize::from(rows.saturating_sub(1)));
         }
     }
 
@@ -7385,6 +7469,135 @@ mod tests {
             }
         }
         assert!(cleared, "the cycle returns to unset");
+    }
+
+    /// Scrolling back stops the follow, or the next refresh undoes the
+    /// operator's keypress.
+    #[test]
+    fn scrolling_back_stops_following() {
+        let mut app = fixtures::bleats_pane_with_lines(120);
+        assert!(app.bleats_pane().expect("open").following());
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        assert!(
+            !app.bleats_pane().expect("open").following(),
+            "one line back is enough to mean the operator took over"
+        );
+    }
+
+    /// `G` is the way back to the live tail, so it restores following as well
+    /// as jumping.
+    #[test]
+    fn g_returns_to_the_end_and_resumes_following() {
+        let mut app = fixtures::bleats_pane_with_lines(120);
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        let pane = app.bleats_pane().expect("open");
+        assert!(pane.following(), "G resumes the follow");
+        assert_eq!(pane.scroll_offset(), 0, "and lands on the newest line");
+    }
+
+    /// A filter that hides most of the window must not leave the offset
+    /// pointing past the end of what survives.
+    #[test]
+    fn a_narrowing_filter_clamps_the_scroll_offset() {
+        let mut app = fixtures::bleats_pane_with_lines(120);
+        let _ = app.update(Msg::Key(KeyPress::PageUp));
+        let _ = app.update(Msg::Key(KeyPress::PageUp));
+        app.bleats_pane_mut_for_tests()
+            .expect("open")
+            .set_match("a-string-no-line-contains".to_string());
+        let text =
+            fixtures::render_all(&super::super::view::bleats_full::draw_lines(&app, 160, 40));
+        assert!(
+            !text.is_empty(),
+            "the pane still draws rather than panicking"
+        );
+    }
+
+    /// `SelectUp`/`SelectDown` actually move the window, not just the
+    /// `following` flag: pins which lines are on screen before and after,
+    /// so a wrong direction or an off-by-one is caught rather than passing
+    /// on the presence of any text at all.
+    #[test]
+    fn select_up_and_down_move_which_lines_are_on_screen() {
+        let mut app = fixtures::bleats_pane_with_lines(20);
+        app.note_body_rows(6); // 1 title row + 5 body rows
+        let before =
+            fixtures::render_all(&super::super::view::bleats_full::draw_lines(&app, 80, 6));
+        assert!(
+            before.contains("line-19"),
+            "starts pinned to the tail: {before}"
+        );
+        assert!(
+            !before.contains("line-14"),
+            "one line older than the window: {before}"
+        );
+
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        let after = fixtures::render_all(&super::super::view::bleats_full::draw_lines(&app, 80, 6));
+        assert!(
+            after.contains("line-14") && !after.contains("line-19"),
+            "one line back drops the newest line and reveals the one above the old window: {after}"
+        );
+
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let restored =
+            fixtures::render_all(&super::super::view::bleats_full::draw_lines(&app, 80, 6));
+        assert_eq!(
+            restored, before,
+            "one line forward undoes the one line back"
+        );
+    }
+
+    /// `ctrl-u`/`ctrl-d` move by a body height rather than a line, and the
+    /// body height is what `note_body_rows` last reported, not a hardcoded
+    /// guess.
+    #[test]
+    fn page_up_and_down_move_by_a_body_height() {
+        let mut app = fixtures::bleats_pane_with_lines(20);
+        app.note_body_rows(6); // 1 title row + 5 body rows
+        let before =
+            fixtures::render_all(&super::super::view::bleats_full::draw_lines(&app, 80, 6));
+        assert!(
+            before.contains("line-19"),
+            "starts pinned to the tail: {before}"
+        );
+
+        let _ = app.update(Msg::Key(KeyPress::PageUp));
+        let after = fixtures::render_all(&super::super::view::bleats_full::draw_lines(&app, 80, 6));
+        assert!(
+            after.contains("line-10") && !after.contains("line-15"),
+            "a page is 5 body rows, so one page up lands on 10..=14, not 1 row back: {after}"
+        );
+        assert!(
+            !app.bleats_pane().expect("open").following(),
+            "ctrl-u is backward movement too"
+        );
+
+        let _ = app.update(Msg::Key(KeyPress::PageDown));
+        let restored =
+            fixtures::render_all(&super::super::view::bleats_full::draw_lines(&app, 80, 6));
+        assert_eq!(restored, before, "one page down undoes one page up");
+    }
+
+    /// `f` toggles following explicitly, and turning it back on snaps to the
+    /// tail rather than leaving the view wherever it was scrolled to.
+    #[test]
+    fn f_toggles_following_and_resuming_snaps_to_the_tail() {
+        let mut app = fixtures::bleats_pane_with_lines(120);
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        assert!(!app.bleats_pane().expect("open").following());
+
+        let _ = app.update(Msg::Key(KeyPress::FollowToggle));
+        let pane = app.bleats_pane().expect("open");
+        assert!(pane.following(), "f turned it back on");
+        assert_eq!(pane.scroll_offset(), 0, "and snapped to the tail");
+
+        let _ = app.update(Msg::Key(KeyPress::FollowToggle));
+        assert!(
+            !app.bleats_pane().expect("open").following(),
+            "f is a toggle, not a one-way switch"
+        );
     }
 
     /// `/` opens the match input rather than doing nothing, which is what it

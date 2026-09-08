@@ -340,6 +340,26 @@ pub fn bleats_pane_with_filters() -> App {
     app
 }
 
+/// The full-screen bleats pane, open on `web`, over a feed of `n` lines
+/// numbered `line-0`..`line-{n-1}`, oldest first — enough to exceed any
+/// test's body height, for the scrolling and follow tests.
+pub fn bleats_pane_with_lines(n: u32) -> App {
+    let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+    app.update(Msg::Bleats {
+        tail: Tail {
+            lines: (0..n)
+                .map(|i| line(Stream::Out, &format!("line-{i}")))
+                .collect(),
+            missed_lines: 0,
+            missed_bytes: 0,
+            read_bytes: 1_024,
+            note: None,
+        },
+    });
+    app.update(Msg::Key(KeyPress::Bleats));
+    app
+}
+
 /// One sheep, `catcher`, selected, with a two-line feed applied and its log
 /// paths pointing at real files in a leaked tempdir, so `fs::metadata` in
 /// [`super::detail::log_row`] succeeds the way it would against a live

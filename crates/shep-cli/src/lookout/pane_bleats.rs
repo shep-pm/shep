@@ -242,16 +242,37 @@ pub struct BleatsPane {
     /// text as it stood before this edit started, so [`Self::abandon_match_edit`]
     /// can restore it. `None` the rest of the time.
     match_snapshot: Option<Option<String>>,
+    /// How many surviving lines back from the newest one the view is
+    /// scrolled, counting **filtered** lines (what [`Self::visible`]
+    /// returns), not raw ones. `0` is the newest surviving line, the tail;
+    /// it grows as the operator scrolls toward older lines. A stored value
+    /// is never trusted past a filter change: [`super::view::bleats_full`]
+    /// recomputes the window from this and the current survivor count on
+    /// every draw, so a narrowing filter cannot leave it pointing past the
+    /// end.
+    scroll_offset: usize,
+    /// Whether the view stays pinned to the newest surviving line as new
+    /// ones arrive. `true` on open: an operator who has not scrolled wants
+    /// the live tail. Any backward movement clears it;
+    /// [`Self::jump_to_end`] and [`Self::toggle_follow`] (turning it on) both
+    /// restore it and reset [`Self::scroll_offset`] to `0`.
+    following: bool,
+    /// The body rows available to page by, set from
+    /// [`super::app::App::note_body_rows`]. `0` until the first draw.
+    body_rows: usize,
 }
 
 impl BleatsPane {
-    /// Opens the pane on one sheep, with no filters set.
+    /// Opens the pane on one sheep, with no filters set, following the tail.
     #[must_use]
     pub fn new(sheep: RowKey) -> Self {
         Self {
             sheep,
             filters: Filters::default(),
             match_snapshot: None,
+            scroll_offset: 0,
+            following: true,
+            body_rows: 0,
         }
     }
 
@@ -343,6 +364,73 @@ impl BleatsPane {
             .iter()
             .filter(|line| self.filters.keeps(line, matcher.as_ref()))
             .collect()
+    }
+
+    /// How many surviving lines back from the tail the view is scrolled.
+    /// `0` is the newest surviving line. See the field's own doc for what
+    /// this counts and why a stored value is never trusted on its own.
+    #[must_use]
+    pub fn scroll_offset(&self) -> usize {
+        self.scroll_offset
+    }
+
+    /// Whether the view is pinned to the newest surviving line.
+    #[must_use]
+    pub fn following(&self) -> bool {
+        self.following
+    }
+
+    /// Records the body rows available, for [`Self::page_up`]/[`Self::page_down`].
+    /// Called from [`super::app::App::note_body_rows`] before every draw, the
+    /// same way the config pane and settings screen already are.
+    pub fn set_rows(&mut self, rows: usize) {
+        self.body_rows = rows;
+    }
+
+    /// Scrolls toward older lines by `amount`, and stops following the
+    /// tail: any backward movement means the operator has taken over, or
+    /// the next refresh would undo the keypress.
+    pub fn scroll_up(&mut self, amount: usize) {
+        self.scroll_offset = self.scroll_offset.saturating_add(amount);
+        self.following = false;
+    }
+
+    /// Scrolls toward the newest line by `amount`. Does not restore
+    /// following on its own, even if it lands back on the tail: only
+    /// [`Self::jump_to_end`] and turning [`Self::toggle_follow`] on do that,
+    /// because an operator who has taken over decides when to hand the view
+    /// back, not the arithmetic.
+    pub fn scroll_down(&mut self, amount: usize) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(amount);
+    }
+
+    /// `ctrl-u`: pages toward older lines by [`Self::body_rows`] set
+    /// through [`Self::set_rows`].
+    pub fn page_up(&mut self) {
+        self.scroll_up(self.body_rows.max(1));
+    }
+
+    /// `ctrl-d`: pages toward the newest line by [`Self::body_rows`].
+    pub fn page_down(&mut self) {
+        self.scroll_down(self.body_rows.max(1));
+    }
+
+    /// `G`: jumps to the newest surviving line and resumes following, since
+    /// that is what an operator means by "go to the end".
+    pub fn jump_to_end(&mut self) {
+        self.scroll_offset = 0;
+        self.following = true;
+    }
+
+    /// `f`: toggles following explicitly. Turning it on also jumps to the
+    /// tail, the same way [`Self::jump_to_end`] does, since "following"
+    /// means pinned to the newest line, not pinned wherever the view
+    /// happened to be.
+    pub fn toggle_follow(&mut self) {
+        self.following = !self.following;
+        if self.following {
+            self.scroll_offset = 0;
+        }
     }
 
     /// Drops the most recently set filter axis, returning whether one was
