@@ -1409,6 +1409,10 @@ pub struct SheepConfigView {
     pub config: AppConfig,
     /// The env keys, so the pane can list them. Never the values.
     pub env_keys: Vec<String>,
+    /// Which of [`Self::env_keys`] resolve from the secret store, so a pane
+    /// can mark the row without showing anything. Recorded before `env` is
+    /// cleared, which is the only moment the values exist to be read.
+    pub env_secrets: Vec<String>,
     /// Field names an operator has set that the Flockfile does not declare.
     pub overridden: Vec<String>,
     /// Field names parked until the next respawn.
@@ -1424,12 +1428,14 @@ impl SheepConfigView {
     /// a literal.
     #[must_use]
     pub fn new(mut config: AppConfig, overridden: Vec<String>, pending: Vec<String>) -> Self {
+        let env_secrets = crate::secrets::sealed_keys(&config);
         let env_keys = config.env.keys().cloned().collect();
         config.env.clear();
         Self {
             name: config.name.clone(),
             config,
             env_keys,
+            env_secrets,
             overridden,
             pending,
         }
@@ -1438,16 +1444,17 @@ impl SheepConfigView {
 
 /// Redacted (IR-41): `config` carries `args` and `cwd`, which routinely hold
 /// a token or a home directory, and this type is what a `{:?}` on a
-/// [`Response`] would print. The three lists are counted rather than named
-/// for the same reason: `env_keys` is a key set, which is itself worth
-/// keeping out of a log.
+/// [`Response`] would print. The four lists are counted rather than named
+/// for the same reason: `env_keys` and `env_secrets` are key sets, which are
+/// themselves worth keeping out of a log.
 impl fmt::Debug for SheepConfigView {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "SheepConfigView {{ name: {:?}, env_keys: {}, overridden: {}, pending: {} }}",
+            "SheepConfigView {{ name: {:?}, env_keys: {}, env_secrets: {}, overridden: {}, pending: {} }}",
             self.name,
             self.env_keys.len(),
+            self.env_secrets.len(),
             self.overridden.len(),
             self.pending.len()
         )
@@ -2415,8 +2422,21 @@ mod tests {
         let view = SheepConfigView::new(config, vec!["max_restarts".to_string()], Vec::new());
         assert_eq!(
             format!("{view:?}"),
-            r#"SheepConfigView { name: "web", env_keys: 1, overridden: 1, pending: 0 }"#
+            r#"SheepConfigView { name: "web", env_keys: 1, env_secrets: 0, overridden: 1, pending: 0 }"#
         );
+    }
+
+    /// Recorded before the clear, since the values are what name a reference
+    /// and they are gone by the time anything else can look.
+    #[test]
+    fn a_config_view_records_which_env_keys_are_sealed() {
+        let mut config = AppConfig::minimal("web", "./srv");
+        config.env.insert("PLAIN".into(), "value".into());
+        config.env.insert("SEALED".into(), "{{secret:PW}}".into());
+        let view = SheepConfigView::new(config, Vec::new(), Vec::new());
+        assert!(view.config.env.is_empty());
+        assert_eq!(view.env_keys, ["PLAIN", "SEALED"]);
+        assert_eq!(view.env_secrets, ["SEALED"]);
     }
 
     #[test]

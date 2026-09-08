@@ -762,6 +762,7 @@ expression: replies
           "env_keys": [
             "DATABASE_URL"
           ],
+          "env_secrets": [],
           "overridden": [
             "max_restarts"
           ],
