@@ -2,33 +2,33 @@
 source: crates/shep-cli/src/lookout/frames.rs
 expression: render_text(&buffer)
 ---
-shep lookout   /home/ada/.shep                                                                                                                 10 in the flock
-                                                                                                                                                              
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 20.6%        █   flock mem 928.0…
-──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-                                                                                                                                                              
-  NAME      STATUS        SHARE                   MEM         CPU        UPTIME      RESTARTS  NOTES                                                          
-  batch ×2  online        █░░░░░░░░░░░░░░░░░░░    32.0M       1.6%       1h 55m      3         3% of flock memory                                             
-  core ×1   online        ██░░░░░░░░░░░░░░░░░░    96.0M       2.0%       1h 58m      0         10% of flock memory                                            
-  worker    online                                96.0M       2.0%       1h 58m      0                                                                        
-  edge ×4   online        █████████████████░░░    781.0M      16.5%      15m         4         84% of flock memory                                            
-  api       online                                241.0M      7.1%       2h 4m       1                                                                        
-  web ×3    online                                540.0M      9.4%       15m         3                                                                        
-   ██ NO FOLD                                                                                                                                                 
-  cron      online                                8.0M        0.1%       2h 6m       0                                                                        
-  metrics   online                                11.0M       0.4%       2h 7m       0                                                                        
-   ██ DOGS                                                                                                                                                    
-  bark      online                                -           -          10m         0                                                                        
-──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-fold edge ×4  online   restarts 4   uptime 15m   cpu 16.5%   mem 781.0M                                                                                       
-lambs  a fold has no single process to walk; select one sheep                                                                                                 
-                                                                                                                                                              
-                                                                                                                                                              
-──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS edge  follows one sheep; select one inside this fold to see its log                                                                                
-                                                                                                                                                              
-                                                                                                                                                              
-                                                                                                                                                              
-                                                                                                                                                              
-                                                                                                                                                              
-q quit   j/k select   / filter   F flat   z collapse   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                control enabled
+shep lookout   /home/ada/.shep                                                                                                                   10 in the flock
+                                                                                                                                                                
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 20.6%        █   flock mem 928.0M …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                                                                
+  NAME        STATUS        SHARE                   MEM         CPU        UPTIME      RESTARTS  NOTES                                                          
+  ▸ batch ×2  online        █░░░░░░░░░░░░░░░░░░░    32.0M       1.6%       1h 55m      3         3% of flock memory                                             
+  ▾ core ×1   online        ██░░░░░░░░░░░░░░░░░░    96.0M       2.0%       1h 58m      0         10% of flock memory                                            
+  worker      online                                96.0M       2.0%       1h 58m      0                                                                        
+  ▾ edge ×4   online        █████████████████░░░    781.0M      16.5%      15m         4         84% of flock memory                                            
+  api         online                                241.0M      7.1%       2h 4m       1                                                                        
+  web ×3      online                                540.0M      9.4%       15m         3                                                                        
+   ██ NO FOLD                                                                                                                                                   
+  cron        online                                8.0M        0.1%       2h 6m       0                                                                        
+  metrics     online                                11.0M       0.4%       2h 7m       0                                                                        
+   ██ DOGS                                                                                                                                                      
+  bark        online                                -           -          10m         0                                                                        
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+fold edge ×4  online   restarts 4   uptime 15m   cpu 16.5%   mem 781.0M                                                                                         
+lambs  a fold has no single process to walk; select one sheep                                                                                                   
+                                                                                                                                                                
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ BLEATS edge  follows one sheep; select one inside this fold to see its log                                                                                  
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+q quit   j/k select   / filter   F flat   z collapse   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                  control enabled

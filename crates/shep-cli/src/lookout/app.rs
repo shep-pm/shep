@@ -4242,6 +4242,17 @@ impl App {
         Self::status_text_for(&self.fold_members(fold))
     }
 
+    /// Whether `fold`'s members are hidden by [`KeyPress::Collapse`].
+    ///
+    /// Read by the fold header's name cell, which carries the disclosure
+    /// triangle: without it a collapsed fold and a fold whose members all
+    /// left the flock render identically, and the design's rule 3 asks that
+    /// the frame read with every colour stripped.
+    #[must_use]
+    pub fn is_fold_collapsed(&self, fold: &str) -> bool {
+        self.collapsed_folds.contains(fold)
+    }
+
     /// `fold`'s status when every member agrees on one.
     /// [`Self::group_uniform_status`]'s own rule, by fold rather than by
     /// name.

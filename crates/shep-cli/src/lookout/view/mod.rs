@@ -1167,4 +1167,52 @@ mod tests {
             "header:\n{header}\nrow:\n{member_row}"
         );
     }
+
+    /// A fold header reads as one with every colour stripped, and says
+    /// whether it is collapsed.
+    ///
+    /// Design rule 3 (`docs/lookout/design-files/README.md:47`): "Strip every
+    /// glyph and colour and the frame still reads." Before the disclosure
+    /// triangle, brightness was the only thing separating a fold header from
+    /// the member row beneath it, and a collapsed fold was marked by nothing
+    /// at all. Below the `FOLD_ALL` tier there is no Share or Notes cell to
+    /// rescue either, and that tier needs 158 columns, so the common terminal
+    /// was the one that lost the hierarchy.
+    ///
+    /// Drawn at 120 columns through `fixtures::plain`, which is
+    /// `Palette::detect(None, None, None)` and carries no colour, so this
+    /// fails the way a `NO_COLOR` terminal would.
+    #[test]
+    fn a_fold_header_reads_as_one_without_any_colour() {
+        let mut app = fixtures::app_with(
+            vec![
+                fixtures::sheep_in_fold(1, "api", Some("edge")),
+                fixtures::sheep_in_fold(2, "cdn", Some("edge")),
+            ],
+            fixtures::plain(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::FoldView));
+
+        let expanded = draw_to(&app, 120, 16);
+        assert!(
+            expanded.contains("\u{25be} edge"),
+            "an expanded fold points down: {expanded}"
+        );
+        assert!(
+            !expanded.contains("\u{25be} api"),
+            "a member row carries no triangle: {expanded}"
+        );
+
+        app.select_fold_for_tests("edge");
+        let _ = app.update(Msg::Key(KeyPress::Collapse));
+        let collapsed = draw_to(&app, 120, 16);
+        assert!(
+            collapsed.contains("\u{25b8} edge"),
+            "a collapsed fold points right: {collapsed}"
+        );
+        assert!(
+            !collapsed.contains("\u{25be} edge"),
+            "and never both ways at once: {collapsed}"
+        );
+    }
 }

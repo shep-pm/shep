@@ -317,7 +317,7 @@ impl Scene {
                 "Three instances of one app under a group header, with the cursor parked on the header. The header sums their restarts, CPU and memory and takes the SHORTEST of their uptimes, so a group reads as time since the app was last disturbed rather than as the age of its luckiest instance. The detail pane repeats that rollup and says lambs are per-instance; the feed will not guess which instance to tail."
             }
             Self::Folds => {
-                "158 columns, wide enough for the full fold-view column set including SHARE and NOTES. `batch` and `core` are two folds of differing size, `batch` collapsed so only its header shows; `edge` is the largest, holding the grouped app `web` \u{d7}3 alongside standalone `api`, and the cursor is parked on its header. `cron` and `metrics` carry no fold and sit under a `no fold` band that is not selectable, and `bark`, a dog, sits under its own band because a dog is never in a fold. Each fold header sums its members' restarts, CPU and memory and takes the shortest of their uptimes, and its SHARE gauge and NOTES percentage both read that fold's share of the whole flock's memory."
+                "160 columns, wide enough for the full fold-view column set including SHARE and NOTES. `batch` and `core` are two folds of differing size, `batch` collapsed so only its header shows; `edge` is the largest, holding the grouped app `web` \u{d7}3 alongside standalone `api`, and the cursor is parked on its header. `cron` and `metrics` carry no fold and sit under a `no fold` band that is not selectable, and `bark`, a dog, sits under its own band because a dog is never in a fold. Each fold header sums its members' restarts, CPU and memory and takes the shortest of their uptimes, and its SHARE gauge and NOTES percentage both read that fold's share of the whole flock's memory."
             }
             Self::WithDogs => {
                 "Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it."
@@ -454,11 +454,16 @@ impl Scene {
             Self::NoDetail => (120, 20),
             Self::TableOnly => (120, 12),
             Self::Cramped => (33, 26),
-            // 158: `fold_columns_for` runs on `width - GUTTER`, so
-            // 158 - GUTTER = 156, exactly `FOLD_ALL`'s own threshold: the
+            // 160: `fold_columns_for` runs on `width - GUTTER`, so
+            // 160 - GUTTER = 158, exactly `FOLD_ALL`'s own threshold: the
             // one scene that needs the fold view's full column set,
             // SHARE and NOTES included, rather than a narrower tier.
-            Self::Folds => (158, 30),
+            //
+            // Was 158 against a 156 threshold. The disclosure triangle gave
+            // the fold view a name floor two columns wider than flat's
+            // (`FOLD_NAME_MIN`), every threshold moved with it, and this
+            // scene silently dropped its SHARE gauge until the width followed.
+            Self::Folds => (160, 30),
             Self::Confirm
             | Self::Acting
             | Self::ActionRefused

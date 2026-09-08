@@ -503,12 +503,12 @@ const FOLD_FLOOR: &[FoldColumn] = &[FoldColumn::Name, FoldColumn::Status];
 /// column set's fixed columns, their gaps, and [`NAME_MIN`]: see
 /// `every_fold_tier_fits_the_width_it_claims`.
 const FOLD_TIERS: &[(u16, &[FoldColumn])] = &[
-    (156, FOLD_ALL),
-    (132, FOLD_NO_SHARE),
-    (67, FOLD_NO_NOTES),
-    (57, FOLD_NO_RESTARTS),
-    (46, FOLD_NO_CPU),
-    (34, FOLD_NO_UPTIME),
+    (158, FOLD_ALL),
+    (134, FOLD_NO_SHARE),
+    (69, FOLD_NO_NOTES),
+    (59, FOLD_NO_RESTARTS),
+    (48, FOLD_NO_CPU),
+    (36, FOLD_NO_UPTIME),
     (MIN_WIDTH, FOLD_FLOOR),
 ];
 
@@ -525,8 +525,20 @@ pub fn fold_columns_for(width: u16) -> &'static [FoldColumn] {
 /// [`name_width`]'s twin for [`FoldColumn`].
 fn fold_name_width(width: u16, columns: &[FoldColumn]) -> u16 {
     let fixed: u16 = columns.iter().map(|column| column.width()).sum();
-    name_width_from(width, fixed, columns.len())
+    name_width_from(width, fixed, columns.len()).max(FOLD_NAME_MIN)
 }
+
+/// The fold view's name floor, two columns wider than [`NAME_MIN`].
+///
+/// A fold header's name cell carries a disclosure triangle and a space that
+/// flat view's does not, so the same floor would spend the whole difference
+/// on the marker and truncate the `\u{d7}N` count instead: `\u{25b8} batch\u{2026}`
+/// rather than `\u{25b8} batch \u{d7}2`. The count is the rollup, so losing it to
+/// keep the marker trades one design element for another.
+///
+/// [`FOLD_TIERS`]' thresholds carry the same two columns, which is why they
+/// sit two above the widths the column widths alone would need.
+const FOLD_NAME_MIN: u16 = NAME_MIN + 2;
 
 /// `text` in exactly `width` display columns: padded on the right, or
 /// truncated with a trailing `…`.
@@ -860,7 +872,20 @@ fn fold_header_cell(
     share_percent: Option<u32>,
 ) -> String {
     match column {
-        FoldColumn::Name => format!("{name} \u{d7}{}", totals.count),
+        // The disclosure triangle carries two facts nothing else in the row
+        // does: that this is a fold header rather than a member or an app
+        // group, and whether `z` has collapsed it. Both were colour-only
+        // before, and below the `FOLD_ALL` tier there is no Share or Notes
+        // cell to rescue them, so a 16-colour terminal or `NO_COLOR` lost the
+        // hierarchy entirely. Design rule 3, `README.md:47`.
+        FoldColumn::Name => {
+            let marker = if app.is_fold_collapsed(name) {
+                '\u{25b8}'
+            } else {
+                '\u{25be}'
+            };
+            format!("{marker} {name} \u{d7}{}", totals.count)
+        }
         FoldColumn::Status => app.fold_status_text(name),
         // The text here is only the source [`push_fold_share_cell`] splits
         // into filled and tail spans; the fill point it uses is computed
@@ -2021,10 +2046,10 @@ mod tests {
             let fixed: u16 = cols.iter().map(|c| c.width()).sum();
             let gaps = u16::try_from(cols.len() - 1).unwrap() * 2;
             assert!(
-                fixed + gaps + NAME_MIN <= width,
+                fixed + gaps + FOLD_NAME_MIN <= width,
                 "width {width} chose {} columns needing {}",
                 cols.len(),
-                fixed + gaps + NAME_MIN
+                fixed + gaps + FOLD_NAME_MIN
             );
         }
     }

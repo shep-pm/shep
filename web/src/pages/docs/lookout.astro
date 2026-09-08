@@ -61,8 +61,8 @@ const folds = `shep lookout   /home/ada/.shep                                   
 host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 20.6%        █   flock mem 928.0…
 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   NAME      STATUS        SHARE                   MEM         CPU        UPTIME      RESTARTS  NOTES
-  batch ×2  online        █░░░░░░░░░░░░░░░░░░░    32.0M       1.6%       1h 55m      3         3% of flock memory
-  core ×1   online        ██░░░░░░░░░░░░░░░░░░    96.0M       2.0%       1h 58m      0         10% of flock memory
+  ▸ batch ×2  online        █░░░░░░░░░░░░░░░░░░░    32.0M       1.6%       1h 55m      3         3% of flock memory
+  ▾ core ×1   online        ██░░░░░░░░░░░░░░░░░░    96.0M       2.0%       1h 58m      0         10% of flock memory
   worker    online                                96.0M       2.0%       1h 58m      0
 > edge ×4   online        █████████████████░░░    781.0M      16.5%      15m         4         84% of flock memory
   api       online                                241.0M      7.1%       2h 4m       1
@@ -360,6 +360,11 @@ esc/s close   j/k select   g… control enabled`;
       under a <code>no fold</code> band, and dogs, which are never in a fold,
       keep their own <code>Dogs</code> band. <code>F</code> again returns to
       the flat table.
+    </p>
+    <p>
+      A triangle marks each fold header: ▾ when its members are showing,
+      ▸ when <code>z</code> has collapsed it. Member rows carry none, so
+      the two kinds of row stay apart with every colour stripped.
     </p>
     <CodeBlock label="158×30, fold view">{folds}</CodeBlock>
     <p>
