@@ -3722,6 +3722,78 @@ fn import_env_splits_a_dotenv_between_the_two_stores() {
 }
 
 #[cfg(unix)]
+/// A `.env` value is a value, not a shep template.
+///
+/// The sheep's env is read as a template grammar, where `{{world}}` is
+/// refused at config time and `{{name}}` substitutes the sheep's own name.
+/// A `.env` promises neither, so the child has to receive both exactly as
+/// the file wrote them. The reload is what promotes the parked env.
+#[test]
+fn import_env_hands_the_child_a_braced_value_exactly_as_the_file_wrote_it() {
+    let home = tempfile::tempdir().unwrap();
+    let script = write_script(
+        &home,
+        "braces.sh",
+        &format!(
+            "{}{}echo \"motd=[$MOTD]\"\necho \"greeting=[$GREETING]\"\n{}",
+            script_header(),
+            record_pid_line(&home),
+            sleep_line(SCRIPT_SLEEP_SECS)
+        ),
+    );
+    let mut guard = DaemonGuard::default();
+    let boot = shep(home.path())
+        .arg("start")
+        .arg(&script)
+        .arg("--name")
+        .arg("web")
+        .output()
+        .unwrap();
+    guard.adopt_home(home.path());
+    assert_success(&boot);
+
+    std::fs::write(
+        home.path().join("app.env"),
+        "MOTD=hello {{world}}\nGREETING={{name}}-prod\n",
+    )
+    .unwrap();
+    let imported = shep(home.path())
+        .args([
+            "import",
+            "env",
+            home.path().join("app.env").to_str().unwrap(),
+            "--app",
+            "web",
+        ])
+        .output()
+        .unwrap();
+    assert_success(&imported);
+
+    assert_success(&shep(home.path()).args(["reload", "web"]).output().unwrap());
+
+    let bleats = bleats_no_follow_until_contains(
+        home.path(),
+        &["web"],
+        &["motd=[hello {{world}}]", "greeting=[{{name}}-prod]"],
+    );
+    let printed = String::from_utf8_lossy(&bleats.stdout);
+    assert!(
+        printed.contains("motd=[hello {{world}}]"),
+        "an unknown token must reach the child literally: {printed}"
+    );
+    assert!(
+        printed.contains("greeting=[{{name}}-prod]"),
+        "and a token shep does define must not be substituted: {printed}"
+    );
+    assert!(
+        !printed.contains("greeting=[web-prod]"),
+        "the sheep's name was substituted into a .env value: {printed}"
+    );
+
+    graceful_kill(home.path());
+}
+
+#[cfg(unix)]
 /// Re-running an unchanged file is a no-op. Changing one value refuses the
 /// whole import until `--force`.
 #[test]

@@ -193,17 +193,30 @@ async fn resolve_environment(
 
 /// What each key puts in the sheep's env: the value itself for a plain key,
 /// a `{{secret:KEY}}` reference for a secret one.
+///
+/// The plain value is escaped and the reference is not: the reference is
+/// shep's own token and is meant to resolve.
 fn wire_entries(plan: &ImportPlan) -> BTreeMap<String, EnvValue> {
     plan.entries
         .iter()
         .map(|planned| {
             let value = match planned.class {
                 Class::Secret => format!("{{{{secret:{}}}}}", planned.key),
-                Class::Plain => planned.value.clone(),
+                Class::Plain => escape_template(&planned.value),
             };
             (planned.key.clone(), EnvValue::from(value))
         })
         .collect()
+}
+
+/// A `.env` value written as the shep template that renders back to itself.
+///
+/// Every env value a sheep holds is read as a template
+/// ([`shep_core::config::template`]): `{{world}}` is refused at config time
+/// and `{{name}}` substitutes. A `.env` promises neither, so each brace pair
+/// takes that grammar's own escape, doubling.
+fn escape_template(value: &str) -> String {
+    value.replace("{{", "{{{{").replace("}}", "}}}}")
 }
 
 /// The env keys already holding a different value, as the daemon sees them.
@@ -369,6 +382,8 @@ fn row_for(planned: &Planned, environment: &str) -> ImportEnvRow {
 
 #[cfg(test)]
 mod tests {
+    use shep_core::config::template::render_positional;
+
     use super::*;
 
     const SAMPLE: &str = "PORT=8080\nDB_PASSWORD=hunter2\n";
@@ -386,6 +401,33 @@ mod tests {
         let wire = wire_entries(&sample_plan());
         assert_eq!(wire["PORT"].as_str(), "8080");
         assert_eq!(wire["DB_PASSWORD"].as_str(), "{{secret:DB_PASSWORD}}");
+    }
+
+    /// fails if a `.env` value is ever read as a shep template: `{{world}}`
+    /// is refused by `normalize` and `{{name}}` substitutes silently, and
+    /// both must reach the child as the file wrote them. The secret arm's
+    /// reference is shep's own token and stays live.
+    #[test]
+    fn a_plain_value_escapes_its_braces_and_a_secret_reference_stays_live() {
+        const BRACES: &str = "MOTD=hello {{world}}\nGREETING={{name}}-prod\n                              JSON={\"a\":{\"b\":1}}\nDB_PASSWORD=hunter2\n";
+        let entries = parse::parse(BRACES).expect("this fixture parses");
+        let plan =
+            plan::build(entries, &[], &["DB_PASSWORD".to_string()]).expect("this fixture plans");
+        let wire = wire_entries(&plan);
+
+        assert_eq!(wire["MOTD"].as_str(), "hello {{{{world}}}}");
+        assert_eq!(wire["GREETING"].as_str(), "{{{{name}}}}-prod");
+        assert_eq!(wire["DB_PASSWORD"].as_str(), "{{secret:DB_PASSWORD}}");
+
+        // What the child gets, through the renderer the daemon runs.
+        for planned in plan.entries.iter().filter(|p| p.class == Class::Plain) {
+            assert_eq!(
+                render_positional(wire[&planned.key].as_str(), "echoer", 0),
+                planned.value,
+                "{} was rewritten on its way to the child",
+                planned.key
+            );
+        }
     }
 
     /// fails if a row ever grows a value. `bytes` is the `.env`'s own value
