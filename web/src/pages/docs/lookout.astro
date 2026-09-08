@@ -139,6 +139,13 @@ out  GET /v1/orders/8821 200 9ms
 out  connection pool: 14/50 in use
 q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled`;
 
+const bleatsFull = `shep lookout   /home/ada/.shep                                                        6 in the flock
+ ██ api  out /home/ada/.shep/logs/api-2-out.log  err /home/ada/.shep/logs/api-2-err.log
+ stream out   level ≥ warn   match /retry|jitter/ (regex)  1 of 16 lines in the window: all three m…
+out  WARN retrying upstream payment gateway after a timeout, backing off 500ms before trying again w
+     ith jitter added so the whole fleet does not retry at once
+esc back   j/k line   ctrl-d/u page   G end   / search   n/N match   f follow   w wrap … █ following`;
+
 const filterActive = `shep lookout   /home/ada/.shep                                                   2 of 6 in the flock
 host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 error…
 ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -367,6 +374,35 @@ esc/s close   j/k select   g… control enabled`;
       counted the lines inside them:
     </p>
     <CodeBlock>{feedExcerpt}</CodeBlock>
+
+    <h2>The bleats pane, full screen</h2>
+    <p>
+      <code>b</code> opens the selected sheep's feed full screen and pins it
+      there. There's no table on screen anymore to change the selection
+      with, so the pane keeps describing that one sheep until it closes. It
+      reads the same log files the corner feed does, just polled faster
+      while it has focus.
+    </p>
+    <p>
+      Three filters stack on top of the feed, and a line has to pass all
+      three to show. <code>o</code> cycles the stream (out, err, or both),{" "}
+      <code>m</code> cycles a minimum level, and <code>/</code> opens a box
+      for a text or regex match, with matches highlighted. A line with no
+      detectable level always shows, whatever the minimum is: most app
+      output carries no level word at all, and hiding it would defeat the
+      reason the pane exists. The filter row names which axes are set and
+      counts how many lines in the current window survive them.
+    </p>
+    <CodeBlock label="100×14, filtered and wrapped">{bleatsFull}</CodeBlock>
+    <p>
+      <code>esc</code> drops the newest filter first, one at a time, and
+      only closes the pane once none are left. <code>j</code>/<code>k</code>{" "}
+      scroll a line, <code>ctrl-d</code>/<code>ctrl-u</code> a page,{" "}
+      <code>G</code> jumps to the end and starts following again,{" "}
+      <code>f</code> toggles following, <code>w</code> wraps long lines
+      instead of truncating them, and <code>n</code>/<code>N</code> step
+      between matches.
+    </p>
 
     <h2>Filtering the table</h2>
     <p>
