@@ -587,18 +587,7 @@ impl ShepToml {
         let mut tmp = create_config_file(parent).map_err(|source| self.io_error(source))?;
         tmp.write_all(self.doc.to_string().as_bytes())
             .map_err(|source| self.io_error(source))?;
-        tmp.as_file()
-            .sync_all()
-            .map_err(|source| self.io_error(source))?;
-        // `persist` is `rename(2)`. On failure the `NamedTempFile` comes back
-        // inside the error and its `Drop` removes the staging file.
-        tmp.persist(&self.path)
-            .map_err(|err| self.io_error(err.error))?;
-
-        // `sync_all` above made the contents durable; this makes the rename
-        // that published them durable.
-        shep_core::atomic_file::sync_dir(parent).map_err(|source| self.io_error(source))?;
-        Ok(())
+        shep_core::atomic_file::publish(tmp, &self.path).map_err(|source| self.io_error(source))
     }
 
     fn io_error(&self, source: std::io::Error) -> ShepTomlError {

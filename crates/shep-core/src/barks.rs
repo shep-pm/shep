@@ -201,17 +201,7 @@ fn write_ring(path: &Path, lines: &[String]) -> Result<(), BarkError> {
         tmp.write_all(line.as_bytes())?;
         tmp.write_all(b"\n")?;
     }
-    tmp.as_file().sync_all()?;
-
-    // `persist` is `rename(2)`. On failure the `NamedTempFile` comes back
-    // inside the error and its `Drop` removes the staging file, so a
-    // failed replace does not leave one behind.
-    tmp.persist(path).map_err(|err| BarkError::Io(err.error))?;
-
-    // `sync_all` made the contents durable; this makes the rename that
-    // published them durable.
-    crate::atomic_file::sync_dir(parent)?;
-    Ok(())
+    crate::atomic_file::publish(tmp, path).map_err(BarkError::Io)
 }
 
 #[cfg(test)]

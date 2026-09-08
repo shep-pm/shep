@@ -14,7 +14,6 @@
 // `atomic_file` rather than open-coding another copy here.
 use core::fmt;
 use std::collections::BTreeMap;
-use std::io::Write as _;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -160,26 +159,9 @@ fn read_file(path: &Path) -> Result<KvFile, KvError> {
     Ok(file)
 }
 
-/// Rewrites `path` to hold exactly `file`, atomically: staged through a
-/// temp file, then renamed over the original.
+/// Rewrites `path` to hold exactly `file`.
 fn write_file(path: &Path, file: &KvFile) -> Result<(), KvError> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let mut tmp = crate::atomic_file::create_staging_file(parent, "kv", ".tmp")?;
-
-    let json = serde_json::to_string_pretty(file)?;
-    tmp.write_all(json.as_bytes())?;
-    tmp.write_all(b"\n")?;
-    tmp.as_file().sync_all()?;
-
-    // `persist` is `rename(2)`. On failure the `NamedTempFile` comes back
-    // inside the error and its `Drop` removes the staging file, so a failed
-    // replace does not leave one behind.
-    tmp.persist(path).map_err(|err| KvError::Io(err.error))?;
-
-    // `sync_all` above made the contents durable; this makes the rename
-    // that published them durable too.
-    crate::atomic_file::sync_dir(parent)?;
-    Ok(())
+    crate::atomic_file::write_json(path, "kv", file).map_err(KvError::Io)
 }
 
 /// Every key/value pair in the store, in key order.

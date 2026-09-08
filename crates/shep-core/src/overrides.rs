@@ -12,7 +12,6 @@
 
 use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::Write as _;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -149,27 +148,9 @@ fn read_file(path: &Path) -> Result<OverridesFile, OverridesError> {
     Ok(file)
 }
 
-/// Rewrites `path` to hold exactly `file`, atomically: staged through a
-/// temp file, then renamed over the original.
+/// Rewrites `path` to hold exactly `file`.
 fn write_file(path: &Path, file: &OverridesFile) -> Result<(), OverridesError> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let mut tmp = crate::atomic_file::create_staging_file(parent, "overrides", ".tmp")?;
-
-    let json = serde_json::to_string_pretty(file)?;
-    tmp.write_all(json.as_bytes())?;
-    tmp.write_all(b"\n")?;
-    tmp.as_file().sync_all()?;
-
-    // `persist` is `rename(2)`. On failure the `NamedTempFile` comes back
-    // inside the error and its `Drop` removes the staging file, so a failed
-    // replace does not leave one behind.
-    tmp.persist(path)
-        .map_err(|err| OverridesError::Io(err.error))?;
-
-    // `sync_all` above made the contents durable; this makes the rename
-    // that published them durable too.
-    crate::atomic_file::sync_dir(parent)?;
-    Ok(())
+    crate::atomic_file::write_json(path, "overrides", file).map_err(OverridesError::Io)
 }
 
 /// Every sheep's overrides, in name order.
