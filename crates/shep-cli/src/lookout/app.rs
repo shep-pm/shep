@@ -2785,6 +2785,10 @@ impl App {
     /// fold, since the flock table is not what is on screen.
     fn on_secrets_key(&mut self, key: KeyPress) -> Effect {
         match key {
+            // Mirrors `on_bleats_key`'s own arm: every full-screen pane
+            // answers `q`/`ctrl-c`, the one key a cancelling armed action
+            // does not swallow either (`on_key`'s own comment on that).
+            KeyPress::Quit => Effect::Quit,
             KeyPress::Secrets | KeyPress::Escape => {
                 self.body = Body::FlockTable;
                 Effect::None
@@ -2817,8 +2821,7 @@ impl App {
             // land in Tasks 6-8. Listed rather than a wildcard, so a new
             // `KeyPress` variant cannot fall silently into an arm that
             // ignores it.
-            KeyPress::Quit
-            | KeyPress::SelectUp
+            KeyPress::SelectUp
             | KeyPress::SelectDown
             | KeyPress::SelectFirst
             | KeyPress::SelectLast
