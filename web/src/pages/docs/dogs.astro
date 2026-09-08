@@ -24,6 +24,7 @@ const probeSnippet = `fn main() {
 }`;
 
 const configSnippet = `use shep_client::dogs::DogConfig;
+use shep_client::shep_core::values::{MemSize, UpDuration};
 
 #[derive(Default, serde::Deserialize, schemars::JsonSchema, DogConfig)]
 #[serde(deny_unknown_fields, default)]
@@ -33,6 +34,10 @@ struct MyDogConfig {
     webhook: String,
     /// What to watch.
     path: String,
+    /// How much to buffer before posting: \`4M\`, \`512K\`, or a byte count.
+    batch: Option<MemSize>,
+    /// How long to wait between posts: \`30s\`, \`500ms\`, \`2h\`.
+    every: Option<UpDuration>,
 }`;
 
 const schemaNotice = `notice[dog_schema_unreadable]: pydog answered \`--schema\` with something that
@@ -889,6 +894,15 @@ speaks protocol 8, accepts 8 and newer`}</CodeBlock>
       <code>sinks</code> map is marked whole for this reason, and every sink
       in it carries a webhook URL.
     </Callout>
+    <p>
+      <code>MemSize</code> and <code>UpDuration</code> need no dependency of
+      their own. A dog configuring a size or a timer reads them out of{" "}
+      <code>shep_client::shep_core::values</code>, and shep-client's{" "}
+      <code>schema</code> feature turns on the shep-core feature those two{" "}
+      <code>JsonSchema</code> impls sit behind. Neither type has a{" "}
+      <code>Default</code>, so a field holding one is an{" "}
+      <code>Option</code> or carries <code>#[serde(default = "...")]</code>.
+    </p>
     <Callout variant="note">
       Answering is optional, exactly as <code>--version</code> is. A dog
       that says nothing is adopted, recorded as having no schema, and

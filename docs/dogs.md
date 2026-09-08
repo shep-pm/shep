@@ -690,6 +690,7 @@ every field holding a credential:
 
 ```rust
 use shep_client::dogs::DogConfig;
+use shep_client::shep_core::values::{MemSize, UpDuration};
 
 #[derive(Default, serde::Deserialize, schemars::JsonSchema, DogConfig)]
 #[serde(deny_unknown_fields, default)]
@@ -699,6 +700,10 @@ struct MyDogConfig {
     webhook: String,
     /// What to watch.
     path: String,
+    /// How much to buffer before posting: `4M`, `512K`, or a byte count.
+    batch: Option<MemSize>,
+    /// How long to wait between posts: `30s`, `500ms`, `2h`.
+    every: Option<UpDuration>,
 }
 ```
 
@@ -714,6 +719,13 @@ a refusal rather than a silent pass.
 down, in a nested struct or in a map's values, is not covered by a mark down
 there: mark the field that holds them. Bark's own `sinks` map is marked
 whole for this reason, and every sink in it carries a webhook URL.
+
+**`MemSize` and `UpDuration` need no dependency of their own.** A dog
+configuring a size or a timer reads them out of
+`shep_client::shep_core::values`, and shep-client's `schema` feature turns on
+the shep-core feature those two `JsonSchema` impls sit behind. Neither type
+has a `Default`, so a field holding one is an `Option` or carries
+`#[serde(default = "...")]`.
 
 **Answering is optional, exactly as `--version` is.** A dog that says
 nothing is adopted, recorded as having no schema, and refused nothing, which
