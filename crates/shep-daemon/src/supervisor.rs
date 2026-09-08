@@ -8330,6 +8330,42 @@ mod tests {
         }
     }
 
+    /// A bare actor over `sheep`, running `scripts` and reachable at `tx`.
+    ///
+    /// The bus receiver is dropped here, as every fixture already dropped its
+    /// own: a bus with no subscriber still takes every send.
+    ///
+    /// `next_id` is one past the slots, which the contiguous ids every fixture
+    /// assigns make right. A case that needs another value, or `extras`,
+    /// writes it with struct-update syntax over this.
+    fn test_actor(
+        paths: ShepPaths,
+        scripts: Vec<ProcScript>,
+        sheep: HashMap<u32, SheepSlot>,
+        tx: mpsc::Sender<Msg>,
+    ) -> Actor<ScriptedRunner> {
+        let (events, _events_rx) = crate::bus::test_bus(64);
+        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
+        Actor {
+            runner: ScriptedRunner::new(scripts),
+            next_id: sheep.len() as u32,
+            paths,
+            events,
+            host_environment: DEFAULT_ENVIRONMENT.to_string(),
+            provider_secrets,
+            tx,
+            sheep,
+            next_deadline: 0,
+            next_action_stamp: 0,
+            pending: Vec::new(),
+            shutting_down: false,
+            extras: None,
+            registry: ExtrasRegistry::default(),
+            reloads: HashMap::new(),
+            smits: Smits::new(),
+        }
+    }
+
     // --- The readiness gate ---
 
     #[tokio::test(start_paused = true)]
@@ -9708,27 +9744,8 @@ mod tests {
         };
         let mut sheep = HashMap::new();
         sheep.insert(0, slot);
-        let (events, _events_rx) = crate::bus::test_bus(16);
         let (tx, _rx) = mpsc::channel(16);
-        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
-        let actor = Actor {
-            runner: ScriptedRunner::new(vec![]),
-            paths,
-            events,
-            host_environment: DEFAULT_ENVIRONMENT.to_string(),
-            provider_secrets,
-            tx,
-            sheep,
-            next_id: 1,
-            next_deadline: 0,
-            next_action_stamp: 0,
-            pending: Vec::new(),
-            shutting_down: false,
-            extras: None,
-            registry: ExtrasRegistry::default(),
-            reloads: HashMap::new(),
-            smits: Smits::new(),
-        };
+        let actor = test_actor(paths, Vec::new(), sheep, tx);
         (actor, ctl_rx)
     }
 
@@ -9806,27 +9823,8 @@ mod tests {
                 ..SheepSlot::new(entry)
             },
         );
-        let (events, _events_rx) = crate::bus::test_bus(16);
         let (tx, _mailbox) = mpsc::channel(16);
-        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
-        let mut actor = Actor {
-            runner: ScriptedRunner::new(vec![]),
-            paths,
-            events,
-            host_environment: DEFAULT_ENVIRONMENT.to_string(),
-            provider_secrets,
-            tx,
-            sheep,
-            next_id: 1,
-            next_deadline: 0,
-            next_action_stamp: 0,
-            pending: Vec::new(),
-            shutting_down: false,
-            extras: None,
-            registry: ExtrasRegistry::default(),
-            reloads: HashMap::new(),
-            smits: Smits::new(),
-        };
+        let mut actor = test_actor(paths, Vec::new(), sheep, tx);
         let entry = actor
             .sheep
             .get(&0)
@@ -10448,27 +10446,8 @@ mod tests {
         let app = normalize(app).unwrap();
         let mut sheep = HashMap::new();
         sheep.insert(0, SheepSlot::new(armed_entry(0, 0, 1111, app, &paths)));
-        let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, rx) = mpsc::channel(MAILBOX_CAPACITY);
-        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
-        let actor = Actor {
-            runner: ScriptedRunner::new(scripts),
-            paths,
-            events,
-            host_environment: DEFAULT_ENVIRONMENT.to_string(),
-            provider_secrets,
-            tx,
-            sheep,
-            next_id: 1,
-            next_deadline: 0,
-            next_action_stamp: 0,
-            pending: Vec::new(),
-            shutting_down: false,
-            extras: None,
-            registry: ExtrasRegistry::default(),
-            reloads: HashMap::new(),
-            smits: Smits::new(),
-        };
+        let actor = test_actor(paths, scripts, sheep, tx);
         (actor, rx)
     }
 
@@ -10494,27 +10473,8 @@ mod tests {
             entry.dog = dog;
             sheep.insert(id, SheepSlot::new(entry));
         }
-        let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, rx) = mpsc::channel(MAILBOX_CAPACITY);
-        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
-        let actor = Actor {
-            runner: ScriptedRunner::new(Vec::new()),
-            paths,
-            events,
-            host_environment: DEFAULT_ENVIRONMENT.to_string(),
-            provider_secrets,
-            tx,
-            sheep,
-            next_id: DOG_ID + 1,
-            next_deadline: 0,
-            next_action_stamp: 0,
-            pending: Vec::new(),
-            shutting_down: false,
-            extras: None,
-            registry: ExtrasRegistry::default(),
-            reloads: HashMap::new(),
-            smits: Smits::new(),
-        };
+        let actor = test_actor(paths, Vec::new(), sheep, tx);
         (actor, rx)
     }
 
@@ -10667,27 +10627,8 @@ mod tests {
                 )),
             );
         }
-        let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, _rx) = mpsc::channel(MAILBOX_CAPACITY);
-        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
-        Actor {
-            runner: ScriptedRunner::new(scripts),
-            paths,
-            events,
-            host_environment: DEFAULT_ENVIRONMENT.to_string(),
-            provider_secrets,
-            tx,
-            sheep,
-            next_id: instances,
-            next_deadline: 0,
-            next_action_stamp: 0,
-            pending: Vec::new(),
-            shutting_down: false,
-            extras: None,
-            registry: ExtrasRegistry::default(),
-            reloads: HashMap::new(),
-            smits: Smits::new(),
-        }
+        test_actor(paths, scripts, sheep, tx)
     }
 
     /// Every registered slot's stored instance count, ascending by id.
@@ -15156,28 +15097,9 @@ mod tests {
         dir: &tempfile::TempDir,
         scripts: Vec<ProcScript>,
     ) -> Actor<ScriptedRunner> {
-        let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, _rx) = mpsc::channel(MAILBOX_CAPACITY);
         let paths = test_paths(dir);
-        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
-        Actor {
-            runner: ScriptedRunner::new(scripts),
-            paths,
-            events,
-            host_environment: DEFAULT_ENVIRONMENT.to_string(),
-            provider_secrets,
-            tx,
-            sheep: HashMap::new(),
-            next_id: 0,
-            next_deadline: 0,
-            next_action_stamp: 0,
-            pending: Vec::new(),
-            shutting_down: false,
-            extras: None,
-            registry: ExtrasRegistry::default(),
-            reloads: HashMap::new(),
-            smits: Smits::new(),
-        }
+        test_actor(paths, scripts, HashMap::new(), tx)
     }
 
     /// The name this test process is already running under, the only user a
@@ -17846,28 +17768,13 @@ mod tests {
             },
             stats: idle_stats(),
         };
-        let (events, _events_rx) = crate::bus::test_bus(64);
         let (tx, _rx) = mpsc::channel(MAILBOX_CAPACITY);
-        let provider_secrets = Arc::new(ProviderSecrets::load(&paths.secrets_cache));
+        // Enough scripts for a scale-up to come up: without them a case
+        // that scales would assert on a shortfall rather than the apply.
+        let scripts = vec![ProcScript::never_exits(); 4];
         let actor = Actor {
-            // Enough scripts for a scale-up to come up: without them a case
-            // that scales would assert on a shortfall rather than the apply.
-            runner: ScriptedRunner::new(vec![ProcScript::never_exits(); 4]),
-            paths,
-            events,
-            host_environment: DEFAULT_ENVIRONMENT.to_string(),
-            provider_secrets,
-            tx,
-            sheep,
-            next_id,
-            next_deadline: 0,
-            next_action_stamp: 0,
-            pending: Vec::new(),
-            shutting_down: false,
             extras: Some(extras),
-            registry: ExtrasRegistry::default(),
-            reloads: HashMap::new(),
-            smits: Smits::new(),
+            ..test_actor(paths, scripts, sheep, tx)
         };
         (actor, enforcer)
     }
