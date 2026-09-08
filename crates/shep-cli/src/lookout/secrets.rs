@@ -6,6 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
+use shep_core::config::DaemonConfig;
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::ProcessInfo;
 use shep_core::secrets::{self, ALL_ENVIRONMENTS};
@@ -63,6 +64,10 @@ pub(crate) struct SecretsModel {
     pub unreadable: Option<String>,
     /// How old the muster roll is, or `None` when it is missing.
     pub roll_age: Option<Duration>,
+    /// `[secrets] allow_read` in `shep.toml`, the reveal gate. Missing or
+    /// unreadable both read as `false`, mirroring
+    /// `whistle::gate::resolve_control`'s fail-closed default.
+    pub allow_read: bool,
 }
 
 impl SecretsModel {
@@ -116,11 +121,16 @@ pub(crate) fn model(paths: &ShepPaths, procs: &[ProcessInfo], environment: &str)
         }
     }
 
+    let shep_toml = std::fs::read_to_string(&paths.daemon_config).ok();
+    let allow_read = DaemonConfig::load(shep_toml.as_deref(), &|_| None)
+        .is_ok_and(|config| config.secrets.allow_read);
+
     SecretsModel {
         environments: environments.into_iter().collect(),
         rows,
         unreadable,
         roll_age: secret_readers::roll_age(paths),
+        allow_read,
     }
 }
 

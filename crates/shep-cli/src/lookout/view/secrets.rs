@@ -12,12 +12,13 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::super::app::{App, SecretsPane};
+use super::super::app::{App, Control, SecretsPane};
 use super::super::secrets::{SecretRow, Source};
 use super::super::theme::Palette;
 use super::flock::{GUTTER, fit, gutter};
 use super::status;
 use crate::output::human_duration;
+use crate::vocabulary::Role;
 
 /// One column of the secrets table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,6 +98,37 @@ pub(super) const SECRET_TIERS: &[(u16, &[Column])] = &[
     ),
     (74, &[Column::Key, Column::Value, Column::InForce]),
 ];
+
+/// [`pane_band`]'s label.
+const PANE_BAND_LABEL: &str = "SECRETS   flock-wide values a Flockfile refers to and never carries";
+
+/// What the store is, never printed to a log or read before spawn.
+const STORE_LINE: &str = "store $SHEP_HOME/secrets.json \u{b7} not encrypted \u{b7} never \
+     printed to a log, never carried in a bleat \u{b7} read at spawn, not now";
+
+/// This pane's own band: design rule 1, `docs/lookout/design-files/README.md:45`.
+/// Butter ground, since the pane is one you can change something in.
+fn pane_band(width: u16, palette: Palette) -> Line<'static> {
+    Line::from(Span::styled(
+        super::cell::band(PANE_BAND_LABEL, usize::from(width)),
+        palette.band(Role::Butter),
+    ))
+}
+
+/// Both secrets gates, since neither implies the other: `[secrets]
+/// allow_read` decides whether a value may be shown, `lookout.allow_control`
+/// whether the pane may change anything.
+fn gates_line(pane: &SecretsPane, control: Control, palette: Palette) -> Line<'static> {
+    let allowed = matches!(control, Control::Allowed);
+    Line::from(Span::styled(
+        format!(
+            "reveal  [secrets] allow_read = {} in shep.toml \u{b7} change  \
+             lookout.allow_control = {allowed}",
+            pane.model.allow_read
+        ),
+        palette.muted(),
+    ))
+}
 
 /// The widest tier `width` still fits, or the narrowest tier below every
 /// threshold.
@@ -208,10 +240,10 @@ fn heading_line(columns: &[Column], palette: Palette) -> Line<'static> {
     Line::from(Span::styled(text, palette.muted()))
 }
 
-/// The top band: the operator store's own read refusal when there is one,
-/// otherwise how long ago the muster roll (and so `READ BY`) was written.
-/// Blank when neither applies.
-fn band_line(pane: &SecretsPane, palette: Palette) -> Line<'static> {
+/// The operator store's own read refusal when there is one, otherwise how
+/// long ago the muster roll (and so `READ BY`) was written. Blank when
+/// neither applies.
+fn roll_status_line(pane: &SecretsPane, palette: Palette) -> Line<'static> {
     if let Some(message) = &pane.model.unreadable {
         return Line::from(Span::styled(
             format!("operator store unreadable: {message}"),
@@ -232,18 +264,37 @@ fn band_line(pane: &SecretsPane, palette: Palette) -> Line<'static> {
 /// found a slot for, plus `all`. The active one is bracketed
 /// (`[production]`) in addition to whatever the palette paints, since a
 /// signal carried by colour alone says nothing under `NO_COLOR`.
-fn tab_line(pane: &SecretsPane, palette: Palette) -> Line<'static> {
+///
+/// Right-aligned within `width`: design rule 2, every measurement states
+/// its denominator, and this one is the store's own count of named
+/// environments (`environments` minus [`super::super::secrets::ALL_ENVIRONMENTS`]).
+fn tab_line(pane: &SecretsPane, palette: Palette, width: u16) -> Line<'static> {
     let mut spans = Vec::with_capacity(pane.model.environments.len() * 2);
+    let mut drawn = 0usize;
     for (index, name) in pane.model.environments.iter().enumerate() {
         if index > 0 {
             spans.push(Span::raw("  "));
+            drawn += 2;
         }
         if index == pane.tab {
-            spans.push(Span::styled(format!("[{name}]"), palette.attention()));
+            let text = format!("[{name}]");
+            drawn += text.chars().count();
+            spans.push(Span::styled(text, palette.attention()));
         } else {
+            drawn += name.chars().count();
             spans.push(Span::styled(name.clone(), palette.muted()));
         }
     }
+    let environment_count = pane.model.environments.len().saturating_sub(1);
+    let suffix =
+        format!("{environment_count} environments in this store \u{b7} \u{2190}/\u{2192} or tab");
+    let pad = usize::from(width)
+        .saturating_sub(drawn)
+        .saturating_sub(suffix.chars().count());
+    if pad > 0 {
+        spans.push(Span::raw(" ".repeat(pad)));
+    }
+    spans.push(Span::styled(suffix, palette.muted()));
     Line::from(spans)
 }
 
@@ -286,11 +337,12 @@ fn is_collapsed(pane: &SecretsPane, source: &Source) -> bool {
 
 /// Draws the secrets pane into `area`, straight into `buffer`.
 ///
-/// Six rows of chrome before the first group header: the band, the tab
-/// row, the heading row, a hairline, then one group header per source
-/// change in [`SecretsPane::model`]'s rows, which are already contiguous by
-/// source (`SecretsModel::rows`'s own doc comment: operator rows first,
-/// then each namespace's).
+/// Seven rows of chrome before the first group header: this pane's own
+/// band (design rule 1), the store's terms, the two gates, the roll's own
+/// status, the tab row, the heading row, a hairline, then one group header
+/// per source change in [`SecretsPane::model`]'s rows, which are already
+/// contiguous by source (`SecretsModel::rows`'s own doc comment: operator
+/// rows first, then each namespace's).
 pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
     if area.width == 0 || area.height == 0 {
         return;
@@ -298,17 +350,42 @@ pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
     let palette = app.palette();
     let width = area.width;
     let table_width = width.saturating_sub(GUTTER);
-    let columns = columns_for(table_width);
+    // `width`, not `table_width`: [`SECRET_TIERS`]' thresholds are the
+    // design's own row width, gutter included.
+    let columns = columns_for(width);
     let bottom = area.y + area.height;
     let mut y = area.y;
 
-    buffer.set_line(area.x, y, &band_line(pane, palette), width);
+    buffer.set_line(area.x, y, &pane_band(width, palette), width);
     y += 1;
     if y >= bottom {
         return;
     }
 
-    buffer.set_line(area.x, y, &tab_line(pane, palette), width);
+    buffer.set_line(
+        area.x,
+        y,
+        &Line::from(Span::styled(STORE_LINE, palette.muted())),
+        width,
+    );
+    y += 1;
+    if y >= bottom {
+        return;
+    }
+
+    buffer.set_line(area.x, y, &gates_line(pane, app.control(), palette), width);
+    y += 1;
+    if y >= bottom {
+        return;
+    }
+
+    buffer.set_line(area.x, y, &roll_status_line(pane, palette), width);
+    y += 1;
+    if y >= bottom {
+        return;
+    }
+
+    buffer.set_line(area.x, y, &tab_line(pane, palette, width), width);
     y += 1;
     if y >= bottom {
         return;
@@ -393,16 +470,16 @@ mod tests {
     use super::*;
     use crate::lookout::view::fixtures;
 
-    /// The first data row `draw` places: band, tab row, heading row,
-    /// hairline, then the first group's header, all fixed regardless of
-    /// which source that group is.
+    /// The first data row `draw` places, fixed regardless of which source
+    /// the first group is.
     /// `160x48`: the width and height every test in this module renders
     /// at, and so the exact chrome above the first data row: the title
     /// band and its blank line the dashboard draws before handing off to
-    /// [`super::draw`], then this pane's own band, tab row, heading row,
+    /// [`super::draw`], then this pane's own band, the store's terms, the
+    /// two gates, the roll's own status, the tab row, the heading row, the
     /// hairline and the operator group's header.
     fn first_row() -> u16 {
-        7
+        10
     }
 
     /// The row whose rendered text contains `needle`, or panics: every
