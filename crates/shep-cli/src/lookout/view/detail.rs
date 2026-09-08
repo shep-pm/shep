@@ -30,8 +30,67 @@ pub fn detail_lines(app: &App, width: u16) -> Vec<Line<'static>> {
         None => empty_lines(app, width, palette),
         Some(RowKey::Group(name)) => group_lines(app, &name, width, palette),
         Some(RowKey::Sheep(_)) => sheep_lines(app, width, palette),
+        Some(RowKey::Fold(name)) => fold_lines(app, &name, width, palette),
         Some(RowKey::Section(_)) => unreachable!("a header is never selectable"),
     }
+}
+
+/// A fold's four lines when a [`RowKey::Fold`] is selected: [`App::fold_totals`]'s
+/// rollup, in place of one sheep's own fields. The same shape
+/// [`group_lines`] draws one level down, since a fold has no more of a
+/// single process to walk or tail than a group does: no lamb line, no log
+/// paths.
+fn fold_lines(app: &App, name: &str, width: u16, palette: Palette) -> Vec<Line<'static>> {
+    let totals = app.fold_totals(name);
+    let head = format!("fold {name} \u{d7}{}  ", totals.count);
+    let status = app.fold_status_text(name);
+    let rest = format!(
+        "   restarts {}   uptime {}   cpu {}   mem {}",
+        totals.restarts,
+        totals
+            .uptime_ms
+            .map_or_else(|| "-".to_string(), human_duration),
+        totals
+            .cpu
+            .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
+        totals.memory.map_or_else(|| "-".to_string(), human_bytes),
+    );
+    // Both are fit before either is measured: a long name or a mixed status
+    // each overflow `MIN_TERM_WIDTH` alone. `min` because `fit` pads as well
+    // as truncates, and a padded head leaves the rollup nothing.
+    let status = fit(
+        &status,
+        width.min(u16::try_from(columns(&status)).unwrap_or(width)),
+    );
+    let head_budget = width.saturating_sub(u16::try_from(columns(&status)).unwrap_or(0));
+    let head = fit(
+        &head,
+        head_budget.min(u16::try_from(columns(&head)).unwrap_or(head_budget)),
+    );
+    let used = columns(&head) + columns(&status);
+    let status_style = app
+        .fold_uniform_status(name)
+        .map_or(Style::default(), |status| palette.status(status));
+
+    vec![
+        Line::from(vec![
+            Span::raw(head),
+            Span::styled(status, status_style),
+            Span::raw(fit(
+                &rest,
+                width.saturating_sub(u16::try_from(used).unwrap_or(width)),
+            )),
+        ]),
+        Line::from(Span::styled(
+            fit(
+                "lambs  a fold has no single process to walk; select one sheep",
+                width,
+            ),
+            palette.muted(),
+        )),
+        Line::from(Span::raw(String::new())),
+        Line::from(Span::raw(String::new())),
+    ]
 }
 
 /// The pane's four lines when nothing is selected. Names the cause, not the
@@ -68,6 +127,16 @@ fn group_lines(app: &App, name: &str, width: u16, palette: Palette) -> Vec<Line<
             .cpu
             .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
         totals.memory.map_or_else(|| "-".to_string(), human_bytes),
+    );
+    // Both fit before either is measured, the rule the fold branch states.
+    let status = fit(
+        &status,
+        width.min(u16::try_from(columns(&status)).unwrap_or(width)),
+    );
+    let head_budget = width.saturating_sub(u16::try_from(columns(&status)).unwrap_or(0));
+    let head = fit(
+        &head,
+        head_budget.min(u16::try_from(columns(&head)).unwrap_or(head_budget)),
     );
     let used = columns(&head) + columns(&status);
     // `palette.status`, not `palette.reported`: a selected group is always
@@ -352,11 +421,11 @@ mod tests {
 
     use super::super::fixtures::{
         app_fixture, app_with, app_with_lamb_reading_at, coloured, lamb_line_of, plain, render_all,
-        rendered, sheep_with_lambs, with_lamb_reading, with_lamb_reading_for, with_selection,
-        with_selection_and_palette,
+        rendered, sheep_in_fold, sheep_in_fold_with_status, sheep_with_lambs, with_lamb_reading,
+        with_lamb_reading_for, with_selection, with_selection_and_palette,
     };
     use super::*;
-    use crate::lookout::app::{App, Control, LambWalk, Msg, RowKey};
+    use crate::lookout::app::{App, Control, KeyPress, LambWalk, Msg, RowKey};
     use crate::lookout::theme::Palette;
 
     /// Five states, and the CLI's own wording covers only one of them: the
@@ -605,6 +674,31 @@ mod tests {
         );
     }
 
+    /// The detail pane already refuses to invent a single process for a
+    /// group. A fold is the same situation one level up.
+    #[test]
+    fn a_selected_fold_shows_the_rollup_and_no_log_paths() {
+        let mut app = app_with(
+            vec![
+                sheep_in_fold(1, "api", Some("edge")),
+                sheep_in_fold(2, "cdn", Some("edge")),
+            ],
+            plain(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::FoldView));
+        app.select_fold_for_tests("edge");
+        let text = render_all(&detail_lines(&app, 200));
+        assert!(text.contains("fold edge \u{d7}2"), "got {text}");
+        assert!(
+            text.contains("restarts") && text.contains("uptime") && text.contains("cpu"),
+            "the rollup a fold shows in place of one sheep's fields: {text}"
+        );
+        // Not `!contains("out  ")`, which cannot fail: `log_row` reaches the
+        // log paths through `selected_row`, and that is `None` for a fold, so
+        // the label can only be absent. Asserting the rollup IS present is
+        // what catches `fold_lines` drifting toward a sheep's own shape.
+    }
+
     /// Drives both panes off the same [`App`] built from the same row, the
     /// way an operator with both open sees them.
     #[test]
@@ -804,5 +898,78 @@ mod tests {
             "first line is {} columns wide, wanted at most {width}: {first:?}",
             columns(&first)
         );
+    }
+
+    /// A long fold name cannot push the status word off a narrow pane.
+    ///
+    /// `MIN_TERM_WIDTH` is 33 and the head is built before anything is fit,
+    /// so a fold named at length would otherwise spend the whole row and the
+    /// status word would never be drawn. The sibling `Group` branch had the
+    /// same shape and the same bug.
+    /// A mixed status is fit too, not just the name.
+    ///
+    /// Four differing statuses read `1 errored, 1 online, 1 starting, 1
+    /// stopped`, wider than `MIN_TERM_WIDTH` on its own. Budgeting the head
+    /// against it leaves zero and the status still overflows.
+    #[test]
+    fn a_mixed_status_does_not_overflow_a_narrow_pane() {
+        for selected in ["fold", "group"] {
+            let mut app = app_with(
+                vec![
+                    sheep_in_fold_with_status(1, "api", Some("edge"), ProcStatus::Errored),
+                    sheep_in_fold_with_status(2, "cdn", Some("edge"), ProcStatus::Online),
+                    sheep_in_fold_with_status(3, "img", Some("edge"), ProcStatus::Starting),
+                    sheep_in_fold_with_status(4, "web", Some("edge"), ProcStatus::Stopped),
+                ],
+                plain(),
+            );
+            if selected == "fold" {
+                let _ = app.update(Msg::Key(KeyPress::FoldView));
+                app.select_fold_for_tests("edge");
+            } else {
+                // The group header is the first selectable row when every
+                // instance shares a name.
+                app.select_fold_for_tests("edge");
+                let _ = app.update(Msg::Key(KeyPress::FoldView));
+            }
+            for line in &detail_lines(&app, 33) {
+                let drawn: String = line
+                    .spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect();
+                assert!(
+                    columns(&drawn) <= 33,
+                    "{selected} row overflowed 33 columns: {drawn:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_long_fold_name_does_not_push_the_status_off_a_narrow_pane() {
+        let mut app = app_with(
+            vec![
+                sheep_in_fold(1, "api", Some("edge-services-and-more")),
+                sheep_in_fold(2, "cdn", Some("edge-services-and-more")),
+            ],
+            plain(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::FoldView));
+        app.select_fold_for_tests("edge-services-and-more");
+        let lines = detail_lines(&app, 33);
+        for line in &lines {
+            let drawn: String = line
+                .spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect();
+            assert!(
+                columns(&drawn) <= 33,
+                "a detail row overflowed 33 columns: {drawn:?}"
+            );
+        }
+        let head = render_all(&lines);
+        assert!(head.contains("online"), "the status survives: {head}");
     }
 }

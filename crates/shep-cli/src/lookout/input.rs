@@ -69,6 +69,8 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char('d') => Some(KeyPress::ListRemove),
         KeyCode::Char('K') => Some(KeyPress::ListMoveUp),
         KeyCode::Char('J') => Some(KeyPress::ListMoveDown),
+        KeyCode::Char('F') => Some(KeyPress::FoldView),
+        KeyCode::Char('z') => Some(KeyPress::Collapse),
         KeyCode::Char('b') => Some(KeyPress::Bleats),
         KeyCode::Char('o') => Some(KeyPress::StreamCycle),
         KeyCode::Char('m') => Some(KeyPress::LevelCycle),
@@ -173,7 +175,14 @@ mod tests {
             map_key(&key(KeyCode::Char('J')), InputMode::Normal),
             Some(KeyPress::ListMoveDown)
         );
-        assert_eq!(map_key(&key(KeyCode::Char('z')), InputMode::Normal), None);
+        assert_eq!(
+            map_key(&key(KeyCode::Char('F')), InputMode::Normal),
+            Some(KeyPress::FoldView)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('z')), InputMode::Normal),
+            Some(KeyPress::Collapse)
+        );
     }
 
     /// `b` opens the full-screen bleats pane. Pinned because `map_key`

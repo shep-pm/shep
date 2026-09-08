@@ -1,6 +1,5 @@
 ---
 source: crates/shep-cli/src/lookout/frames.rs
-assertion_line: 2430
 expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                                            5 in the flock
@@ -32,4 +31,4 @@ out  compressed access.log.1 (4.2M -> 380K)
 out  pruned 2 archives older than 14 days                                                                               
 out  next rotation in 6h                                                                                                
                                                                                                                         
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled

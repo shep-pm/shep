@@ -195,3 +195,28 @@ debt.
 - **`j`/`k` scroll a line, `ctrl-d`/`ctrl-u` a page, `G` jumps to the end
   and resumes following, `f` toggles following, `w` wraps long lines
   instead of truncating them, and `n`/`N` step between matches.**
+
+## What 1j settled
+
+- **`F` gathers the flock by fold instead of by name.** A fold is
+  `AppConfig::fold`, a project-level grouping the sheep in it are none the
+  wiser about. Each fold gets a header row; sheep with no fold sit under a
+  `no fold` header instead, and dogs, which are never in a fold, keep their
+  own `Dogs` band underneath. `F` again goes back to the flat table.
+- **A fold header's numbers are its members summed, with one exception.**
+  Restarts, CPU and memory are a sum across the fold; uptime is the
+  *shortest* of the members', so the header reads as time since the fold was
+  last disturbed rather than the age of its longest-lived sheep. A `SHARE`
+  gauge and a `NOTES` percentage both show that fold's share of the whole
+  flock's memory.
+- **`z` collapses the fold under the cursor**, hiding its members and
+  leaving the header behind with its rollup intact. Pressed again it opens
+  the fold back up. It does nothing anywhere else, including on the `no
+  fold` or `Dogs` bands.
+- **An action on a fold reaches every sheep in it.** `x`, `R` and `L` on a
+  fold header arm the same confirm the flat table's group header does, and
+  the prompt names the count: `restart all 4 sheep in fold edge? enter
+  confirms, any other key cancels`.
+- **The `no fold` header is not selectable.** The wire has no way to name
+  "everything with no fold" in one selector, so there is nothing an action
+  there could send.

@@ -169,6 +169,11 @@ pub enum Scene {
     /// Three instances of one app under a group header, with the cursor on
     /// the header.
     Grouped,
+    /// `F` pressed: the flock gathered by fold instead of by name. Two folds
+    /// of differing size, one of them collapsed, an app grouped inside the
+    /// larger fold, two sheep with no fold at all, and a dog, which is
+    /// never in a fold.
+    Folds,
     /// Both sections at once: several sheep under Flock, a healthy
     /// built-in dog and a silent adopted one under Dogs.
     WithDogs,
@@ -262,6 +267,7 @@ impl Scene {
             Self::HealthyWide => "healthy_wide",
             Self::Errored => "errored",
             Self::Grouped => "grouped",
+            Self::Folds => "folds",
             Self::WithDogs => "with_dogs",
             Self::MemCeiling => "mem_ceiling",
             Self::CfgDrift => "cfg_drift",
@@ -314,6 +320,9 @@ impl Scene {
             }
             Self::Grouped => {
                 "Three instances of one app under a group header, with the cursor parked on the header. The header sums their restarts, CPU and memory and takes the SHORTEST of their uptimes, so a group reads as time since the app was last disturbed rather than as the age of its luckiest instance. The detail pane repeats that rollup and says lambs are per-instance; the feed will not guess which instance to tail."
+            }
+            Self::Folds => {
+                "160 columns, wide enough for the full fold-view column set including SHARE and NOTES. `batch` and `core` are two folds of differing size, `batch` collapsed so only its header shows; `edge` is the largest, holding the grouped app `web` \u{d7}3 alongside standalone `api`, and the cursor is parked on its header. `cron` and `metrics` carry no fold and sit under a `no fold` band that is not selectable, and `bark`, a dog, sits under its own band because a dog is never in a fold. Each fold header sums its members' restarts, CPU and memory and takes the shortest of their uptimes, and its SHARE gauge and NOTES percentage both read that fold's share of the whole flock's memory."
             }
             Self::WithDogs => {
                 "Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it."
@@ -453,6 +462,10 @@ impl Scene {
             Self::NoDetail => (120, 20),
             Self::TableOnly => (120, 12),
             Self::Cramped => (33, 26),
+            // `fold_columns_for` runs on `width - GUTTER`, so 160 - GUTTER
+            // is exactly `FOLD_ALL`'s threshold: the one scene that needs the
+            // full column set, SHARE and NOTES included.
+            Self::Folds => (160, 30),
             Self::Confirm
             | Self::Acting
             | Self::ActionRefused
@@ -549,7 +562,26 @@ fn select_group(app: &mut App, name: &str) {
     select_row(app, &RowKey::Group(name.to_string()));
 }
 
-/// Walks the cursor down until it lands on `key`.
+/// Parks the gallery's cursor on `name`'s fold header.
+///
+/// # Panics
+///
+/// If `name` has no fold header: the table is not in the fold view yet, or
+/// nothing in the flock carries that fold.
+#[track_caller]
+fn select_fold(app: &mut App, name: &str) {
+    select_row(app, &RowKey::Fold(name.to_string()));
+}
+
+/// Walks the cursor to `key`, up or down as `key`'s position relative to the
+/// current one calls for.
+///
+/// `Folds` needs the reverse direction: pressing `F` leaves the cursor on
+/// whichever sheep the flat view had selected, which can sit past a fold's
+/// header in the new, by-fold order, so a downward-only walk could never
+/// reach it. Every other scene's target still happens to sit at or after the
+/// starting row, so this is a superset of what a forward-only walk did, not
+/// a behaviour change for them.
 ///
 /// Budgeted by [`App::visible_rows`]'s length, not the flock count: a
 /// grouped app's header adds a visible row beyond its own slots.
@@ -563,7 +595,12 @@ fn select_row(app: &mut App, key: &RowKey) {
         if app.selected().as_ref() == Some(key) {
             return;
         }
-        app.update(Msg::Key(KeyPress::SelectDown));
+        let target = app.visible_rows().iter().position(|row| row == key);
+        let step = match (app.selected_index(), target) {
+            (Some(current), Some(target)) if target < current => KeyPress::SelectUp,
+            _ => KeyPress::SelectDown,
+        };
+        app.update(Msg::Key(step));
     }
     panic!("the gallery cannot park its cursor on {key:?}");
 }
@@ -610,6 +647,81 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
                 Some(241 << 20),
                 Some("edge"),
             ),
+        ],
+        // Two folds of differing size (`batch` at 32MiB, `core` at 96MiB),
+        // the biggest fold (`edge`, at 781MiB) carrying a grouped app beside
+        // a standalone one, two sheep in no fold at all, and a dog. Every
+        // memory figure is a round number of MiB precisely so the SHARE
+        // gauge and the NOTES percentage can be checked by hand rather than
+        // trusted on sight: batch's 32 of 928 total MiB is 3%, core's 96 is
+        // 10%, edge's 781 is 84%.
+        Scene::Folds => vec![
+            sheep(
+                20,
+                "reindexer",
+                ProcStatus::Online,
+                Some(48_500),
+                0,
+                Some(1.2),
+                Some(20 << 20),
+                Some("batch"),
+            ),
+            sheep(
+                21,
+                "backfill",
+                ProcStatus::Online,
+                Some(48_501),
+                3,
+                Some(0.4),
+                Some(12 << 20),
+                Some("batch"),
+            ),
+            sheep(
+                22,
+                "worker",
+                ProcStatus::Online,
+                Some(48_510),
+                0,
+                Some(2.0),
+                Some(96 << 20),
+                Some("core"),
+            ),
+            // `instance` always sets fold to `edge`, which is exactly the
+            // fold this scene wants its one grouped app in.
+            instance(23, "web", 0, 0, 3.4, 182 << 20, 4_512_000),
+            instance(24, "web", 1, 2, 2.9, 178 << 20, 300_000),
+            instance(25, "web", 2, 1, 3.1, 180 << 20, 9_000_000),
+            sheep(
+                26,
+                "api",
+                ProcStatus::Online,
+                Some(48_219),
+                1,
+                Some(7.1),
+                Some(241 << 20),
+                Some("edge"),
+            ),
+            sheep(
+                27,
+                "cron",
+                ProcStatus::Online,
+                Some(48_233),
+                0,
+                Some(0.1),
+                Some(8 << 20),
+                None,
+            ),
+            sheep(
+                28,
+                "metrics",
+                ProcStatus::Online,
+                Some(48_240),
+                0,
+                Some(0.4),
+                Some(11 << 20),
+                None,
+            ),
+            dog_sheep(90, "bark", DogSource::BuiltIn, None),
         ],
         Scene::Errored | Scene::Frozen | Scene::LambsUnknown => vec![
             sheep(
@@ -886,7 +998,7 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
     // Selects `api` (id 2) so the panes below describe a fixed sheep,
     // walked by id since the table sorts by name. Skipped where there is
     // no flock, no pane below the table, or the cursor belongs elsewhere
-    // (`Grouped`, and the three settings scenes with no id 2).
+    // (`Grouped`, `Folds`, and the three settings scenes with no id 2).
     if !matches!(
         which,
         Scene::Empty
@@ -894,6 +1006,7 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
             | Scene::TooNarrow
             | Scene::TableOnly
             | Scene::Grouped
+            | Scene::Folds
             | Scene::WithDogs
             | Scene::MemCeiling
             | Scene::CfgDrift
@@ -910,6 +1023,17 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
     // feed's refusal to pick an instance to tail.
     if which == Scene::Grouped {
         select_group(&mut app, "web");
+    }
+
+    // `Folds` presses `F` to switch the table into the fold view, collapses
+    // `batch` (the smallest fold, so `z`'s effect is visible without hiding
+    // much), and parks the cursor on `edge`'s own header, the fold that
+    // carries the grouped app.
+    if which == Scene::Folds {
+        app.update(Msg::Key(KeyPress::FoldView));
+        select_fold(&mut app, "batch");
+        app.update(Msg::Key(KeyPress::Collapse));
+        select_fold(&mut app, "edge");
     }
 
     // `LambsUnknown` wants `cron`, id 4, instead.
@@ -1618,18 +1742,19 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all thirty-six scenes through the same coloured
+frames.ansi renders all thirty-seven scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same thirty-six scenes through the flattened NO_COLOR palette
+renders the same thirty-seven scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
 
 All four panes are here: the flock table (the spine), the host-usage strip,
-the sheep detail pane and the bleats feed. The selected sheep's row is a
-painted gutter in frames.ansi; in frames.txt it falls back to a `>` marker,
-since the NO_COLOR palette has no ground to paint with. Every pane below
-the table describes that one sheep.
+the sheep detail pane and the bleats feed. The selected row is a painted
+gutter in frames.ansi; in frames.txt it falls back to a `>` marker, since
+the NO_COLOR palette has no ground to paint with. Every pane below the
+table describes whatever that row is: one sheep usually, and a rollup with
+no single log where the cursor sits on a group or a fold header.
 
 The feed reads the selected sheep's log files from disk and re-reads them with
 each flock listing. It is not a live subscription, and it says so on its own
@@ -1786,11 +1911,10 @@ mod tests {
     /// assertion here.
     /// The preamble's own scene count matches `Scene::ALL`.
     ///
-    /// It said thirty-five twice while the gallery held thirty-six, and
-    /// nothing compared the two, so `write_the_gallery` committed a document
-    /// that miscounted itself into `docs/lookout/frames.txt` for an operator
-    /// to read. The sibling fold-view branch drifted the same way. Spelled
-    /// out rather than a digit, so this checks the words a reader sees.
+    /// `write_the_gallery` commits the preamble into
+    /// `docs/lookout/frames.txt`, so a wrong count is a document that
+    /// miscounts itself for an operator. Spelled out rather than a digit,
+    /// which is the form a reader sees.
     #[test]
     fn the_gallery_preamble_counts_the_scenes_it_has() {
         const NUMBERS: [(usize, &str); 4] = [
@@ -1819,7 +1943,7 @@ mod tests {
     /// artifacts under `docs/lookout/` are unix renderings for the same
     /// reason.
     #[cfg(unix)]
-    #[allow(clippy::too_many_lines)] // thirty-six captions, each pinned clause by clause
+    #[allow(clippy::too_many_lines)] // thirty-seven captions, each pinned clause by clause
     fn every_scene_shows_the_thing_it_is_named_for() {
         // HealthyWide: all three panes at 120x30.
         let wide_buffer = scene(Scene::HealthyWide).1;
@@ -2522,7 +2646,8 @@ mod tests {
         match scene {
             Scene::HealthyWide => Some(Scene::Errored),
             Scene::Errored => Some(Scene::Grouped),
-            Scene::Grouped => Some(Scene::WithDogs),
+            Scene::Grouped => Some(Scene::Folds),
+            Scene::Folds => Some(Scene::WithDogs),
             Scene::WithDogs => Some(Scene::MemCeiling),
             Scene::MemCeiling => Some(Scene::CfgDrift),
             Scene::CfgDrift => Some(Scene::Empty),

@@ -56,6 +56,37 @@ q quit   j/k select   / filter   x… control enabled`;
 const tooNarrow = `too small
 need 33x6`;
 
+const folds = `shep lookout   /home/ada/.shep                                                                                                                   10 in the flock
+
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 20.6%        █   flock mem 928.0M …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  NAME        STATUS        SHARE                   MEM         CPU        UPTIME      RESTARTS  NOTES
+  ▸ batch ×2  online        █░░░░░░░░░░░░░░░░░░░    32.0M       1.6%       1h 55m      3         3% of flock memory
+  ▾ core ×1   online        ██░░░░░░░░░░░░░░░░░░    96.0M       2.0%       1h 58m      0         10% of flock memory
+  worker      online                                96.0M       2.0%       1h 58m      0
+> ▾ edge ×4   online        █████████████████░░░    781.0M      16.5%      15m         4         84% of flock memory
+  api         online                                241.0M      7.1%       2h 4m       1
+  web ×3      online                                540.0M      9.4%       15m         3
+   ██ NO FOLD
+  cron        online                                8.0M        0.1%       2h 6m       0
+  metrics     online                                11.0M       0.4%       2h 7m       0
+   ██ DOGS
+  bark        online                                -           -          10m         0
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+fold edge ×4  online   restarts 4   uptime 15m   cpu 16.5%   mem 781.0M
+lambs  a fold has no single process to walk; select one sheep
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ BLEATS edge  follows one sheep; select one inside this fold to see its log
+
+
+
+
+
+q quit   j/k select   / filter   F flat   z collapse   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                  control enabled`;
+
 const frozen = `shep lookout   /home/ada/.shep                                                                            6 in the flock
 the shepherd has died: these values are frozen as of 2026-08-14 14:32:07
 host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     1 errored · 0 parked   floc…
@@ -334,6 +365,47 @@ esc/s close   j/k select   g… control enabled`;
       app-level summary rather than a single process's fields. The bleats
       feed can't follow a group, since there's no single log to re-read for
       it: it names the app and asks you to select one instance instead.
+    </p>
+
+    <h2>Grouping by fold</h2>
+    <p>
+      <code>F</code> gathers the table by fold, <code>AppConfig::fold</code>,
+      instead of by name. Each fold gets a header row; sheep with no fold sit
+      under a <code>no fold</code> band, and dogs, which are never in a fold,
+      keep their own <code>Dogs</code> band. <code>F</code> again returns to
+      the flat table.
+    </p>
+    <p>
+      A triangle marks each fold header: ▾ when its members are showing,
+      ▸ when <code>z</code> has collapsed it. Member rows carry none, so
+      the two kinds of row stay apart with every colour stripped.
+    </p>
+    <CodeBlock label="160×30, fold view">{folds}</CodeBlock>
+    <p>
+      A fold header's restarts, CPU and memory are its members summed. Uptime
+      is the exception: it's the shortest of the members', so the header
+      reads as time since the fold was last disturbed rather than the age of
+      its longest-lived sheep. The SHARE gauge and the NOTES percentage both
+      show that fold's share of the whole flock's memory. A multi-instance
+      app inside a fold still gets its own group row, the same <code>web
+      &times;3</code> rollup it would draw in the flat table, so a fold never
+      nests three levels deep.
+    </p>
+    <p>
+      <code>z</code> collapses the fold under the cursor, hiding its members
+      and leaving the header's own rollup on screen. Pressed again it opens
+      back up. It does nothing on the <code>no fold</code> or
+      <code>Dogs</code> bands, or anywhere outside the fold view.
+    </p>
+    <p>
+      An action key on a fold header reaches every sheep in it, the same way
+      a group row's does, and the confirm names the count:
+    </p>
+    <CodeBlock>{`restart all 4 sheep in fold edge? enter confirms, any other key cancels`}</CodeBlock>
+    <p>
+      The <code>no fold</code> header isn't selectable. There's no selector
+      that names "everything with no fold" on the wire, so an action there
+      would have nothing to send.
     </p>
 
     <h2>The three panes underneath</h2>

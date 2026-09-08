@@ -7,7 +7,8 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use super::super::app::{
-    ActionState, App, Control, InputMode, Link, RowKey, Settings, SettingsPrompt, retrying_sentence,
+    ActionState, App, Control, Grouping, InputMode, Link, RowKey, Settings, SettingsPrompt,
+    retrying_sentence,
 };
 use super::super::pane::{ConfigPane, PanePending};
 use super::super::pane_bleats::BleatsPane;
@@ -171,7 +172,7 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
     } else {
         // Butter: the keys, same rule as the pane's own hint above.
         (
-            hint_for(app.control(), app.settings().is_some()),
+            hint_for(app.control(), app.settings().is_some(), app.grouping()),
             palette.attention(),
         )
     };
@@ -227,6 +228,11 @@ fn confirm_prompt(action: &ActionState<'_>) -> String {
                 action.verb.label()
             )
         }
+        RowKey::Fold(name) => format!(
+            "{} all {} sheep in fold {name}? enter confirms, any other key cancels",
+            action.verb.label(),
+            action.count
+        ),
         RowKey::Section(_) => unreachable!("a header is never an action target"),
     }
 }
@@ -242,6 +248,11 @@ fn in_flight_text(action: &ActionState<'_>) -> String {
         ),
         RowKey::Group(name) => format!(
             "{} all {} instances of {name}: sent, waiting for the shepherd",
+            action.verb.label(),
+            action.count
+        ),
+        RowKey::Fold(name) => format!(
+            "{} all {} sheep in fold {name}: sent, waiting for the shepherd",
             action.verb.label(),
             action.count
         ),
@@ -361,7 +372,7 @@ fn pane_screen(pane: &ConfigPane) -> PaneScreen {
 /// appended, never inserted: read-only's first 40 characters must stay
 /// byte-identical for the truncation and gallery tests. Settings forms
 /// follow suit: read-only is a prefix of control.
-fn hint_for(control: Control, settings_open: bool) -> String {
+fn hint_for(control: Control, settings_open: bool, grouping: Grouping) -> String {
     if settings_open {
         // `esc/s close` names both keys that close the screen: on this
         // screen `s` is the close key, not the open one.
@@ -373,17 +384,31 @@ fn hint_for(control: Control, settings_open: bool) -> String {
         }
         .to_string();
     }
+    // The fold keys, spliced before the appended tail rather than into the
+    // movement keys: the doc above pins read-only's first 40 characters, and
+    // the truncation and gallery tests read them.
+    //
+    // `z` appears only in fold view, because that is the only place it does
+    // anything. A hint naming a key that is inert where the operator is
+    // reading it teaches them the key is broken.
+    let folds = match grouping {
+        Grouping::Flat => "F folds   ",
+        Grouping::ByFold => "F flat   z collapse   ",
+    };
     match control {
         Control::ReadOnly => {
-            "q quit   j/k select   g/G first/last   r refresh   / filter   s settings   e edit   * yours   ! parked"
+            format!(
+                "q quit   j/k select   g/G first/last   r refresh   / filter   {folds}s settings   e edit   * yours   ! parked"
+            )
         }
         // `g/G` and `r` drop out to make room. They are the two an operator
         // rediscovers by pressing them; an action key is not.
         Control::Allowed => {
-            "q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! parked"
+            format!(
+                "q quit   j/k select   / filter   {folds}x stop   R restart   L reload   s settings   e edit   * yours   ! parked"
+            )
         }
     }
-    .to_string()
 }
 
 /// A run of `─` across the pane, under the header.
@@ -420,8 +445,8 @@ mod tests {
     #[test]
     fn the_legend_fits_wherever_the_cfg_column_is_drawn() {
         let widest = [
-            hint_for(Control::ReadOnly, false),
-            hint_for(Control::Allowed, false),
+            hint_for(Control::ReadOnly, false, Grouping::Flat),
+            hint_for(Control::Allowed, false, Grouping::Flat),
         ]
         .into_iter()
         .map(|hint| hint.chars().count())
@@ -584,9 +609,29 @@ mod tests {
     #[test]
     fn the_dashboard_hint_says_what_the_cfg_glyphs_mean() {
         for control in [Control::ReadOnly, Control::Allowed] {
-            let hint = hint_for(control, false);
+            let hint = hint_for(control, false, Grouping::Flat);
             assert!(hint.contains("* yours"), "{hint}");
             assert!(hint.contains("! parked"), "{hint}");
+        }
+    }
+
+    /// The two fold keys are discoverable, and `z` only where it does
+    /// something.
+    ///
+    /// `docs/lookout/design-files/README.md:282` asks the status bar for both.
+    /// They shipped bound and unnamed, so an operator had no way to find
+    /// either. `z` is inert outside fold view, and a hint naming an inert key
+    /// teaches the operator the key is broken.
+    #[test]
+    fn the_hint_names_the_fold_keys_and_only_names_z_in_fold_view() {
+        for control in [Control::ReadOnly, Control::Allowed] {
+            let flat = hint_for(control, false, Grouping::Flat);
+            assert!(flat.contains("F folds"), "{flat}");
+            assert!(!flat.contains("z collapse"), "z does nothing here: {flat}");
+
+            let folded = hint_for(control, false, Grouping::ByFold);
+            assert!(folded.contains("F flat"), "{folded}");
+            assert!(folded.contains("z collapse"), "{folded}");
         }
     }
 

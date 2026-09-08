@@ -566,7 +566,7 @@ fn title_line(app: &App, pane: &BleatsPane, width: u16) -> Line<'static> {
 fn sheep_id(pane: &BleatsPane) -> Option<u32> {
     match pane.sheep() {
         RowKey::Sheep(id) => Some(*id),
-        RowKey::Group(_) | RowKey::Section(_) => None,
+        RowKey::Group(_) | RowKey::Section(_) | RowKey::Fold(_) => None,
     }
 }
 
