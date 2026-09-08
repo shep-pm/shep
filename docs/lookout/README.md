@@ -16,10 +16,10 @@ phase before deciding what came next.
 
 ## Reading the frames
 
-- `frames.txt`, thirty-five scenes rendered through the flattened `NO_COLOR`
+- `frames.txt`, thirty-six scenes rendered through the flattened `NO_COLOR`
   palette, the one an operator with `$NO_COLOR` set or a 16-colour terminal
   actually gets. Open it in any editor.
-- `frames.ansi`, the same thirty-five scenes rendered through the coloured
+- `frames.ansi`, the same thirty-six scenes rendered through the coloured
   palette the pinned snapshot tests use. Read it with `less -R` so the
   escape codes render instead of printing literally.
 
@@ -174,3 +174,28 @@ debt.
   share a single row with a divider between them and the pair's combined
   size on disk after it, and the pane gained a `cfg !N pending` cell for a
   sheep still carrying an unapplied config change.
+
+## What 1j settled
+
+- **`F` gathers the flock by fold instead of by name.** A fold is
+  `AppConfig::fold`, a project-level grouping the sheep in it are none the
+  wiser about. Each fold gets a header row; sheep with no fold sit under a
+  `no fold` header instead, and dogs, which are never in a fold, keep their
+  own `Dogs` band underneath. `F` again goes back to the flat table.
+- **A fold header's numbers are its members summed, with one exception.**
+  Restarts, CPU and memory are a sum across the fold; uptime is the
+  *shortest* of the members', so the header reads as time since the fold was
+  last disturbed rather than the age of its longest-lived sheep. A `SHARE`
+  gauge and a `NOTES` percentage both show that fold's share of the whole
+  flock's memory.
+- **`z` collapses the fold under the cursor**, hiding its members and
+  leaving the header behind with its rollup intact. Pressed again it opens
+  the fold back up. It does nothing anywhere else, including on the `no
+  fold` or `Dogs` bands.
+- **An action on a fold reaches every sheep in it.** `x`, `R` and `L` on a
+  fold header arm the same confirm the flat table's group header does, and
+  the prompt names the count: `restart all 4 sheep in fold edge? enter
+  confirms, any other key cancels`.
+- **The `no fold` header is not selectable.** The wire has no way to name
+  "everything with no fold" in one selector, so there is nothing an action
+  there could send.
