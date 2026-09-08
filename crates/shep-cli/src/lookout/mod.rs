@@ -27,6 +27,7 @@ pub mod source;
 pub mod tail;
 pub mod term;
 pub mod theme;
+pub mod validation;
 pub mod view;
 pub mod viewport;
 

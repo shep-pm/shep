@@ -95,6 +95,28 @@ pub struct Field {
     /// Whether the pane may edit it. `false` for [`FieldKind::Opaque`], and
     /// for anything a caller marks read-only after the fact.
     pub editable: bool,
+    /// `init.example`, one concrete value a reader can copy.
+    pub example: Option<String>,
+    /// `init.accepts`, the forms this field takes, in the operator's
+    /// words. Empty when the field carries none, in which case
+    /// [`super::validation::bullets`] falls back to the type table.
+    pub accepts: Vec<String>,
+    /// `init.refuses`, the forms it turns down. Empty is the common case.
+    pub refuses: Vec<String>,
+    /// `init.neighbours`, the fields this one interacts with. Empty is the
+    /// common case, and an entry missing either half is dropped.
+    pub neighbours: Vec<Neighbour>,
+}
+
+/// One field this field interacts with, and how.
+///
+/// `Debug` is derived (IR-41): two names, no value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Neighbour {
+    /// The other field's key. Tested to name a real field.
+    pub field: String,
+    /// What the interaction is, in one clause.
+    pub note: String,
 }
 
 /// An ordered set of fields, grouped.
@@ -328,6 +350,45 @@ fn suggestions(init: Option<&Value>) -> Option<Vec<String>> {
     (names.len() == values.len()).then_some(names)
 }
 
+/// The `init.<key>` values, when every entry is a string. Empty (not
+/// `None`) when `init` carries no such key, since [`Field::accepts`] and
+/// [`Field::refuses`] are lists rather than options.
+fn strings(init: Option<&Value>, key: &str) -> Vec<String> {
+    let Some(values) = init.and_then(|i| i.get(key)).and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let names: Vec<String> = values
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect();
+    if names.len() == values.len() {
+        names
+    } else {
+        Vec::new()
+    }
+}
+
+/// The `init.neighbours` entries that carry both `field` and `note` as
+/// strings. An entry missing either half is dropped rather than half
+/// rendered.
+fn neighbours(init: Option<&Value>) -> Vec<Neighbour> {
+    let Some(values) = init
+        .and_then(|i| i.get("neighbours"))
+        .and_then(Value::as_array)
+    else {
+        return Vec::new();
+    };
+    values
+        .iter()
+        .filter_map(|entry| {
+            let field = entry.get("field")?.as_str()?.to_owned();
+            let note = entry.get("note")?.as_str()?.to_owned();
+            Some(Neighbour { field, note })
+        })
+        .collect()
+}
+
 fn field_from(key: &str, schema: &Value, defs: &Map<String, Value>) -> Field {
     let init = schema.get("init");
     let help = init
@@ -348,6 +409,10 @@ fn field_from(key: &str, schema: &Value, defs: &Map<String, Value>) -> Field {
         (kind, _) => kind,
     };
     let editable = kind != FieldKind::Opaque;
+    let example = init
+        .and_then(|i| i.get("example"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
     Field {
         key: key.to_owned(),
         help,
@@ -360,6 +425,10 @@ fn field_from(key: &str, schema: &Value, defs: &Map<String, Value>) -> Field {
             .and_then(Value::as_bool)
             .unwrap_or(false),
         editable,
+        example,
+        accepts: strings(init, "accepts"),
+        refuses: strings(init, "refuses"),
+        neighbours: neighbours(init),
     }
 }
 
@@ -701,5 +770,111 @@ mod tests {
             set.by_key("args").is_some_and(|f| f.editable),
             "an array is editable now"
         );
+    }
+
+    #[test]
+    fn a_field_carries_its_example_from_the_init_block() {
+        let set = FieldSet::from_properties(
+            &props(json!({
+                "cwd": { "type": ["string", "null"],
+                         "init": { "example": "/srv/app", "group": "process" } }
+            })),
+            &Map::new(),
+            &["process"],
+        );
+        assert_eq!(
+            set.by_key("cwd").unwrap().example.as_deref(),
+            Some("/srv/app")
+        );
+    }
+
+    #[test]
+    fn a_field_carries_its_accepted_and_refused_forms() {
+        let set = FieldSet::from_properties(
+            &props(json!({
+                "cwd": { "type": ["string", "null"], "init": {
+                    "group": "process",
+                    "accepts": ["an absolute or relative path", "~ expands, $VARS do not"],
+                    "refuses": ["a path the daemon's user cannot enter"]
+                } }
+            })),
+            &Map::new(),
+            &["process"],
+        );
+        let field = set.by_key("cwd").unwrap();
+        assert_eq!(field.accepts.len(), 2);
+        assert_eq!(field.refuses.len(), 1);
+    }
+
+    #[test]
+    fn a_neighbour_carries_a_field_name_and_a_note() {
+        let set = FieldSet::from_properties(
+            &props(json!({
+                "cwd": { "type": ["string", "null"], "init": { "group": "process",
+                    "neighbours": [{ "field": "script", "note": "resolved against this cwd" }] } }
+            })),
+            &Map::new(),
+            &["process"],
+        );
+        let neighbours = &set.by_key("cwd").unwrap().neighbours;
+        assert_eq!(neighbours[0].field, "script");
+        assert_eq!(neighbours[0].note, "resolved against this cwd");
+    }
+
+    /// An entry missing either half is dropped rather than half rendered.
+    #[test]
+    fn a_malformed_neighbour_entry_is_dropped() {
+        let set = FieldSet::from_properties(
+            &props(json!({
+                "cwd": { "type": ["string", "null"], "init": { "group": "process",
+                    "neighbours": [{ "field": "script" }, { "note": "orphan" }] } }
+            })),
+            &Map::new(),
+            &["process"],
+        );
+        assert!(set.by_key("cwd").unwrap().neighbours.is_empty());
+    }
+
+    /// A field carrying none of the three keys renders no headings, which is
+    /// the same "nothing rather than an empty one" rule the detail pane's
+    /// `cfg` cell follows.
+    #[test]
+    fn a_field_without_the_new_keys_carries_empty_lists() {
+        let set = FieldSet::from_properties(
+            &props(json!({ "cwd": { "type": ["string", "null"] } })),
+            &Map::new(),
+            &[],
+        );
+        let field = set.by_key("cwd").unwrap();
+        assert!(field.example.is_none());
+        assert!(field.accepts.is_empty());
+        assert!(field.refuses.is_empty());
+        assert!(field.neighbours.is_empty());
+    }
+
+    /// Every neighbour named by the real schema has to be a real field. This
+    /// is the only failure mode a hand written cross reference has.
+    #[test]
+    fn every_neighbour_in_the_real_schema_names_a_real_field() {
+        let schema = shep_core::config::flockfile_schema_json().to_value();
+        let props = schema
+            .pointer("/$defs/AppConfig/properties")
+            .and_then(serde_json::Value::as_object)
+            .expect("app config properties must exist");
+        let defs = schema
+            .pointer("/$defs")
+            .and_then(serde_json::Value::as_object)
+            .expect("defs must exist");
+        let set = FieldSet::from_properties(props, defs, shep_core::config::GROUP_ORDER);
+        for field in set.fields() {
+            for neighbour in &field.neighbours {
+                assert!(
+                    set.by_key(&neighbour.field).is_some(),
+                    "{} names {}, which is not a field",
+                    field.key,
+                    neighbour.field
+                );
+            }
+        }
     }
 }
