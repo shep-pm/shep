@@ -169,10 +169,17 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
     };
     // Always rendered, in both states. An operator who does not know whether
     // their dashboard can act is one keystroke from finding out the wrong
-    // way.
-    let right = match app.control() {
-        Control::ReadOnly => "read-only",
-        Control::Allowed => "control enabled",
+    // way. The bleats pane borrows this slot while it is following the
+    // tail: control state means nothing on a screen with no action keys of
+    // its own, and whether the view is pinned to the newest line is the
+    // fact this screen's own operator needs a keystroke away from.
+    let right = if app.bleats_pane().is_some_and(BleatsPane::following) {
+        "\u{2588} following"
+    } else {
+        match app.control() {
+            Control::ReadOnly => "read-only",
+            Control::Allowed => "control enabled",
+        }
     };
     let right_len = u16::try_from(right.chars().count()).unwrap_or(0);
     // `+ 1` reserves one column of gap so a truncated left side's `…` never
@@ -886,5 +893,28 @@ mod tests {
         let bar = rendered(&status_line(&app, 160));
         assert!(bar.contains("match  pool"), "got {bar}");
         assert!(!bar.contains("filter"), "not the dashboard's box: {bar}");
+    }
+
+    /// The right-aligned `█ following` indicator replaces the control-state
+    /// label while the bleats pane is pinned to the tail, and only then:
+    /// the design names it for this screen alone.
+    #[test]
+    fn the_following_indicator_replaces_control_state_while_pinned_to_the_tail() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let bar = rendered(&status_line(&app, 160));
+        assert!(bar.contains("\u{2588} following"), "got {bar}");
+        assert!(!bar.contains("read-only"), "got {bar}");
+
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        let scrolled = rendered(&status_line(&app, 160));
+        assert!(
+            !scrolled.contains("\u{2588} following"),
+            "scrolled back, no longer following: {scrolled}"
+        );
+        assert!(scrolled.contains("read-only"), "got {scrolled}");
     }
 }
