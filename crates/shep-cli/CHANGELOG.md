@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-09-08
+
+### Added
+
+- Accept leading environment assignments on start and add
+- Refuse an assignment no single sheep can take
+
+
 ## [0.6.4] - 2026-09-08
 
 
