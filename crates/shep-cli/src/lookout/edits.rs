@@ -203,14 +203,27 @@ mod tests {
             field("cwd", json!("/srv/app")),
             Some(ApplyGroup::NeedsRespawn),
         );
-        assert_eq!(edits.len(), 1);
-        let entry = edits
+        edits.set(field("autostart", json!(true)), Some(ApplyGroup::NextSpawn));
+        assert_eq!(edits.len(), 2);
+        // Two entries, filed under different keys and carrying different
+        // impacts. One entry could not tell a key-directed lookup from a
+        // lookup that hands back whichever entry it reaches first, since
+        // the only entry present was the one being asked for.
+        let cwd = edits
             .get(&EditKey::Field("cwd".to_owned()))
             .expect("entry filed under cwd");
-        assert_eq!(entry.impact(), Some(ApplyGroup::NeedsRespawn));
-        match entry.edit() {
+        assert_eq!(cwd.impact(), Some(ApplyGroup::NeedsRespawn));
+        match cwd.edit() {
             PaneEdit::Set { key, .. } => assert_eq!(key, "cwd"),
-            _ => panic!("expected a Set edit"),
+            other => panic!("expected a Set edit, got {other:?}"),
+        }
+        let autostart = edits
+            .get(&EditKey::Field("autostart".to_owned()))
+            .expect("entry filed under autostart");
+        assert_eq!(autostart.impact(), Some(ApplyGroup::NextSpawn));
+        match autostart.edit() {
+            PaneEdit::Set { key, .. } => assert_eq!(key, "autostart"),
+            other => panic!("expected a Set edit, got {other:?}"),
         }
     }
 
