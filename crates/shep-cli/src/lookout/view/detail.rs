@@ -55,15 +55,14 @@ fn fold_lines(app: &App, name: &str, width: u16, palette: Palette) -> Vec<Line<'
             .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
         totals.memory.map_or_else(|| "-".to_string(), human_bytes),
     );
-    // The head is fit to whatever the status leaves, not drawn whole. A fold
-    // named at length otherwise spends the entire row at `MIN_TERM_WIDTH`
-    // and pushes the status word off the pane: measured, `fold
-    // edge-services-and-more \u{d7}2  online` is 38 columns in a 33-column
-    // pane. The status is the half an operator is reading for.
+    // Both are fit before either is measured: a long name or a mixed status
+    // each overflow `MIN_TERM_WIDTH` alone. `min` because `fit` pads as well
+    // as truncates, and a padded head leaves the rollup nothing.
+    let status = fit(
+        &status,
+        width.min(u16::try_from(columns(&status)).unwrap_or(width)),
+    );
     let head_budget = width.saturating_sub(u16::try_from(columns(&status)).unwrap_or(0));
-    // `min` because `fit` pads as well as truncates: fitting a short head to
-    // the whole remaining width would pad it across the row and leave the
-    // rollup nothing.
     let head = fit(
         &head,
         head_budget.min(u16::try_from(columns(&head)).unwrap_or(head_budget)),
@@ -129,12 +128,12 @@ fn group_lines(app: &App, name: &str, width: u16, palette: Palette) -> Vec<Line<
             .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
         totals.memory.map_or_else(|| "-".to_string(), human_bytes),
     );
-    // Fit before measuring, the same rule the fold branch above states: a
-    // long app name would otherwise push the status word off a narrow pane.
+    // Both fit before either is measured, the rule the fold branch states.
+    let status = fit(
+        &status,
+        width.min(u16::try_from(columns(&status)).unwrap_or(width)),
+    );
     let head_budget = width.saturating_sub(u16::try_from(columns(&status)).unwrap_or(0));
-    // `min` because `fit` pads as well as truncates: fitting a short head to
-    // the whole remaining width would pad it across the row and leave the
-    // rollup nothing.
     let head = fit(
         &head,
         head_budget.min(u16::try_from(columns(&head)).unwrap_or(head_budget)),
@@ -422,8 +421,8 @@ mod tests {
 
     use super::super::fixtures::{
         app_fixture, app_with, app_with_lamb_reading_at, coloured, lamb_line_of, plain, render_all,
-        rendered, sheep_in_fold, sheep_with_lambs, with_lamb_reading, with_lamb_reading_for,
-        with_selection, with_selection_and_palette,
+        rendered, sheep_in_fold, sheep_in_fold_with_status, sheep_with_lambs, with_lamb_reading,
+        with_lamb_reading_for, with_selection, with_selection_and_palette,
     };
     use super::*;
     use crate::lookout::app::{App, Control, KeyPress, LambWalk, Msg, RowKey};
@@ -907,6 +906,46 @@ mod tests {
     /// so a fold named at length would otherwise spend the whole row and the
     /// status word would never be drawn. The sibling `Group` branch had the
     /// same shape and the same bug.
+    /// A mixed status is fit too, not just the name.
+    ///
+    /// Four differing statuses read `1 errored, 1 online, 1 starting, 1
+    /// stopped`, wider than `MIN_TERM_WIDTH` on its own. Budgeting the head
+    /// against it leaves zero and the status still overflows.
+    #[test]
+    fn a_mixed_status_does_not_overflow_a_narrow_pane() {
+        for selected in ["fold", "group"] {
+            let mut app = app_with(
+                vec![
+                    sheep_in_fold_with_status(1, "api", Some("edge"), ProcStatus::Errored),
+                    sheep_in_fold_with_status(2, "cdn", Some("edge"), ProcStatus::Online),
+                    sheep_in_fold_with_status(3, "img", Some("edge"), ProcStatus::Starting),
+                    sheep_in_fold_with_status(4, "web", Some("edge"), ProcStatus::Stopped),
+                ],
+                plain(),
+            );
+            if selected == "fold" {
+                let _ = app.update(Msg::Key(KeyPress::FoldView));
+                app.select_fold_for_tests("edge");
+            } else {
+                // The group header is the first selectable row when every
+                // instance shares a name.
+                app.select_fold_for_tests("edge");
+                let _ = app.update(Msg::Key(KeyPress::FoldView));
+            }
+            for line in &detail_lines(&app, 33) {
+                let drawn: String = line
+                    .spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect();
+                assert!(
+                    columns(&drawn) <= 33,
+                    "{selected} row overflowed 33 columns: {drawn:?}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn a_long_fold_name_does_not_push_the_status_off_a_narrow_pane() {
         let mut app = app_with(

@@ -15,10 +15,11 @@ actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
 
 All four panes are here: the flock table (the spine), the host-usage strip,
-the sheep detail pane and the bleats feed. The selected sheep's row is a
-painted gutter in frames.ansi; in frames.txt it falls back to a `>` marker,
-since the NO_COLOR palette has no ground to paint with. Every pane below
-the table describes that one sheep.
+the sheep detail pane and the bleats feed. The selected row is a painted
+gutter in frames.ansi; in frames.txt it falls back to a `>` marker, since
+the NO_COLOR palette has no ground to paint with. Every pane below the
+table describes whatever that row is: one sheep usually, and a rollup with
+no single log where the cursor sits on a group or a fold header.
 
 The feed reads the selected sheep's log files from disk and re-reads them with
 each flock listing. It is not a live subscription, and it says so on its own

@@ -57,6 +57,21 @@ pub fn sheep_in_fold(id: u32, name: &str, fold: Option<&str>) -> ProcessInfo {
         .build()
 }
 
+/// One sheep in `fold` with a chosen status, for the mixed-status rows.
+#[must_use]
+pub fn sheep_in_fold_with_status(
+    id: u32,
+    name: &str,
+    fold: Option<&str>,
+    status: ProcStatus,
+) -> ProcessInfo {
+    ProcessInfo::builder(id, name, status)
+        .pid(Some(1000 + id))
+        .uptime_ms(60_000)
+        .fold(fold.map(str::to_string))
+        .build()
+}
+
 /// One online sheep named `name`, carrying `fold`, `uptime_ms`, `memory` and
 /// `restarts`: the shape [`crate::lookout::app::App::fold_totals`]'s rollup
 /// test needs numbers to sum and to take the minimum of.

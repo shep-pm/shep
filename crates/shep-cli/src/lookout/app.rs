@@ -1863,13 +1863,9 @@ impl App {
         let mut refusal: Option<String> = None;
         let rows = match result {
             Ok(Response::Stopped(rows)) if verb == ActionVerb::Stop => rows,
-            // `refused` was a staged walk's field that a lookout action could
-            // never populate, because every action named one app and the
-            // shepherd refuses one whole through the `Err` arm below. The
-            // fold view broke that: `SelectorSpec::Fold` names every app in a
-            // fold, so a fold-wide restart or reload is exactly the multi-app
-            // walk that fills it (`rpc.rs:1617`), and dropping it would tell
-            // an operator the whole fold restarted when some of it did not.
+            // `SelectorSpec::Fold` names every app in a fold, so this is the
+            // multi-app walk that fills `refused`. Dropping it would tell an
+            // operator the whole fold restarted when some of it did not.
             Ok(Response::Restarted { accepted, refused }) if verb == ActionVerb::Restart => {
                 refusal = refusal_sentence(&refused);
                 accepted
@@ -5033,19 +5029,11 @@ mod tests {
         );
     }
 
-    /// The confirm names the count so nobody stops four things believing
-    /// they stopped one.
-    /// A fold restart that half refused says so, and says which apps.
+    /// A fold restart that half refused says so, and names the apps.
     ///
-    /// `refused` only ever arrives on a multi-app walk. Before the fold view
-    /// every lookout action named one app, so the field was always empty and
-    /// `on_action_reply` dropped it with a comment explaining why that was
-    /// safe. `SelectorSpec::Fold` names a whole fold, which makes it exactly
-    /// the walk that fills it, and the comment's premise stopped being true
-    /// the day `F` shipped.
-    ///
-    /// Without this the operator reads "restarted" over a fold where two apps
-    /// did not, with nothing on screen to say otherwise.
+    /// `refused` only arrives on a multi-app walk, which a fold action is
+    /// and a single-app action is not. Unreported, the operator reads
+    /// "restarted" over a fold where some apps did not.
     #[test]
     fn a_partly_refused_fold_restart_names_what_refused_it() {
         let mut app = fixtures::app_with(

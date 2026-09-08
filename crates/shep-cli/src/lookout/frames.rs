@@ -454,15 +454,9 @@ impl Scene {
             Self::NoDetail => (120, 20),
             Self::TableOnly => (120, 12),
             Self::Cramped => (33, 26),
-            // 160: `fold_columns_for` runs on `width - GUTTER`, so
-            // 160 - GUTTER = 158, exactly `FOLD_ALL`'s own threshold: the
-            // one scene that needs the fold view's full column set,
-            // SHARE and NOTES included, rather than a narrower tier.
-            //
-            // Was 158 against a 156 threshold. The disclosure triangle gave
-            // the fold view a name floor two columns wider than flat's
-            // (`FOLD_NAME_MIN`), every threshold moved with it, and this
-            // scene silently dropped its SHARE gauge until the width followed.
+            // `fold_columns_for` runs on `width - GUTTER`, so 160 - GUTTER
+            // is exactly `FOLD_ALL`'s threshold: the one scene that needs the
+            // full column set, SHARE and NOTES included.
             Self::Folds => (160, 30),
             Self::Confirm
             | Self::Acting
@@ -1652,10 +1646,11 @@ actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
 
 All four panes are here: the flock table (the spine), the host-usage strip,
-the sheep detail pane and the bleats feed. The selected sheep's row is a
-painted gutter in frames.ansi; in frames.txt it falls back to a `>` marker,
-since the NO_COLOR palette has no ground to paint with. Every pane below
-the table describes that one sheep.
+the sheep detail pane and the bleats feed. The selected row is a painted
+gutter in frames.ansi; in frames.txt it falls back to a `>` marker, since
+the NO_COLOR palette has no ground to paint with. Every pane below the
+table describes whatever that row is: one sheep usually, and a rollup with
+no single log where the cursor sits on a group or a fold header.
 
 The feed reads the selected sheep's log files from disk and re-reads them with
 each flock listing. It is not a live subscription, and it says so on its own
