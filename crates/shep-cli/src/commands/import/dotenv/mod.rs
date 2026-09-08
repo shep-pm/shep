@@ -122,7 +122,7 @@ pub async fn import_env(
             if let Err(err) =
                 secrets::set(&paths.secrets, &planned.key, &environment, &planned.value)
             {
-                let message = format!("{err}; {}", already_written(written));
+                let message = format!("{err}{}", already_written(written));
                 return streams.fail(exit_code_for(&err), &message);
             }
             written += 1;
@@ -136,14 +136,23 @@ pub async fn import_env(
         dry_run: false,
     };
     match client.request(request).await {
-        // A forced request reports what it overwrote here, which is not a
-        // refusal. An unforced one that collides wrote nothing.
-        Ok(Response::SheepEnvBatch { collisions, .. }) if !args.force && !collisions.is_empty() => {
+        Ok(Response::SheepEnvBatch { collisions, .. })
+            if is_late_refusal(args.force, &collisions) =>
+        {
             return report_late_collisions(streams, &collisions, written);
         }
         Ok(Response::SheepEnvBatch { .. }) => {}
-        Ok(_) => return streams.fail(ExitCode::Internal, UNDERSTOOD_NOTHING),
-        Err(err) => return streams.fail(ExitCode::from(&err), &err.to_string()),
+        // Both of these land after the secret store is written, so both say
+        // so: the operator is otherwise told a batch failed and left with no
+        // account of the other store.
+        Ok(_) => {
+            let message = format!("{UNDERSTOOD_NOTHING}{}", already_written(written));
+            return streams.fail(ExitCode::Internal, &message);
+        }
+        Err(err) => {
+            let message = format!("{err}{}", already_written(written));
+            return streams.fail(ExitCode::from(&err), &message);
+        }
     }
 
     let message = format!(
@@ -321,24 +330,37 @@ fn report_late_collisions(
 ) -> ExitCode {
     name_collisions(streams, collisions, &[]);
     let message = format!(
-        "the env store changed since this run's dry run, so nothing was written to it; {}. \
+        "the sheep's env changed since this run's dry run, so nothing was written to it{}. \
          Re-run the import, with --force to overwrite the keys named above",
         already_written(written)
     );
     streams.fail(ExitCode::Usage, &message)
 }
 
-/// How the messages above describe a secret store that is already written.
+/// Whether the real batch's answer is a refusal.
 ///
-/// Counts and key names only, so it is safe on any stream (IR-41).
+/// The daemon names collisions in the same field whether it refused them or
+/// overwrote them, so `force` is what tells the two apart.
+fn is_late_refusal(force: bool, collisions: &[String]) -> bool {
+    !force && !collisions.is_empty()
+}
+
+/// The clause every failure after the secret write appends to its message.
+///
+/// Empty when the write had reached no key yet, since a note counting zero
+/// keys reads as though it counted some. Counts and key names only, so it is
+/// safe on any stream (IR-41).
 fn already_written(written: usize) -> String {
+    if written == 0 {
+        return String::new();
+    }
     let (keys, verb) = if written == 1 {
         ("key", "was")
     } else {
         ("keys", "were")
     };
     format!(
-        "{written} secret {keys} {verb} already written to the secret store and sit \
+        "; {written} secret {keys} {verb} already written to the secret store and sit \
          unreferenced until the import is re-run. A re-run is clean, since an identical \
          value is not a collision"
     )
@@ -449,12 +471,32 @@ mod tests {
         assert!(!format!("{rows:?}").contains("hunter2"), "{rows:?}");
     }
 
-    /// fails if the note the late refusal and the failed `secrets::set` share
-    /// stops saying what it left behind, or stops counting it.
+    /// fails if the note every failure after the secret write shares stops
+    /// saying what it left behind, or stops counting it.
     #[test]
     fn the_already_written_note_counts_keys_and_says_a_re_run_is_clean() {
-        assert!(already_written(1).starts_with("1 secret key was already written"));
-        assert!(already_written(4).starts_with("4 secret keys were already written"));
-        assert!(already_written(0).contains("A re-run is clean"));
+        assert!(already_written(1).starts_with("; 1 secret key was already written"));
+        assert!(already_written(4).starts_with("; 4 secret keys were already written"));
+        assert!(already_written(1).contains("A re-run is clean"));
+    }
+
+    /// fails if a failure before the first `secrets::set` ever claims the
+    /// store holds something: "0 secret keys were already written" describes
+    /// nothing and reads as if it described something.
+    #[test]
+    fn the_already_written_note_is_empty_when_nothing_was_written() {
+        assert_eq!(already_written(0), "");
+    }
+
+    /// fails if the late guard is ever inverted, which would refuse every
+    /// `--force` and take every collision.
+    #[test]
+    fn only_an_unforced_answer_naming_collisions_is_a_late_refusal() {
+        let none: &[String] = &[];
+        let some = &["PORT".to_string()];
+        assert!(is_late_refusal(false, some));
+        assert!(!is_late_refusal(true, some));
+        assert!(!is_late_refusal(false, none));
+        assert!(!is_late_refusal(true, none));
     }
 }
