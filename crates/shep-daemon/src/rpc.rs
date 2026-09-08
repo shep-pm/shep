@@ -746,9 +746,10 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
             {
                 // Recorded for `SetSheepEnv`'s reason: the muster roll is
                 // written from the registry and nothing on the restore path
-                // reads the override store. `app` is `None` for a dry run
-                // and for a refused collision, and neither wrote anything
-                // to record.
+                // reads the override store. `app` is `None` for a dry run,
+                // for a refused collision, and for a batch every key of
+                // which was already held, none of which wrote anything to
+                // record.
                 Ok(Some(batch)) => {
                     if let Some(app) = batch.app {
                         ctx.registry.record(&[app]);

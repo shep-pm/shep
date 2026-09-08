@@ -4799,7 +4799,9 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// Everything the real send would, refusals included: `normalize` runs
     /// on the merged config before this returns, so a preview that reports
-    /// a key as `set` is one the real send takes.
+    /// a key as `set` is one the real send takes. `app` is `None` here, as
+    /// it is for a refused batch and for one whose keys were all
+    /// `unchanged`: nothing was written for the caller to record.
     ///
     /// # Errors
     ///
@@ -4869,7 +4871,10 @@ impl<R: ProcessRunner> Actor<R> {
         let parked =
             normalize(intended).map_err(|err| SupervisorError::InvalidEnv(err.to_string()))?;
 
-        if dry_run {
+        // `set` empty means every key was already held at this value, so
+        // there is nothing to write and nothing for `rpc.rs` to record:
+        // `app` is `Some` only when the store moved.
+        if dry_run || set.is_empty() {
             return Ok(Some(EnvBatch {
                 app: None,
                 set,
@@ -21022,6 +21027,30 @@ mod tests {
         assert_eq!(batch.collisions, ["A"]);
         assert!(batch.set.is_empty());
         assert!(batch.app.is_none());
+    }
+
+    /// The contract says `app` is `Some` only when something was written.
+    /// A batch every key of which is already held writes nothing, so
+    /// `rpc.rs` must not record a no-op and rewrite the muster roll for it.
+    #[tokio::test(start_paused = true)]
+    async fn a_batch_that_changes_nothing_parks_nothing() {
+        let h = env_batch_harness().await;
+        let entries = BTreeMap::from([("A".to_string(), "1".to_string())]);
+        h.ctx
+            .supervisor
+            .set_sheep_env_batch("web".to_string(), entries.clone(), false, false)
+            .await
+            .unwrap();
+        let batch = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch("web".to_string(), entries, false, false)
+            .await
+            .unwrap()
+            .expect("web exists");
+        assert!(batch.set.is_empty());
+        assert_eq!(batch.unchanged, ["A"]);
+        assert!(batch.app.is_none(), "nothing was written to record");
     }
 
     #[tokio::test(start_paused = true)]
