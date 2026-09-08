@@ -95,7 +95,7 @@ pub(crate) struct Reader {
     pub online: bool,
 }
 
-/// Every secret reference the roll names, mapped to the sheep that name
+/// Every secret reference the roll names, mapped to the flock that names
 /// it, in name order.
 ///
 /// Keys are references exactly as an operator wrote them, so a namespaced

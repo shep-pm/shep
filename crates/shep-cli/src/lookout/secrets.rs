@@ -13,7 +13,7 @@ use shep_core::secrets::{self, ALL_ENVIRONMENTS};
 use crate::secret_readers::{self, Reader};
 
 /// Which store a row came from.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Source {
     /// `secrets.json`, the operator's own. Writable.
     Operator,
@@ -43,7 +43,7 @@ pub(crate) struct SecretRow {
     /// The in-force value's length in bytes, or `None` when nothing
     /// resolves here.
     pub byte_len: Option<usize>,
-    /// The sheep that name this key, in name order.
+    /// The flock that names this key, in name order.
     pub readers: Vec<Reader>,
 }
 
