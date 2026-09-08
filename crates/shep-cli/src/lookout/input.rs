@@ -60,6 +60,7 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char('K') => Some(KeyPress::ListMoveUp),
         KeyCode::Char('J') => Some(KeyPress::ListMoveDown),
         KeyCode::Char('F') => Some(KeyPress::FoldView),
+        KeyCode::Char('z') => Some(KeyPress::Collapse),
         KeyCode::Enter => Some(KeyPress::Confirm),
         _ => None,
     }
@@ -161,7 +162,10 @@ mod tests {
             map_key(&key(KeyCode::Char('F')), InputMode::Normal),
             Some(KeyPress::FoldView)
         );
-        assert_eq!(map_key(&key(KeyCode::Char('z')), InputMode::Normal), None);
+        assert_eq!(
+            map_key(&key(KeyCode::Char('z')), InputMode::Normal),
+            Some(KeyPress::Collapse)
+        );
     }
 
     #[test]

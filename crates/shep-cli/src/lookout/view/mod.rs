@@ -27,7 +27,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use self::flock::MIN_HEIGHT;
-use super::app::{App, Body, Link, RowKey};
+use super::app::{App, Body, Grouping, Link, RowKey};
 use super::theme::Palette;
 use crate::vocabulary::Role;
 
@@ -261,7 +261,12 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
 
     // width >= MIN_TERM_WIDTH, checked above, so this never underflows.
     let table_width = width - flock::GUTTER;
-    let columns = flock::columns_for(table_width);
+    // Two column sets, one per `Grouping`: the flat table's own and the fold
+    // view's own, never mixed. Whichever one supplies the header row below
+    // must be the same one the rows drawn under it read, or a header lines
+    // up with cells it did not describe.
+    let flat_columns = flock::columns_for(table_width);
+    let fold_columns = flock::fold_columns_for(table_width);
     // The rule sits between the host strip and the table, not between the
     // headers and their own rows: it separates two regions, and a rule
     // directly under the headers reads as underlining them instead.
@@ -274,12 +279,13 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     if roomy {
         y += 1;
     }
-    buffer.set_line(
-        area.x + flock::GUTTER,
-        y,
-        &flock::header_line(columns, table_width, palette.muted()),
-        table_width,
-    );
+    let header = match app.grouping() {
+        Grouping::Flat => flock::header_line(flat_columns, table_width, palette.muted()),
+        Grouping::ByFold => {
+            flock::fold_columns_header_line(fold_columns, table_width, palette.muted())
+        }
+    };
+    buffer.set_line(area.x + flock::GUTTER, y, &header, table_width);
     y += 1;
 
     // The bottom stack, laid out upward from the status bar: whichever of
@@ -342,7 +348,14 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
                 };
                 section_band(&label.to_ascii_uppercase(), role, &palette, table_width)
             } else {
-                flock::key_line(app, key, columns, table_width, is_selected)
+                match app.grouping() {
+                    Grouping::Flat => {
+                        flock::key_line(app, key, flat_columns, table_width, is_selected)
+                    }
+                    Grouping::ByFold => {
+                        flock::fold_key_line(app, key, fold_columns, table_width, is_selected)
+                    }
+                }
             };
             buffer.set_line(area.x + flock::GUTTER, y + slot, &line, table_width);
         }
@@ -1106,5 +1119,50 @@ mod tests {
             .filter(|line| line.trim_start().starts_with(|c: char| c.is_ascii_digit()))
             .count();
         assert!(data_rows >= 5, "the table got {data_rows} rows at 120x24");
+    }
+
+    /// `F` used to draw the flock's fourteen-column header over an eight-
+    /// column fold table: `view::mod`'s draw loop called
+    /// `flock::columns_for` unconditionally for both the header and the
+    /// rows under it, never branching on `App::grouping`. This pins the fix:
+    /// the STATUS label in the column header and the STATUS word in a
+    /// fold's own member row must land at the same column.
+    #[test]
+    fn the_fold_views_header_and_its_rows_share_one_column_set() {
+        let mut app = fixtures::app_with(
+            vec![fixtures::sheep_in_fold(1, "api", Some("edge"))],
+            fixtures::plain(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::FoldView));
+        let text = draw_to(&app, 120, 16);
+        let lines: Vec<&str> = text.lines().collect();
+        let header = lines
+            .iter()
+            .find(|line| line.contains("STATUS"))
+            .expect("the column header row is drawn");
+        // `api`'s own member row, not `edge`'s fold header row: the header
+        // row always computes its own width from `fold_columns_for`
+        // regardless of what it is passed, so it would pass this test even
+        // with the flat table's columns wired in behind it. A member row
+        // has no such fallback, so it is the row that actually exercises
+        // the wiring this test means to pin.
+        let member_row = lines
+            .iter()
+            .find(|line| line.contains("api"))
+            .expect("the fold's one member row is drawn");
+        // Character offsets, not `str::find`'s byte offsets: a name column
+        // wide enough to carry `\u{d7}` shifts a byte offset out of step
+        // with the display column this test means to compare.
+        fn char_position(line: &str, needle: &str) -> Option<usize> {
+            let byte = line.find(needle)?;
+            Some(line[..byte].chars().count())
+        }
+        let header_status_at = char_position(header, "STATUS").expect("checked above");
+        let row_status_at =
+            char_position(member_row, "online").expect("the fold's one member is online");
+        assert_eq!(
+            header_status_at, row_status_at,
+            "header:\n{header}\nrow:\n{member_row}"
+        );
     }
 }

@@ -430,6 +430,21 @@ impl FoldColumn {
             Self::Notes => 63,
         }
     }
+
+    /// The header text, drawn by [`fold_columns_header_line`].
+    #[must_use]
+    pub const fn header(self) -> &'static str {
+        match self {
+            Self::Name => "NAME",
+            Self::Status => "STATUS",
+            Self::Share => "SHARE",
+            Self::Mem => "MEM",
+            Self::Cpu => "CPU",
+            Self::Uptime => "UPTIME",
+            Self::Restarts => "RESTARTS",
+            Self::Notes => "NOTES",
+        }
+    }
 }
 
 /// Every fold-view column.
@@ -565,6 +580,26 @@ pub fn header_line(columns: &[Column], width: u16, style: Style) -> Line<'static
             text.push_str("  ");
         }
         let cell_width = if *column == Column::Name {
+            name
+        } else {
+            column.width()
+        };
+        text.push_str(&fit(column.header(), cell_width));
+    }
+    Line::from(Span::styled(text, style))
+}
+
+/// [`header_line`]'s twin for the fold view: every [`FoldColumn`]'s own
+/// header text, muted, in [`fold_columns_for`]'s widths.
+#[must_use]
+pub fn fold_columns_header_line(columns: &[FoldColumn], width: u16, style: Style) -> Line<'static> {
+    let name = fold_name_width(width, columns);
+    let mut text = String::new();
+    for (index, column) in columns.iter().enumerate() {
+        if index > 0 {
+            text.push_str("  ");
+        }
+        let cell_width = if *column == FoldColumn::Name {
             name
         } else {
             column.width()
@@ -747,11 +782,8 @@ fn group_cell(app: &App, name: &str, column: Column, totals: &GroupTotals) -> St
 /// with its instances held back, the same rule [`App::grouping`]'s
 /// `ByFold` value enforces when it gathers the rows in the first place.
 ///
-/// No non-test caller yet: `view::mod`'s draw loop wires this in, in place
-/// of [`key_line`], once a later task in the fold-view plan switches on
-/// [`App::grouping`]. `#[allow(dead_code)]` says so rather than inventing
-/// that wiring early.
-#[allow(dead_code)]
+/// `view::mod`'s draw loop calls this in place of [`key_line`] whenever
+/// [`App::grouping`] reads `Grouping::ByFold`.
 #[must_use]
 pub fn fold_key_line(
     app: &App,
@@ -790,7 +822,7 @@ fn fold_header_line(
     let total_memory = total_flock_memory(app);
     let share_percent = fold_share_percent(totals.memory, total_memory);
     let share_fill = cell::gauge_fill(totals.memory.unwrap_or(0), total_memory, 20);
-    let status = fold_uniform_status(app, name);
+    let status = app.fold_uniform_status(name);
     let status_style = status.map_or(Style::default(), |status| palette.status(status));
     let name_width = fold_name_width(width, columns);
     let ground = if selected {
@@ -838,7 +870,7 @@ fn fold_header_cell(
 ) -> String {
     match column {
         FoldColumn::Name => format!("{name} \u{d7}{}", totals.count),
-        FoldColumn::Status => fold_status_text(app, name),
+        FoldColumn::Status => app.fold_status_text(name),
         // The text here is only the source [`push_fold_share_cell`] splits
         // into filled and tail spans; the fill point it uses is computed
         // once by the caller rather than re-derived from this string.
@@ -898,50 +930,6 @@ fn fold_share_percent(memory: Option<u64>, total_memory: Option<u64>) -> Option<
         return None;
     }
     Some((memory as f64 / total_memory as f64 * 100.0).round() as u32)
-}
-
-/// Every row whose `fold` is `fold`. The view's own twin of
-/// `App::fold_totals`'s private member walk: view code has no access to
-/// that helper, only to [`App::all_rows`].
-fn fold_members<'a>(app: &'a App, fold: &str) -> Vec<&'a Row> {
-    app.all_rows()
-        .into_iter()
-        .filter(|row| row.info.fold.as_deref() == Some(fold))
-        .collect()
-}
-
-/// A fold header's STATUS text: the shared status word when every member
-/// agrees, else a count per state. Mirrors [`App::group_status_text`], which
-/// answers the same question for an app's own instances by name rather than
-/// by fold.
-fn fold_status_text(app: &App, fold: &str) -> String {
-    let members = fold_members(app, fold);
-    let Some(first) = members.first().map(|row| row.info.status) else {
-        return String::new();
-    };
-    if members.iter().all(|row| row.info.status == first) {
-        return first.to_string();
-    }
-    let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
-    for row in &members {
-        *counts.entry(row.info.status.to_string()).or_default() += 1;
-    }
-    counts
-        .into_iter()
-        .map(|(status, n)| format!("{n} {status}"))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-/// A fold's status when every member agrees on one. Mirrors
-/// [`App::group_uniform_status`].
-fn fold_uniform_status(app: &App, fold: &str) -> Option<ProcStatus> {
-    let members = fold_members(app, fold);
-    let first = members.first()?.info.status;
-    members
-        .iter()
-        .all(|row| row.info.status == first)
-        .then_some(first)
 }
 
 /// An app's group header row, laid out in [`FoldColumn`]'s widths rather
