@@ -299,7 +299,7 @@ four already there:
     "refuses": ["a path the daemon's user cannot enter"],
     "neighbours": [{"field": "script",   "note": "resolved against this cwd"},
                    {"field": "out_file", "note": "relative paths follow it too"},
-                   {"field": "watch",    "note": "globs are rooted here"}]
+                   {"field": "ignore_watch", "note": "globs are rooted here"}]
 })))]
 pub cwd: Option<String>,
 ```
