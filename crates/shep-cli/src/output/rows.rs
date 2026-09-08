@@ -3747,6 +3747,7 @@ pub(crate) mod tests {
         assert_priorities_match_headers::<RolledSheepRows>(&["NAME", "STATUS"]);
         assert_priorities_match_headers::<SavedRollRow>(&["FILE", "APPS"]);
         assert_priorities_match_headers::<ImportRows>(&["NAME"]);
+        assert_priorities_match_headers::<ImportEnvRows>(&["KEY", "STORE"]);
         assert_priorities_match_headers::<StartupSteps>(&["TARGET", "RESULT"]);
         assert_priorities_match_headers::<TriggeredRows>(&["ID", "NAME", "OUTCOME"]);
         assert_priorities_match_headers::<SignalledRows>(&["ID", "NAME", "OUTCOME"]);
