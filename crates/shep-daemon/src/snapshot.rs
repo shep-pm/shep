@@ -292,14 +292,7 @@ pub(crate) fn write_atomic(path: &Path, snapshot: &FlockSnapshot) -> Result<(), 
 
     let mut tmp = NamedTempFile::new_in(parent)?;
     tmp.write_all(&json)?;
-    tmp.as_file().sync_all()?;
-    tmp.persist(path)
-        .map_err(|err| SnapshotError::Io(err.error))?;
-
-    // The `sync_all` above made the CONTENTS durable; this makes the rename
-    // that published them durable. See `shep_core::atomic_file`.
-    shep_core::atomic_file::sync_dir(parent)?;
-    Ok(())
+    shep_core::atomic_file::publish(tmp, path).map_err(SnapshotError::Io)
 }
 
 /// Reads and validates a muster roll written by `write_atomic`.

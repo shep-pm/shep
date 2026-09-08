@@ -110,7 +110,8 @@ pub fn pidfile(paths: &ShepPaths) -> PathBuf {
     paths.pids.join("shepd.pid")
 }
 
-/// Writes the pidfile atomically: temp file in `pids/`, `fsync`, `rename`.
+/// Writes the pidfile atomically and durably, through
+/// [`shep_core::atomic_file::publish`].
 ///
 /// Fixture seeding only. [`boot`] records its pid through
 /// `PidfileLock::record` instead: a rename over the locked path swaps in an
@@ -135,15 +136,7 @@ fn write_pidfile(paths: &ShepPaths, pid: u32) -> Result<(), BootError> {
             path: path.clone(),
             source,
         })?;
-    tmp.as_file().sync_all().map_err(|source| BootError::Io {
-        path: path.clone(),
-        source,
-    })?;
-    tmp.persist(&path).map_err(|err| BootError::Io {
-        path,
-        source: err.error,
-    })?;
-    Ok(())
+    shep_core::atomic_file::publish(tmp, &path).map_err(|source| BootError::Io { path, source })
 }
 
 /// Reads the recorded daemon pid, if any

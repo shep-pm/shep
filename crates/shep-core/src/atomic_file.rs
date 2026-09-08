@@ -1,14 +1,15 @@
-//! The atomic file replace: its first step and its last.
+//! The atomic file replace.
 //!
 //! Stage a fresh file beside the real one, write it, `fsync` it, `rename`
 //! it over the target, then `fsync` the directory the rename landed in. A
 //! reader sees the whole old file or the whole new one, never a fragment.
-//! [`create_staging_file`] is the first step, [`sync_dir`] the last; the
-//! middle stays with each store.
+//! [`write_json`] is all of it for a store holding one serializable value;
+//! a store that writes its own bytes stages with [`create_staging_file`]
+//! and finishes with [`publish`].
 //!
-//! [`sync_dir`] makes the rename durable, which the temp file's own
-//! `fsync` does not, on unix only, and only where the filesystem
-//! implements the flush.
+//! [`sync_dir`], which [`publish`] calls last, makes the rename durable,
+//! where the temp file's own `fsync` does not, on unix only, and only
+//! where the filesystem implements the flush.
 
 use std::path::Path;
 
@@ -96,6 +97,55 @@ pub fn sync_dir(dir: &Path) -> std::io::Result<()> {
     }
 }
 
+/// Installs `tmp` at `path`, replacing whatever was there.
+///
+/// Returns only once both the contents and the rename that published them
+/// have reached disk. The directory flushed is `path`'s own, or the current
+/// one when `path` names no parent.
+///
+/// # Errors
+/// - [`std::io::Error`] if the `fsync`, the rename, or the directory flush
+///   failed. `path` keeps its old contents unless the rename succeeded.
+pub fn publish(tmp: tempfile::NamedTempFile, path: &Path) -> std::io::Result<()> {
+    tmp.as_file().sync_all()?;
+
+    // `persist` is `rename(2)`. On failure the `NamedTempFile` comes back
+    // inside the error and its `Drop` removes the staging file, so a failed
+    // replace does not leave one behind.
+    tmp.persist(path).map_err(|err| err.error)?;
+
+    // `sync_all` above made the contents durable; this makes the rename
+    // that published them durable.
+    sync_dir(path.parent().unwrap_or_else(|| Path::new(".")))
+}
+
+/// Replaces `path` with `value` as pretty-printed JSON and one trailing
+/// newline, atomically and durably.
+///
+/// The staging file lands beside `path` under `prefix`; see
+/// [`create_staging_file`] for what a prefix may hold. `path` is left as it
+/// was unless the whole value serialized and reached disk.
+///
+/// # Errors
+/// - [`std::io::ErrorKind::InvalidInput`] if `prefix` holds `/` or `\`.
+/// - [`std::io::Error`] carrying a `serde_json::Error` if `value` would not
+///   serialize, or reporting a failed stage, write, `fsync` or rename.
+pub fn write_json<T>(path: &Path, prefix: &str, value: &T) -> std::io::Result<()>
+where
+    T: serde::Serialize + ?Sized,
+{
+    use std::io::Write as _;
+
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut tmp = create_staging_file(parent, prefix, ".tmp")?;
+
+    let json = serde_json::to_string_pretty(value).map_err(std::io::Error::other)?;
+    tmp.write_all(json.as_bytes())?;
+    tmp.write_all(b"\n")?;
+
+    publish(tmp, path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,6 +192,77 @@ mod tests {
                 "{prefix:?} {suffix:?}: {err:?}"
             );
         }
+    }
+
+    /// fails if `publish` leaves the staging file behind, or installs
+    /// anything but the bytes written to it.
+    #[test]
+    fn publish_installs_the_staged_bytes_and_leaves_no_staging_file() {
+        use std::io::Write as _;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("store.json");
+        std::fs::write(&path, "old").unwrap();
+
+        let mut tmp = create_staging_file(dir.path(), "kv", ".tmp").unwrap();
+        tmp.write_all(b"new").unwrap();
+        publish(tmp, &path).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
+        assert_eq!(entry_names(dir.path()), vec!["store.json"]);
+    }
+
+    /// fails if a refused rename leaves a staging file in `$SHEP_HOME`, the
+    /// claim `publish`'s own comment makes about `persist`.
+    #[test]
+    fn a_refused_rename_takes_the_staging_file_with_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let occupied = dir.path().join("a-directory");
+        std::fs::create_dir(&occupied).unwrap();
+
+        let tmp = create_staging_file(dir.path(), "kv", ".tmp").unwrap();
+        publish(tmp, &occupied).expect_err("a rename over a directory must fail");
+
+        assert!(occupied.is_dir(), "the target was replaced anyway");
+        assert_eq!(entry_names(dir.path()), vec!["a-directory"]);
+    }
+
+    /// fails if the trailing newline or the pretty printing is dropped: four
+    /// stores' on-disk bytes are this exact shape.
+    #[test]
+    fn write_json_writes_pretty_json_under_one_trailing_newline() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("store.json");
+        let value = std::collections::BTreeMap::from([("one", 1), ("two", 2)]);
+
+        write_json(&path, "kv", &value).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "{\n  \"one\": 1,\n  \"two\": 2\n}\n"
+        );
+        assert_eq!(entry_names(dir.path()), vec!["store.json"]);
+    }
+
+    /// fails if `write_json` stops routing its prefix through
+    /// `create_staging_file`, where the separator check lives.
+    #[test]
+    fn write_json_refuses_a_prefix_holding_a_separator() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = write_json(&dir.path().join("store.json"), "../escape", &1)
+            .expect_err("a separator must not reach tempfile");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput, "{err:?}");
+    }
+
+    /// Every entry in `dir`, sorted, so a leftover staging file shows up as a
+    /// mismatch naming itself.
+    fn entry_names(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
     }
 
     #[test]

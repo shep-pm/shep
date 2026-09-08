@@ -12,7 +12,6 @@
 
 use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
@@ -253,16 +252,7 @@ fn read_cache(path: &Path) -> ProviderCache {
 /// the `rename`. A failed rename leaves `path` as it was and removes the
 /// staging file.
 fn write_cache(path: &Path, file: &CacheFile) -> std::io::Result<()> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let mut tmp = shep_core::atomic_file::create_staging_file(parent, "secrets-cache", ".tmp")?;
-
-    let json = serde_json::to_string_pretty(file).map_err(std::io::Error::other)?;
-    tmp.write_all(json.as_bytes())?;
-    tmp.write_all(b"\n")?;
-    tmp.as_file().sync_all()?;
-
-    tmp.persist(path).map_err(|err| err.error)?;
-    shep_core::atomic_file::sync_dir(parent)
+    shep_core::atomic_file::write_json(path, "secrets-cache", file)
 }
 
 #[cfg(test)]
