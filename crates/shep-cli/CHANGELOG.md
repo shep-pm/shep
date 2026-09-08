@@ -13,6 +13,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-08
+
+### Added
+
+- Gather the flock table by fold on F
+- Act on a whole fold behind a confirm that names the count
+- Give the fold view its own columns and drop ladder
+- Wire the fold view's columns into the table render, collapse a fold with z
+- Describe a selected fold in the detail pane
+- Mark a fold header with a disclosure triangle
+- Gather the flock table by fold ([#188](https://github.com/shep-pm/shep/pull/188))
+
+### Changed
+
+- Share the name-run walk between the two grouped-row builders
+- Share the status rollup between folds and groups
+
+### Fixed
+
+- Reseat the selection when F folds it under a group
+- Name the fold keys, pin the fold selector, drop the dead flat arm
+- Report a fold action's refused members, and fit a long fold name
+- Fit a mixed status, and trim comments to IR-47
+
+
 ## [0.7.0] - 2026-09-08
 
 ### Added
