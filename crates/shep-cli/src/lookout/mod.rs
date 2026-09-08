@@ -316,6 +316,7 @@ where
             if let Ok(size) = terminal.size() {
                 let area = Rect::new(0, 0, size.width, size.height);
                 app.note_body_rows(view::body_rows(area));
+                app.note_body_width(area.width);
             }
             let _ = terminal.draw(|frame| view::draw(&app, frame));
             dirty = false;

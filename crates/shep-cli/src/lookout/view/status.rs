@@ -151,6 +151,14 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             pane_hint(app.control(), pane_screen(pane)).to_string(),
             palette.attention(),
         )
+    } else if app.bleats_pane().is_some() {
+        // Checked below the match box's own branch above, which owns this
+        // slot instead while it is open. The design's own status-bar line
+        // (docs/lookout/design-files/README.md:274) names every key here
+        // but the minimum-level axis's own `m`: that line lists no key for
+        // it at all, so it is appended rather than inserted, the same rule
+        // `hint_for`'s own doc gives for its dashboard forms.
+        (BLEATS_HINT.to_string(), palette.attention())
     } else if app.settings().is_none() && !app.filter().is_empty() {
         // Gated on the screen being closed: the filter survives the swap
         // into settings (`App::on_settings_key` never touches it), but `/`
@@ -278,6 +286,14 @@ fn pane_editor(pane: &ConfigPane) -> Option<(String, &str)> {
         PanePending::Armed { .. } | PanePending::Sent { .. } => None,
     }
 }
+
+/// The bleats pane's key hint: the design's own status-bar line, plus `m`
+/// for the minimum-level axis. The design names a key for every other axis
+/// (`o` for the stream) but none for this one, so `m` is this crate's own
+/// addition, appended after the design's own list rather than sorted into
+/// it.
+const BLEATS_HINT: &str = "esc back   j/k line   ctrl-d/u page   G end   \
+    / search   n/N match   f follow   w wrap   o out/err/both   m level";
 
 /// The config pane's own key hint.
 ///
@@ -893,6 +909,35 @@ mod tests {
         let bar = rendered(&status_line(&app, 160));
         assert!(bar.contains("match  pool"), "got {bar}");
         assert!(!bar.contains("filter"), "not the dashboard's box: {bar}");
+    }
+
+    /// The bleats pane's own hint carries the design's full line, plus `m`
+    /// for the minimum-level axis the design names no key for at all. Every
+    /// other key hint test in this module checks for its own screen's
+    /// keys the same way; a bare "the bar is non-empty" would pass for the
+    /// dashboard's hint too, since the title alone already renders.
+    #[test]
+    fn the_bleats_pane_gets_its_own_status_line() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let bar = rendered(&status_line(&app, 200));
+        for key in [
+            "esc back",
+            "j/k line",
+            "ctrl-d/u page",
+            "G end",
+            "/ search",
+            "n/N match",
+            "f follow",
+            "w wrap",
+            "o out/err/both",
+            "m level",
+        ] {
+            assert!(bar.contains(key), "missing {key:?}: got {bar}");
+        }
     }
 
     /// The right-aligned `█ following` indicator replaces the control-state

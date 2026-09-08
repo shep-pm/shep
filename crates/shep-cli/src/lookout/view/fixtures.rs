@@ -360,6 +360,37 @@ pub fn bleats_pane_with_lines(n: u32) -> App {
     app
 }
 
+/// The full-screen bleats pane, open on `web`, over a feed with one line
+/// comfortably wider than 80 columns, for the wrap tests.
+pub fn bleats_pane_with_long_line() -> App {
+    let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+    app.update(Msg::Bleats {
+        tail: Tail {
+            lines: vec![
+                line(Stream::Out, "short line"),
+                line(Stream::Out, &"x".repeat(200)),
+            ],
+            missed_lines: 0,
+            missed_bytes: 0,
+            read_bytes: 1_024,
+            note: None,
+        },
+    });
+    app.update(Msg::Key(KeyPress::Bleats));
+    app
+}
+
+/// [`super::bleats_full::draw`]'s own lines, for a test that needs the
+/// bleats pane's rendered rows without a [`Buffer`] round trip. Thin
+/// wrapper: [`super::bleats_full::draw_lines`] is `pub(crate)` for exactly
+/// this, but lives in a sibling module the top-level fixture callers in
+/// `app.rs` do not otherwise reach.
+///
+/// [`Buffer`]: ratatui::buffer::Buffer
+pub fn draw_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
+    super::bleats_full::draw_lines(app, width, rows)
+}
+
 /// One sheep, `catcher`, selected, with a two-line feed applied and its log
 /// paths pointing at real files in a leaked tempdir, so `fs::metadata` in
 /// [`super::detail::log_row`] succeeds the way it would against a live

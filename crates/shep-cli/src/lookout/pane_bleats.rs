@@ -260,6 +260,17 @@ pub struct BleatsPane {
     /// The body rows available to page by, set from
     /// [`super::app::App::note_body_rows`]. `0` until the first draw.
     body_rows: usize,
+    /// The area's own column width, set from
+    /// [`super::app::App::note_body_width`]. `0` until the first draw, which
+    /// [`super::view::bleats_full::page_amount`] reads as "no column count
+    /// to wrap against" and falls back to [`Self::body_rows`] unmodified,
+    /// the same amount a page always moved by before wrap existed.
+    width: u16,
+    /// Whether a line too wide for the pane wraps onto extra rows instead
+    /// of truncating with an ellipsis. `false` on open: unwrapped is the
+    /// pane's original behavior, and every existing feed still reads that
+    /// way until an operator asks for the other one.
+    wrap: bool,
 }
 
 impl BleatsPane {
@@ -273,6 +284,8 @@ impl BleatsPane {
             scroll_offset: 0,
             following: true,
             body_rows: 0,
+            width: 0,
+            wrap: false,
         }
     }
 
@@ -380,11 +393,45 @@ impl BleatsPane {
         self.following
     }
 
-    /// Records the body rows available, for [`Self::page_up`]/[`Self::page_down`].
-    /// Called from [`super::app::App::note_body_rows`] before every draw, the
-    /// same way the config pane and settings screen already are.
+    /// The body rows last recorded through [`Self::set_rows`], for
+    /// [`super::view::bleats_full::page_amount`] to size a page by.
+    #[must_use]
+    pub(crate) fn body_rows(&self) -> usize {
+        self.body_rows
+    }
+
+    /// Records the body rows available, for [`super::view::bleats_full::page_amount`],
+    /// which [`super::app::App::on_bleats_key`] reads before every
+    /// `ctrl-u`/`ctrl-d`. Called from [`super::app::App::note_body_rows`]
+    /// before every draw, the same way the config pane and settings screen
+    /// already are.
     pub fn set_rows(&mut self, rows: usize) {
         self.body_rows = rows;
+    }
+
+    /// The area's own column width last recorded through [`Self::set_width`],
+    /// or `0` before the first draw.
+    #[must_use]
+    pub(crate) fn width(&self) -> u16 {
+        self.width
+    }
+
+    /// Records the area's column width, for [`super::view::bleats_full::page_amount`]
+    /// to measure a wrapped line's row cost against. Called from
+    /// [`super::app::App::note_body_width`] before every draw.
+    pub fn set_width(&mut self, width: u16) {
+        self.width = width;
+    }
+
+    /// Whether a long line wraps onto extra rows instead of truncating.
+    #[must_use]
+    pub fn wrapped(&self) -> bool {
+        self.wrap
+    }
+
+    /// `w`: toggles wrapping.
+    pub fn toggle_wrap(&mut self) {
+        self.wrap = !self.wrap;
     }
 
     /// Scrolls toward older lines by `amount`, and stops following the
@@ -404,15 +451,19 @@ impl BleatsPane {
         self.scroll_offset = self.scroll_offset.saturating_sub(amount);
     }
 
-    /// `ctrl-u`: pages toward older lines by [`Self::body_rows`] set
-    /// through [`Self::set_rows`].
-    pub fn page_up(&mut self) {
-        self.scroll_up(self.body_rows.max(1));
+    /// `ctrl-u`: pages toward older lines by `amount`, which
+    /// [`super::app::App::on_bleats_key`] sizes through
+    /// [`super::view::bleats_full::page_amount`] rather than a raw body-row
+    /// count: unwrapped, a page is one line per row, the arithmetic this
+    /// method always did; wrapped, a tall line spends more than one row, so
+    /// the same row budget fits fewer lines.
+    pub fn page_up(&mut self, amount: usize) {
+        self.scroll_up(amount.max(1));
     }
 
-    /// `ctrl-d`: pages toward the newest line by [`Self::body_rows`].
-    pub fn page_down(&mut self) {
-        self.scroll_down(self.body_rows.max(1));
+    /// `ctrl-d`: the same, toward the newest line.
+    pub fn page_down(&mut self, amount: usize) {
+        self.scroll_down(amount.max(1));
     }
 
     /// `G`: jumps to the newest surviving line and resumes following, since
@@ -431,6 +482,36 @@ impl BleatsPane {
         if self.following {
             self.scroll_offset = 0;
         }
+    }
+
+    /// `n`: steps one line toward the newest matching line. A no-op with no
+    /// match axis set, rather than quietly becoming a line-movement key:
+    /// with the axis off there is no "matching line" to step between at
+    /// all.
+    ///
+    /// Runs the matcher no second time: once the axis is set,
+    /// [`Filters::keeps`] already dropped every non-matching line out of
+    /// [`Self::visible`], so every surviving line *is* a match, and
+    /// stepping between matches is stepping between the lines already on
+    /// screen. Clears the follow flag either way, like any other backward
+    /// movement — `n` moves toward the newest line, not away from it, but
+    /// the design still calls it a deliberate jump the next refresh must
+    /// not undo.
+    pub fn match_next(&mut self) {
+        if self.filters.matcher.is_none() {
+            return;
+        }
+        self.scroll_down(1);
+        self.following = false;
+    }
+
+    /// `N`: the same, toward the oldest matching line. [`Self::scroll_up`]
+    /// already clears the follow flag.
+    pub fn match_prev(&mut self) {
+        if self.filters.matcher.is_none() {
+            return;
+        }
+        self.scroll_up(1);
     }
 
     /// Drops the most recently set filter axis, returning whether one was

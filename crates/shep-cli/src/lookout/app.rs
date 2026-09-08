@@ -141,6 +141,16 @@ pub enum KeyPress {
     /// `f`: toggles whether the bleats pane follows the tail. Ignored on the
     /// dashboard.
     FollowToggle,
+    /// `w`: toggles whether the bleats pane wraps long lines rather than
+    /// truncating them. Ignored on the dashboard.
+    WrapToggle,
+    /// `n`: steps the bleats pane toward the newest line that matches the
+    /// match axis. Does nothing with no match axis set, rather than
+    /// quietly becoming a line-movement key. Ignored on the dashboard.
+    MatchNext,
+    /// `N`: the same, toward the oldest matching line. Ignored on the
+    /// dashboard.
+    MatchPrev,
 }
 
 /// Everything that can change the dashboard.
@@ -2422,7 +2432,10 @@ impl App {
             | KeyPress::LevelCycle
             | KeyPress::PageDown
             | KeyPress::PageUp
-            | KeyPress::FollowToggle => Effect::None,
+            | KeyPress::FollowToggle
+            | KeyPress::WrapToggle
+            | KeyPress::MatchNext
+            | KeyPress::MatchPrev => Effect::None,
         }
     }
 
@@ -2441,7 +2454,8 @@ impl App {
     /// `Some`. `Escape` drops the newest filter chip first, one axis at a
     /// time, and only closes the pane once none are left. `j`/`k` scroll a
     /// line, `ctrl-d`/`ctrl-u` a page, `G` jumps to the tail and resumes
-    /// following, and `f` toggles following explicitly.
+    /// following, `f` toggles following explicitly, `w` toggles wrapping,
+    /// and `n`/`N` step toward the newest or oldest matching line.
     fn on_bleats_key(&mut self, key: KeyPress) -> Effect {
         match key {
             KeyPress::Quit => Effect::Quit,
@@ -2517,17 +2531,26 @@ impl App {
                 }
                 Effect::None
             }
-            // `ctrl-u`: a page toward older lines.
+            // `ctrl-u`: a page toward older lines. Sized through
+            // `page_amount` rather than `pane.body_rows()` directly: see
+            // that function's own doc for why a page is a line count under
+            // wrap, not a raw row count.
             KeyPress::PageUp => {
+                let amount = self
+                    .bleats_pane()
+                    .map_or(1, |pane| super::view::bleats_full::page_amount(self, pane));
                 if let Some(pane) = self.bleats_pane_mut() {
-                    pane.page_up();
+                    pane.page_up(amount);
                 }
                 Effect::None
             }
-            // `ctrl-d`: a page toward the newest line.
+            // `ctrl-d`: the same, toward the newest line.
             KeyPress::PageDown => {
+                let amount = self
+                    .bleats_pane()
+                    .map_or(1, |pane| super::view::bleats_full::page_amount(self, pane));
                 if let Some(pane) = self.bleats_pane_mut() {
-                    pane.page_down();
+                    pane.page_down(amount);
                 }
                 Effect::None
             }
@@ -2535,6 +2558,28 @@ impl App {
             KeyPress::FollowToggle => {
                 if let Some(pane) = self.bleats_pane_mut() {
                     pane.toggle_follow();
+                }
+                Effect::None
+            }
+            // `w`: toggles whether a long line wraps or truncates.
+            KeyPress::WrapToggle => {
+                if let Some(pane) = self.bleats_pane_mut() {
+                    pane.toggle_wrap();
+                }
+                Effect::None
+            }
+            // `n`: one match toward the newest line. A no-op with no match
+            // axis set: see `BleatsPane::match_next`.
+            KeyPress::MatchNext => {
+                if let Some(pane) = self.bleats_pane_mut() {
+                    pane.match_next();
+                }
+                Effect::None
+            }
+            // `N`: the same, toward the oldest matching line.
+            KeyPress::MatchPrev => {
+                if let Some(pane) = self.bleats_pane_mut() {
+                    pane.match_prev();
                 }
                 Effect::None
             }
@@ -2690,6 +2735,9 @@ impl App {
             | KeyPress::PageDown
             | KeyPress::PageUp
             | KeyPress::FollowToggle
+            | KeyPress::WrapToggle
+            | KeyPress::MatchNext
+            | KeyPress::MatchPrev
             | KeyPress::Bleats => {}
         }
         Effect::None
@@ -2878,6 +2926,9 @@ impl App {
             | KeyPress::PageDown
             | KeyPress::PageUp
             | KeyPress::FollowToggle
+            | KeyPress::WrapToggle
+            | KeyPress::MatchNext
+            | KeyPress::MatchPrev
             | KeyPress::Bleats => {}
         }
         Effect::None
@@ -2978,6 +3029,9 @@ impl App {
             | KeyPress::PageDown
             | KeyPress::PageUp
             | KeyPress::FollowToggle
+            | KeyPress::WrapToggle
+            | KeyPress::MatchNext
+            | KeyPress::MatchPrev
             | KeyPress::Bleats => Effect::None,
         }
     }
@@ -3361,6 +3415,9 @@ impl App {
             | KeyPress::PageDown
             | KeyPress::PageUp
             | KeyPress::FollowToggle
+            | KeyPress::WrapToggle
+            | KeyPress::MatchNext
+            | KeyPress::MatchPrev
             | KeyPress::Bleats => {}
         }
         Effect::None
@@ -3447,6 +3504,9 @@ impl App {
             | KeyPress::PageDown
             | KeyPress::PageUp
             | KeyPress::FollowToggle
+            | KeyPress::WrapToggle
+            | KeyPress::MatchNext
+            | KeyPress::MatchPrev
             | KeyPress::Bleats => {}
         }
         Effect::None
@@ -4526,6 +4586,22 @@ impl App {
             // symmetric either way, which is why nothing noticed.
             let chrome = 1 + usize::from(!pane.filters().is_empty());
             pane.set_rows(usize::from(rows).saturating_sub(chrome));
+        }
+    }
+
+    /// Tells the bleats pane how many columns its own area draws into, so a
+    /// wrapped line's row cost can be measured against something.
+    ///
+    /// Its own method rather than a second parameter on
+    /// [`Self::note_body_rows`]: the settings screen and the config pane
+    /// never need a column count, and every existing caller of that method
+    /// — production and test alike — would otherwise have to invent one it
+    /// has no use for. Called by the event loop right alongside
+    /// [`Self::note_body_rows`], from the same `Rect` both figures come
+    /// from.
+    pub fn note_body_width(&mut self, width: u16) {
+        if let Some(pane) = self.bleats_pane_mut() {
+            pane.set_width(width);
         }
     }
 
@@ -7651,6 +7727,50 @@ mod tests {
         assert!(
             !app.bleats_pane().expect("open").following(),
             "f is a toggle, not a one-way switch"
+        );
+    }
+
+    /// `n` with no match axis set does nothing, rather than quietly becoming
+    /// a line-movement key.
+    #[test]
+    fn n_without_a_matcher_does_nothing() {
+        let mut app = fixtures::bleats_pane_with_lines(120);
+        let before = app.bleats_pane().expect("open").scroll_offset();
+        let _ = app.update(Msg::Key(KeyPress::MatchNext));
+        assert_eq!(app.bleats_pane().expect("open").scroll_offset(), before);
+        assert!(app.bleats_pane().expect("open").following());
+    }
+
+    /// Wrapping a long line makes it occupy more rows than one, which is the
+    /// whole point, and the pane must still draw inside its area.
+    #[test]
+    fn a_wrapped_line_occupies_more_rows_and_stays_in_the_area() {
+        let mut app = fixtures::bleats_pane_with_long_line();
+        let unwrapped = fixtures::draw_lines(&app, 80, 20).len();
+        let _ = app.update(Msg::Key(KeyPress::WrapToggle));
+        let wrapped = fixtures::draw_lines(&app, 80, 20);
+        assert!(wrapped.len() <= 20, "never draws past its own height");
+        assert!(
+            wrapped.iter().filter(|line| !line.spans.is_empty()).count() >= unwrapped,
+            "wrapping uses at least as many rows as not wrapping"
+        );
+    }
+
+    /// The brief's own test above (`a_wrapped_line_occupies_more_rows_and_stays_in_the_area`)
+    /// only asserts `>=`, which a `w` that did nothing at all would still
+    /// satisfy: the unwrapped and "wrapped" renders would be identical, and
+    /// identical passes `>=` too. This pins the number changing, not merely
+    /// never shrinking.
+    #[test]
+    fn toggling_wrap_actually_changes_how_many_rows_a_long_line_draws() {
+        let mut app = fixtures::bleats_pane_with_long_line();
+        let unwrapped = fixtures::draw_lines(&app, 80, 20).len();
+        let _ = app.update(Msg::Key(KeyPress::WrapToggle));
+        let wrapped = fixtures::draw_lines(&app, 80, 20).len();
+        assert!(
+            wrapped > unwrapped,
+            "wrap must add rows for a line too long for one, not just permit them: \
+             {unwrapped} unwrapped rows, {wrapped} wrapped: got the same window"
         );
     }
 

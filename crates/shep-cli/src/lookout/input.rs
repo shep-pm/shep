@@ -73,6 +73,9 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char('o') => Some(KeyPress::StreamCycle),
         KeyCode::Char('m') => Some(KeyPress::LevelCycle),
         KeyCode::Char('f') => Some(KeyPress::FollowToggle),
+        KeyCode::Char('w') => Some(KeyPress::WrapToggle),
+        KeyCode::Char('n') => Some(KeyPress::MatchNext),
+        KeyCode::Char('N') => Some(KeyPress::MatchPrev),
         KeyCode::Enter => Some(KeyPress::Confirm),
         _ => None,
     }
@@ -325,6 +328,25 @@ mod tests {
         assert_eq!(
             map_key(&key(KeyCode::Char('/')), InputMode::Normal),
             Some(KeyPress::FilterStart)
+        );
+    }
+
+    /// `w` toggles the bleats pane's wrap; `n`/`N` step between matches. All
+    /// three are global bindings, the same way `o`/`m`/`f` are: `map_key`
+    /// dispatches on mode alone, ignored on the dashboard.
+    #[test]
+    fn w_and_n_and_shift_n_are_bound() {
+        assert_eq!(
+            map_key(&key(KeyCode::Char('w')), InputMode::Normal),
+            Some(KeyPress::WrapToggle)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('n')), InputMode::Normal),
+            Some(KeyPress::MatchNext)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('N')), InputMode::Normal),
+            Some(KeyPress::MatchPrev)
         );
     }
 }

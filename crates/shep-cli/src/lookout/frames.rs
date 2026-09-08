@@ -1146,6 +1146,7 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
     // `Viewport::rows` stays zero, which means unlimited, so a guard on a
     // scrolled screen never triggers.
     app.note_body_rows(body_rows(Rect::new(0, 0, width, height)));
+    app.note_body_width(width);
     let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
     terminal.draw(|frame| draw(&app, frame)).unwrap();
     terminal.backend().buffer().clone()

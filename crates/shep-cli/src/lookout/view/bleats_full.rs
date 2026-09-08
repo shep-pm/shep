@@ -12,7 +12,14 @@ use super::super::pane_bleats::{BleatsPane, Filters, MatchKind};
 use super::super::tail::{Stream, TailLine};
 use super::cell;
 use super::flock::fit;
+use crate::output::width::char_columns;
 use crate::vocabulary::Role;
+
+/// The stream tag's own width, shared by [`feed_line_rows`] (what it
+/// indents a wrapped line's continuation rows under) and [`page_amount`]
+/// (what it reserves before measuring a line's row cost): `"out  "` and
+/// `"err  "` are both three letters and two trailing spaces.
+const TAG_PREFIX_WIDTH: u16 = 5;
 
 /// Draws the pane over the whole body: a title band naming the sheep and
 /// both log paths, then, once any filter axis is set, the filter row, then
@@ -86,39 +93,222 @@ fn lines(app: &App, pane: &BleatsPane, width: u16, rows: usize) -> Vec<Line<'sta
     }
 
     let body_rows = rows.saturating_sub(out.len());
-    // The window `pane.scroll_offset()` names, oldest first, so the newest
-    // one lands on the bottom row when the offset is `0`: the same order
-    // `view::bleats::feed_lines` renders in. `saturating_sub` is the clamp
-    // the offset itself is never trusted to carry on its own: a filter that
-    // just narrowed, or an offset a shrunk feed has outgrown, both fall
-    // out of view here rather than panicking or reading past the end.
-    let skip = survivors
-        .len()
-        .saturating_sub(body_rows)
-        .saturating_sub(pane.scroll_offset());
-    for line in survivors.iter().skip(skip).take(body_rows) {
-        out.push(feed_line(app, filters, line, width));
+    let wrap = pane.wrapped();
+    let text_width = width.saturating_sub(TAG_PREFIX_WIDTH);
+    let window = window_range(survivors.len(), pane.scroll_offset(), body_rows, |i| {
+        row_height(&survivors[i].text, text_width, wrap)
+    });
+    for line in &survivors[window] {
+        out.extend(feed_line_rows(app, filters, line, width, wrap));
     }
+    // A single line taller than the whole body (an extreme wrapped case, or
+    // a body of zero rows) can still push `out` past `rows`: `window_range`
+    // always includes at least one line so the pane never renders nothing,
+    // even when that one line does not fit. This is the actual guarantee
+    // `draw`'s own bounds check backs up for the terminal; `draw_lines`'s
+    // tests call this directly, with no such check downstream.
+    out.truncate(rows);
     out
 }
 
-/// One feed line: its stream tag, then its text with every match-axis hit
-/// highlighted.
-fn feed_line(app: &App, filters: &Filters, line: &TailLine, width: u16) -> Line<'static> {
+/// How many rows rendering `text` at `text_width` columns costs. `1`
+/// outright when `wrap` is off or there is no column count yet: one line,
+/// one row, the pane's whole behavior before this task. Wrapped, walks
+/// `text`'s own characters with [`char_columns`], not [`str::chars`]'s
+/// count: a double-width character that would overflow the current row
+/// starts a new one instead of being charged half a column, the same
+/// walk [`wrap_spans`] draws by, so the two can never disagree on how many
+/// rows one line takes.
+fn row_height(text: &str, text_width: u16, wrap: bool) -> usize {
+    if !wrap || text_width == 0 {
+        return 1;
+    }
+    let width = usize::from(text_width);
+    let mut rows = 1usize;
+    let mut col = 0usize;
+    for c in text.chars() {
+        let w = char_columns(c);
+        if col > 0 && col + w > width {
+            rows += 1;
+            col = 0;
+        }
+        col += w;
+    }
+    rows
+}
+
+/// The half-open range of `survivors`' indices [`lines`] draws, oldest
+/// first, for a window of `body_rows` rows ending on the line
+/// `scroll_offset` counts back from the tail, `row_height` naming each
+/// index's own row cost.
+///
+/// Generalizes the single formula this pane always used before wrap
+/// existed (`skip = len - body_rows - offset`, `take = body_rows`) to a
+/// line that may cost more than one row: walks backward from the tail
+/// accumulating each line's cost until the budget is spent, which is
+/// exactly that formula's arithmetic once every line costs one row (wrap
+/// off). `scroll_offset` then shifts the far edge of that walk toward the
+/// tail by `scroll_offset` *lines*, not rows — an offset counts filtered
+/// lines regardless of how tall any of them draws — saturating at the
+/// oldest survivor exactly the way the original subtraction did, so a
+/// stale offset a shrunk feed or a narrowing filter has outgrown still
+/// clamps rather than panicking or reading past the end. Both walks always
+/// include at least one line once `len > 0`, even one whose own cost alone
+/// exceeds `body_rows`: a body of one very long wrapped line is still one
+/// line to show, not zero.
+fn window_range(
+    len: usize,
+    scroll_offset: usize,
+    body_rows: usize,
+    row_height: impl Fn(usize) -> usize,
+) -> std::ops::Range<usize> {
+    if len == 0 || body_rows == 0 {
+        return 0..0;
+    }
+    let mut base = len;
+    let mut used = 0usize;
+    while base > 0 {
+        let cost = row_height(base - 1);
+        if used > 0 && used + cost > body_rows {
+            break;
+        }
+        base -= 1;
+        used += cost;
+    }
+    let skip = base.saturating_sub(scroll_offset);
+    let mut end = skip;
+    let mut used = 0usize;
+    while end < len {
+        let cost = row_height(end);
+        if used > 0 && used + cost > body_rows {
+            break;
+        }
+        end += 1;
+        used += cost;
+    }
+    skip..end
+}
+
+/// How many lines one `ctrl-u`/`ctrl-d` should move [`BleatsPane::scroll_offset`]
+/// by, so a page under wrap moves by roughly the room `pane`'s own area
+/// draws rather than a raw row count that assumes one row per line.
+///
+/// Falls back to [`BleatsPane::body_rows`] outright when wrap is off or
+/// [`BleatsPane::width`] is `0` (no draw has ever reported a column count):
+/// with one row per line, the row count and the line count are the same
+/// number, which is the arithmetic [`BleatsPane::page_up`]/[`BleatsPane::page_down`]
+/// always used before this task, and every test built against that pane
+/// already assumes it.
+///
+/// Wrapped, walks backward from the tail — not from the current
+/// [`BleatsPane::scroll_offset`] — so a page is sized once from the feed's
+/// own newest lines rather than re-measured from wherever the view happens
+/// to be. A feed whose wrapped-line density varies sharply between its tail
+/// and an older stretch can still under- or overshoot a screen's worth of
+/// rows once scrolled into that stretch, the same way an unwrapped page
+/// already could undershoot the very first or last page of a feed shorter
+/// than one page: the fix in either case is [`window_range`]'s own clamp at
+/// render time, not a perfectly-sized step.
+#[must_use]
+pub(crate) fn page_amount(app: &App, pane: &BleatsPane) -> usize {
+    let body_rows = pane.body_rows();
+    if !pane.wrapped() || pane.width() == 0 {
+        return body_rows.max(1);
+    }
+    let survivors = pane.visible(&app.feed().lines);
+    let text_width = pane.width().saturating_sub(TAG_PREFIX_WIDTH);
+    let mut used = 0usize;
+    let mut count = 0usize;
+    for line in survivors.iter().rev() {
+        let cost = row_height(&line.text, text_width, true);
+        if count > 0 && used + cost > body_rows {
+            break;
+        }
+        used += cost;
+        count += 1;
+    }
+    count.max(1)
+}
+
+/// One feed line, as the rows it actually draws: one row when
+/// [`BleatsPane::wrapped`] is off, unchanged from before this task, or as
+/// many as `text_width` columns force otherwise. Every row after the first
+/// carries a blank indent the width of the stream tag rather than repeating
+/// it, so a wrapped line's continuation reads as one entry, not several.
+fn feed_line_rows(
+    app: &App,
+    filters: &Filters,
+    line: &TailLine,
+    width: u16,
+    wrap: bool,
+) -> Vec<Line<'static>> {
     let palette = app.palette();
     let tag = match line.stream {
         Stream::Out => "out",
         Stream::Err => "err",
     };
-    let mut spans = vec![
-        // Muted, both of them: the word carries the meaning, and a red
-        // `err` would say a stderr line is damage. See
-        // `view::bleats::feed_lines` for the same choice.
-        Span::styled(format!("{tag}  "), palette.muted()),
-    ];
-    let text = fit(&line.text, width.saturating_sub(5));
-    spans.extend(highlighted(&text, filters, palette.band(Role::Butter)));
-    Line::from(spans)
+    // Muted, both of them: the word carries the meaning, and a red `err`
+    // would say a stderr line is damage. See `view::bleats::feed_lines` for
+    // the same choice.
+    let prefix = format!("{tag}  ");
+    let text_width = width.saturating_sub(TAG_PREFIX_WIDTH);
+    if !wrap {
+        let text = fit(&line.text, text_width);
+        let mut spans = vec![Span::styled(prefix, palette.muted())];
+        spans.extend(highlighted(&text, filters, palette.band(Role::Butter)));
+        return vec![Line::from(spans)];
+    }
+    let spans = highlighted(&line.text, filters, palette.band(Role::Butter));
+    let indent = " ".repeat(usize::from(TAG_PREFIX_WIDTH));
+    wrap_spans(spans, usize::from(text_width))
+        .into_iter()
+        .enumerate()
+        .map(|(i, row_spans)| {
+            let lead = if i == 0 { &prefix } else { &indent };
+            let mut all = vec![Span::styled(lead.clone(), palette.muted())];
+            all.extend(row_spans);
+            Line::from(all)
+        })
+        .collect()
+}
+
+/// Splits `spans` into rows of at most `width` columns, breaking mid-span
+/// where a span crosses the boundary rather than moving the whole span to
+/// the next row: a match highlighted across a wrap point keeps its style on
+/// both halves instead of jumping there whole. Measures with
+/// [`char_columns`], the same walk [`row_height`] counts rows by, so the
+/// two never disagree on how many rows one line takes. `width == 0` returns
+/// every span on one row, since there is no boundary to wrap against.
+fn wrap_spans(spans: Vec<Span<'static>>, width: usize) -> Vec<Vec<Span<'static>>> {
+    if width == 0 {
+        return vec![spans];
+    }
+    let mut rows: Vec<Vec<Span<'static>>> = vec![Vec::new()];
+    let mut col = 0usize;
+    for span in spans {
+        let style = span.style;
+        let mut buf = String::new();
+        for c in span.content.chars() {
+            let w = char_columns(c);
+            if col > 0 && col + w > width {
+                if !buf.is_empty() {
+                    rows.last_mut()
+                        .expect("rows always has a current row")
+                        .push(Span::styled(std::mem::take(&mut buf), style));
+                }
+                rows.push(Vec::new());
+                col = 0;
+            }
+            buf.push(c);
+            col += w;
+        }
+        if !buf.is_empty() {
+            rows.last_mut()
+                .expect("rows always has a current row")
+                .push(Span::styled(buf, style));
+        }
+    }
+    rows
 }
 
 /// Splits `text` into spans, styling every byte range [`Filters::match_ranges`]
