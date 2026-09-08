@@ -1479,7 +1479,16 @@ impl App {
                 {
                     pane.cancel();
                 }
-                Effect::None
+                // The bleats pane has no timer of its own; it rides every
+                // tick instead of the dashboard's own cadence, which is
+                // fixed for the connection's lifetime (see `RefreshFeed`'s
+                // own doc). The dashboard raises nothing here, or every
+                // lookout would poll twice as often for nothing.
+                if matches!(self.body, Body::Bleats(_)) {
+                    Effect::RefreshFeed
+                } else {
+                    Effect::None
+                }
             }
             Msg::Resize => Effect::None,
             Msg::Key(key) => self.on_key(key),
@@ -4899,6 +4908,27 @@ mod tests {
             now: t0 + Duration::from_secs(10),
         });
         assert!(app.action().is_none(), "ten is not");
+    }
+
+    /// The pane asks for its own refreshes rather than changing the link's
+    /// interval, which is fixed for a connection's lifetime.
+    #[test]
+    fn a_tick_while_the_pane_is_open_asks_for_a_poll() {
+        let mut app =
+            fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let now = Instant::now();
+        assert_eq!(app.update(Msg::Tick { now }), Effect::RefreshFeed);
+    }
+
+    /// And does not on the dashboard, or every lookout would poll twice as
+    /// often for nothing.
+    #[test]
+    fn a_tick_on_the_dashboard_asks_for_nothing() {
+        let mut app =
+            fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let now = Instant::now();
+        assert_eq!(app.update(Msg::Tick { now }), Effect::None);
     }
 
     #[test]
