@@ -96,15 +96,31 @@ pub fn import(streams: &mut Streams<'_>, args: &ImportPm2Args) -> ExitCode {
         .out
         .clone()
         .unwrap_or_else(|| PathBuf::from("Flockfile.toml"));
-    if !args.force && out_path.exists() {
-        let message = format!(
-            "{} already exists; pass --force to overwrite it",
-            out_path.display()
-        );
-        return streams.fail(ExitCode::Usage, &message);
-    }
-    if let Err(err) = std::fs::write(&out_path, &rendered) {
-        return streams.fail(ExitCode::Failure, &err.to_string());
+    // `--force` truncates unconditionally: `std::fs::write` is exactly right.
+    // Without it, a plain `exists()` check followed by a write is a
+    // check-then-act race, so a file created between the two would be
+    // clobbered even though `--force` was never passed. `create_new(true)`
+    // makes the refusal and the write one atomic syscall instead.
+    if args.force {
+        if let Err(err) = std::fs::write(&out_path, &rendered) {
+            return streams.fail(ExitCode::Failure, &err.to_string());
+        }
+    } else {
+        let result = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&out_path)
+            .and_then(|mut file| std::io::Write::write_all(&mut file, rendered.as_bytes()));
+        if let Err(err) = result {
+            if err.kind() == std::io::ErrorKind::AlreadyExists {
+                let message = format!(
+                    "{} already exists; pass --force to overwrite it",
+                    out_path.display()
+                );
+                return streams.fail(ExitCode::Usage, &message);
+            }
+            return streams.fail(ExitCode::Failure, &err.to_string());
+        }
     }
 
     let rows = ImportRows(
