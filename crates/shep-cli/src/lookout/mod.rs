@@ -1212,4 +1212,96 @@ mod tests {
         }
         assert!(written, "the write that was in flight still landed");
     }
+
+    /// Drives `Effect::LoadSecrets` end to end, the only test that does: every
+    /// other secrets-pane test calls `App::update` directly and inspects the
+    /// `Effect` it returns as a value, so nothing ever runs the arm that
+    /// reads `paths.secrets` and gathers who reads each key.
+    ///
+    /// `reader-app` is filtered off the dashboard (`App::rows()`) by name
+    /// before `S` opens the pane, but it still names `API_KEY` in the muster
+    /// roll. `Effect::LoadSecrets` has to gather readers off
+    /// `App::all_rows()`, not `App::rows()`, or a name filter would make
+    /// `READ BY` lie about who reads a key.
+    #[tokio::test]
+    async fn load_secrets_counts_a_reader_the_dashboard_filter_has_hidden() {
+        // Short, not the default `$TMPDIR`: a long `$SHEP_HOME` overflows
+        // `SUN_LEN` for the control socket path this builds, even though
+        // this test never dials it.
+        let dir = tempfile::Builder::new().prefix("s").tempdir().unwrap();
+        let paths = crate::secret_readers::test_support::paths_under(dir.path());
+        shep_core::secrets::set(&paths.secrets, "API_KEY", "production", "hunter2").unwrap();
+
+        let mut reader_app = shep_core::config::AppConfig::minimal("reader-app", "./srv");
+        reader_app
+            .env
+            .insert("A".to_string(), "{{secret:API_KEY}}".to_string());
+        crate::secret_readers::test_support::write_roll(&paths, &[reader_app]);
+
+        let mut app = App::new(
+            Palette::detect(None, None, None),
+            Control::ReadOnly,
+            dir.path().display().to_string(),
+            Instant::now(),
+        );
+        app.update(Msg::Snapshot {
+            rows: vec![
+                ProcessInfo::builder(1, "keeper", ProcStatus::Online).build(),
+                ProcessInfo::builder(2, "reader-app", ProcStatus::Online).build(),
+            ],
+            at: Instant::now(),
+        });
+        app.set_filter_for_tests("keeper");
+        assert!(
+            app.rows().iter().all(|row| row.info.name != "reader-app"),
+            "the filter must actually hide reader-app, or this test proves nothing"
+        );
+
+        let (msg_tx, msg_rx) = mpsc::channel(16);
+        let (poll_tx, _poll_rx) = mpsc::channel(4);
+        let (request_tx, _request_rx) = mpsc::channel(2);
+        msg_tx.send(Msg::Key(KeyPress::Secrets)).await.unwrap();
+        // The sleep, not an immediate `Quit`: `Effect::LoadSecrets` answers
+        // off `spawn_blocking`, and `Msg::Secrets` is dropped once it lands
+        // if `self.body` has already left `Body::Secrets` — quitting before
+        // the read comes back would draw the pane still empty.
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(2000)).await;
+            let _ = msg_tx.send(Msg::Key(KeyPress::Quit)).await;
+        });
+
+        let terminal = Terminal::new(TestBackend::new(160, 48)).unwrap();
+        let terminal = tokio::time::timeout(
+            Duration::from_secs(10),
+            run_ui(
+                app,
+                terminal,
+                stream::empty(),
+                msg_rx,
+                poll_tx,
+                request_tx,
+                paths.clone(),
+                dir.path().to_path_buf(),
+                paths.daemon_config.clone(),
+                paths.socket.clone(),
+                FakeLocal::default(),
+            ),
+        )
+        .await
+        .expect("the loop left within ten seconds");
+
+        let frame = crate::lookout::frames::render_text(terminal.backend().buffer());
+        assert!(
+            frame.contains("API_KEY"),
+            "the seeded key is drawn: {frame}"
+        );
+        let row = frame
+            .lines()
+            .find(|line| line.contains("API_KEY"))
+            .expect("API_KEY's own row");
+        assert!(
+            row.contains("1 (1 online)"),
+            "reader-app must still be counted in READ BY: {row:?}"
+        );
+    }
 }
