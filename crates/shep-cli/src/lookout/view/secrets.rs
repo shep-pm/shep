@@ -147,6 +147,10 @@ pub(super) fn columns_for(width: u16) -> &'static [Column] {
 /// column is 30 cells and `MAX_VALUE_BYTES` is 4096, so an equal run
 /// cannot be drawn. The byte count carries the exact figure, which is what
 /// the design's second rule asks for.
+///
+/// The run stops one cell short of `width`: a run that reaches the column's
+/// own edge touches whatever `IN FORCE` draws next, with no separator
+/// between the two.
 fn value_cell(row: &SecretRow, revealed: Option<&str>, width: u16) -> String {
     if let Some(plain) = revealed {
         return fit(plain, width);
@@ -155,8 +159,30 @@ fn value_cell(row: &SecretRow, revealed: Option<&str>, width: u16) -> String {
         return "not set here".to_string();
     };
     let suffix = format!(" {len} bytes");
-    let run = usize::from(width).saturating_sub(suffix.len()).min(len);
+    let run = usize::from(width)
+        .saturating_sub(suffix.len())
+        .saturating_sub(1)
+        .min(len);
     format!("{}{suffix}", "█".repeat(run.max(1)))
+}
+
+/// `SET IN`'s text: a numerator against every named environment the store
+/// holds a slot for, `pane.model.environments` minus [`ALL_ENVIRONMENTS`]
+/// itself. Every environment named once each is the common case and needs
+/// no list; anything short of that names which ones.
+fn set_in_cell(row: &SecretRow, environment_count: usize) -> String {
+    if row.set_in.is_empty() {
+        return "-".to_string();
+    }
+    let count = row.set_in.len();
+    if environment_count > 0 && count >= environment_count {
+        format!("{count} of {environment_count}")
+    } else {
+        format!(
+            "{count} of {environment_count} \u{b7} {}",
+            row.set_in.join(", ")
+        )
+    }
 }
 
 /// One data row's text for `column`.
@@ -164,18 +190,17 @@ fn value_cell(row: &SecretRow, revealed: Option<&str>, width: u16) -> String {
 /// `Lands` has no source yet: nothing in [`SecretRow`] carries a propagation
 /// ETA. Task 6 gives it one; until then every cell reads `-`, matching
 /// `view/detail.rs`'s convention for an absent value.
-fn row_cell(row: &SecretRow, column: Column, revealed: Option<&str>) -> String {
+fn row_cell(
+    row: &SecretRow,
+    column: Column,
+    revealed: Option<&str>,
+    environment_count: usize,
+) -> String {
     match column {
         Column::Key => row.key.clone(),
         Column::Value => value_cell(row, revealed, column.width()),
         Column::InForce => row.in_force.clone().unwrap_or_else(|| "-".to_string()),
-        Column::SetIn => {
-            if row.set_in.is_empty() {
-                "-".to_string()
-            } else {
-                format!("{} ({})", row.set_in.join(", "), row.set_in.len())
-            }
-        }
+        Column::SetIn => set_in_cell(row, environment_count),
         Column::ReadBy => {
             if row.readers.is_empty() {
                 "-".to_string()
@@ -209,10 +234,14 @@ fn row_line(
         .as_ref()
         .filter(|reveal| reveal.key == row.key)
         .map(|reveal| reveal.value.as_str());
+    let environment_count = pane.model.environments.len().saturating_sub(1);
     let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len());
     let mut used = 0u16;
     for column in columns {
-        let text = fit(&row_cell(row, *column, revealed), column.width());
+        let text = fit(
+            &row_cell(row, *column, revealed, environment_count),
+            column.width(),
+        );
         spans.push(Span::styled(text, ground));
         used += column.width();
     }
@@ -313,14 +342,17 @@ fn group_header_line(
 ) -> Line<'static> {
     let count = pane.model.rows_for(source).count();
     let text = match source {
-        Source::Operator => format!("\u{25be} operator \u{d7}{count}"),
+        Source::Operator => format!("\u{25be} operator \u{d7}{count} \u{b7} you set these"),
         Source::Namespace(namespace) => {
             let marker = if pane.collapsed.contains(namespace) {
                 '\u{25b8}'
             } else {
                 '\u{25be}'
             };
-            format!("{marker} {namespace} \u{d7}{count}  read-only here")
+            format!(
+                "{marker} {namespace} (dog) \u{d7}{count} \u{b7} pushed by a provider \u{b7} \
+                 read-only here"
+            )
         }
     };
     Line::from(Span::styled(fit(&text, width), palette.muted()))

@@ -7,7 +7,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use super::super::app::{
-    ActionState, App, Control, Grouping, InputMode, Link, RowKey, Settings, SettingsPrompt,
+    ActionState, App, Body, Control, Grouping, InputMode, Link, RowKey, Settings, SettingsPrompt,
     retrying_sentence,
 };
 use super::super::pane::{ConfigPane, PanePending};
@@ -160,6 +160,11 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // it at all, so it is appended rather than inserted, the same rule
         // `hint_for`'s own doc gives for its dashboard forms.
         (BLEATS_HINT.to_string(), palette.attention())
+    } else if matches!(app.body(), Body::Secrets(_)) {
+        // The pane owns the keyboard here too, same reasoning as the config
+        // pane's own branch above: `x stop`/`R restart`/`L reload`/`F folds`
+        // belong to the dashboard underneath and do nothing on this screen.
+        (SECRETS_HINT.to_string(), palette.attention())
     } else if app.settings().is_none() && !app.filter().is_empty() {
         // Gated on the screen being closed: the filter survives the swap
         // into settings (`App::on_settings_key` never touches it), but `/`
@@ -305,6 +310,13 @@ fn pane_editor(pane: &ConfigPane) -> Option<(String, &str)> {
 /// it.
 const BLEATS_HINT: &str = "esc back   j/k line   ctrl-d/u page   G end   \
     / search   n/N match   f follow   w wrap   o out/err/both   m level";
+
+/// The secrets pane's own key hint.
+///
+/// Names only what `on_secrets_key` answers today: reveal, set and delete
+/// are Tasks 6-8's, and a hint naming a key that does nothing teaches the
+/// operator the key is broken.
+const SECRETS_HINT: &str = "esc/S close   \u{2190}/\u{2192} tab   z collapse   q quit";
 
 /// The config pane's own key hint.
 ///
