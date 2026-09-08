@@ -1088,8 +1088,9 @@ async fn load(
                 "an assignment needs a target; `{word}` is one word, so drop the quotes and \
                  let the shell split it"
             ),
-            None => "an assignment needs a target: a script path, or a sheep the flock has"
-                .to_string(),
+            None => {
+                "an assignment needs a target: a script path, or a sheep the flock has".to_string()
+            }
         };
         return streams.fail(ExitCode::Usage, &message);
     }
@@ -1432,8 +1433,9 @@ async fn load_one(
     // is up with it either way, which is what makes this a notice.
     for name in &registered {
         if let Err(reason) = set_assignments(client, name, assignments).await {
-            let message =
-                format!("{reason}; it is set for this spawn, but a Flockfile load could replace it");
+            let message = format!(
+                "{reason}; it is set for this spawn, but a Flockfile load could replace it"
+            );
             streams.aside(mode.verb(), &message);
         }
     }
@@ -1893,7 +1895,10 @@ mod tests {
 
         let (assignments, rest) = split_assignments(&targets);
 
-        assert!(assignments.is_empty(), "a name holds letters, digits and `_`");
+        assert!(
+            assignments.is_empty(),
+            "a name holds letters, digits and `_`"
+        );
         assert_eq!(rest, targets);
     }
 
@@ -1903,7 +1908,10 @@ mod tests {
 
         let (assignments, rest) = split_assignments(&targets);
 
-        assert!(assignments.is_empty(), "the first non-assignment ends the run");
+        assert!(
+            assignments.is_empty(),
+            "the first non-assignment ends the run"
+        );
         assert_eq!(rest, targets);
     }
 
@@ -1924,7 +1932,10 @@ mod tests {
         let (assignments, rest) = split_assignments(&targets);
 
         assert!(assignments.is_empty(), "a name may not start with a digit");
-        assert_eq!(rest, targets, "the word stays a target, as a shell leaves it");
+        assert_eq!(
+            rest, targets,
+            "the word stays a target, as a shell leaves it"
+        );
     }
 
     #[test]
@@ -3013,23 +3024,23 @@ mod tests {
         std::fs::write(&script, "#!/bin/sh\nsleep 1\n").unwrap();
 
         let sock = shep_client::testing::control_address(dir.path());
-        let (client, mut envelopes) = fake_client_answering(&sock, |request: &Request| match request
-        {
-            Request::ListFlock => Response::Flock(Vec::new()),
-            Request::Start { apps } => Response::Started(
-                apps.iter()
-                    .map(|app| {
-                        ProcessInfo::builder(0, app.name.as_str(), ProcStatus::Online).build()
-                    })
-                    .collect(),
-            ),
-            Request::SetSheepEnv { name, key, .. } => Response::SheepEnvSet {
-                name: name.clone(),
-                key: key.clone(),
-            },
-            _ => Response::Pong,
-        })
-        .await;
+        let (client, mut envelopes) =
+            fake_client_answering(&sock, |request: &Request| match request {
+                Request::ListFlock => Response::Flock(Vec::new()),
+                Request::Start { apps } => Response::Started(
+                    apps.iter()
+                        .map(|app| {
+                            ProcessInfo::builder(0, app.name.as_str(), ProcStatus::Online).build()
+                        })
+                        .collect(),
+                ),
+                Request::SetSheepEnv { name, key, .. } => Response::SheepEnvSet {
+                    name: name.clone(),
+                    key: key.clone(),
+                },
+                _ => Response::Pong,
+            })
+            .await;
 
         let mut args = start_args("KOJI_TOKEN=s3cret");
         args.targets.push(script.to_string_lossy().into_owned());
@@ -3198,7 +3209,9 @@ mod tests {
         while let Ok(envelope) = envelopes.try_recv() {
             match envelope.body {
                 Request::Add { apps } => {
-                    registered = apps.first().and_then(|app| app.env.get("KOJI_TOKEN").cloned());
+                    registered = apps
+                        .first()
+                        .and_then(|app| app.env.get("KOJI_TOKEN").cloned());
                 }
                 Request::SetSheepEnv { key, .. } => recorded.push(key),
                 _ => {}
@@ -3223,7 +3236,10 @@ mod tests {
         }
         .to_string();
 
-        assert!(said.contains("`1A`"), "the refusal names the bad name: {said}");
+        assert!(
+            said.contains("`1A`"),
+            "the refusal names the bad name: {said}"
+        );
         assert!(
             said.contains("letter"),
             "and says what a name may hold: {said}"
