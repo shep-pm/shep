@@ -13,6 +13,7 @@ pub mod flock;
 pub mod host;
 pub mod pane;
 pub mod scroll;
+pub mod secrets;
 pub mod settings;
 pub mod status;
 
@@ -258,11 +259,18 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
             buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
             return;
         }
-        // Nothing draws the secrets pane yet: this task is the reducer path
-        // and the load. Falling through to the flock table is a stand-in,
-        // not a design choice; a later task in this same frame gives this
-        // arm its own body the way the three above have.
-        Body::FlockTable | Body::Secrets(_) => {}
+        Body::Secrets(pane) => {
+            let body = Rect {
+                x: area.x,
+                y,
+                width,
+                height: body_rows(area),
+            };
+            secrets::draw(app, pane, body, buffer);
+            buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
+            return;
+        }
+        Body::FlockTable => {}
     }
 
     if let Some(banner) = status::banner_line(app) {

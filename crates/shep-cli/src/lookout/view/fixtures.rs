@@ -4,6 +4,9 @@ use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::time::Instant;
 
+use ratatui::Terminal;
+use ratatui::backend::TestBackend;
+use ratatui::buffer::Buffer;
 use ratatui::text::Line;
 use shep_client::RequestError;
 use shep_core::config::AppConfig;
@@ -14,6 +17,7 @@ use super::super::app::{
     ActionVerb, App, Control, KeyPress, LambWalk, Msg, RowKey, Sent, SettingsRow,
 };
 use super::super::level::Level;
+use super::super::secrets::{SecretRow, SecretsModel, Source};
 use super::super::source::HostSample;
 use super::super::tail::{Stream, Tail, TailLine};
 use super::super::theme::Palette;
@@ -1050,6 +1054,110 @@ pub fn app_in_sheep_pane() -> App {
             name: "web".to_string(),
         },
         result: Ok(Response::SheepConfig(Box::new(sheep_config_view()))),
+    });
+    app
+}
+
+/// A frame already drawn, at `width` x `height`: every secrets-pane test
+/// reads cells straight off this rather than the `String` `render_text`
+/// gives, since a column offset only means something against the buffer it
+/// came from.
+pub fn render(app: &App, width: u16, height: u16) -> Buffer {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal.draw(|frame| super::draw(app, frame)).unwrap();
+    terminal.backend().buffer().clone()
+}
+
+/// `buffer` as one `String` per row, for a `contains` search across whatever
+/// line carries the text (a group header, say) rather than one column.
+pub fn rows_of(buffer: &Buffer) -> Vec<String> {
+    crate::lookout::frames::render_text(buffer)
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
+
+/// The secrets pane, opened and loaded: `DB_PASSWORD` set for `production`
+/// only, `ELSEWHERE_ONLY` set for `ci` only, the tab on `production` (the
+/// first load's own default, since `environment` below is what it asks
+/// for).
+pub fn app_with_secrets() -> App {
+    let mut app = full_app();
+    app.update(Msg::Key(KeyPress::Secrets));
+    app.update(Msg::Secrets {
+        environment: "production".to_string(),
+        result: Ok(Box::new(SecretsModel {
+            environments: vec![
+                "all".to_string(),
+                "ci".to_string(),
+                "production".to_string(),
+            ],
+            rows: vec![
+                SecretRow {
+                    key: "DB_PASSWORD".to_string(),
+                    source: Source::Operator,
+                    in_force: Some("production".to_string()),
+                    set_in: vec!["production".to_string()],
+                    byte_len: Some(9),
+                    readers: Vec::new(),
+                },
+                SecretRow {
+                    key: "ELSEWHERE_ONLY".to_string(),
+                    source: Source::Operator,
+                    in_force: None,
+                    set_in: vec!["ci".to_string()],
+                    byte_len: None,
+                    readers: Vec::new(),
+                },
+            ],
+            ..SecretsModel::default()
+        })),
+    });
+    app
+}
+
+/// The secrets pane with one row whose value is exactly `MAX_VALUE_BYTES`
+/// long, for the column-overflow test.
+pub fn app_with_a_maximum_length_secret() -> App {
+    let mut app = full_app();
+    app.update(Msg::Key(KeyPress::Secrets));
+    app.update(Msg::Secrets {
+        environment: "production".to_string(),
+        result: Ok(Box::new(SecretsModel {
+            environments: vec!["production".to_string()],
+            rows: vec![SecretRow {
+                key: "HUGE".to_string(),
+                source: Source::Operator,
+                in_force: Some("production".to_string()),
+                set_in: vec!["production".to_string()],
+                byte_len: Some(shep_core::secrets::MAX_VALUE_BYTES),
+                readers: Vec::new(),
+            }],
+            ..SecretsModel::default()
+        })),
+    });
+    app
+}
+
+/// The secrets pane with one row from a provider's own cache, for the
+/// read-only-group test.
+pub fn app_with_a_pushed_secret() -> App {
+    let mut app = full_app();
+    app.update(Msg::Key(KeyPress::Secrets));
+    app.update(Msg::Secrets {
+        environment: "production".to_string(),
+        result: Ok(Box::new(SecretsModel {
+            environments: vec!["production".to_string()],
+            rows: vec![SecretRow {
+                key: "vercel/API_TOKEN".to_string(),
+                source: Source::Namespace("vercel".to_string()),
+                in_force: Some("production".to_string()),
+                set_in: vec!["production".to_string()],
+                byte_len: Some(6),
+                readers: Vec::new(),
+            }],
+            ..SecretsModel::default()
+        })),
     });
     app
 }

@@ -58,23 +58,17 @@ pub(crate) struct SecretsModel {
     pub rows: Vec<SecretRow>,
     /// Why the operator's store would not read, when it would not.
     ///
-    /// No non-test reader yet: the pane that draws it lands in a later
-    /// task. `#[allow(dead_code)]` says so rather than inventing one.
-    #[allow(dead_code)]
+    /// The pane's band row shows this in place of the roll age below, when
+    /// there is one.
     pub unreadable: Option<String>,
     /// How old the muster roll is, or `None` when it is missing.
-    ///
-    /// No non-test reader yet, for the same reason as [`Self::unreadable`].
-    #[allow(dead_code)]
     pub roll_age: Option<Duration>,
 }
 
 impl SecretsModel {
     /// This model's rows from one store, in key order.
     ///
-    /// No non-test caller yet: the pane that draws grouped rows lands in a
-    /// later task. `#[allow(dead_code)]` says so rather than inventing one.
-    #[allow(dead_code)]
+    /// The pane's own group header reads this for a group's member count.
     pub fn rows_for<'a>(&'a self, source: &'a Source) -> impl Iterator<Item = &'a SecretRow> {
         self.rows.iter().filter(move |row| &row.source == source)
     }
@@ -161,22 +155,12 @@ fn row(
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     use shep_core::config::AppConfig;
     use shep_core::secrets::{PROVIDER_CACHE_VERSION, Resolution, SecretRef, SecretView};
 
-    use crate::secret_readers::test_support::{online, write_roll};
+    use crate::secret_readers::test_support::{online, paths_under, write_roll};
 
     use super::*;
-
-    /// `$SHEP_HOME` pinned to `dir` itself, same pattern as
-    /// `secret_readers`'s own tests: the default `.shep` subdirectory is
-    /// never created outside a real boot.
-    fn paths_under(dir: &Path) -> ShepPaths {
-        let home = dir.display().to_string();
-        ShepPaths::resolve(&move |key| (key == "SHEP_HOME").then(|| home.clone()), dir)
-    }
 
     #[test]
     fn in_force_agrees_with_secret_view_resolve() {
