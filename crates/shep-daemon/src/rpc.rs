@@ -729,6 +729,45 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                 Err(err) => reply(Err(rpc_error(&err))),
             }
         }
+        Request::SetSheepEnvBatch {
+            name,
+            entries,
+            force,
+            dry_run,
+        } => {
+            let values: BTreeMap<String, String> = entries
+                .iter()
+                .map(|(key, value)| (key.clone(), value.as_str().to_string()))
+                .collect();
+            match ctx
+                .supervisor
+                .set_sheep_env_batch(name.clone(), values, force, dry_run)
+                .await
+            {
+                // Recorded for `SetSheepEnv`'s reason: the muster roll is
+                // written from the registry and nothing on the restore path
+                // reads the override store. `app` is `None` for a dry run
+                // and for a refused collision, and neither wrote anything
+                // to record.
+                Ok(Some(batch)) => {
+                    if let Some(app) = batch.app {
+                        ctx.registry.record(&[app]);
+                    }
+                    reply(Ok(Response::SheepEnvBatch {
+                        name,
+                        set: batch.set,
+                        unchanged: batch.unchanged,
+                        collisions: batch.collisions,
+                    }))
+                }
+                Ok(None) => reply(Err(RpcError {
+                    code: RpcErrorCode::NotFound,
+                    message: format!("no sheep named {name}"),
+                    daemon_version: None,
+                })),
+                Err(err) => reply(Err(rpc_error(&err))),
+            }
+        }
         Request::SetSheepField { name, key, value } => {
             match ctx
                 .supervisor

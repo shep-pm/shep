@@ -332,6 +332,26 @@ pub(crate) enum Command {
         /// store itself could not be read or written.
         reply: oneshot::Sender<Result<Option<ResolvedApp>, SupervisorError>>,
     },
+    /// Several env keys on one sheep, applied as one write. See
+    /// [`Actor::handle_set_sheep_env_batch`].
+    SetSheepEnvBatch {
+        /// The sheep's name, not a selector, for [`Self::Scale`]'s reason.
+        name: String,
+        /// The keys and their values.
+        ///
+        /// [`EnvValue`], not bare strings, for [`Self::SetSheepEnv`]'s
+        /// reason: this enum derives `Debug` and a map of env values is the
+        /// most secret-dense thing that reaches it (IR-41).
+        entries: BTreeMap<String, EnvValue>,
+        /// Overwrite colliding keys instead of refusing the batch.
+        force: bool,
+        /// Compute the three lists and write nothing.
+        dry_run: bool,
+        /// Answers what was written and what collided, or `None` when no
+        /// sheep has that name. An error only when the request is refused
+        /// or the override store could not be read or written.
+        reply: oneshot::Sender<Result<Option<EnvBatch>, SupervisorError>>,
+    },
     /// See [`Actor::handle_set_sheep_field`].
     SetSheepField {
         /// The sheep's name, not a selector, for [`Self::Scale`]'s reason.
@@ -710,6 +730,23 @@ pub(crate) struct FieldSet {
     pub(crate) pending: bool,
 }
 
+/// What a [`Command::SetSheepEnvBatch`] did.
+///
+/// `Debug` is derived: every field is a key name, and [`ResolvedApp`] wraps
+/// an [`AppConfig`], whose own manual `Debug` redacts `env`.
+#[derive(Debug, Clone)]
+pub(crate) struct EnvBatch {
+    /// The parked config, for `rpc.rs` to hand the registry. `None` when
+    /// nothing was written, which is a dry run or an unforced collision.
+    pub(crate) app: Option<ResolvedApp>,
+    /// Keys written.
+    pub(crate) set: Vec<String>,
+    /// Keys that already held this value.
+    pub(crate) unchanged: Vec<String>,
+    /// Keys that held a different value.
+    pub(crate) collisions: Vec<String>,
+}
+
 /// Handle to a running supervisor actor.
 ///
 /// Cloning shares the same actor; every clone's commands are serialized
@@ -900,6 +937,48 @@ impl SupervisorHandle {
                 name,
                 key,
                 value,
+                reply,
+            }))
+            .await
+            .map_err(|_| SupervisorError::EngineStopped)?;
+        rx.await.map_err(|_| SupervisorError::EngineStopped)?
+    }
+
+    /// Sets several env keys on one sheep as operator overrides, in one
+    /// write.
+    ///
+    /// [`Actor::handle_set_sheep_env_batch`] states what `force` and
+    /// `dry_run` do and when the batch is refused whole. The `Some` carries
+    /// [`EnvBatch`], whose `app` is the config now parked for that sheep's
+    /// next spawn and is `None` whenever nothing was written; `rpc.rs` hands
+    /// it to the registry for [`Self::set_sheep_env`]'s reason.
+    ///
+    /// # Errors
+    ///
+    /// - [`SupervisorError::IsADog`] - the name is a dog's, and a dog's
+    ///   config is not an operator's to edit through a pane.
+    /// - [`SupervisorError::InvalidEnv`] - `normalize` refuses the result.
+    /// - [`SupervisorError::Overrides`] - the override store could not be
+    ///   read or written, so nothing was recorded and nothing parked.
+    /// - [`SupervisorError::EngineStopped`] - the actor is gone.
+    pub(crate) async fn set_sheep_env_batch(
+        &self,
+        name: String,
+        entries: BTreeMap<String, String>,
+        force: bool,
+        dry_run: bool,
+    ) -> Result<Option<EnvBatch>, SupervisorError> {
+        let entries = entries
+            .into_iter()
+            .map(|(key, value)| (key, EnvValue::from(value)))
+            .collect();
+        let (reply, rx) = oneshot::channel();
+        self.tx
+            .send(Msg::Command(Command::SetSheepEnvBatch {
+                name,
+                entries,
+                force,
+                dry_run,
                 reply,
             }))
             .await
@@ -2662,6 +2741,21 @@ impl<R: ProcessRunner> Actor<R> {
                     &key,
                     value.as_ref().map(EnvValue::as_str),
                 ));
+                false
+            }
+            Command::SetSheepEnvBatch {
+                name,
+                entries,
+                force,
+                dry_run,
+                reply,
+            } => {
+                let entries: BTreeMap<String, String> = entries
+                    .into_iter()
+                    .map(|(key, value)| (key, value.as_str().to_string()))
+                    .collect();
+                let _ =
+                    reply.send(self.handle_set_sheep_env_batch(&name, &entries, force, dry_run));
                 false
             }
             Command::SetSheepField {
@@ -4667,6 +4761,129 @@ impl<R: ProcessRunner> Actor<R> {
             slot.entry.overridden.clone_from(&overridden);
         }
         Ok(Some(parked))
+    }
+
+    /// Records several env keys on `name` as operator overrides in one
+    /// write, and parks them for the next spawn.
+    ///
+    /// `Ok(None)` when no sheep has that name.
+    ///
+    /// # Why this is not a loop over [`Self::handle_set_sheep_env`]
+    ///
+    /// That function writes the store once per key. Twenty keys would be
+    /// twenty read-modify-writes, and a failure at the eleventh would leave
+    /// half an import applied with no record of which half. This validates
+    /// every key against the intended config first, then writes once.
+    ///
+    /// # Collisions
+    ///
+    /// A key already holding a different value in the intended config
+    /// collides. Without `force`, one collision refuses the whole batch and
+    /// nothing is written. A key holding the same value is `unchanged` and
+    /// is not rewritten, so a repeated identical batch is a no-op.
+    ///
+    /// # Errors
+    ///
+    /// - [`SupervisorError::IsADog`] - the name is a dog's. Raised before
+    ///   the store is read, for [`Self::handle_set_sheep_env`]'s reason.
+    /// - [`SupervisorError::InvalidEnv`] - the resulting config is one
+    ///   `normalize` refuses. Nothing was written.
+    /// - [`SupervisorError::Overrides`] - the store could not be read or
+    ///   written. Nothing was parked.
+    fn handle_set_sheep_env_batch(
+        &mut self,
+        name: &str,
+        entries: &BTreeMap<String, String>,
+        force: bool,
+        dry_run: bool,
+    ) -> Result<Option<EnvBatch>, SupervisorError> {
+        let Some(id) = self.representative_id(name) else {
+            return Ok(None);
+        };
+        // Before the store is read, for `handle_set_sheep_env`'s reason: a
+        // dog runs at the daemon's own trust level.
+        if self
+            .sheep
+            .get(&id)
+            .is_some_and(|slot| slot.entry.dog.is_some())
+        {
+            return Err(SupervisorError::IsADog(dog_config_refusal(name)));
+        }
+        let Some(mut intended) = self.intended_spec(id).map(|spec| spec.config().clone()) else {
+            return Ok(None);
+        };
+
+        let mut set = Vec::new();
+        let mut unchanged = Vec::new();
+        let mut collisions = Vec::new();
+        for (key, value) in entries {
+            match intended.env.get(key) {
+                Some(current) if current == value => unchanged.push(key.clone()),
+                Some(_) => {
+                    collisions.push(key.clone());
+                    if force {
+                        set.push(key.clone());
+                    }
+                }
+                None => set.push(key.clone()),
+            }
+        }
+
+        let refused = !collisions.is_empty() && !force;
+        if refused || dry_run {
+            return Ok(Some(EnvBatch {
+                app: None,
+                set: if refused { Vec::new() } else { set },
+                unchanged,
+                collisions,
+            }));
+        }
+
+        for key in &set {
+            intended.env.insert(key.clone(), entries[key].clone());
+        }
+        let parked =
+            normalize(intended).map_err(|err| SupervisorError::InvalidEnv(err.to_string()))?;
+
+        let mut record = overrides::get(&self.paths.overrides, name)
+            .map_err(|err| SupervisorError::Overrides(err.to_string()))?
+            .unwrap_or_default();
+        // The same flat object `merge_declared` reads, and the same refusal
+        // `handle_set_sheep_env` makes when a later shep wrote something
+        // else there.
+        let env = record
+            .fields
+            .entry("env".to_string())
+            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+        let Some(map) = env.as_object_mut() else {
+            return Err(SupervisorError::Overrides(format!(
+                "{name}'s stored `env` override is not an object"
+            )));
+        };
+        for key in &set {
+            map.insert(key.clone(), serde_json::Value::String(entries[key].clone()));
+        }
+        // No tombstone handling and no `emptied` branch: this door only
+        // ever inserts, so the map cannot come out empty and no key can
+        // stop being held.
+        let overridden: Vec<String> = record.fields.keys().cloned().collect();
+        let changes = BTreeMap::from([(name.to_string(), Some(record))]);
+        overrides::update(&self.paths.overrides, &changes)
+            .map_err(|err| SupervisorError::Overrides(err.to_string()))?;
+
+        for id in self.ids_of_name(name) {
+            let Some(slot) = self.sheep.get_mut(&id) else {
+                continue;
+            };
+            slot.entry.pending = Some(parked.clone());
+            slot.entry.overridden.clone_from(&overridden);
+        }
+        Ok(Some(EnvBatch {
+            app: Some(parked),
+            set,
+            unchanged,
+            collisions,
+        }))
     }
 
     /// Records `key` on `name` as an operator override, applies what can
@@ -20557,5 +20774,190 @@ mod tests {
             err.to_string().contains("TYPO"),
             "names the reference: {err}"
         );
+    }
+
+    /// A started `web` and a registered dog, for the batch tests below. Two
+    /// scripts because the dog is a spawn of its own.
+    async fn env_batch_harness() -> Harness {
+        let h = harness(vec![ProcScript::never_exits(); 2]);
+        start_app(&h, AppConfig::minimal("web", "./srv")).await;
+        h.ctx
+            .supervisor
+            .start_dog(dog_app("bark"), DogSource::BuiltIn)
+            .await
+            .unwrap();
+        h
+    }
+
+    /// The stored env of `name`, or a panic naming what was there instead.
+    fn stored_env(h: &Harness, name: &str) -> serde_json::Map<String, serde_json::Value> {
+        let record = shep_core::overrides::get(&h.ctx.paths.overrides, name)
+            .unwrap()
+            .expect("an override record");
+        record.fields["env"]
+            .as_object()
+            .expect("a flat env object")
+            .clone()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_batch_writes_every_key_under_one_lock() {
+        let h = env_batch_harness().await;
+        let batch = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([
+                    ("A".to_string(), "1".to_string()),
+                    ("B".to_string(), "2".to_string()),
+                ]),
+                false,
+                false,
+            )
+            .await
+            .unwrap()
+            .expect("web exists");
+        assert_eq!(batch.set, ["A", "B"]);
+        assert!(batch.collisions.is_empty());
+        let env = stored_env(&h, "web");
+        assert_eq!(env["A"], "1");
+        assert_eq!(env["B"], "2");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_identical_value_is_unchanged_rather_than_a_collision() {
+        let h = env_batch_harness().await;
+        let entries = BTreeMap::from([("A".to_string(), "1".to_string())]);
+        h.ctx
+            .supervisor
+            .set_sheep_env_batch("web".to_string(), entries.clone(), false, false)
+            .await
+            .unwrap();
+        let batch = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch("web".to_string(), entries, false, false)
+            .await
+            .unwrap()
+            .expect("web exists");
+        assert!(batch.set.is_empty());
+        assert_eq!(batch.unchanged, ["A"]);
+        assert!(batch.collisions.is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_collision_without_force_writes_nothing_at_all() {
+        let h = env_batch_harness().await;
+        h.ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([("A".to_string(), "1".to_string())]),
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        let batch = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([
+                    ("A".to_string(), "2".to_string()),
+                    ("B".to_string(), "9".to_string()),
+                ]),
+                false,
+                false,
+            )
+            .await
+            .unwrap()
+            .expect("web exists");
+        assert_eq!(batch.collisions, ["A"]);
+        assert!(batch.set.is_empty());
+        assert!(batch.app.is_none());
+        let env = stored_env(&h, "web");
+        assert_eq!(env["A"], "1", "the colliding key kept its value");
+        assert!(
+            !env.contains_key("B"),
+            "the clean key was not written either"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn force_overwrites_and_reports_the_collision_in_both_lists() {
+        let h = env_batch_harness().await;
+        h.ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([("A".to_string(), "1".to_string())]),
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        let batch = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([("A".to_string(), "2".to_string())]),
+                true,
+                false,
+            )
+            .await
+            .unwrap()
+            .expect("web exists");
+        assert_eq!(batch.set, ["A"]);
+        assert_eq!(batch.collisions, ["A"]);
+        assert_eq!(stored_env(&h, "web")["A"], "2");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_dry_run_answers_and_writes_nothing() {
+        let h = env_batch_harness().await;
+        let batch = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch(
+                "web".to_string(),
+                BTreeMap::from([("A".to_string(), "1".to_string())]),
+                false,
+                true,
+            )
+            .await
+            .unwrap()
+            .expect("web exists");
+        assert_eq!(batch.set, ["A"]);
+        assert!(batch.app.is_none());
+        assert!(
+            shep_core::overrides::get(&h.ctx.paths.overrides, "web")
+                .unwrap()
+                .is_none(),
+            "a dry run left a store behind"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_batch_refuses_a_dog_and_an_unknown_name() {
+        let h = env_batch_harness().await;
+        let entries = BTreeMap::from([("A".to_string(), "1".to_string())]);
+        assert!(
+            h.ctx
+                .supervisor
+                .set_sheep_env_batch("absent".to_string(), entries.clone(), false, false)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let err = h
+            .ctx
+            .supervisor
+            .set_sheep_env_batch("bark".to_string(), entries, false, false)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, SupervisorError::IsADog(_)));
     }
 }
