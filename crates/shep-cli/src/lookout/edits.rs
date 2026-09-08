@@ -204,7 +204,14 @@ mod tests {
             Some(ApplyGroup::NeedsRespawn),
         );
         assert_eq!(edits.len(), 1);
-        assert!(edits.get(&EditKey::Field("cwd".to_owned())).is_some());
+        let entry = edits
+            .get(&EditKey::Field("cwd".to_owned()))
+            .expect("entry filed under cwd");
+        assert_eq!(entry.impact(), Some(ApplyGroup::NeedsRespawn));
+        match entry.edit() {
+            PaneEdit::Set { key, .. } => assert_eq!(key, "cwd"),
+            _ => panic!("expected a Set edit"),
+        }
     }
 
     #[test]
@@ -311,13 +318,16 @@ mod tests {
     /// The set never prints a value: `cwd` holds a home directory and an
     /// env value is a secret (IR-41).
     #[test]
-    fn debug_names_no_value_on_an_edit() {
+    fn debug_prints_the_whole_set_and_no_value_in_it() {
         let mut edits = Edits::default();
         edits.set(
             field("cwd", json!("/home/someone/secret")),
             Some(ApplyGroup::NeedsRespawn),
         );
         let printed = format!("{edits:?}");
-        assert!(!printed.contains("secret"), "{printed}");
+        assert_eq!(
+            printed,
+            "Edits { entries: {Field(\"cwd\"): Edit { edit: Set { key: \"cwd\", value: FieldValue(<string>) }, impact: Some(NeedsRespawn) }}, order: [Field(\"cwd\")] }"
+        );
     }
 }

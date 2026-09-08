@@ -20,6 +20,7 @@
 - Prose that a person reads carries no em dashes and no en dashes. That includes doc comments, help text and the docs site.
 - Terminology: one managed process is a `sheep`, the plural is `flock`, plugin processes are `dogs`, a sheep's children are `lambs`. Never bare "sheeps", never "instance" for a lamb.
 - No absolute local paths anywhere, in code, comments or commit messages. Repo-relative only.
+- **Two assertion bars, because Task 1's review caught the plan violating both.** A redacted `Debug` gets an exact-string test, not a `contains` that only proves one word is absent: IR-41 states the bar that way and `FieldValue`, `PanePending` and `EnvPane` all meet it. And an accessor test asserts the value it got back, never only that it got something: `is_some()` passes for a lookup that returns the wrong entry.
 - **Every code snippet below that describes existing code is a guess written from a survey, not a quotation.** Grep the real file before editing. Where the plan and the code disagree, the code wins and the plan is wrong. Say so in your report.
 
 ## Fixtures this plan adds
