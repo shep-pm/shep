@@ -458,8 +458,11 @@ where
             // can find that environment's tab once the model arrives.
             Effect::LoadSecrets => {
                 let paths = paths.clone();
+                // `all_rows`, not the filtered `rows`: READ BY has to name
+                // every sheep that reads a key, not just the ones a dashboard
+                // name filter left on screen.
                 let procs = app
-                    .rows()
+                    .all_rows()
                     .into_iter()
                     .map(|row| row.info.clone())
                     .collect::<Vec<_>>();
