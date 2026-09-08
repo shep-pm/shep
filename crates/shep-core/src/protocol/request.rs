@@ -2680,6 +2680,31 @@ mod tests {
                     )]),
                 },
             },
+            // `SetSheepEnvBatch`'s own doc comment calls this the densest
+            // run of secrets on the wire, so it gets two entries rather
+            // than one: a single-entry map would not distinguish an object
+            // from a map with one key. `force` and `dry_run` are both
+            // pinned away from their default so a silent default flip on
+            // either field shows up here.
+            Envelope {
+                id: 33,
+                deadline_ms: None,
+                body: Request::SetSheepEnvBatch {
+                    name: "web".to_string(),
+                    entries: BTreeMap::from([
+                        (
+                            "DATABASE_URL".to_string(),
+                            EnvValue::from("postgres://localhost/app".to_string()),
+                        ),
+                        (
+                            "API_KEY".to_string(),
+                            EnvValue::from("sk_live_placeholder".to_string()),
+                        ),
+                    ]),
+                    force: true,
+                    dry_run: true,
+                },
+            },
         ];
         insta::assert_json_snapshot!("request_wire_v8", requests);
     }
@@ -3057,6 +3082,21 @@ mod tests {
             Reply {
                 id: 38,
                 result: Ok(Response::SecretsPut { accepted: 2 }),
+            },
+            // Key names only, on all three lists, and none empty here on
+            // purpose: an empty `Vec` serializes the same whether it holds
+            // strings or something else, so a reader that guessed the
+            // element type wrong would still pass against an empty-list
+            // fixture. `collisions` also proves a forced write can name a
+            // key in both `set` and `collisions` at once.
+            Reply {
+                id: 39,
+                result: Ok(Response::SheepEnvBatch {
+                    name: "web".to_string(),
+                    set: vec!["DATABASE_URL".to_string(), "API_KEY".to_string()],
+                    unchanged: vec!["LOG_LEVEL".to_string()],
+                    collisions: vec!["API_KEY".to_string()],
+                }),
             },
         ];
         insta::assert_json_snapshot!("reply_wire_v8", replies);

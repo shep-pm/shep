@@ -1298,9 +1298,9 @@ Add `use std::collections::BTreeMap;` to the test module if it is not already im
 cargo test --workspace --all-features --lib --bins set_sheep_env_batch
 ```
 
-Expected: PASS. `cargo build --workspace` will now fail on the daemon's exhaustive `match` over `Request`; that is Task 5's job. If the workspace does not build, add a temporary arm only if the next step in this task needs it, and do not commit one.
+Expected: PASS. `cargo build --workspace` will keep building after this commit: `Request` is `#[non_exhaustive]` and `crates/shep-daemon/src/rpc.rs`'s dispatch already ends in a wildcard arm, so the new variant falls through to it silently rather than refusing to compile. That silent fallthrough is exactly why `rpc.rs`'s `every_new_variant_reaches_an_arm_and_not_the_wildcard` test exists: it is a hand-written completeness list, and `SetSheepEnvBatch` must be added to it in this commit or the one that lands the daemon arm, whichever comes first, or the variant is silently refused at runtime with no compiler or test signal.
 
-Because `Request` is matched exhaustively in `crates/shep-daemon/src/rpc.rs`, this task and Task 5 must land in that order and the workspace is red between them. Run the gate after Task 5.
+This task and Task 5 still land in that order, because Task 5 is what makes the new request do anything; the workspace builds the whole time, it just answers `SetSheepEnvBatch` with the wildcard's "not implemented" error until Task 5's arm lands. Run the gate after Task 5.
 
 - [ ] **Step 5: Commit**
 
@@ -1487,7 +1487,7 @@ Reuse whatever fixture the existing `set_sheep_env` tests use. If they build the
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
-cargo test --workspace --all-features --lib --bins set_sheep_env_batch
+cargo test --workspace --all-features --lib --bins -- a_batch_writes_every_key_under_one_lock an_identical_value_is_unchanged_rather_than_a_collision a_collision_without_force_writes_nothing_at_all force_overwrites_and_reports_the_collision_in_both_lists a_dry_run_answers_and_writes_nothing a_batch_refuses_a_dog_and_an_unknown_name
 ```
 
 Expected: FAIL, no method `set_sheep_env_batch`.
@@ -1716,7 +1716,7 @@ The rpc arm, beside `Request::SetSheepEnv`:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-cargo test --workspace --all-features --lib --bins set_sheep_env_batch
+cargo test --workspace --all-features --lib --bins -- a_batch_writes_every_key_under_one_lock an_identical_value_is_unchanged_rather_than_a_collision a_collision_without_force_writes_nothing_at_all force_overwrites_and_reports_the_collision_in_both_lists a_dry_run_answers_and_writes_nothing a_batch_refuses_a_dog_and_an_unknown_name
 ```
 
 Expected: PASS.

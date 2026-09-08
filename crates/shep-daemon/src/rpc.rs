@@ -5077,6 +5077,12 @@ mod tests {
                 environment: "production".to_string(),
                 entries: BTreeMap::new(),
             },
+            Request::SetSheepEnvBatch {
+                name: "ghost".to_string(),
+                entries: BTreeMap::new(),
+                force: false,
+                dry_run: true,
+            },
         ];
         for (id, request) in requests.into_iter().enumerate() {
             let named = format!("{request:?}");
