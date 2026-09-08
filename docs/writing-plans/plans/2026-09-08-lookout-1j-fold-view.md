@@ -549,7 +549,8 @@ cargo test --workspace --all-features -- write_the_gallery --ignored
 
 - [ ] **Step 5: Update the prose**
 
-`docs/lookout/README.md` and `web/src/pages/docs/lookout.astro`: `F` toggles the fold view, `z` collapses a fold, a fold header's numbers are its members summed with the shortest uptime, an action on a fold reaches every member behind a confirm naming the count, and the `no fold` header is not selectable because no selector names its members.
+`docs/lookout/README.md`, `web/src/pages/docs/lookout.astro` and
+`web/src/pages/docs/folds.astro`: `F` toggles the fold view, `z` collapses a fold, a fold header's numbers are its members summed with the shortest uptime, an action on a fold reaches every member behind a confirm naming the count, and the `no fold` header is not selectable because no selector names its members.
 
 **This is prose a person reads. Run the `humanizer` skill, then `rin-voice`, before committing.** No em dashes.
 
@@ -580,7 +581,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 ```bash
 git add crates/shep-cli/src/lookout/ docs/lookout/frames.txt docs/lookout/frames.ansi
 git commit -m "test(lookout): pin the fold view in the frame gallery"
-git add docs/lookout/README.md web/src/pages/docs/lookout.astro
+git add docs/lookout/README.md web/src/pages/docs/lookout.astro web/src/pages/docs/folds.astro
 git commit -m "docs(lookout): describe the fold view and its fold-wide actions"
 ```
 
