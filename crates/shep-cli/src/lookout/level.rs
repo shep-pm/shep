@@ -3,11 +3,7 @@
 /// `Ord` is derived and the declaration order is the ordering: `Trace` is
 /// the lowest and `Error` the highest, so `level >= minimum` reads the way
 /// an operator setting `level >= warn` expects.
-///
-/// No non-test caller yet: `#[allow(dead_code)]` says so rather than
-/// inventing one. Task 3 wires this into the bleats filter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[allow(dead_code)]
 pub enum Level {
     Trace,
     Debug,
@@ -33,11 +29,7 @@ pub enum Level {
 ///
 /// `None` is the ordinary answer for app output. Callers must not treat it
 /// as "below the minimum": see the spec's decision 3.
-///
-/// No non-test caller yet: `#[allow(dead_code)]` says so rather than
-/// inventing one. Task 3 wires this into the bleats filter.
 #[must_use]
-#[allow(dead_code)]
 pub fn level_of(line: &str) -> Option<Level> {
     line.split_whitespace().take(4).find_map(|word| {
         match word

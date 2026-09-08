@@ -2397,12 +2397,18 @@ impl App {
 
     /// The bleats pane's own keymap, in force while [`Self::bleats_pane`] is
     /// `Some`. There is nothing on this screen to move or edit: `Escape`
-    /// closes it, and everything else is inert.
+    /// drops the newest filter chip first, one axis at a time, and only
+    /// closes the pane once none are left.
     fn on_bleats_key(&mut self, key: KeyPress) -> Effect {
         match key {
             KeyPress::Quit => Effect::Quit,
             KeyPress::Escape => {
-                self.close_pane();
+                let dropped_a_chip = self
+                    .bleats_pane_mut()
+                    .is_some_and(BleatsPane::drop_newest_chip);
+                if !dropped_a_chip {
+                    self.close_pane();
+                }
                 Effect::None
             }
             KeyPress::SelectUp
@@ -4328,6 +4334,16 @@ impl App {
     #[must_use]
     pub fn bleats_pane(&self) -> Option<&BleatsPane> {
         match &self.body {
+            Body::Bleats(pane) => Some(pane),
+            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) => None,
+        }
+    }
+
+    /// [`Self::bleats_pane`]'s mutable twin, for `Escape`'s chip-by-chip
+    /// backout and the filter-setting keys the reducer handles on
+    /// [`Body::Bleats`].
+    fn bleats_pane_mut(&mut self) -> Option<&mut BleatsPane> {
+        match &mut self.body {
             Body::Bleats(pane) => Some(pane),
             Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) => None,
         }
@@ -7112,6 +7128,18 @@ mod tests {
     /// preceded the pane. Same rule the config pane follows.
     #[test]
     fn esc_from_the_bleats_pane_lands_on_the_dashboard() {
+        let mut app =
+            fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(matches!(app.body(), Body::FlockTable));
+    }
+
+    /// With no chips left, `Escape` closes the pane instead of dropping one.
+    /// A freshly opened pane has no filters set, so its very first `Escape`
+    /// already exercises this rather than the chip-dropping branch.
+    #[test]
+    fn esc_with_no_chips_closes_the_pane() {
         let mut app =
             fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
         let _ = app.update(Msg::Key(KeyPress::Bleats));
