@@ -7,20 +7,17 @@
 //! declare. A load merges the two: declared keys win, then the override,
 //! then the built-in default.
 //!
-//! Same on-disk shape as [`crate::kv`]: a read-modify-rename under an
-//! exclusive lock on a sibling `overrides.json.lock`, copied rather than
-//! shared since `KvLock` is private to its module.
+//! Same on-disk shape as [`crate::kv`]: a read-modify-rename under a
+//! [`crate::file_lock`] on a sibling `overrides.json.lock`.
 
 use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write as _;
 use std::path::Path;
-// `PathBuf` backs `lock_path` below, gated the same way for both platform
-// arms of `OverridesLock`.
-#[cfg(any(unix, windows))]
-use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
+
+use crate::file_lock::FileLock;
 
 /// The on-disk format's version.
 ///
@@ -132,110 +129,6 @@ impl From<serde_json::Error> for OverridesError {
     }
 }
 
-/// The lock file that guards `path`: its own name with `.lock` appended, so
-/// it sits in `$SHEP_HOME` next to the store and inherits that directory's
-/// `0700`.
-///
-/// Copied from `kv::lock_path`: see that module's doc for why a sibling
-/// file rather than a lock on the store itself.
-#[cfg(any(unix, windows))]
-fn lock_path(path: &Path) -> PathBuf {
-    let mut name = path
-        .file_name()
-        .map(std::ffi::OsStr::to_os_string)
-        .unwrap_or_default();
-    name.push(".lock");
-    path.parent().unwrap_or_else(|| Path::new(".")).join(name)
-}
-
-/// An exclusive advisory lock over one overrides store, released when it
-/// drops.
-///
-/// Mirrors `kv::KvLock`: a lock on a sibling `overrides.json.lock`, never
-/// on the store itself.
-struct OverridesLock {
-    /// `flock(2)` is released by this handle's `Drop`. Named with a leading
-    /// underscore because it is held, never read.
-    #[cfg(unix)]
-    _flock: nix::fcntl::Flock<std::fs::File>,
-    /// The lock file, opened with `share_mode(0)` so no other handle,
-    /// same-process or not, read or write, can open it while this one is
-    /// live. Released by this handle's `Drop`, the same role `_flock` plays
-    /// on unix. Named with a leading underscore because it is held, never
-    /// read.
-    #[cfg(windows)]
-    _handle: std::fs::File,
-}
-
-impl OverridesLock {
-    /// Blocks until this process holds the store's lock exclusively.
-    ///
-    /// # Errors
-    /// The lock file could not be created beside `path`, or `flock` failed
-    /// for a reason other than contention (contention blocks rather than
-    /// failing).
-    #[cfg(unix)]
-    fn acquire(path: &Path) -> std::io::Result<Self> {
-        use nix::fcntl::{Flock, FlockArg};
-        use std::os::unix::fs::OpenOptionsExt as _;
-
-        let file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(crate::atomic_file::OWNER_ONLY_FILE_MODE)
-            .open(lock_path(path))?;
-
-        Flock::lock(file, FlockArg::LockExclusive)
-            .map(|flock| Self { _flock: flock })
-            .map_err(|(_file, errno)| std::io::Error::from(errno))
-    }
-
-    /// Blocks until this process holds the store's lock exclusively.
-    ///
-    /// `flock(2)` has no Windows equivalent, but `share_mode(0)` gives the
-    /// same exclusivity through a different door: see `kv::KvLock::acquire`
-    /// (windows) for the full reasoning this mirrors, including why it polls
-    /// on a short sleep rather than blocking.
-    ///
-    /// # Errors
-    /// The lock file could not be created beside `path`, or the open failed
-    /// for a reason other than sharing contention (contention retries rather
-    /// than failing).
-    #[cfg(windows)]
-    fn acquire(path: &Path) -> std::io::Result<Self> {
-        use std::os::windows::fs::OpenOptionsExt as _;
-
-        /// Windows' `ERROR_SHARING_VIOLATION`: another handle already holds
-        /// share access this open's `share_mode(0)` denies. Hardcoded rather
-        /// than pulled from `windows-sys`, matching `kv::KvLock::acquire`.
-        const ERROR_SHARING_VIOLATION: i32 = 32;
-
-        /// How long a contended retry sleeps before trying again. Short
-        /// enough that a lock held for a normal `put`/`get`'s duration (a
-        /// handful of small file operations) costs this loop only a few
-        /// iterations, long enough not to spin the CPU while it waits.
-        const RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(2);
-
-        let lock_path = lock_path(path);
-        loop {
-            match std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(false)
-                .share_mode(0)
-                .open(&lock_path)
-            {
-                Ok(handle) => return Ok(Self { _handle: handle }),
-                Err(error) if error.raw_os_error() == Some(ERROR_SHARING_VIOLATION) => {
-                    std::thread::sleep(RETRY_INTERVAL);
-                }
-                Err(error) => return Err(error),
-            }
-        }
-    }
-}
-
 /// Reads `path` under the lock the caller already holds.
 ///
 /// A missing file reads as an empty, current-version store: a fresh
@@ -292,7 +185,7 @@ fn write_file(path: &Path, file: &OverridesFile) -> Result<(), OverridesError> {
 pub fn all(path: &Path) -> Result<BTreeMap<String, AppOverrides>, OverridesError> {
     // Taking the lock here too costs one extra `open`, but it orders this
     // read against a writer's read-modify-rename instead of racing it.
-    let _lock = OverridesLock::acquire(path)?;
+    let _lock = FileLock::acquire(path)?;
     Ok(read_file(path)?.apps)
 }
 
@@ -316,7 +209,7 @@ pub fn get(path: &Path, name: &str) -> Result<Option<AppOverrides>, OverridesErr
 /// - [`OverridesError::Io`]: the lock, the temp file, the `fsync` or the
 ///   `rename` failed.
 pub fn put(path: &Path, name: &str, value: &AppOverrides) -> Result<(), OverridesError> {
-    let _lock = OverridesLock::acquire(path)?;
+    let _lock = FileLock::acquire(path)?;
     let mut file = read_file(path)?;
     file.version = OVERRIDES_VERSION;
     file.apps.insert(name.to_string(), value.clone());
@@ -329,7 +222,7 @@ pub fn put(path: &Path, name: &str, value: &AppOverrides) -> Result<(), Override
 ///
 /// The same set [`put`] returns: `FutureVersion`, `Decode`, `Io`.
 pub fn remove(path: &Path, name: &str) -> Result<bool, OverridesError> {
-    let _lock = OverridesLock::acquire(path)?;
+    let _lock = FileLock::acquire(path)?;
     let mut file = read_file(path)?;
     let was_present = file.apps.remove(name).is_some();
     if was_present {
@@ -358,7 +251,7 @@ pub fn update(
     if changes.is_empty() {
         return Ok(());
     }
-    let _lock = OverridesLock::acquire(path)?;
+    let _lock = FileLock::acquire(path)?;
     let mut file = read_file(path)?;
     for (name, change) in changes {
         match change {
