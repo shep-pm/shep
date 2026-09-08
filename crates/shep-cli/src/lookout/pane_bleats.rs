@@ -1,6 +1,8 @@
 //! The full-screen bleats pane's own state: which sheep it is pinned to, and
 //! the three filters an operator can stack over the feed it reads.
 
+use regex::Regex;
+
 use super::app::RowKey;
 use super::level::{Level, level_of};
 use super::tail::{Stream, TailLine};
@@ -13,9 +15,12 @@ use super::tail::{Stream, TailLine};
 /// [`BleatsPane::drop_newest_chip`] needs an explicit order to pop from.
 ///
 /// No non-test caller for the setters that construct a variant yet:
-/// `#[allow(dead_code)]` on them says so rather than inventing one. Task 4
-/// wires the filter row's keys into [`BleatsPane::set_stream`],
-/// [`BleatsPane::set_min_level`] and [`BleatsPane::set_match`].
+/// `#[allow(dead_code)]` on them says so rather than inventing one.
+/// [`BleatsPane::set_stream`], [`BleatsPane::set_min_level`] and
+/// [`BleatsPane::set_match`] each construct one, but no task in this plan
+/// binds a key to any of the three — the filter row (this task) only reads
+/// `Filters`, it does not set it. Whichever task wires the keys is the
+/// first production caller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
 enum Axis {
@@ -25,6 +30,107 @@ enum Axis {
     Level,
     /// The text-match axis.
     Match,
+}
+
+/// What the match axis's typed text resolves to.
+///
+/// `/pattern/` (a leading and trailing slash, the same delimiter grep,
+/// sed and this pane's own `filters` chip agree to read) compiles as a
+/// regex; anything else is a plain substring. This is the deliberate
+/// choice for distinguishing the two, since the spec says only "text or
+/// regex" and not how an operator picks: trying to compile *every* typed
+/// string as a regex and falling back to literal on a parse error was
+/// rejected, because almost any short string a person types (`get
+/// index.html`, `(unset)`) is *already* valid regex syntax with a
+/// different meaning than its literal reading — `.` and `(` would
+/// silently stop meaning themselves. An explicit delimiter costs two
+/// characters and never reinterprets a search an operator meant literally.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchKind {
+    /// Plain substring search: `Filters::matcher`'s text, verbatim.
+    Literal,
+    /// `/…/`-delimited text that compiled.
+    Regex,
+    /// `/…/`-delimited text that did not compile. Matches no line rather
+    /// than every line or panicking; the filter row names this state so an
+    /// operator sees a typo rather than a feed that has gone silent for no
+    /// visible reason.
+    Invalid,
+}
+
+/// How `Filters::matcher`'s typed text is actually matched against a line.
+///
+/// Parsed fresh from [`Filters::matcher`] wherever it is needed
+/// ([`Filters::keeps`] through [`Filters::visible`], and the filter row's
+/// highlighting) rather than cached on `Filters` itself: `regex::Regex`
+/// implements neither `PartialEq` nor `Eq`, so storing a compiled one on
+/// `Filters` would force a hand-written `PartialEq` (or dropping it, which
+/// every existing test compares `Filters` by), and it implements `Debug` by
+/// printing its source pattern, which is a worse `Debug` for `Filters` than
+/// the plain string already there. Recompiling costs one small regex
+/// compile per redraw at most, against a window capped at
+/// [`super::tail::FEED_TAIL_LINES`] lines; nothing here is hot enough for
+/// that to matter.
+enum Matcher {
+    /// Plain substring search.
+    Literal(String),
+    /// A compiled `/…/`-delimited regex.
+    Regex(Regex),
+    /// A `/…/`-delimited pattern that failed to compile.
+    Invalid,
+}
+
+impl Matcher {
+    /// Parses `text` per [`MatchKind`]'s rule.
+    fn parse(text: &str) -> Self {
+        match delimited_regex(text) {
+            Some(pattern) => Regex::new(pattern).map_or(Self::Invalid, Self::Regex),
+            None => Self::Literal(text.to_string()),
+        }
+    }
+
+    /// This matcher's [`MatchKind`].
+    fn kind(&self) -> MatchKind {
+        match self {
+            Self::Literal(_) => MatchKind::Literal,
+            Self::Regex(_) => MatchKind::Regex,
+            Self::Invalid => MatchKind::Invalid,
+        }
+    }
+
+    /// Whether `haystack` matches at all.
+    fn is_match(&self, haystack: &str) -> bool {
+        match self {
+            Self::Literal(pattern) => haystack.contains(pattern.as_str()),
+            Self::Regex(re) => re.is_match(haystack),
+            Self::Invalid => false,
+        }
+    }
+
+    /// Every byte range in `haystack` this matcher hits, oldest first, for
+    /// highlighting. Empty for [`Self::Invalid`], which matches nothing, and
+    /// for an empty literal pattern, which `str::match_indices` would
+    /// otherwise report at every byte boundary.
+    fn ranges(&self, haystack: &str) -> Vec<(usize, usize)> {
+        match self {
+            Self::Literal(pattern) if !pattern.is_empty() => haystack
+                .match_indices(pattern.as_str())
+                .map(|(start, matched)| (start, start + matched.len()))
+                .collect(),
+            Self::Literal(_) | Self::Invalid => Vec::new(),
+            Self::Regex(re) => re
+                .find_iter(haystack)
+                .map(|m| (m.start(), m.end()))
+                .collect(),
+        }
+    }
+}
+
+/// `text` if it is `/`-delimited on both ends with at least one byte between
+/// them, stripped of both delimiters; `None` otherwise.
+fn delimited_regex(text: &str) -> Option<&str> {
+    let inner = text.strip_prefix('/')?.strip_suffix('/')?;
+    (!inner.is_empty()).then_some(inner)
 }
 
 /// The bleats pane's three filter axes, composed with AND.
@@ -40,7 +146,10 @@ pub struct Filters {
     /// A line with no detectable level always passes regardless of this
     /// field: see [`Filters::keeps`].
     pub min_level: Option<Level>,
-    /// Keep only lines whose text contains this substring.
+    /// Keep only lines this text matches: a plain substring, or a
+    /// `/…/`-delimited regex. See [`MatchKind`] for exactly how the two are
+    /// told apart, and [`Filters::match_kind`]/[`Filters::match_ranges`] for
+    /// reading the result back.
     pub matcher: Option<String>,
     /// The axes currently set, oldest first, so the newest is the last
     /// element.
@@ -51,9 +160,13 @@ impl Filters {
     /// Records that `axis` just turned on or off, keeping [`Self::order`] in
     /// sync without letting an axis appear in it twice.
     ///
-    /// No non-test caller yet: `#[allow(dead_code)]` says so rather than
-    /// inventing one. Task 4 wires the filter row's keys into the setters
-    /// that call this.
+    /// No non-test caller yet in this plan: `#[allow(dead_code)]` says so
+    /// rather than inventing one. `set_stream`, `set_min_level` and
+    /// `set_match` call this, and Task 4 (this task) exercises all three
+    /// from its own test fixture, but no task in this plan wires an actual
+    /// key to any of them — the filter row this task draws only *reads*
+    /// `Filters`. Whichever task ends up binding the keys is this method's
+    /// first production caller.
     #[allow(dead_code)]
     fn note_axis(&mut self, axis: Axis, now_set: bool) {
         let already_set = self.order.contains(&axis);
@@ -64,17 +177,44 @@ impl Filters {
         }
     }
 
+    /// Whether no axis is currently set.
+    ///
+    /// The filter row renders only when this is `false`: with nothing set,
+    /// a row stating "all three must hold" and a survivor count equal to
+    /// the total would say nothing an operator does not already see.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.stream.is_none() && self.min_level.is_none() && self.matcher.is_none()
+    }
+
+    /// What the match axis's typed text resolves to, or `None` when the
+    /// axis is not set.
+    #[must_use]
+    pub fn match_kind(&self) -> Option<MatchKind> {
+        self.matcher
+            .as_deref()
+            .map(|text| Matcher::parse(text).kind())
+    }
+
+    /// Every byte range in `haystack` the match axis hits, for highlighting
+    /// a rendered line. Empty when the axis is not set, and empty (never a
+    /// panic) for an invalid regex.
+    #[must_use]
+    pub fn match_ranges(&self, haystack: &str) -> Vec<(usize, usize)> {
+        self.matcher
+            .as_deref()
+            .map(|text| Matcher::parse(text).ranges(haystack))
+            .unwrap_or_default()
+    }
+
     /// Whether `line` survives every axis currently set.
     ///
     /// Each axis short-circuits the line out the moment it fails; an axis
     /// left `None` holds automatically, which is how the three compose
-    /// with AND rather than needing a combinator.
-    ///
-    /// No non-test caller yet: `#[allow(dead_code)]` says so rather than
-    /// inventing one. Task 5 reaches this through [`BleatsPane::visible`]
-    /// on every poll.
-    #[allow(dead_code)]
-    fn keeps(&self, line: &TailLine) -> bool {
+    /// with AND rather than needing a combinator. `matcher` is the match
+    /// axis's typed text, already parsed once by the caller
+    /// ([`Self::visible`]) rather than per line.
+    fn keeps(&self, line: &TailLine, matcher: Option<&Matcher>) -> bool {
         if let Some(stream) = self.stream
             && line.stream != stream
         {
@@ -93,8 +233,8 @@ impl Filters {
                 return false;
             }
         }
-        if let Some(text) = &self.matcher
-            && !line.text.contains(text.as_str())
+        if let Some(matcher) = matcher
+            && !matcher.is_match(&line.text)
         {
             return false;
         }
@@ -135,10 +275,9 @@ impl BleatsPane {
 
     /// The filters currently stacked on this pane's feed.
     ///
-    /// No non-test caller yet: `#[allow(dead_code)]` says so rather than
-    /// inventing one. Task 4 reads this to draw the filter row's chips.
+    /// Read by [`super::view::bleats_full::draw`] to draw the filter row's
+    /// chips.
     #[must_use]
-    #[allow(dead_code)]
     pub fn filters(&self) -> &Filters {
         &self.filters
     }
@@ -146,7 +285,9 @@ impl BleatsPane {
     /// Restricts the feed to one stream, or both when `stream` is `None`.
     ///
     /// No non-test caller yet: `#[allow(dead_code)]` says so rather than
-    /// inventing one. Task 4 calls this from the filter row's stream key.
+    /// inventing one. This plan's filter row (drawn by
+    /// [`super::view::bleats_full::draw`]) only reads [`Filters`]; no task
+    /// in it binds a key to this setter.
     #[allow(dead_code)]
     pub fn set_stream(&mut self, stream: Option<Stream>) {
         self.filters.note_axis(Axis::Stream, stream.is_some());
@@ -157,14 +298,15 @@ impl BleatsPane {
     /// when `level` is `None`.
     ///
     /// No non-test caller yet: `#[allow(dead_code)]` says so rather than
-    /// inventing one. Task 4 calls this from the filter row's level key.
+    /// inventing one. See [`Self::set_stream`]'s doc for why.
     #[allow(dead_code)]
     pub fn set_min_level(&mut self, level: Option<Level>) {
         self.filters.note_axis(Axis::Level, level.is_some());
         self.filters.min_level = level;
     }
 
-    /// Sets the text a line's body must contain to show.
+    /// Sets the text a line's body must match to show: a plain substring, or
+    /// a `/…/`-delimited regex (see [`MatchKind`]).
     ///
     /// An empty string clears the axis rather than matching every line:
     /// there is no chip an operator can point at for "match nothing
@@ -172,7 +314,7 @@ impl BleatsPane {
     /// never set.
     ///
     /// No non-test caller yet: `#[allow(dead_code)]` says so rather than
-    /// inventing one. Task 4 calls this from the filter row's match box.
+    /// inventing one. See [`Self::set_stream`]'s doc for why.
     #[allow(dead_code)]
     pub fn set_match(&mut self, text: String) {
         let matcher = (!text.is_empty()).then_some(text);
@@ -182,14 +324,15 @@ impl BleatsPane {
 
     /// The lines from `lines` that survive every filter axis currently set.
     ///
-    /// No non-test caller yet: `#[allow(dead_code)]` says so rather than
-    /// inventing one. Task 5 calls this on every poll to draw the feed.
+    /// Read by [`super::view::bleats_full::draw`], both to draw only the
+    /// lines that pass and to count how many did, out of how many were in
+    /// the window.
     #[must_use]
-    #[allow(dead_code)]
     pub fn visible<'a>(&self, lines: &'a [TailLine]) -> Vec<&'a TailLine> {
+        let matcher = self.filters.matcher.as_deref().map(Matcher::parse);
         lines
             .iter()
-            .filter(|line| self.filters.keeps(line))
+            .filter(|line| self.filters.keeps(line, matcher.as_ref()))
             .collect()
     }
 
@@ -272,5 +415,111 @@ mod tests {
 
         assert!(pane.drop_newest_chip(), "the stream chip goes next");
         assert!(!pane.drop_newest_chip(), "nothing left to drop");
+    }
+
+    /// `note_axis`'s "unset an axis already in `order`, and not the newest
+    /// one" branch. Without the `retain`, `order` would still list `Stream`
+    /// after this, and the second `drop_newest_chip` below would find it
+    /// there and report `true` instead of `false`.
+    #[test]
+    fn clearing_an_older_axis_directly_removes_it_from_the_drop_order() {
+        let mut pane = BleatsPane::new(RowKey::Sheep(9));
+        pane.set_stream(Some(Stream::Err));
+        pane.set_min_level(Some(Level::Warn));
+        pane.set_stream(None);
+
+        assert!(pane.drop_newest_chip(), "level is the only chip left");
+        assert!(pane.filters().min_level.is_none());
+        assert!(
+            !pane.drop_newest_chip(),
+            "stream was cleared directly, not through drop_newest_chip, and \
+             must not still be sitting in the order"
+        );
+    }
+
+    /// `note_axis`'s "re-set an axis already set" branch: it must not move
+    /// to the back of `order`. Without the `already_set` guard, `order`
+    /// would gain a second `Stream` entry and the first
+    /// `drop_newest_chip` below would pop that instead of `Level`.
+    #[test]
+    fn re_setting_an_already_set_axis_does_not_reorder_it() {
+        let mut pane = BleatsPane::new(RowKey::Sheep(9));
+        pane.set_stream(Some(Stream::Err));
+        pane.set_min_level(Some(Level::Warn));
+        pane.set_stream(Some(Stream::Out));
+
+        assert!(pane.drop_newest_chip(), "level is still the newest chip");
+        assert!(pane.filters().min_level.is_none());
+        assert!(
+            pane.filters().stream.is_some(),
+            "the re-set stream chip is still the older one"
+        );
+    }
+
+    /// `/…/` compiles as a regex rather than a literal search for those two
+    /// characters.
+    #[test]
+    fn a_slash_delimited_matcher_is_read_as_a_regex() {
+        let mut pane = BleatsPane::new(RowKey::Sheep(9));
+        pane.set_match("/poo+l/".to_string());
+        let lines = vec![
+            line(Stream::Out, "pool exhausted"),
+            line(Stream::Out, "pooool exhausted"),
+            line(Stream::Out, "pol exhausted"),
+            line(Stream::Out, "kennel"),
+        ];
+        let kept: Vec<&str> = pane
+            .visible(&lines)
+            .iter()
+            .map(|l| l.text.as_str())
+            .collect();
+        assert_eq!(kept, vec!["pool exhausted", "pooool exhausted"]);
+    }
+
+    /// A pattern that does not compile matches nothing rather than
+    /// panicking or matching every line, and the axis says so through
+    /// `match_kind` for the filter row to render.
+    #[test]
+    fn an_invalid_regex_matches_no_line_and_reports_itself_invalid() {
+        let mut pane = BleatsPane::new(RowKey::Sheep(9));
+        pane.set_match("/pool(/".to_string());
+        let lines = vec![line(Stream::Out, "pool exhausted")];
+        assert!(pane.visible(&lines).is_empty());
+        assert_eq!(pane.filters().match_kind(), Some(MatchKind::Invalid));
+    }
+
+    /// A plain string with no delimiters stays a literal search, even one
+    /// that would parse as a different regex if it were read as one.
+    #[test]
+    fn a_plain_matcher_is_read_literally_not_as_a_regex() {
+        let mut pane = BleatsPane::new(RowKey::Sheep(9));
+        // `.` would match any character as a regex; read literally it must
+        // only match a real dot.
+        pane.set_match("get index.html".to_string());
+        let lines = vec![
+            line(Stream::Out, "GET get index.html 200"),
+            line(Stream::Out, "GET get indexXhtml 200"),
+        ];
+        let kept: Vec<&str> = pane
+            .visible(&lines)
+            .iter()
+            .map(|l| l.text.as_str())
+            .collect();
+        assert_eq!(kept, vec!["GET get index.html 200"]);
+        assert_eq!(pane.filters().match_kind(), Some(MatchKind::Literal));
+    }
+
+    /// The ranges a regex matcher reports are what the filter row highlights;
+    /// pinned here directly rather than only through a render assertion.
+    #[test]
+    fn match_ranges_reports_every_hit_a_regex_matcher_finds() {
+        let mut pane = BleatsPane::new(RowKey::Sheep(9));
+        pane.set_match("/po+l/".to_string());
+        let ranges = pane.filters().match_ranges("pool then pol then pooool");
+        let hits: Vec<&str> = ranges
+            .iter()
+            .map(|&(start, end)| &"pool then pol then pooool"[start..end])
+            .collect();
+        assert_eq!(hits, vec!["pool", "pol", "pooool"]);
     }
 }

@@ -186,6 +186,10 @@ schemars.workspace = true
 # see the workspace `Cargo.toml`'s comments on each.
 time.workspace = true
 instability.workspace = true
+# The bleats pane's match axis: an operator can give `/pattern/` to search
+# by regex instead of literal text. Adds zero crates: shep-core already
+# resolves this version for its own selector matching.
+regex.workspace = true
 
 [dev-dependencies]
 # `test-util` for `#[tokio::test(start_paused = true)]`, `crate::http`'s "a
