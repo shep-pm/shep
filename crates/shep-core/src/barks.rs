@@ -8,9 +8,10 @@
 //! any unparseable line, since this file is read during an incident.
 //!
 //! The two writers are separate OS processes, so a [`crate::file_lock`] on
-//! a sibling `<path>.lock` serializes them; shep-core, not shep-daemon, is
-//! where that lock belongs.
+//! a sibling `<path>.lock` serializes them.
 
+// The lock type lives in shep-core rather than shep-daemon so both writers
+// can name it.
 use core::fmt;
 use std::io::Write as _;
 use std::path::Path;

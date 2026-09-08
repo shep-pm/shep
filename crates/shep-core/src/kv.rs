@@ -5,12 +5,13 @@
 //! configures a sheep, `shep.toml` the shepherd and its dogs. A file rather
 //! than an RPC, so `shep set`/`get`/`unset` work with no shepherd running.
 //! Every mutation is a read-modify-rename under a [`crate::file_lock`] on
-//! a sibling `kv.json.lock`, staged through a temp file: the same shape
-//! every other store uses, so do not reimplement it here.
+//! a sibling `kv.json.lock`, staged through a temp file.
 //!
 //! Keys match `[A-Za-z0-9._-]`, 1 to [`MAX_KEY_BYTES`], not starting with
 //! `.`; a dot is part of a key's name, not a path.
 
+// Every store writes through this same shape. Take `file_lock` and
+// `atomic_file` rather than open-coding another copy here.
 use core::fmt;
 use std::collections::BTreeMap;
 use std::io::Write as _;

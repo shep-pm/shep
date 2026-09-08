@@ -1,12 +1,9 @@
 //! The staging file a config is written through, and the old name for the
 //! lock its writers hold.
-//!
-//! Lives in `shep-core`, not `shep-cli`, because `dogs.toml` has a
-//! daemon-side writer and a type the daemon cannot name is a type it
-//! cannot hold. `shep-cli`'s three existing writers of `shep.toml` and
-//! `dogs.toml` keep using this one, imported back in through a
-//! `pub(super) use`.
 
+// In shep-core rather than shep-cli because `dogs.toml` has a daemon-side
+// writer, and a type the daemon cannot name is a type it cannot hold.
+// shep-cli's three writers import both back through a `pub(super) use`.
 use std::path::Path;
 
 /// The lock a config file's writers hold across their read-modify-write.
