@@ -479,13 +479,24 @@ const store = `$ cat $SHEP_HOME/overrides.json
     </p>
     <p>
       <code>shep import env</code> is a third door, beside a Flockfile load
-      and a pane edit: it writes a sheep's env override directly, every key
-      the file held in one write, and the keys it writes survive a later
-      template load the same way a pane edit's do. A key it did not mark{" "}
+      and a pane edit: it writes a sheep's env override directly, in one
+      write, for every key the file held or the narrower set{" "}
+      <code>--only</code> names. A key already holding the same value is
+      reported unchanged rather than rewritten. The keys it writes survive a
+      later template load the same way a pane edit's do. A key it did not
+      mark{" "}
       <code>--secret</code> is stored in the clear, and is copied into{" "}
       <code>flock.json</code> and the handover blob with the rest of the
       sheep's config, same as any other override. See{" "}
       <a href="/docs/secrets">Secrets</a>.
+    </p>
+    <p class="fine">
+      A plain value's own <code>{'{{'}</code> and <code>{'}}'}</code> are
+      doubled going in, so what lands in <code>overrides.json</code> and{" "}
+      <code>flock.json</code> is not what the <code>.env</code> wrote: a line
+      reading <code>hello {'{{world}}'}</code> is stored as{" "}
+      <code>hello {'{{{{world}}}}'}</code>. Reading or hand-editing either
+      file, expect the doubled form.
     </p>
     <p class="fine">
       A store carrying a version number higher than this shep understands is

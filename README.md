@@ -34,8 +34,8 @@ shep welcome
 shep is a clean-room reimplementation of pm2's feature list, and
 `shep import pm2` turns whatever `pm2 save` last wrote into a Flockfile. It
 reads `--from`, or `~/.pm2/dump.pm2`, and starts nothing. A `.env` has its own
-verb: `shep import env` puts every key into one sheep's env, and the ones you
-name into the secret store.
+verb: `shep import env` puts each key it holds, or the narrower set `--only`
+names, into one sheep's env, and the ones you name into the secret store.
 
 The difference worth switching for is that shep tells you the truth about what
 it did. `shep reload` does not claim zero-downtime, because shep never binds

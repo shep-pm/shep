@@ -2442,15 +2442,17 @@ The sheep has to exist already: this records an operator override, which is per 
 start` first.
 
 Any collision, any pattern that matches nothing, and any line the grammar does not accept refuses
-the whole import. A refusal reached before either store is written says so and leaves both alone;
-one reached after the secret store is written counts the keys it left there, which nothing
-references until the import is re-run.
+the whole import. A refusal reached before the secret store is written leaves both stores alone; one
+reached after counts the keys it left there, which nothing references until the import is re-run.
 
 Usage: shep import env [OPTIONS] --app <APP> <FILE>
 
 Arguments:
   <FILE>
           The `.env` to read
+          
+          A `{{...}}` in a plain value reaches the app as the literal text the file wrote, not as a
+          shep template reference.
 
 Options:
       --app <APP>

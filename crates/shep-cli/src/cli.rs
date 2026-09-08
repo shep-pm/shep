@@ -1373,6 +1373,9 @@ pub struct ImportPm2Args {
 #[derive(Debug, clap::Args)]
 pub struct ImportEnvArgs {
     /// The `.env` to read
+    ///
+    /// A `{{...}}` in a plain value reaches the app as the literal text the
+    /// file wrote, not as a shep template reference.
     pub file: PathBuf,
     /// The sheep whose env these keys belong to
     #[arg(long)]
