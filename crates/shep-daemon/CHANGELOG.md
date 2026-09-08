@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-09-08
+
+### Changed
+
+- Build every SheepSlot from one constructor
+- Build the supervisor test actors from one fixture
+
+
 ## [0.6.2] - 2026-09-08
 
 
