@@ -2201,6 +2201,19 @@ impl App {
                             pane.tab = pane.tab.min(model.environments.len().saturating_sub(1));
                             pane.selected = pane.selected.min(model.rows.len().saturating_sub(1));
                             pane.model = model;
+                            // The row count clamp above says nothing about
+                            // collapse state, and `collapsed` survives a
+                            // reload: the surviving index can still name a
+                            // row a still-folded namespace hides. Same
+                            // fallback the `Collapse` arm uses.
+                            if pane
+                                .model
+                                .rows
+                                .get(pane.selected)
+                                .is_some_and(|row| pane.is_collapsed(&row.source))
+                            {
+                                pane.move_by(0);
+                            }
                         }
                         Err(message) => {
                             self.notice = Some(Notice {
@@ -2996,6 +3009,14 @@ impl App {
                     let namespace = namespace.clone();
                     if !pane.collapsed.remove(&namespace) {
                         pane.collapsed.insert(namespace);
+                        // Folding away the group `selected` sits in leaves
+                        // no marked row on screen and, worse, a `v` past
+                        // this point would reveal a value nobody can see.
+                        // `move_by`'s own hidden-selection fallback already
+                        // knows how to land on the nearest visible
+                        // neighbour, so reuse it rather than duplicate the
+                        // boundary search here.
+                        pane.move_by(0);
                     }
                 }
                 Effect::None
@@ -5538,6 +5559,11 @@ impl App {
     ///
     /// The value is not on screen when this returns. [`Self::on_revealed`]
     /// puts it there once the read lands.
+    ///
+    /// No visibility check on `pane.selected` here: every writer of that
+    /// field (`move_by`, `move_to_first`, `move_to_last`, the `Collapse`
+    /// arm and the `Msg::Secrets` clamp) already keeps it inside the
+    /// visible set, so a hidden `selected` cannot reach this call.
     fn reveal_selected(&mut self) -> Effect {
         if !self.reveal_gate_open() {
             self.notice = Some(Notice {
@@ -7867,8 +7893,103 @@ mod tests {
         );
     }
 
+    /// Collapsing the very group `selected` sits in must not leave it
+    /// naming a hidden row: `view::secrets::draw` skips a row its source
+    /// is collapsed, so an untouched `selected` there would mark nothing
+    /// on screen at all. Asserted through [`SecretsPane::is_collapsed`],
+    /// the same predicate the view calls before drawing a gutter marker,
+    /// rather than a raw index, so this fails the way the view would fail
+    /// rather than the way an internal counter would.
     #[test]
-    fn r_reloads_and_clears_a_revealed_value() {
+    fn collapsing_the_selected_group_lands_on_a_still_visible_row() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                rows: vec![
+                    plain_row("FIRST", Source::Operator),
+                    plain_row("vercel/A", Source::Namespace("vercel".to_string())),
+                    plain_row("vercel/B", Source::Namespace("vercel".to_string())),
+                    plain_row("LAST", Source::Operator),
+                ],
+                ..SecretsModel::default()
+            })),
+        });
+
+        // Land on a member of the group before folding it.
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let _ = app.update(Msg::Key(KeyPress::Collapse));
+
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        let row = &pane.model.rows[pane.selected];
+        assert!(
+            !pane.is_collapsed(&row.source),
+            "selected still names a row the fold it sat in just hid"
+        );
+    }
+
+    /// `collapsed` outlives a reload; row order does not. This pins the
+    /// `Msg::Secrets` clamp against exactly that gap: the row count clamp
+    /// alone would leave `selected` at the same numeric index, which the
+    /// fresh model happens to give to a member of the still-folded
+    /// `vercel` namespace, hiding it just as surely as a `Collapse` this
+    /// reload never asked for.
+    #[test]
+    fn reloading_cannot_leave_selected_on_a_row_a_standing_fold_hides() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                rows: vec![
+                    plain_row("FIRST", Source::Operator),
+                    plain_row("vercel/A", Source::Namespace("vercel".to_string())),
+                    plain_row("vercel/B", Source::Namespace("vercel".to_string())),
+                    plain_row("LAST", Source::Operator),
+                ],
+                ..SecretsModel::default()
+            })),
+        });
+        // Fold `vercel` while sitting on one of its rows: the `Collapse`
+        // fix carries `selected` forward to `LAST`, index 3.
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let _ = app.update(Msg::Key(KeyPress::Collapse));
+
+        // A reload whose row order gives index 3 to a `vercel` row rather
+        // than to `LAST`. `collapsed` is untouched by this message, so
+        // `vercel` is still folded.
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                rows: vec![
+                    plain_row("FIRST", Source::Operator),
+                    plain_row("SECOND", Source::Operator),
+                    plain_row("vercel/C", Source::Namespace("vercel".to_string())),
+                    plain_row("vercel/D", Source::Namespace("vercel".to_string())),
+                ],
+                ..SecretsModel::default()
+            })),
+        });
+
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        let row = &pane.model.rows[pane.selected];
+        assert!(
+            !pane.is_collapsed(&row.source),
+            "a reload left selected on a row its own standing fold hides"
+        );
+    }
+
+    /// The clear itself is pinned by `a_reveal_clears_on_every_one_of_its_
+    /// triggers_that_exists_yet`, which reveals a value before every one
+    /// of the ten triggers including this one. Nothing here reveals
+    /// anything, so this test pins only the effect `r` returns.
+    #[test]
+    fn r_requests_a_reload() {
         let mut app = fixtures::full_app();
         let _ = app.update(Msg::Key(KeyPress::Secrets));
         let _ = app.update(Msg::Secrets {
