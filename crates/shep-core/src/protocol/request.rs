@@ -314,6 +314,45 @@ pub enum Request {
         /// and a derived `Debug` on [`Request`] would print it (IR-41).
         value: Option<EnvValue>,
     },
+    /// Sets several env keys on one sheep in a single write.
+    ///
+    /// [`Self::SetSheepEnv`]'s doc says a request taking a map would need
+    /// per-key reporting back "for no caller that wants it". `shep import
+    /// env` is that caller: it writes twenty keys at once and has to refuse
+    /// the whole set rather than leave eleven of them applied.
+    ///
+    /// The daemon applies this as one read-modify-write of the override
+    /// store, so every key lands or none does. No removal arm: a pane
+    /// deletes rows one at a time through [`Self::SetSheepEnv`], and an
+    /// import never removes anything.
+    ///
+    /// A key already holding a different value is a collision. Without
+    /// `force` any collision refuses the whole request and writes nothing;
+    /// with it, the collisions are overwritten and named in the reply as
+    /// well as counted in `set`. A key already holding the same value is
+    /// `unchanged`, never a collision, so re-running an unchanged import
+    /// needs no flag.
+    ///
+    /// `dry_run` computes the three lists and writes nothing.
+    ///
+    /// Parks for the next spawn, exactly as [`Self::SetSheepEnv`] does.
+    ///
+    /// Answers [`Response::SheepEnvBatch`], or
+    /// [`RpcErrorCode::NotFound`] when no sheep has that name.
+    SetSheepEnvBatch {
+        /// The sheep's name.
+        name: String,
+        /// The keys and their values.
+        ///
+        /// [`EnvValue`], not `String`, for [`Self::SetSheepEnv`]'s reason:
+        /// `Request` derives `Debug` and this map is the densest run of
+        /// secrets on the wire (IR-41).
+        entries: BTreeMap<String, EnvValue>,
+        /// Overwrite colliding keys instead of refusing.
+        force: bool,
+        /// Report what would happen and write nothing.
+        dry_run: bool,
+    },
     /// Sets one config field on one sheep, recorded as an operator
     /// override.
     ///
@@ -1466,6 +1505,23 @@ pub enum Response {
         /// The key.
         key: String,
     },
+    /// What a [`Request::SetSheepEnvBatch`] did, or would have done.
+    ///
+    /// Key names only. `set` is what was written, `unchanged` what already
+    /// held the same value, `collisions` what held a different one. A
+    /// forced request reports a collision in both `set` and `collisions`;
+    /// an unforced one that collides reports an empty `set` and wrote
+    /// nothing.
+    SheepEnvBatch {
+        /// The sheep's name.
+        name: String,
+        /// Keys written.
+        set: Vec<String>,
+        /// Keys that already held this value.
+        unchanged: Vec<String>,
+        /// Keys that held a different value.
+        collisions: Vec<String>,
+    },
     /// Answer to `SetSheepField`: which field moved, and whether the
     /// running child has it.
     ///
@@ -2227,6 +2283,67 @@ mod tests {
             "PutSecrets { namespace: \"vercel\", environment: \"production\", \
              entries: {\"API_KEY\": EnvValue(<7 bytes>)} }"
         );
+    }
+
+    /// IR-41. `EnvValue` is what keeps the derive on `Request` safe, and this
+    /// pins that the batch variant actually uses it.
+    #[test]
+    fn set_sheep_env_batch_debug_does_not_leak() {
+        let request = Request::SetSheepEnvBatch {
+            name: "web".to_string(),
+            entries: BTreeMap::from([(
+                "DB_PASSWORD".to_string(),
+                EnvValue::from("hunter2".to_string()),
+            )]),
+            force: false,
+            dry_run: true,
+        };
+        assert_eq!(
+            format!("{request:?}"),
+            "SetSheepEnvBatch { name: \"web\", entries: {\"DB_PASSWORD\": EnvValue(<7 bytes>)}, \
+             force: false, dry_run: true }"
+        );
+    }
+
+    /// The wire shape, pinned the way every other variant's is.
+    #[test]
+    fn set_sheep_env_batch_wire_v8() {
+        let request = Request::SetSheepEnvBatch {
+            name: "web".to_string(),
+            entries: BTreeMap::from([("A".to_string(), EnvValue::from("1".to_string()))]),
+            force: true,
+            dry_run: false,
+        };
+        let json = serde_json::to_string(&request).unwrap();
+        assert_eq!(
+            json,
+            r#"{"kind":"set_sheep_env_batch","name":"web","entries":{"A":"1"},"force":true,"dry_run":false}"#
+        );
+        assert_eq!(serde_json::from_str::<Request>(&json).unwrap(), request);
+    }
+
+    /// The reply carries key names and never a value.
+    #[test]
+    fn sheep_env_batch_response_wire_v8() {
+        let response = Response::SheepEnvBatch {
+            name: "web".to_string(),
+            set: vec!["A".to_string()],
+            unchanged: vec!["B".to_string()],
+            collisions: Vec::new(),
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        assert_eq!(
+            json,
+            r#"{"kind":"sheep_env_batch","data":{"name":"web","set":["A"],"unchanged":["B"],"collisions":[]}}"#
+        );
+        assert_eq!(serde_json::from_str::<Response>(&json).unwrap(), response);
+    }
+
+    /// Additive, so the version does not move. Guards against a reflexive bump.
+    #[test]
+    fn the_batch_variant_did_not_move_the_version() {
+        assert_eq!(super::super::PROTOCOL_VERSION, 8);
+        assert_eq!(super::super::MIN_SUPPORTED, 8);
     }
 
     /// The pane edits everything else about a sheep, so the config itself
