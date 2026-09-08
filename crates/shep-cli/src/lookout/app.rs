@@ -5317,6 +5317,29 @@ mod tests {
         assert_eq!(app.cpu_now(1), None);
     }
 
+    /// A departed sheep's baseline must not survive to be inherited by an
+    /// unrelated sheep that later reuses its id. Without
+    /// [`App::record_samples`]'s `cpu_last.retain`, the third poll below
+    /// would difference the new sheep's tiny counter against the departed
+    /// sheep's much larger one and manufacture a sample, instead of
+    /// recording an honest baseline and appending nothing.
+    #[test]
+    fn a_departed_sheeps_baseline_is_not_inherited_by_a_reused_id() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_cpu_ms(1, 9_000)]);
+        // Sheep 1 leaves the flock entirely.
+        app.on_snapshot(vec![]);
+        // An unrelated sheep reuses id 1, with its own counter starting low.
+        app.on_snapshot(vec![row_with_cpu_ms(1, 12)]);
+        assert!(
+            app.cpu_history(1).is_empty(),
+            "the reused id's first reading should record a baseline and \
+             append nothing, on `Self::cpu_history`'s own terms for a first \
+             reading: {:?}",
+            app.cpu_history(1)
+        );
+    }
+
     /// A respawn gives a new tree whose counter starts below the old one's.
     /// Clamped to zero, the same rule the daemon applies, and it costs one
     /// dropped sample rather than a negative spike.
