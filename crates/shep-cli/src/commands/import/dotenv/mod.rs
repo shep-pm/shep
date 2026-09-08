@@ -4,15 +4,21 @@
 //! for and whether shep can hold it. This module does the I/O, in one order:
 //!
 //! 1. read and parse, then plan. Nothing written.
-//! 2. `Request::SheepConfig`: the sheep exists, is not a dog, and resolves
-//!    to an environment.
+//! 2. `Request::SheepConfig`, for the environment the secrets go in. Skipped
+//!    when `--env` names one, so this step is not what proves the sheep
+//!    exists.
 //! 3. `SetSheepEnvBatch` with `dry_run`, so the daemon names env collisions
-//!    against the values it holds and this process never sees them.
+//!    against the values it holds and this process never sees them. This is
+//!    the step that refuses an unknown sheep and a dog, on either path into
+//!    it, before either store is written.
 //! 4. secret-store collisions, decided here, since this process holds those
 //!    values.
 //! 5. any collision without `--force`: name them all and exit, writing
 //!    nothing.
-//! 6. write `secrets.json`, then send the batch for real.
+//! 6. write `secrets.json`, then send the batch for real. The daemon decides
+//!    collisions afresh, so the real send can still refuse what step 3 said
+//!    it would take; that refusal is reported like step 5's, and says the
+//!    secret store is already written.
 //!
 //! Secrets first and the batch second on purpose. A failure at the last step
 //! leaves values in the store that nothing references, which are inert, and
@@ -110,12 +116,16 @@ pub async fn import_env(
         return emit_rows(streams, &plan, &environment);
     }
 
+    let mut written = 0_usize;
     for planned in &plan.entries {
-        if planned.class == Class::Secret
-            && let Err(err) =
+        if planned.class == Class::Secret {
+            if let Err(err) =
                 secrets::set(&paths.secrets, &planned.key, &environment, &planned.value)
-        {
-            return streams.fail(exit_code_for(&err), &err.to_string());
+            {
+                let message = format!("{err}; {}", already_written(written));
+                return streams.fail(exit_code_for(&err), &message);
+            }
+            written += 1;
         }
     }
 
@@ -126,6 +136,11 @@ pub async fn import_env(
         dry_run: false,
     };
     match client.request(request).await {
+        // A forced request reports what it overwrote here, which is not a
+        // refusal. An unforced one that collides wrote nothing.
+        Ok(Response::SheepEnvBatch { collisions, .. }) if !args.force && !collisions.is_empty() => {
+            return report_late_collisions(streams, &collisions, written);
+        }
         Ok(Response::SheepEnvBatch { .. }) => {}
         Ok(_) => return streams.fail(ExitCode::Internal, UNDERSTOOD_NOTHING),
         Err(err) => return streams.fail(ExitCode::from(&err), &err.to_string()),
@@ -146,9 +161,10 @@ const UNDERSTOOD_NOTHING: &str =
 /// The environment whose slot the secrets go in: `--env`, else the sheep's
 /// own `environment`, else `[daemon] environment`.
 ///
-/// `Request::SheepConfig` is what proves the sheep exists and is not a dog
-/// before either store is touched, so this is the step an unknown name
-/// fails at.
+/// `--env` returns before the request, so `Request::SheepConfig` is not what
+/// proves the sheep exists: on that path an unknown name and a dog are both
+/// refused by the dry run at step 3, with the same exit codes and still
+/// before either store is touched.
 ///
 /// # Errors
 /// The [`ExitCode`] already reported to `streams.err`.
@@ -253,6 +269,20 @@ fn report_collisions(
     if env_collisions.is_empty() && secret_collisions.is_empty() {
         return ExitCode::Success;
     }
+    name_collisions(streams, env_collisions, secret_collisions);
+    streams.fail(
+        ExitCode::Usage,
+        "nothing was imported; pass --force to overwrite the keys named above",
+    )
+}
+
+/// One `collision` aside per key, naming the key and the store that already
+/// holds something else. Never a value.
+fn name_collisions(
+    streams: &mut Streams<'_>,
+    env_collisions: &[String],
+    secret_collisions: &[String],
+) {
     for (keys, store) in [
         (env_collisions, ENV_STORE),
         (secret_collisions, SECRET_STORE),
@@ -262,9 +292,42 @@ fn report_collisions(
             streams.aside("collision", &message);
         }
     }
-    streams.fail(
-        ExitCode::Usage,
-        "nothing was imported; pass --force to overwrite the keys named above",
+}
+
+/// The env store's refusal of the real batch, after the dry run at step 3
+/// said it would be taken.
+///
+/// The daemon decides collisions afresh on every call, so anything that
+/// touched this sheep's env between the two requests lands here. By then the
+/// secret store is written, which the message says: those values are inert
+/// until the import is re-run, and a re-run is clean.
+fn report_late_collisions(
+    streams: &mut Streams<'_>,
+    collisions: &[String],
+    written: usize,
+) -> ExitCode {
+    name_collisions(streams, collisions, &[]);
+    let message = format!(
+        "the env store changed since this run's dry run, so nothing was written to it; {}. \
+         Re-run the import, with --force to overwrite the keys named above",
+        already_written(written)
+    );
+    streams.fail(ExitCode::Usage, &message)
+}
+
+/// How the messages above describe a secret store that is already written.
+///
+/// Counts and key names only, so it is safe on any stream (IR-41).
+fn already_written(written: usize) -> String {
+    let (keys, verb) = if written == 1 {
+        ("key", "was")
+    } else {
+        ("keys", "were")
+    };
+    format!(
+        "{written} secret {keys} {verb} already written to the secret store and sit \
+         unreferenced until the import is re-run. A re-run is clean, since an identical \
+         value is not a collision"
     )
 }
 
@@ -342,5 +405,14 @@ mod tests {
         assert_eq!(rows[1].slot, "production");
         assert_eq!(rows[1].bytes, "hunter2".len());
         assert!(!format!("{rows:?}").contains("hunter2"), "{rows:?}");
+    }
+
+    /// fails if the note the late refusal and the failed `secrets::set` share
+    /// stops saying what it left behind, or stops counting it.
+    #[test]
+    fn the_already_written_note_counts_keys_and_says_a_re_run_is_clean() {
+        assert!(already_written(1).starts_with("1 secret key was already written"));
+        assert!(already_written(4).starts_with("4 secret keys were already written"));
+        assert!(already_written(0).contains("A re-run is clean"));
     }
 }

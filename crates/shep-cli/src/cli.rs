@@ -1389,8 +1389,9 @@ pub struct ImportEnvArgs {
     /// Which environment's slot the secrets go in.
     ///
     /// The default is the sheep's own environment, which is its
-    /// `environment` field, or `[daemon] environment` when it has none.
-    /// Never the `all` slot: every environment reads that one.
+    /// `environment` field, or `[daemon] environment` when it has none, and
+    /// so is never the `all` slot that every environment reads. Naming
+    /// `all` here writes that slot, as `shep secret set --env all` does.
     #[arg(long)]
     pub env: Option<String>,
     /// Print what would be written, and write nothing

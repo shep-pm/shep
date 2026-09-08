@@ -3767,6 +3767,181 @@ fn import_env_refuses_a_changed_value_without_force() {
         "the colliding key was not named: {err}"
     );
     assert!(!err.contains("9090"), "the value reached stderr: {err}");
+    // The refusal's whole claim is that nothing moved, and this is the only
+    // case where a store could have been written before it: the two
+    // neighbouring refusals are parse-level.
+    let overrides = std::fs::read_to_string(home.path().join("overrides.json")).unwrap();
+    assert!(
+        overrides.contains("8080") && !overrides.contains("9090"),
+        "the refused value reached the env store: {overrides}"
+    );
+
+    graceful_kill(home.path());
+}
+
+#[cfg(unix)]
+/// A key the secret store already holds under a different value refuses the
+/// import too, and names the secret store rather than the env one.
+///
+/// `--env production` on both halves so the seeded slot and the imported one
+/// are the same slot whatever the sheep resolves to.
+#[test]
+fn import_env_refuses_a_changed_secret_without_force() {
+    let home = tempfile::tempdir().unwrap();
+    let _guard = start_a_sheep_named_web(&home);
+    assert_success(
+        &shep(home.path())
+            .args([
+                "secret",
+                "set",
+                "DB_PASSWORD",
+                "correct",
+                "--env",
+                "production",
+            ])
+            .output()
+            .unwrap(),
+    );
+    std::fs::write(home.path().join("app.env"), "DB_PASSWORD=hunter2\n").unwrap();
+
+    let output = shep(home.path())
+        .args([
+            "import",
+            "env",
+            home.path().join("app.env").to_str().unwrap(),
+            "--app",
+            "web",
+            "--secret",
+            "DB_PASSWORD",
+            "--env",
+            "production",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    let err = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        err.contains("DB_PASSWORD") && err.contains("secret store"),
+        "the secret arm did not report the collision: {err}"
+    );
+    assert!(!err.contains("hunter2"), "the value reached stderr: {err}");
+    let stored = std::fs::read_to_string(home.path().join("secrets.json")).unwrap();
+    assert!(
+        stored.contains("correct") && !stored.contains("hunter2"),
+        "the refused value reached the secret store"
+    );
+
+    graceful_kill(home.path());
+}
+
+#[cfg(unix)]
+/// `--force` takes both stores over the values already in them.
+///
+/// `--format json` pins the envelope's `command`, which is `import` for both
+/// halves of the verb: the noun names the command, as `shep secret`'s four
+/// subcommands do.
+#[test]
+fn import_env_force_overwrites_both_stores() {
+    let home = tempfile::tempdir().unwrap();
+    let _guard = start_a_sheep_named_web(&home);
+    assert_success(
+        &shep(home.path())
+            .args([
+                "secret",
+                "set",
+                "DB_PASSWORD",
+                "stale",
+                "--env",
+                "production",
+            ])
+            .output()
+            .unwrap(),
+    );
+    std::fs::write(home.path().join("app.env"), "PORT=8080\n").unwrap();
+    assert_success(
+        &shep(home.path())
+            .args([
+                "import",
+                "env",
+                home.path().join("app.env").to_str().unwrap(),
+                "--app",
+                "web",
+                "--env",
+                "production",
+            ])
+            .output()
+            .unwrap(),
+    );
+
+    std::fs::write(
+        home.path().join("app.env"),
+        "PORT=9090\nDB_PASSWORD=hunter2\n",
+    )
+    .unwrap();
+    let forced = shep(home.path())
+        .args([
+            "import",
+            "env",
+            home.path().join("app.env").to_str().unwrap(),
+            "--app",
+            "web",
+            "--secret",
+            "DB_PASSWORD",
+            "--env",
+            "production",
+            "--force",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert_success(&forced);
+    let envelope: serde_json::Value = serde_json::from_slice(&forced.stdout).unwrap();
+    assert_eq!(
+        envelope["command"], "import",
+        "the envelope's command moved: {envelope}"
+    );
+
+    let overrides = std::fs::read_to_string(home.path().join("overrides.json")).unwrap();
+    assert!(
+        overrides.contains("9090") && !overrides.contains("8080"),
+        "--force left the old env value: {overrides}"
+    );
+    let stored = std::fs::read_to_string(home.path().join("secrets.json")).unwrap();
+    assert!(
+        stored.contains("hunter2") && !stored.contains("stale"),
+        "--force left the old secret"
+    );
+
+    graceful_kill(home.path());
+}
+
+#[cfg(unix)]
+/// A key that looks like a secret and was not named by `--secret` is warned
+/// about, and the warning carries the key and not its value.
+#[test]
+fn import_env_warns_about_a_secretish_key_it_was_not_told_to_hide() {
+    let home = tempfile::tempdir().unwrap();
+    let _guard = start_a_sheep_named_web(&home);
+    std::fs::write(home.path().join("app.env"), "STRIPE_TOKEN=hunter2\n").unwrap();
+
+    let output = shep(home.path())
+        .args([
+            "import",
+            "env",
+            home.path().join("app.env").to_str().unwrap(),
+            "--app",
+            "web",
+        ])
+        .output()
+        .unwrap();
+    assert_success(&output);
+    let err = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        err.contains("STRIPE_TOKEN") && err.contains("--secret"),
+        "the secretish warning did not appear: {err}"
+    );
+    assert!(!err.contains("hunter2"), "the value reached stderr: {err}");
 
     graceful_kill(home.path());
 }
@@ -3812,7 +3987,7 @@ fn import_env_dry_run_writes_nothing() {
     let _guard = start_a_sheep_named_web(&home);
     std::fs::write(
         home.path().join("app.env"),
-        "NODE_ENV=production\nDB_PASSWORD=hunter2\n",
+        "PORT=8080\nDB_PASSWORD=hunter2\n",
     )
     .unwrap();
 
@@ -3834,6 +4009,17 @@ fn import_env_dry_run_writes_nothing() {
     assert_eq!(
         std::fs::read_to_string(home.path().join("secrets.json")).ok(),
         before
+    );
+    // The dry run is the path that prints a row per key, so it is the one
+    // where a value would show up if a row ever grew one.
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !combined.contains("hunter2") && !combined.contains("8080"),
+        "a value reached an output stream: {combined}"
     );
 
     graceful_kill(home.path());
