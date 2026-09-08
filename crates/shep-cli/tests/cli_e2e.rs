@@ -4106,6 +4106,65 @@ fn import_env_dry_run_writes_nothing() {
 }
 
 #[cfg(unix)]
+/// A `.env` that names a variable shep injects itself passes the dry-run
+/// probe at step 3, which returns before `normalize` runs, so the secret
+/// store is written before the real send refuses it.
+///
+/// The already-written disclosure covers exactly this case: the secret sits
+/// in `secrets.json` with nothing in the sheep's env referencing it until a
+/// re-run.
+#[test]
+fn import_env_discloses_a_secret_write_the_real_send_then_refuses() {
+    let home = tempfile::tempdir().unwrap();
+    let _guard = start_a_sheep_named_web(&home);
+    std::fs::write(
+        home.path().join("bad.env"),
+        "SHEP_NAME=nope\nAPI_TOKEN=sk_live_abcdef\n",
+    )
+    .unwrap();
+
+    let output = shep(home.path())
+        .args([
+            "import",
+            "env",
+            home.path().join("bad.env").to_str().unwrap(),
+            "--app",
+            "web",
+            "--secret",
+            "API_TOKEN",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(4), "{output:?}");
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !combined.contains("sk_live_abcdef"),
+        "the value reached an output stream: {combined}"
+    );
+    assert!(
+        combined.contains("already written to the secret store"),
+        "the refusal did not disclose the earlier write: {combined}"
+    );
+
+    let stored = std::fs::read_to_string(home.path().join("secrets.json")).unwrap();
+    assert!(
+        stored.contains("API_TOKEN"),
+        "the secret write did not land: {stored}"
+    );
+    let overrides = std::fs::read_to_string(home.path().join("overrides.json")).unwrap_or_default();
+    assert!(
+        !overrides.contains("API_TOKEN"),
+        "the sheep's env must not reference the orphaned secret: {overrides}"
+    );
+
+    graceful_kill(home.path());
+}
+
+#[cfg(unix)]
 /// An unknown sheep is a `NotFound`, and it is reported before either store
 /// is touched.
 #[test]
