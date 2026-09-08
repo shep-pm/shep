@@ -144,13 +144,9 @@ pub(super) fn columns_for(width: u16) -> &'static [Column] {
 /// What one row shows in `VALUE`.
 ///
 /// A run proportional to the value's length rather than equal to it: the
-/// column is 30 cells and `MAX_VALUE_BYTES` is 4096, so an equal run
-/// cannot be drawn. The byte count carries the exact figure, which is what
-/// the design's second rule asks for.
-///
-/// The run stops one cell short of `width`: a run that reaches the column's
-/// own edge touches whatever `IN FORCE` draws next, with no separator
-/// between the two.
+/// column is 30 cells against `MAX_VALUE_BYTES`'s 4096, so an equal run
+/// cannot be drawn. It stops one cell short of `width` so it never touches
+/// `IN FORCE`'s own text.
 fn value_cell(row: &SecretRow, revealed: Option<&str>, width: u16) -> String {
     if let Some(plain) = revealed {
         return fit(plain, width);
