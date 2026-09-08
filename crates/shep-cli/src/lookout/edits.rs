@@ -258,7 +258,13 @@ mod tests {
         edits.set(field("cwd", json!("/a")), None);
         edits.set(field("script", json!("b.js")), None);
         edits.set(field("cwd", json!("/b")), None);
+        // Walked to exhaustion on purpose. Asserting only the first pop
+        // cannot tell "moved to the end" from "pushed again and happens to
+        // be last", and the second of those leaves a stale key that a
+        // third undo would report having undone.
         assert_eq!(edits.undo(), Some(EditKey::Field("cwd".to_owned())));
+        assert_eq!(edits.undo(), Some(EditKey::Field("script".to_owned())));
+        assert_eq!(edits.undo(), None);
     }
 
     #[test]
