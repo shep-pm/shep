@@ -247,6 +247,10 @@ pub enum Scene {
     /// The settings screen on a terminal too short to hold every row, with
     /// the cursor on the last one, so the view has scrolled.
     SettingsShort,
+    /// The full-screen bleats pane with all three filter axes stacked: a
+    /// stream, a minimum level and a regex, wrapping turned on so the one
+    /// surviving line's full text is on screen rather than truncated.
+    Bleats,
 }
 }
 
@@ -290,6 +294,7 @@ impl Scene {
             Self::SettingsDogs => "settings_dogs",
             Self::SettingsNarrow => "settings_narrow",
             Self::SettingsShort => "settings_short",
+            Self::Bleats => "bleats",
         }
     }
 
@@ -406,6 +411,9 @@ impl Scene {
             Self::SettingsShort => {
                 "The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last dog, so the view has scrolled to reach it and `... 5 above` says how much is off the top. The scroll is counted in LINES rather than in rows: a section header and the dogs caption cost the same height a row does."
             }
+            Self::Bleats => {
+                "The full-screen bleats pane, pinned to api, with a stream, a minimum level and a regex all stacked: only out, only warn and above, only a line mentioning retrying or jitter. The filter row states the composition and counts one surviving line out of sixteen, and that one line is also the longest in the fixture, so wrapping is on and its full text runs onto a second row instead of an ellipsis."
+            }
         }
     }
 
@@ -462,6 +470,14 @@ impl Scene {
             // reached without scrolling, tall enough that what survives is
             // a legible section rather than a single row.
             Self::SettingsShort => (120, 14),
+            // 100: `bleats_full`'s own text width is `width - TAG_PREFIX_WIDTH`
+            // (5), so 100 - 5 = 95. The fixture's one surviving line is 153
+            // characters, so it wraps onto exactly two rows at this width
+            // (153 / 95, rounded up); a wider frame would still wrap it but
+            // would no longer pin that arithmetic. 14 rows, the same tier
+            // `Confirm` and its siblings use: a title, a filter row and two
+            // wrapped rows fit inside `body_rows`'s 12 with room to spare.
+            Self::Bleats => (100, 14),
             // HealthyWide, Errored, Grouped, WithDogs, Retrying, Frozen,
             // Refused, FeedGap, FeedMissing, HostUnknown, Lambs, LambsUnknown:
             // every scene that carries all three optional panes at their
@@ -953,6 +969,25 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
         tail: feed_for(which),
     });
 
+    // Opens the pane on `api` (already selected above) and stacks all
+    // three filter axes: `o` once for `out`, `m` four times for `None ->
+    // Trace -> Debug -> Info -> Warn`, then a regex typed into the match
+    // box. `w` last, since it toggles independently of the filters and
+    // this is the one fixture line worth wrapping.
+    if which == Scene::Bleats {
+        app.update(Msg::Key(KeyPress::Bleats));
+        app.update(Msg::Key(KeyPress::StreamCycle));
+        for _ in 0..4 {
+            app.update(Msg::Key(KeyPress::LevelCycle));
+        }
+        app.update(Msg::Key(KeyPress::FilterStart));
+        for typed in "/retry|jitter/".chars() {
+            app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        app.update(Msg::Key(KeyPress::TextApply));
+        app.update(Msg::Key(KeyPress::WrapToggle));
+    }
+
     // Applied while the link is still `Live`: `on_lambs` refuses once it
     // is `Lost`, the same guard `Msg::Bleats` carries.
     if matches!(which, Scene::Lambs | Scene::Frozen) {
@@ -1167,6 +1202,11 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
 /// `WithDogs`: the selected row is the adopted `log-rotate` dog, so its
 /// lines say what a log-rotate dog says rather than the default fixture's
 /// web-server lines.
+///
+/// `Bleats`: sixteen lines, ten `out` and six `err`, six carrying a level
+/// word and ten carrying none, one of them 153 characters long. Built to
+/// be filtered and wrapped, not read raw: see [`scene_with`]'s own
+/// `Scene::Bleats` arm for the axes it stacks on top.
 fn feed_for(which: Scene) -> Tail {
     match which {
         // Mirrors `run_ui`: an empty flock has no selected row, so no
@@ -1209,6 +1249,62 @@ fn feed_for(which: Scene) -> Tail {
             missed_bytes: 0,
             read_bytes: 0,
             note: Some("this sheep has not written a log in this $SHEP_HOME".to_string()),
+        },
+        // Ten `out` lines and six `err`, six carrying a real level word
+        // (two of each: debug, info/warn's pair below, error) and ten
+        // carrying none, so the level axis has both a floor to apply and
+        // unclassifiable lines to exempt from it. One line, the `WARN
+        // retrying...` one, is 153 characters: long enough that
+        // `Scene::Bleats`'s 100-column frame wraps it onto two rows.
+        Scene::Bleats => Tail {
+            lines: [
+                (Stream::Out, "listening on 0.0.0.0:8080"),
+                (
+                    Stream::Err,
+                    "WARN connection pool nearing capacity: 47/50 in use",
+                ),
+                (Stream::Out, "GET /v1/orders 200 12ms"),
+                (
+                    Stream::Out,
+                    "WARN retrying upstream payment gateway after a timeout, backing off \
+                     500ms before trying again with jitter added so the whole fleet does \
+                     not retry at once",
+                ),
+                (
+                    Stream::Err,
+                    "INFO shutting down worker 2 for a rolling restart",
+                ),
+                (Stream::Out, "DEBUG cache warmed 128 keys in 4ms"),
+                (Stream::Out, "POST /v1/orders 201 88ms"),
+                (
+                    Stream::Err,
+                    "ERROR failed to write session cache: disk quota exceeded",
+                ),
+                (Stream::Out, "connection pool: 14/50 in use"),
+                (
+                    Stream::Out,
+                    "ERROR panic recovered in worker 3: index out of bounds",
+                ),
+                (Stream::Err, "GET /healthz 200 3ms"),
+                (Stream::Out, "GET /v1/orders/8821 200 9ms"),
+                (Stream::Err, "DEBUG flushing metrics buffer"),
+                (Stream::Out, "POST /v1/orders 500 210ms"),
+                (
+                    Stream::Err,
+                    "WARN queue depth crossed 200, backpressure engaged",
+                ),
+                (Stream::Out, "GET /v1/orders/9013 200 7ms"),
+            ]
+            .into_iter()
+            .map(|(stream, text)| TailLine {
+                stream,
+                text: text.to_string(),
+            })
+            .collect(),
+            missed_lines: 0,
+            missed_bytes: 0,
+            read_bytes: 2048,
+            note: None,
         },
         _ => Tail {
             lines: [
@@ -2283,6 +2379,36 @@ mod tests {
             short.contains("[style]") && short.contains("[dogs]"),
             "what survives is whole sections, headers and all: {short:?}"
         );
+
+        // Bleats: all three axes stacked, wrapping on.
+        let bleats = render_text(&scene(Scene::Bleats).1);
+        for chip in ["stream out", "level ≥ warn", "match /retry|jitter/ (regex)"] {
+            assert!(
+                bleats.contains(chip),
+                "the filter row names {chip}: {bleats:?}"
+            );
+        }
+        assert!(
+            // The sentence itself is longer than this 100-column frame, so
+            // it fits and truncates with an ellipsis: this is the prefix
+            // that survives the cut.
+            bleats.contains("1 of 16 lines in the window: all three m…"),
+            "the survivor count and the start of the composition sentence: {bleats:?}"
+        );
+        assert!(
+            bleats.contains("out  WARN retrying upstream payment gateway"),
+            "the one surviving line, tagged by its stream: {bleats:?}"
+        );
+        assert!(
+            bleats
+                .lines()
+                .any(|line| line.starts_with("     ith jitter")),
+            "wrapping is on, so the line's tail lands on its own row rather than truncating: {bleats:?}"
+        );
+        assert!(
+            bleats.contains("esc back") && bleats.contains("\u{2588} following"),
+            "the full key line, and the pane is still following the tail: {bleats:?}"
+        );
     }
 
     /// Two grouped apps, four sheep, six visible rows: a `0..=flock_len()`
@@ -2393,7 +2519,8 @@ mod tests {
             Scene::SettingsTyping => Some(Scene::SettingsDogs),
             Scene::SettingsDogs => Some(Scene::SettingsNarrow),
             Scene::SettingsNarrow => Some(Scene::SettingsShort),
-            Scene::SettingsShort => None,
+            Scene::SettingsShort => Some(Scene::Bleats),
+            Scene::Bleats => None,
         }
     }
 
