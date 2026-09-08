@@ -17,7 +17,7 @@ use shep_core::config::{
 };
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{
-    ProcessInfo, Request, Response, SelectorSpec, SheepApplied, SheepRefusal,
+    EnvValue, ProcessInfo, Request, Response, SelectorSpec, SheepApplied, SheepRefusal,
 };
 use shep_core::selector::ProcessSelector;
 
@@ -255,6 +255,46 @@ fn evaluate_js_flockfile(path: &Path, budget: Duration) -> Result<String, Target
         detail: format!("node printed non-UTF-8 output for {}", path.display()),
         node_missing: false,
     })
+}
+
+/// `word` read as a `NAME=VALUE` assignment, or `None` when the name is one
+/// no shell would accept
+///
+/// The name is a letter or `_` followed by letters, digits or `_`. A value
+/// may hold anything, `=` included, since only the first `=` separates the
+/// two. `execve` itself validates no name, but one a shell cannot expand is
+/// a variable the sheep's own wrapper script could never read.
+fn assignment(word: &str) -> Option<(&str, &str)> {
+    let (name, value) = word.split_once('=')?;
+    let mut chars = name.chars();
+    let first = chars.next()?;
+    if !first.is_ascii_alphabetic() && first != '_' {
+        return None;
+    }
+    if !chars.all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return None;
+    }
+    Some((name, value))
+}
+
+/// Splits the leading assignments off `targets`, returning them and what is
+/// left
+///
+/// The shell's own rule: leading words that parse as assignments are the
+/// environment, and the first word that does not ends the run. So `A=1
+/// ./koji B=2` leaves `B=2` a target, exactly as a shell leaves it an
+/// argument. A repeated name takes its last value.
+fn split_assignments(targets: &[String]) -> (BTreeMap<String, String>, &[String]) {
+    let mut env = BTreeMap::new();
+    let mut rest = targets;
+    while let Some((word, tail)) = rest.split_first() {
+        let Some((name, value)) = assignment(word) else {
+            break;
+        };
+        env.insert(name.to_string(), value.to_string());
+        rest = tail;
+    }
+    (env, rest)
 }
 
 /// Resolves `target` into the [`AppConfig`]s `start` should register
@@ -1015,13 +1055,21 @@ async fn load(
     interpreters: &BTreeMap<String, String>,
     mode: Load,
 ) -> ExitCode {
+    let (assignments, targets) = split_assignments(&args.targets);
+    // An environment belongs to one sheep for the reason a name does, and
+    // the shell has no analogue to borrow: one assignment prefix there
+    // introduces one command.
+    if !assignments.is_empty() && targets.len() > 1 {
+        let message = "an assignment takes one target: an environment belongs to one sheep";
+        return streams.fail(ExitCode::Usage, message);
+    }
     // `--name` renames the sheep a target becomes, and a name is unique to
     // one sheep, so it cannot mean anything across several targets.
-    if args.name.is_some() && args.targets.len() > 1 {
+    if args.name.is_some() && targets.len() > 1 {
         let message = "--name takes one target: a name belongs to one sheep";
         return streams.fail(ExitCode::Usage, message);
     }
-    if args.targets.is_empty() {
+    if targets.is_empty() {
         let mut started = Vec::new();
         let code = load_one(
             client,
@@ -1032,6 +1080,7 @@ async fn load(
             interpreters,
             &mut started,
             mode,
+            &assignments,
         )
         .await;
         // Printed whenever the verb succeeded, not only when it touched a
@@ -1048,7 +1097,7 @@ async fn load(
     // already up. The exit code is the first failure.
     let mut failure: Option<ExitCode> = None;
     let mut started = Vec::new();
-    for target in &args.targets {
+    for target in targets {
         let code = load_one(
             client,
             streams,
@@ -1058,6 +1107,7 @@ async fn load(
             interpreters,
             &mut started,
             mode,
+            &assignments,
         )
         .await;
         if code != ExitCode::Success {
@@ -1077,6 +1127,44 @@ async fn load(
     failure.unwrap_or(ExitCode::Success)
 }
 
+/// Records each assignment as an operator override on every app that just
+/// registered
+///
+/// [`Request::Start`] and [`Request::Add`] write nothing to the override
+/// store, so a value only the config carries is one the next Flockfile load
+/// replaces. The sheep holds the value either way, so a failure here is a
+/// notice rather than a refusal.
+async fn record_assignments(
+    client: &Client,
+    streams: &mut Streams<'_>,
+    assignments: &BTreeMap<String, String>,
+    registered: &BTreeSet<&str>,
+    mode: Load,
+) {
+    for name in registered {
+        for (key, value) in assignments {
+            let body = Request::SetSheepEnv {
+                name: (*name).to_string(),
+                key: key.clone(),
+                value: Some(EnvValue::from(value.clone())),
+            };
+            let reason = match client.request(body).await {
+                Ok(Response::SheepEnvSet { .. }) => continue,
+                Ok(_unrecognised) => {
+                    "the shepherd answered with something this client does not understand"
+                        .to_string()
+                }
+                Err(err) => err.to_string(),
+            };
+            let message = format!(
+                "{name}: {key} is set for this spawn but was not recorded as an override, so a \
+                 Flockfile load could replace it ({reason})"
+            );
+            streams.aside(mode.verb(), &message);
+        }
+    }
+}
+
 /// One target's worth of [`load`]
 ///
 /// `interpreters` is read once by the caller rather than per target.
@@ -1090,6 +1178,7 @@ async fn load_one(
     interpreters: &BTreeMap<String, String>,
     started: &mut Vec<shep_core::protocol::ProcessInfo>,
     mode: Load,
+    assignments: &BTreeMap<String, String>,
 ) -> ExitCode {
     // Everything from here to `resolve_target` is the precedence in
     // `StartArgs::targets`' own help: a sheep by id or name, then a fold,
@@ -1194,6 +1283,13 @@ async fn load_one(
             app.config.cwd = Some(cwd.clone());
         }
     }
+    // After the file's own values, since an assignment is something an
+    // operator typed for this one sheep.
+    for app in &mut apps {
+        for (key, value) in assignments {
+            app.config.env.insert(key.clone(), value.clone());
+        }
+    }
     apply_interpreters(&mut apps, interpreters, args.interpreter.as_deref());
     // The bare-name rule again, now the target is a set of named apps: a
     // name the flock already has is that sheep. Without it `shep start
@@ -1274,6 +1370,7 @@ async fn load_one(
         .filter(|app| registered.contains(app.config.name.as_str()))
         .collect();
     let recorded = apply_declared(client, streams, &established, ResetDepth::None, mode).await;
+    record_assignments(client, streams, assignments, &registered, mode).await;
     started.extend(procs);
     first_failure(
         applied,
@@ -1685,6 +1782,94 @@ mod tests {
         fake_client_answering, fake_client_capturing_envelopes, fake_client_replying_err,
     };
     use shep_core::protocol::RpcErrorCode;
+
+    #[test]
+    fn an_empty_value_is_an_empty_string_and_not_a_removal() {
+        let targets = ["A=".to_string(), "./koji".to_string()];
+
+        let (assignments, _rest) = split_assignments(&targets);
+
+        assert_eq!(assignments.get("A").map(String::as_str), Some(""));
+    }
+
+    #[test]
+    fn only_the_first_equals_separates_a_name_from_its_value() {
+        let targets = ["A=x=y".to_string(), "./koji".to_string()];
+
+        let (assignments, _rest) = split_assignments(&targets);
+
+        assert_eq!(assignments.get("A").map(String::as_str), Some("x=y"));
+    }
+
+    #[test]
+    fn a_repeated_name_takes_its_last_value() {
+        let targets = ["A=1".to_string(), "A=2".to_string(), "./koji".to_string()];
+
+        let (assignments, rest) = split_assignments(&targets);
+
+        assert_eq!(assignments.get("A").map(String::as_str), Some("2"));
+        assert_eq!(rest, ["./koji".to_string()]);
+    }
+
+    #[test]
+    fn a_path_is_a_target_even_when_it_holds_an_equals_sign() {
+        let targets = ["./A=1".to_string()];
+
+        let (assignments, rest) = split_assignments(&targets);
+
+        assert!(assignments.is_empty(), "a name may not hold a separator");
+        assert_eq!(rest, targets);
+    }
+
+    #[test]
+    fn a_name_holding_a_dash_is_not_an_assignment() {
+        let targets = ["A-B=1".to_string(), "./koji".to_string()];
+
+        let (assignments, rest) = split_assignments(&targets);
+
+        assert!(assignments.is_empty(), "a name holds letters, digits and `_`");
+        assert_eq!(rest, targets);
+    }
+
+    #[test]
+    fn an_assignment_after_the_target_stays_a_target() {
+        let targets = ["./koji".to_string(), "B=2".to_string()];
+
+        let (assignments, rest) = split_assignments(&targets);
+
+        assert!(assignments.is_empty(), "the first non-assignment ends the run");
+        assert_eq!(rest, targets);
+    }
+
+    #[test]
+    fn assignments_with_nothing_after_them_leave_no_target() {
+        let targets = ["A=1".to_string()];
+
+        let (assignments, rest) = split_assignments(&targets);
+
+        assert_eq!(assignments.get("A").map(String::as_str), Some("1"));
+        assert!(rest.is_empty());
+    }
+
+    #[test]
+    fn a_name_a_shell_would_reject_is_not_an_assignment() {
+        let targets = ["1A=1".to_string(), "./koji".to_string()];
+
+        let (assignments, rest) = split_assignments(&targets);
+
+        assert!(assignments.is_empty(), "a name may not start with a digit");
+        assert_eq!(rest, targets, "the word stays a target, as a shell leaves it");
+    }
+
+    #[test]
+    fn leading_assignments_come_off_the_front() {
+        let targets = ["A=1".to_string(), "./koji".to_string()];
+
+        let (assignments, rest) = split_assignments(&targets);
+
+        assert_eq!(assignments.get("A").map(String::as_str), Some("1"));
+        assert_eq!(rest, ["./koji".to_string()]);
+    }
 
     #[tokio::test]
     async fn a_discovered_flockfile_is_started_when_no_target_was_given() {
@@ -2753,6 +2938,109 @@ mod tests {
     /// The command line supplied every value, including a `cwd` of wherever
     /// the operator stood, so applying it would move a running app's
     /// directory.
+    #[tokio::test]
+    async fn an_assignment_is_recorded_as_an_operator_override() {
+        use shep_core::status::ProcStatus;
+
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("zam");
+        std::fs::write(&script, "#!/bin/sh\nsleep 1\n").unwrap();
+
+        let sock = shep_client::testing::control_address(dir.path());
+        let (client, mut envelopes) = fake_client_answering(&sock, |request: &Request| match request
+        {
+            Request::ListFlock => Response::Flock(Vec::new()),
+            Request::Start { apps } => Response::Started(
+                apps.iter()
+                    .map(|app| {
+                        ProcessInfo::builder(0, app.name.as_str(), ProcStatus::Online).build()
+                    })
+                    .collect(),
+            ),
+            Request::SetSheepEnv { name, key, .. } => Response::SheepEnvSet {
+                name: name.clone(),
+                key: key.clone(),
+            },
+            _ => Response::Pong,
+        })
+        .await;
+
+        let mut args = start_args("KOJI_TOKEN=s3cret");
+        args.targets.push(script.to_string_lossy().into_owned());
+        let (code, _printed, said) = start_against_with_args(&client, &args).await;
+
+        assert_eq!(code, ExitCode::Success, "{said}");
+        let mut recorded = Vec::new();
+        while let Ok(envelope) = envelopes.try_recv() {
+            if let Request::SetSheepEnv { name, key, value } = envelope.body {
+                recorded.push((name, key, value.map(|v| v.as_str().to_string())));
+            }
+        }
+        assert_eq!(
+            recorded,
+            vec![(
+                "zam".to_string(),
+                "KOJI_TOKEN".to_string(),
+                Some("s3cret".to_string())
+            )],
+            "without the override record a later Flockfile load overwrites the value"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_assignment_reaches_the_env_of_the_sheep_it_registers() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("zam");
+        std::fs::write(&script, "#!/bin/sh\nsleep 1\n").unwrap();
+
+        let sock = shep_client::testing::control_address(dir.path());
+        let (client, mut envelopes) = fake_client_capturing_envelopes(&sock).await;
+        let mut args = start_args("KOJI_TOKEN=s3cret");
+        args.targets.push(script.to_string_lossy().into_owned());
+        let _ = start_against_with_args(&client, &args).await;
+
+        let sent = next_start(&mut envelopes).await;
+        match sent.body {
+            Request::Start { apps } => {
+                assert_eq!(apps.len(), 1);
+                assert_eq!(
+                    apps[0].env.get("KOJI_TOKEN").map(String::as_str),
+                    Some("s3cret"),
+                    "the first spawn must already carry the value"
+                );
+            }
+            other => panic!("expected a Start request, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn an_assignment_with_more_than_one_target_is_refused() {
+        use shep_client::testing::fake_client_answering;
+
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("zam");
+        std::fs::write(&script, "#!/bin/sh\nsleep 1\n").unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, mut envelopes) =
+            fake_client_answering(&path, a_daemon_for(a_clustered_flock(&[0, 1, 2]), &[])).await;
+
+        let mut args = start_args("A=1");
+        args.targets.push(script.to_string_lossy().into_owned());
+        args.targets.push(script.to_string_lossy().into_owned());
+        let (code, printed, said) = start_against_with_args(&client, &args).await;
+
+        assert_eq!(code, ExitCode::Usage);
+        assert!(printed.is_empty(), "a refusal prints no data envelope");
+        assert!(
+            said.contains("one target"),
+            "the refusal must say an environment belongs to one sheep: {said}"
+        );
+        assert!(
+            applies(&mut envelopes).is_empty(),
+            "a refused assignment loads nothing"
+        );
+    }
+
     #[tokio::test]
     async fn a_bare_script_target_applies_nothing() {
         use shep_client::testing::fake_client_answering;
