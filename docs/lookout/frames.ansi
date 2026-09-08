@@ -71,7 +71,7 @@ All three panes at 120x30: the host strip under the title, the detail pane and t
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m
 [0m[38;5;245mout  [0mGET /v1/orders/8821 200 9ms                                                                                        [0m
 [0m[38;5;245mout  [0mconnection pool: 14/50 in use                                                                                      [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === errored  (120x30) ===
@@ -106,7 +106,7 @@ One errored, one waiting to restart, one stopped, with the selection parked on t
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m
 [0m[38;5;245mout  [0mGET /v1/orders/8821 200 9ms                                                                                        [0m
 [0m[38;5;245mout  [0mconnection pool: 14/50 in use                                                                                      [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === grouped  (120x30) ===
@@ -141,7 +141,7 @@ app web ×3  [0m[38;5;29monline[0m   restarts 3   uptime 15m   cpu 9.4%   mem
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === folds  (158x30) ===
@@ -170,13 +170,13 @@ fold edge ×4  [0m[38;5;29monline[0m   restarts 4   uptime 15m   cpu 16.5%   
                                                                                                                                                               [0m
                                                                                                                                                               [0m
 [0m[38;5;238m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;245medge  follows one fold; select a sheep inside to see its log                                                                                       [0m
+[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;245medge  follows one sheep; select one inside this fold to see its log                                                                                [0m
                                                                                                                                                               [0m
                                                                                                                                                               [0m
                                                                                                                                                               [0m
                                                                                                                                                               [0m
                                                                                                                                                               [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                                     [0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F flat   z collapse   x stop   R restart   L reload   s settings   e edit   * yours   ! parked               [0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === with_dogs  (120x30) ===
@@ -211,7 +211,7 @@ Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in 
 [0m[38;5;245mout  [0mpruned 2 archives older than 14 days                                                                               [0m
 [0m[38;5;245mout  [0mnext rotation in 6h                                                                                                [0m
                                                                                                                         [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === mem_ceiling  (150x30) ===
@@ -246,7 +246,7 @@ Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                                                         [0m
 [0m[38;5;245mout  [0mGET /v1/orders/8821 200 9ms                                                                                                                      [0m
 [0m[38;5;245mout  [0mconnection pool: 14/50 in use                                                                                                                    [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                             [0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                   [0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === cfg_drift  (140x30) ===
@@ -281,7 +281,7 @@ Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                                               [0m
 [0m[38;5;245mout  [0mGET /v1/orders/8821 200 9ms                                                                                                            [0m
 [0m[38;5;245mout  [0mconnection pool: 14/50 in use                                                                                                          [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                   [0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * yours   ! parked         [0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === empty  (100x28) ===
@@ -314,7 +314,7 @@ No sheep registered. Each of the three panes says why it is empty, and the three
                                                                                                     [0m
                                                                                                     [0m
                                                                                                     [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edi…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settin…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === narrow  (51x14) ===
@@ -333,7 +333,7 @@ No sheep registered. Each of the three panes says why it is empty, and the three
   1     web       [0m[38;5;29monline         [0m  2.9%    1h 26m  [0m
                                                    [0m
                                                    [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === too_narrow  (28x8) ===
@@ -381,7 +381,7 @@ The shepherd stopped answering. Five attempts over about eight seconds before th
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m
 [0m[38;5;245mout  [0mGET /v1/orders/8821 200 9ms                                                                                        [0m
 [0m[38;5;245mout  [0mconnection pool: 14/50 in use                                                                                      [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === frozen  (120x30) ===
@@ -416,7 +416,7 @@ The ladder ran out. Last known values stay, the uptime clock has stopped, and so
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m
 [0m[38;5;245mout  [0mGET /v1/orders/8821 200 9ms                                                                                        [0m
 [0m[38;5;245mout  [0mconnection pool: 14/50 in use                                                                                      [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === refused  (120x30) ===
@@ -533,7 +533,7 @@ A query nothing matches. The table names the query rather than claiming the floc
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m
 [0m[38;5;245mout  [0mGET /v1/orders/8821 200 9ms                                                                                        [0m
 [0m[38;5;245mout  [0mconnection pool: 14/50 in use                                                                                      [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === table_only  (120x12) ===
@@ -550,7 +550,7 @@ A query nothing matches. The table names the query rather than claiming the floc
   0     web         [0m[38;5;29monline         [0m  48211    0         -          3.4%    182.0M    1h 25m    edge        -            [0m
   1     web         [0m[38;5;29monline         [0m  48212    0         -          2.9%    178.0M    1h 26m    edge        -            [0m
                                                                                                                         [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === feed_gap  (120x30) ===
@@ -585,7 +585,7 @@ The feed under a burst: 3.8 megabytes were never read and some hundreds of lines
 [0m[38;5;245mout  [0mGET /v1/orders/27 200 35ms                                                                                         [0m
 [0m[38;5;245mout  [0mGET /v1/orders/28 200 36ms                                                                                         [0m
 [0m[38;5;245mout  [0mGET /v1/orders/29 200 37ms                                                                                         [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === feed_missing  (120x30) ===
@@ -620,7 +620,7 @@ The selected sheep has never written a log in this $SHEP_HOME. The feed names th
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === cramped  (33x26) ===
@@ -686,7 +686,7 @@ The selected sheep has never written a log in this $SHEP_HOME. The feed names th
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m
 [0m[38;5;245mout  [0mGET /v1/orders/8821 200 9ms                                                                                        [0m
 [0m[38;5;245mout  [0mconnection pool: 14/50 in use                                                                                      [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === lambs  (120x30) ===
@@ -721,7 +721,7 @@ The detail pane with a lamb list: how many descendants the shepherd's walk found
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m
 [0m[38;5;245mout  [0mGET /v1/orders/8821 200 9ms                                                                                        [0m
 [0m[38;5;245mout  [0mconnection pool: 14/50 in use                                                                                      [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === lambs_unknown  (120x30) ===
@@ -756,7 +756,7 @@ The same pane on a stopped sheep. The shepherd had no pid to walk from and left 
 [0m[38;5;245mout  [0mPOST /v1/orders 201 88ms                                                                                           [0m
 [0m[38;5;245mout  [0mGET /v1/orders/8821 200 9ms                                                                                        [0m
 [0m[38;5;245mout  [0mconnection pool: 14/50 in use                                                                                      [0m
-[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === confirm  (100x14) ===

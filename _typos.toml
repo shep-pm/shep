@@ -49,6 +49,15 @@ mis = "mis"
 # error message for a truncated TOML key.
 contro = "contro"
 
+# `s settin…`: the status bar's own truncation, in the generated gallery
+# (docs/lookout/frames.{txt,ansi}) and the insta snapshots beside it. lookout
+# cuts the hint at the terminal width and appends an ellipsis, so a narrow
+# frame ends mid-word. Regenerated output, not prose: the fix for a real typo
+# there is in `hint_for`, not in the file typos is reading. It started landing
+# mid-word when the fold view added `F folds` to the hint and pushed the cut
+# two characters right.
+settin = "settin"
+
 # `instnace`: deliberate misspelling. `{{instnace}}` proves an unknown
 # template token is refused by name; tests in config/normalize.rs and
 # config/template.rs assert the error names it.

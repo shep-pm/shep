@@ -1,6 +1,5 @@
 ---
 source: crates/shep-cli/src/lookout/frames.rs
-assertion_line: 2631
 expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                                                                                 10 in the flock
@@ -26,10 +25,10 @@ lambs  a fold has no single process to walk; select one sheep
                                                                                                                                                               
                                                                                                                                                               
 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS edge  follows one fold; select a sheep inside to see its log                                                                                       
+ ██ BLEATS edge  follows one sheep; select one inside this fold to see its log                                                                                
                                                                                                                                                               
                                                                                                                                                               
                                                                                                                                                               
                                                                                                                                                               
                                                                                                                                                               
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                                      control enabled
+q quit   j/k select   / filter   F flat   z collapse   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                control enabled

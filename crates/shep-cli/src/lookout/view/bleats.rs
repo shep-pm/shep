@@ -48,7 +48,7 @@ pub fn feed_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
         Some(RowKey::Fold(name)) => {
             out.push(header_line(
                 palette,
-                &format!("{name}  follows one fold; select a sheep inside to see its log"),
+                &format!("{name}  follows one sheep; select one inside this fold to see its log"),
                 palette.muted(),
                 width,
             ));

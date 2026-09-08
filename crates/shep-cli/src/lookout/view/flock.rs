@@ -648,7 +648,11 @@ pub fn key_line(
         ),
         RowKey::Group(name) => group_line(app, name, columns, width, selected),
         RowKey::Section(label) => section_line(label, width, app.palette().muted()),
-        RowKey::Fold(name) => fold_line(app, name, width, selected),
+        // Flat view never emits a `RowKey::Fold`: `push_fold_rows` builds
+        // them and only runs under `Grouping::ByFold`, whose rows go through
+        // `fold_key_line` instead. `key_line` is the flat renderer, reached
+        // from one place, `view::mod`'s `Grouping::Flat` arm.
+        RowKey::Fold(_) => unreachable!("flat view emits no fold header"),
     }
 }
 
@@ -658,19 +662,6 @@ fn section_line(label: &str, width: u16, style: Style) -> Line<'static> {
     let used = label.chars().count() + 1;
     let rule = "─".repeat(usize::from(width).saturating_sub(used));
     Line::from(Span::styled(format!("{label} {rule}"), style))
-}
-
-/// One fold's header row, reached from [`key_line`] whenever a
-/// [`RowKey::Fold`] row is drawn. Selectable, unlike [`section_line`]'s
-/// callers, so it takes the same ground highlight a sheep row does.
-///
-/// Delegates to [`fold_header_line`] with the fold view's own
-/// [`fold_columns_for`], rather than [`key_line`]'s flat `columns`: a fold
-/// header's rollup and share bar are fold-view concepts with no flat-view
-/// equivalent, so they are laid out in [`FoldColumn`]'s widths regardless of
-/// which column set the surrounding table happens to be passed.
-fn fold_line(app: &App, name: &str, width: u16, selected: bool) -> Line<'static> {
-    fold_header_line(app, name, fold_columns_for(width), width, selected)
 }
 
 /// An app's group header row: [`App::group_totals`]'s own rollup, in the

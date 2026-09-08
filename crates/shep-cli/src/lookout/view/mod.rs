@@ -338,9 +338,11 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
                 // `flock.rs`.
                 //
                 // Meadow for the flock band, sky for the dogs band
-                // (docs/lookout/design-files/README.md:149). `"Dogs"` is
-                // the only other label `RowKey::Section` ever carries
-                // (see `App::visible_rows`), so anything else stays meadow.
+                // (docs/lookout/design-files/README.md:149). `"Dogs"` and
+                // `"no fold"` are the labels `RowKey::Section` carries (see
+                // `App::visible_rows` and `App::push_fold_rows`), so anything
+                // else stays meadow. This said `"Dogs"` was the only one
+                // until the fold view added the second.
                 let role = if *label == "Dogs" {
                     Role::Sky
                 } else {

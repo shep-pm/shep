@@ -71,7 +71,7 @@ out  GET /v1/orders 200 44ms
 out  POST /v1/orders 201 88ms                                                                                           
 out  GET /v1/orders/8821 200 9ms                                                                                        
 out  connection pool: 14/50 in use                                                                                      
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled
 
 === errored  (120x30) ===
 One errored, one waiting to restart, one stopped, with the selection parked on the errored sheep. Each row's own STATUS cell is the only coloured cell in that row, and EXIT carries why each of the three stopped: a code for the two that crashed, a signal name for the one shep stopped itself.
@@ -105,7 +105,7 @@ out  GET /v1/orders 200 44ms
 out  POST /v1/orders 201 88ms                                                                                           
 out  GET /v1/orders/8821 200 9ms                                                                                        
 out  connection pool: 14/50 in use                                                                                      
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled
 
 === grouped  (120x30) ===
 Three instances of one app under a group header, with the cursor parked on the header. The header sums their restarts, CPU and memory and takes the SHORTEST of their uptimes, so a group reads as time since the app was last disturbed rather than as the age of its luckiest instance. The detail pane repeats that rollup and says lambs are per-instance; the feed will not guess which instance to tail.
@@ -139,7 +139,7 @@ lambs  not shown for a group; select one instance
                                                                                                                         
                                                                                                                         
                                                                                                                         
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled
 
 === folds  (158x30) ===
 158 columns, wide enough for the full fold-view column set including SHARE and NOTES. `batch` and `core` are two folds of differing size, `batch` collapsed so only its header shows; `edge` is the largest, holding the grouped app `web` ×3 alongside standalone `api`, and the cursor is parked on its header. `cron` and `metrics` carry no fold and sit under a `no fold` band that is not selectable, and `bark`, a dog, sits under its own band because a dog is never in a fold. Each fold header sums its members' restarts, CPU and memory and takes the shortest of their uptimes, and its SHARE gauge and NOTES percentage both read that fold's share of the whole flock's memory.
@@ -167,13 +167,13 @@ lambs  a fold has no single process to walk; select one sheep
                                                                                                                                                               
                                                                                                                                                               
 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS edge  follows one fold; select a sheep inside to see its log                                                                                       
+ ██ BLEATS edge  follows one sheep; select one inside this fold to see its log                                                                                
                                                                                                                                                               
                                                                                                                                                               
                                                                                                                                                               
                                                                                                                                                               
                                                                                                                                                               
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                                      control enabled
+q quit   j/k select   / filter   F flat   z collapse   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                control enabled
 
 === with_dogs  (120x30) ===
 Three sheep under a FLOCK band and two dogs under a DOGS band: bark is built-in and healthy, log-rotate is adopted from /usr/local/bin/shep-log-rotate and has never handshaken, so its STATUS reads silent rather than online, and the cursor is parked on it.
@@ -207,7 +207,7 @@ out  compressed access.log.1 (4.2M -> 380K)
 out  pruned 2 archives older than 14 days                                                                               
 out  next rotation in 6h                                                                                                
                                                                                                                         
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled
 
 === mem_ceiling  (150x30) ===
 Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a quarter of its limit and its MEM/CEIL gauge fills a little, web-hot sits at 94 percent of its own limit and its gauge fills almost all the way, and where there is colour the fuller gauge also switches to the butter warning role. batch-worker has no ceiling at all, so its gauge reads the same muted bar a stopped sheep's does. The cursor is parked on web-hot, the row this frame exists to show.
@@ -241,7 +241,7 @@ out  GET /v1/orders 200 44ms
 out  POST /v1/orders 201 88ms                                                                                                                         
 out  GET /v1/orders/8821 200 9ms                                                                                                                      
 out  connection pool: 14/50 in use                                                                                                                    
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                              control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                    control enabled
 
 === cfg_drift  (140x30) ===
 140 columns: wide enough for the CFG and CPU 20s columns beside the ones every other scene shows. web has two fields parked for the next spawn and reads !2, api has one field an operator set that its Flockfile does not declare and reads *1, and cron has neither and reads a bare -. The status bar's own legend explains both glyphs; this is where they actually appear in a cell. web's CPU history carries ten distinct samples, so its sparkline draws a shape over time rather than one static bar, and the cursor is parked on web so the detail pane's own cfg !2 pending cell is on screen too.
@@ -275,7 +275,7 @@ out  GET /v1/orders 200 44ms
 out  POST /v1/orders 201 88ms                                                                                                               
 out  GET /v1/orders/8821 200 9ms                                                                                                            
 out  connection pool: 14/50 in use                                                                                                          
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                    control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * yours   ! parked          control enabled
 
 === empty  (100x28) ===
 No sheep registered. Each of the three panes says why it is empty, and the three sentences are different because the three reasons are.
@@ -307,7 +307,7 @@ no sheep selected: the flock is empty
                                                                                                     
                                                                                                     
                                                                                                     
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edi… control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settin… control enabled
 
 === narrow  (51x14) ===
 51 columns: FOLD, EXIT, RESTARTS, PID and MEM are gone, in that order. CPU and UPTIME survive because they explain WHY a RUNNING sheep is behaving badly, a question EXIT cannot even ask. The host strip truncates with an ellipsis rather than disappearing; the detail pane and the feed do not fit at all, at 14 rows.
@@ -325,7 +325,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores  …
   1     web       online           2.9%    1h 26m  
                                                    
                                                    
-q quit   j/k select   / filter   x… control enabled
+q quit   j/k select   / filter   F… control enabled
 
 === too_narrow  (28x8) ===
 28 columns: below the floor, the pane refuses rather than drawing overlapping garbage. Two short lines, so the refusal still fits the terminal it is refusing about.
@@ -371,7 +371,7 @@ out  GET /v1/orders 200 44ms
 out  POST /v1/orders 201 88ms                                                                                           
 out  GET /v1/orders/8821 200 9ms                                                                                        
 out  connection pool: 14/50 in use                                                                                      
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled
 
 === frozen  (120x30) ===
 The ladder ran out. Last known values stay, the uptime clock has stopped, and so has the host strip: one line ticking over on a frozen screen is a contradiction on the same frame.
@@ -405,7 +405,7 @@ out  GET /v1/orders 200 44ms
 out  POST /v1/orders 201 88ms                                                                                           
 out  GET /v1/orders/8821 200 9ms                                                                                        
 out  connection pool: 14/50 in use                                                                                      
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled
 
 === refused  (120x30) ===
 `x` with actions gated off. The refusal is literal, nothing about damage gets charming, and the panes below carry on.
@@ -517,7 +517,7 @@ out  GET /v1/orders 200 44ms
 out  POST /v1/orders 201 88ms                                                                                           
 out  GET /v1/orders/8821 200 9ms                                                                                        
 out  connection pool: 14/50 in use                                                                                      
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled
 
 === table_only  (120x12) ===
 12 rows: no optional panes at all. This is 12a's frame, and the only thing that changed is the two-column gutter that marks the selection, painted where there is a ground to paint with and shown with `>` where there is not.
@@ -533,7 +533,7 @@ shep lookout   /home/ada/.shep                                                  
   0     web         online           48211    0         -          3.4%    182.0M    1h 25m    edge        -            
   1     web         online           48212    0         -          2.9%    178.0M    1h 26m    edge        -            
                                                                                                                         
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled
 
 === feed_gap  (120x30) ===
 The feed under a burst: 3.8 megabytes were never read and some hundreds of lines were read and dropped. The pane counts both, and counts them separately, because it knows the second exactly and cannot know how many lines are in the first.
@@ -567,7 +567,7 @@ out  GET /v1/orders/26 200 34ms
 out  GET /v1/orders/27 200 35ms                                                                                         
 out  GET /v1/orders/28 200 36ms                                                                                         
 out  GET /v1/orders/29 200 37ms                                                                                         
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled
 
 === feed_missing  (120x30) ===
 The selected sheep has never written a log in this $SHEP_HOME. The feed names that cause rather than sitting blank.
@@ -601,7 +601,7 @@ this sheep has not written a log in this $SHEP_HOME
                                                                                                                         
                                                                                                                         
                                                                                                                         
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled
 
 === cramped  (33x26) ===
 33 columns: the narrowest terminal that draws. 26 rows (a couple more than the 24-row floor for all three panes being up), so this frame has a little breathing room rather than sitting exactly on the edge. Everything truncates with an ellipsis; nothing overlaps.
@@ -665,7 +665,7 @@ out  GET /v1/orders 200 44ms
 out  POST /v1/orders 201 88ms                                                                                           
 out  GET /v1/orders/8821 200 9ms                                                                                        
 out  connection pool: 14/50 in use                                                                                      
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled
 
 === lambs  (120x30) ===
 The detail pane with a lamb list: how many descendants the shepherd's walk found, how old that reading is, and each lamb's pid and executable name. The stamp sits before the list so a narrow terminal truncates lambs rather than the caveat.
@@ -699,7 +699,7 @@ out  GET /v1/orders 200 44ms
 out  POST /v1/orders 201 88ms                                                                                           
 out  GET /v1/orders/8821 200 9ms                                                                                        
 out  connection pool: 14/50 in use                                                                                      
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled
 
 === lambs_unknown  (120x30) ===
 The same pane on a stopped sheep. The shepherd had no pid to walk from and left the field unset rather than empty, and the line says which of the two it is looking at rather than reporting none found.
@@ -733,7 +733,7 @@ out  GET /v1/orders 200 44ms
 out  POST /v1/orders 201 88ms                                                                                           
 out  GET /v1/orders/8821 200 9ms                                                                                        
 out  connection pool: 14/50 in use                                                                                      
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled
 
 === confirm  (100x14) ===
 `R` pressed with the gate open. Nothing has been sent: the bar asks a question naming the verb and the exact sheep, and `api` is still online in the table behind it.

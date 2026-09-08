@@ -3871,8 +3871,12 @@ impl App {
     }
 
     /// The rows the table draws, in `(name, instance, id)` order: the whole
-    /// flock, or whatever the filter leaves of it, split into a "Flock"
-    /// section and a "Dogs" section.
+    /// flock, or whatever the filter leaves of it.
+    ///
+    /// Under [`Grouping::Flat`] that is a "Flock" section and a "Dogs"
+    /// section. Under [`Grouping::ByFold`] it is one [`RowKey::Fold`] header
+    /// per fold, a "no fold" section and a "Dogs" section, built by
+    /// [`Self::push_fold_rows`].
     ///
     /// A [`RowKey::Group`] header comes immediately before its own
     /// [`RowKey::Sheep`] entries, and a [`RowKey::Section`] header only when
@@ -5001,6 +5005,18 @@ mod tests {
             "the confirm must name the count: {text}"
         );
         assert!(text.contains("edge"), "and the fold: {text}");
+
+        // The half the confirm cannot check. `Sent::Action`'s `RowKey::Fold`
+        // arm is the only thing turning a fold header into a fold selector,
+        // and nothing else asserts it: change it to `SelectorSpec::Name` and
+        // the confirm still reads "2 sheep in fold edge", Enter still sends,
+        // and the shepherd matches no app. A fold-wide stop that silently
+        // stops nothing.
+        let request = wire(app.update(Msg::Key(KeyPress::Confirm)));
+        let Request::Stop { selector } = request else {
+            panic!("expected Stop, got {request:?}");
+        };
+        assert_eq!(selector, SelectorSpec::Fold("edge".to_string()));
     }
 
     /// `z` hides a fold's members and leaves its header, so a big flock can
