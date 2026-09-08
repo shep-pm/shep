@@ -85,6 +85,23 @@ PID    NAME
     <CodeBlock>{`$ shep fold nonexistent
 error[not_found]: the daemon reported NotFound: selector matched no registered sheep`}</CodeBlock>
 
+    <h2>Seeing every fold at once</h2>
+    <p>
+      <code>shep fold &lt;name&gt;</code> shows one fold. To see them all,
+      press <code>F</code> in <a href="/docs/lookout">lookout</a>. The flock
+      table gathers under a header per fold, each summing its members'
+      restarts, CPU and memory and taking the shortest of their uptimes, with
+      a bar for the fold's share of total flock memory. Sheep in no fold get a
+      <code>no fold</code> header, and dogs keep their own, because a dog is
+      never in a fold.
+    </p>
+    <p>
+      A fold header is a selectable row, so <code>x</code>, <code>R</code> and
+      <code>L</code> act on every member behind a confirm that names the
+      count. <code>z</code> collapses one. <code>F</code> again goes back to
+      the flat list.
+    </p>
+
     <h2>Selecting one from any verb</h2>
     <p>
       Every verb accepts <code>fold:&lt;name&gt;</code> in place of a name,
