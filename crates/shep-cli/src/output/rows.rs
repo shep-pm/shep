@@ -2944,7 +2944,7 @@ pub(crate) mod tests {
 
         use crate::lookout::app::{App, Control, Msg, RowKey};
         use crate::lookout::theme::Palette;
-        use crate::lookout::view::flock::{columns_for, key_line};
+        use crate::lookout::view::flock::{Column, columns_for, key_line};
 
         // Every slot differs in every summed field, so a rollup reading one
         // member cannot coincide with the sum.
@@ -3027,17 +3027,19 @@ pub(crate) mod tests {
 
         let table = FlockRows(flock).rows_for(full_presentation(), true);
         let header = &table[0];
-        let dashboard = key_line(
+        let dashboard_columns = columns_for(200);
+        let dashboard_line = key_line(
             &app,
             &RowKey::Group("web".to_string()),
-            columns_for(200),
+            dashboard_columns,
             200,
             false,
-        )
-        .spans
-        .iter()
-        .map(|span| span.content.as_ref())
-        .collect::<String>();
+        );
+        let dashboard = dashboard_line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
 
         // Then the rendered cells. FOLD and SMIT are per-app facts, not sums;
         // STATUS carries a face here and not in the dashboard. CPU is not
@@ -3055,8 +3057,29 @@ pub(crate) mod tests {
                  does not agree: {dashboard:?}"
             );
         }
-        assert!(
-            dashboard.contains(" - "),
+
+        // The CPU cell specifically, not a substring search of the whole
+        // line: FOLD and SMIT are blank-instance dashes too, so `" - "`
+        // shows up in the rendered row whatever the CPU cell holds. `key_line`
+        // pushes one span per column (a "  " separator span between them,
+        // two text spans only for `Column::MemCeil`), so walking `columns_for`
+        // the same way it does finds the exact span the CPU cell landed in.
+        let mut cpu_span = None;
+        let mut span_index = 0;
+        for (index, column) in dashboard_columns.iter().enumerate() {
+            if index > 0 {
+                span_index += 1; // the "  " separator span
+            }
+            if *column == Column::Cpu {
+                cpu_span = Some(span_index);
+                break;
+            }
+            span_index += if *column == Column::MemCeil { 2 } else { 1 };
+        }
+        let cpu_span = cpu_span.expect("CPU is drawn at this width");
+        let cpu_cell = dashboard_line.spans[cpu_span].content.as_ref().trim();
+        assert_eq!(
+            cpu_cell, "-",
             "the dashboard's own CPU cell reads `-` after one poll: {dashboard:?}"
         );
     }
