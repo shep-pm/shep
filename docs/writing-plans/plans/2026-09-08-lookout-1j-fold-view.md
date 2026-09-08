@@ -588,7 +588,20 @@ git commit -m "docs(lookout): describe the fold view and its fold-wide actions"
 
 ## Self-review
 
-**Spec coverage.** Grouping mode and `F`: Task 1. Fold, `no fold` and dogs headers: Task 1. Two levels not three: Task 1. Rollup matching the group rule: Task 2. Fold-wide actions and the confirm: Task 2. Share bar: Task 3. Own column ladder: Task 3. `z` collapse: Task 4. Detail branch: Task 4. Scene and docs: Task 5.
+**Correction, 2026-09-08, found during Task 3's review.** The claim below says
+"Own column ladder: Task 3", and Task 3 does build one. Nothing connects it.
+`view/mod.rs` calls `flock::columns_for(table_width)` unconditionally and
+never branches on `App::grouping()`, so the column header row and every member
+row still lay out in flat view's fourteen columns while a fold header lays
+itself out in `FoldColumn`'s eight. The table renders misaligned the moment
+`F` is pressed.
+
+This is why `App::grouping()` still had no non-test caller after the task that
+was supposed to consume it. Ruled into Task 4, which is the last functional
+task before the scene, and the scene in Task 5 has to pin a correct render
+rather than a misaligned one.
+
+**Spec coverage.** Grouping mode and `F`: Task 1. Fold, `no fold` and dogs headers: Task 1. Two levels not three: Task 1. Rollup matching the group rule: Task 2. Fold-wide actions and the confirm: Task 2. Share bar: Task 3. Own column ladder: Task 3 builds it, Task 4 wires it into `view/mod.rs` (see the correction above). `z` collapse: Task 4. Detail branch: Task 4. Scene and docs: Task 5.
 
 **One spec sentence needed sharpening, and the plan carries the sharper version.** The spec says the `no fold` header exists; it does not say whether it is selectable. `SelectorSpec::Fold(String)` can express `fold:edge` and cannot express "everything with no fold", so an action there would have to enumerate ids the operator never named. The plan makes it a `Section`, which is already the non-selectable kind, and Task 2 tests it.
 
