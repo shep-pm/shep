@@ -154,7 +154,13 @@ mod tests {
         edits.set(field("cwd", json!("/a")), None);
         edits.set(field("script", json!("b.js")), None);
         edits.set(field("cwd", json!("/b")), None);
+        // Walked to exhaustion on purpose. Asserting only the first pop
+        // cannot tell "moved to the end" from "pushed again and happens to
+        // be last", and the second of those leaves a stale key that a
+        // third undo would report having undone.
         assert_eq!(edits.undo(), Some(EditKey::Field("cwd".to_owned())));
+        assert_eq!(edits.undo(), Some(EditKey::Field("script".to_owned())));
+        assert_eq!(edits.undo(), None);
     }
 
     #[test]
@@ -415,7 +421,7 @@ warnings go on their own with Task 5.
 For each of the 12 tests: change the implementation so the behaviour it names is wrong, confirm that test fails, restore. Two that are easy to get wrong and must be checked by hand:
 
 - `an_unclassified_edit_does_not_become_the_lightest_impact` must fail if `worst_impact` maps `None` to `ApplyGroup::Live` instead of filtering it out.
-- `re_editing_a_field_moves_it_to_the_end_of_the_undo_order` must fail if `set` skips the `retain` and pushes a duplicate.
+- `re_editing_a_field_moves_it_to_the_end_of_the_undo_order` must fail if `set` skips the `retain` and pushes a duplicate. That is what the third assertion is for: with a stale key left in `order`, the last `undo` returns `Some` rather than `None`. A version of this test asserting only the first pop passes under that mutation, which is how a test that pins nothing gets written.
 
 - [ ] **Step 6: Commit**
 
