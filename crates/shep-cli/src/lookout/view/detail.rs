@@ -30,21 +30,52 @@ pub fn detail_lines(app: &App, width: u16) -> Vec<Line<'static>> {
         None => empty_lines(app, width, palette),
         Some(RowKey::Group(name)) => group_lines(app, &name, width, palette),
         Some(RowKey::Sheep(_)) => sheep_lines(app, width, palette),
-        Some(RowKey::Fold(name)) => fold_lines(&name, width, palette),
+        Some(RowKey::Fold(name)) => fold_lines(app, &name, width, palette),
         Some(RowKey::Section(_)) => unreachable!("a header is never selectable"),
     }
 }
 
-/// A fold's four lines when a [`RowKey::Fold`] is selected. Its own rollup
-/// is a later task; for now this names the fold and leaves the other three
-/// lines blank, the same shape [`empty_lines`] uses.
-fn fold_lines(name: &str, width: u16, palette: Palette) -> Vec<Line<'static>> {
+/// A fold's four lines when a [`RowKey::Fold`] is selected: [`App::fold_totals`]'s
+/// rollup, in place of one sheep's own fields. The same shape
+/// [`group_lines`] draws one level down, since a fold has no more of a
+/// single process to walk or tail than a group does: no lamb line, no log
+/// paths.
+fn fold_lines(app: &App, name: &str, width: u16, palette: Palette) -> Vec<Line<'static>> {
+    let totals = app.fold_totals(name);
+    let head = format!("fold {name} \u{d7}{}  ", totals.count);
+    let status = app.fold_status_text(name);
+    let rest = format!(
+        "   restarts {}   uptime {}   cpu {}   mem {}",
+        totals.restarts,
+        totals
+            .uptime_ms
+            .map_or_else(|| "-".to_string(), human_duration),
+        totals
+            .cpu
+            .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
+        totals.memory.map_or_else(|| "-".to_string(), human_bytes),
+    );
+    let used = columns(&head) + columns(&status);
+    let status_style = app
+        .fold_uniform_status(name)
+        .map_or(Style::default(), |status| palette.status(status));
+
     vec![
+        Line::from(vec![
+            Span::raw(head),
+            Span::styled(status, status_style),
+            Span::raw(fit(
+                &rest,
+                width.saturating_sub(u16::try_from(used).unwrap_or(width)),
+            )),
+        ]),
         Line::from(Span::styled(
-            fit(&format!("fold {name}"), width),
+            fit(
+                "lambs  a fold has no single process to walk; select one sheep",
+                width,
+            ),
             palette.muted(),
         )),
-        Line::from(Span::raw(String::new())),
         Line::from(Span::raw(String::new())),
         Line::from(Span::raw(String::new())),
     ]
@@ -368,11 +399,11 @@ mod tests {
 
     use super::super::fixtures::{
         app_fixture, app_with, app_with_lamb_reading_at, coloured, lamb_line_of, plain, render_all,
-        rendered, sheep_with_lambs, with_lamb_reading, with_lamb_reading_for, with_selection,
-        with_selection_and_palette,
+        rendered, sheep_in_fold, sheep_with_lambs, with_lamb_reading, with_lamb_reading_for,
+        with_selection, with_selection_and_palette,
     };
     use super::*;
-    use crate::lookout::app::{App, Control, LambWalk, Msg, RowKey};
+    use crate::lookout::app::{App, Control, KeyPress, LambWalk, Msg, RowKey};
     use crate::lookout::theme::Palette;
 
     /// Five states, and the CLI's own wording covers only one of them: the
@@ -618,6 +649,27 @@ mod tests {
         assert!(
             !rendered.contains("web-0-out.log"),
             "no arbitrarily-chosen instance's log path: {rendered:?}"
+        );
+    }
+
+    /// The detail pane already refuses to invent a single process for a
+    /// group. A fold is the same situation one level up.
+    #[test]
+    fn a_selected_fold_shows_the_rollup_and_no_log_paths() {
+        let mut app = app_with(
+            vec![
+                sheep_in_fold(1, "api", Some("edge")),
+                sheep_in_fold(2, "cdn", Some("edge")),
+            ],
+            plain(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::FoldView));
+        app.select_fold_for_tests("edge");
+        let text = render_all(&detail_lines(&app, 200));
+        assert!(text.contains("fold edge \u{d7}2"), "got {text}");
+        assert!(
+            !text.contains("out  "),
+            "a fold has no single log path: {text}"
         );
     }
 
