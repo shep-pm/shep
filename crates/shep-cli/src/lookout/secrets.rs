@@ -184,6 +184,8 @@ mod tests {
         secrets::set(&paths.secrets, "EXACT", "production", "a").unwrap();
         secrets::set(&paths.secrets, "FALLBACK", ALL_ENVIRONMENTS, "b").unwrap();
         secrets::set(&paths.secrets, "ELSEWHERE", "ci", "c").unwrap();
+        secrets::set(&paths.secrets, "BOTH", "production", "exact").unwrap();
+        secrets::set(&paths.secrets, "BOTH", ALL_ENVIRONMENTS, "fallback").unwrap();
 
         let built = model(&paths, &[], "production");
         let store = secrets::all(&paths.secrets).unwrap();
@@ -216,6 +218,12 @@ mod tests {
             Some(ALL_ENVIRONMENTS)
         );
         assert_eq!(by_key("ELSEWHERE").in_force, None);
+        assert_eq!(
+            by_key("BOTH").in_force.as_deref(),
+            Some("production"),
+            "a key with both slots takes the exact environment, never `all`"
+        );
+        assert_eq!(by_key("BOTH").byte_len, Some("exact".len()));
     }
 
     #[test]
