@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use serde_json::{Map, Value};
-use shep_core::config::{ApplyGroup, GROUP_ORDER, apply_group, flockfile_schema_json};
+use shep_core::config::{AppConfig, ApplyGroup, GROUP_ORDER, apply_group, flockfile_schema_json};
 use shep_core::protocol::{EnvValue, SheepConfigView};
 use shep_core::values::{MemSize, UpDuration};
 
@@ -792,6 +792,52 @@ impl core::fmt::Debug for ConfigPane {
     }
 }
 
+/// The field set and the value map a sheep's config renders as.
+///
+/// Shared by [`ConfigPane::sheep`] and the sheep pane's read-only listing,
+/// so group order and the read-only marking on a `Structural` field cannot
+/// differ between the two screens. Built from the Flockfile schema rather
+/// than from a second list of names, for the reason
+/// [`ConfigPane::sheep`]'s own doc gives.
+pub(crate) fn sheep_fields(config: &AppConfig) -> (FieldSet, Map<String, Value>) {
+    let schema = flockfile_schema_json().to_value();
+    let defs = schema
+        .get("$defs")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let properties = defs
+        .get("AppConfig")
+        .and_then(|app| app.get("properties"))
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let set = FieldSet::from_properties(&properties, &defs, GROUP_ORDER);
+    // A Structural field is identity or flock shape, not a runtime knob:
+    // `name` cannot drift without becoming a different sheep, and
+    // `instances` is routed through `handle_scale` rather than through a
+    // config write at all. Read-only here, so the pane never offers an
+    // edit the daemon would refuse.
+    let fields = FieldSet::from_fields(
+        set.fields()
+            .iter()
+            .cloned()
+            .map(|mut field| {
+                if apply_group(&field.key) == ApplyGroup::Structural {
+                    field.editable = false;
+                }
+                field
+            })
+            .collect(),
+        GROUP_ORDER,
+    );
+    let values = serde_json::to_value(config)
+        .ok()
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    (fields, values)
+}
+
 impl ConfigPane {
     /// A pane over one sheep's config, read off the Flockfile schema.
     ///
@@ -801,41 +847,7 @@ impl ConfigPane {
     /// in step with it.
     #[must_use]
     pub fn sheep(view: SheepConfigView) -> Self {
-        let schema = flockfile_schema_json().to_value();
-        let defs = schema
-            .get("$defs")
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_default();
-        let properties = defs
-            .get("AppConfig")
-            .and_then(|app| app.get("properties"))
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_default();
-        let set = FieldSet::from_properties(&properties, &defs, GROUP_ORDER);
-        // A Structural field is identity or flock shape, not a runtime knob:
-        // `name` cannot drift without becoming a different sheep, and
-        // `instances` is routed through `handle_scale` rather than through a
-        // config write at all. Read-only here, so the pane never offers an
-        // edit the daemon would refuse.
-        let fields = FieldSet::from_fields(
-            set.fields()
-                .iter()
-                .cloned()
-                .map(|mut field| {
-                    if apply_group(&field.key) == ApplyGroup::Structural {
-                        field.editable = false;
-                    }
-                    field
-                })
-                .collect(),
-            GROUP_ORDER,
-        );
-        let values = serde_json::to_value(&view.config)
-            .ok()
-            .and_then(|value| value.as_object().cloned())
-            .unwrap_or_default();
+        let (fields, values) = sheep_fields(&view.config);
         Self {
             target: PaneTarget::Sheep { name: view.name },
             fields,
@@ -1414,6 +1426,12 @@ impl ConfigPane {
         &self.fields
     }
 
+    /// The values the form reads from, keyed the same as [`Self::fields`].
+    #[cfg(test)]
+    pub(crate) fn values(&self) -> &Map<String, Value> {
+        &self.values
+    }
+
     /// The current value of `key`, rendered for a cell.
     ///
     /// A scalar shows bare, an absent or `null` value shows `(unset)`, and
@@ -1748,6 +1766,30 @@ mod tests {
                 "cron"
             ]
         );
+    }
+
+    /// One walk, two screens. The editing pane and the sheep pane's read-only
+    /// listing must not disagree about group order or about which fields are
+    /// read-only, and the only way to guarantee that is to build both from
+    /// this.
+    #[test]
+    fn the_shared_field_set_matches_what_the_config_pane_builds() {
+        let view = web();
+        let (fields, values) = sheep_fields(&view.config);
+        let pane = ConfigPane::sheep(view);
+        assert_eq!(
+            fields
+                .fields()
+                .iter()
+                .map(|f| f.key.clone())
+                .collect::<Vec<_>>(),
+            pane.fields()
+                .fields()
+                .iter()
+                .map(|f| f.key.clone())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(values, *pane.values());
     }
 
     #[test]
