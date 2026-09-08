@@ -84,6 +84,54 @@ pub fn sparkline(samples: &[f32], cells: usize, ceiling: f32) -> String {
     out
 }
 
+/// A half-block area chart: `rows` rows of `cols` cells, oldest sample
+/// leftmost, top row first.
+///
+/// Sixteen steps in eight rows. For a sample of value `v` the column's
+/// height in half-steps is `h = round(v / ceiling * rows * 2)`; for row `r`
+/// counted from the top, `s = h - (rows - 1 - r) * 2`, and the cell is `█`
+/// when `s >= 2`, `▄` when `s == 1`, and blank otherwise.
+///
+/// Left-padded and ceiling-saturating like [`sparkline`], and blank rather
+/// than a floor line with no samples, for the reasons that function's own
+/// doc gives.
+///
+/// No non-test caller yet: the sheep pane that draws with this cell lands
+/// in a later task, so `#[allow(dead_code)]` says so rather than inventing
+/// one.
+#[must_use]
+#[allow(dead_code)]
+pub fn chart(samples: &[f32], ceiling: f32, cols: usize, rows: usize) -> Vec<String> {
+    if rows == 0 {
+        return Vec::new();
+    }
+    if cols == 0 {
+        return vec![String::new(); rows];
+    }
+    let window = &samples[samples.len().saturating_sub(cols)..];
+    let pad = cols - window.len();
+    let ceiling = if ceiling > 0.0 { ceiling } else { 1.0 };
+    let steps = rows * 2;
+    let heights: Vec<usize> = window
+        .iter()
+        .map(|sample| (sample.clamp(0.0, ceiling) / ceiling * steps as f32).round() as usize)
+        .collect();
+    (0..rows)
+        .map(|row| {
+            let floor = (rows - 1 - row) * 2;
+            let mut line = " ".repeat(pad);
+            for height in &heights {
+                line.push(match height.saturating_sub(floor) {
+                    0 => ' ',
+                    1 => '\u{2584}',
+                    _ => '\u{2588}',
+                });
+            }
+            line
+        })
+        .collect()
+}
+
 /// A rule of exactly `cells` box-drawing horizontals.
 ///
 /// `status::rule_line` is its only non-test caller today.
@@ -140,6 +188,47 @@ mod tests {
         // 4 of 10 cells: 44% rounds down, 45% rounds up.
         assert_eq!(gauge(44, Some(100), 10), "████░░░░░░");
         assert_eq!(gauge(45, Some(100), 10), "█████░░░░░");
+    }
+
+    #[test]
+    fn a_chart_at_the_ceiling_fills_every_row() {
+        assert_eq!(chart(&[100.0], 100.0, 1, 4), ["█", "█", "█", "█"]);
+    }
+
+    #[test]
+    fn a_chart_at_half_the_ceiling_fills_the_bottom_half() {
+        assert_eq!(chart(&[50.0], 100.0, 1, 4), [" ", " ", "█", "█"]);
+    }
+
+    /// The half-block is the whole point of the cell: four rows carry eight
+    /// steps, not four.
+    #[test]
+    fn an_odd_half_step_draws_the_lower_half_block() {
+        assert_eq!(chart(&[12.5], 100.0, 1, 4), [" ", " ", " ", "▄"]);
+    }
+
+    #[test]
+    fn a_chart_over_its_ceiling_saturates_rather_than_overflowing() {
+        assert_eq!(chart(&[250.0], 100.0, 1, 2), ["█", "█"]);
+    }
+
+    /// Left-padded like `sparkline`, so the chart grows into its column from
+    /// the right as history arrives rather than stretching to fit.
+    #[test]
+    fn a_chart_shorter_than_its_columns_pads_on_the_left() {
+        assert_eq!(chart(&[100.0], 100.0, 3, 1), ["  █"]);
+    }
+
+    #[test]
+    fn a_chart_longer_than_its_columns_keeps_the_newest() {
+        assert_eq!(chart(&[100.0, 0.0, 0.0], 100.0, 2, 1), ["  "]);
+    }
+
+    /// No samples is blank rather than a floor line, for `sparkline`'s reason:
+    /// a flat line reads as measured and idle, blank reads as not measured yet.
+    #[test]
+    fn an_empty_chart_is_blank_rather_than_a_floor_line() {
+        assert_eq!(chart(&[], 100.0, 3, 2), ["   ", "   "]);
     }
 
     #[test]
