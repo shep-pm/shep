@@ -66,7 +66,7 @@ use launch::launch_daemon;
 use output::Streams;
 use shep_client::Client;
 use shep_client::spawn::{SpawnOutcome, connect_or_spawn};
-use shep_core::paths::ShepPaths;
+use shep_core::paths::{ShepPaths, user_home};
 
 use crate::commands::init;
 
@@ -310,16 +310,19 @@ async fn print_shepherd_status(argv: &[OsString]) {
     let _ = writeln!(err, "{}", status::one_line(&status));
 }
 
-/// Turns `--home`/`$SHEP_HOME`/`$HOME` into a resolved [`ShepPaths`].
+/// Turns `--home`/`$SHEP_HOME`/the user's home directory into a resolved
+/// [`ShepPaths`].
 ///
 /// Bridges clap's already-folded `GlobalArgs::home` back into the closure
-/// shape `ShepPaths::resolve` reads the environment through.
+/// shape `ShepPaths::resolve` reads the environment through. Which variables
+/// name a home directory is [`user_home`]'s question, and differs by
+/// platform.
 ///
 /// # Errors
 ///
-/// [`ExitCode::Usage`] if neither `--home`/`$SHEP_HOME` nor `$HOME` names a
-/// root to resolve against. `$HOME` is read only as that fallback, so a
-/// `--home` invocation still works with no `$HOME` at all.
+/// [`ExitCode::Usage`] if neither `--home`/`$SHEP_HOME` nor a home directory
+/// resolves a root. The home directory is read only as that fallback, so a
+/// `--home` invocation still works with none at all.
 fn resolve_paths(global: &GlobalArgs) -> Result<ShepPaths, ExitCode> {
     let env = |key: &str| match key {
         "SHEP_HOME" => global
@@ -328,8 +331,8 @@ fn resolve_paths(global: &GlobalArgs) -> Result<ShepPaths, ExitCode> {
             .map(|p| p.to_string_lossy().into_owned()),
         other => std::env::var(other).ok(),
     };
-    let home_dir = match (std::env::var_os("HOME"), env("SHEP_HOME")) {
-        (Some(dir), _) => PathBuf::from(dir),
+    let home_dir = match (user_home(&|key| std::env::var_os(key)), env("SHEP_HOME")) {
+        (Some(dir), _) => dir,
         (None, Some(_)) => PathBuf::new(),
         (None, None) => return Err(ExitCode::Usage),
     };
@@ -420,7 +423,8 @@ fn must_render_bare(stdout_is_terminal: bool, fmt: cli::Format) -> bool {
 /// they are about, and an operator cannot act on a refusal that omits it.
 #[derive(Debug)]
 pub(crate) enum HomeRefusal {
-    /// None of `--home`, `$SHEP_HOME` or `$HOME` resolved a root directory.
+    /// None of `--home`, `$SHEP_HOME` or the user's home directory
+    /// resolved a root directory.
     Unresolved,
     /// `--home`/`$SHEP_HOME` named a directory that is not there. Never
     /// created: a named path is not a path shep may invent.
@@ -1053,7 +1057,17 @@ async fn run(
 }
 
 /// What both [`resolve_paths`] call sites report when nothing resolves a root.
+#[cfg(not(windows))]
 const UNRESOLVED_HOME: &str = "none of --home, $SHEP_HOME, or $HOME resolves a root directory";
+
+/// What both [`resolve_paths`] call sites report when nothing resolves a root.
+///
+/// Names `%USERPROFILE%`, not `$HOME`: a Windows session sets no `HOME`, so
+/// naming it sends an operator looking for a variable that was never going
+/// to be there.
+#[cfg(windows)]
+const UNRESOLVED_HOME: &str =
+    "none of --home, %SHEP_HOME%, or %USERPROFILE% resolves a root directory";
 
 /// Emits one error envelope to stderr under a lock taken for just that write.
 ///

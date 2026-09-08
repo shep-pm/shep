@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use shep_core::config::AppConfig;
-use shep_core::paths::ShepPaths;
+use shep_core::paths::{ShepPaths, user_home};
 
 use crate::cli::DevArgs;
 use crate::commands::foreground::{self, ForegroundOptions};
@@ -14,6 +14,19 @@ use crate::commands::lifecycle::{resolve_target, target_exit_code};
 use crate::commands::runtime::discovered_target;
 use crate::exit::ExitCode;
 use crate::output::Streams;
+
+/// What `shep dev` reports when nothing resolves a root for its own home.
+#[cfg(not(windows))]
+const UNRESOLVED_DEV_HOME: &str =
+    "neither $SHEP_DEV_HOME nor $HOME resolves a root directory for shep dev";
+
+/// What `shep dev` reports when nothing resolves a root for its own home.
+///
+/// Names `%USERPROFILE%` for the same reason the shared refusal in `lib.rs`
+/// does: Windows sets no `HOME`.
+#[cfg(windows)]
+const UNRESOLVED_DEV_HOME: &str =
+    "neither %SHEP_DEV_HOME% nor %USERPROFILE% resolves a root directory for shep dev";
 
 /// Where a dev flock lives: `$SHEP_DEV_HOME`, else `~/.shep-dev`.
 ///
@@ -109,7 +122,8 @@ pub async fn dev(
     );
 
     // `env` only recognizes `SHEP_DEV_HOME`, so a real flock's env can't leak
-    // in here. `$HOME` is read separately below, only for the fallback parent.
+    // in here. The home directory is read separately below, only for the
+    // fallback parent.
     let env = |key: &str| {
         if key == "SHEP_DEV_HOME" {
             std::env::var("SHEP_DEV_HOME").ok()
@@ -117,13 +131,13 @@ pub async fn dev(
             None
         }
     };
-    let home_dir = match (std::env::var_os("HOME"), env("SHEP_DEV_HOME")) {
-        (Some(dir), _) => PathBuf::from(dir),
+    let home_dir = match (
+        user_home(&|key| std::env::var_os(key)),
+        env("SHEP_DEV_HOME"),
+    ) {
+        (Some(dir), _) => dir,
         (None, Some(_)) => PathBuf::new(),
-        (None, None) => {
-            let message = "neither $SHEP_DEV_HOME nor $HOME resolves a root directory for shep dev";
-            return streams.fail(ExitCode::Usage, message);
-        }
+        (None, None) => return streams.fail(ExitCode::Usage, UNRESOLVED_DEV_HOME),
     };
     let paths = dev_home(&env, &home_dir);
 
