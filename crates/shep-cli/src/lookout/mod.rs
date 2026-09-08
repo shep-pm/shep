@@ -183,6 +183,7 @@ pub async fn lookout(
         msg_rx,
         poll_tx,
         request_tx,
+        paths.clone(),
         paths.home.clone(),
         paths.daemon_config.clone(),
         paths.socket.clone(),
@@ -211,20 +212,6 @@ pub fn resolve_control(read_only: bool, kv: &Path) -> Control {
     }
 }
 
-/// Rebuilds `ShepPaths` from `home` alone, the way `run_ui`'s own three
-/// loose path parameters were themselves built.
-///
-/// A plain `home_dir.join(".shep")` fallback is [`ShepPaths::resolve`]'s own
-/// rule for when `$SHEP_HOME` is unset; `home` here has already run that
-/// gauntlet once (in `lookout` or in a test harness), so the closure below
-/// hands it back as `SHEP_HOME` rather than letting `resolve` append
-/// `.shep` a second time and land every `secrets::model` read one directory
-/// short of `daemon_config`.
-fn secrets_paths_from(home: &Path) -> ShepPaths {
-    let home_str = home.to_string_lossy().into_owned();
-    ShepPaths::resolve(&|key| (key == "SHEP_HOME").then(|| home_str.clone()), home)
-}
-
 /// The UI loop.
 ///
 /// Generic over the backend and the key source, so a test drives it with a
@@ -235,7 +222,7 @@ fn secrets_paths_from(home: &Path) -> ShepPaths {
 /// forever, so every arm above the heartbeat is disabled once it runs dry;
 /// arm 4's is live, since an empty `FuturesUnordered` fills again. The redraw
 /// runs after the `select!`, gated on `dirty` and [`MIN_REDRAW`]; the feed
-/// and the lamb fetch ride that same gate. Nine arguments, hence the
+/// and the lamb fetch ride that same gate. Ten arguments, hence the
 /// `#[allow]`.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_ui<B: Backend, S, L>(
@@ -245,6 +232,8 @@ pub async fn run_ui<B: Backend, S, L>(
     mut msgs: mpsc::Receiver<Msg>,
     polls: mpsc::Sender<()>,
     requests: mpsc::Sender<self::app::Sent>,
+    // The resolved layout, read only by `Effect::LoadSecrets`.
+    paths: ShepPaths,
     // `$SHEP_HOME` as this invocation resolved it. Only `Effect::LoadDogPane`
     // reads it: `commands::dogs::ask` sets `SHEP_HOME` for the probed
     // candidate, so a home other than `--home`'s could point a schema probe
@@ -460,18 +449,15 @@ where
             // the store's own lock (`ShepToml::try_edit`'s cousin over
             // `secrets.json`) acquires with no deadline.
             //
-            // `paths` is reconstructed from `home` rather than threaded in
-            // as a fourth parameter, since `home` alone already fixes every
-            // field `secrets::model` reads: `daemon_config` and
-            // `socket_default` above are the same derivation, kept as their
-            // own parameters so a test can hand this loop an arbitrary
-            // pair. The environment is the current tab's, once there is
+            // `paths` is `run_ui`'s own parameter, not rebuilt from `home`:
+            // `ShepPaths::resolve` is the one place the `$SHEP_HOME` layout
+            // is derived. The environment is the current tab's, once there is
             // one; before the first load lands there is no tab yet, so this
             // reads the daemon's own configured default instead, and
             // `Msg::Secrets` echoes back whichever it used so the reducer
             // can find that environment's tab once the model arrives.
             Effect::LoadSecrets => {
-                let paths = secrets_paths_from(&home);
+                let paths = paths.clone();
                 let procs = app
                     .rows()
                     .into_iter()
@@ -641,20 +627,12 @@ mod tests {
     use crate::lookout::tail::Tail;
     use crate::lookout::theme::Palette;
 
-    /// Pins the bug a bare `ShepPaths::resolve(&|_| None, home)` would
-    /// reintroduce: with no `SHEP_HOME` in the closure, `resolve` appends
-    /// `.shep` to `home_dir` itself, and every `secrets::model` read would
-    /// land one directory below `daemon_config`, which every `run_ui` test
-    /// above builds directly under `home`.
-    #[test]
-    fn secrets_paths_from_does_not_add_a_shep_suffix() {
-        let home = Path::new("/tmp/shep-lookout-tests");
-
-        let paths = secrets_paths_from(home);
-
-        assert_eq!(paths.home, home);
-        assert_eq!(paths.daemon_config, home.join("shep.toml"));
-        assert_eq!(paths.secrets, home.join("secrets.json"));
+    /// The resolved layout for a given `home`, matching how the literal
+    /// `home`/`daemon_config`/`socket_default` triples below were derived by
+    /// hand: `SHEP_HOME` is `home` itself, so `resolve` appends no `.shep`.
+    fn test_paths(home: &Path) -> ShepPaths {
+        let home_str = home.to_string_lossy().into_owned();
+        ShepPaths::resolve(&|key| (key == "SHEP_HOME").then(|| home_str.clone()), home)
     }
 
     /// A `Local` that touches no disk: a fixed sample, a fixed tail, and a
@@ -710,6 +688,7 @@ mod tests {
                 msg_rx,
                 poll_tx,
                 request_tx,
+                test_paths(Path::new("/tmp/shep-lookout-tests")),
                 PathBuf::from("/tmp/shep-lookout-tests"),
                 PathBuf::from("/tmp/shep-lookout-tests/shep.toml"),
                 PathBuf::from("/tmp/shep-lookout-tests/run/shep.sock"),
@@ -756,6 +735,7 @@ mod tests {
                 msg_rx,
                 poll_tx,
                 request_tx,
+                test_paths(Path::new("/tmp/shep-lookout-tests")),
                 PathBuf::from("/tmp/shep-lookout-tests"),
                 PathBuf::from("/tmp/shep-lookout-tests/shep.toml"),
                 PathBuf::from("/tmp/shep-lookout-tests/run/shep.sock"),
@@ -832,6 +812,7 @@ mod tests {
                 msg_rx,
                 poll_tx,
                 request_tx,
+                test_paths(Path::new("/tmp/shep-lookout-tests")),
                 PathBuf::from("/tmp/shep-lookout-tests"),
                 PathBuf::from("/tmp/shep-lookout-tests/shep.toml"),
                 PathBuf::from("/tmp/shep-lookout-tests/run/shep.sock"),
@@ -893,6 +874,7 @@ mod tests {
                 msg_rx,
                 poll_tx,
                 request_tx,
+                test_paths(Path::new("/tmp/shep-lookout-tests")),
                 PathBuf::from("/tmp/shep-lookout-tests"),
                 PathBuf::from("/tmp/shep-lookout-tests/shep.toml"),
                 PathBuf::from("/tmp/shep-lookout-tests/run/shep.sock"),
@@ -975,6 +957,7 @@ mod tests {
                 msg_rx,
                 poll_tx,
                 request_tx,
+                test_paths(Path::new("/tmp/shep-lookout-tests")),
                 PathBuf::from("/tmp/shep-lookout-tests"),
                 PathBuf::from("/tmp/shep-lookout-tests/shep.toml"),
                 PathBuf::from("/tmp/shep-lookout-tests/run/shep.sock"),
@@ -1042,6 +1025,7 @@ mod tests {
                 msg_rx,
                 poll_tx,
                 request_tx,
+                test_paths(Path::new("/tmp/shep-lookout-tests")),
                 PathBuf::from("/tmp/shep-lookout-tests"),
                 PathBuf::from("/tmp/shep-lookout-tests/shep.toml"),
                 PathBuf::from("/tmp/shep-lookout-tests/run/shep.sock"),
@@ -1107,6 +1091,7 @@ mod tests {
                 msg_rx,
                 poll_tx,
                 request_tx,
+                test_paths(Path::new("/tmp/shep-lookout-tests")),
                 PathBuf::from("/tmp/shep-lookout-tests"),
                 PathBuf::from("/tmp/shep-lookout-tests/shep.toml"),
                 PathBuf::from("/tmp/shep-lookout-tests/run/shep.sock"),
@@ -1196,6 +1181,7 @@ mod tests {
                 msg_rx,
                 poll_tx,
                 request_tx,
+                test_paths(dir.path()),
                 dir.path().to_path_buf(),
                 config.clone(),
                 socket_default,
