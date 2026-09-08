@@ -312,7 +312,13 @@ pub enum Level {
 #[must_use]
 pub fn level_of(line: &str) -> Option<Level> {
     line.split_whitespace().take(4).find_map(|word| {
-        match word.trim_matches(|c: char| !c.is_ascii_alphanumeric())  // see the correction note below.to_ascii_lowercase().as_str() {
+        // The predicate keeps digits: see the correction note above for why
+        // stripping them made `/error404` read as `Error`.
+        match word
+            .trim_matches(|c: char| !c.is_ascii_alphanumeric())
+            .to_ascii_lowercase()
+            .as_str()
+        {
             "trace" => Some(Level::Trace),
             "debug" => Some(Level::Debug),
             "info" => Some(Level::Info),

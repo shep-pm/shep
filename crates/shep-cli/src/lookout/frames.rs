@@ -1210,8 +1210,8 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
 /// lines say what a log-rotate dog says rather than the default fixture's
 /// web-server lines.
 ///
-/// `Bleats`: sixteen lines, ten `out` and six `err`, six carrying a level
-/// word and ten carrying none, one of them 153 characters long. Built to
+/// `Bleats`: sixteen lines, ten `out` and six `err`, eight carrying a level
+/// word and eight carrying none, one of them 153 characters long. Built to
 /// be filtered and wrapped, not read raw: see [`scene_with`]'s own
 /// `Scene::Bleats` arm for the axes it stacks on top.
 fn feed_for(which: Scene) -> Tail {
@@ -1257,8 +1257,8 @@ fn feed_for(which: Scene) -> Tail {
             read_bytes: 0,
             note: Some("this sheep has not written a log in this $SHEP_HOME".to_string()),
         },
-        // Ten `out` lines and six `err`, six carrying a real level word
-        // (two of each: debug, info/warn's pair below, error) and ten
+        // Ten `out` lines and six `err`, eight carrying a real level word
+        // (three `WARN`, two `DEBUG`, two `ERROR`, one `INFO`) and eight
         // carrying none, so the level axis has both a floor to apply and
         // unclassifiable lines to exempt from it. One line, the `WARN
         // retrying...` one, is 153 characters: long enough that
@@ -1618,9 +1618,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all thirty-five scenes through the same coloured
+frames.ansi renders all thirty-six scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same thirty-five scenes through the flattened NO_COLOR palette
+renders the same thirty-six scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -1642,7 +1642,8 @@ it read and dropped are counted exactly; bytes below its 64 KiB window were
 never read at all, so those are reported in bytes, because nothing counted the
 lines in them and guessing would be worse than saying so.
 
-The last seven frames are the settings screen, `s` from the dashboard. It owns
+The last frame is the full-screen bleats pane, `b` from the dashboard. The
+seven before it are the settings screen, `s` from the dashboard. It owns
 the whole body between the title and the status bar rather than sharing it
 with the flock table, so a fresh $SHEP_HOME, some scalars declared, an armed
 confirm, the socket editor mid-type, the dogs table's own drift, the same
@@ -1783,6 +1784,33 @@ mod tests {
     ///
     /// Each caption clause in [`Scene::caption`] is pinned by one
     /// assertion here.
+    /// The preamble's own scene count matches `Scene::ALL`.
+    ///
+    /// It said thirty-five twice while the gallery held thirty-six, and
+    /// nothing compared the two, so `write_the_gallery` committed a document
+    /// that miscounted itself into `docs/lookout/frames.txt` for an operator
+    /// to read. The sibling fold-view branch drifted the same way. Spelled
+    /// out rather than a digit, so this checks the words a reader sees.
+    #[test]
+    fn the_gallery_preamble_counts_the_scenes_it_has() {
+        const NUMBERS: [(usize, &str); 4] = [
+            (34, "thirty-four"),
+            (35, "thirty-five"),
+            (36, "thirty-six"),
+            (37, "thirty-seven"),
+        ];
+        let spelled = NUMBERS
+            .iter()
+            .find(|(n, _)| *n == Scene::ALL.len())
+            .map(|(_, word)| *word)
+            .expect("add the next number to NUMBERS when the gallery outgrows it");
+        assert!(
+            GALLERY_PREAMBLE.contains(spelled),
+            "the preamble says something other than {spelled}, and \
+             `write_the_gallery` commits it for an operator to read"
+        );
+    }
+
     #[test]
     /// `cfg(unix)`: one fixture carries a synthetic signalled exit, and
     /// `signal_label` resolves it against the running platform's table.
@@ -1791,7 +1819,7 @@ mod tests {
     /// artifacts under `docs/lookout/` are unix renderings for the same
     /// reason.
     #[cfg(unix)]
-    #[allow(clippy::too_many_lines)] // thirty-five captions, each pinned clause by clause
+    #[allow(clippy::too_many_lines)] // thirty-six captions, each pinned clause by clause
     fn every_scene_shows_the_thing_it_is_named_for() {
         // HealthyWide: all three panes at 120x30.
         let wide_buffer = scene(Scene::HealthyWide).1;

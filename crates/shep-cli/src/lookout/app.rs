@@ -1517,7 +1517,13 @@ impl App {
                 // fixed for the connection's lifetime (see `RefreshFeed`'s
                 // own doc). The dashboard raises nothing here, or every
                 // lookout would poll twice as often for nothing.
-                if matches!(self.body, Body::Bleats(_)) {
+                // `Link::Lost` too: `Msg::Bleats` throws the tail away
+                // while the link is down, so every read would be work done
+                // and discarded once a second. `Msg::Snapshot` and
+                // `select_at` guard on the same thing, and
+                // `a_frozen_dashboard_does_not_re_read_anything` states the
+                // rule.
+                if matches!(self.body, Body::Bleats(_)) && !matches!(self.link, Link::Lost { .. }) {
                     Effect::RefreshFeed
                 } else {
                     Effect::None
@@ -2574,10 +2580,18 @@ impl App {
                 }
                 Effect::None
             }
-            // `N`: the same, toward the oldest matching line.
+            // `N`: the same, toward the oldest matching line, through
+            // `scroll_bleats_back` so it takes the ceiling `k` and `ctrl-u`
+            // take. Calling `match_prev` directly would climb past the
+            // oldest surviving match and then `n`, `j` and `ctrl-d` would
+            // all stop appearing to work until the offset drained. The
+            // matcher guard is read here because the scroll happens here.
             KeyPress::MatchPrev => {
-                if let Some(pane) = self.bleats_pane_mut() {
-                    pane.match_prev();
+                let stepping = self
+                    .bleats_pane()
+                    .is_some_and(|pane| pane.filters().matcher.is_some());
+                if stepping {
+                    self.scroll_bleats_back(1);
                 }
                 Effect::None
             }
@@ -7769,6 +7783,54 @@ mod tests {
     /// offset at 39 after 40 `k` presses, where 15 was the most that did
     /// anything, and the operator then pressed `j` 25 times before the window
     /// moved. `G` and `f` escape that; `j` is the reflex and it did nothing.
+    /// Holding `N` past the oldest match does not deaden `n` either.
+    ///
+    /// `k` and `ctrl-u` route through the clamp; `N` called `match_prev`
+    /// directly and climbed past it. The existing `n`/`N` test presses `N`
+    /// once, so it never reached the ceiling.
+    #[test]
+    fn over_stepping_back_through_matches_does_not_deaden_the_step_forward() {
+        let mut app = fixtures::bleats_pane_with_lines(20);
+        app.note_body_rows(6);
+        app.note_body_width(80);
+        app.bleats_pane_mut_for_tests()
+            .expect("open")
+            .set_match("line".to_string());
+
+        for _ in 0..40 {
+            let _ = app.update(Msg::Key(KeyPress::MatchPrev));
+        }
+        let parked =
+            fixtures::render_all(&super::super::view::bleats_full::draw_lines(&app, 80, 6));
+        let _ = app.update(Msg::Key(KeyPress::MatchNext));
+        let after_one =
+            fixtures::render_all(&super::super::view::bleats_full::draw_lines(&app, 80, 6));
+        assert_ne!(parked, after_one, "one step forward has to move the window");
+    }
+
+    /// A frozen lookout with the pane open stops re-reading the log files.
+    ///
+    /// `Msg::Bleats` throws the tail away while the link is down, so every
+    /// read was work done and discarded once a second. `Msg::Snapshot` and
+    /// `select_at` already guard on the same thing.
+    #[test]
+    fn a_frozen_lookout_does_not_re_read_the_pane_s_log() {
+        let mut app =
+            fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let now = Instant::now();
+        assert_eq!(app.update(Msg::Tick { now }), Effect::RefreshFeed);
+
+        let _ = app.update(Msg::Frozen {
+            at_local: "2026-09-08 09:00:00".to_string(),
+        });
+        assert_eq!(
+            app.update(Msg::Tick { now }),
+            Effect::None,
+            "a read whose result Msg::Bleats discards is not worth doing"
+        );
+    }
+
     #[test]
     fn over_scrolling_back_does_not_deaden_the_scroll_forward() {
         let mut app = fixtures::bleats_pane_with_lines(20);

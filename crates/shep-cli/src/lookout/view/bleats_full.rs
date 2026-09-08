@@ -160,6 +160,28 @@ fn row_height(text: &str, text_width: u16, wrap: bool) -> usize {
 /// include at least one line once `len > 0`, even one whose own cost alone
 /// exceeds `body_rows`: a body of one very long wrapped line is still one
 /// line to show, not zero.
+/// Where the tail window starts: walks back from `len` spending each line's
+/// row cost until `body_rows` is gone, and always keeps one line once `len`
+/// is non-zero.
+///
+/// Shared by [`window_range`] and [`max_scroll_offset`] because the ceiling
+/// is defined as the window's own start index. Two copies of this walk would
+/// have to be kept in step by hand, and the day they drifted the pane would
+/// let an operator scroll somewhere it never draws.
+fn tail_window_start(len: usize, body_rows: usize, cost: impl Fn(usize) -> usize) -> usize {
+    let mut base = len;
+    let mut used = 0usize;
+    while base > 0 {
+        let row = cost(base - 1);
+        if used > 0 && used + row > body_rows {
+            break;
+        }
+        base -= 1;
+        used += row;
+    }
+    base
+}
+
 fn window_range(
     len: usize,
     scroll_offset: usize,
@@ -169,16 +191,7 @@ fn window_range(
     if len == 0 || body_rows == 0 {
         return 0..0;
     }
-    let mut base = len;
-    let mut used = 0usize;
-    while base > 0 {
-        let cost = row_height(base - 1);
-        if used > 0 && used + cost > body_rows {
-            break;
-        }
-        base -= 1;
-        used += cost;
-    }
+    let base = tail_window_start(len, body_rows, &row_height);
     let skip = base.saturating_sub(scroll_offset);
     let mut end = skip;
     let mut used = 0usize;
@@ -218,17 +231,7 @@ pub(crate) fn max_scroll_offset(app: &App, pane: &BleatsPane) -> usize {
 
     // Where the tail window starts. Scrolling past it only re-renders the
     // oldest frame, so that index is the ceiling.
-    let mut base = survivors.len();
-    let mut used = 0usize;
-    while base > 0 {
-        let row = cost(base - 1);
-        if used > 0 && used + row > body_rows {
-            break;
-        }
-        base -= 1;
-        used += row;
-    }
-    base
+    tail_window_start(survivors.len(), body_rows, cost)
 }
 
 /// Lines one backward page covers: what fits ending at `start`.
@@ -446,10 +449,16 @@ fn filter_row_line(
     let mut used: u16 = 0;
     for chip in chip_labels(filters) {
         let text = format!(" {chip} ");
-        used += u16::try_from(text.chars().count()).unwrap_or(width);
+        // Columns, not `char`s, because `fit` below budgets columns: a match
+        // chip carrying wide characters would otherwise under-reserve and
+        // the sentence would overrun the line. Saturating, because the match
+        // text is whatever an operator typed and three capped chips plus
+        // their separators can still overflow a `u16`.
+        let chip_columns = text.chars().map(char_columns).sum::<usize>();
+        used = used.saturating_add(u16::try_from(chip_columns).unwrap_or(width));
         spans.push(Span::styled(text, ground));
         spans.push(Span::raw(" "));
-        used += 1;
+        used = used.saturating_add(1);
     }
     // Three clauses, the third of which the design states and this row used
     // to omit: `esc` is the one non-obvious key in the pane, and nothing else

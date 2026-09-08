@@ -504,15 +504,6 @@ impl BleatsPane {
         self.following = false;
     }
 
-    /// `N`: the same, toward the oldest matching line. [`Self::scroll_up`]
-    /// already clears the follow flag.
-    pub fn match_prev(&mut self) {
-        if self.filters.matcher.is_none() {
-            return;
-        }
-        self.scroll_up(1);
-    }
-
     /// Drops the most recently set filter axis, returning whether one was
     /// there to drop.
     ///

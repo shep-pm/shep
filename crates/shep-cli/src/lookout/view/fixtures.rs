@@ -361,8 +361,6 @@ pub fn bleats_pane_with_lines(n: u32) -> App {
     app
 }
 
-/// The full-screen bleats pane, open on `web`, over a feed with one line
-/// comfortably wider than 80 columns, for the wrap tests.
 /// A feed whose newest lines are short and whose older ones are long, so a
 /// page sized from the tail is far too many lines once the view is scrolled
 /// back into the long stretch.
@@ -421,6 +419,8 @@ pub fn bleats_pane_with_a_wide_line() -> App {
     app
 }
 
+/// The full-screen bleats pane, open on `web`, over a feed with one line
+/// comfortably wider than 80 columns, for the wrap tests.
 pub fn bleats_pane_with_long_line() -> App {
     let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
     app.update(Msg::Bleats {
