@@ -113,8 +113,9 @@ pub enum KeyPress {
     /// screen so every other screen's own keymap reads as the no-op it is.
     ListRemove,
     /// `K`. What a step means is the body's to decide: a config pane
-    /// reorders the list element under the cursor, the sheep pane walks to
-    /// the previous sheep.
+    /// reorders the list element under the cursor. Every other body,
+    /// including the sheep pane, still routes it to [`Effect::None`]; the
+    /// sheep pane's own handling lands in a later task.
     StepUp,
     /// `J`, the twin of [`Self::StepUp`].
     StepDown,
