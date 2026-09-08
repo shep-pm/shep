@@ -2545,6 +2545,32 @@ fn dog_config_refusal(name: &str) -> String {
     )
 }
 
+/// `record`'s stored `env` override, created empty when it has none.
+///
+/// A flat JSON object under the `env` key, which is the shape
+/// [`merge_declared`] reads to decide which env keys an operator has
+/// established. Anything else there is a store this build cannot act on, and
+/// overwriting it would silently discard whatever a later shep wrote
+/// ([`AppOverrides::fields`]' own doc argues the rule).
+///
+/// # Errors
+///
+/// [`SupervisorError::Overrides`] - the `env` key holds something other than
+/// an object. Both callers refuse on it, so they say it once here.
+fn env_override_map<'a>(
+    record: &'a mut AppOverrides,
+    name: &str,
+) -> Result<&'a mut serde_json::Map<String, serde_json::Value>, SupervisorError> {
+    record
+        .fields
+        .entry("env".to_string())
+        .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()))
+        .as_object_mut()
+        .ok_or_else(|| {
+            SupervisorError::Overrides(format!("{name}'s stored `env` override is not an object"))
+        })
+}
+
 /// `app` with its instance count set to `instances`, or `None` if the result
 /// does not normalize.
 ///
@@ -4671,22 +4697,9 @@ impl<R: ProcessRunner> Actor<R> {
         let mut record = overrides::get(&self.paths.overrides, name)
             .map_err(|err| SupervisorError::Overrides(err.to_string()))?
             .unwrap_or_default();
-        // Read before the `entry` below borrows the record mutably.
+        // Read before `env_override_map` borrows the record mutably.
         let file_declares = record.declared_env.contains(key);
-        // A flat JSON object under the `env` key, which is the shape
-        // `merge_declared` reads to decide which env keys an operator has
-        // established. Anything else there is a store this build cannot act
-        // on, and overwriting it would silently discard whatever a later
-        // shep wrote (`AppOverrides::fields`' own doc argues the rule).
-        let env = record
-            .fields
-            .entry("env".to_string())
-            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-        let Some(map) = env.as_object_mut() else {
-            return Err(SupervisorError::Overrides(format!(
-                "{name}'s stored `env` override is not an object"
-            )));
-        };
+        let map = env_override_map(&mut record, name)?;
         let was_overridden = map.contains_key(key);
         // A tombstone is left alone rather than removed and re-inserted,
         // which makes a second removal of the same key a no-op instead of a
@@ -4848,18 +4861,7 @@ impl<R: ProcessRunner> Actor<R> {
         let mut record = overrides::get(&self.paths.overrides, name)
             .map_err(|err| SupervisorError::Overrides(err.to_string()))?
             .unwrap_or_default();
-        // The same flat object `merge_declared` reads, and the same refusal
-        // `handle_set_sheep_env` makes when a later shep wrote something
-        // else there.
-        let env = record
-            .fields
-            .entry("env".to_string())
-            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-        let Some(map) = env.as_object_mut() else {
-            return Err(SupervisorError::Overrides(format!(
-                "{name}'s stored `env` override is not an object"
-            )));
-        };
+        let map = env_override_map(&mut record, name)?;
         for key in &set {
             map.insert(key.clone(), serde_json::Value::String(entries[key].clone()));
         }
