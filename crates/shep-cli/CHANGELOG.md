@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-09-08
+
+### Added
+
+- Fold the durable-write sequence into shep-core
+- Read a level out of a logfmt key=value pair ([#194](https://github.com/shep-pm/shep/pull/194))
+
+
 ## [0.7.1] - 2026-09-08
 
 ### Added
