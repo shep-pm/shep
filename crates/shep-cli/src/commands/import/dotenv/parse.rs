@@ -49,7 +49,7 @@ pub(crate) enum ParseReason {
     UnterminatedQuote,
     /// A backslash inside double quotes followed by something other than
     /// `n`, `r`, `t`, `"` or `\`.
-    BadEscape(char),
+    BadEscape,
     /// A ` #` in an unquoted value whose value already contains whitespace,
     /// so the line reads two ways.
     AmbiguousComment,
@@ -80,9 +80,8 @@ impl fmt::Display for ParseError {
             ParseReason::NoEquals => f.write_str("no `=`; every line is `KEY=value`"),
             ParseReason::EmptyKey => f.write_str("the name before the `=` is empty"),
             ParseReason::UnterminatedQuote => f.write_str("a quote opened and never closed"),
-            ParseReason::BadEscape(c) => write!(
-                f,
-                "`\\{c}` is not an escape; inside double quotes only \\n \\r \\t \\\" \\\\ are"
+            ParseReason::BadEscape => f.write_str(
+                "a backslash inside double quotes must be followed by n, r, t, \\\" or \\\\",
             ),
             ParseReason::AmbiguousComment => f.write_str(
                 "a ` #` after a value that already has spaces in it reads two ways; \
@@ -240,10 +239,10 @@ fn double_quoted(
                         't' => '\t',
                         '"' => '"',
                         '\\' => '\\',
-                        other => {
+                        _ => {
                             return Err(ParseError {
                                 line: line_number,
-                                reason: ParseReason::BadEscape(other),
+                                reason: ParseReason::BadEscape,
                             });
                         }
                     });
@@ -340,7 +339,18 @@ mod tests {
             "-----BEGIN-----\nline two\n-----END-----"
         );
         let err = parse("KEY=\"a\\qb\"\n").unwrap_err();
-        assert!(matches!(err.reason, ParseReason::BadEscape('q')));
+        assert!(matches!(err.reason, ParseReason::BadEscape));
+    }
+
+    #[test]
+    fn a_bad_escape_refuses_without_naming_the_character() {
+        let err = parse("KEY=\"a\\9b\"\n").unwrap_err();
+        assert_eq!(err.line, 1);
+        assert!(matches!(err.reason, ParseReason::BadEscape));
+        assert!(
+            !err.to_string().contains('9'),
+            "the message must not carry the character: {err}"
+        );
     }
 
     #[test]
