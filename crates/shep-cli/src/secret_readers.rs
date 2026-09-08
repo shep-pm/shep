@@ -5,11 +5,12 @@
 //! lives in an env value. The roll keeps `env` verbatim while keeping the
 //! reference rather than the value it resolves to.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::ProcessInfo;
 use shep_core::secrets;
+use shep_core::status::ProcStatus;
 
 use crate::commands::query::read_roll;
 use crate::commands::secret::daemon_config;
@@ -75,6 +76,63 @@ pub(crate) fn namers(paths: &ShepPaths, procs: &[ProcessInfo]) -> Vec<SecretName
     found
 }
 
+/// One sheep that names a secret, and whether it is running now.
+///
+/// `online` is deliberately not "holds the current value". Nothing records
+/// when a value was set, so a running sheep was given *a* value at spawn
+/// and may have been given an older one. The pane's caption says exactly
+/// that and no more.
+///
+/// `Debug` is derived: a name and an environment, no value.
+///
+/// No non-test caller yet: the secrets pane that reads [`by_reference`]
+/// lands in a later task. `#[allow(dead_code)]` says so rather than
+/// inventing one.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Reader {
+    /// The sheep's name.
+    pub name: String,
+    /// The environment its reference resolves against.
+    pub environment: String,
+    /// Whether the shepherd currently reports it `Online`.
+    pub online: bool,
+}
+
+/// Every secret reference the roll names, mapped to the sheep that name
+/// it, in name order.
+///
+/// Keys are references exactly as an operator wrote them, so a namespaced
+/// one arrives as `namespace/KEY` and matches the pane's own row key for a
+/// provider row.
+///
+/// No non-test caller yet, same as [`Reader`].
+#[allow(dead_code)]
+pub(crate) fn by_reference(
+    paths: &ShepPaths,
+    procs: &[ProcessInfo],
+) -> BTreeMap<String, Vec<Reader>> {
+    let online: BTreeSet<&str> = procs
+        .iter()
+        .filter(|proc| proc.status == ProcStatus::Online)
+        .map(|proc| proc.name.as_str())
+        .collect();
+    let mut map: BTreeMap<String, Vec<Reader>> = BTreeMap::new();
+    for namer in namers(paths, procs) {
+        for reference in &namer.references {
+            map.entry(reference.clone()).or_default().push(Reader {
+                name: namer.name.clone(),
+                environment: namer.environment.clone(),
+                online: online.contains(namer.name.as_str()),
+            });
+        }
+    }
+    for readers in map.values_mut() {
+        readers.sort_by(|a, b| a.name.cmp(&b.name));
+    }
+    map
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -112,6 +170,14 @@ mod tests {
 
     fn info(name: &str) -> ProcessInfo {
         ProcessInfo::builder(1, name, ProcStatus::Online).build()
+    }
+
+    fn online(name: &str) -> ProcessInfo {
+        ProcessInfo::builder(1, name, ProcStatus::Online).build()
+    }
+
+    fn stopped(name: &str) -> ProcessInfo {
+        ProcessInfo::builder(1, name, ProcStatus::Stopped).build()
     }
 
     #[test]
@@ -167,5 +233,41 @@ mod tests {
         let found = namers(&paths, &[info("web"), info("web"), info("web")]);
 
         assert_eq!(found.len(), 1, "three instances, one config: {found:?}");
+    }
+
+    #[test]
+    fn two_apps_naming_one_key_both_appear_under_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_under(dir.path());
+        let mut catcher = AppConfig::minimal("catcher", "./srv");
+        catcher
+            .env
+            .insert("A".into(), "{{secret:SENTRY_DSN}}".into());
+        let mut web = AppConfig::minimal("web", "./srv");
+        web.env.insert("B".into(), "{{secret:SENTRY_DSN}}".into());
+        write_roll(&paths, &[catcher, web]);
+
+        let map = by_reference(&paths, &[online("catcher"), stopped("web")]);
+
+        let readers = map.get("SENTRY_DSN").expect("the key has readers");
+        assert_eq!(readers.len(), 2);
+        assert!(readers.iter().any(|r| r.name == "catcher" && r.online));
+        assert!(readers.iter().any(|r| r.name == "web" && !r.online));
+    }
+
+    #[test]
+    fn readers_are_in_name_order_so_the_panel_does_not_reshuffle() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_under(dir.path());
+        let mut zeta = AppConfig::minimal("zeta", "./srv");
+        zeta.env.insert("A".into(), "{{secret:K}}".into());
+        let mut alpha = AppConfig::minimal("alpha", "./srv");
+        alpha.env.insert("A".into(), "{{secret:K}}".into());
+        write_roll(&paths, &[zeta, alpha]);
+
+        let map = by_reference(&paths, &[online("zeta"), online("alpha")]);
+
+        let names: Vec<&str> = map["K"].iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, ["alpha", "zeta"]);
     }
 }
