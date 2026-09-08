@@ -2538,17 +2538,19 @@ impl App {
             KeyPress::PageUp => {
                 let amount = self
                     .bleats_pane()
-                    .map_or(1, |pane| super::view::bleats_full::page_amount(self, pane));
+                    .map_or(1, |pane| super::view::bleats_full::page_amount_up(self, pane));
                 if let Some(pane) = self.bleats_pane_mut() {
                     pane.page_up(amount);
                 }
                 Effect::None
             }
-            // `ctrl-d`: the same, toward the newest line.
+            // `ctrl-d`: toward the newest line, and sized by its own
+            // function. The backward count `ctrl-u` uses drops lines when
+            // applied forward; see `page_amount_up`'s doc.
             KeyPress::PageDown => {
                 let amount = self
                     .bleats_pane()
-                    .map_or(1, |pane| super::view::bleats_full::page_amount(self, pane));
+                    .map_or(1, |pane| super::view::bleats_full::page_amount_down(self, pane));
                 if let Some(pane) = self.bleats_pane_mut() {
                     pane.page_down(amount);
                 }
@@ -7676,12 +7678,11 @@ mod tests {
     ///
     /// Walks in one direction and asserts every line across the windows,
     /// because paging back is symmetric and would hide the gap.
-
     #[test]
     fn wrapped_pages_leave_no_line_unseen() {
         let mut app = fixtures::bleats_pane_with_mixed_line_lengths();
         let _ = app.update(Msg::Key(KeyPress::WrapToggle));
-        app.note_body_rows(13); // 1 title, no chip, so 12 body rows
+        app.note_body_rows(13);
         app.note_body_width(60);
 
         let mut seen = String::new();
@@ -7691,14 +7692,64 @@ mod tests {
             ));
             let _ = app.update(Msg::Key(KeyPress::PageUp));
         }
-
-        // Every `old-` line the walk passed over must have been drawn in one
-        // of the windows. A gap means a page stepped over lines that no
-        // screen ever showed.
         for n in 30..40 {
             assert!(
                 seen.contains(&format!("old-{n} ")),
                 "old-{n} fell between two wrapped pages"
+            );
+        }
+    }
+
+    /// The same, walking `ctrl-d` instead. Its own test because its own
+    /// arithmetic: a single shared page size drops lines in one direction
+    /// whichever way it is measured.
+    ///
+    /// This one was missing when the wrapped-page fix landed, and that is
+    /// exactly why the fix was half a fix. The sibling test above presses
+    /// only `PageUp`, so a `PageDown` that skipped eight lines a step passed
+    /// the whole suite.
+    #[test]
+    fn wrapped_pages_down_leave_no_line_unseen() {
+        /// The `old-N`/`new-N` ids the pane is drawing, in order.
+        fn shown(app: &App) -> Vec<String> {
+            fixtures::render_all(&super::super::view::bleats_full::draw_lines(app, 60, 13))
+                .split_whitespace()
+                .filter(|word| word.starts_with("old-") || word.starts_with("new-"))
+                .map(str::to_string)
+                .collect()
+        }
+
+        let mut app = fixtures::bleats_pane_with_mixed_line_lengths();
+        let _ = app.update(Msg::Key(KeyPress::WrapToggle));
+        app.note_body_rows(13);
+        app.note_body_width(60);
+
+        // Into the wrapped stretch, then forward one page at a time.
+        for _ in 0..6 {
+            let _ = app.update(Msg::Key(KeyPress::PageUp));
+        }
+
+        // Consecutive windows, not eventual coverage. A long enough walk
+        // sees every line whatever the step size, so the gap only shows in
+        // the join between one window and the next.
+        for step in 0..5 {
+            let before = shown(&app);
+            let _ = app.update(Msg::Key(KeyPress::PageDown));
+            let after = shown(&app);
+            let (Some(last), Some(first)) = (before.last(), after.first()) else {
+                continue;
+            };
+            // The feed is `old-0..old-39` then `new-0..new-39`, so this is
+            // each id's position in it.
+            let position = |id: &str| -> usize {
+                let (prefix, n) = id.split_once('-').expect("id-N");
+                let n: usize = n.parse().expect("a number");
+                if prefix == "old" { n } else { 40 + n }
+            };
+            assert!(
+                position(first) <= position(last) + 1,
+                "step {step} jumped from {last} to {first}, leaving a gap: \
+                 {before:?} then {after:?}"
             );
         }
     }
@@ -7779,6 +7830,63 @@ mod tests {
 
     /// `n` with no match axis set does nothing, rather than quietly becoming
     /// a line-movement key.
+    /// `n` and `N` step between matches, in opposite directions, and both
+    /// stop the follow.
+    ///
+    /// The no-matcher case below covers only the inert branch, so a swapped
+    /// direction, a wrong step, or a `following` regression would all have
+    /// shipped unseen.
+    /// A wrapped line's height is measured in display columns, not `char`s.
+    ///
+    /// Sixty full-width characters occupy 120 columns, so at this width they
+    /// wrap to about twice the rows sixty ASCII characters would. Every other
+    /// wrap test here is ASCII, where the two counts agree and a regression
+    /// to `chars().count()` would pass unnoticed. This repo has fixed that
+    /// same bug on two other branches.
+    #[test]
+    fn a_wide_character_line_wraps_by_columns_not_char_count() {
+        let mut wide = fixtures::bleats_pane_with_a_wide_line();
+        let _ = wide.update(Msg::Key(KeyPress::WrapToggle));
+        wide.note_body_rows(30);
+        wide.note_body_width(40);
+        let wide_rows = super::super::view::bleats_full::draw_lines(&wide, 40, 30).len();
+
+        // 60 double-width characters are 120 display columns. The body is
+        // 40 wide less the 5-column stream tag, so 35, and 120 columns need
+        // 4 rows. Counting `char`s instead gives 60 over 35, which is 2.
+        // The title takes one more row, so 5 total by columns and 3 by
+        // `char`s: the assertion separates the two.
+        assert!(
+            wide_rows >= 5,
+            "wrapped by columns that is 4 body rows plus a title; by \
+             `char`s it would be 2. Got {wide_rows}"
+        );
+    }
+
+    #[test]
+    fn n_and_shift_n_step_between_matches_in_opposite_directions() {
+        let mut app = fixtures::bleats_pane_with_lines(40);
+        app.note_body_rows(6);
+        app.bleats_pane_mut_for_tests()
+            .expect("open")
+            .set_match("line".to_string());
+        assert!(app.bleats_pane().expect("open").following());
+
+        let _ = app.update(Msg::Key(KeyPress::MatchPrev));
+        let back = app.bleats_pane().expect("open").scroll_offset();
+        assert!(back > 0, "N steps toward older matches");
+        assert!(
+            !app.bleats_pane().expect("open").following(),
+            "stepping back is backward movement, so the follow stops"
+        );
+
+        let _ = app.update(Msg::Key(KeyPress::MatchNext));
+        assert!(
+            app.bleats_pane().expect("open").scroll_offset() < back,
+            "n steps the other way"
+        );
+    }
+
     #[test]
     fn n_without_a_matcher_does_nothing() {
         let mut app = fixtures::bleats_pane_with_lines(120);

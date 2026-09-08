@@ -372,13 +372,44 @@ pub fn bleats_pane_with_lines(n: u32) -> App {
 #[must_use]
 pub fn bleats_pane_with_mixed_line_lengths() -> App {
     let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+    // Heights cycling 1, 2, 3, 4 rows rather than a uniform block. Uniform
+    // costs make a backward count and a window's own length agree, which is
+    // exactly the case that hides a direction-mismatched page size; the gap
+    // only appears where consecutive lines wrap to different heights.
     let mut lines: Vec<TailLine> = (0..40)
-        .map(|i| line(Stream::Out, &format!("old-{i} {}", "y".repeat(150))))
+        .map(|i| {
+            let padding = "y".repeat(50 * (i % 4));
+            line(Stream::Out, &format!("old-{i} {padding}"))
+        })
         .collect();
     lines.extend((0..40).map(|i| line(Stream::Out, &format!("new-{i}"))));
     app.update(Msg::Bleats {
         tail: Tail {
             lines,
+            missed_lines: 0,
+            missed_bytes: 0,
+            read_bytes: 1_024,
+            note: None,
+        },
+    });
+    app.update(Msg::Key(KeyPress::Bleats));
+    app
+}
+
+/// A feed whose long line is double-width characters, so its wrapped height
+/// depends on display columns rather than `char` count.
+///
+/// Every other wrap fixture here is single-width ASCII, where `char_columns`
+/// and a naive per-`char` count agree. That makes them blind to the exact
+/// regression this repo has already fixed on two other branches: a
+/// full-width character occupies two columns, so 60 of them wrap to twice
+/// the rows 60 ASCII characters would.
+#[must_use]
+pub fn bleats_pane_with_a_wide_line() -> App {
+    let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+    app.update(Msg::Bleats {
+        tail: Tail {
+            lines: vec![line(Stream::Out, &"\u{5e83}".repeat(60))],
             missed_lines: 0,
             missed_bytes: 0,
             read_bytes: 1_024,

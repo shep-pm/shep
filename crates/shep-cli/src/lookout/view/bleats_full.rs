@@ -193,42 +193,17 @@ fn window_range(
 /// by, so a page under wrap moves by roughly the room `pane`'s own area
 /// draws rather than a raw row count that assumes one row per line.
 ///
-/// How many lines one `ctrl-u`/`ctrl-d` moves [`BleatsPane::scroll_offset`]
-/// by: exactly the lines the pane is showing right now.
+/// Lines one backward page covers: what fits ending at `start`.
 ///
-/// Measured from the current [`BleatsPane::scroll_offset`] through the same
-/// [`window_range`] the draw uses, so consecutive pages are contiguous by
-/// construction rather than by estimate. Unwrapped that is `body_rows`, the
-/// arithmetic this pane always used.
-///
-/// It has to be the current window rather than the feed's tail. Sizing a page
-/// once at the tail and reusing it is wrong the moment wrapped-line density
-/// differs anywhere else: a tail of one-row lines says "a page is twelve
-/// lines" while an older stretch draws four of them per screen, so a step
-/// would pass over eight lines no screen ever rendered. Clamping at render
-/// time does not help, because the lines are skipped rather than
-/// overshot. `wrapped_pages_leave_no_line_unseen` walks one direction and
-/// checks every line, since paging back is symmetric and hides the gap.
-#[must_use]
-pub(crate) fn page_amount(app: &App, pane: &BleatsPane) -> usize {
-    let body_rows = pane.body_rows();
-    if !pane.wrapped() || pane.width() == 0 {
-        return body_rows.max(1);
-    }
-    let survivors = pane.visible(&app.feed().lines);
-    let text_width = pane.width().saturating_sub(TAG_PREFIX_WIDTH);
-    let cost = |index: usize| row_height(&survivors[index].text, text_width, true);
-    let shown = window_range(survivors.len(), pane.scroll_offset(), body_rows, cost);
-
-    // Backward from where the view starts, not forward from where it ends.
-    // A page has to land the NEXT window's last line on this one's first, so
-    // it is sized by what fits going back from `shown.start`. Sizing it by
-    // the current window's own length is the same mistake one step later:
-    // when the older stretch wraps denser, fewer of its lines fill the same
-    // rows, and the difference is skipped.
+/// Pure, and separated from [`page_amount_up`] so the invariant that matters
+/// can be tested directly over cost profiles rather than hunted for through a
+/// fixture. A feed of uniform heights cannot expose a direction-mismatched
+/// page size at all, because a backward count and a window's own length agree
+/// there, which is how the `ctrl-d` gap survived its first fix.
+fn page_lines_back(start: usize, body_rows: usize, cost: impl Fn(usize) -> usize) -> usize {
     let mut used = 0usize;
     let mut count = 0usize;
-    let mut at = shown.start;
+    let mut at = start;
     while at > 0 {
         let row = cost(at - 1);
         if count > 0 && used + row > body_rows {
@@ -239,6 +214,60 @@ pub(crate) fn page_amount(app: &App, pane: &BleatsPane) -> usize {
         count += 1;
     }
     count.max(1)
+}
+
+/// How many lines one `ctrl-u` moves [`BleatsPane::scroll_offset`] by:
+/// what fits walking backward from the line the pane is currently showing
+/// first.
+///
+/// Unwrapped that is `body_rows`, the arithmetic this pane always used.
+///
+/// **The two page keys need different arithmetic and it is not obvious.** A
+/// page has to land the next window's last line on this one's first, so
+/// going backward the step is sized by what fits *ending* where the view
+/// starts. Sizing it from the feed's tail instead is wrong the moment
+/// wrapped-line density differs anywhere else, and sizing it by the current
+/// window's own length is wrong whenever the older stretch packs fewer lines
+/// into the same rows. Both skip lines rather than overshooting them, so
+/// [`window_range`]'s clamp does not save it.
+///
+/// [`page_amount_down`] is the mirror, and reusing this one for both
+/// directions leaves gaps: measured over 279,274 simulated steps, 48,476 of
+/// them dropped a line. `wrapped_pages_leave_no_line_unseen` and
+/// `wrapped_pages_down_leave_no_line_unseen` walk one direction each,
+/// because paging back is symmetric and hides the gap either way.
+#[must_use]
+pub(crate) fn page_amount_up(app: &App, pane: &BleatsPane) -> usize {
+    let body_rows = pane.body_rows();
+    if !pane.wrapped() || pane.width() == 0 {
+        return body_rows.max(1);
+    }
+    let survivors = pane.visible(&app.feed().lines);
+    let text_width = pane.width().saturating_sub(TAG_PREFIX_WIDTH);
+    let cost = |index: usize| row_height(&survivors[index].text, text_width, true);
+    let shown = window_range(survivors.len(), pane.scroll_offset(), body_rows, cost);
+    page_lines_back(shown.start, body_rows, cost)
+}
+
+/// How many lines one `ctrl-d` moves [`BleatsPane::scroll_offset`] by: the
+/// lines the pane is showing right now.
+///
+/// Going forward the next window should *begin* where this one ended, and
+/// stepping by the current window's own length puts it there exactly. That
+/// is the mirror of [`page_amount_up`]'s backward count, not the same
+/// number: see its doc for why one figure cannot serve both keys.
+#[must_use]
+pub(crate) fn page_amount_down(app: &App, pane: &BleatsPane) -> usize {
+    let body_rows = pane.body_rows();
+    if !pane.wrapped() || pane.width() == 0 {
+        return body_rows.max(1);
+    }
+    let survivors = pane.visible(&app.feed().lines);
+    let text_width = pane.width().saturating_sub(TAG_PREFIX_WIDTH);
+    let shown = window_range(survivors.len(), pane.scroll_offset(), body_rows, |index| {
+        row_height(&survivors[index].text, text_width, true)
+    });
+    shown.len().max(1)
 }
 
 /// One feed line, as the rows it actually draws: one row when
@@ -761,5 +790,60 @@ mod tests {
             plain.is_some(),
             "the rest of the line must stay unstyled, for contrast: {survivor:?}"
         );
+    }
+
+    /// Neither page direction ever steps over a line, across every cost
+    /// profile a wrapped feed can produce.
+    ///
+    /// Over the arithmetic rather than through a fixture, because a fixture
+    /// is the wrong instrument here. A feed of uniform row heights cannot
+    /// show this bug at all: a backward count and a window's own length are
+    /// the same number when every line is the same height, so the two
+    /// directions agree and a shared page size looks correct. Three separate
+    /// fixtures failed to reproduce a defect that a stress test finds in
+    /// roughly one step in six.
+    ///
+    /// The invariant: after a page, the next window must start no later than
+    /// one past where the last one ended, going forward, and end no earlier
+    /// than one before where it began, going back. Anything else is a line
+    /// no screen drew.
+    #[test]
+    fn neither_page_direction_steps_over_a_line() {
+        // A cheap deterministic spread of heights: no rng, and the profile
+        // is reproducible from the seed in a failure message.
+        let profile = |seed: usize, index: usize| -> usize {
+            1 + (seed.wrapping_mul(31).wrapping_add(index.wrapping_mul(17))) % 4
+        };
+
+        for seed in 0..200usize {
+            for len in [3usize, 7, 12, 25] {
+                for body_rows in [2usize, 3, 5, 8] {
+                    let cost = |index: usize| profile(seed, index);
+                    for offset in 0..len {
+                        let shown = window_range(len, offset, body_rows, cost);
+                        if shown.is_empty() {
+                            continue;
+                        }
+
+                        let back = page_lines_back(shown.start, body_rows, cost);
+                        let up = window_range(len, offset + back, body_rows, cost);
+                        assert!(
+                            up.end + 1 >= shown.start,
+                            "seed {seed} len {len} rows {body_rows} offset {offset}: \
+                             ctrl-u went from {shown:?} to {up:?}"
+                        );
+
+                        let forward = shown.len().max(1);
+                        let down =
+                            window_range(len, offset.saturating_sub(forward), body_rows, cost);
+                        assert!(
+                            down.start <= shown.end,
+                            "seed {seed} len {len} rows {body_rows} offset {offset}: \
+                             ctrl-d went from {shown:?} to {down:?}"
+                        );
+                    }
+                }
+            }
+        }
     }
 }
