@@ -193,6 +193,40 @@ fn window_range(
 /// by, so a page under wrap moves by roughly the room `pane`'s own area
 /// draws rather than a raw row count that assumes one row per line.
 ///
+/// The largest scroll offset that still changes what the pane draws.
+///
+/// [`window_range`] floors its skip at zero, so an offset past the oldest
+/// surviving line renders the same frame as the one before it. Without a
+/// ceiling the stored offset keeps climbing: 40 `k` presses over a 20-line
+/// feed leave it at 39 where 15 is the most that does anything, and the
+/// operator then presses `j` 25 times before the window moves. `G` and `f`
+/// escape that, but `j` is the reflex and it would do nothing.
+#[must_use]
+pub(crate) fn max_scroll_offset(app: &App, pane: &BleatsPane) -> usize {
+    let survivors = pane.visible(&app.feed().lines);
+    let body_rows = pane.body_rows();
+    if body_rows == 0 || survivors.is_empty() {
+        return 0;
+    }
+    let text_width = pane.width().saturating_sub(TAG_PREFIX_WIDTH);
+    let wrap = pane.wrapped() && pane.width() > 0;
+    let cost = |index: usize| row_height(&survivors[index].text, text_width, wrap);
+
+    // Where the tail window starts. Scrolling past it only re-renders the
+    // oldest frame, so that index is the ceiling.
+    let mut base = survivors.len();
+    let mut used = 0usize;
+    while base > 0 {
+        let row = cost(base - 1);
+        if used > 0 && used + row > body_rows {
+            break;
+        }
+        base -= 1;
+        used += row;
+    }
+    base
+}
+
 /// Lines one backward page covers: what fits ending at `start`.
 ///
 /// Pure, and separated from [`page_amount_up`] so the invariant that matters
@@ -800,6 +834,31 @@ mod tests {
             plain.is_some(),
             "the rest of the line must stay unstyled, for contrast: {survivor:?}"
         );
+    }
+
+    /// `row_height` counts display columns, and `wrap_spans` has to agree
+    /// with it or the page arithmetic drifts from what is drawn.
+    ///
+    /// `row_height` feeds every page and window calculation while
+    /// `wrap_spans` produces the rows themselves, and `row_height`'s own doc
+    /// says the two "can never disagree on how many rows one line takes".
+    /// Only `wrap_spans` was held there: mutating `char_columns` to `1`
+    /// inside `row_height` passed the whole suite, because every test that
+    /// counted rows counted rendered ones.
+    #[test]
+    fn row_height_and_the_rendered_rows_agree_on_a_wide_line() {
+        // Ten double-width characters are 20 columns. At a text width of 8
+        // that is 3 rows; counting `char`s would say 2.
+        let wide = "\u{5e83}".repeat(10);
+        assert_eq!(row_height(&wide, 8, true), 3, "counted by columns");
+        assert_eq!(
+            row_height(&wide, 8, true),
+            wrap_spans(vec![Span::raw(wide.clone())], 8).len(),
+            "the counter and the renderer agree"
+        );
+
+        // And unwrapped it is always one row, whatever the width.
+        assert_eq!(row_height(&wide, 8, false), 1);
     }
 
     /// Neither page direction ever steps over a line, across every cost

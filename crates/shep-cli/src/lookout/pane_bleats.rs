@@ -442,6 +442,15 @@ impl BleatsPane {
         self.following = false;
     }
 
+    /// Holds the offset at `ceiling`, the last value that changes the frame.
+    ///
+    /// Called by the reducer straight after a backward scroll, because the
+    /// ceiling depends on the surviving lines and their wrapped heights and
+    /// this type sees neither.
+    pub fn clamp_scroll(&mut self, ceiling: usize) {
+        self.scroll_offset = self.scroll_offset.min(ceiling);
+    }
+
     /// Scrolls toward the newest line by `amount`. Does not restore
     /// following on its own, even if it lands back on the tail: only
     /// [`Self::jump_to_end`] and turning [`Self::toggle_follow`] on do that,
@@ -449,16 +458,6 @@ impl BleatsPane {
     /// back, not the arithmetic.
     pub fn scroll_down(&mut self, amount: usize) {
         self.scroll_offset = self.scroll_offset.saturating_sub(amount);
-    }
-
-    /// `ctrl-u`: pages toward older lines by `amount`, which
-    /// [`super::app::App::on_bleats_key`] sizes through
-    /// [`super::view::bleats_full::page_amount`] rather than a raw body-row
-    /// count: unwrapped, a page is one line per row, the arithmetic this
-    /// method always did; wrapped, a tall line spends more than one row, so
-    /// the same row budget fits fewer lines.
-    pub fn page_up(&mut self, amount: usize) {
-        self.scroll_up(amount.max(1));
     }
 
     /// `ctrl-d`: the same, toward the newest line.

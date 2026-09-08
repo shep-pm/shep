@@ -2511,9 +2511,7 @@ impl App {
             }
             // `k`/`Up`: one line toward older lines.
             KeyPress::SelectUp => {
-                if let Some(pane) = self.bleats_pane_mut() {
-                    pane.scroll_up(1);
-                }
+                self.scroll_bleats_back(1);
                 Effect::None
             }
             // `j`/`Down`: one line toward the newest.
@@ -2539,9 +2537,7 @@ impl App {
                 let amount = self
                     .bleats_pane()
                     .map_or(1, |pane| super::view::bleats_full::page_amount_up(self, pane));
-                if let Some(pane) = self.bleats_pane_mut() {
-                    pane.page_up(amount);
-                }
+                self.scroll_bleats_back(amount);
                 Effect::None
             }
             // `ctrl-d`: toward the newest line, and sized by its own
@@ -4318,6 +4314,24 @@ impl App {
         match &self.selected {
             Some(RowKey::Sheep(id)) => self.flock.get(id),
             _ => None,
+        }
+    }
+
+    /// Scrolls the bleats pane back by `amount`, then holds the offset at the
+    /// last value that changes the frame.
+    ///
+    /// The ceiling has to live here rather than on the pane: it depends on
+    /// the surviving lines and their wrapped heights, which the pane cannot
+    /// see. Without it `scroll_up` saturating-adds forever and `j` stops
+    /// appearing to work, since the render clamps while the stored value
+    /// keeps climbing.
+    fn scroll_bleats_back(&mut self, amount: usize) {
+        let ceiling = self.bleats_pane().map_or(0, |pane| {
+            super::view::bleats_full::max_scroll_offset(self, pane)
+        });
+        if let Some(pane) = self.bleats_pane_mut() {
+            pane.scroll_up(amount);
+            pane.clamp_scroll(ceiling);
         }
     }
 
@@ -7747,6 +7761,36 @@ mod tests {
     ///
     /// Walks in one direction and asserts every line across the windows,
     /// because paging back is symmetric and would hide the gap.
+    /// Over-scrolling does not make `j` stop working.
+    ///
+    /// `scroll_up` saturating-adds and the clamp lived only in the render, so
+    /// the stored offset climbed past anything that changes the frame.
+    /// Measured before the ceiling: a 20-line feed with a 5-row body left the
+    /// offset at 39 after 40 `k` presses, where 15 was the most that did
+    /// anything, and the operator then pressed `j` 25 times before the window
+    /// moved. `G` and `f` escape that; `j` is the reflex and it did nothing.
+    #[test]
+    fn over_scrolling_back_does_not_deaden_the_scroll_forward() {
+        let mut app = fixtures::bleats_pane_with_lines(20);
+        app.note_body_rows(6);
+        app.note_body_width(80);
+
+        for _ in 0..40 {
+            let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        }
+        let parked =
+            fixtures::render_all(&super::super::view::bleats_full::draw_lines(&app, 80, 6));
+
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let after_one =
+            fixtures::render_all(&super::super::view::bleats_full::draw_lines(&app, 80, 6));
+        assert_ne!(
+            parked, after_one,
+            "one press forward has to move the window, however far back the \
+             operator scrolled"
+        );
+    }
+
     #[test]
     fn wrapped_pages_leave_no_line_unseen() {
         let mut app = fixtures::bleats_pane_with_mixed_line_lengths();
