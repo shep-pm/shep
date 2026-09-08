@@ -43,7 +43,7 @@ use ratatui::layout::Rect;
 use shep_core::paths::ShepPaths;
 use tokio::sync::mpsc;
 
-use self::app::{App, Body, Control, Effect, Msg, RowKey, Sent};
+use self::app::{App, Body, Control, Effect, Msg, RevealedValue, RowKey, Sent};
 use self::source::Shepherd;
 use self::theme::Palette;
 use crate::cli::LookoutArgs;
@@ -483,6 +483,36 @@ where
                     Msg::Secrets {
                         environment: for_msg,
                         result,
+                    }
+                }));
+                dirty = true;
+            }
+            // Off this task for `Effect::LoadSettings`'s reason: a read that
+            // takes no lock still stalls the redraw, the tick and the bus
+            // drain while it opens and parses a file.
+            //
+            // The row and the environment ride back out on the `Msg`, which
+            // is where the pane decides whether the answer is still the one
+            // it asked for.
+            Effect::RevealSecret {
+                store,
+                provider_cache,
+                row,
+                environment,
+            } => {
+                let key = row.key.clone();
+                let handle = tokio::task::spawn_blocking(move || {
+                    crate::lookout::secrets::stored_value(&store, &provider_cache, &row)
+                });
+                inflight.push(Box::pin(async move {
+                    Msg::Revealed {
+                        key,
+                        environment,
+                        // A join failure reads as no value, the same as a
+                        // slot that has gone: there is nothing to show
+                        // either way, and a notice would name a panic the
+                        // operator cannot act on.
+                        value: handle.await.ok().flatten().map(RevealedValue),
                     }
                 }));
                 dirty = true;

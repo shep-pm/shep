@@ -14,7 +14,8 @@ use shep_core::protocol::{BusEvent, DogSource, Lamb, ProcessInfo, Response, Shee
 use shep_core::status::ProcStatus;
 
 use super::super::app::{
-    ActionVerb, App, Body, Control, KeyPress, LambWalk, Msg, RowKey, Sent, SettingsRow,
+    ActionVerb, App, Body, Control, Effect, KeyPress, LambWalk, Msg, RevealedValue, RowKey, Sent,
+    SettingsRow,
 };
 use super::super::level::Level;
 use super::super::secrets::{SecretRow, SecretsModel, Source};
@@ -1195,44 +1196,76 @@ pub const REVEALED_VALUE: &str = "hunter2-not-really";
 /// could not exercise one. The caller owns `home` and has to keep it alive
 /// for as long as the app.
 pub fn app_with_secrets_and_reads(home: &Path, allow_read: bool) -> App {
-    let store = home.join("secrets.json");
-    shep_core::secrets::set(&store, "DB_PASSWORD", "production", REVEALED_VALUE).unwrap();
     let mut app = full_app();
     app.update(Msg::Key(KeyPress::Secrets));
     app.update(Msg::Secrets {
         environment: "production".to_string(),
-        result: Ok(Box::new(SecretsModel {
-            environments: vec!["all".to_string(), "production".to_string()],
-            rows: vec![
-                SecretRow {
-                    key: "DB_PASSWORD".to_string(),
-                    source: Source::Operator,
-                    in_force: Some("production".to_string()),
-                    set_in: vec!["production".to_string()],
-                    byte_len: Some(REVEALED_VALUE.len()),
-                    readers: Vec::new(),
-                },
-                // Never selected, so a test can hold one row against the
-                // other and see that a reveal reaches exactly one of them.
-                SecretRow {
-                    key: "OTHER_KEY".to_string(),
-                    source: Source::Operator,
-                    in_force: Some("production".to_string()),
-                    set_in: vec!["production".to_string()],
-                    byte_len: Some(3),
-                    readers: Vec::new(),
-                },
-            ],
-            allow_read,
-            store,
-            ..SecretsModel::default()
-        })),
+        result: Ok(Box::new(secrets_model(home, allow_read))),
     });
     app
 }
 
+/// The model [`app_with_secrets_and_reads`] loads, and the store on disk it
+/// reads from, so a test can load it a second time with the gate moved.
+pub fn secrets_model(home: &Path, allow_read: bool) -> SecretsModel {
+    let store = home.join("secrets.json");
+    shep_core::secrets::set(&store, "DB_PASSWORD", "production", REVEALED_VALUE).unwrap();
+    SecretsModel {
+        environments: vec!["all".to_string(), "production".to_string()],
+        rows: vec![
+            SecretRow {
+                key: "DB_PASSWORD".to_string(),
+                source: Source::Operator,
+                in_force: Some("production".to_string()),
+                set_in: vec!["production".to_string()],
+                byte_len: Some(REVEALED_VALUE.len()),
+                readers: Vec::new(),
+            },
+            // Never selected, so a test can hold one row against the other
+            // and see that a reveal reaches exactly one of them.
+            SecretRow {
+                key: "OTHER_KEY".to_string(),
+                source: Source::Operator,
+                in_force: Some("production".to_string()),
+                set_in: vec!["production".to_string()],
+                byte_len: Some(3),
+                readers: Vec::new(),
+            },
+        ],
+        allow_read,
+        store,
+        ..SecretsModel::default()
+    }
+}
+
+/// Presses `v` and does the read its effect asks for, handing back the
+/// answer rather than applying it, so a test can move the pane underneath a
+/// reveal that is still in flight.
+///
+/// # Panics
+///
+/// If `v` raised no read, since the caller is about to answer one.
+#[track_caller]
+pub fn ask_to_reveal(app: &mut App) -> Msg {
+    let Effect::RevealSecret {
+        store,
+        provider_cache,
+        row,
+        environment,
+    } = app.update(Msg::Key(KeyPress::Reveal))
+    else {
+        panic!("`v` over an open gate reads the store");
+    };
+    Msg::Revealed {
+        key: row.key.clone(),
+        environment,
+        value: crate::lookout::secrets::stored_value(&store, &provider_cache, &row)
+            .map(RevealedValue),
+    }
+}
+
 /// The same pane with `DB_PASSWORD` already on screen, revealed the way an
-/// operator reveals it.
+/// operator reveals it: the keypress, the read it asks for, and the answer.
 ///
 /// # Panics
 ///
@@ -1241,7 +1274,8 @@ pub fn app_with_secrets_and_reads(home: &Path, allow_read: bool) -> App {
 #[track_caller]
 pub fn app_revealing(home: &Path) -> App {
     let mut app = app_with_secrets_and_reads(home, true);
-    app.update(Msg::Key(KeyPress::Reveal));
+    let answer = ask_to_reveal(&mut app);
+    app.update(answer);
     assert!(
         matches!(app.body(), Body::Secrets(pane) if pane.reveal.is_some()),
         "the fixture starts with a value on screen"

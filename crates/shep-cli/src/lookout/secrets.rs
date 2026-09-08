@@ -5,7 +5,7 @@
 //! has already passed the gate.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use shep_core::config::DaemonConfig;
@@ -148,20 +148,20 @@ pub(crate) fn model(paths: &ShepPaths, procs: &[ProcessInfo], environment: &str)
 /// and when the slot has gone since the model was built. Read on demand
 /// rather than carried in the model: a value the pane holds for its whole
 /// life is a value in every core dump of it, and the pane's life is as long
-/// as the operator leaves it open.
+/// as the operator leaves it open. Its caller runs this off the UI task
+/// ([`crate::lookout::app::Effect::RevealSecret`]), so the two file reads
+/// here are never on the reducer.
 ///
 /// The gate is the caller's ([`crate::lookout::app::App::reveal_gate_open`]):
 /// this function does not check it.
-pub(crate) fn stored_value(model: &SecretsModel, row: &SecretRow) -> Option<String> {
+pub(crate) fn stored_value(store: &Path, provider_cache: &Path, row: &SecretRow) -> Option<String> {
     let environment = row.in_force.as_deref()?;
     match &row.source {
-        Source::Operator => secrets::get(&model.store, &row.key, environment)
-            .ok()
-            .flatten(),
+        Source::Operator => secrets::get(store, &row.key, environment).ok().flatten(),
         // The row's key is `namespace/KEY`; the cache nests the two.
         Source::Namespace(namespace) => {
             let bare = row.key.strip_prefix(namespace)?.strip_prefix('/')?;
-            secrets::provider_cache_on_disk(&model.provider_cache)
+            secrets::provider_cache_on_disk(provider_cache)
                 .values
                 .get(namespace)?
                 .get(bare)?
@@ -375,7 +375,7 @@ mod tests {
                 .iter()
                 .find(|row| row.key == key)
                 .unwrap_or_else(|| panic!("no {key} among {:?}", built.rows));
-            stored_value(&built, row)
+            stored_value(&built.store, &built.provider_cache, row)
         };
 
         assert_eq!(value_of("PLAIN").as_deref(), Some("hunter2"));
@@ -395,7 +395,7 @@ mod tests {
 
         let row = built.rows.iter().find(|row| row.key == "PLAIN").unwrap();
         assert_eq!(row.in_force, None);
-        assert_eq!(stored_value(&built, row), None);
+        assert_eq!(stored_value(&built.store, &built.provider_cache, row), None);
     }
 
     #[test]

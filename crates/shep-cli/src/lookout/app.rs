@@ -26,7 +26,7 @@ use super::field::{FieldKind, FieldSet};
 use super::level::Level;
 use super::pane::{ConfigPane, FieldValue, Lock, PaneEdit, PanePending, PaneTarget, ReloadKind};
 use super::pane_bleats::BleatsPane;
-use super::secrets::{self, SecretsModel};
+use super::secrets::{SecretRow, SecretsModel};
 use super::tail::Stream;
 use super::theme::Palette;
 use super::viewport::Viewport;
@@ -308,6 +308,22 @@ pub enum Msg {
         /// The model, boxed: it is much larger than every other variant.
         result: Result<Box<SecretsModel>, String>,
     },
+    /// An [`Effect::RevealSecret`]'s read has answered.
+    ///
+    /// Nothing here reaches the screen on its own: the pane draws the value
+    /// only while every reason it was asked for still holds, which is what
+    /// the two echoes are for.
+    Revealed {
+        /// The key that was read, echoed back: the selection can have moved
+        /// to another row while the read was in flight.
+        key: String,
+        /// The environment tab it was read for, echoed back for
+        /// [`Self::Secrets`]'s reason.
+        environment: String,
+        /// The value, or `None` when the slot no longer resolves or the
+        /// store would not read.
+        value: Option<RevealedValue>,
+    },
 }
 
 /// The one gate on writing `shep.toml` from the settings screen.
@@ -402,6 +418,27 @@ pub enum Effect {
     /// Runs on `spawn_blocking` for [`Self::WriteSetting`]'s reason: the
     /// store's own lock acquires with no deadline.
     LoadSecrets,
+    /// Read the one value behind `row`; the answer lands as
+    /// [`Msg::Revealed`].
+    ///
+    /// Runs on `spawn_blocking` for [`Self::LoadSettings`]'s reason: the
+    /// read takes no lock, and a synchronous file read on the UI task stalls
+    /// the redraw, the tick and the bus drain together.
+    ///
+    /// No [`WriteAuthority`]: the gate on this one is
+    /// `[secrets] allow_read`, checked when it is raised and again when the
+    /// answer lands.
+    RevealSecret {
+        /// The operator store to read an [`crate::lookout::secrets::Source::Operator`] row from.
+        store: PathBuf,
+        /// The provider cache to read a namespaced row from.
+        provider_cache: PathBuf,
+        /// The row, which names the key, the store and the slot.
+        row: SecretRow,
+        /// The environment tab it is being read for, echoed back by
+        /// [`Msg::Revealed`].
+        environment: String,
+    },
 }
 
 /// The connection's state, as the dashboard reports it.
@@ -1391,6 +1428,10 @@ pub(crate) struct SecretsPane {
     pub collapsed: HashSet<String>,
     /// The value on screen and when it leaves, or `None`.
     pub reveal: Option<Reveal>,
+    /// The key an [`Effect::RevealSecret`] is reading for, or `None`. The
+    /// answer is drawn only while this still names its key, so every
+    /// trigger that clears a reveal also drops one in flight.
+    pub pending_reveal: Option<String>,
     /// The key whose deletion is armed, or `None`. While this is set,
     /// `Enter` confirms the delete rather than opening the value input.
     pub armed: Option<String>,
@@ -1399,13 +1440,20 @@ pub(crate) struct SecretsPane {
 }
 
 impl SecretsPane {
-    /// Takes the value off the screen.
+    /// Takes the value off the screen, and abandons a read still in flight
+    /// so its answer cannot put one back.
     ///
     /// One method rather than an assignment at each trigger: a trigger added
     /// later has one thing to call, and the ones that exist cannot drift
     /// apart.
     pub(crate) fn hide(&mut self) {
         self.reveal = None;
+        self.pending_reveal = None;
+    }
+
+    /// The environment tab showing, or `None` before the first load.
+    pub(crate) fn environment(&self) -> Option<&str> {
+        self.model.environments.get(self.tab).map(String::as_str)
     }
 }
 
@@ -1418,6 +1466,7 @@ impl fmt::Debug for SecretsPane {
             .field("selected", &self.selected)
             .field("collapsed", &self.collapsed.len())
             .field("revealing", &self.reveal.is_some())
+            .field("pending_reveal", &self.pending_reveal)
             .field("armed", &self.armed)
             .field("typing", &self.typing.is_some())
             .finish()
@@ -1441,6 +1490,21 @@ impl fmt::Debug for Reveal {
             .field("key", &self.key)
             .field("value", &format_args!("<{} bytes>", self.value.len()))
             .finish_non_exhaustive()
+    }
+}
+
+/// A plaintext value on its way from the store to the pane, in
+/// [`Msg::Revealed`].
+///
+/// A type of its own rather than a `String` field: [`Msg`] derives `Debug`,
+/// so the redaction has to travel with the value (IR-41).
+#[derive(Clone)]
+pub struct RevealedValue(pub(crate) String);
+
+/// Redacted (IR-41): the field is the secret.
+impl fmt::Debug for RevealedValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "RevealedValue(<{} bytes>)", self.0.len())
     }
 }
 
@@ -2071,6 +2135,14 @@ impl App {
                         }
                     }
                 }
+                Effect::None
+            }
+            Msg::Revealed {
+                key,
+                environment,
+                value,
+            } => {
+                self.on_revealed(&key, &environment, value);
                 Effect::None
             }
         }
@@ -2728,6 +2800,7 @@ impl App {
                     selected: 0,
                     collapsed: HashSet::new(),
                     reveal: None,
+                    pending_reveal: None,
                     armed: None,
                     typing: None,
                 });
@@ -5368,14 +5441,11 @@ impl App {
         matches!(&self.body, Body::Secrets(pane) if pane.model.allow_read)
     }
 
-    /// `v`'s answer: the selected row's stored value on screen for
-    /// [`REVEAL_HOLDS`], or a refusal naming the gate and the file.
+    /// `v`'s answer: a read of the selected row's stored value, or a refusal
+    /// naming the gate and the file.
     ///
-    /// Reads the store here rather than raising an effect, unlike every
-    /// write: `secrets::all` takes no lock (its own doc says why), so this
-    /// cannot block the UI task the way a `set` would, and a value that
-    /// arrived a frame later would be a value the operator did not press
-    /// for.
+    /// The value is not on screen when this returns. [`Self::on_revealed`]
+    /// puts it there once the read lands.
     fn reveal_selected(&mut self) -> Effect {
         if !self.reveal_gate_open() {
             self.notice = Some(Notice {
@@ -5384,20 +5454,52 @@ impl App {
             });
             return Effect::None;
         }
-        let until = self.now + REVEAL_HOLDS;
         let Some(pane) = self.secrets_pane_mut() else {
             return Effect::None;
         };
-        let Some((key, value)) = pane
-            .model
-            .rows
-            .get(pane.selected)
-            .and_then(|row| Some((row.key.clone(), secrets::stored_value(&pane.model, row)?)))
-        else {
+        let (Some(row), Some(environment)) = (
+            pane.model.rows.get(pane.selected).cloned(),
+            pane.environment().map(str::to_string),
+        ) else {
             return Effect::None;
         };
-        pane.reveal = Some(Reveal { key, value, until });
-        Effect::None
+        // Through `hide`, so a value already on screen goes now rather than
+        // sitting there under a read that answers for another key.
+        pane.hide();
+        pane.pending_reveal = Some(row.key.clone());
+        Effect::RevealSecret {
+            store: pane.model.store.clone(),
+            provider_cache: pane.model.provider_cache.clone(),
+            row,
+            environment,
+        }
+    }
+
+    /// An [`Effect::RevealSecret`] has landed.
+    ///
+    /// Drawn only when the reveal is still the one that was asked for: the
+    /// gate can have shut under a fresh model, the tab can have moved, and
+    /// every clear trigger drops the pending key. A value that reached the
+    /// screen past any of those would be a value nobody asked for, which
+    /// for a shut gate is the failure the gate exists to stop.
+    fn on_revealed(&mut self, key: &str, environment: &str, value: Option<RevealedValue>) {
+        let gate_open = self.reveal_gate_open();
+        let until = self.now + REVEAL_HOLDS;
+        let Some(pane) = self.secrets_pane_mut() else {
+            return;
+        };
+        if pane.pending_reveal.as_deref() != Some(key) || pane.environment() != Some(environment) {
+            return;
+        }
+        pane.pending_reveal = None;
+        let Some(RevealedValue(value)) = value.filter(|_| gate_open) else {
+            return;
+        };
+        pane.reveal = Some(Reveal {
+            key: key.to_string(),
+            value,
+            until,
+        });
     }
 
     /// [`Self::bleats_pane_mut`], exposed past this module so a fixture can
@@ -7596,6 +7698,7 @@ mod tests {
                 value: "hunter2".into(),
                 until: Instant::now(),
             }),
+            pending_reveal: None,
             armed: None,
             typing: Some(Typing {
                 what: TypingWhat::ValueFor("K".into()),
@@ -7608,7 +7711,7 @@ mod tests {
         assert_eq!(
             printed,
             "SecretsPane { rows: 0, tab: 0, selected: 0, collapsed: 0, \
-             revealing: true, armed: None, typing: true }"
+             revealing: true, pending_reveal: None, armed: None, typing: true }"
         );
         assert!(!format!("{:?}", pane.reveal).contains("hunter2"));
         assert!(!format!("{:?}", pane.typing).contains("hunter2"));
@@ -7624,13 +7727,99 @@ mod tests {
         }
     }
 
+    /// Exact-string, so restoring a derived `Debug` fails this test rather
+    /// than silently reopening the leak (IR-41). [`Msg`]'s own `Debug` is
+    /// derived, so the redaction has to live in the field's type.
+    #[test]
+    fn the_msg_debug_never_prints_a_revealed_value() {
+        let landed = Msg::Revealed {
+            key: "K".to_string(),
+            environment: "production".to_string(),
+            value: Some(RevealedValue("hunter2".to_string())),
+        };
+
+        let printed = format!("{landed:?}");
+
+        assert_eq!(
+            printed,
+            "Revealed { key: \"K\", environment: \"production\", \
+             value: Some(RevealedValue(<7 bytes>)) }"
+        );
+    }
+
+    /// The gate is why the round trip needs a guard at all: a value drawn
+    /// after `allow_read` went false is the failure the gate exists to
+    /// stop, and nothing hides a reveal when a fresh model arrives.
+    #[test]
+    fn a_reveal_that_lands_after_the_gate_closed_shows_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = fixtures::app_with_secrets_and_reads(dir.path(), true);
+        let answer = fixtures::ask_to_reveal(&mut app);
+        let mut shut = fixtures::secrets_model(dir.path(), false);
+        shut.environments = vec!["all".to_string(), "production".to_string()];
+        let _ = app.update(Msg::Secrets {
+            environment: "production".to_string(),
+            result: Ok(Box::new(shut)),
+        });
+
+        let _ = app.update(answer);
+
+        assert!(reveal_of(&app).is_none(), "the gate shut while it was read");
+    }
+
+    /// Every other reason the answer is no longer wanted. Each of these
+    /// hides through [`SecretsPane::hide`], so the value has to be dropped
+    /// rather than land on a pane the operator has moved on from.
+    #[test]
+    fn a_reveal_that_lands_after_its_reason_went_away_shows_nothing() {
+        for (name, press) in [
+            ("selection", KeyPress::SelectDown),
+            ("tab", KeyPress::TabNext),
+            ("close", KeyPress::Secrets),
+            ("escape", KeyPress::Escape),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut app = fixtures::app_with_secrets_and_reads(dir.path(), true);
+            let answer = fixtures::ask_to_reveal(&mut app);
+            let _ = app.update(Msg::Key(press));
+
+            let _ = app.update(answer);
+
+            assert!(
+                reveal_of(&app).is_none(),
+                "{name} moved on and the answer put the value back"
+            );
+        }
+    }
+
+    /// A tab change reloads, so the answer can arrive against a pane whose
+    /// rows are a different environment's: the echo, not the key alone,
+    /// says whether it is still the answer that was asked for.
+    #[test]
+    fn a_reveal_that_lands_for_another_environment_shows_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = fixtures::app_with_secrets_and_reads(dir.path(), true);
+        let Msg::Revealed { key, value, .. } = fixtures::ask_to_reveal(&mut app) else {
+            panic!("a reveal answers with a value");
+        };
+
+        let _ = app.update(Msg::Revealed {
+            key,
+            environment: "ci".to_string(),
+            value,
+        });
+
+        assert!(reveal_of(&app).is_none(), "that is another tab's value");
+    }
+
     #[test]
     fn v_reveals_only_when_allow_read_is_on() {
         let dir = tempfile::tempdir().unwrap();
         let mut shut = fixtures::app_with_secrets_and_reads(dir.path(), false);
 
-        let _ = shut.update(Msg::Key(KeyPress::Reveal));
+        let effect = shut.update(Msg::Key(KeyPress::Reveal));
 
+        assert_eq!(effect, Effect::None, "a shut gate does not read the store");
         assert!(reveal_of(&shut).is_none(), "the gate is shut");
         assert!(
             shut.notice()
@@ -7639,8 +7828,9 @@ mod tests {
         );
 
         let mut open = fixtures::app_with_secrets_and_reads(dir.path(), true);
+        let answer = fixtures::ask_to_reveal(&mut open);
 
-        let _ = open.update(Msg::Key(KeyPress::Reveal));
+        let _ = open.update(answer);
 
         assert_eq!(
             reveal_of(&open).map(|reveal| reveal.key.as_str()),
@@ -7737,7 +7927,7 @@ mod tests {
         let _ = app.update(Msg::Secrets {
             environment: "production".to_string(),
             result: Ok(Box::new(SecretsModel {
-                environments: vec!["production".to_string()],
+                environments: vec!["all".to_string(), "production".to_string()],
                 rows: vec![SecretRow {
                     key: "DB_PASSWORD".to_string(),
                     source: Source::Operator,
@@ -7752,7 +7942,8 @@ mod tests {
             })),
         });
 
-        let _ = app.update(Msg::Key(KeyPress::Reveal));
+        let answer = fixtures::ask_to_reveal(&mut app);
+        let _ = app.update(answer);
 
         assert!(
             reveal_of(&app).is_none(),
