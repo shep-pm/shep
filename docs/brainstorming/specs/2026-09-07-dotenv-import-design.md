@@ -1,6 +1,6 @@
 # Design: importing a `.env` into shep's stores
 
-Status: designed 2026-09-07, not yet implemented.
+Status: designed 2026-09-07, implemented on `feat/dotenv-import`, 2026-09-08.
 
 An operator with a `.env` and an app under shep has no way to get one into the
 other. This design adds `shep import env`, which reads a `.env`, puts the keys
