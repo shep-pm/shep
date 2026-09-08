@@ -2314,15 +2314,14 @@ Options:
   -V, --version
           Print version
 @@VERB:import@@
-Write a Flockfile from a pm2 dump. Starts nothing.
+Read somebody else's config into shep: a pm2 dump, or a `.env`
 
-Reads `--from`, or `~/.pm2/dump.pm2` if it names nothing — whichever `pm2 save` last wrote. Every
-clustered app is named on stderr: shep binds nothing, so N instances on one port need the app to set
-`SO_REUSEPORT` itself, or the second instance hits EADDRINUSE at start. Every env key the dump
-carried that was neither declared nor recognizable session junk is named on stderr too, and left out
-of the Flockfile, for the operator to decide.
+Usage: shep import [OPTIONS] <COMMAND>
 
-Usage: shep import [OPTIONS]
+Commands:
+  pm2   Write a Flockfile from a pm2 dump. Starts nothing
+  env   Read a `.env` into the secret store and one sheep's own env
+  help  Print this message or the help of the given subcommand(s)
 
 Options:
       --format <FORMAT>
@@ -2334,21 +2333,12 @@ Options:
           
           [default: table]
 
-      --from <FROM>
-          Read this pm2 dump instead of `~/.pm2/dump.pm2`
-
-      --out <OUT>
-          Write the Flockfile here instead of `./Flockfile.toml`
-
   -q, --quiet
           Suppress non-essential output
           
           Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
           ...): diagnostics distinct from a sheep's own line or a real error, both of which still
           print regardless.
-
-      --dry-run
-          Print the Flockfile that would be written, and write nothing
 
       --style <STYLE>
           How much this invocation dresses up its output: `full`, `plain`, or `bare`
@@ -2360,9 +2350,6 @@ Options:
           - full:  Sheep, boxes and colour
           - plain: Boxes and colour, no sheep
           - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --force
-          Overwrite an existing Flockfile
 
       --home <HOME>
           Talk to a different shepherd
