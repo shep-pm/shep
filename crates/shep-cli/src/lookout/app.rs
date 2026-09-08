@@ -18,7 +18,7 @@ use shep_client::RequestError;
 use shep_core::config::LogLevel;
 use shep_core::protocol::{
     BusEvent, DogSectionToml, DogSource, EnvValue, Lamb, ProcessEventKind, ProcessInfo, Request,
-    Response, SelectorSpec, SheepRefusal,
+    Response, SelectorSpec, SheepConfigView, SheepRefusal,
 };
 use shep_core::status::ProcStatus;
 
@@ -26,6 +26,7 @@ use super::field::{FieldKind, FieldSet};
 use super::level::Level;
 use super::pane::{ConfigPane, FieldValue, Lock, PaneEdit, PanePending, PaneTarget, ReloadKind};
 use super::pane_bleats::BleatsPane;
+use super::pane_sheep::SheepPane;
 use super::tail::Stream;
 use super::theme::Palette;
 use super::viewport::Viewport;
@@ -113,9 +114,9 @@ pub enum KeyPress {
     /// screen so every other screen's own keymap reads as the no-op it is.
     ListRemove,
     /// `K`. What a step means is the body's to decide: a config pane
-    /// reorders the list element under the cursor. Every other body,
-    /// including the sheep pane, still routes it to [`Effect::None`]; the
-    /// sheep pane's own handling lands in a later task.
+    /// reorders the list element under the cursor, the sheep pane steps to
+    /// the previous sheep the flock table would show without leaving the
+    /// pane, and every other body routes it to [`Effect::None`].
     StepUp,
     /// `J`, the twin of [`Self::StepUp`].
     StepDown,
@@ -1325,6 +1326,25 @@ pub(crate) enum Body {
     /// The bleats feed given the whole screen, opened by
     /// [`KeyPress::Bleats`].
     Bleats(BleatsPane),
+    /// One sheep given the whole screen, opened by [`KeyPress::Confirm`].
+    Sheep(Box<SheepPane>),
+}
+
+/// Which screen asked for a sheep's config.
+///
+/// Both [`Sent::SheepConfig`]'s callers send the exact same request, and the
+/// reply cannot tell them apart on its own: `e` pressed inside the sheep
+/// pane leaves that pane on screen while the reply is in flight, so
+/// [`App::on_sheep_config`] cannot route by the current [`Body`] the way it
+/// could if only one screen ever asked. This is read instead, and it is set
+/// in the same step as [`App::config_target`], by whichever door sent the
+/// request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ConfigFor {
+    /// The editing pane, opened by `e`.
+    Editor,
+    /// The sheep pane's read-only left column.
+    SheepPane,
 }
 
 /// The whole dashboard's state.
@@ -1389,6 +1409,11 @@ pub struct App {
     /// reopen a closed pane on the late reply. [`Self::config_pane`] alone
     /// cannot tell those two `None` states apart.
     config_target: Option<String>,
+    /// Which screen [`Self::config_target`] is standing in for, while it is
+    /// `Some`. `None` whenever `config_target` is: the two are set and
+    /// cleared together, always in the same step that sends
+    /// [`Sent::SheepConfig`]. See [`ConfigFor`].
+    config_for: Option<ConfigFor>,
     /// The dog a config pane is open for, or wanted for, and the schema its
     /// binary answered with.
     ///
@@ -1506,6 +1531,7 @@ impl App {
             action: None,
             body: Body::FlockTable,
             config_target: None,
+            config_for: None,
             dog_target: None,
             pane_menu: None,
             style: (StyleLevel::Full, StyleSource::Default),
@@ -2075,49 +2101,20 @@ impl App {
             return Effect::None;
         }
         match result {
-            Ok(Response::SheepConfig(view)) => {
-                let carried = self.config_pane().map(|pane| pane.view().clone());
-                // The env sub-screen is carried too: a set re-reads the
-                // whole config, and without this it would close on the
-                // very keystroke that just added a row. Its cursor rides
-                // by key, not index, since a removal would rename it.
-                let carried_env = self
-                    .config_pane()
-                    .and_then(ConfigPane::env)
-                    .map(|env| (env.view().clone(), env.cursor_key().map(str::to_owned)));
-                // The list sub-screen rides across for the same reason,
-                // and by index rather than by name: an element has no
-                // name. See `ListPane::adopt_view`.
-                let carried_list = self
-                    .config_pane()
-                    .and_then(ConfigPane::list)
-                    .map(|list| (list.key().to_owned(), list.view().clone()));
-                // A question the operator has not answered, or a write
-                // still out, survives the rebuild. Only `Typing` is
-                // dropped. See `ConfigPane::adopt_pending_edit`.
-                let carried_edit = self
-                    .config_pane()
-                    .and_then(|pane| pane.pending_edit().cloned());
-                // Carried for the same reason as the cursor: a re-read must
-                // not dismiss a help note the operator has not dismissed.
-                let carried_help = self.config_pane().is_some_and(ConfigPane::help_open);
-                let mut pane = ConfigPane::sheep(*view);
-                pane.adopt_pending_edit(carried_edit);
-                if let Some(carried) = carried {
-                    pane.adopt_view(carried);
+            Ok(Response::SheepConfig(view)) => match self.config_for {
+                Some(ConfigFor::SheepPane) => {
+                    if let Some(pane) = self.sheep_pane_mut() {
+                        pane.adopt_config(*view);
+                    }
                 }
-                if let Some((carried, cursor_key)) = carried_env {
-                    pane.adopt_env_view(carried, cursor_key.as_deref());
-                }
-                if let Some((key, carried)) = carried_list {
-                    pane.adopt_list_view(&key, carried);
-                }
-                pane.set_help_open(carried_help);
-                self.body = Body::ConfigPane(pane);
-                // The rebuilt pane carries no editor, so the keyboard must
-                // not still think one is open.
-                self.release_text_mode_if_unowned();
-            }
+                // `None` only if something outside this file set
+                // `config_target` without `config_for`, which nothing does:
+                // [`Self::ask_for_sheep_config`] is the one place both are
+                // set, always together. Falling back to the editor is the
+                // pre-[`ConfigFor`] behaviour, not a guess this reply
+                // belongs to a screen that never asked for it.
+                None | Some(ConfigFor::Editor) => self.open_or_refresh_config_pane(*view),
+            },
             Ok(_unrecognised) => {
                 self.notice = Some(Notice {
                     text: format!(
@@ -2145,6 +2142,55 @@ impl App {
             }
         }
         Effect::None
+    }
+
+    /// Opens the config pane on `view`, or refreshes one already open in
+    /// place, carrying across everything a rebuild would otherwise drop.
+    /// Split out of [`Self::on_sheep_config`] so that method can route a
+    /// [`ConfigFor::SheepPane`] reply to [`Self::sheep_pane_mut`] instead
+    /// without repeating its guard or its error arms.
+    fn open_or_refresh_config_pane(&mut self, view: SheepConfigView) {
+        let carried = self.config_pane().map(|pane| pane.view().clone());
+        // The env sub-screen is carried too: a set re-reads the whole
+        // config, and without this it would close on the very keystroke
+        // that just added a row. Its cursor rides by key, not index, since
+        // a removal would rename it.
+        let carried_env = self
+            .config_pane()
+            .and_then(ConfigPane::env)
+            .map(|env| (env.view().clone(), env.cursor_key().map(str::to_owned)));
+        // The list sub-screen rides across for the same reason, and by
+        // index rather than by name: an element has no name. See
+        // `ListPane::adopt_view`.
+        let carried_list = self
+            .config_pane()
+            .and_then(ConfigPane::list)
+            .map(|list| (list.key().to_owned(), list.view().clone()));
+        // A question the operator has not answered, or a write still out,
+        // survives the rebuild. Only `Typing` is dropped. See
+        // `ConfigPane::adopt_pending_edit`.
+        let carried_edit = self
+            .config_pane()
+            .and_then(|pane| pane.pending_edit().cloned());
+        // Carried for the same reason as the cursor: a re-read must not
+        // dismiss a help note the operator has not dismissed.
+        let carried_help = self.config_pane().is_some_and(ConfigPane::help_open);
+        let mut pane = ConfigPane::sheep(view);
+        pane.adopt_pending_edit(carried_edit);
+        if let Some(carried) = carried {
+            pane.adopt_view(carried);
+        }
+        if let Some((carried, cursor_key)) = carried_env {
+            pane.adopt_env_view(carried, cursor_key.as_deref());
+        }
+        if let Some((key, carried)) = carried_list {
+            pane.adopt_list_view(&key, carried);
+        }
+        pane.set_help_open(carried_help);
+        self.body = Body::ConfigPane(pane);
+        // The rebuilt pane carries no editor, so the keyboard must not
+        // still think one is open.
+        self.release_text_mode_if_unowned();
     }
 
     fn on_event(&mut self, event: BusEvent) -> Effect {
@@ -2458,6 +2504,13 @@ impl App {
         if self.bleats_pane().is_some() {
             return self.on_bleats_key(key);
         }
+        // The sheep pane owns the keyboard while it is open, the same as
+        // the three full-screen panes above. `Body` holds only one at a
+        // time, so this ordering is documentation, not correctness, the
+        // same as theirs.
+        if self.sheep_pane().is_some() {
+            return self.on_sheep_pane_key(key);
+        }
         // A cancelling keypress is consumed: a stray `j` cancels the confirm
         // and does not also move the selection, or the next reflexive Enter
         // acts on a target the operator lost track of. Cancelling is silent.
@@ -2507,9 +2560,13 @@ impl App {
             KeyPress::SelectFirst => self.select_at(0, 1),
             KeyPress::SelectLast => self.select_at(self.visible_len().saturating_sub(1), -1),
             KeyPress::Action(verb) => self.arm(verb),
-            // Enter means nothing outside an armed confirm, including while one
-            // is in flight: the routing rule above fires only on `Stage::Armed`.
-            KeyPress::Confirm => Effect::None,
+            // An armed confirm (including one already in flight) owns
+            // `Enter` before it ever reaches here: the routing rule above
+            // fires only on `Stage::Armed`. With nothing armed, `Enter`
+            // opens the sheep pane on the selected row, or does nothing on
+            // a dog, a group or a fold header, none of which is a sheep to
+            // open one on.
+            KeyPress::Confirm => self.open_sheep_pane(),
             KeyPress::FilterStart => {
                 self.mode = InputMode::Text;
                 Effect::None
@@ -2599,6 +2656,121 @@ impl App {
             self.body = Body::Bleats(BleatsPane::new(sheep));
         }
         Effect::None
+    }
+
+    /// `Enter`'s own handler on the dashboard: opens the sheep pane on the
+    /// selected sheep and asks for its config in the same step, since the
+    /// pane's own left column has nothing to draw without it.
+    ///
+    /// [`Self::selected_row`], not [`Self::selected_name`]: a group row has
+    /// no single sheep to open the pane on, and a dog runs no config the
+    /// pane's own `SheepConfigView` can show (its section is a TOML table,
+    /// not a Flockfile's `AppConfig`). Both are silently refused, the same
+    /// silence [`Self::ask_for_bleats`] falls back to for a group.
+    fn open_sheep_pane(&mut self) -> Effect {
+        let Some(row) = self.selected_row() else {
+            return Effect::None;
+        };
+        if row.info.dog.is_some() {
+            return Effect::None;
+        }
+        let sheep = self
+            .selected()
+            .expect("selected_row answered, so a selection exists");
+        let name = row.info.name.clone();
+        self.body = Body::Sheep(Box::new(SheepPane::new(sheep)));
+        self.ask_for_sheep_config(name, ConfigFor::SheepPane)
+    }
+
+    /// `J`/`K` from inside the sheep pane: steps to the next or previous
+    /// sheep the flock table would show, skipping a dog, a group header and
+    /// a fold header — none of which is a sheep the pane can open on — and
+    /// asks for the new sheep's config in the same step.
+    ///
+    /// Silent past either end of the list, and silent if the pane's own
+    /// sheep has already left the flock: there is nothing to step from.
+    fn step_sheep_pane(&mut self, delta: isize) -> Effect {
+        let Body::Sheep(pane) = &self.body else {
+            return Effect::None;
+        };
+        let current = pane.sheep().clone();
+        let sheep_rows: Vec<RowKey> = self
+            .visible_rows()
+            .into_iter()
+            .filter(|key| match key {
+                RowKey::Sheep(id) => self.flock.get(id).is_some_and(|row| row.info.dog.is_none()),
+                RowKey::Group(_) | RowKey::Fold(_) | RowKey::Section(_) => false,
+            })
+            .collect();
+        let Some(index) = sheep_rows.iter().position(|key| *key == current) else {
+            return Effect::None;
+        };
+        let next_index = index
+            .saturating_add_signed(delta)
+            .min(sheep_rows.len().saturating_sub(1));
+        let next = sheep_rows[next_index].clone();
+        if next == current {
+            return Effect::None;
+        }
+        let RowKey::Sheep(id) = &next else {
+            unreachable!("the filter above admits only `RowKey::Sheep`")
+        };
+        let Some(name) = self.flock.get(id).map(|row| row.info.name.clone()) else {
+            return Effect::None;
+        };
+        self.selected = Some(next.clone());
+        if let Some(pane) = self.sheep_pane_mut() {
+            pane.set_sheep(next);
+        }
+        self.ask_for_sheep_config(name, ConfigFor::SheepPane)
+    }
+
+    /// The sheep pane's own keymap, in force while [`Self::sheep_pane`] is
+    /// `Some`. `esc` closes it; `e` opens the config editor over it,
+    /// routed by [`ConfigFor`] once the reply lands, since both send the
+    /// same request; `J`/`K` step to the next or previous sheep without
+    /// leaving the pane. Every other key is inert for now: rows 2 to 46 are
+    /// still blank, and the keys the status bar names for them (`b`, `/`,
+    /// `x`, `R`, `L`) are wired once there is something there for them to
+    /// act on.
+    fn on_sheep_pane_key(&mut self, key: KeyPress) -> Effect {
+        match key {
+            KeyPress::Quit => Effect::Quit,
+            KeyPress::Escape => {
+                self.close_pane();
+                Effect::None
+            }
+            KeyPress::Edit => self.ask_for_config(),
+            KeyPress::StepDown => self.step_sheep_pane(1),
+            KeyPress::StepUp => self.step_sheep_pane(-1),
+            KeyPress::SelectUp
+            | KeyPress::SelectDown
+            | KeyPress::SelectFirst
+            | KeyPress::SelectLast
+            | KeyPress::Refresh
+            | KeyPress::Action(_)
+            | KeyPress::Confirm
+            | KeyPress::FilterStart
+            | KeyPress::TextChar(_)
+            | KeyPress::TextBackspace
+            | KeyPress::TextApply
+            | KeyPress::TextAbandon
+            | KeyPress::Settings
+            | KeyPress::Cycle
+            | KeyPress::Help
+            | KeyPress::ListRemove
+            | KeyPress::FoldView
+            | KeyPress::Collapse
+            | KeyPress::Bleats
+            | KeyPress::StreamCycle
+            | KeyPress::LevelCycle
+            | KeyPress::PageDown
+            | KeyPress::PageUp
+            | KeyPress::FollowToggle
+            | KeyPress::WrapToggle
+            | KeyPress::MatchNext
+            | KeyPress::MatchPrev => Effect::None,
+        }
     }
 
     /// The bleats pane's own keymap, in force while [`Self::bleats_pane`] is
@@ -2952,12 +3124,21 @@ impl App {
             };
         }
         match self.selected_name() {
-            Some(name) => {
-                self.config_target = Some(name.clone());
-                Effect::Send(Sent::SheepConfig { name })
-            }
+            Some(name) => self.ask_for_sheep_config(name, ConfigFor::Editor),
             None => Effect::None,
         }
+    }
+
+    /// Sends `Request::SheepConfig` for `name`, recording which screen it is
+    /// for so [`Self::on_sheep_config`] can route the reply once it lands.
+    ///
+    /// The one place [`Self::config_target`] and [`Self::config_for`] are
+    /// set for a sheep-config read, so the two can never disagree about
+    /// which request is outstanding.
+    fn ask_for_sheep_config(&mut self, name: String, for_screen: ConfigFor) -> Effect {
+        self.config_target = Some(name.clone());
+        self.config_for = Some(for_screen);
+        Effect::Send(Sent::SheepConfig { name })
     }
 
     /// Puts the keyboard back to [`InputMode::Normal`] when no pane editor
@@ -3137,6 +3318,7 @@ impl App {
         self.body = Body::FlockTable;
         self.pane_menu = None;
         self.config_target = None;
+        self.config_for = None;
         self.dog_target = None;
         self.release_text_mode_if_unowned();
     }
@@ -3364,7 +3546,7 @@ impl App {
         // scope.
         let Some(pane) = (match &mut self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }) else {
             return Effect::None;
         };
@@ -3740,7 +3922,7 @@ impl App {
         // `Self::config_pane_mut`, so `self.mode` stays reachable below.
         let Some(pane) = (match &mut self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }) else {
             return Effect::None;
         };
@@ -3778,7 +3960,7 @@ impl App {
         // `Self::config_pane_mut`, so `self.mode` stays reachable below.
         let Some(pane) = (match &mut self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }) else {
             return Effect::None;
         };
@@ -3843,7 +4025,7 @@ impl App {
         // `Self::settings_mut`, so `self.now` stays reachable below.
         let Some(settings) = (match &mut self.body {
             Body::Settings(settings) => Some(settings),
-            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }) else {
             return Effect::None;
         };
@@ -3877,7 +4059,7 @@ impl App {
         // `Self::settings_mut`, so `self.now` stays reachable below.
         let Some(settings) = (match &mut self.body {
             Body::Settings(settings) => Some(settings),
-            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }) else {
             return Effect::None;
         };
@@ -4990,7 +5172,7 @@ impl App {
     pub fn settings(&self) -> Option<&Settings> {
         match &self.body {
             Body::Settings(settings) => Some(settings),
-            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }
     }
 
@@ -4999,7 +5181,7 @@ impl App {
     fn settings_mut(&mut self) -> Option<&mut Settings> {
         match &mut self.body {
             Body::Settings(settings) => Some(settings),
-            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }
     }
 
@@ -5062,7 +5244,7 @@ impl App {
     pub fn config_pane(&self) -> Option<&ConfigPane> {
         match &self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }
     }
 
@@ -5071,7 +5253,7 @@ impl App {
     fn config_pane_mut(&mut self) -> Option<&mut ConfigPane> {
         match &mut self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }
     }
 
@@ -5080,7 +5262,7 @@ impl App {
     pub fn bleats_pane(&self) -> Option<&BleatsPane> {
         match &self.body {
             Body::Bleats(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) | Body::Sheep(_) => None,
         }
     }
 
@@ -5090,7 +5272,7 @@ impl App {
     fn bleats_pane_mut(&mut self) -> Option<&mut BleatsPane> {
         match &mut self.body {
             Body::Bleats(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) | Body::Sheep(_) => None,
         }
     }
 
@@ -5100,6 +5282,24 @@ impl App {
     #[cfg(test)]
     pub(crate) fn bleats_pane_mut_for_tests(&mut self) -> Option<&mut BleatsPane> {
         self.bleats_pane_mut()
+    }
+
+    /// The open sheep pane, or `None` on any other screen.
+    #[must_use]
+    pub fn sheep_pane(&self) -> Option<&SheepPane> {
+        match &self.body {
+            Body::Sheep(pane) => Some(pane.as_ref()),
+            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) | Body::Bleats(_) => None,
+        }
+    }
+
+    /// [`Self::sheep_pane`]'s mutable twin, for `J`/`K` and for adopting a
+    /// `Request::SheepConfig` reply in place.
+    fn sheep_pane_mut(&mut self) -> Option<&mut SheepPane> {
+        match &mut self.body {
+            Body::Sheep(pane) => Some(pane.as_mut()),
+            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) | Body::Bleats(_) => None,
+        }
     }
 
     /// The apply offer over the open pane, or `None`.
@@ -5488,6 +5688,137 @@ mod tests {
     /// The status bar's own rendered text.
     fn status_line_text(app: &App) -> String {
         super::super::view::fixtures::rendered(&super::super::view::status::status_line(app, 200))
+    }
+
+    /// Two online sheep, `alpha` (id 1) and `bravo` (id 2), named so their
+    /// alphabetical table order agrees with their ids: `alpha` is selected
+    /// by [`App::reseat`]'s own default the moment the snapshot lands, and
+    /// stepping down from it reaches `bravo` in one move.
+    fn fixture_with_two_sheep() -> App {
+        let t0 = Instant::now();
+        let mut app = App::new(
+            Palette::detect(None, None, None),
+            Control::ReadOnly,
+            "/home/ada/.shep".to_string(),
+            t0,
+        );
+        app.update(Msg::Snapshot {
+            rows: vec![
+                sheep(1, "alpha", ProcStatus::Online),
+                sheep(2, "bravo", ProcStatus::Online),
+            ],
+            at: t0,
+        });
+        app
+    }
+
+    /// One dog and nothing else, so `App::reseat`'s own header-skip selects
+    /// it the moment the snapshot lands: the only row that is not a
+    /// `Section` header is the dog.
+    fn fixture_with_a_dog_selected() -> App {
+        let t0 = Instant::now();
+        let mut app = App::new(
+            Palette::detect(None, None, None),
+            Control::ReadOnly,
+            "/home/ada/.shep".to_string(),
+            t0,
+        );
+        app.update(Msg::Snapshot {
+            rows: vec![
+                ProcessInfo::builder(90, "otel", ProcStatus::Online)
+                    .dog(Some(DogSource::BuiltIn))
+                    .build(),
+            ],
+            at: t0,
+        });
+        app
+    }
+
+    /// `↵` opens the pane on the selected sheep and asks for its config in
+    /// the same step, since the pane's left column has nothing to draw
+    /// without it.
+    #[test]
+    fn enter_opens_the_sheep_pane_and_asks_for_its_config() {
+        let mut app = fixture_with_two_sheep();
+        let effect = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(matches!(app.body(), Body::Sheep(_)));
+        assert_eq!(
+            effect,
+            Effect::Send(Sent::SheepConfig {
+                name: "alpha".to_string()
+            })
+        );
+    }
+
+    /// An armed prompt owns `↵`. Opening a pane out from under a question
+    /// the operator has not answered would answer it for them.
+    #[test]
+    fn enter_confirms_an_armed_action_rather_than_opening_the_pane() {
+        let mut app = allowed();
+        let _ = app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(matches!(app.body(), Body::FlockTable));
+    }
+
+    /// A dog row has no charts to draw and its config is a TOML section
+    /// rather than a `SheepConfigView`, so `↵` does nothing there. `e`
+    /// still opens the dog config pane it opens today.
+    #[test]
+    fn enter_on_a_dog_row_opens_nothing() {
+        let mut app = fixture_with_a_dog_selected();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(matches!(app.body(), Body::FlockTable));
+    }
+
+    /// `e` inside the sheep pane opens the editor, not a refill of the pane
+    /// that asked. Both send `Request::SheepConfig`, so the reply has to
+    /// say which one it is for.
+    #[test]
+    fn e_inside_the_sheep_pane_opens_the_editor() {
+        let mut app = fixture_with_two_sheep();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::Edit));
+        app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "alpha".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(
+                fixtures::sheep_config_view(),
+            ))),
+        });
+        assert!(matches!(app.body(), Body::ConfigPane(_)));
+    }
+
+    /// Ahead of the mutation check below: if `on_sheep_config` branched on
+    /// the current body instead of `ConfigFor`, this reply would refill the
+    /// sheep pane it found on screen rather than open the editor `e` asked
+    /// for, since the pane is still `Body::Sheep` while the reply is in
+    /// flight.
+    #[test]
+    fn escape_closes_the_sheep_pane() {
+        let mut app = fixture_with_two_sheep();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(matches!(app.body(), Body::FlockTable));
+    }
+
+    /// `J` walks the flock without leaving the pane, and asks for the new
+    /// sheep's config.
+    #[test]
+    fn step_down_moves_to_the_next_sheep() {
+        let mut app = fixture_with_two_sheep();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let effect = app.update(Msg::Key(KeyPress::StepDown));
+        let Body::Sheep(pane) = app.body() else {
+            panic!("still in the sheep pane")
+        };
+        assert_eq!(pane.sheep(), &RowKey::Sheep(2));
+        assert_eq!(
+            effect,
+            Effect::Send(Sent::SheepConfig {
+                name: "bravo".to_string()
+            })
+        );
     }
 
     #[test]
@@ -6052,7 +6383,14 @@ mod tests {
             at_ms: 0,
         }));
         assert!(app.action().is_none());
-        assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
+        // Nothing is armed any more, so `Confirm` falls to its other
+        // meaning: it opens the sheep pane on whichever row the reseat
+        // above moved the selection to, rather than sending the disarmed
+        // `Sent::Action` the stale confirm would have.
+        assert!(matches!(
+            app.update(Msg::Key(KeyPress::Confirm)),
+            Effect::Send(Sent::SheepConfig { .. })
+        ));
     }
 
     /// Driven by `Msg::Tick`, so there is no sleep here.
@@ -6144,19 +6482,23 @@ mod tests {
         assert_eq!(app.update(Msg::Key(KeyPress::Quit)), Effect::Quit);
     }
 
+    /// Outside an armed confirm, `Enter` opens the sheep pane
+    /// ([`enter_opens_the_sheep_pane_and_asks_for_its_config`] pins the
+    /// whole of that); the point pinned here is narrower and unchanged by
+    /// that: a second `Enter` over an action already sent does not re-send
+    /// it, the armed-confirm guard having already let it through once.
     #[test]
-    fn enter_outside_an_armed_confirm_does_nothing() {
+    fn a_second_confirm_does_not_resend_an_action_already_in_flight() {
         let mut app = allowed();
-        assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
-        assert!(app.action().is_none());
-
         app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
         app.update(Msg::Key(KeyPress::Confirm));
         assert!(app.action().is_some_and(|action| action.sent), "in flight");
-        assert_eq!(
-            app.update(Msg::Key(KeyPress::Confirm)),
-            Effect::None,
-            "a second Enter does not re-send"
+        assert!(
+            !matches!(
+                app.update(Msg::Key(KeyPress::Confirm)),
+                Effect::Send(Sent::Action { .. })
+            ),
+            "a second Enter does not re-send the action"
         );
     }
 
@@ -6185,11 +6527,13 @@ mod tests {
             assert!(app.action().is_some(), "armed while live");
             app.update(link);
             assert!(app.action().is_none(), "and gone once the link is not");
-            assert_eq!(
+            // Nothing is armed any more, so `Enter` falls to its other
+            // meaning (opening the sheep pane) rather than to the confirm
+            // this prompt no longer has a question for.
+            assert!(!matches!(
                 app.update(Msg::Key(KeyPress::Confirm)),
-                Effect::None,
-                "so Enter has nothing to send"
-            );
+                Effect::Send(Sent::Action { .. })
+            ));
         }
     }
 

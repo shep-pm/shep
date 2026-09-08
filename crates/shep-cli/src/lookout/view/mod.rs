@@ -14,6 +14,7 @@ pub mod host;
 pub mod pane;
 pub mod scroll;
 pub mod settings;
+pub mod sheep;
 pub mod status;
 
 // `pub`, not private: a test in `super::super`'s own `mod tests` (it drives
@@ -210,6 +211,24 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
 
     buffer.set_line(area.x, y, &title_band(app, width), width);
     y += 1;
+
+    // The sheep pane owns the whole body between the title and the status
+    // bar too, the same as the three below, but row 1 is its own identity
+    // band rather than blank chrome, so it is checked here, ahead of the
+    // roomy blank row the other three are paid in: a tall terminal must not
+    // push the band down to row 2 the way it pushes their body down.
+    if let Body::Sheep(pane) = app.body() {
+        let body = Rect {
+            x: area.x,
+            y,
+            width,
+            height: bottom.saturating_sub(y),
+        };
+        sheep::draw(app, pane, body, buffer);
+        buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
+        return;
+    }
+
     // A blank row under the title, and another under the rule further down.
     // Both come from the design's own row allocation, and both are spent
     // only where there is height to spare: on a short terminal every row
@@ -258,6 +277,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
             buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
             return;
         }
+        Body::Sheep(_) => unreachable!("handled above, ahead of the roomy blank row"),
         Body::FlockTable => {}
     }
 

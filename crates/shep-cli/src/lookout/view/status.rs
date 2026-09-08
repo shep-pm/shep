@@ -160,6 +160,15 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // it at all, so it is appended rather than inserted, the same rule
         // `hint_for`'s own doc gives for its dashboard forms.
         (BLEATS_HINT.to_string(), palette.attention())
+    } else if app.sheep_pane().is_some() {
+        // Checked below the bleats pane's own branch, the same as the
+        // config pane's above it: the four full-screen panes cannot be
+        // open at once, so their order here is documentation, not
+        // correctness.
+        (
+            sheep_pane_hint(app.control()).to_string(),
+            palette.attention(),
+        )
     } else if app.settings().is_none() && !app.filter().is_empty() {
         // Gated on the screen being closed: the filter survives the swap
         // into settings (`App::on_settings_key` never touches it), but `/`
@@ -330,6 +339,23 @@ const fn pane_hint(control: Control, screen: PaneScreen) -> &'static str {
         }
         (Control::Allowed, PaneScreen::List) => {
             "esc back   j/k select   g/G first/last   r refresh   e edit   d remove   K/J move   q quit"
+        }
+    }
+}
+
+/// The sheep pane's own key hint.
+///
+/// `x stop`, `R restart` and `L reload` are appended only under
+/// [`Control::Allowed`], the same rule [`hint_for`]'s own doc gives for the
+/// dashboard's write keys: a hint naming a key that is inert where the
+/// operator is reading it teaches them the key is broken. Rows 2 to 46 are
+/// still blank, so none of these five act on anything yet; the hint names
+/// the pane the design settles on, not the one built so far.
+const fn sheep_pane_hint(control: Control) -> &'static str {
+    match control {
+        Control::ReadOnly => "esc flock   e edit   b full log   J/K next sheep   / filter",
+        Control::Allowed => {
+            "esc flock   e edit   b full log   J/K next sheep   / filter   x stop   R restart   L reload"
         }
     }
 }
