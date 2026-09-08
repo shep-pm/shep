@@ -616,15 +616,7 @@ pub enum Commands {
     /// shepherd behind. A `shep dev` that leaked a supervisor would stop
     /// being trusted.
     Dev(DevArgs),
-    /// Write a Flockfile from a pm2 dump. Starts nothing.
-    ///
-    /// Reads `--from`, or `~/.pm2/dump.pm2` if it names nothing — whichever
-    /// `pm2 save` last wrote. Every clustered app is named on stderr: shep
-    /// binds nothing, so N instances on one port need the app to set
-    /// `SO_REUSEPORT` itself, or the second instance hits EADDRINUSE at
-    /// start. Every env key the dump carried that was neither declared nor
-    /// recognizable session junk is named on stderr too, and left out of
-    /// the Flockfile, for the operator to decide.
+    /// Read somebody else's config into shep: a pm2 dump, or a `.env`.
     Import(ImportArgs),
     /// Install an init unit so the shepherd starts at boot.
     ///
@@ -1309,8 +1301,35 @@ pub struct ReopenArgs {
 }
 
 /// Arguments to `shep import`.
+///
+/// A subcommand host rather than a flag set, for [`SecretArgs`]' reason: the
+/// two inputs share a noun and nothing else. `Debug` is derived; neither
+/// subcommand carries a value.
 #[derive(Debug, clap::Args)]
 pub struct ImportArgs {
+    /// Which kind of file to read.
+    #[command(subcommand)]
+    pub command: ImportCommand,
+}
+
+/// `shep import`'s subcommands.
+#[derive(Debug, clap::Subcommand)]
+pub enum ImportCommand {
+    /// Write a Flockfile from a pm2 dump. Starts nothing.
+    ///
+    /// Reads `--from`, or `~/.pm2/dump.pm2` if it names nothing — whichever
+    /// `pm2 save` last wrote. Every clustered app is named on stderr: shep
+    /// binds nothing, so N instances on one port need the app to set
+    /// `SO_REUSEPORT` itself, or the second instance hits EADDRINUSE at
+    /// start. Every env key the dump carried that was neither declared nor
+    /// recognizable session junk is named on stderr too, and left out of
+    /// the Flockfile, for the operator to decide.
+    Pm2(ImportPm2Args),
+}
+
+/// Arguments to `shep import pm2`.
+#[derive(Debug, clap::Args)]
+pub struct ImportPm2Args {
     /// Read this pm2 dump instead of `~/.pm2/dump.pm2`
     #[arg(long)]
     pub from: Option<PathBuf>,

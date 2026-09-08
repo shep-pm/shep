@@ -135,7 +135,7 @@ fn is_pm2_injected(key: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::import::dump;
+    use crate::commands::import::pm2::dump;
 
     fn rows() -> Vec<DumpRow> {
         dump::parse(include_str!("testdata/dump.pm2.json")).unwrap()

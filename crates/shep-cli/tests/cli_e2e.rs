@@ -3605,7 +3605,7 @@ fn import_writes_a_flockfile_shep_can_read_back_and_starts_no_daemon() {
     let out = home.join("Flockfile.toml");
     let dump = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/src/commands/import/testdata/dump.pm2.json"
+        "/src/commands/import/pm2/testdata/dump.pm2.json"
     );
     let mut guard = DaemonGuard::default();
 
@@ -3613,6 +3613,7 @@ fn import_writes_a_flockfile_shep_can_read_back_and_starts_no_daemon() {
         .arg("--format")
         .arg("json")
         .arg("import")
+        .arg("pm2")
         .arg("--from")
         .arg(dump)
         .arg("--out")

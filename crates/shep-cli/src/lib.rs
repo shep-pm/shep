@@ -1940,13 +1940,26 @@ mod tests {
     /// Pins clap's parse only. An arm that parses correctly and calls the
     /// wrong function needs a real invocation, which `cli_e2e.rs` covers.
     #[test]
-    fn import_parses_to_its_own_command() {
+    fn import_pm2_parses_to_its_own_subcommand() {
         use clap::Parser;
-        use cli::Commands;
-        assert!(matches!(
-            Cli::try_parse_from(["shep", "import"]).unwrap().command,
-            Commands::Import(_)
-        ));
+        use cli::{Commands, ImportCommand};
+        let cli = Cli::try_parse_from(["shep", "import", "pm2"]).unwrap();
+        let Commands::Import(args) = cli.command else {
+            panic!("`shep import pm2` did not reach the import verb");
+        };
+        assert!(matches!(args.command, ImportCommand::Pm2(_)));
+    }
+
+    /// The bare form was `shep import` for the whole of 0.1 through 0.6 and
+    /// now names a subcommand. A refusal is the whole point of the split, so
+    /// it is pinned rather than left to clap.
+    #[test]
+    fn bare_import_no_longer_parses() {
+        use clap::Parser;
+        assert!(
+            Cli::try_parse_from(["shep", "import"]).is_err(),
+            "bare `shep import` must name a subcommand"
+        );
     }
 
     /// Pins clap's parse only; `cli_e2e.rs`'s
