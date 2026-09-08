@@ -18,6 +18,7 @@ use super::settings::field_label;
 
 /// The banner, when there is one. `None` while the link is live.
 ///
+///
 /// What happened and when the values stopped being current, so an operator
 /// reading `online` knows how much to trust it. The frozen row says neither:
 /// once the link is lost, `view::title_band` carries the death sentence in
@@ -25,7 +26,7 @@ use super::settings::field_label;
 /// the title band no longer has space for, plus the two things an operator
 /// staring at a dead dashboard actually needs told.
 #[must_use]
-pub fn banner_line(app: &App) -> Option<Line<'static>> {
+pub fn banner_line(app: &App, width: u16) -> Option<Line<'static>> {
     let palette = app.palette();
     match app.link() {
         Link::Live => None,
@@ -33,10 +34,19 @@ pub fn banner_line(app: &App) -> Option<Line<'static>> {
             retrying_sentence(*attempt),
             palette.attention(),
         ))),
+        // Through `fit`, unlike the retrying sentence above, which is
+        // short enough that no terminal cuts it. Three clauses and a
+        // `$SHEP_HOME` do not fit 90 columns, and `Buffer::set_line` cuts
+        // what does not fit in silence: a sentence ending mid-word beside
+        // five other lines that all mark their own truncation reads as a
+        // rendering fault rather than as a narrow terminal.
         Link::Lost { .. } => Some(Line::from(Span::styled(
-            format!(
-                " shep lookout   {}  ·  the dashboard stays up so you can read what it had  ·  it will not exit on its own",
-                app.home()
+            fit(
+                &format!(
+                    " shep lookout   {}  ·  the dashboard stays up so you can read what it had  ·  it will not exit on its own",
+                    app.home()
+                ),
+                width,
             ),
             palette.muted(),
         ))),

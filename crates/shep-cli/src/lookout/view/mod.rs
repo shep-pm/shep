@@ -265,7 +265,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
         Body::FlockTable => {}
     }
 
-    if let Some(banner) = status::banner_line(app) {
+    if let Some(banner) = status::banner_line(app, width) {
         buffer.set_line(area.x, y, &banner, width);
         y += 1;
     }
@@ -841,6 +841,32 @@ mod tests {
     /// Last values stay on screen, with a sentence admitting they are
     /// stale.
     #[test]
+    /// Also found by capturing a real screen: at 90 columns the row under
+    /// the band ran off the edge mid-word while the five lines below it all
+    /// marked their own cuts, which reads as a rendering fault rather than
+    /// as a narrow terminal.
+    #[test]
+    fn the_row_under_the_band_marks_its_own_truncation() {
+        let mut app = fixtures::full_app();
+        app.update(Msg::Frozen {
+            at_local: "2026-08-14 14:32:07".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
+        });
+        let under = |width| {
+            draw_to(&app, width, 24)
+                .lines()
+                .nth(1)
+                .expect("a second line")
+                .to_string()
+        };
+        assert!(under(90).trim_end().ends_with('…'), "{:?}", under(90));
+        assert!(
+            under(160).contains("it will not exit on its own"),
+            "and the whole sentence survives where it fits: {:?}",
+            under(160)
+        );
+    }
+
     /// Found by capturing a real dashboard rather than by any test here:
     /// killing the shepherd leaves `the shepherd is shutting down` as a
     /// notice, notices outrank the key hint, and the bar then spends the
