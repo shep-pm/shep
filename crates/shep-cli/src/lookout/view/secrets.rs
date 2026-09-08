@@ -166,10 +166,10 @@ fn value_cell(row: &SecretRow, revealed: Option<&str>, width: u16) -> String {
     format!("{}{suffix}", "█".repeat(run.max(1)))
 }
 
-/// `SET IN`'s text: a numerator against every named environment the store
-/// holds a slot for, `pane.model.environments` minus [`ALL_ENVIRONMENTS`]
-/// itself. Every environment named once each is the common case and needs
-/// no list; anything short of that names which ones.
+/// `SET IN`'s text: a numerator against every tab in [`tab_line`], `all`
+/// included, since `all` is a slot a key can hold and a tab an operator can
+/// select. Every tab named once each is the common case and needs no list;
+/// anything short of that names which ones.
 fn set_in_cell(row: &SecretRow, environment_count: usize) -> String {
     if row.set_in.is_empty() {
         return "-".to_string();
@@ -234,7 +234,7 @@ fn row_line(
         .as_ref()
         .filter(|reveal| reveal.key == row.key)
         .map(|reveal| reveal.value.as_str());
-    let environment_count = pane.model.environments.len().saturating_sub(1);
+    let environment_count = pane.model.environments.len();
     let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len());
     let mut used = 0u16;
     for column in columns {
@@ -295,8 +295,8 @@ fn roll_status_line(pane: &SecretsPane, palette: Palette) -> Line<'static> {
 /// signal carried by colour alone says nothing under `NO_COLOR`.
 ///
 /// Right-aligned within `width`: design rule 2, every measurement states
-/// its denominator, and this one is the store's own count of named
-/// environments (`environments` minus [`super::super::secrets::ALL_ENVIRONMENTS`]).
+/// its denominator, and this one is the count of tabs drawn above it,
+/// `all` included, so the number is checkable against the row it sits under.
 fn tab_line(pane: &SecretsPane, palette: Palette, width: u16) -> Line<'static> {
     let mut spans = Vec::with_capacity(pane.model.environments.len() * 2);
     let mut drawn = 0usize;
@@ -314,7 +314,7 @@ fn tab_line(pane: &SecretsPane, palette: Palette, width: u16) -> Line<'static> {
             spans.push(Span::styled(name.clone(), palette.muted()));
         }
     }
-    let environment_count = pane.model.environments.len().saturating_sub(1);
+    let environment_count = pane.model.environments.len();
     let suffix =
         format!("{environment_count} environments in this store \u{b7} \u{2190}/\u{2192} or tab");
     let pad = usize::from(width)
@@ -526,6 +526,20 @@ mod tests {
             .unwrap_or_else(|| panic!("{needle:?} is not drawn anywhere"))
     }
 
+    /// The leading number off the tab row's own trailing caption, `N` in `N
+    /// environments in this store`.
+    fn header_environment_count(buffer: &Buffer) -> usize {
+        let row = row_of(buffer, "environments in this store");
+        let line: String = (0..buffer.area.width)
+            .map(|x| buffer[(x, row)].symbol())
+            .collect();
+        line.split("environments")
+            .next()
+            .and_then(|prefix| prefix.split_whitespace().next_back())
+            .and_then(|number| number.parse().ok())
+            .unwrap_or_else(|| panic!("no leading number in {line:?}"))
+    }
+
     #[test]
     fn every_tier_fits_the_width_it_claims() {
         for (threshold, columns) in SECRET_TIERS {
@@ -636,6 +650,28 @@ mod tests {
         assert!(
             text.iter().any(|line| line.contains("read-only here")),
             "the group header states it: {text:?}"
+        );
+    }
+
+    /// `SET IN`'s denominator has to be the tab row's own count, `all`
+    /// included, or the header states a number that names an environment
+    /// outside it. Checked against a key set in `all` and a key set in a
+    /// named environment, since either alone would pass by half.
+    #[test]
+    fn the_header_denominator_matches_set_in_for_all_and_a_named_environment() {
+        let app = fixtures::app_with_secrets();
+        let buffer = fixtures::render(&app, 160, 48);
+        let header_count = header_environment_count(&buffer);
+
+        let named_row = row_of(&buffer, "DB_PASSWORD");
+        let all_row = row_of(&buffer, "SET_EVERYWHERE");
+        assert_eq!(
+            cell(&buffer, named_row, Column::SetIn).trim(),
+            format!("1 of {header_count} \u{b7} production")
+        );
+        assert_eq!(
+            cell(&buffer, all_row, Column::SetIn).trim(),
+            format!("1 of {header_count} \u{b7} all")
         );
     }
 }
