@@ -6,6 +6,7 @@
 //! reference rather than the value it resolves to.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::Duration;
 
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::ProcessInfo;
@@ -84,11 +85,6 @@ pub(crate) fn namers(paths: &ShepPaths, procs: &[ProcessInfo]) -> Vec<SecretName
 /// that and no more.
 ///
 /// `Debug` is derived: a name and an environment, no value.
-///
-/// No non-test caller yet: the secrets pane that reads [`by_reference`]
-/// lands in a later task. `#[allow(dead_code)]` says so rather than
-/// inventing one.
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Reader {
     /// The sheep's name.
@@ -105,9 +101,6 @@ pub(crate) struct Reader {
 /// Keys are references exactly as an operator wrote them, so a namespaced
 /// one arrives as `namespace/KEY` and matches the pane's own row key for a
 /// provider row.
-///
-/// No non-test caller yet, same as [`Reader`].
-#[allow(dead_code)]
 pub(crate) fn by_reference(
     paths: &ShepPaths,
     procs: &[ProcessInfo],
@@ -131,6 +124,21 @@ pub(crate) fn by_reference(
         readers.sort_by(|a, b| a.name.cmp(&b.name));
     }
     map
+}
+
+/// How long ago the muster roll was written, or `None` when it is missing
+/// or unreadable.
+///
+/// The pane states this because a failed roll write only warns, so a stale
+/// roll is otherwise silent. A roll from the future reads as zero rather
+/// than as an error: a clock that moved is not the operator's problem to
+/// solve from this screen.
+pub(crate) fn roll_age(paths: &ShepPaths) -> Option<Duration> {
+    let roll = read_roll(paths)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis().try_into().unwrap_or(u64::MAX));
+    Some(Duration::from_millis(now.saturating_sub(roll.saved_at_ms)))
 }
 
 #[cfg(test)]
@@ -168,10 +176,6 @@ mod tests {
         std::fs::write(&paths.snapshot, serde_json::to_vec(&roll).unwrap()).unwrap();
     }
 
-    fn info(name: &str) -> ProcessInfo {
-        ProcessInfo::builder(1, name, ProcStatus::Online).build()
-    }
-
     fn online(name: &str) -> ProcessInfo {
         ProcessInfo::builder(1, name, ProcStatus::Online).build()
     }
@@ -192,7 +196,7 @@ mod tests {
             .insert("PW".into(), "{{secret:DB_PASSWORD}}".into());
         write_roll(&paths, &[plain, secretive]);
 
-        let found = namers(&paths, &[info("plain"), info("secretive")]);
+        let found = namers(&paths, &[online("plain"), online("secretive")]);
 
         assert_eq!(found.len(), 1, "only the app with a reference: {found:?}");
         assert_eq!(found[0].name, "secretive");
@@ -210,7 +214,7 @@ mod tests {
         floating.env.insert("PW".into(), "{{secret:K}}".into());
         write_roll(&paths, &[pinned, floating]);
 
-        let found = namers(&paths, &[info("pinned"), info("floating")]);
+        let found = namers(&paths, &[online("pinned"), online("floating")]);
 
         let pinned = found.iter().find(|n| n.name == "pinned").unwrap();
         let floating = found.iter().find(|n| n.name == "floating").unwrap();
@@ -230,7 +234,7 @@ mod tests {
         web.env.insert("PW".into(), "{{secret:K}}".into());
         write_roll(&paths, &[web]);
 
-        let found = namers(&paths, &[info("web"), info("web"), info("web")]);
+        let found = namers(&paths, &[online("web"), online("web"), online("web")]);
 
         assert_eq!(found.len(), 1, "three instances, one config: {found:?}");
     }
@@ -269,5 +273,29 @@ mod tests {
 
         let names: Vec<&str> = map["K"].iter().map(|r| r.name.as_str()).collect();
         assert_eq!(names, ["alpha", "zeta"]);
+    }
+
+    #[test]
+    fn each_readers_environment_is_its_own_apps_not_the_others() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_under(dir.path());
+        let mut pinned = AppConfig::minimal("pinned", "./srv");
+        pinned.environment = Some("staging".into());
+        pinned.env.insert("A".into(), "{{secret:K}}".into());
+        let mut floating = AppConfig::minimal("floating", "./srv");
+        floating.env.insert("A".into(), "{{secret:K}}".into());
+        write_roll(&paths, &[pinned, floating]);
+
+        let map = by_reference(&paths, &[online("pinned"), online("floating")]);
+
+        let readers = &map["K"];
+        let pinned = readers.iter().find(|r| r.name == "pinned").unwrap();
+        let floating = readers.iter().find(|r| r.name == "floating").unwrap();
+        assert_eq!(pinned.environment, "staging");
+        assert_eq!(
+            floating.environment,
+            daemon_config(&paths).daemon.environment,
+            "each reader keeps its own environment, not its neighbor's"
+        );
     }
 }

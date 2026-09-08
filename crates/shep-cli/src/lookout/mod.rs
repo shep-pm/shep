@@ -22,6 +22,7 @@ pub mod level;
 pub mod link;
 pub mod pane;
 pub mod pane_bleats;
+pub(crate) mod secrets;
 pub mod source;
 pub mod tail;
 pub mod term;
