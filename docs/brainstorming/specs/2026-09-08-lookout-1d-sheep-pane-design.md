@@ -311,6 +311,13 @@ Neither is a rename, a removal or a retype, so `PROTOCOL_VERSION`,
 --json` and the snapshot changes with it. That is a payload shape change, and
 it fires the docs trigger on its own.
 
+It reaches further than the envelope, and this paragraph undercounted it until
+Task 1 found out. Every `ProcessInfo` field has to be either a table column or
+listed in `output/rows.rs`'s `JSON_ONLY` drift guard, whistle's `SheepRow`
+mirrors the type under a schema test, and `tests/cli_e2e.rs` compares against
+three committed fixtures. So `cpu_ms` lands on the MCP surface too. Forced by
+guards that already existed rather than chosen, and additive in both places.
+
 ## Out of scope
 
 - **Dogs.** `↵` on a dog row does what it does today, and `e` still opens the

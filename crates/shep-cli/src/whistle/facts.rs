@@ -71,8 +71,13 @@ pub struct SheepRow {
     pub cpu_percent: Option<f32>,
     /// Tree resident set size in bytes.
     pub memory_bytes: Option<u64>,
-    /// The tree's cumulative CPU-milliseconds, absent under the same
-    /// conditions as [`Self::cpu_percent`].
+    /// The tree's cumulative CPU-milliseconds, or `None` when the shepherd
+    /// is not sampling this sheep.
+    ///
+    /// Present in one case [`Self::cpu_percent`] is not: a sheep spawned
+    /// since the last periodic tick has a counter already, but no baseline
+    /// to measure it against, so this is `Some` while the percent is still
+    /// `None`.
     pub cpu_ms: Option<u64>,
     /// Present when this row is a dog rather than a sheep.
     pub dog: Option<DogRow>,

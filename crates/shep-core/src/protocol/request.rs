@@ -741,8 +741,13 @@ pub struct ProcessInfo {
     /// under the same three conditions as [`Self::cpu_percent`], minus the
     /// window one: memory needs no baseline.
     pub memory_bytes: Option<u64>,
-    /// The tree's cumulative CPU-milliseconds, absent under the same
-    /// conditions as [`Self::cpu_percent`].
+    /// The tree's cumulative CPU-milliseconds, or `None` when the shepherd
+    /// is not sampling this sheep.
+    ///
+    /// Present in one case [`Self::cpu_percent`] is not: a sheep spawned
+    /// since the last periodic tick has a counter already, but no baseline
+    /// to measure it against, so this is `Some` while the percent is still
+    /// `None`.
     ///
     /// The counter rather than a rate, so a client polling faster than the
     /// shepherd's own sampling interval can difference two readings and get
