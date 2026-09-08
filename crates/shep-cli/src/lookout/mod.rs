@@ -465,15 +465,14 @@ where
                     .map(|row| row.info.clone())
                     .collect::<Vec<_>>();
                 let environment = match app.body() {
-                    Body::Secrets(pane) if !pane.model.environments.is_empty() => {
-                        pane.model.environments[pane.tab].clone()
-                    }
-                    _ => {
-                        crate::commands::secret::daemon_config(&paths)
-                            .daemon
-                            .environment
-                    }
-                };
+                    Body::Secrets(pane) => pane.environment().map(str::to_string),
+                    _ => None,
+                }
+                .unwrap_or_else(|| {
+                    crate::commands::secret::daemon_config(&paths)
+                        .daemon
+                        .environment
+                });
                 let for_msg = environment.clone();
                 let handle = tokio::task::spawn_blocking(move || {
                     crate::lookout::secrets::model(&paths, &procs, &environment)
@@ -1332,6 +1331,94 @@ mod tests {
         assert!(
             row.contains("1 (1 online)"),
             "reader-app must still be counted in READ BY: {row:?}"
+        );
+    }
+
+    /// Drives the `Effect::LoadSecrets` arm itself, the only test that does
+    /// for this bug: every other secrets-pane regression lives in
+    /// `app::tests` and calls `App::update` directly, so nothing else runs
+    /// this loop's own read of `pane.tab`.
+    ///
+    /// `TabNext`'s own clamp (`(tab + 1).min(last)`) re-derives the index
+    /// from whatever list is current, so it cannot go stale no matter how
+    /// far the environments list has shrunk. `TabPrev` only subtracts one
+    /// from `tab`, with no such re-derivation, so it takes two dropped
+    /// environments, not one, before it can be handed a `tab` further past
+    /// the end than a lone subtraction can walk back: three environments
+    /// down to one, sitting on the last tab, `TabPrev` once. Three down to
+    /// two self-corrects either direction, which is why the narrower
+    /// `app::tests::a_shrinking_environment_list_leaves_the_tab_somewhere_valid`
+    /// cannot exercise this arm — it is the reducer-level half of this same
+    /// bug, not this one.
+    #[tokio::test]
+    async fn a_tab_past_a_shrunk_environment_list_does_not_panic_the_loop() {
+        let dir = tempfile::Builder::new().prefix("s").tempdir().unwrap();
+        let paths = crate::secret_readers::test_support::paths_under(dir.path());
+
+        let mut app = App::new(
+            Palette::detect(None, None, None),
+            Control::ReadOnly,
+            dir.path().display().to_string(),
+            Instant::now(),
+        );
+        // Built with plain `App::update` calls, off `run_ui` entirely: none
+        // of this touches disk, so nothing here races the real read below.
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".to_string(),
+            result: Ok(Box::new(crate::lookout::secrets::SecretsModel {
+                environments: vec!["dev".to_string(), "staging".to_string(), "prod".to_string()],
+                ..crate::lookout::secrets::SecretsModel::default()
+            })),
+        });
+        let _ = app.update(Msg::Key(KeyPress::TabNext));
+        let _ = app.update(Msg::Key(KeyPress::TabNext));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(pane.tab, 2, "sitting on the rightmost tab, `prod`");
+        // The environments this pane knows about collapse to one, the way
+        // `secrets::model`'s union does once every operator key naming
+        // `staging` and `prod` has been unset out from under it.
+        let _ = app.update(Msg::Secrets {
+            environment: "prod".to_string(),
+            result: Ok(Box::new(crate::lookout::secrets::SecretsModel {
+                environments: vec!["dev".to_string()],
+                ..crate::lookout::secrets::SecretsModel::default()
+            })),
+        });
+
+        let (msg_tx, msg_rx) = mpsc::channel(4);
+        let (poll_tx, _poll_rx) = mpsc::channel(1);
+        let (request_tx, _request_rx) = mpsc::channel(2);
+        // `TabPrev` is the reload that would have indexed the stale `tab`
+        // straight into the gap; `Quit` right behind it so the loop leaves
+        // on its own once that arm has run.
+        msg_tx.send(Msg::Key(KeyPress::TabPrev)).await.unwrap();
+        msg_tx.send(Msg::Key(KeyPress::Quit)).await.unwrap();
+
+        let terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        let done = tokio::time::timeout(
+            Duration::from_secs(10),
+            run_ui(
+                app,
+                terminal,
+                stream::empty(),
+                msg_rx,
+                poll_tx,
+                request_tx,
+                paths.clone(),
+                dir.path().to_path_buf(),
+                paths.daemon_config.clone(),
+                paths.socket.clone(),
+                FakeLocal::default(),
+            ),
+        )
+        .await;
+
+        assert!(
+            done.is_ok(),
+            "the loop must reach `Quit` rather than panic on a dangling tab"
         );
     }
 }

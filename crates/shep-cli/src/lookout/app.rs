@@ -2113,10 +2113,7 @@ impl App {
                             // Only on the very first load, where the pane's
                             // model is still the empty default and so has no
                             // tab yet: the daemon's own default environment
-                            // wins the tab it lands on. Every later load
-                            // already has a tab, and the environments list
-                            // does not move under it, so nothing here needs
-                            // to search it again.
+                            // wins the tab it lands on.
                             if pane.model.environments.is_empty() {
                                 pane.tab = model
                                     .environments
@@ -2124,6 +2121,12 @@ impl App {
                                     .position(|candidate| candidate == &environment)
                                     .unwrap_or(0);
                             }
+                            // The environments list is a union recomputed on
+                            // every load, so it can shrink: unsetting the
+                            // last key in an environment drops it. Clamp so
+                            // a tab that pointed past the new end lands on
+                            // the last surviving tab instead of dangling.
+                            pane.tab = pane.tab.min(model.environments.len().saturating_sub(1));
                             pane.selected = pane.selected.min(model.rows.len().saturating_sub(1));
                             pane.model = model;
                         }
@@ -7584,6 +7587,50 @@ mod tests {
             matches!(effect, Effect::LoadSecrets),
             "every row's IN FORCE, VALUE and byte length belong to one \
              environment, so the tab cannot move without rebuilding them"
+        );
+    }
+
+    /// Unsetting the last key in an environment drops it from the union
+    /// `secrets::model` recomputes on every load, so a tab sitting on the
+    /// rightmost entry can be left pointing past the end of a shorter list.
+    /// The old code indexed `environments[tab]` straight into that gap and
+    /// panicked the effect loop; this asserts the landing is safe instead.
+    #[test]
+    fn a_shrinking_environment_list_leaves_the_tab_somewhere_valid() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(model_with_environments(&[
+                "dev", "staging", "prod",
+            ]))),
+        });
+        for _ in 0..2 {
+            let _ = app.update(Msg::Key(KeyPress::TabNext));
+        }
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(pane.tab, 2, "sitting on the rightmost tab, `prod`");
+
+        let _ = app.update(Msg::Secrets {
+            environment: "prod".into(),
+            result: Ok(Box::new(model_with_environments(&["dev", "staging"]))),
+        });
+
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert!(
+            pane.tab < pane.model.environments.len(),
+            "tab {} is past the end of {:?}",
+            pane.tab,
+            pane.model.environments
+        );
+        assert_eq!(
+            pane.environment(),
+            Some("staging"),
+            "a subsequent load asks for a real environment, not a dangling one"
         );
     }
 
