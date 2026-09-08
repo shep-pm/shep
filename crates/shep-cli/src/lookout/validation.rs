@@ -191,50 +191,22 @@ mod tests {
     /// and every one of them has to be provable from the examples list.
     #[test]
     fn every_form_the_text_names_has_an_example() {
-        for form in DURATION_FORMS {
-            assert!(
-                forms_named(form.text) <= form.examples.len(),
-                "DURATION_FORMS: text \"{}\" names {} forms but examples has only {}",
-                form.text,
-                forms_named(form.text),
-                form.examples.len()
-            );
-        }
-        for form in DURATION_REFUSALS {
-            assert!(
-                forms_named(form.text) <= form.examples.len(),
-                "DURATION_REFUSALS: text \"{}\" names {} forms but examples has only {}",
-                form.text,
-                forms_named(form.text),
-                form.examples.len()
-            );
-        }
-        for form in MEMORY_FORMS {
-            assert!(
-                forms_named(form.text) <= form.examples.len(),
-                "MEMORY_FORMS: text \"{}\" names {} forms but examples has only {}",
-                form.text,
-                forms_named(form.text),
-                form.examples.len()
-            );
-        }
-        for form in BOOL_FORMS {
-            assert!(
-                forms_named(form.text) <= form.examples.len(),
-                "BOOL_FORMS: text \"{}\" names {} forms but examples has only {}",
-                form.text,
-                forms_named(form.text),
-                form.examples.len()
-            );
-        }
-        for form in INTEGER_FORMS {
-            assert!(
-                forms_named(form.text) <= form.examples.len(),
-                "INTEGER_FORMS: text \"{}\" names {} forms but examples has only {}",
-                form.text,
-                forms_named(form.text),
-                form.examples.len()
-            );
+        for (name, forms) in [
+            ("DURATION_FORMS", DURATION_FORMS),
+            ("DURATION_REFUSALS", DURATION_REFUSALS),
+            ("MEMORY_FORMS", MEMORY_FORMS),
+            ("BOOL_FORMS", BOOL_FORMS),
+            ("INTEGER_FORMS", INTEGER_FORMS),
+        ] {
+            for form in forms {
+                assert!(
+                    forms_named(form.text) <= form.examples.len(),
+                    "{name}: text \"{}\" names {} forms but examples has only {}",
+                    form.text,
+                    forms_named(form.text),
+                    form.examples.len()
+                );
+            }
         }
     }
 
