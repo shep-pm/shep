@@ -40,7 +40,10 @@ const HOW_TO_ALLOW_READ: &str = "printing a stored secret back is off; add `[sec
 /// operator typed it. `FutureVersion`/`Decode` are `InvalidConfig`: the file
 /// on disk is the problem. `SecretError` is `#[non_exhaustive]`, so a future
 /// variant falls through to [`ExitCode::Failure`].
-fn exit_code_for(err: &SecretError) -> ExitCode {
+///
+/// `pub(crate)`: `commands::import::dotenv` reads and writes the same store
+/// and must refuse the same input the same way.
+pub(crate) fn exit_code_for(err: &SecretError) -> ExitCode {
     match err {
         SecretError::InvalidKey(_)
         | SecretError::InvalidEnvironment(_)

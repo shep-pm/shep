@@ -8,14 +8,3 @@
 
 pub(crate) mod dotenv;
 pub(crate) mod pm2;
-
-use crate::cli::{ImportArgs, ImportCommand};
-use crate::exit::ExitCode;
-use crate::output::Streams;
-
-/// `shep import <subcommand>`.
-pub fn import(streams: &mut Streams<'_>, args: &ImportArgs) -> ExitCode {
-    match &args.command {
-        ImportCommand::Pm2(args) => pm2::import(streams, args),
-    }
-}

@@ -36,7 +36,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use cli::{AdoptArgs, Commands, DaemonArgs, Format, StartArgs};
+use cli::{AdoptArgs, Commands, DaemonArgs, Format, ImportCommand, StartArgs};
 use cli::{Cli, GlobalArgs};
 use commands::admin;
 use commands::bleats;
@@ -1026,9 +1026,15 @@ async fn run(
         // which would leave an operator with a live daemon nothing can stop.
         Commands::Kill => admin::kill(&paths, &mut streams).await,
         Commands::Init(ref args) => init::init(&mut streams, args).await,
-        // Reads a file and writes a file; starts nothing, so there is
-        // nothing to ask the socket.
-        Commands::Import(ref args) => import::import(&mut streams, args),
+        // pm2 reads a file and writes a file; `env` writes an operator
+        // override, which is the daemon's own store.
+        Commands::Import(ref args) => match &args.command {
+            ImportCommand::Pm2(args) => import::pm2::import(&mut streams, args),
+            ImportCommand::Env(args) => match connect_client(&mut streams, &paths, guard).await {
+                Ok(client) => import::dotenv::import_env(&client, &mut streams, &paths, args).await,
+                Err(code) => code,
+            },
+        },
         Commands::Completions(_)
         | Commands::Daemon(_)
         | Commands::Startup(_)
@@ -1948,6 +1954,27 @@ mod tests {
             panic!("`shep import pm2` did not reach the import verb");
         };
         assert!(matches!(args.command, ImportCommand::Pm2(_)));
+    }
+
+    /// The `env` half of the same parse gate, plus the two arguments that
+    /// decide where a value goes.
+    #[test]
+    fn import_env_parses_its_file_app_and_secret_patterns() {
+        use clap::Parser;
+        use cli::{Commands, ImportCommand};
+        let cli = Cli::try_parse_from([
+            "shep", "import", "env", "app.env", "--app", "web", "--secret", "DB_*",
+        ])
+        .unwrap();
+        let Commands::Import(args) = cli.command else {
+            panic!("`shep import env` did not reach the import verb");
+        };
+        let ImportCommand::Env(args) = args.command else {
+            panic!("`shep import env` did not reach its own subcommand");
+        };
+        assert_eq!(args.file.to_str(), Some("app.env"));
+        assert_eq!(args.app, "web");
+        assert_eq!(args.secret, ["DB_*"]);
     }
 
     /// The bare form was `shep import` for the whole of 0.1 through 0.6 and

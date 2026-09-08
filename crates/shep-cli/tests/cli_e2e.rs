@@ -3648,6 +3648,229 @@ fn import_writes_a_flockfile_shep_can_read_back_and_starts_no_daemon() {
     assert_eq!(parsed.apps.len(), 3, "{written}");
 }
 
+/// A shepherd on `home`'s `$SHEP_HOME` with one sheep named `web`, which is
+/// what every `shep import env` case below writes against: the verb records
+/// an operator override, so the sheep has to be registered first.
+#[cfg(unix)]
+fn start_a_sheep_named_web(home: &TempDir) -> DaemonGuard {
+    let script = write_test_script(home);
+    let mut guard = DaemonGuard::default();
+    let boot = shep(home.path())
+        .arg("start")
+        .arg(&script)
+        .arg("--name")
+        .arg("web")
+        .output()
+        .unwrap();
+    guard.adopt_home(home.path());
+    assert_success(&boot);
+    guard
+}
+
+#[cfg(unix)]
+/// The whole verb, end to end: two plain keys into the sheep's env, one
+/// secret into the store with a reference left behind.
+#[test]
+fn import_env_splits_a_dotenv_between_the_two_stores() {
+    let home = tempfile::tempdir().unwrap();
+    let _guard = start_a_sheep_named_web(&home);
+    std::fs::write(
+        home.path().join("app.env"),
+        "NODE_ENV=production\nPORT=8080\nDB_PASSWORD=hunter2\n",
+    )
+    .unwrap();
+
+    let output = shep(home.path())
+        .args([
+            "import",
+            "env",
+            home.path().join("app.env").to_str().unwrap(),
+            "--app",
+            "web",
+            "--secret",
+            "DB_PASSWORD",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !combined.contains("hunter2") && !combined.contains("8080"),
+        "a value reached an output stream: {combined}"
+    );
+
+    // `describe` reads its secret references out of the muster roll on disk,
+    // which only a save writes: the import records an operator override, and
+    // the daemon holds the parked spec in memory until something rolls it.
+    assert_success(&shep(home.path()).arg("save").output().unwrap());
+
+    let described = shep(home.path())
+        .args(["describe", "web", "--format", "json"])
+        .output()
+        .unwrap();
+    let described = String::from_utf8_lossy(&described.stdout);
+    assert!(
+        described.contains("{{secret:DB_PASSWORD}}") || described.contains("DB_PASSWORD"),
+        "the reference did not reach the sheep: {described}"
+    );
+
+    graceful_kill(home.path());
+}
+
+#[cfg(unix)]
+/// Re-running an unchanged file is a no-op. Changing one value refuses the
+/// whole import until `--force`.
+#[test]
+fn import_env_refuses_a_changed_value_without_force() {
+    let home = tempfile::tempdir().unwrap();
+    let _guard = start_a_sheep_named_web(&home);
+    std::fs::write(
+        home.path().join("app.env"),
+        "PORT=8080\nNODE_ENV=production\n",
+    )
+    .unwrap();
+    let first = shep(home.path())
+        .args([
+            "import",
+            "env",
+            home.path().join("app.env").to_str().unwrap(),
+            "--app",
+            "web",
+        ])
+        .output()
+        .unwrap();
+    assert_success(&first);
+
+    std::fs::write(
+        home.path().join("app.env"),
+        "PORT=9090\nNODE_ENV=production\n",
+    )
+    .unwrap();
+    let output = shep(home.path())
+        .args([
+            "import",
+            "env",
+            home.path().join("app.env").to_str().unwrap(),
+            "--app",
+            "web",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    let err = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        err.contains("PORT"),
+        "the colliding key was not named: {err}"
+    );
+    assert!(!err.contains("9090"), "the value reached stderr: {err}");
+
+    graceful_kill(home.path());
+}
+
+#[cfg(unix)]
+/// A pattern that matches nothing refuses before anything is written.
+#[test]
+fn import_env_refuses_a_pattern_that_matches_nothing() {
+    let home = tempfile::tempdir().unwrap();
+    let _guard = start_a_sheep_named_web(&home);
+    std::fs::write(
+        home.path().join("app.env"),
+        "NODE_ENV=production\nDB_PASSWORD=hunter2\n",
+    )
+    .unwrap();
+
+    let output = shep(home.path())
+        .args([
+            "import",
+            "env",
+            home.path().join("app.env").to_str().unwrap(),
+            "--app",
+            "web",
+            "--secret",
+            "ABSENT_*",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(
+        !home.path().join("secrets.json").exists(),
+        "a refused pattern must write nothing"
+    );
+
+    graceful_kill(home.path());
+}
+
+#[cfg(unix)]
+/// `--dry-run` writes to neither store.
+#[test]
+fn import_env_dry_run_writes_nothing() {
+    let home = tempfile::tempdir().unwrap();
+    let _guard = start_a_sheep_named_web(&home);
+    std::fs::write(
+        home.path().join("app.env"),
+        "NODE_ENV=production\nDB_PASSWORD=hunter2\n",
+    )
+    .unwrap();
+
+    let before = std::fs::read_to_string(home.path().join("secrets.json")).ok();
+    let output = shep(home.path())
+        .args([
+            "import",
+            "env",
+            home.path().join("app.env").to_str().unwrap(),
+            "--app",
+            "web",
+            "--secret",
+            "DB_PASSWORD",
+            "--dry-run",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        std::fs::read_to_string(home.path().join("secrets.json")).ok(),
+        before
+    );
+
+    graceful_kill(home.path());
+}
+
+#[cfg(unix)]
+/// An unknown sheep is a `NotFound`, and it is reported before either store
+/// is touched.
+#[test]
+fn import_env_refuses_an_unknown_app() {
+    let home = tempfile::tempdir().unwrap();
+    let _guard = start_a_sheep_named_web(&home);
+    std::fs::write(
+        home.path().join("app.env"),
+        "NODE_ENV=production\nDB_PASSWORD=hunter2\n",
+    )
+    .unwrap();
+
+    let output = shep(home.path())
+        .args([
+            "import",
+            "env",
+            home.path().join("app.env").to_str().unwrap(),
+            "--app",
+            "absent",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(3), "{output:?}");
+    assert!(
+        !home.path().join("secrets.json").exists(),
+        "an unknown sheep must be refused before either store is touched"
+    );
+
+    graceful_kill(home.path());
+}
+
 // --- Dogs / Barks -----------------------------------------------------
 
 /// Writes `$SHEP_HOME/shep.toml` directly, before any daemon boots off it.
