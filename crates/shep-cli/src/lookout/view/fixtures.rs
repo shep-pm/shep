@@ -26,7 +26,7 @@ use crate::style::StyleSource;
 /// The link panel renders it verbatim, so every test that freezes a
 /// dashboard feeds it verbatim rather than inventing a shorter sentence the
 /// panel would never see.
-pub const FROZEN_WHY: &str = "the shepherd did not answer: could not connect to `/tmp/shep-lookout-tests/run/shep.sock`: Connection refused (os error 61)";
+pub const FROZEN_WHY: &str = "the shepherd did not answer: could not connect to `/home/ada/.shep/run/shep.sock`: Connection refused (os error 61)";
 
 /// No colour at all: the palette every fixture uses unless the test is about
 /// colour.

@@ -466,20 +466,24 @@ impl Scene {
             // is exactly `FOLD_ALL`'s threshold: the one scene that needs the
             // full column set, SHARE and NOTES included.
             Self::Folds => (160, 30),
-            // 160 because this is the one scene whose point is that every
-            // column is muted, and the widest column set starts at 148.
+            // The design target, and comfortably past the floor this
+            // scene actually needs. `columns_for` runs on `width - GUTTER`,
+            // and `ALL`'s own threshold is the sum of what it draws:
             //
-            //   160 - GUTTER (2)          = 158 cells of table
             //   ALL's fixed widths        = 112
             //   13 two-cell separators    =  26
-            //   NAME takes the remainder  =  20, inside NAME_MIN..=NAME_MAX
-            //   112 + 26 + 20             = 158, exactly the table's width
+            //   NAME at its floor         =   8  (NAME_MIN)
+            //   112 + 26 + 8              = 146, `TIERS`'s widest entry
+            //
+            // So 148 columns is the floor and 160 leaves NAME 20 cells,
+            // which is what the frame drew. `the_frozen_scene_draws_every_
+            // column` pins the floor; the extra twelve are the design's.
             //
             // At the 120 this used to inherit from the default arm, the
             // table renders the NO_SPARK tier: no CPU sparkline and no
             // MEM/CEIL gauge, which is two of the cells the frame exists to
             // show frozen. 30 rows, not the design's 48: the link panel is
-            // five rows where the two panes it replaces were twelve, so
+            // six rows where the two panes it replaces were twelve, so
             // nothing here needs the taller frame.
             Self::Frozen => (160, 30),
             Self::Confirm
@@ -2264,7 +2268,7 @@ mod tests {
         );
         assert!(
             frozen.contains(
-                "refused   the shepherd did not answer: could not connect to `/tmp/shep-lookout-tests/run/shep.sock`: Connection refused (os error 61)"
+                "refused   the shepherd did not answer: could not connect to `/home/ada/.shep/run/shep.sock`: Connection refused (os error 61)"
             ),
             "the link panel quotes the last dial's own error, whole"
         );
@@ -2770,13 +2774,19 @@ mod tests {
     /// A pinned width whose own arithmetic no longer holds drops a column
     /// in silence, and this is the scene whose whole point is what the
     /// columns look like once the shepherd is gone.
+    ///
+    /// The floor is `ALL`'s own tier threshold plus the gutter, not the
+    /// design's 160: the frame is drawn twelve columns wider than it has
+    /// to be, and pinning the wider number would fail for a scene that was
+    /// still drawing everything.
     #[test]
-    fn the_frozen_scene_is_wide_enough_for_every_column() {
+    fn the_frozen_scene_draws_every_column() {
+        use super::super::view::flock::{GUTTER, columns_for};
+
         let (width, _) = Scene::Frozen.size();
-        let table = width - super::super::view::flock::GUTTER;
         assert_eq!(
-            super::super::view::flock::columns_for(table).len(),
-            super::super::view::flock::columns_for(u16::MAX).len(),
+            columns_for(width - GUTTER).len(),
+            columns_for(u16::MAX).len(),
             "the frozen scene is {width} columns, which drops a column from the widest set"
         );
     }

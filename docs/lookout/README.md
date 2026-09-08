@@ -42,11 +42,17 @@ cargo test -p shep --lib --all-features -- --ignored write_the_gallery
 - **Daemon death: bounded retry, then freeze, never exit.** The link task
   re-dials the shepherd 5 times, at 250/500/1000/2000/4000 ms — about 7.75 s
   of waiting — before it gives up. Once the ladder is exhausted, lookout
-  shows the frozen banner (`the shepherd has died: these values are frozen
-  as of <time>`), stops polling and re-dialling, and leaves the last known
-  values on screen. The uptime column stops advancing with it: a frozen
-  dashboard whose clock kept counting would be lying about a specific sheep
-  by name. lookout never exits on its own — the operator quits with `q`.
+  stops polling and re-dialling and leaves the last known values on screen.
+  The title band turns bark and carries `THE SHEPHERD HAS DIED ▖ these
+  values are frozen as of <time>`, and the table, the host strip and the
+  section bands all go to one muted ink, so no cell can be read as current.
+  The `UPTIME` header becomes `FROZEN` over a duration that stopped
+  advancing when the link did: a frozen dashboard whose clock kept counting
+  would be lying about a specific sheep by name. The detail band and the
+  bleats feed give their rows to the link panel, which names the ladder it
+  climbed, quotes the last dial's own error, counts how long ago that was,
+  and says what is left to try. lookout never exits on its own — the
+  operator quits with `q`, or presses `r` to dial again.
   A shepherd that was **never** running is a different case: that connect
   attempt happens before raw mode is entered, and a failure there is the
   ordinary `daemon_unreachable` refusal every other verb gives, not eight
@@ -69,8 +75,8 @@ cargo test -p shep --lib --all-features -- --ignored write_the_gallery
   no way to refuse a keypress it cannot tell apart from `shep stop`.
 - **Colour is always redundant with text.** Every coloured cell says the
   same thing in words that the colour is repeating — the STATUS column
-  prints `errored` under `--bark`, the banner prints `the shepherd has
-  died` under `--bark`. Nothing here is colour-only, so `NO_COLOR` and a
+  prints `errored` under `--bark`, the frozen band prints `THE SHEPHERD HAS
+  DIED` under `--bark`. Nothing here is colour-only, so `NO_COLOR` and a
   16-colour terminal both lose decoration, never information.
 - **Narrow terminals drop columns in a fixed order**, least diagnostic
   first, one at a time, at the width in brackets: `MEM/CEIL` (134), `CPU 20s`
@@ -156,7 +162,9 @@ debt.
 - **The title, the two section bands, and the selected row all paint now.**
   The title and the `FLOCK`/`DOGS` bands are reverse video: meadow for the
   flock band, sky for dogs, and the title turns bark when the link to the
-  shepherd has frozen. The selected row and the status bar are the only two
+  shepherd has frozen. Frozen, the two section bands go muted with the rest
+  of the table and are told apart by their own words, which is what
+  `NO_COLOR` already asks of them. The selected row and the status bar are the only two
   rows that ever paint a background; everywhere else the operator's own
   terminal background shows through. Under `NO_COLOR` the roles disappear
   but the reverse video stays, so a band still names its section in plain
