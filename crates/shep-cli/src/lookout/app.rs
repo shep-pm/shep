@@ -4514,12 +4514,18 @@ impl App {
             }
         }
         if let Some(pane) = self.bleats_pane_mut() {
-            // One less than the whole body, the same discount the config
-            // pane takes above: the title band costs a line before any
-            // feed line is drawn. The filter row, when one is showing,
-            // costs a second; not deducted here, since `page_up`/`page_down`
-            // only need a page-sized jump, not an exact one.
-            pane.set_rows(usize::from(rows.saturating_sub(1)));
+            // Every row `view::bleats_full::lines` spends before the first
+            // feed line: the title band always, and the filter row whenever
+            // a chip is set.
+            //
+            // Both, not just the title. A page jump larger than the body it
+            // scrolls skips lines outright rather than merely overshooting:
+            // with a chip showing, a jump of `rows - 1` over a body of
+            // `rows - 2` leaves one line between consecutive pages that
+            // `ctrl-d` alone never renders. Paging down and back up is
+            // symmetric either way, which is why nothing noticed.
+            let chrome = 1 + usize::from(!pane.filters().is_empty());
+            pane.set_rows(usize::from(rows).saturating_sub(chrome));
         }
     }
 
@@ -7503,14 +7509,25 @@ mod tests {
         let mut app = fixtures::bleats_pane_with_lines(120);
         let _ = app.update(Msg::Key(KeyPress::PageUp));
         let _ = app.update(Msg::Key(KeyPress::PageUp));
+
+        // One survivor, far fewer than the offset two pages back. Without
+        // the clamp the skip underflows: it panics in debug and wraps in
+        // release, and a wrapped skip yields no feed lines at all.
         app.bleats_pane_mut_for_tests()
             .expect("open")
-            .set_match("a-string-no-line-contains".to_string());
+            .set_match("line-119".to_string());
         let text =
             fixtures::render_all(&super::super::view::bleats_full::draw_lines(&app, 160, 40));
+
+        // Asserts a rendered FEED line, tagged `out`, not merely that the
+        // text appears: the filter row echoes the matcher back as its own
+        // `match line-119` chip, so `contains("line-119")` passes even when
+        // every feed line was skipped away. `!text.is_empty()` was weaker
+        // still, and passed in release with the clamp removed because the
+        // title and the chip alone kept the buffer non-empty.
         assert!(
-            !text.is_empty(),
-            "the pane still draws rather than panicking"
+            text.contains("out  line-119"),
+            "the one surviving line is drawn in the body: {text}"
         );
     }
 
@@ -7552,6 +7569,43 @@ mod tests {
     /// `ctrl-u`/`ctrl-d` move by a body height rather than a line, and the
     /// body height is what `note_body_rows` last reported, not a hardcoded
     /// guess.
+    /// Two pages back leave no line unseen, with a filter chip on screen.
+    ///
+    /// The chip costs a row, so the body is two rows shorter than the pane,
+    /// not one. A jump sized to the pane rather than the body skips a line
+    /// between consecutive pages: it belongs to neither window and `ctrl-u`
+    /// alone never renders it. Paging back down is symmetric either way,
+    /// which is why the round trip looked fine and the gap did not.
+    ///
+    /// Asserts every line across the two windows, not the offset: an
+    /// operator reading history by paging silently misses the gap, so a
+    /// test that only watched the number move would too.
+    #[test]
+    fn consecutive_pages_leave_no_line_unseen_while_a_chip_is_showing() {
+        let mut app = fixtures::bleats_pane_with_lines(40);
+        app.bleats_pane_mut_for_tests()
+            .expect("open")
+            .set_match("line".to_string());
+        app.note_body_rows(6); // 1 title + 1 filter row + 4 body rows
+
+        let first = fixtures::render_all(&super::super::view::bleats_full::draw_lines(&app, 80, 6));
+        let _ = app.update(Msg::Key(KeyPress::PageUp));
+        let second =
+            fixtures::render_all(&super::super::view::bleats_full::draw_lines(&app, 80, 6));
+        let _ = app.update(Msg::Key(KeyPress::PageUp));
+        let third = fixtures::render_all(&super::super::view::bleats_full::draw_lines(&app, 80, 6));
+
+        let seen = format!("{first}{second}{third}");
+        // The three windows are contiguous, so every line from the oldest
+        // one drawn through the newest must appear in one of them.
+        for n in 28..=39 {
+            assert!(
+                seen.contains(&format!("line-{n}")),
+                "line-{n} fell between two pages: {seen}"
+            );
+        }
+    }
+
     #[test]
     fn page_up_and_down_move_by_a_body_height() {
         let mut app = fixtures::bleats_pane_with_lines(20);
