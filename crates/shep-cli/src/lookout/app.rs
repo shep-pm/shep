@@ -10173,7 +10173,11 @@ mod tests {
             panic!("closing the pane sends the section: {sent:?}");
         };
         assert_eq!(name, "bark");
-        assert!(toml.as_str().contains("poll = \"45s\""), "{}", toml.as_str());
+        assert!(
+            toml.as_str().contains("poll = \"45s\""),
+            "{}",
+            toml.as_str()
+        );
         assert!(
             toml.as_str().contains("history_bytes = 8192"),
             "{}",

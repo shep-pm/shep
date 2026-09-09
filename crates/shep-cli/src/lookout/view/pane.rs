@@ -1127,6 +1127,9 @@ pub fn pane_lines(
         }
         return grouped_pane_lines(pane, menu, palette, width, budget);
     }
+    if width >= DESIGN_TARGET_WIDTH {
+        return ungrouped_pane_with_panel_lines(pane, menu, palette, budget);
+    }
     let mut lines = vec![title_line(pane, palette, width)];
     // The title is unconditional, so the body is laid out against what is
     // left after it. An empty form (unreachable for a sheep, whose schema
@@ -1166,6 +1169,74 @@ pub fn pane_lines(
             pane.view().offset(),
             |offset| body_from(pane, palette, width, body_budget, offset, true),
             || cursor_only(pane, palette, width, body_budget, cursor_row),
+        ));
+    }
+    if let Some(text) = footer {
+        lines.push(Line::from(Span::styled(
+            format!("  {}", fit(&text, body_width(width))),
+            palette.muted(),
+        )));
+    }
+    lines
+}
+
+/// [`pane_lines`]'s own single-column body, above, with the cursor's own
+/// field's [`panel_lines`] drawn beside it: a dog's own shape, same layout
+/// a sheep gets, its group tab row and cost column simply empty because a
+/// dog's schema carries neither.
+///
+/// No tab row: a dog's schema carries no group to name, so `pane_lines`
+/// never draws one for it even without a panel, and adding the panel is not
+/// a reason to invent one. Otherwise the same shape as
+/// [`grouped_pane_with_panel_lines`]: laid out at [`DESIGN_TARGET_WIDTH`]
+/// rather than the caller's own `width`, and the trailing "shep
+/// publishes..." footer is chrome, reserved out of the budget before the
+/// body claims what is left, the same order [`pane_lines`]'s own
+/// single-column path reserves it in.
+///
+/// Only reached at exactly [`DESIGN_TARGET_WIDTH`] and above, mirroring
+/// [`grouped_pane_with_panel_lines`]'s own threshold.
+fn ungrouped_pane_with_panel_lines(
+    pane: &ConfigPane,
+    menu: Option<&PaneMenu>,
+    palette: Palette,
+    budget: usize,
+) -> Vec<Line<'static>> {
+    let width = DESIGN_TARGET_WIDTH;
+    let mut lines = vec![title_line(pane, palette, width)];
+    let mut body_budget = budget - 1;
+    if let Some((text, style)) = top_line(pane, menu, palette)
+        && body_budget > 0
+    {
+        lines.push(Line::from(Span::styled(
+            format!("  {}", fit(&text, body_width(width))),
+            style,
+        )));
+        body_budget -= 1;
+    }
+    let footer = match pane.target() {
+        PaneTarget::Sheep { .. } => None,
+        PaneTarget::Dog { name, .. } => (body_budget > 0)
+            .then(|| format!("shep publishes the change; {name} decides what to reload")),
+    };
+    if footer.is_some() {
+        body_budget -= 1;
+    }
+    if !pane.fields().is_empty() && body_budget > 0 {
+        let panel = panel_lines(pane, palette, PANEL_CEILING);
+        let total = pane.rows().len();
+        let cursor_row = pane.view().cursor().min(total - 1);
+        let body = super::scroll::to_cursor(
+            cursor_row,
+            pane.view().offset(),
+            |offset| body_from(pane, palette, DESIGN_LEFT_WIDTH, body_budget, offset, true),
+            || cursor_only(pane, palette, DESIGN_LEFT_WIDTH, body_budget, cursor_row),
+        );
+        lines.extend(merge_beside_panel(
+            body,
+            panel,
+            DESIGN_LEFT_WIDTH,
+            body_budget,
         ));
     }
     if let Some(text) = footer {
@@ -2895,5 +2966,86 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A dog pane has no groups, so it takes `pane_lines`'s other branch,
+    /// and Task 7 wired the panel into the grouped one only. Same layout,
+    /// same panel, its empty regions simply empty.
+    #[test]
+    fn a_dogs_panel_draws_beside_its_field_list_at_the_design_target() {
+        let app = fixtures::app_in_dog_pane();
+        let pane = app.config_pane().expect("the pane is open");
+        let at_target = text_of(&pane_lines(
+            pane,
+            None,
+            fixtures::plain(),
+            DESIGN_TARGET_WIDTH,
+            48,
+        ));
+        assert!(
+            at_target.iter().any(|line| line.contains("FOCUSED")),
+            "the panel never drew for a dog at the design target: {at_target:?}"
+        );
+        let below_target = text_of(&pane_lines(
+            pane,
+            None,
+            fixtures::plain(),
+            DESIGN_TARGET_WIDTH - 1,
+            48,
+        ));
+        assert!(
+            !below_target.iter().any(|line| line.contains("FOCUSED")),
+            "a fixed split must not invent a rule below the design target: {below_target:?}"
+        );
+    }
+
+    /// A dog's `cost` is always `None`, so its impact region is empty: no
+    /// sentence, and no reverse-video tag rendered with nothing to say.
+    /// Nothing rather than a zero, the same rule a field with no
+    /// validation bullets already follows.
+    #[test]
+    fn a_dogs_panel_has_no_impact_region() {
+        let app = fixtures::app_in_dog_pane();
+        let pane = app.config_pane().expect("the pane is open");
+        let lines = text_of(&pane_lines(
+            pane,
+            None,
+            fixtures::plain(),
+            DESIGN_TARGET_WIDTH,
+            48,
+        ));
+        assert!(
+            lines.iter().any(|line| line.contains("FOCUSED")),
+            "the panel must actually be drawn for its own absence to mean anything: {lines:?}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.contains("pick the timing when you close the pane")),
+            "a dog's cost is always None, so no impact sentence should render: {lines:?}"
+        );
+    }
+
+    /// A dog's schema carries no group, so `pane_lines` draws no tab row
+    /// for it even beside the panel.
+    #[test]
+    fn a_dogs_panel_layout_draws_no_tab_row() {
+        let app = fixtures::app_in_dog_pane();
+        let pane = app.config_pane().expect("the pane is open");
+        let lines = text_of(&pane_lines(
+            pane,
+            None,
+            fixtures::plain(),
+            DESIGN_TARGET_WIDTH,
+            48,
+        ));
+        assert!(
+            lines.iter().any(|line| line.contains("FOCUSED")),
+            "the panel must actually be drawn for its own absence to mean anything: {lines:?}"
+        );
+        assert!(
+            !lines.iter().any(|line| line.contains("tab next group")),
+            "a dog has no groups to tab through: {lines:?}"
+        );
     }
 }
