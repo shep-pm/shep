@@ -54,16 +54,27 @@ const AXIS_ROW: u16 = 16;
 /// The full-width hairline rule's row, relative to `area`, between the axis
 /// and the column headers.
 const HAIRLINE_ROW: u16 = AXIS_ROW + 1;
-/// The shortest `area.height` any chart tier draws into at all: decision
-/// 8's row ladder drops both charts under 20 rows, and one past
-/// [`COLUMN_HEADER_ROW`] is that same floor stated in terms of the row the
-/// config column would otherwise sit on. Below it the pane still opens; the
-/// charts just stay blank and [`column_top_row`] moves the config and feed
-/// columns up to reclaim the rows the charts would have used, rather than
-/// the all-or-nothing gate this constant named before this task.
-const MIN_HEIGHT_FOR_CHARTS: u16 = COLUMN_HEADER_ROW + 1;
+/// Terminal rows [`super::mod`]'s own `draw` spends outside this pane's
+/// body: the title band above it and the status bar below it
+/// (`view/mod.rs`). An operator counts terminal rows, and every doc that
+/// repeats decision 8's row ladder states its thresholds that way, but
+/// `area.height` here is always this many short of that count. [`chart_tier`]
+/// adds it back before comparing against [`MIN_HEIGHT_FOR_CHARTS`] and
+/// [`FULL_TIER_MIN_HEIGHT`], both stated in terminal rows below, rather than
+/// leaving those two constants quietly meaning body rows.
+const TERMINAL_OVERHEAD: u16 = 2;
 
-/// `area.height` past which the full two-chart body has room for the
+/// The shortest terminal height any chart tier draws into at all, decision
+/// 8's own "under 20 rows" floor, restated one past [`COLUMN_HEADER_ROW`]
+/// (plus [`TERMINAL_OVERHEAD`]): that is the same floor stated in terms of
+/// the row the config column would otherwise sit on. Below it the pane
+/// still opens; the charts just stay blank and [`column_top_row`] moves the
+/// config and feed columns up to reclaim the rows the charts would have
+/// used, rather than the all-or-nothing gate this constant named before
+/// this task.
+const MIN_HEIGHT_FOR_CHARTS: u16 = COLUMN_HEADER_ROW + 1 + TERMINAL_OVERHEAD;
+
+/// The terminal height past which the full two-chart body has room for the
 /// memory chart's own five rows on top of the CPU chart's own eight.
 /// Below it, [`chart_tier`] downgrades [`ChartTier::Full`] to
 /// [`ChartTier::CpuOnly`] regardless of width, per decision 8's "under 26
@@ -603,7 +614,13 @@ enum ChartTier {
 }
 
 fn chart_tier(width: u16, height: u16) -> ChartTier {
-    if height < MIN_HEIGHT_FOR_CHARTS {
+    // `height` is `area.height`, the pane body's own row count.
+    // [`MIN_HEIGHT_FOR_CHARTS`] and [`FULL_TIER_MIN_HEIGHT`] are both
+    // stated in terminal rows, the count an operator actually reads off
+    // their own terminal, so [`TERMINAL_OVERHEAD`] is added back before
+    // either comparison.
+    let terminal_height = height + TERMINAL_OVERHEAD;
+    if terminal_height < MIN_HEIGHT_FOR_CHARTS {
         return ChartTier::None;
     }
     let by_width = if width >= 140 {
@@ -615,7 +632,7 @@ fn chart_tier(width: u16, height: u16) -> ChartTier {
     } else {
         ChartTier::None
     };
-    if by_width == ChartTier::Full && height < FULL_TIER_MIN_HEIGHT {
+    if by_width == ChartTier::Full && terminal_height < FULL_TIER_MIN_HEIGHT {
         ChartTier::CpuOnly
     } else {
         by_width
@@ -1976,9 +1993,12 @@ mod tests {
     /// Rows too: the charts hold 2 to 17, and the config and feed columns
     /// are what the pane is for, so they give ground last.
     ///
-    /// 20 is under `FULL_TIER_MIN_HEIGHT` (26), so the memory chart is
-    /// already gone; 18 is under `MIN_HEIGHT_FOR_CHARTS` (19), so every
-    /// chart is gone.
+    /// `render_at` builds `area` directly, so its `height` is `area.height`
+    /// (body rows), not the terminal rows `MIN_HEIGHT_FOR_CHARTS` and
+    /// `FULL_TIER_MIN_HEIGHT` are stated in: 20 body rows is 22 terminal
+    /// rows, under `FULL_TIER_MIN_HEIGHT` (26), so the memory chart is
+    /// already gone; 18 body rows is 20 terminal rows, under
+    /// `MIN_HEIGHT_FOR_CHARTS` (21), so every chart is gone.
     #[test]
     fn a_short_terminal_drops_the_charts_before_the_columns() {
         assert!(!render_at(160, 20).contains("\u{2588}\u{2588} MEM"));
@@ -2021,9 +2041,14 @@ mod tests {
     /// [`MIN_HEIGHT_FOR_CHARTS`]'s own floor: at exactly that height a
     /// chart still draws rather than the pane falling straight to
     /// [`ChartTier::None`].
+    ///
+    /// `render_at`'s `height` is `area.height` (body rows), while
+    /// [`MIN_HEIGHT_FOR_CHARTS`] is stated in terminal rows, so
+    /// [`TERMINAL_OVERHEAD`] comes back off here to land on the exact body
+    /// row `chart_tier` compares against.
     #[test]
     fn at_the_chart_height_floor_a_chart_still_draws() {
-        let rendered = render_at(160, MIN_HEIGHT_FOR_CHARTS);
+        let rendered = render_at(160, MIN_HEIGHT_FOR_CHARTS - TERMINAL_OVERHEAD);
         assert!(
             rendered.contains("\u{2588}\u{2588} CPU"),
             "got {rendered:?}"
@@ -2033,9 +2058,12 @@ mod tests {
     /// [`FULL_TIER_MIN_HEIGHT`]'s own floor: at exactly that height the
     /// Full tier still holds rather than being downgraded to
     /// [`ChartTier::CpuOnly`].
+    ///
+    /// Same body-row/terminal-row split as
+    /// `at_the_chart_height_floor_a_chart_still_draws`, above.
     #[test]
     fn at_the_full_tier_height_floor_the_memory_chart_still_draws() {
-        let rendered = render_at(160, FULL_TIER_MIN_HEIGHT);
+        let rendered = render_at(160, FULL_TIER_MIN_HEIGHT - TERMINAL_OVERHEAD);
         assert!(
             rendered.contains("\u{2588}\u{2588} MEM"),
             "got {rendered:?}"
