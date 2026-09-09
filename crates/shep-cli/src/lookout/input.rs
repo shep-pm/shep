@@ -68,6 +68,12 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char('y') => Some(KeyPress::Copy),
         KeyCode::Left => Some(KeyPress::TabPrev),
         KeyCode::Right => Some(KeyPress::TabNext),
+        // The secrets pane's tab row names these two in so many words.
+        // Nothing else in either keymap binds them, so they cost nothing
+        // elsewhere: on the dashboard a tab move means nothing and lands on
+        // `Effect::None`. Crossterm delivers shift-tab as its own `BackTab`.
+        KeyCode::Tab => Some(KeyPress::TabNext),
+        KeyCode::BackTab => Some(KeyPress::TabPrev),
         KeyCode::Char('e') => Some(KeyPress::Edit),
         KeyCode::Char('h') => Some(KeyPress::Help),
         KeyCode::Char(' ') => Some(KeyPress::Cycle),
@@ -287,6 +293,29 @@ mod tests {
             map_key(&key(KeyCode::Up), InputMode::Normal),
             Some(KeyPress::SelectUp),
             "the vertical arrows keep the meaning they already have"
+        );
+    }
+
+    /// The secrets pane's tab row reads `<-/-> or tab`, and a caption that
+    /// names a key nothing binds is a caption that lies.
+    #[test]
+    fn tab_and_shift_tab_move_the_environment_tab_the_caption_names_them() {
+        assert_eq!(
+            map_key(&key(KeyCode::Tab), InputMode::Normal),
+            Some(KeyPress::TabNext)
+        );
+        assert_eq!(
+            map_key(
+                &Event::Key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT)),
+                InputMode::Normal
+            ),
+            Some(KeyPress::TabPrev),
+            "crossterm delivers shift-tab as `BackTab`, with SHIFT set"
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Tab), InputMode::Text),
+            None,
+            "and neither reaches an open input, where a tab is not a character"
         );
     }
 
