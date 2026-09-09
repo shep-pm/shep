@@ -8952,6 +8952,36 @@ mod tests {
         );
     }
 
+    #[test]
+    fn moving_the_tab_disarms() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+
+        let _ = app.update(Msg::Key(KeyPress::TabNext));
+
+        assert!(
+            armed_of(&app).is_none(),
+            "an arm must not follow a tab move onto another environment"
+        );
+    }
+
+    #[test]
+    fn a_reload_disarms() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        assert!(armed_of(&app).is_some(), "the delete armed");
+
+        let _ = app.update(Msg::Secrets {
+            environment: "all".to_string(),
+            result: Ok(Box::default()),
+        });
+
+        assert!(
+            armed_of(&app).is_none(),
+            "a fresh read describes the store as it is now, not the arm"
+        );
+    }
+
     /// An armed delete is the fourth armed thing in this module the tick
     /// expires, mirroring the config pane's own `armed_at` at
     /// `app.rs:1999-2005`.
