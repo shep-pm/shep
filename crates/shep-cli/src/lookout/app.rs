@@ -8766,7 +8766,10 @@ mod tests {
     #[test]
     fn every_env_value_renders_as_set_and_never_as_itself() {
         let app = fixtures::app_in_sheep_pane_with_env(&[("NODE_ENV", "production")]);
-        let rows = fixtures::config_pane_env_rows_for_tests(&app);
+        let rows = fixtures::config_pane_env_rows_for_tests(
+            app.config_pane().expect("the pane is open"),
+            app.pane_menu().as_ref(),
+        );
         assert!(rows.iter().any(|row| row.contains("NODE_ENV")), "{rows:?}");
         assert!(
             rows.iter().all(|row| !row.contains("production")),

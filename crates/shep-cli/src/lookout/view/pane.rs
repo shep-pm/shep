@@ -808,8 +808,14 @@ fn env_row_line(
     // has none, but `GUTTER` already spent that column out of
     // `body_width`, so this row has to spend it too rather than draw one
     // column short.
+    //
+    // Inside the key cell itself, `field_line` reserves a first character
+    // for its flag (`!`/`*`/` `) before the key text; an env row has no
+    // flag, but the reservation is the same cell `fit` pads to `key_w`, so
+    // this row has to spend that character too, or its key text starts one
+    // column left of every field's.
     let mut text = String::from(" ");
-    text.push_str(&fit(name, key_w));
+    text.push_str(&fit(&format!(" {name}"), key_w));
     if value_w > 0 {
         text.push_str("  ");
         text.push_str(&fit(&value, value_w));
@@ -846,8 +852,11 @@ fn add_env_row_line(
         Some(buffer) => (format!("{buffer}\u{258f}"), false),
         None => ("+ add a key".to_owned(), true),
     };
+    // Same key-cell reservation as [`env_row_line`]: a leading space stands
+    // in for `field_line`'s flag character so `+ add a key` and every field
+    // above it start their text in the same column.
     let mut text = String::from(" ");
-    text.push_str(&fit(&caption, key_w));
+    text.push_str(&fit(&format!(" {caption}"), key_w));
     let style = if muted {
         palette.muted()
     } else {
@@ -2283,14 +2292,26 @@ mod tests {
     /// The folded env rows at a comfortable width: both of the fixture's
     /// keys are listed with `(set)` rather than a value, and `+ add a key`
     /// is last.
+    ///
+    /// Asserts on the env rows alone via
+    /// [`fixtures::config_pane_env_rows_for_tests`], not on the whole
+    /// rendered frame: a search over the joined frame can match any row,
+    /// field or env, once folding put both in the same screen.
     #[test]
     fn the_env_rows_draw_at_a_comfortable_width() {
         let pane = web_pane();
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0)).join("\n");
-        assert!(text.contains("DB_HOST"), "{text}");
-        assert!(text.contains("LOG_LEVEL"), "{text}");
-        assert!(text.contains("(set)"), "{text}");
-        assert!(text.contains("+ add a key"), "{text}");
+        let rows = fixtures::config_pane_env_rows_for_tests(&pane, None);
+        assert!(rows.iter().any(|row| row.contains("DB_HOST")), "{rows:?}");
+        assert!(rows.iter().any(|row| row.contains("LOG_LEVEL")), "{rows:?}");
+        assert!(
+            rows.iter()
+                .all(|row| row.contains("(set)") || row.contains("+ add a key")),
+            "{rows:?}"
+        );
+        assert!(
+            rows.iter().any(|row| row.contains("+ add a key")),
+            "{rows:?}"
+        );
     }
 
     /// A filed env write draws nothing at all on this screen, and above
@@ -2313,6 +2334,11 @@ mod tests {
     /// could only have been invented. Replaces
     /// `the_env_sub_screen_never_renders_a_value`, which pinned the same
     /// fact on the sub-screen the env rows folded into.
+    ///
+    /// Asserts on the env rows alone via
+    /// [`fixtures::config_pane_env_rows_for_tests`], not on the whole
+    /// rendered frame: see [`the_env_rows_draw_at_a_comfortable_width`]'s
+    /// own doc comment for why a frame-wide search is the wrong tool here.
     #[test]
     fn every_env_value_renders_as_set_and_never_as_itself() {
         let pane = ConfigPane::sheep({
@@ -2325,10 +2351,16 @@ mod tests {
                 .insert("DB_PASSWORD".to_string(), "hunter2".to_string());
             shep_core::protocol::SheepConfigView::new(config, Vec::new(), Vec::new())
         });
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0)).join("\n");
-        assert!(text.contains("DB_PASSWORD"), "{text}");
-        assert!(!text.contains("hunter2"), "{text}");
-        assert!(text.contains("(set)"), "{text}");
+        let rows = fixtures::config_pane_env_rows_for_tests(&pane, None);
+        assert!(
+            rows.iter().any(|row| row.contains("DB_PASSWORD")),
+            "{rows:?}"
+        );
+        assert!(
+            rows.iter().all(|row| !row.contains("hunter2")),
+            "an env value reached the pane: {rows:?}"
+        );
+        assert!(rows.iter().any(|row| row.contains("(set)")), "{rows:?}");
     }
 
     #[test]

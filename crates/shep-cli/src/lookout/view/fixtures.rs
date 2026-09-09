@@ -1228,15 +1228,19 @@ pub fn config_pane_field_rows_for_tests(app: &App) -> Vec<String> {
 /// and [`crate::lookout::pane::PaneRow::AddEnv`], so a test on this cannot pass
 /// off a match anywhere else in the frame.
 ///
+/// Takes a `ConfigPane` directly rather than an `App`, since some of this
+/// pane's own tests build one without a dashboard around it. `menu` mirrors
+/// [`crate::lookout::view::pane::pane_lines`]'s own parameter.
+///
 /// # Panics
 ///
-/// Panics if the pane is closed, or draws no row for a key or for
-/// `+ add a key`, which is a fixture bug rather than a failure the test is
-/// about.
-pub fn config_pane_env_rows_for_tests(app: &App) -> Vec<String> {
-    let pane = app.config_pane().expect("the pane is open");
-    let lines =
-        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), 160, 0);
+/// Panics if it draws no row for a key or for `+ add a key`, which is a
+/// fixture bug rather than a failure the test is about.
+pub fn config_pane_env_rows_for_tests(
+    pane: &crate::lookout::pane::ConfigPane,
+    menu: Option<&super::super::app::PaneMenu>,
+) -> Vec<String> {
+    let lines = crate::lookout::view::pane::pane_lines(pane, menu, plain(), 160, 0);
     let rendered_lines: Vec<String> = lines.iter().map(rendered).collect();
     let mut rows: Vec<String> = pane
         .env_key_names()
