@@ -588,7 +588,7 @@ pub struct ConfigPane {
     /// and this is what a write edits. `Request::SetDogConfig` replaces the
     /// whole section, so an edit that re-rendered it from `values` would
     /// throw away every comment the operator wrote. See
-    /// [`Self::edited_section_all`].
+    /// [`Self::edited_section_with`].
     section: Option<String>,
 }
 
@@ -749,50 +749,61 @@ impl ConfigPane {
         }
     }
 
-    /// The section with every one of `edits` applied, in order, comments
-    /// and key order intact, ready for `Request::SetDogConfig`.
+    /// The section with every field edit in `edits` applied, in key order,
+    /// comments and key order intact, ready for `Request::SetDogConfig`.
     ///
     /// `toml_edit` rather than a re-render of [`Self::values`], and that is
     /// the whole reason this method exists: the request replaces the section
     /// wholesale, so a re-render would delete every comment in it on the
     /// operator's own keystroke.
     ///
-    /// The plural is what a close actually sends: the request replaces the
-    /// table, so two edits to one dog are one write, not two. Each is
-    /// applied to the document the previous one produced.
+    /// This is what a close actually sends: the request replaces the table,
+    /// so a batch of edits to one dog is one write, not one per entry. Each
+    /// is applied to the document the previous one produced, walked in
+    /// [`Edits::iter`]'s own key order.
+    ///
+    /// An [`EditKey::Env`] entry has no home in a dog's section, a dog
+    /// having no env store, and is skipped rather than becoming a key in
+    /// it.
     ///
     /// A `null` value removes the key, which is how the pane's empty buffer
     /// unsets one, and is what puts the dog back on its own default.
     ///
-    /// [`None`] for a sheep pane, for an env edit, and for a section that
-    /// does not parse, raised by any one entry: a partial section is worse
-    /// than none, since the request would replace the table with it.
+    /// [`None`] for a sheep pane, for a set holding no field edit, and for
+    /// a section that does not parse, raised by any one entry: a partial
+    /// section is worse than none, since the request would replace the
+    /// table with it.
     #[must_use]
-    pub fn edited_section_all(&self, edits: &[PaneEdit]) -> Option<String> {
+    pub fn edited_section_with(&self, edits: &Edits) -> Option<String> {
         let section = self.section.as_deref()?;
         let mut doc: toml_edit::DocumentMut = section.parse().ok()?;
-        for edit in edits {
-            let PaneEdit::Set { key, value } = edit else {
-                return None;
+        let mut wrote = false;
+        for (key, edit) in edits.iter() {
+            let EditKey::Field(name) = key else {
+                continue;
+            };
+            let PaneEdit::Set { value, .. } = edit.edit() else {
+                continue;
             };
             match value.as_value() {
                 Value::Null => {
-                    doc.remove(key);
+                    doc.remove(name.as_str());
                 }
-                Value::Bool(flag) => doc[key] = toml_edit::value(*flag),
+                Value::Bool(flag) => doc[name.as_str()] = toml_edit::value(*flag),
                 // A number that is neither an i64 nor an f64 is not
                 // something TOML can hold, so the edit is refused rather
                 // than rounded.
                 Value::Number(number) => match (number.as_i64(), number.as_f64()) {
-                    (Some(int), _) => doc[key] = toml_edit::value(int),
-                    (None, Some(float)) => doc[key] = toml_edit::value(float),
+                    (Some(int), _) => doc[name.as_str()] = toml_edit::value(int),
+                    (None, Some(float)) => doc[name.as_str()] = toml_edit::value(float),
                     (None, None) => return None,
                 },
-                Value::String(text) => doc[key] = toml_edit::value(text.as_str()),
-                other => doc[key] = toml_edit::value(other.to_string()),
+                Value::String(text) => doc[name.as_str()] = toml_edit::value(text.as_str()),
+                other => doc[name.as_str()] = toml_edit::value(other.to_string()),
             }
+            wrote = true;
         }
-        Some(doc.to_string())
+        wrote.then(|| doc.to_string())
     }
 
     /// The open text editor, or [`None`].
@@ -2266,16 +2277,24 @@ mod tests {
         assert_eq!(typing.buffer, "staging");
     }
 
+    /// A field edit, filed the way [`Edits::set`] wants it, for the tests
+    /// below that build a batch by hand rather than by keystroke.
+    fn field(key: &str, value: serde_json::Value) -> PaneEdit {
+        PaneEdit::Set {
+            key: key.to_owned(),
+            value: value.into(),
+        }
+    }
+
     /// Re-rendering from parsed values would delete every comment in a
     /// file shep does not author.
     #[test]
     fn an_edited_section_keeps_its_comments_and_changes_one_key() {
         let pane = bark_pane();
+        let mut edits = Edits::default();
+        edits.set(field("poll", serde_json::json!("30s")), None);
         let out = pane
-            .edited_section_all(&[PaneEdit::Set {
-                key: "poll".into(),
-                value: serde_json::json!("30s").into(),
-            }])
+            .edited_section_with(&edits)
             .expect("the fixture section parses");
         assert!(out.contains("# how often"), "{out}");
         assert!(out.contains("poll = \"30s\""), "{out}");
@@ -2288,14 +2307,44 @@ mod tests {
     #[test]
     fn a_null_edit_removes_the_key_from_the_section() {
         let pane = bark_pane();
+        let mut edits = Edits::default();
+        edits.set(field("history_bytes", serde_json::Value::Null), None);
         let out = pane
-            .edited_section_all(&[PaneEdit::Set {
-                key: "history_bytes".into(),
-                value: serde_json::Value::Null.into(),
-            }])
+            .edited_section_with(&edits)
             .expect("the fixture section parses");
         assert!(!out.contains("history_bytes"), "{out}");
         assert!(out.contains("# how often"), "{out}");
+    }
+
+    /// A dog section takes every filed edit in one write rather than one
+    /// write per edit.
+    #[test]
+    fn a_dog_section_takes_every_filed_edit_in_one_write() {
+        let pane = bark_pane();
+        let mut edits = Edits::default();
+        edits.set(field("url", serde_json::json!("http://a")), None);
+        edits.set(field("timeout", serde_json::json!(30)), None);
+        let section = pane
+            .edited_section_with(&edits)
+            .expect("the fixture parses");
+        assert!(section.contains("http://a"), "{section}");
+        assert!(section.contains("30"), "{section}");
+    }
+
+    /// An env edit has no home in a dog's section and must not silently
+    /// become a key in it.
+    #[test]
+    fn an_env_edit_is_ignored_by_a_dog_section() {
+        let pane = bark_pane();
+        let mut edits = Edits::default();
+        edits.set(
+            PaneEdit::SetEnv {
+                key: "SECRET".to_owned(),
+                value: None,
+            },
+            None,
+        );
+        assert_eq!(pane.edited_section_with(&edits), None);
     }
 
     /// A section here would send a sheep's config out through a dog's
@@ -2303,13 +2352,9 @@ mod tests {
     #[test]
     fn a_sheep_pane_has_no_section_to_edit() {
         let pane = ConfigPane::sheep(web());
-        assert_eq!(
-            pane.edited_section_all(&[PaneEdit::Set {
-                key: "cwd".into(),
-                value: serde_json::json!("/srv").into(),
-            }]),
-            None
-        );
+        let mut edits = Edits::default();
+        edits.set(field("cwd", serde_json::json!("/srv")), None);
+        assert_eq!(pane.edited_section_with(&edits), None);
     }
 
     /// `cwd` and `script` routinely hold a home directory and `args`
@@ -2537,8 +2582,8 @@ mod tests {
         );
     }
 
-    /// A dog's write replaces its whole section, and `edited_section_all` has
-    /// no rendering for an array, so the pane offers no editor for one.
+    /// A dog's write replaces its whole section, and `edited_section_with`
+    /// has no rendering for an array, so the pane offers no editor for one.
     #[test]
     fn a_dogs_array_field_has_no_widget_here() {
         let schema = serde_json::json!({

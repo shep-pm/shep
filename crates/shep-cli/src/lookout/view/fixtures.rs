@@ -978,6 +978,33 @@ pub fn app_in_dog_pane() -> App {
     app
 }
 
+/// [`app_in_dog_pane`] with two edits filed, driven by real key presses:
+/// `poll` typed, then `history_bytes` typed.
+///
+/// Two, and not one, because a batch of one cannot tell a loop from a
+/// `take(1)`. What `closing_a_dog_pane_sends_one_write_for_two_edits`
+/// needs: proof that a dog's batch is one `Sent::SetDogSection`, not two.
+pub fn app_in_dog_pane_with_two_edits() -> App {
+    let mut app = app_in_dog_pane();
+    for (key, typed) in [("poll", "45s"), ("history_bytes", "8192")] {
+        select_field(&mut app, key);
+        app.update(Msg::Key(KeyPress::Confirm));
+        for _ in 0..64 {
+            app.update(Msg::Key(KeyPress::TextBackspace));
+        }
+        for character in typed.chars() {
+            app.update(Msg::Key(KeyPress::TextChar(character)));
+        }
+        app.update(Msg::Key(KeyPress::TextApply));
+    }
+    assert_eq!(
+        app.config_pane().expect("the pane is open").edits().len(),
+        2,
+        "the fixture files two edits"
+    );
+    app
+}
+
 /// A sheep pane, control open, with exactly the env keys named. Values are
 /// what the fixture's own caller reads to know what it asked for; no value
 /// for any key ever reaches the pane itself, since `SheepConfigView::new`

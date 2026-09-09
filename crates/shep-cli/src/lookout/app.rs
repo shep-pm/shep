@@ -538,8 +538,8 @@ pub enum Sent {
     /// One dog's whole section, off the dog pane's own `Enter`.
     ///
     /// The whole section rather than one key, because
-    /// `Request::SetDogConfig` replaces the table: `ConfigPane::edited_section_all`
-    /// applies the edit through `toml_edit`, so the operator's comments and
+    /// `Request::SetDogConfig` replaces the table: `ConfigPane::edited_section_with`
+    /// applies the batch through `toml_edit`, so the operator's comments and
     /// key order survive a write shep did not author.
     ///
     /// Not a `Request::ApplyConfig`, and not for [`Self::ApplyField`]'s
@@ -3116,8 +3116,8 @@ impl App {
     ///
     /// A sheep's set is one request per entry and a dog's is one request
     /// for the lot: `Request::SetDogConfig` replaces the whole table, so
-    /// two edits to one dog are one write. See
-    /// `ConfigPane::edited_section_all`.
+    /// a batch of edits to one dog is one write. See
+    /// `ConfigPane::edited_section_with`.
     fn take_pane_writes(&mut self) -> Vec<Sent> {
         // `WriteAuthority::granted`, not `Self::authorize_write`: the gate
         // is checked on the keystroke that files an edit, so a read-only
@@ -3136,13 +3136,13 @@ impl App {
         }) else {
             return Vec::new();
         };
-        let writes = pane.close().into_writes();
-        if writes.is_empty() {
+        let edits = pane.close();
+        if edits.is_empty() {
             return Vec::new();
         }
         let mut ticket = self.next_write_ticket;
         let sent = match pane.target().clone() {
-            PaneTarget::Dog { name, .. } => match pane.edited_section_all(&writes) {
+            PaneTarget::Dog { name, .. } => match pane.edited_section_with(&edits) {
                 Some(toml) => {
                     let section = vec![Sent::SetDogSection {
                         name,
@@ -3162,6 +3162,7 @@ impl App {
                 }
             },
             PaneTarget::Sheep { name } => {
+                let writes = edits.into_writes();
                 let mut requests = Vec::with_capacity(writes.len());
                 for edit in writes {
                     let this = ticket;
@@ -10154,6 +10155,28 @@ mod tests {
         assert!(
             toml.as_str().contains("# how often"),
             "a comment shep did not write survives: {}",
+            toml.as_str()
+        );
+    }
+
+    /// `Request::SetDogConfig` replaces the whole table, so a dog's batch
+    /// of edits closes as one write rather than one per entry, the way a
+    /// sheep's own batch closes as `writes.len()` requests.
+    #[test]
+    fn closing_a_dog_pane_sends_one_write_for_two_edits() {
+        let mut app = fixtures::app_in_dog_pane_with_two_edits();
+        let Effect::SendAll(sent) = app.update(Msg::Key(KeyPress::Escape)) else {
+            panic!("wanted a batch");
+        };
+        assert_eq!(sent.len(), 1, "a dog takes one section write, not two");
+        let [Sent::SetDogSection { name, toml, .. }] = sent.as_slice() else {
+            panic!("closing the pane sends the section: {sent:?}");
+        };
+        assert_eq!(name, "bark");
+        assert!(toml.as_str().contains("poll = \"45s\""), "{}", toml.as_str());
+        assert!(
+            toml.as_str().contains("history_bytes = 8192"),
+            "{}",
             toml.as_str()
         );
     }
