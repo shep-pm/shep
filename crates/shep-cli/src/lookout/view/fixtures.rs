@@ -1184,6 +1184,41 @@ pub fn app_with_a_pushed_secret() -> App {
     app
 }
 
+/// One operator row and one provider row, for the `+ new key` affordance's
+/// own position test: it has to draw between the two groups, not just at
+/// either end the way [`app_with_secrets`] (no namespace) or
+/// [`app_with_a_pushed_secret`] (no operator row) alone would show.
+pub fn app_with_secrets_and_a_provider_row() -> App {
+    let mut app = full_app();
+    app.update(Msg::Key(KeyPress::Secrets));
+    app.update(Msg::Secrets {
+        environment: "production".to_string(),
+        result: Ok(Box::new(SecretsModel {
+            environments: vec!["production".to_string()],
+            rows: vec![
+                SecretRow {
+                    key: "DB_PASSWORD".to_string(),
+                    source: Source::Operator,
+                    in_force: Some("production".to_string()),
+                    set_in: vec!["production".to_string()],
+                    byte_len: Some(9),
+                    readers: Vec::new(),
+                },
+                SecretRow {
+                    key: "vercel/API_TOKEN".to_string(),
+                    source: Source::Namespace("vercel".to_string()),
+                    in_force: Some("production".to_string()),
+                    set_in: vec!["production".to_string()],
+                    byte_len: Some(6),
+                    readers: Vec::new(),
+                },
+            ],
+            ..SecretsModel::default()
+        })),
+    });
+    app
+}
+
 /// The value [`app_with_secrets_and_reads`] stores, and so the exact text a
 /// reveal has to put on screen.
 pub const REVEALED_VALUE: &str = "hunter2-not-really";

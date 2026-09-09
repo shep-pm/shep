@@ -1497,9 +1497,9 @@ impl SecretsPane {
     /// Every index into `model.rows` this pane currently draws: a
     /// collapsed namespace's members contribute none, the same rows
     /// `view::secrets::draw` skips on screen. Never the `+ new key` row,
-    /// which is not a `model.rows` index and has its own reach through
-    /// [`Self::move_to_last`] alone, so it cannot perturb `j`/`k`/`g` or a
-    /// reload's clamp.
+    /// which is not a `model.rows` index — [`Self::reveal_selected`] reads
+    /// this to decide whether anything real is even on screen, so it stays
+    /// real-rows-only rather than growing the affordance into it.
     fn visible_row_indices(&self) -> Vec<usize> {
         self.model
             .rows
@@ -1517,60 +1517,95 @@ impl SecretsPane {
         self.selected == self.model.rows.len()
     }
 
-    /// Moves `selected` by `delta` positions over [`Self::visible_row_indices`],
-    /// clamped rather than wrapping: the same rule the flock table and every
-    /// other pane's cursor follows. A no-op with nothing on screen.
+    /// Every screen slot `j`/`k`/`g`/`G` can land the cursor on, in the
+    /// order [`view::secrets::draw`] draws them: `None` is the `+ new key`
+    /// affordance, placed right where it always draws — after the last
+    /// visible operator row, before the first namespace group's header —
+    /// even when the operator group has no members at all, matching
+    /// `view::secrets::draw`'s own placement.
     ///
-    /// A selection `z` just folded away is not itself in that list: rather
-    /// than guess where inside it the old position belonged, this lands on
-    /// whichever end `delta` points toward.
+    /// Real rows never move relative to each other here, so a row hidden by
+    /// a fold is simply absent, the same as [`Self::visible_row_indices`].
+    fn screen_slots(&self) -> Vec<Option<usize>> {
+        let anchor = self
+            .model
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.source == Source::Operator)
+            .map(|(index, _)| index)
+            .max();
+        let visible = self.visible_row_indices();
+        let insert_at = match anchor {
+            Some(anchor) => visible
+                .iter()
+                .position(|&index| index > anchor)
+                .unwrap_or(visible.len()),
+            None => 0,
+        };
+        let mut slots: Vec<Option<usize>> = visible.into_iter().map(Some).collect();
+        slots.insert(insert_at, None);
+        slots
+    }
+
+    /// Moves `selected` by `delta` positions over [`Self::screen_slots`],
+    /// clamped rather than wrapping: the same rule the flock table and every
+    /// other pane's cursor follows. A no-op with nothing on screen (there is
+    /// always at least the affordance, so this is unreachable in practice).
+    ///
+    /// A selection `z` just folded away is not itself in [`Self::screen_slots`]:
+    /// rather than guess where inside it the old position belonged, this
+    /// lands on the nearest surviving *real* row in the direction `delta`
+    /// points, over [`Self::visible_row_indices`] alone — never the
+    /// affordance, so a reload or a fold can never strand the cursor on it
+    /// by accident.
     pub(crate) fn move_by(&mut self, delta: isize) {
+        let slots = self.screen_slots();
+        if slots.is_empty() {
+            return;
+        }
+        let current = (!self.selected_is_new_key_row()).then_some(self.selected);
+        if let Some(position) = slots.iter().position(|&slot| slot == current) {
+            let next = position.saturating_add_signed(delta).min(slots.len() - 1);
+            self.selected = slots[next].unwrap_or(self.model.rows.len());
+            return;
+        }
+        // The selection itself just went hidden (`z` folded its own group
+        // away, or a reload's clamp landed on a row a standing fold hides):
+        // land on the nearest visible neighbour in the direction requested,
+        // rather than guessing a position inside a list the old selection
+        // is not part of. `j`/`k` reach this arm with `delta` of 1 or -1;
+        // the `Collapse` arm and the `Msg::Secrets` clamp call with `delta`
+        // 0 to reuse the same landing logic without moving the selection
+        // themselves.
         let visible = self.visible_row_indices();
         if visible.is_empty() {
             return;
         }
-        self.selected = match visible.iter().position(|&index| index == self.selected) {
-            Some(position) => {
-                let next = position.saturating_add_signed(delta).min(visible.len() - 1);
-                visible[next]
-            }
-            // The selection itself just went hidden (`z` folded its own
-            // group away, or a reload's clamp landed on a row a standing
-            // fold hides): land on the nearest visible neighbour in the
-            // direction requested, rather than guessing a position inside
-            // a list the old selection is not part of. `j`/`k` reach this
-            // arm with `delta` of 1 or -1; the `Collapse` arm and the
-            // `Msg::Secrets` clamp call with `delta` 0 to reuse the same
-            // landing logic without moving the selection themselves.
-            None => {
-                let boundary = visible.partition_point(|&index| index < self.selected);
-                if delta < 0 {
-                    visible[boundary.saturating_sub(1).min(visible.len() - 1)]
-                } else {
-                    visible[boundary.min(visible.len() - 1)]
-                }
-            }
+        let boundary = visible.partition_point(|&index| index < self.selected);
+        self.selected = if delta < 0 {
+            visible[boundary.saturating_sub(1).min(visible.len() - 1)]
+        } else {
+            visible[boundary.min(visible.len() - 1)]
         };
     }
 
-    /// Jumps `selected` to the first visible row, `g`'s effect.
+    /// Jumps `selected` to the first screen slot, `g`'s effect: a real row
+    /// unless the operator store holds none, in which case the affordance
+    /// itself is first on screen.
     pub(crate) fn move_to_first(&mut self) {
-        if let Some(&index) = self.visible_row_indices().first() {
-            self.selected = index;
+        if let Some(&slot) = self.screen_slots().first() {
+            self.selected = slot.unwrap_or(self.model.rows.len());
         }
     }
 
-    /// Jumps `selected` to the last visible row, `G`'s effect. Already
-    /// there (or nothing is visible at all), a further `G` reaches one past
-    /// every real row: the `+ new key` affordance, which
-    /// [`Self::visible_row_indices`] never carries so that this is the one
-    /// door to it and `j`/`k`/`g` stay untouched.
+    /// Jumps `selected` to the last screen slot, `G`'s effect: the
+    /// affordance itself when no namespace group follows the operator rows,
+    /// otherwise the last namespace row, exactly what is last on screen.
     pub(crate) fn move_to_last(&mut self) {
-        let last_visible = self.visible_row_indices().last().copied();
-        self.selected = match last_visible {
-            Some(index) if index != self.selected => index,
-            Some(_) | None => self.model.rows.len(),
-        };
+        if let Some(&slot) = self.screen_slots().last() {
+            self.selected = slot.unwrap_or(self.model.rows.len());
+        }
     }
 }
 
@@ -8088,6 +8123,11 @@ mod tests {
         }
     }
 
+    /// Three operator rows and nothing else: the `+ new key` affordance has
+    /// no namespace group to sit in front of, so it is the true last thing
+    /// on screen, and a plain `j`/`G` from the last real row reaches it —
+    /// the fix this pane's own reachability bug needed. `k` off the
+    /// affordance lands back on that real row.
     #[test]
     fn j_k_g_and_shift_g_move_the_selection_over_the_pane_s_rows() {
         let mut app = fixtures::full_app();
@@ -8116,13 +8156,19 @@ mod tests {
         let Body::Secrets(pane) = app.body() else {
             panic!("pane is open");
         };
-        assert_eq!(pane.selected, 2, "clamped at the last row, not wrapping");
+        assert!(
+            pane.selected_is_new_key_row(),
+            "clamped at the new-key affordance, one past THIRD, not wrapping"
+        );
 
         let _ = app.update(Msg::Key(KeyPress::SelectUp));
         let Body::Secrets(pane) = app.body() else {
             panic!("pane is open");
         };
-        assert_eq!(pane.selected, 1, "k moves one row up");
+        assert_eq!(
+            pane.selected, 2,
+            "k leaves the affordance upward, back onto THIRD"
+        );
 
         let _ = app.update(Msg::Key(KeyPress::SelectFirst));
         let Body::Secrets(pane) = app.body() else {
@@ -8134,7 +8180,57 @@ mod tests {
         let Body::Secrets(pane) = app.body() else {
             panic!("pane is open");
         };
-        assert_eq!(pane.selected, 2, "G jumps to the last row");
+        assert!(
+            pane.selected_is_new_key_row(),
+            "G reaches the affordance directly: nothing follows the operator group here"
+        );
+    }
+
+    /// A namespace group following the one operator row: `j` from that row
+    /// reaches the affordance in a single press rather than needing a second
+    /// `G` nothing on screen ever hinted at, and a further `j` carries on
+    /// into the namespace group beyond it.
+    #[test]
+    fn j_from_the_last_operator_row_reaches_the_new_key_row() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                rows: vec![
+                    plain_row("FIRST", Source::Operator),
+                    plain_row("vercel/A", Source::Namespace("vercel".to_string())),
+                ],
+                ..SecretsModel::default()
+            })),
+        });
+
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert!(
+            pane.selected_is_new_key_row(),
+            "one `j` from the only operator row reaches the affordance"
+        );
+
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(
+            pane.model.rows[pane.selected].key, "vercel/A",
+            "a further `j` carries on into the namespace group past it"
+        );
+
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert!(
+            pane.selected_is_new_key_row(),
+            "`k` off the namespace row lands back on the affordance"
+        );
     }
 
     /// A cursor that stepped over `model.rows` itself, one index at a

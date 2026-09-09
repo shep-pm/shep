@@ -442,6 +442,45 @@ fn group_header_line(
     Line::from(Span::styled(fit(&text, width), palette.muted()))
 }
 
+/// Draws the `+ new key` affordance at the current `y` and advances it,
+/// stopping short of `area`'s own bottom the same way every row above it
+/// does. `table_width` and `bottom` are `draw`'s own locals, not this
+/// function's arguments, since both are cheap to recompute from `area` and
+/// doing so keeps this under clippy's argument-count lint.
+///
+/// The one place `draw` places it: right after the last visible operator
+/// row and before the first namespace group's header, closing the operator
+/// group even when that group has no members of its own to close.
+fn draw_new_key_row(
+    pane: &SecretsPane,
+    columns: &[Column],
+    palette: Palette,
+    area: Rect,
+    buffer: &mut Buffer,
+    y: &mut u16,
+) {
+    let bottom = area.y + area.height;
+    if *y >= bottom {
+        return;
+    }
+    let table_width = area.width.saturating_sub(GUTTER);
+    let selected = pane.selected_is_new_key_row();
+    let (gutter_text, gutter_style) = gutter(selected, palette);
+    buffer.set_line(
+        area.x,
+        *y,
+        &Line::from(Span::styled(gutter_text, gutter_style)),
+        1,
+    );
+    buffer.set_line(
+        area.x + GUTTER,
+        *y,
+        &new_key_row_line(pane, columns, table_width, palette, selected),
+        table_width,
+    );
+    *y += 1;
+}
+
 /// Draws the secrets pane into `area`, straight into `buffer`.
 ///
 /// Seven rows of chrome before the first group header: this pane's own
@@ -449,7 +488,8 @@ fn group_header_line(
 /// status, the tab row, the heading row, a hairline, then one group header
 /// per source change in [`SecretsPane::model`]'s rows, which are already
 /// contiguous by source (`SecretsModel::rows`'s own doc comment: operator
-/// rows first, then each namespace's).
+/// rows first, then each namespace's), with the `+ new key` affordance
+/// closing the operator group before the first namespace header prints.
 pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
     if area.width == 0 || area.height == 0 {
         return;
@@ -512,12 +552,24 @@ pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
     buffer.set_line(area.x, y, &status::rule_line(palette.line(), width), width);
     y += 1;
 
+    let mut new_key_row_drawn = false;
     let mut last_source: Option<&Source> = None;
     for (index, row) in pane.model.rows.iter().enumerate() {
         if y >= bottom {
             break;
         }
         if last_source != Some(&row.source) {
+            // The first row that is not the operator's own closes the
+            // operator group: the affordance draws here, once, before that
+            // group's header — even an operator group with zero members
+            // still closes right where its members would have been.
+            if !new_key_row_drawn && !matches!(row.source, Source::Operator) {
+                draw_new_key_row(pane, columns, palette, area, buffer, &mut y);
+                new_key_row_drawn = true;
+                if y >= bottom {
+                    break;
+                }
+            }
             buffer.set_line(
                 area.x + GUTTER,
                 y,
@@ -558,23 +610,11 @@ pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
         y += 1;
     }
 
-    // The `+ new key` affordance, last on screen: it is where an operator
-    // adding a key looks once every existing one has scrolled past.
-    if y < bottom {
-        let selected = pane.selected_is_new_key_row();
-        let (gutter_text, gutter_style) = gutter(selected, palette);
-        buffer.set_line(
-            area.x,
-            y,
-            &Line::from(Span::styled(gutter_text, gutter_style)),
-            1,
-        );
-        buffer.set_line(
-            area.x + GUTTER,
-            y,
-            &new_key_row_line(pane, columns, table_width, palette, selected),
-            table_width,
-        );
+    // Every row was the operator's own (or there were no rows at all): the
+    // affordance never found a namespace header to close the group before,
+    // so it draws last instead.
+    if !new_key_row_drawn {
+        draw_new_key_row(pane, columns, palette, area, buffer, &mut y);
     }
 }
 
@@ -750,6 +790,30 @@ mod tests {
         assert_eq!(
             blocks, 9,
             "the run states the value's own length: {value:?}"
+        );
+    }
+
+    /// The affordance closes the operator group: it draws right after the
+    /// last operator row and right before the provider group's own header,
+    /// never trailing after it the way the pane once drew it.
+    #[test]
+    fn the_new_key_row_sits_before_the_first_namespace_group() {
+        let app = fixtures::app_with_secrets_and_a_provider_row();
+        let buffer = fixtures::render(&app, 160, 48);
+
+        let operator_row = row_of(&buffer, "DB_PASSWORD");
+        let new_key_row = row_of(&buffer, "+ new key");
+        let provider_header = row_of(&buffer, "vercel (dog)");
+
+        assert_eq!(
+            new_key_row,
+            operator_row + 1,
+            "right after the last operator row"
+        );
+        assert_eq!(
+            provider_header,
+            new_key_row + 1,
+            "and right before the provider group's own header"
         );
     }
 
