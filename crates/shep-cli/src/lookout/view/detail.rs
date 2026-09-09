@@ -14,7 +14,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use shep_core::protocol::DogSource;
 
-use super::super::app::{App, LambWalk, RowKey};
+use super::super::app::{App, LambWalk, Row, RowKey};
 use super::super::theme::Palette;
 use super::cell;
 use super::flock::fit;
@@ -170,6 +170,28 @@ fn sheep_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
     let Some(row) = app.selected_row() else {
         return empty_lines(app, width, palette);
     };
+    vec![
+        identity_line(app, row, width, palette),
+        lamb_line(app, row.info.id, width, palette),
+        log_row(app, width),
+        // The two path lines merged into `log_row`, one slot narrower than
+        // before; this keeps the pane's line count agreeing with
+        // `DETAIL_ROWS` without inventing a fifth field to fill it.
+        Line::from(Span::raw(String::new())),
+    ]
+}
+
+/// One sheep's identity line: the `SHEEP N` chip, its name, status and the
+/// rest of its row. Split out of [`sheep_lines`] so [`super::sheep`]'s own
+/// identity band can draw it for the sheep pane's pinned sheep, which is not
+/// always [`App::selected_row`] — a pinned sheep that has left the flock
+/// moves the selection elsewhere, and drawing that other sheep's line under
+/// a band still naming the first would be one sheep's facts presented as
+/// another's. Every figure this line reads (`App::uptime_ms`, `App::cpu_now`)
+/// takes `row`'s own id, so a caller passing the pinned sheep's row gets
+/// figures for that sheep, not the selection.
+#[must_use]
+pub(crate) fn identity_line(app: &App, row: &Row, width: u16, palette: Palette) -> Line<'static> {
     let info = &row.info;
 
     // The `SHEEP N` chip, meadow like the flock band, then the name and the
@@ -227,23 +249,15 @@ fn sheep_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
     );
     let used = columns(&chip) + columns(&facts) + columns(&status);
 
-    vec![
-        Line::from(vec![
-            Span::styled(chip, palette.band(Role::Meadow)),
-            Span::raw(facts),
-            Span::styled(status, palette.reported(row.reported())),
-            Span::raw(fit(
-                &rest,
-                width.saturating_sub(u16::try_from(used).unwrap_or(width)),
-            )),
-        ]),
-        lamb_line(app, info.id, width, palette),
-        log_row(app, width),
-        // The two path lines merged into `log_row`, one slot narrower than
-        // before; this keeps the pane's line count agreeing with
-        // `DETAIL_ROWS` without inventing a fifth field to fill it.
-        Line::from(Span::raw(String::new())),
-    ]
+    Line::from(vec![
+        Span::styled(chip, palette.band(Role::Meadow)),
+        Span::raw(facts),
+        Span::styled(status, palette.reported(row.reported())),
+        Span::raw(fit(
+            &rest,
+            width.saturating_sub(u16::try_from(used).unwrap_or(width)),
+        )),
+    ])
 }
 
 /// The lamb line: what the last walk found, and how old it is.

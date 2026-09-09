@@ -5293,6 +5293,25 @@ impl App {
         }
     }
 
+    /// The open sheep pane's own pinned sheep, or `None` once it has left
+    /// the flock.
+    ///
+    /// Reads [`SheepPane::sheep`], never [`Self::selected`]: the same
+    /// reasoning [`Self::feed_row`]'s own doc gives. `Msg::Snapshot` reseats
+    /// the selection whatever screen is showing, so a pane pinned to a
+    /// sheep that then leaves the flock would have this read a neighbour's
+    /// row while the pane still names the first — one sheep's facts
+    /// presented as another's. The identity band draws this instead of
+    /// `App::selected_row`, and any figure it shows (a CPU reading among
+    /// them) resolves through the row this returns, not the selection.
+    #[must_use]
+    pub fn sheep_pane_row(&self) -> Option<&Row> {
+        match self.sheep_pane()?.sheep() {
+            RowKey::Sheep(id) => self.flock.get(id),
+            RowKey::Group(_) | RowKey::Fold(_) | RowKey::Section(_) => None,
+        }
+    }
+
     /// [`Self::sheep_pane`]'s mutable twin, for `J`/`K` and for adopting a
     /// `Request::SheepConfig` reply in place.
     fn sheep_pane_mut(&mut self) -> Option<&mut SheepPane> {
