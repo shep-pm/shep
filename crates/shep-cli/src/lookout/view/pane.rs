@@ -1104,6 +1104,38 @@ fn merge_beside_panel(
         .collect()
 }
 
+/// The trailing "shep publishes..." line a dog-target render reserves out
+/// of its own budget before the body claims what is left: `None` for a
+/// sheep, which owns its own reload rather than handing that decision to a
+/// dog's own binary, and for a dog with no budget left to spend on it.
+///
+/// Text only; the caller decides whether reserving it costs one line of
+/// `body_budget`, since [`pane_lines`]'s plain branch and
+/// [`ungrouped_pane_with_panel_lines`] both need that decision made before
+/// this call, not after.
+fn dog_footer_text(pane: &ConfigPane, body_budget: usize) -> Option<String> {
+    let PaneTarget::Dog { name, .. } = pane.target() else {
+        return None;
+    };
+    (body_budget > 0).then(|| format!("shep publishes the change; {name} decides what to reload"))
+}
+
+/// Pushes `footer`'s line onto `lines`, muted and fit to `width`: the tail
+/// half of [`dog_footer_text`], shared the same way the reservation half is.
+fn push_footer_line(
+    lines: &mut Vec<Line<'static>>,
+    footer: Option<String>,
+    width: u16,
+    palette: Palette,
+) {
+    if let Some(text) = footer {
+        lines.push(Line::from(Span::styled(
+            format!("  {}", fit(&text, body_width(width))),
+            palette.muted(),
+        )));
+    }
+}
+
 /// Every line of the pane, top to bottom, laid out for a terminal `height`
 /// rows tall.
 ///
@@ -1165,11 +1197,7 @@ pub fn pane_lines(
     // Reserved out of the budget before rows are laid out, for the same
     // reason the top line is: a footer appended afterwards is a line
     // nothing counted.
-    let footer = match pane.target() {
-        PaneTarget::Sheep { .. } => None,
-        PaneTarget::Dog { name, .. } => (body_budget > 0)
-            .then(|| format!("shep publishes the change; {name} decides what to reload")),
-    };
+    let footer = dog_footer_text(pane, body_budget);
     if footer.is_some() {
         body_budget -= 1;
     }
@@ -1183,12 +1211,7 @@ pub fn pane_lines(
             || cursor_only(pane, palette, width, body_budget, cursor_row),
         ));
     }
-    if let Some(text) = footer {
-        lines.push(Line::from(Span::styled(
-            format!("  {}", fit(&text, body_width(width))),
-            palette.muted(),
-        )));
-    }
+    push_footer_line(&mut lines, footer, width, palette);
     lines
 }
 
@@ -1226,11 +1249,7 @@ fn ungrouped_pane_with_panel_lines(
         )));
         body_budget -= 1;
     }
-    let footer = match pane.target() {
-        PaneTarget::Sheep { .. } => None,
-        PaneTarget::Dog { name, .. } => (body_budget > 0)
-            .then(|| format!("shep publishes the change; {name} decides what to reload")),
-    };
+    let footer = dog_footer_text(pane, body_budget);
     if footer.is_some() {
         body_budget -= 1;
     }
@@ -1251,12 +1270,7 @@ fn ungrouped_pane_with_panel_lines(
             body_budget,
         ));
     }
-    if let Some(text) = footer {
-        lines.push(Line::from(Span::styled(
-            format!("  {}", fit(&text, body_width(width))),
-            palette.muted(),
-        )));
-    }
+    push_footer_line(&mut lines, footer, width, palette);
     lines
 }
 
@@ -3014,28 +3028,13 @@ mod tests {
     #[test]
     fn a_dogs_panel_draws_beside_its_field_list_at_the_design_target() {
         let app = fixtures::app_in_dog_pane();
-        let pane = app.config_pane().expect("the pane is open");
-        let at_target = text_of(&pane_lines(
-            pane,
-            None,
-            fixtures::plain(),
-            DESIGN_TARGET_WIDTH,
-            48,
-        ));
         assert!(
-            at_target.iter().any(|line| line.contains("FOCUSED")),
-            "the panel never drew for a dog at the design target: {at_target:?}"
+            fixtures::config_pane_draws_a_panel(&app, DESIGN_TARGET_WIDTH),
+            "the panel never drew for a dog at the design target"
         );
-        let below_target = text_of(&pane_lines(
-            pane,
-            None,
-            fixtures::plain(),
-            DESIGN_TARGET_WIDTH - 1,
-            48,
-        ));
         assert!(
-            !below_target.iter().any(|line| line.contains("FOCUSED")),
-            "a fixed split must not invent a rule below the design target: {below_target:?}"
+            !fixtures::config_pane_draws_a_panel(&app, DESIGN_TARGET_WIDTH - 1),
+            "a fixed split must not invent a rule below the design target"
         );
     }
 
@@ -3046,23 +3045,16 @@ mod tests {
     #[test]
     fn a_dogs_panel_has_no_impact_region() {
         let app = fixtures::app_in_dog_pane();
-        let pane = app.config_pane().expect("the pane is open");
-        let lines = text_of(&pane_lines(
-            pane,
-            None,
-            fixtures::plain(),
-            DESIGN_TARGET_WIDTH,
-            48,
-        ));
+        let panel = fixtures::config_pane_panel_for_tests(&app, DESIGN_TARGET_WIDTH);
         assert!(
-            lines.iter().any(|line| line.contains("FOCUSED")),
-            "the panel must actually be drawn for its own absence to mean anything: {lines:?}"
+            panel.iter().any(|line| line.contains("FOCUSED")),
+            "the panel must actually be drawn for its own absence to mean anything: {panel:?}"
         );
         assert!(
-            !lines
+            !panel
                 .iter()
                 .any(|line| line.contains("pick the timing when you close the pane")),
-            "a dog's cost is always None, so no impact sentence should render: {lines:?}"
+            "a dog's cost is always None, so no impact sentence should render: {panel:?}"
         );
     }
 
@@ -3071,21 +3063,13 @@ mod tests {
     #[test]
     fn a_dogs_panel_layout_draws_no_tab_row() {
         let app = fixtures::app_in_dog_pane();
-        let pane = app.config_pane().expect("the pane is open");
-        let lines = text_of(&pane_lines(
-            pane,
-            None,
-            fixtures::plain(),
-            DESIGN_TARGET_WIDTH,
-            48,
-        ));
         assert!(
-            lines.iter().any(|line| line.contains("FOCUSED")),
-            "the panel must actually be drawn for its own absence to mean anything: {lines:?}"
+            fixtures::config_pane_draws_a_panel(&app, DESIGN_TARGET_WIDTH),
+            "the panel must actually be drawn for its own absence to mean anything"
         );
         assert!(
-            !lines.iter().any(|line| line.contains("tab next group")),
-            "a dog has no groups to tab through: {lines:?}"
+            !fixtures::config_pane_draws_a_tab_row(&app, DESIGN_TARGET_WIDTH),
+            "a dog has no groups to tab through"
         );
     }
 }

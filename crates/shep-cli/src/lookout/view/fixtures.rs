@@ -1368,6 +1368,36 @@ pub fn config_pane_tab_row_for_tests(app: &App, width: u16) -> String {
         .expect("the pane draws a tab row at this width")
 }
 
+/// Whether the pane draws a tab row at `width`, without panicking when it
+/// does not: the non-panicking half of [`config_pane_tab_row_for_tests`],
+/// for a caller (a dog pane, which has no groups) asserting the row's
+/// absence rather than reading its content.
+pub fn config_pane_draws_a_tab_row(app: &App, width: u16) -> bool {
+    let pane = app.config_pane().expect("the pane is open");
+    let lines =
+        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), width, 0);
+    lines
+        .iter()
+        .map(rendered)
+        .any(|line| line.contains("tab next group"))
+}
+
+/// Whether the pane's own merged frame includes the explanation panel at
+/// `width`: the wiring question `pane_lines` answers by width alone, which
+/// [`config_pane_panel_for_tests`] cannot: that helper calls `panel_lines`
+/// directly, and `panel_lines` draws unconditionally, carrying none of
+/// `pane_lines`' own decision about whether the terminal is wide enough to
+/// show it at all.
+pub fn config_pane_draws_a_panel(app: &App, width: u16) -> bool {
+    let pane = app.config_pane().expect("the pane is open");
+    let lines =
+        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), width, 0);
+    lines
+        .iter()
+        .map(rendered)
+        .any(|line| line.contains("FOCUSED"))
+}
+
 /// [`app_in_sheep_pane`], named for the one test that cares the palette
 /// carries no colour. [`app_in_sheep_pane`] already builds on [`plain`], so
 /// this alias adds no behaviour; it exists to make that guarantee visible

@@ -2347,6 +2347,30 @@ mod tests {
         assert_eq!(pane.edited_section_with(&edits), None);
     }
 
+    /// A stray env edit in a set that also carries a field edit must not
+    /// revive the old "one bad entry aborts the whole batch" bug: skipping
+    /// the env edit and an early return on any non-field entry both leave
+    /// `an_env_edit_is_ignored_by_a_dog_section` green, since an env-only
+    /// set returns `None` either way. Only a mixed set tells them apart.
+    #[test]
+    fn a_field_edit_lands_even_when_the_same_batch_carries_an_env_edit() {
+        let pane = bark_pane();
+        let mut edits = Edits::default();
+        edits.set(field("poll", serde_json::json!("30s")), None);
+        edits.set(
+            PaneEdit::SetEnv {
+                key: "SECRET".to_owned(),
+                value: None,
+            },
+            None,
+        );
+        let out = pane
+            .edited_section_with(&edits)
+            .expect("the field edit alone should still write");
+        assert!(out.contains("poll = \"30s\""), "{out}");
+        assert!(!out.contains("SECRET"), "{out}");
+    }
+
     /// A section here would send a sheep's config out through a dog's
     /// door.
     #[test]
