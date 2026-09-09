@@ -838,6 +838,43 @@ pub(crate) fn sheep_fields(config: &AppConfig) -> (FieldSet, Map<String, Value>)
     (fields, values)
 }
 
+/// `raw` resolved through `key`'s own grammar in `fields`, when `key` is one
+/// of shep-core's unit types: a bare number is annotated with the unit an
+/// operator would otherwise have to already know the convention for.
+///
+/// Shared by [`ConfigPane::display_value`] and the sheep pane's read-only
+/// column ([`super::view::sheep::field_value_text`]), the same move
+/// [`sheep_fields`] made for the field set itself: two rows reading the same
+/// value off two different screens and disagreeing on its units is exactly
+/// the divergence a shared function forecloses rather than a pair of tests
+/// happening to agree.
+///
+/// Display only: [`ConfigPane::value`] is what an editor still seeds and
+/// sends, so a suffix minted here never travels back out as part of a
+/// value.
+///
+/// A `raw` that fails to parse, including whatever is mid-edit, comes back
+/// unchanged: this has no business guessing at a string shep is about to
+/// refuse on its own.
+///
+/// Only a bare number is annotated. A value naming its own unit is the
+/// operator's spelling and survives as written, so a `60s` on disk is never
+/// redrawn as the `1m` its own `Display` would canonicalize it to.
+pub(crate) fn resolved_display(fields: &FieldSet, key: &str, raw: &str) -> String {
+    if raw.is_empty() || !raw.bytes().all(|byte| byte.is_ascii_digit()) {
+        return raw.to_owned();
+    }
+    match fields.by_key(key).and_then(|field| field.value_kind) {
+        Some(ValueKind::MemSize) => raw
+            .parse::<MemSize>()
+            .map_or_else(|_| raw.to_owned(), |_| format!("{raw} B")),
+        Some(ValueKind::UpDuration) => raw
+            .parse::<UpDuration>()
+            .map_or_else(|_| raw.to_owned(), |_| format!("{raw}ms")),
+        None => raw.to_owned(),
+    }
+}
+
 impl ConfigPane {
     /// A pane over one sheep's config, read off the Flockfile schema.
     ///
@@ -1397,7 +1434,7 @@ impl ConfigPane {
         let shown = match value.as_value() {
             Value::Null => "(unset)".to_owned(),
             _ if secret => "<set>".to_owned(),
-            Value::String(text) => self.resolved_display(key, text),
+            Value::String(text) => resolved_display(&self.fields, key, text),
             other => other.to_string(),
         };
         // `ApplyGroup` is `#[non_exhaustive]`, so the wildcard is required
@@ -1466,34 +1503,7 @@ impl ConfigPane {
     /// convention for.
     #[must_use]
     pub fn display_value(&self, key: &str) -> String {
-        self.resolved_display(key, &self.value(key))
-    }
-
-    /// `raw` resolved through `key`'s own grammar, when `key` is one of
-    /// shep-core's unit types. Display only: [`Self::value`] is what an
-    /// editor still seeds and sends, so a suffix minted here never travels
-    /// back out as part of a value.
-    ///
-    /// A `raw` that fails to parse, including whatever is mid-edit, comes
-    /// back unchanged: this has no business guessing at a string shep is
-    /// about to refuse on its own.
-    ///
-    /// Only a bare number is annotated. A value naming its own unit is the
-    /// operator's spelling and survives as written, so a `60s` on disk is
-    /// never redrawn as the `1m` its own `Display` would canonicalize it to.
-    fn resolved_display(&self, key: &str, raw: &str) -> String {
-        if raw.is_empty() || !raw.bytes().all(|byte| byte.is_ascii_digit()) {
-            return raw.to_owned();
-        }
-        match self.fields.by_key(key).and_then(|field| field.value_kind) {
-            Some(ValueKind::MemSize) => raw
-                .parse::<MemSize>()
-                .map_or_else(|_| raw.to_owned(), |_| format!("{raw} B")),
-            Some(ValueKind::UpDuration) => raw
-                .parse::<UpDuration>()
-                .map_or_else(|_| raw.to_owned(), |_| format!("{raw}ms")),
-            None => raw.to_owned(),
-        }
+        resolved_display(&self.fields, key, &self.value(key))
     }
 
     /// What changing `key` costs.

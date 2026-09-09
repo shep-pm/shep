@@ -14,7 +14,7 @@ use serde_json::{Map, Value};
 use shep_core::protocol::SheepConfigView;
 
 use super::super::app::{App, CPU_CEILING_FLOOR, HISTORY, RowKey};
-use super::super::field::Field;
+use super::super::field::{Field, FieldSet};
 use super::super::pane;
 use super::super::pane_sheep::{SheepPane, scale_top, window};
 use super::super::theme::Palette;
@@ -102,7 +102,7 @@ fn column_body(view: &SheepConfigView, palette: Palette) -> (Vec<Line<'static>>,
             groups.push(label);
         }
         let pending = view.pending.iter().any(|key| key == &field.key);
-        lines.push(field_row_line(field, &values, pending, palette));
+        lines.push(field_row_line(&fields, field, &values, pending, palette));
     }
     push_group_header(&mut lines, "env", palette);
     for key in &view.env_keys {
@@ -163,12 +163,13 @@ pub(crate) fn column_len(config: Option<&SheepConfigView>) -> usize {
 /// pane this column never opens; a value here is what `shep edit` already
 /// shows, laid out for a screen with no cursor to carry.
 fn field_row_line(
+    fields: &FieldSet,
     field: &Field,
     values: &Map<String, Value>,
     pending: bool,
     palette: Palette,
 ) -> Line<'static> {
-    let raw = field_value_text(field, values);
+    let raw = field_value_text(fields, field, values);
     let flag = if pending { "!" } else { "" };
     let note = if pending { "awaits respawn" } else { "" };
     let value_w = usize::from(COLUMN_WIDTH).saturating_sub(usize::from(COLUMN_NAME_W) + 2);
@@ -199,15 +200,16 @@ fn field_row_line(
     Line::from(spans)
 }
 
-/// `field`'s current value, the way this column shows it: `(unset)` for a
-/// JSON `null` or a key the config never carried, `(default)` when what is
-/// there is exactly the schema's own default, else the value itself.
-///
-/// Bare, unlike [`ConfigPane::display_value`](super::super::pane::ConfigPane::display_value):
-/// no `MemSize`/`UpDuration` suffix. This column only ever reads, so the
-/// digits an operator would recognise from their own Flockfile are enough;
-/// resolving the grammar is the editing pane's job.
-fn field_value_text(field: &Field, values: &Map<String, Value>) -> String {
+/// `field`'s current value, the way this column shows it: `<set>` for a
+/// [`Field::secret`] one (never the value, the same guard
+/// [`ConfigPane::field_line`](super::super::pane::ConfigPane) draws its own
+/// row through), `(unset)` for a JSON `null` or a key the config never
+/// carried, `(default)` when what is there is exactly the schema's own
+/// default, else [`pane::resolved_display`]'s answer: a bare
+/// `MemSize`/`UpDuration` number annotated with its unit, the same as
+/// [`ConfigPane::display_value`](super::super::pane::ConfigPane::display_value)
+/// draws for the same field.
+fn field_value_text(fields: &FieldSet, field: &Field, values: &Map<String, Value>) -> String {
     let raw = match values.get(&field.key) {
         None | Some(Value::Null) => return "(unset)".to_owned(),
         Some(Value::String(text)) => text.clone(),
@@ -215,10 +217,12 @@ fn field_value_text(field: &Field, values: &Map<String, Value>) -> String {
         Some(Value::Number(number)) => number.to_string(),
         Some(other) => other.to_string(),
     };
-    if field.default.as_deref() == Some(raw.as_str()) {
+    if field.secret {
+        "<set>".to_owned()
+    } else if field.default.as_deref() == Some(raw.as_str()) {
         "(default)".to_owned()
     } else {
-        raw
+        pane::resolved_display(fields, &field.key, &raw)
     }
 }
 
@@ -1088,6 +1092,65 @@ mod tests {
             row.starts_with("!exp_backoff_restart_delay  "),
             "the flagged name and its separator must survive whole: {row:?}"
         );
+    }
+
+    /// [`field_value_text`] resolves a bare `MemSize` number the same way
+    /// [`ConfigPane::display_value`](super::super::pane::ConfigPane::display_value)
+    /// does for the editing pane: both read [`pane::resolved_display`], so a
+    /// `max_memory` that reads `52428800` on one screen cannot read
+    /// `52428800 B` on the other.
+    #[test]
+    fn the_column_and_the_editing_pane_resolve_the_same_mem_size_units() {
+        use shep_core::values::MemSize;
+
+        let mut config = AppConfig {
+            name: "web".to_owned(),
+            ..AppConfig::default()
+        };
+        // Not a multiple of any binary unit, so `MemSize`'s own `Display`
+        // falls through to the bare-digit branch `resolved_display` exists
+        // to annotate; a round number like `50M` would serialize with its
+        // unit already and prove nothing.
+        config.max_memory = Some(MemSize::from_bytes(1_234_567));
+        let column_view = SheepConfigView::new(config.clone(), Vec::new(), Vec::new());
+        let editing_view = SheepConfigView::new(config, Vec::new(), Vec::new());
+
+        let row = field_row_of(&column_view, "max_memory");
+        let pane = crate::lookout::pane::ConfigPane::sheep(editing_view);
+        let resolved = pane.display_value("max_memory");
+        assert!(
+            resolved.ends_with(" B"),
+            "setup: the fixture must actually exercise the unit suffix: {resolved:?}"
+        );
+        assert!(
+            row.contains(&resolved),
+            "column row {row:?} does not carry the editing pane's own {resolved:?}"
+        );
+    }
+
+    /// [`Field::secret`] guards the sheep column the same way
+    /// [`ConfigPane`](super::super::pane::ConfigPane)'s own row draws it: the
+    /// value is never rendered, only that there is one. No Flockfile field
+    /// carries the flag today, so this is unit-level, over a fabricated
+    /// field rather than a real config.
+    #[test]
+    fn a_secret_field_renders_set_and_never_its_value() {
+        use crate::lookout::field::FieldKind;
+
+        let field = Field {
+            key: "webhook".to_owned(),
+            help: String::new(),
+            group: None,
+            kind: FieldKind::Text,
+            value_kind: None,
+            default: None,
+            secret: true,
+            editable: true,
+        };
+        let fields = FieldSet::from_fields(vec![field.clone()], &[]);
+        let mut values = Map::new();
+        values.insert("webhook".to_owned(), Value::String("hunter2".to_owned()));
+        assert_eq!(field_value_text(&fields, &field, &values), "<set>");
     }
 
     /// The regression Tasks 7 and 8 both shipped once each: a pane pinned to
