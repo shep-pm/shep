@@ -270,11 +270,8 @@ mod tests {
         base64_encode(input.as_bytes())
     }
 
-    // No `""` here: `base64_decode` refuses an empty input outright (its own
-    // doc comment), so `""` is not a value this round trip can carry, and
-    // the brief's test list assumed otherwise. Grepped, not guessed: run
-    // with it included and this test panics with `left: None, right:
-    // Some([])`, decode rejecting exactly what it was built to reject.
+    // No `""` here: `base64_decode` refuses an empty input outright (its
+    // own doc comment), so `""` is not a value this round trip can carry.
     #[test]
     fn base64_encode_round_trips_through_the_decoder_beside_it() {
         for input in ["a", "ab", "abc", "alice:s3cret", "hunter2"] {
