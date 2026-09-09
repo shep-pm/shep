@@ -385,7 +385,7 @@ fn draw_divider(top: u16, area: Rect, buffer: &mut Buffer, palette: Palette) {
 /// Reads [`SheepPane::feed_sheep`]'s tail through [`App::feed`], never
 /// [`App::selected`]: the same rule [`draw`]'s own identity band, charts and
 /// config column already follow, now enforced one level up too, in
-/// [`App::feed_row`] itself — `app.feed()` already answers with the pinned
+/// [`App::feed_row`] itself: `app.feed()` already answers with the pinned
 /// sheep's own lines while this pane is open, not the dashboard's selection.
 ///
 /// No scrolling: unlike [`super::bleats_full::draw`], this column has no
@@ -412,7 +412,7 @@ fn draw_feed(
 
 /// One feed line: the stream tag, muted the same way
 /// [`super::bleats::feed_lines`] draws it (stderr is most runtimes' default,
-/// not `--bark`), then the text, truncated rather than wrapped — this
+/// not `--bark`), then the text, truncated rather than wrapped, since this
 /// column has no row budget to spend on a second line for one that
 /// overruns.
 fn feed_line(line: &TailLine, palette: Palette) -> Line<'static> {
@@ -502,7 +502,7 @@ fn write_feed_row(buffer: &mut Buffer, area: Rect, row: u16, line: &Line<'static
 ///
 /// `area` is the whole pane body, under the title band [`super::mod`]'s own
 /// `draw` already painted and over the status bar it paints after this
-/// returns — not a sub-rect of either, the way every other full-screen
+/// returns, not a sub-rect of either, the way every other full-screen
 /// pane's own `draw` is handed one.
 pub fn draw(app: &App, pane: &SheepPane, area: Rect, buffer: &mut Buffer) {
     if area.height == 0 {
@@ -710,7 +710,7 @@ fn draw_charts(
 
 /// [`ChartTier::CpuOnly`]'s own rows: the CPU chart, unchanged, and in
 /// [`MEM_HEADER_ROW`]'s own slot, [`mem_line_text`]'s single line in place
-/// of the memory chart's header and five rows — memory still has a gauge
+/// of the memory chart's header and five rows: memory still has a gauge
 /// to fall back on; the CPU chart is the more diagnostic of the two, so it
 /// is the one that stays.
 fn draw_cpu_only(
@@ -1189,8 +1189,8 @@ mod tests {
     /// it: a 64M limit against a 10M peak scales to a 100M ceiling, 20M per
     /// row, and 64 is 4M from the row at 60 but 16M from the row at 80.
     /// Rounding down (the old behaviour) picked 80 and drew the ceiling
-    /// line above every real reading under 80M, so a sheep at 70M — over
-    /// its own 64M limit — drew below the line instead of above it.
+    /// line above every real reading under 80M, so a sheep at 70M (over
+    /// its own 64M limit) drew below the line instead of above it.
     #[test]
     fn the_marked_row_is_the_nearest_one_not_the_floor() {
         let history = [10 << 20; 20];
@@ -1609,8 +1609,8 @@ mod tests {
 
     /// The regression Tasks 7 and 8 both shipped once each: a pane pinned to
     /// a sheep the flock table has since reseated its selection away from.
-    /// The column reads `SheepPane::config` — set only by `adopt_config` and
-    /// `set_sheep`, never by the reseat — so it has no equivalent bug
+    /// The column reads `SheepPane::config` (set only by `adopt_config` and
+    /// `set_sheep`, never by the reseat), so it has no equivalent bug
     /// surface to begin with; this pins that a later change cannot grow one
     /// by threading `App::selected` into the column instead.
     #[test]
@@ -1669,7 +1669,7 @@ mod tests {
     /// pane's own pinned `BleatsPane`, and never reaches for `App::selected`
     /// itself: this pins that half. It does *not* pin `App::feed_row`'s own
     /// scoping to the pane's pinned sheep rather than the reseated
-    /// selection — a fixture with no polling loop cannot re-fetch the tail
+    /// selection: a fixture with no polling loop cannot re-fetch the tail
     /// after the reseat below, so the tail this test asserts on is exactly
     /// the one `Msg::Bleats` injected before it, whatever `feed_row` would
     /// answer now. `the_feed_row_follows_the_sheep_panes_own_pinned_sheep_when_the_selection_moves`

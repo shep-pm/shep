@@ -184,7 +184,7 @@ fn sheep_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
 /// One sheep's identity line: the `SHEEP N` chip, its name, status and the
 /// rest of its row. Split out of [`sheep_lines`] so [`super::sheep`]'s own
 /// identity band can draw it for the sheep pane's pinned sheep, which is not
-/// always [`App::selected_row`] — a pinned sheep that has left the flock
+/// always [`App::selected_row`]: a pinned sheep that has left the flock
 /// moves the selection elsewhere, and drawing that other sheep's line under
 /// a band still naming the first would be one sheep's facts presented as
 /// another's. Every figure this line reads (`App::uptime_ms`, `App::cpu_now`)

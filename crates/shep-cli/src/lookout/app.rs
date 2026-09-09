@@ -2703,7 +2703,7 @@ impl App {
 
     /// `J`/`K` from inside the sheep pane: steps to the next or previous
     /// sheep the flock table would show, skipping a dog, a group header and
-    /// a fold header — none of which is a sheep the pane can open on — and
+    /// a fold header (none of which is a sheep the pane can open on), and
     /// asks for the new sheep's config in the same step.
     ///
     /// Silent past either end of the list, and silent if the pane's own
@@ -2751,7 +2751,7 @@ impl App {
     /// leaving the pane; `x`/`R`/`L` arm a confirm against the pane's own
     /// pinned sheep ([`Self::arm_sheep_pane`]), `↵` confirms it and any
     /// other key cancels it, the same as the dashboard's own armed check
-    /// just below in [`Self::on_key`] — needed here too, in its own copy,
+    /// just below in [`Self::on_key`], needed here too, in its own copy,
     /// because `on_key` routes to this method ahead of that check, so an
     /// action armed from inside this pane never reaches it. `j`/`k` and
     /// `g`/`G` scroll the config/env column through its own `Viewport`.
@@ -4369,9 +4369,9 @@ impl App {
     /// Every refusal happens here rather than at confirm time, so an operator
     /// never answers a question that was never going to be honoured. The
     /// ladder is [`Self::confirm_refusal`]'s own gate and link, then nothing
-    /// selected, then one action already in flight — nothing selected first,
-    /// since a keypress with no target asked a question that was never about
-    /// the in-flight action at all.
+    /// selected, then one action already in flight, but this method checks
+    /// nothing selected first, since a keypress with no target asked a
+    /// question that was never about the in-flight action at all.
     fn arm(&mut self, verb: ActionVerb) -> Effect {
         if let Some(text) = self.confirm_refusal() {
             self.notice = Some(Notice { text, grave: true });
@@ -5571,7 +5571,7 @@ impl App {
     /// reasoning [`Self::feed_row`]'s own doc gives. `Msg::Snapshot` reseats
     /// the selection whatever screen is showing, so a pane pinned to a
     /// sheep that then leaves the flock would have this read a neighbour's
-    /// row while the pane still names the first — one sheep's facts
+    /// row while the pane still names the first, one sheep's facts
     /// presented as another's. The identity band draws this instead of
     /// `App::selected_row`, and any figure it shows (a CPU reading among
     /// them) resolves through the row this returns, not the selection.
@@ -6251,7 +6251,7 @@ mod tests {
 
     /// `x` arms against the pane's own pinned sheep (`web`, id 1), the same
     /// target the dashboard's own `arm` would reach for the same cursor
-    /// position — the two agree here because nothing has moved the
+    /// position. The two agree here because nothing has moved the
     /// selection out from under the pane yet.
     #[test]
     fn x_arms_a_confirm_against_the_panes_pinned_sheep() {
@@ -6295,7 +6295,7 @@ mod tests {
     }
 
     /// Every key but `↵` and `q` cancels an action armed from inside the
-    /// pane, the same rule the dashboard's own armed check applies — needed
+    /// pane, the same rule the dashboard's own armed check applies, needed
     /// in the pane's own copy, since `on_key` routes here ahead of that
     /// check.
     #[test]
@@ -6435,7 +6435,7 @@ mod tests {
 
     /// `↵` confirms an armed action, correctly: a question awaiting an
     /// answer keeps `↵`. But once sent (`Stage::Sent`), it is in flight and
-    /// no longer asking anything — a regression that let `Stage::Sent` keep
+    /// no longer asking anything, and a regression that let `Stage::Sent` keep
     /// swallowing `↵` (rather than falling through, here, to the dashboard's
     /// own `Confirm` handler, which opens the pane) would pass
     /// `a_second_confirm_does_not_resend_an_action_already_in_flight` above
@@ -6458,8 +6458,8 @@ mod tests {
     /// (`reseat`'s own empty-flock-view branch), then an action key. Before
     /// this fix, `confirm_refusal` checked "one already in flight" ahead of
     /// `arm`'s own "nothing selected", so this exact sequence told the
-    /// operator the wrong thing — the in-flight action, not the empty
-    /// selection the keypress actually asked about.
+    /// operator the wrong thing (the in-flight action, not the empty
+    /// selection the keypress actually asked about).
     #[test]
     fn arm_with_nothing_selected_refuses_that_and_not_the_in_flight_action() {
         let mut app = allowed();
