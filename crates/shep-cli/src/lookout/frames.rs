@@ -1302,6 +1302,12 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
                             readers: Vec::new(),
                         },
                     ],
+                    // Every row's `readers` comes off the muster roll, and
+                    // so does this: a model carrying one without the other
+                    // is a state `secrets::model` cannot produce, and the
+                    // frame would name a reader under a line saying no roll
+                    // was ever written.
+                    roll_age: Some(Duration::from_secs(184)),
                     allow_read: true,
                     ..SecretsModel::default()
                 })),
@@ -2892,6 +2898,33 @@ mod tests {
         assert!(
             revealed.contains("visible"),
             "a revealed row should show a countdown, not the unrevealed dash: {revealed:?}"
+        );
+    }
+
+    /// `secrets::model` reads `readers` and `roll_age` off the same muster
+    /// roll, so a frame naming a reader and then saying no roll exists is a
+    /// state the loader cannot produce. The snapshot pins the frame against
+    /// its own committed copy, so the contradiction stays green there and
+    /// reaches `docs/lookout/` and the published page.
+    #[test]
+    fn the_secrets_scene_does_not_deny_the_roll_its_readers_came_from() {
+        let text = render_text(&scene(Scene::Secrets).1);
+        let read_by = text
+            .lines()
+            .find(|line| line.contains("DB_PASSWORD"))
+            .expect("the secrets scene draws a DB_PASSWORD row");
+
+        assert!(
+            read_by.contains("1 (1 online)"),
+            "the scene's own row names a reader: {read_by:?}"
+        );
+        assert!(
+            !text.contains("no muster roll yet"),
+            "and so cannot also say the roll it came from was never written"
+        );
+        assert!(
+            text.contains("READ BY as of the roll"),
+            "it says how old the roll is instead"
         );
     }
 

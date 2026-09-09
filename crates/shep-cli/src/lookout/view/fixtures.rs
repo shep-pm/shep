@@ -1476,6 +1476,10 @@ fn app_with_one_row_and_readers(readers: Vec<Reader>) -> App {
                 byte_len: Some(9),
                 readers,
             }],
+            // Readers and the age both come off the muster roll, so a
+            // fixture with one and not the other is a state the loader
+            // cannot reach.
+            roll_age: Some(Duration::from_secs(184)),
             ..SecretsModel::default()
         })),
     });

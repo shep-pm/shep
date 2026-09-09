@@ -1106,7 +1106,7 @@ The secrets pane, opened with `S`. DB_PASSWORD is revealed and named by one read
 [0m[7m[38;5;221m ██ SECRETS   flock-wide values a Flockfile refers to and never carries                                                                                         [0m
 [0m[38;5;245mstore $SHEP_HOME/secrets.json · not encrypted · never printed to a log, never carried in a bleat · read at spawn, not now[0m                                       [0m
 [0m[38;5;245mreveal  [secrets] allow_read = true in shep.toml · change  lookout.allow_control = true[0m                                                                         [0m
-[0m[38;5;245mno muster roll yet: READ BY and WHO READS IT show nothing until the shepherd writes one[0m                                                                         [0m
+[0m[38;5;245mREAD BY as of the roll, read 3m 4s ago[0m                                                                                                                          [0m
 [0m[38;5;245mall[0m  [0m[38;5;245mci[0m  [0m[38;5;221m[production][0m                                                                                                  [0m[38;5;245m3 environments in this store · ←/→ or tab[0m
   [0m[38;5;245mKEY                         VALUE                         IN FORCE      SET IN                READ BY               LANDS                                     [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
