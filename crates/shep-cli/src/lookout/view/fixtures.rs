@@ -1202,6 +1202,25 @@ pub fn config_pane_title_band_for_tests(app: &App, width: u16) -> String {
     rendered(&lines[0])
 }
 
+/// The pane's own tab row, alone: the one line naming every group in
+/// [`shep_core::config::GROUP_ORDER`], found by its own `tab next group`
+/// phrase rather than by a fixed index, so a chrome line gained or lost
+/// above it does not silently move which row this reads.
+///
+/// # Panics
+///
+/// Panics if the pane is closed or draws no tab row at `width`.
+pub fn config_pane_tab_row_for_tests(app: &App, width: u16) -> String {
+    let pane = app.config_pane().expect("the pane is open");
+    let lines =
+        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), width, 0);
+    lines
+        .iter()
+        .map(rendered)
+        .find(|line| line.contains("tab next group"))
+        .expect("the pane draws a tab row at this width")
+}
+
 /// The shepherd's refusal of one write, for the tests about what a reply
 /// says once the pane that asked for it has gone.
 pub fn a_refusal() -> RequestError {

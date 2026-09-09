@@ -196,9 +196,26 @@ fn field_line(
         Some(Lock::NoWidget) => '~',
         None => ' ',
     };
-    let mut prefix = format!("{}{lock}", mark(selected));
-    prefix.push_str(&fit(&format!("{flag}{}", field.key), key_w));
+    let mut rest = String::from(lock);
+    rest.push_str(&fit(&format!("{flag}{}", field.key), key_w));
     let cost_cell = (cost_w > 0).then(|| fit(pane.cost(&field.key).map_or("", cost_label), cost_w));
+
+    // The selected row's own paint: a paper-2 ground the full width of the
+    // line, and the mark in column 1 in butter rather than plain text.
+    // `palette.ground()` is the same call the flock table's selected row
+    // makes; `palette.attention()` is `theme.rs`'s own butter, the same
+    // colour an edited value already borrows a few lines below.
+    let ground = if selected {
+        palette.ground()
+    } else {
+        Style::default()
+    };
+    let mark_style = if selected {
+        palette.attention().patch(ground)
+    } else {
+        Style::default()
+    };
+    let mark_span = Span::styled(mark(selected), mark_style);
 
     // A filed edit, with nothing being typed over it right now: the value
     // cell becomes `old -> new` instead of the stored value alone. Never
@@ -209,7 +226,7 @@ fn field_line(
         .then(|| pane.edited_value(&field.key))
         .flatten();
     let Some(new_value) = edited else {
-        let mut text = prefix;
+        let mut text = rest;
         if value_w > 0 {
             text.push_str("  ");
             text.push_str(&fit(&value, value_w));
@@ -221,28 +238,32 @@ fn field_line(
         // Muting reinforces the glyph but carries no fact alone: a `plain`
         // palette renders muted as nothing, so style could not tell a
         // locked row from an editable one on its own.
-        return if field.editable {
-            Line::from(Span::raw(text))
+        let rest_style = if field.editable {
+            Style::default()
         } else {
-            Line::from(Span::styled(text, palette.muted()))
+            palette.muted()
         };
+        return Line::from(vec![
+            mark_span,
+            Span::styled(text, rest_style.patch(ground)),
+        ]);
     };
     let new_value = if field.secret && new_value != "(unset)" {
         "<set>".to_owned()
     } else {
         new_value
     };
-    let mut spans = vec![Span::raw(prefix)];
+    let mut spans = vec![mark_span, Span::styled(rest, ground)];
     if value_w > 0 {
-        spans.push(Span::raw("  "));
+        spans.push(Span::styled("  ", ground));
         spans.push(Span::styled(
             fit(&format!("{value} -> {new_value}"), value_w),
-            palette.attention(),
+            palette.attention().patch(ground),
         ));
     }
     if let Some(cost) = cost_cell {
-        spans.push(Span::raw("  "));
-        spans.push(Span::raw(cost));
+        spans.push(Span::styled("  ", ground));
+        spans.push(Span::styled(cost, ground));
     }
     Line::from(spans)
 }
@@ -588,21 +609,33 @@ fn has_groups(pane: &ConfigPane) -> bool {
         .any(|field| field.group.is_some())
 }
 
-/// The pane's own reverse-video summary band: the target's name and how
-/// many edits are filed and unsent.
+/// The pane's own reverse-video summary band: which target's config this
+/// is, and how many edits are filed and unsent.
+///
+/// The only line that names the target: [`title_line`] duplicated it
+/// directly underneath, and the design's own row allocation gives the
+/// sheep or dog's name exactly one row.
 ///
 /// Never the shepherd's own word for a field that is written and parked:
 /// `pending` is what `shep flock`'s CFG column and this same pane's `!`
 /// flag already mean, and a second meaning for the same word on the
 /// screen an operator moves to next is exactly the confusion this counts
 /// around instead.
+///
+/// Nothing rather than a zero, the same rule `view::detail`'s `cfg` cell
+/// follows: an untouched pane names no count at all, not `0 edits`.
 fn title_band_line(pane: &ConfigPane, palette: Palette, width: u16) -> Line<'static> {
-    let count = pane.edits().len();
-    let edits = match count {
-        1 => "1 edit".to_owned(),
-        n => format!("{n} edits"),
+    let kind = match pane.target() {
+        PaneTarget::Sheep { .. } => "sheep config",
+        PaneTarget::Dog { .. } => "dog config",
     };
-    let text = format!("{}  {edits}", pane.target().name());
+    let mut text = format!("{}  ({kind})", pane.target().name());
+    let count = pane.edits().len();
+    match count {
+        0 => {}
+        1 => text.push_str("  1 edit"),
+        n => text.push_str(&format!("  {n} edits")),
+    }
     Line::from(Span::styled(
         cell::band(&text, usize::from(width)),
         palette.band(Role::Butter),
@@ -657,28 +690,35 @@ fn hairline_line(palette: Palette, width: u16) -> Line<'static> {
 fn column_header_line(palette: Palette, width: u16) -> Line<'static> {
     let (key_w, value_w, cost_w) = widths(body_width(width));
     let mut text = String::from("  ");
-    text.push_str(&fit("KEY", key_w));
+    text.push_str(&fit("FIELD", key_w));
     if value_w > 0 {
         text.push_str("  ");
         text.push_str(&fit("VALUE", value_w));
     }
     if cost_w > 0 {
         text.push_str("  ");
-        text.push_str(&fit("COST", cost_w));
+        text.push_str(&fit("LANDS", cost_w));
     }
     Line::from(Span::styled(text, palette.muted()))
 }
 
-/// The pane's own key hints, drawn once at the foot rather than repeated
-/// per group: the status bar's own hint already names `esc`/`tab`/space`
-/// for the screen as a whole, and this line is the pane's local footnote
-/// on top of it.
+/// The pane's own marker legend, drawn once at the foot rather than
+/// repeated per group: the status bar's own hint already names every key
+/// this pane answers to (`view::status::pane_hint`), so this line explains
+/// the glyphs instead, adapted from the design's own legend
+/// (`docs/lookout/design-files/README.md`, the 1e frame's row 45) to the
+/// four the pane actually draws (see [`field_line`]).
+///
+/// Names no key: `status.rs`'s `esc write & close` is the one place that
+/// wording lives, and a second copy here would only need to be kept in
+/// sync with it.
 fn legend_line(palette: Palette, width: u16) -> Line<'static> {
     Line::from(Span::styled(
         format!(
             "  {}",
             fit(
-                "enter edit   space cycle   tab group   u undo   esc save & close",
+                "= read-only, set it in the Flockfile   ~ no widget for this shape   \
+                 ! parked, awaits a respawn   * overridden   -> changed by you, not yet written",
                 body_width(width)
             )
         ),
@@ -690,9 +730,13 @@ fn legend_line(palette: Palette, width: u16) -> Line<'static> {
 /// filed under, and what it will send.
 ///
 /// A field edit shows `old -> new`, the same cell [`field_line`] draws for
-/// one still visible in the active group; an env edit shows only that it
-/// is set or removed, since the pane never holds an env value to show
-/// either side of.
+/// one still visible in the active group, and masks a secret field's
+/// values the same way that cell does: nothing today reaches either path,
+/// since the Flockfile schema marks no field secret and a dog never
+/// carries a group, but a dog's own schema can mark one and this section
+/// draws every group's edits regardless of which is active. An env edit
+/// shows only that it is set or removed, since the pane never holds an
+/// env value to show either side of.
 fn pending_edit_line(
     pane: &ConfigPane,
     edit: &PaneEdit,
@@ -701,8 +745,25 @@ fn pending_edit_line(
 ) -> Line<'static> {
     let text = match edit {
         PaneEdit::Set { key, .. } => {
+            let secret = pane.fields().by_key(key).is_some_and(|field| field.secret);
             let old = pane.display_value(key);
             let new = pane.edited_value(key).unwrap_or_default();
+            let (old, new) = if secret {
+                (
+                    if old == "(unset)" {
+                        old
+                    } else {
+                        "<set>".to_owned()
+                    },
+                    if new == "(unset)" {
+                        new
+                    } else {
+                        "<set>".to_owned()
+                    },
+                )
+            } else {
+                (old, new)
+            };
             format!("{key}  {old} -> {new}")
         }
         PaneEdit::SetEnv { key, value } => match value {
@@ -803,9 +864,9 @@ fn grouped_body_lines(
 }
 
 /// The pane's lines when its fields carry groups (every sheep): the butter
-/// title band, the provenance row naming the target, the tab row, a
-/// hairline, the menu or help line when one is up else the column header
-/// row, the body, a hairline, and the legend.
+/// title band naming the target once, the tab row, a hairline, the menu or
+/// help line when one is up else the column header row, the body, a
+/// hairline, and the legend.
 fn grouped_pane_lines(
     pane: &ConfigPane,
     menu: Option<&PaneMenu>,
@@ -818,8 +879,6 @@ fn grouped_pane_lines(
     if remaining == 0 {
         return lines;
     }
-    lines.push(title_line(pane, palette, width));
-    remaining -= 1;
     // Everything from here down is best-effort, and every push below is
     // gated on `remaining > 1` rather than `> 0`: the body's own cursor
     // outranks every one of these lines, per `cursor_only`'s own doc that
@@ -1209,7 +1268,7 @@ mod tests {
             "{instances:?}"
         );
         assert_eq!(
-            instances.spans[0].style,
+            instances.spans[1].style,
             fixtures::coloured().muted(),
             "a refused row is muted"
         );
@@ -1224,7 +1283,7 @@ mod tests {
             "shep writes `liveness_probe`, so its cost is a real cost: {rendered:?}"
         );
         assert_eq!(
-            probe.spans[0].style,
+            probe.spans[1].style,
             fixtures::coloured().muted(),
             "muting says `not from here`, which is true of both kinds"
         );
@@ -1351,10 +1410,23 @@ mod tests {
             all_text.extend(text);
             pane.next_group();
         }
+        // `parts(line).is_some()` alone is not enough at this width any
+        // more: the legend line now spells out `= read-only, set it in
+        // the Flockfile` (finding 3), and its own leading two spaces plus
+        // an `=` parse the same shape `parts` reads off a field row. Real
+        // field keys only, the same filter `rows_of` applies, keeps this
+        // test about the cost cell rather than the legend.
+        let keys: Vec<String> = web_pane()
+            .fields()
+            .fields()
+            .iter()
+            .map(|field| field.key.clone())
+            .collect();
         assert!(
-            !all_text
-                .iter()
-                .any(|line| parts(line).is_some() && line.contains("read-only")),
+            !all_text.iter().any(|line| {
+                parts(line).is_some_and(|(_, _, _, key)| keys.contains(&key))
+                    && line.contains("read-only")
+            }),
             "no field row can afford the cost cell at {width}: {all_text:?}"
         );
         let glyph = |key: &str| rows.iter().find(|(_, _, _, k)| k == key).map(|r| r.1);
@@ -1884,11 +1956,11 @@ mod tests {
     #[test]
     fn the_title_names_the_target_and_no_longer_calls_it_read_only() {
         let text = text_of(&pane_lines(&web_pane(), None, fixtures::plain(), 120, 0));
+        // Named once, on the title band: `title_line` no longer draws a
+        // second row repeating it (see `title_band_line`'s own doc).
         assert!(text[0].contains("web"), "{:?}", text[0]);
-        assert!(text[1].contains("web"), "{:?}", text[1]);
-        assert!(text[1].contains("(sheep config)"), "{:?}", text[1]);
+        assert!(text[0].contains("(sheep config)"), "{:?}", text[0]);
         assert!(!text[0].contains("read-only"), "{:?}", text[0]);
-        assert!(!text[1].contains("read-only"), "{:?}", text[1]);
     }
 
     /// A sheep whose `args` are `args`, for the list sub-screen's own
@@ -1974,6 +2046,54 @@ mod tests {
         pane.move_to_key("tokens");
         pane.open_list();
         pane
+    }
+
+    /// A dog whose one string field is `x-shep-secret`, edited once. No
+    /// Flockfile field is secret today, but a dog's schema can mark one,
+    /// and the pending-edits section has to mask it the same way
+    /// [`field_line`] already does for the row it scrolls off of.
+    fn secret_dog_pane_with_an_edit() -> ConfigPane {
+        let schema = serde_json::json!({
+            "properties": {
+                "token": {
+                    "type": "string",
+                    "x-shep-secret": true,
+                }
+            }
+        });
+        let mut pane = ConfigPane::dog(
+            "watch".into(),
+            None,
+            schema,
+            "token = \"ab12cd34\"\n".into(),
+        );
+        pane.move_to_key("token");
+        pane.begin_typing();
+        for c in "ef56gh78".chars() {
+            pane.type_char(c);
+        }
+        pane.apply_typing();
+        pane
+    }
+
+    /// `pending_edit_line` has its own secret check rather than relying on
+    /// nothing ever reaching it: a dog can mark a field secret, and the
+    /// pending-edits section draws every filed edit regardless of which
+    /// group is active, so a secret's row is on screen the moment its edit
+    /// is filed, not just while its own field row scrolls into view.
+    #[test]
+    fn the_pending_section_masks_a_secret_fields_old_and_new_value() {
+        let pane = secret_dog_pane_with_an_edit();
+        let (_, entry) = pane.edits().iter().next().expect("one edit was filed");
+        let line = pending_edit_line(&pane, entry.edit(), 120, fixtures::plain());
+        let text: String = line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect();
+        assert!(!text.contains("ab12cd34"), "the old value leaked: {text}");
+        assert!(!text.contains("ef56gh78"), "the new value leaked: {text}");
+        assert!(text.contains("<set> -> <set>"), "{text}");
     }
 
     /// No Flockfile field is secret today, but a dog's schema can mark one,
@@ -2081,25 +2201,57 @@ mod tests {
     /// Eight groups, in `GROUP_ORDER`, and every one of them reachable.
     /// This is the test that would have caught a filter axis nothing
     /// could set.
+    ///
+    /// Bounded to the tab row alone
+    /// ([`fixtures::config_pane_tab_row_for_tests`]), not a search over the
+    /// whole rendered frame: every group's name is drawn on every render
+    /// regardless of which is active, so a frame-wide `contains` would pass
+    /// whatever `next_group` did or did not do. [`tab_draws_the_active_group_as_its_own_chip`]
+    /// covers the half this test cannot: which one is drawn as the chip.
     #[test]
     fn tab_walks_every_group_and_each_one_shows_its_own_fields() {
         let mut app = fixtures::app_in_sheep_pane();
         let mut seen = Vec::new();
         for _ in 0..GROUP_ORDER.len() {
             let group = app.config_pane().unwrap().group().to_owned();
-            let rendered = pane_lines(
-                app.config_pane().unwrap(),
-                app.pane_menu().as_ref(),
-                fixtures::plain(),
-                160,
-                48,
-            );
-            let listed = fixtures::render_all(&rendered);
-            assert!(listed.contains(&group), "the tab row does not name {group}");
+            let tab_row = fixtures::config_pane_tab_row_for_tests(&app, 160);
+            for name in GROUP_ORDER {
+                assert!(
+                    tab_row.contains(name),
+                    "the tab row does not name {name}: {tab_row:?}"
+                );
+            }
             seen.push(group);
             app.update(Msg::Key(KeyPress::NextGroup));
         }
         assert_eq!(seen, GROUP_ORDER.to_vec());
+    }
+
+    /// All eight group names are listed every render, so the only thing
+    /// that changes as `next_group` walks is which one carries the
+    /// paper-2 ground: the chip. Checked in colour, since [`fixtures::plain`]
+    /// makes [`super::super::super::theme::Palette::ground`] a no-op and
+    /// every span would look alike.
+    #[test]
+    fn tab_draws_the_active_group_as_its_own_chip() {
+        for active in GROUP_ORDER {
+            let mut pane = web_pane();
+            let digit =
+                u8::try_from(GROUP_ORDER.iter().position(|g| g == active).unwrap() + 1).unwrap();
+            pane.set_group(digit);
+            let line = tab_row_line(&pane, fixtures::coloured(), 160);
+            let painted: Vec<&str> = line
+                .spans
+                .iter()
+                .filter(|span| span.style.bg.is_some())
+                .map(|span| span.content.as_ref().trim())
+                .collect();
+            assert_eq!(
+                painted,
+                vec![*active],
+                "exactly one chip should carry a ground, the active group's own"
+            );
+        }
     }
 
     #[test]

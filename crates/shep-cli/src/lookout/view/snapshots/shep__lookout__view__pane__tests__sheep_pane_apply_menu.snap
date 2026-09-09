@@ -1,9 +1,9 @@
 ---
 source: crates/shep-cli/src/lookout/view/pane.rs
+assertion_line: 1674
 expression: "text_of(&lines).join(\"\\n\")"
 ---
- ██ web  0 edits                                                                                                        
-  web  (sheep config)                                                                                                   
+ ██ web  (sheep config)                                                                                                 
    process   logging   inputs   restart   readiness   shutdown   watch   cron     tab next group   1…8 jump             
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   2 saved fields wait on the running sheep: L reload (serial), R restart, esc leave them parked                         
@@ -23,4 +23,4 @@ expression: "text_of(&lines).join(\"\\n\")"
     LOG_LEVEL  <set>
     + add a key
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  enter edit   space cycle   tab group   u undo   esc save & close
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * overridden   -> ch…
