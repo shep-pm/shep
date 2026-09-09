@@ -1110,11 +1110,14 @@ fn tab_walks_every_group_and_each_one_shows_its_own_fields() {
     let mut seen = Vec::new();
     for _ in 0..shep_core::config::GROUP_ORDER.len() {
         let group = app.config_pane().unwrap().group().to_owned();
-        let rendered = fixtures::draw_lines(&app, 160, 48);
-        let listed = fixtures::render_all(&rendered);
+        let tabs = fixtures::config_pane_tab_row_for_tests(&app, 160);
+        // The tab row lists all eight names on every render, so asking
+        // whether the frame contains this group's name is true whatever
+        // the active group is. Assert the chip instead: only the active
+        // group is drawn as one.
         assert!(
-            listed.contains(&group),
-            "the tab row does not name {group}"
+            tabs.contains(&format!(" {group} ")),
+            "the tab row does not chip {group}: {tabs}"
         );
         seen.push(group);
         app.update(Msg::Key(KeyPress::NextGroup));
