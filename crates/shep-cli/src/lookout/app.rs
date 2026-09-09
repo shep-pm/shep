@@ -5560,10 +5560,12 @@ impl App {
     /// The value is not on screen when this returns. [`Self::on_revealed`]
     /// puts it there once the read lands.
     ///
-    /// No visibility check on `pane.selected` here: every writer of that
-    /// field (`move_by`, `move_to_first`, `move_to_last`, the `Collapse`
-    /// arm and the `Msg::Secrets` clamp) already keeps it inside the
-    /// visible set, so a hidden `selected` cannot reach this call.
+    /// A visibility check on `pane.selected` here, because `move_by` cannot
+    /// keep it inside the visible set when that set is empty: every group
+    /// folded away and no operator row standing leaves `selected` naming a
+    /// hidden row, and nothing else writes it back. Refused silently,
+    /// the same answer every other `v` press against a pane that is not
+    /// open gives.
     fn reveal_selected(&mut self) -> Effect {
         if !self.reveal_gate_open() {
             self.notice = Some(Notice {
@@ -5575,6 +5577,9 @@ impl App {
         let Some(pane) = self.secrets_pane_mut() else {
             return Effect::None;
         };
+        if !pane.visible_row_indices().contains(&pane.selected) {
+            return Effect::None;
+        }
         let (Some(row), Some(environment)) = (
             pane.model.rows.get(pane.selected).cloned(),
             pane.environment().map(str::to_string),
@@ -7928,6 +7933,49 @@ mod tests {
         assert!(
             !pane.is_collapsed(&row.source),
             "selected still names a row the fold it sat in just hid"
+        );
+    }
+
+    /// `move_by` cannot land `selected` inside the visible set when that
+    /// set is empty (every row here belongs to the one namespace being
+    /// folded), so `selected` is left naming a hidden row. `v` has to
+    /// check for itself rather than trust the invariant `move_by` cannot
+    /// keep.
+    #[test]
+    fn reveal_over_an_empty_visible_set_does_nothing() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                environments: vec!["dev".to_string()],
+                rows: vec![
+                    plain_row("vercel/A", Source::Namespace("vercel".to_string())),
+                    plain_row("vercel/B", Source::Namespace("vercel".to_string())),
+                ],
+                allow_read: true,
+                ..SecretsModel::default()
+            })),
+        });
+        let _ = app.update(Msg::Key(KeyPress::Collapse));
+
+        let effect = app.update(Msg::Key(KeyPress::Reveal));
+
+        assert_eq!(
+            effect,
+            Effect::None,
+            "nothing on screen names a row to read"
+        );
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert!(
+            pane.visible_row_indices().is_empty(),
+            "the fold hid everything"
+        );
+        assert_eq!(
+            pane.pending_reveal, None,
+            "no read was asked for, so nothing is pending one"
         );
     }
 
