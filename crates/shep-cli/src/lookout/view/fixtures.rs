@@ -1366,6 +1366,14 @@ pub fn app_typing_a_value() -> App {
     app
 }
 
+/// [`app_with_secrets_and_control`] with `DB_PASSWORD`'s delete armed:
+/// `D` on the operator's only row, already selected by default.
+pub fn app_armed_to_delete_a_secret() -> App {
+    let mut app = app_with_secrets_and_control();
+    app.update(Msg::Key(KeyPress::SecretDelete));
+    app
+}
+
 /// [`app_with_secrets_and_control`] with the `+ new key` row's name input
 /// open: `G` lands on the trailing `+ new key` row, then `Enter` opens it.
 pub fn app_typing_a_new_key() -> App {

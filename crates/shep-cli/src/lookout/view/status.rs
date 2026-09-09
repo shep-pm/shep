@@ -115,6 +115,15 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             format!("{label}  {buffer}\u{258f}   enter applies   esc cancels"),
             palette.attention(),
         )
+    } else if let Some(key) = secrets_armed(app) {
+        // Ranked with the dashboard's own confirm above, for the same
+        // reason: an armed delete is a question awaiting an answer, and it
+        // must outrank `secrets_hint`, which still reads `enter sets a
+        // value` while an arm is live.
+        (
+            format!("delete {key}? enter confirms, any other key cancels"),
+            palette.attention(),
+        )
     } else if app.mode() == InputMode::Text {
         // Above the notice: bus events arrive with no keypress and
         // `on_text_key` never clears them, so ranking the notice higher
@@ -325,6 +334,14 @@ fn secrets_typing(app: &App) -> Option<(String, &str)> {
     Some((label, typing.buffer.as_str()))
 }
 
+/// The key an armed `D` would delete, or `None`.
+fn secrets_armed(app: &App) -> Option<&str> {
+    let Body::Secrets(pane) = app.body() else {
+        return None;
+    };
+    pane.armed.as_deref()
+}
+
 /// The bleats pane's key hint: the design's own status-bar line, plus `m`
 /// for the minimum-level axis. The design names a key for every other axis
 /// (`o` for the stream) but none for this one, so `m` is this crate's own
@@ -478,9 +495,9 @@ mod tests {
     use shep_core::protocol::BusEvent;
 
     use super::super::fixtures::{
-        acting_app, allowed_app, app_in_settings, app_in_settings_on, app_in_settings_with_control,
-        armed_app, armed_app_with_a_filter_and_a_notice, editing_app, filtered_app, rendered,
-        with_selection,
+        acting_app, allowed_app, app_armed_to_delete_a_secret, app_in_settings, app_in_settings_on,
+        app_in_settings_with_control, armed_app, armed_app_with_a_filter_and_a_notice, editing_app,
+        filtered_app, rendered, with_selection,
     };
     use super::*;
     use crate::commands::settings::SettingField;
@@ -691,6 +708,31 @@ mod tests {
         assert!(
             bar.contains("enter confirms, any other key cancels"),
             "got {bar:?}"
+        );
+    }
+
+    /// The secrets pane's own destructive arm gets the same sentence the
+    /// dashboard's does: which key, and how to answer.
+    #[test]
+    fn an_armed_secret_delete_names_the_key_and_the_answer() {
+        let app = app_armed_to_delete_a_secret();
+        let bar = rendered(&status_line(&app, 120));
+        assert!(bar.contains("delete DB_PASSWORD"), "got {bar:?}");
+        assert!(
+            bar.contains("enter confirms, any other key cancels"),
+            "got {bar:?}"
+        );
+    }
+
+    /// Armed, `Enter` deletes rather than opening the value input, so the
+    /// bar must stop claiming the older job.
+    #[test]
+    fn an_armed_secret_delete_stops_advertising_set_a_value() {
+        let app = app_armed_to_delete_a_secret();
+        let bar = rendered(&status_line(&app, 120));
+        assert!(
+            !bar.contains("set a value"),
+            "the arm changes what enter does: {bar:?}"
         );
     }
 
