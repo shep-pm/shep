@@ -244,7 +244,9 @@ fn cpu_chart_rows(history: &[f32], body_cells: usize) -> Vec<String> {
     let peak = window_slice.iter().copied().fold(0.0_f32, f32::max);
     let ceiling = scale_top(f64::from(peak), f64::from(CPU_CEILING_FLOOR));
     let bars = cell::chart(history, ceiling as f32, body_cells, CPU_ROWS);
-    gutter_lines(bars, ceiling, |value| format!("{value:.0}%"))
+    gutter_lines(bars, ceiling, GutterCadence::Alternating, |value| {
+        format!("{value:.0}%")
+    })
 }
 
 /// Row `MEM_HEADER_ROW`'s second half: a real ceiling names itself; with
@@ -281,7 +283,7 @@ fn mem_chart_rows(
     let ceiling = scale_top(peak_for_scale as f64, 0.0);
     let samples: Vec<f32> = history.iter().map(|&bytes| bytes as f32).collect();
     let bars = cell::chart(&samples, ceiling as f32, body_cells, MEM_ROWS);
-    let mut lines = gutter_lines(bars, ceiling, |value| {
+    let mut lines = gutter_lines(bars, ceiling, GutterCadence::EveryRow, |value| {
         crate::output::human_bytes(value as u64)
     });
 
@@ -303,16 +305,30 @@ fn mem_chart_rows(
     (lines, marked)
 }
 
-/// Prefixes each of `bars`' lines with [`GUTTER`] cells: a value every other
-/// row, right-aligned and formatted by `format_value`, alternating with a
-/// bare `|` tick; the bottom row is always the literal `0` rather than
-/// `format_value(0.0)`, since a unit on a value that is always zero states
-/// nothing a bare `0` doesn't. [`scale_top`]'s own ladder is why two labels
-/// (the top and the bottom) used to be enough: every other row's value
-/// lands on a round number too, so leaving them blank bought nothing.
+/// A gutter's labelling cadence: how many of its rows carry a value versus
+/// a bare tick. The frame gives the two charts different cadences (decision
+/// 8): 8 rows is enough to crowd if every one is labelled, 5 is few enough
+/// to label completely.
+#[derive(Clone, Copy)]
+enum GutterCadence {
+    /// A label on even rows, a bare `|` tick on odd ones. The CPU chart's
+    /// 8 rows.
+    Alternating,
+    /// A label on every row. The memory chart's 5 rows.
+    EveryRow,
+}
+
+/// Prefixes each of `bars`' lines with [`GUTTER`] cells: a value on the
+/// rows `cadence` picks, right-aligned and formatted by `format_value`,
+/// with a bare `|` tick on any row `cadence` skips; the bottom row is
+/// always the literal `0` rather than `format_value(0.0)`, since a unit on
+/// a value that is always zero states nothing a bare `0` doesn't.
+/// [`scale_top`]'s own ladder is why a labelled row doesn't need to be the
+/// top or bottom to land on a round number.
 fn gutter_lines(
     bars: Vec<String>,
     ceiling: f64,
+    cadence: GutterCadence,
     format_value: impl Fn(f64) -> String,
 ) -> Vec<String> {
     let rows = bars.len();
@@ -320,9 +336,13 @@ fn gutter_lines(
     bars.into_iter()
         .enumerate()
         .map(|(i, bar)| {
+            let labelled = match cadence {
+                GutterCadence::Alternating => i % 2 == 0,
+                GutterCadence::EveryRow => true,
+            };
             let gutter = if i == last {
                 format!("{:>7} ", "0")
-            } else if i % 2 == 0 {
+            } else if labelled {
                 #[allow(clippy::cast_precision_loss)] // display only, a gutter label
                 let value = ceiling * (rows - i) as f64 / rows as f64;
                 format!("{:>7} ", format_value(value))
@@ -556,6 +576,41 @@ mod tests {
         assert!(
             rows.iter().any(|row| row[..GUTTER].contains('|')),
             "expected a bare tick between labels: {rows:?}"
+        );
+    }
+
+    /// The frame gives the two gutters different cadences (the memory
+    /// chart has few enough rows to label every one; the CPU chart has
+    /// enough that alternating avoids crowding), so a fix that pins one
+    /// must not flatten the other's.
+    #[test]
+    fn the_gutter_cadence_differs_by_chart() {
+        let (mem_rows, _) = mem_rows_with_limit(None);
+        let labelled_mem = mem_rows
+            .iter()
+            .filter(|row| {
+                let cell = row[..GUTTER].trim();
+                !cell.is_empty() && cell != "|"
+            })
+            .count();
+        assert_eq!(
+            labelled_mem, MEM_ROWS,
+            "every memory row should carry a label: {mem_rows:?}"
+        );
+
+        let cpu_history = [10.0_f32, 20.0, 30.0, 40.0, 45.0];
+        let cpu_rows = cpu_chart_rows(&cpu_history, 20);
+        let ticked_cpu = cpu_rows
+            .iter()
+            .filter(|row| row[..GUTTER].contains('|'))
+            .count();
+        assert!(
+            ticked_cpu > 0,
+            "the CPU gutter should still alternate with bare ticks: {cpu_rows:?}"
+        );
+        assert!(
+            ticked_cpu < CPU_ROWS,
+            "the CPU gutter should not label every row: {cpu_rows:?}"
         );
     }
 
