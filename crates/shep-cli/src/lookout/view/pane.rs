@@ -1080,6 +1080,25 @@ mod tests {
         }
     }
 
+    /// A roomy terminal (`view::ROOMY_HEIGHT` and up) spends a blank row
+    /// under the title. `body_rows` has to know about that row, or the
+    /// `Rect` it hands the pane reaches one row past the status bar and the
+    /// last row the pane draws, here the cursor's own row after jumping to
+    /// the last field, gets overwritten rather than shown. Caught the
+    /// scrolled offset itself agreeing on a stale, too-tall budget: `marked`
+    /// went to 0 at exactly `ROOMY_HEIGHT` and the row above it, with a
+    /// `body_rows` that did not subtract the blank row.
+    #[test]
+    fn the_cursor_survives_a_jump_to_the_last_field_at_a_roomy_height() {
+        // 30 is `view::ROOMY_HEIGHT`, private to that module.
+        for height in [24u16, 29, 30, 31, 45] {
+            let mut app = fixtures::app_in_sheep_pane();
+            app.update(Msg::Key(KeyPress::SelectLast));
+            let text = screen_at(&mut app, height);
+            assert_eq!(marked(&text), 1, "{height} rows:\n{text}");
+        }
+    }
+
     /// The marker that says rows were cut would itself become the row
     /// that gets cut.
     #[test]

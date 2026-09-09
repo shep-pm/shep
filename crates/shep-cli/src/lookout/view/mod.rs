@@ -167,14 +167,21 @@ pub fn panes_for(height: u16) -> Panes {
 /// never scrolls rather than an underflowed height.
 ///
 /// `run_ui` calls this before each draw, so [`App::note_body_rows`] always
-/// reflects the terminal about to be drawn to.
+/// reflects the terminal about to be drawn to. `draw` builds the same four
+/// full-screen panes' own `Rect`s off this value, so it has to count the
+/// blank row `draw` spends under the title on a roomy terminal
+/// ([`ROOMY_HEIGHT`]): a body that did not know about that row would get a
+/// `Rect` one row taller than the space actually left before the status
+/// bar, and its last row would be drawn only to be overwritten.
 #[must_use]
 pub fn body_rows(area: Rect) -> u16 {
     if area.width < MIN_TERM_WIDTH || area.height < MIN_HEIGHT {
         return 0;
     }
-    // One row for the title, one for the status bar.
-    area.height - 2
+    // The title row and the status bar, plus the blank row under the title
+    // on a roomy terminal.
+    let chrome = if area.height >= ROOMY_HEIGHT { 3 } else { 2 };
+    area.height - chrome
 }
 
 /// Real caller: `super::mod`'s `run_ui`, once per frame.
