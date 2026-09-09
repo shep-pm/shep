@@ -2775,6 +2775,7 @@ impl App {
             self.action = None;
             return Effect::None;
         }
+        self.notice = None;
         match key {
             KeyPress::Quit => Effect::Quit,
             KeyPress::Escape => {
@@ -6415,6 +6416,26 @@ mod tests {
         let action = app.action().expect("the first one is untouched");
         assert_eq!(action.verb, ActionVerb::Stop);
         assert!(action.sent);
+    }
+
+    /// `on_key`'s own armed-keypress prelude clears `self.notice` before its
+    /// `match`; `on_sheep_pane_key` copied the prelude but not that line, so
+    /// a refusal raised inside the pane never cleared, kept overriding the
+    /// pane's own key hints in `status_line`, and survived `close_pane`
+    /// back to the flock table.
+    #[test]
+    fn a_refusal_inside_the_sheep_pane_clears_on_the_next_keypress() {
+        let mut app = allowed_in_the_sheep_pane();
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+        app.update(Msg::Key(KeyPress::Confirm));
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        assert!(app.notice().is_some(), "setup: the refusal is raised");
+        app.update(Msg::Key(KeyPress::SelectDown));
+        assert!(
+            app.notice().is_none(),
+            "the refusal outlived a keypress that was not the one that \
+             raised it"
+        );
     }
 
     /// `↵` confirms an armed action, correctly: a question awaiting an
