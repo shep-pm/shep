@@ -171,7 +171,7 @@ There is no fleece pip beside `STATUS` — it was cut as redundant with the word
 | 19 | two column headers: left 76 cells `██ CONFIG & ENV   e edit  tab next group  2 pending`; `│`; right 83 cells `BLEATS` chip + `out then err · 464 earlier · [level≥warn] · / narrow` |
 | 20–45 | left: config grouped by the `group` tag, a blank row before each group rule; right: 20+ log lines |
 | 46 | blank |
-| 47 | status bar: `esc flock`, `e edit`, `g secrets`, `l full log`, `/ filter`, `w window 6m`, `x stop`, `R restart`, `L reload` |
+| 47 | status bar: `esc flock`, `e edit`, `J/K next sheep`, `x stop`, `R restart`, `L reload`, `b full log`, `/ filter` |
 
 **Charts.** Half-block area charts, not line charts. For a column of value `v` against ceiling `max` over `rows` rows, the column's height in half-steps is `h = round(v / max * rows * 2)`; for row `r` counted from the top, `s = h - (rows - 1 - r) * 2`, and the cell is `█` when `s ≥ 2`, `▄` when `s == 1`, blank otherwise. The CPU chart is 8 rows (16 steps); memory is 5 rows. The ceiling row of the memory chart is drawn `╌` in butter and labelled `ceiling` in the right margin.
 

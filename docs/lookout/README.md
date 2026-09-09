@@ -16,10 +16,10 @@ phase before deciding what came next.
 
 ## Reading the frames
 
-- `frames.txt`, thirty-six scenes rendered through the flattened `NO_COLOR`
+- `frames.txt`, forty-one scenes rendered through the flattened `NO_COLOR`
   palette, the one an operator with `$NO_COLOR` set or a 16-colour terminal
   actually gets. Open it in any editor.
-- `frames.ansi`, the same thirty-six scenes rendered through the coloured
+- `frames.ansi`, the same forty-one scenes rendered through the coloured
   palette the pinned snapshot tests use. Read it with `less -R` so the
   escape codes render instead of printing literally.
 
@@ -174,6 +174,40 @@ debt.
   share a single row with a divider between them and the pair's combined
   size on disk after it, and the pane gained a `cfg !N pending` cell for a
   sheep still carrying an unapplied config change.
+
+## What 1d settled
+
+- **`ProcessInfo` and `SheepStats` gain `cpu_ms`, the raw counter
+  `cpu_percent` is one view of.** Lookout differences two polls of it
+  itself, rather than trusting `cpu_percent`'s own fifteen-second baseline
+  window, so a chart of it draws the sheep's true recent CPU instead of a
+  decaying mean that resets on a timer it cannot see. `None` until two
+  readings exist for a sheep, the same shape a fresh `cpu_percent` already
+  had.
+- **`↵` opens a full-screen pane on the selected sheep.** Silent on a group
+  row, a fold header, or a dog — none has a single process to chart or a
+  Flockfile to show. `esc` closes it.
+- **Two charts, CPU and memory, share a time axis and one poll per
+  column.** The window is computed from the columns actually available and
+  stated in the chart's own header rather than a constant, so a fresh pane
+  reads `collecting` until its buffer catches up. Memory draws a ceiling
+  line at `max_memory` when the sheep has one; with none set it scales to
+  the window's own peak and says so.
+- **Below the charts, a read-only config-and-env listing sits beside an
+  embedded feed scoped to the pane's sheep.** `e` opens the same full
+  editor the dashboard's own `e` does; `b` hands the embedded feed to the
+  full-screen bleats pane rather than opening a fresh one, filter and all;
+  `/` filters it in place.
+- **`J`/`K` step to the next or previous sheep** in the current sort and
+  filter, re-fetching config and re-scaling both charts without leaving the
+  pane. `x`, `R` and `L` arm and confirm against the pinned sheep, the same
+  gate the dashboard's own action keys use.
+- **Three width tiers below the 140-column design size.** 100 to 139 keeps
+  the CPU chart and folds memory into one line, an RSS reading and a
+  ten-cell gauge; under 100 both charts fall back to 1a's own `CPU 20s`
+  sparkline and `MEM/CEIL` gauge, one row. Rows drop before columns: the
+  memory chart goes below 26 rows, the CPU chart below 20, and the config
+  and feed columns give up ground last.
 
 ## What 1i settled
 
