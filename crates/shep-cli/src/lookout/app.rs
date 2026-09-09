@@ -4167,28 +4167,30 @@ impl App {
     }
 
     /// The refusal ladder shared by [`Self::arm`] and [`Self::arm_sheep_pane`]:
-    /// the gate, the link, one action already in flight. Neither caller's
-    /// own target-specific refusal (nothing selected, the pane's pinned
-    /// sheep is gone) lives here, since that is the one place they differ;
-    /// each checks its own target only once this ladder has already said no
-    /// to nothing.
+    /// the gate, the link. Neither caller's own target-specific refusal
+    /// (nothing selected, one action already in flight, the pane's pinned
+    /// sheep is gone) lives here, since the two callers order those three
+    /// differently: `arm` asks "nothing selected" before "one already in
+    /// flight", `arm_sheep_pane` cannot ask the first (the pane would not be
+    /// open without a sheep) so only asks the second. Folding "in flight"
+    /// in here once put it ahead of `arm`'s "nothing selected" for every
+    /// caller, which is the bug this comment now exists to keep out.
     fn confirm_refusal(&self) -> Option<String> {
         if self.control == Control::ReadOnly {
             Some(READ_ONLY_REFUSAL.to_string())
-        } else if let Some(text) = self.link_refusal() {
-            Some(text)
-        } else if self.action.is_some() {
-            Some("one action is already in flight".to_string())
         } else {
-            None
+            self.link_refusal()
         }
     }
 
     /// Arms a confirm, or refuses and says why.
     ///
     /// Every refusal happens here rather than at confirm time, so an operator
-    /// never answers a question that was never going to be honoured. The ladder
-    /// is [`Self::confirm_refusal`]'s own three, then nothing selected.
+    /// never answers a question that was never going to be honoured. The
+    /// ladder is [`Self::confirm_refusal`]'s own gate and link, then nothing
+    /// selected, then one action already in flight — nothing selected first,
+    /// since a keypress with no target asked a question that was never about
+    /// the in-flight action at all.
     fn arm(&mut self, verb: ActionVerb) -> Effect {
         if let Some(text) = self.confirm_refusal() {
             self.notice = Some(Notice { text, grave: true });
@@ -4201,6 +4203,13 @@ impl App {
             });
             return Effect::None;
         };
+        if self.action.is_some() {
+            self.notice = Some(Notice {
+                text: "one action is already in flight".to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
         let (target, name, count) = match &key {
             RowKey::Sheep(id) => {
                 let row = self
@@ -4247,13 +4256,21 @@ impl App {
     /// leaves the flock would arm an action against whichever sheep
     /// replaced it while the pane still names the first. Refuses instead.
     ///
-    /// The ladder is [`Self::confirm_refusal`]'s own three, same as
-    /// [`Self::arm`]; [`Self::arm`]'s "nothing selected" case cannot happen
-    /// here, since the pane would not be open without a sheep, so its place
-    /// is taken by the pinned sheep having left instead.
+    /// The ladder is [`Self::confirm_refusal`]'s own gate and link, then one
+    /// action already in flight, same order [`Self::arm`] uses for those
+    /// two; [`Self::arm`]'s "nothing selected" case cannot happen here,
+    /// since the pane would not be open without a sheep, so its place is
+    /// taken by the pinned sheep having left instead.
     fn arm_sheep_pane(&mut self, verb: ActionVerb) -> Effect {
         if let Some(text) = self.confirm_refusal() {
             self.notice = Some(Notice { text, grave: true });
+            return Effect::None;
+        }
+        if self.action.is_some() {
+            self.notice = Some(Notice {
+                text: "one action is already in flight".to_string(),
+                grave: true,
+            });
             return Effect::None;
         }
         let Some(row) = self.sheep_pane_row() else {
@@ -6062,6 +6079,39 @@ mod tests {
             matches!(app.body(), Body::Sheep(_)),
             "the second Enter opened the pane rather than being swallowed"
         );
+    }
+
+    /// The reviewer's own reachable state: an action sent (`Stage::Sent`, in
+    /// flight), then a filter typed down to zero rows clears the selection
+    /// (`reseat`'s own empty-flock-view branch), then an action key. Before
+    /// this fix, `confirm_refusal` checked "one already in flight" ahead of
+    /// `arm`'s own "nothing selected", so this exact sequence told the
+    /// operator the wrong thing — the in-flight action, not the empty
+    /// selection the keypress actually asked about.
+    #[test]
+    fn arm_with_nothing_selected_refuses_that_and_not_the_in_flight_action() {
+        let mut app = allowed();
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+        app.update(Msg::Key(KeyPress::Confirm));
+        assert!(app.action().is_some_and(|action| action.sent), "in flight");
+
+        app.update(Msg::Key(KeyPress::FilterStart));
+        for letter in ['z', 'z', 'z'] {
+            app.update(Msg::Key(KeyPress::TextChar(letter)));
+        }
+        app.update(Msg::Key(KeyPress::TextApply));
+        assert_eq!(app.rows().len(), 0, "the query matches nothing");
+        assert!(app.selected_row().is_none(), "reseat cleared the selection");
+
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        assert_eq!(
+            app.notice().map(ToString::to_string).as_deref(),
+            Some("no sheep is selected"),
+            "the keypress asked whether it had a target, and it did not"
+        );
+        let action = app.action().expect("the first one is still in flight");
+        assert_eq!(action.verb, ActionVerb::Stop);
+        assert!(action.sent, "untouched by the refused second arm");
     }
 
     #[test]
