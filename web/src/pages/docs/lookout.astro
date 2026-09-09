@@ -20,14 +20,14 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT
    ██ FLOCK
-> 2     api         online           48219    1         -          -       241.0M    1h 28m    edge        -
-  3     billing-r…  online           48230    0         -          -       96.0M     1h 29m    -           -
-  4     cron        online           48233    0         -          -       8.0M      1h 31m    -           -
-  5     metrics     online           48240    0         -          -       11.0M     1h 32m    -           -
-  0     web         online           48211    0         -          -       182.0M    1h 25m    edge        -
-  1     web         online           48212    0         -          -       178.0M    1h 26m    edge        -
+> 2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -
+  3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -
+  4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -
+  5     metrics     online           48240    0         -          0.4%    11.0M     1h 32m    -           -
+  0     web         online           48211    0         -          3.4%    182.0M    1h 25m    edge        -
+  1     web         online           48212    0         -          2.9%    178.0M    1h 26m    edge        -
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu -   mem 241.0M   fold edge
+ ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge
 lambs  not read yet
 out  tests/fixtures/gallery-logs/api-out.log   │   err  tests/fixtures/gallery-logs/api-err.log   2.0K on disk
 
@@ -45,12 +45,12 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores  …
 ───────────────────────────────────────────────────
   ID    NAME      STATUS           CPU     UPTIME
    ██ FLOCK
-> 2     api       online           -       1h 28m
-  3     billing…  online           -       1h 29m
-  4     cron      online           -       1h 31m
-  5     metrics   online           -       1h 32m
-  0     web       online           -       1h 25m
-  1     web       online           -       1h 26m
+> 2     api       online           7.1%    1h 28m
+  3     billing…  online           0.8%    1h 29m
+  4     cron      online           0.1%    1h 31m
+  5     metrics   online           0.4%    1h 32m
+  0     web       online           3.4%    1h 25m
+  1     web       online           2.9%    1h 26m
 q quit   j/k select   / filter   F… control enabled`;
 
 const tooNarrow = `too small
@@ -58,23 +58,23 @@ need 33x6`;
 
 const folds = `shep lookout   /home/ada/.shep                                                                                                                   10 in the flock
 
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu -        ▁   flock mem 928.0M   up…
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 20.6%       ▁█   flock mem 928.0M …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   NAME        STATUS        SHARE                   MEM         CPU        UPTIME      RESTARTS  NOTES
-  ▸ batch ×2  online        █░░░░░░░░░░░░░░░░░░░    32.0M       -          1h 55m      3         3% of flock memory
-  ▾ core ×1   online        ██░░░░░░░░░░░░░░░░░░    96.0M       -          1h 58m      0         10% of flock memory
-  worker      online                                96.0M       -          1h 58m      0
-> ▾ edge ×4   online        █████████████████░░░    781.0M      -          15m         4         84% of flock memory
-  api         online                                241.0M      -          2h 4m       1
-  web ×3      online                                540.0M      -          15m         3
+  ▸ batch ×2  online        █░░░░░░░░░░░░░░░░░░░    32.0M       1.6%       1h 55m      3         3% of flock memory
+  ▾ core ×1   online        ██░░░░░░░░░░░░░░░░░░    96.0M       2.0%       1h 58m      0         10% of flock memory
+  worker      online                                96.0M       2.0%       1h 58m      0
+> ▾ edge ×4   online        █████████████████░░░    781.0M      16.5%      15m         4         84% of flock memory
+  api         online                                241.0M      7.1%       2h 4m       1
+  web ×3      online                                540.0M      9.4%       15m         3
    ██ NO FOLD
-  cron        online                                8.0M        -          2h 6m       0
-  metrics     online                                11.0M       -          2h 7m       0
+  cron        online                                8.0M        0.1%       2h 6m       0
+  metrics     online                                11.0M       0.4%       2h 7m       0
    ██ DOGS
   bark        online                                -           -          10m         0
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-fold edge ×4  online   restarts 4   uptime 15m   cpu -   mem 781.0M
+fold edge ×4  online   restarts 4   uptime 15m   cpu 16.5%   mem 781.0M
 lambs  a fold has no single process to walk; select one sheep
 
 
@@ -96,9 +96,9 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
 > 2     api         errored          -        14        1          -       -         1h 18m    edge        -
   3     billing-r…  waiting-restart  -        3         1          -       -         1h 19m    -           -
   4     cron        stopped          -        0         SIGTERM    -       -         1h 21m    -           -
-  5     metrics     online           48240    0         -          -       11.0M     1h 22m    -           -
-  0     web         online           48211    0         -          -       182.0M    1h 15m    edge        -
-  1     web         online           48212    0         -          -       178.0M    1h 16m    edge        -
+  5     metrics     online           48240    0         -          0.4%    11.0M     1h 22m    -           -
+  0     web         online           48211    0         -          3.4%    182.0M    1h 15m    edge        -
+  1     web         online           48212    0         -          2.9%    178.0M    1h 16m    edge        -
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  ██ SHEEP 2  api   errored   pid -   restarts 14   uptime 1h 18m   cpu -   mem -   fold edge
 lambs  3 parent-pid descendants, read 0s ago   48220 node   48221 node   48222 node
@@ -118,14 +118,14 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT
    ██ FLOCK
-> 2     api         online           48219    1         -          -       241.0M    1h 28m    edge        -
-  3     billing-r…  online           48230    0         -          -       96.0M     1h 29m    -           -
-  4     cron        online           48233    0         -          -       8.0M      1h 31m    -           -
-  5     metrics     online           48240    0         -          -       11.0M     1h 32m    -           -
-  0     web         online           48211    0         -          -       182.0M    1h 25m    edge        -
-  1     web         online           48212    0         -          -       178.0M    1h 26m    edge        -
+> 2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -
+  3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -
+  4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -
+  5     metrics     online           48240    0         -          0.4%    11.0M     1h 32m    -           -
+  0     web         online           48211    0         -          3.4%    182.0M    1h 25m    edge        -
+  1     web         online           48212    0         -          2.9%    178.0M    1h 26m    edge        -
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu -   mem 241.0M   fold edge
+ ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge
 lambs  not read yet
 out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log
 
@@ -150,14 +150,14 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT
    ██ FLOCK
-> 2     api         online           48219    1         -          -       241.0M    1h 28m    edge        -
-  3     billing-r…  online           48230    0         -          -       96.0M     1h 29m    -           -
-  4     cron        online           48233    0         -          -       8.0M      1h 31m    -           -
-  5     metrics     online           48240    0         -          -       11.0M     1h 32m    -           -
-  0     web         online           48211    0         -          -       182.0M    1h 25m    edge        -
-  1     web         online           48212    0         -          -       178.0M    1h 26m    edge        -
+> 2     api         online           48219    1         -          7.1%    241.0M    1h 28m    edge        -
+  3     billing-r…  online           48230    0         -          0.8%    96.0M     1h 29m    -           -
+  4     cron        online           48233    0         -          0.1%    8.0M      1h 31m    -           -
+  5     metrics     online           48240    0         -          0.4%    11.0M     1h 32m    -           -
+  0     web         online           48211    0         -          3.4%    182.0M    1h 25m    edge        -
+  1     web         online           48212    0         -          2.9%    178.0M    1h 26m    edge        -
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu -   mem 241.0M   fold edge
+ ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge
 lambs  3 parent-pid descendants, read 9m 53s ago   48220 node   48221 node   48222 node
 out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log
 
@@ -182,8 +182,8 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME
    ██ FLOCK
-> 0     web                online           48211    0         -          -       182.0M    1h 25m
-  1     web                online           48212    0         -          -       178.0M    1h 26m
+> 0     web                online           48211    0         -          3.4%    182.0M    1h 25m
+  1     web                online           48212    0         -          2.9%    178.0M    1h 26m
 filter "web"   / edit   esc clear                                                    control enabled`;
 
 const confirm = `shep lookout   /home/ada/.shep                                                        6 in the flock
@@ -191,12 +191,12 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME
    ██ FLOCK
-> 2     api                online           48219    1         -          -       241.0M    1h 28m
-  3     billing-reconcil…  online           48230    0         -          -       96.0M     1h 29m
-  4     cron               online           48233    0         -          -       8.0M      1h 31m
-  5     metrics            online           48240    0         -          -       11.0M     1h 32m
-  0     web                online           48211    0         -          -       182.0M    1h 25m
-  1     web                online           48212    0         -          -       178.0M    1h 26m
+> 2     api                online           48219    1         -          7.1%    241.0M    1h 28m
+  3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m
+  4     cron               online           48233    0         -          0.1%    8.0M      1h 31m
+  5     metrics            online           48240    0         -          0.4%    11.0M     1h 32m
+  0     web                online           48211    0         -          3.4%    182.0M    1h 25m
+  1     web                online           48212    0         -          2.9%    178.0M    1h 26m
 restart api (id 2)? enter confirms, any other key cancels                            control enabled`;
 
 const actionAccepted = `shep lookout   /home/ada/.shep                                                        6 in the flock
@@ -205,11 +205,11 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME
    ██ FLOCK
 > 2     api                online           48299    2         -          -       241.0M    1h 18m
-  3     billing-reconcil…  online           48230    0         -          -       96.0M     1h 29m
-  4     cron               online           48233    0         -          -       8.0M      1h 31m
-  5     metrics            online           48240    0         -          -       11.0M     1h 32m
-  0     web                online           48211    0         -          -       182.0M    1h 25m
-  1     web                online           48212    0         -          -       178.0M    1h 26m
+  3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m
+  4     cron               online           48233    0         -          0.1%    8.0M      1h 31m
+  5     metrics            online           48240    0         -          0.4%    11.0M     1h 32m
+  0     web                online           48211    0         -          3.4%    182.0M    1h 25m
+  1     web                online           48212    0         -          2.9%    178.0M    1h 26m
 restart api (id 2): the shepherd restarted it                                        control enabled`;
 
 const settingsFresh = `shep lookout   /home/ada/.shep                                                                            6 in the flock
@@ -276,22 +276,22 @@ const settingsDogs = `shep lookout   /home/ada/.shep                            
 esc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit               control enabled`;
 
 const sheepPane = `shep lookout   /home/ada/.shep                                                                                                                    1 in the flock
- ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 0.0%   mem 30.0M   fold edge
-██ CPU   collecting · 0m10s of 4m40s
+ ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 20.0%   mem 30.0M   fold edge
+██ CPU   collecting · 0m08s of 4m40s
     50%
       |
-    38%                                                                                                                                          ▄
-      |                                                                                                                                          █
-    25%                                                                                                                                        █ █
-      |                                                                                                                                        ████
-    12%                                                                                                                                        ████
+    38%                                                                                                                                           ▄
+      |                                                                                                                                           █
+    25%                                                                                                                                         █ █
+      |                                                                                                                                         ████
+    12%                                                                                                                                         ████
       0                                                                                                                                         ████
 ██ MEM   rss   same window   ·   ceiling 64.0M
   95.4M
   76.3M ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ ceiling
   57.2M
-  38.1M                                                                                                                                         ▄█▄▄
-      0                                                                                                                                        ▄█████
+  38.1M                                                                                                                                          ▄█▄
+      0                                                                                                                                        ▄████
         ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────now
 
 ██ CONFIG & ENV   e edit                                                    │ ██ BLEATS out then err · / narrow
@@ -324,8 +324,8 @@ stdin                       (default)                                      │
 esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                                      control enabled`;
 
 const sheepPaneSparklines = `shep lookout   /home/ada/.shep                                                       1 in the flock
- ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 0.0%   mem 30.0M   fold …
-CPU 20s        ▆▅█▅▁      MEM/CEIL   █████░░░░░
+ ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 20.0%   mem 30.0M   fold…
+CPU 20s         ▆▅█▅      MEM/CEIL   █████░░░░░
 esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log  … control enabled`;
 
 const settingsNarrow = `shep lookout   /home/ada/.shep 2 in the flock

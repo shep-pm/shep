@@ -649,6 +649,57 @@ fn select_row(app: &mut App, key: &RowKey) {
     panic!("the gallery cannot park its cursor on {key:?}");
 }
 
+/// Runs `rows` through two polls, two seconds apart, so
+/// `App::record_samples` has something to difference: a fixture built from
+/// one snapshot never gets past the first insert into `App::cpu_last`,
+/// which returns nothing to draw rather than a false zero (see
+/// `App::record_samples`'s own doc), and every CPU cell and sparkline in
+/// the gallery rendered a bare `-` for exactly that reason until this
+/// existed.
+///
+/// The second, final poll lands at `anchor` itself, not two seconds after
+/// it: every uptime and age figure below reads from `anchor`, so parking
+/// the *first*, throwaway poll two seconds *before* it is what keeps this
+/// helper a pure addition rather than a two-second wobble on every uptime
+/// in the gallery that used to land on a round minute.
+///
+/// `deltas` names each running sheep's id and its two `cpu_ms` readings,
+/// oldest first; a row whose id is absent from `deltas` keeps whatever
+/// `cpu_ms` its caller already gave it (`None`, for every fixture below),
+/// so a stopped or errored row still reads a bare `-` on purpose.
+///
+/// Mutates `rows` in place across both polls, the same shape
+/// `Scene::SheepPane`'s own fixture uses and `Scene::CfgDrift`'s does not:
+/// `CfgDrift` polls a clone and leaves its own returned row's `cpu_ms` at
+/// `None`, which is why that scene's CPU cell still reads `-` despite its
+/// sparkline drawing a real shape.
+fn poll_twice(
+    app: &mut App,
+    anchor: Instant,
+    mut rows: Vec<ProcessInfo>,
+    deltas: &[(u32, u64, u64)],
+) -> Vec<ProcessInfo> {
+    for &(id, first, _) in deltas {
+        if let Some(row) = rows.iter_mut().find(|row| row.id == id) {
+            row.cpu_ms = Some(first);
+        }
+    }
+    app.update(Msg::Snapshot {
+        rows: rows.clone(),
+        at: anchor - Duration::from_secs(2),
+    });
+    for &(id, _, second) in deltas {
+        if let Some(row) = rows.iter_mut().find(|row| row.id == id) {
+            row.cpu_ms = Some(second);
+        }
+    }
+    app.update(Msg::Snapshot {
+        rows: rows.clone(),
+        at: anchor,
+    });
+    rows
+}
+
 /// One scene, `age` after its opening snapshot, drawn through `palette`.
 ///
 /// Deterministic: a forced palette, an explicit `Instant` advanced by exact
@@ -669,29 +720,35 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
     let t0 = Instant::now();
     let mut app = App::new(palette, which.control(), "/home/ada/.shep".to_string(), t0);
 
-    let mut flock = match which {
+    let flock = match which {
         Scene::Empty => Vec::new(),
         // The only flock in the gallery whose rows carry a slot, and so the
         // only one that draws a group header at all. `api` is here so the
         // frame shows a grouped app beside an ungrouped one rather than
         // implying every app gets a header.
-        Scene::Grouped => vec![
-            instance(0, "web", 0, 0, 3.4, 182 << 20, 4_512_000),
-            // The youngest of the three, and the one carrying restarts: the
-            // group row's uptime is a minimum and its restarts are a sum.
-            instance(1, "web", 1, 2, 2.9, 178 << 20, 300_000),
-            instance(2, "web", 2, 1, 3.1, 180 << 20, 9_000_000),
-            sheep(
-                3,
-                "api",
-                ProcStatus::Online,
-                Some(48_219),
-                1,
-                Some(7.1),
-                Some(241 << 20),
-                Some("edge"),
-            ),
-        ],
+        Scene::Grouped => poll_twice(
+            &mut app,
+            t0,
+            vec![
+                instance(0, "web", 0, 0, 3.4, 182 << 20, 4_512_000),
+                // The youngest of the three, and the one carrying restarts:
+                // the group row's uptime is a minimum and its restarts are a
+                // sum.
+                instance(1, "web", 1, 2, 2.9, 178 << 20, 300_000),
+                instance(2, "web", 2, 1, 3.1, 180 << 20, 9_000_000),
+                sheep(
+                    3,
+                    "api",
+                    ProcStatus::Online,
+                    Some(48_219),
+                    1,
+                    Some(7.1),
+                    Some(241 << 20),
+                    Some("edge"),
+                ),
+            ],
+            &[(0, 60, 130), (1, 40, 98), (2, 50, 112), (3, 100, 242)],
+        ),
         // Two folds of differing size (`batch` at 32MiB, `core` at 96MiB),
         // the biggest fold (`edge`, at 781MiB) carrying a grouped app beside
         // a standalone one, two sheep in no fold at all, and a dog. Every
@@ -699,127 +756,147 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
         // gauge and the NOTES percentage can be checked by hand rather than
         // trusted on sight: batch's 32 of 928 total MiB is 3%, core's 96 is
         // 10%, edge's 781 is 84%.
-        Scene::Folds => vec![
-            sheep(
-                20,
-                "reindexer",
-                ProcStatus::Online,
-                Some(48_500),
-                0,
-                Some(1.2),
-                Some(20 << 20),
-                Some("batch"),
-            ),
-            sheep(
-                21,
-                "backfill",
-                ProcStatus::Online,
-                Some(48_501),
-                3,
-                Some(0.4),
-                Some(12 << 20),
-                Some("batch"),
-            ),
-            sheep(
-                22,
-                "worker",
-                ProcStatus::Online,
-                Some(48_510),
-                0,
-                Some(2.0),
-                Some(96 << 20),
-                Some("core"),
-            ),
-            // `instance` always sets fold to `edge`, which is exactly the
-            // fold this scene wants its one grouped app in.
-            instance(23, "web", 0, 0, 3.4, 182 << 20, 4_512_000),
-            instance(24, "web", 1, 2, 2.9, 178 << 20, 300_000),
-            instance(25, "web", 2, 1, 3.1, 180 << 20, 9_000_000),
-            sheep(
-                26,
-                "api",
-                ProcStatus::Online,
-                Some(48_219),
-                1,
-                Some(7.1),
-                Some(241 << 20),
-                Some("edge"),
-            ),
-            sheep(
-                27,
-                "cron",
-                ProcStatus::Online,
-                Some(48_233),
-                0,
-                Some(0.1),
-                Some(8 << 20),
-                None,
-            ),
-            sheep(
-                28,
-                "metrics",
-                ProcStatus::Online,
-                Some(48_240),
-                0,
-                Some(0.4),
-                Some(11 << 20),
-                None,
-            ),
-            dog_sheep(90, "bark", DogSource::BuiltIn, None),
-        ],
-        Scene::Errored | Scene::Frozen | Scene::LambsUnknown => vec![
-            sheep(
-                0,
-                "web",
-                ProcStatus::Online,
-                Some(48_211),
-                0,
-                Some(3.4),
-                Some(182 << 20),
-                Some("edge"),
-            ),
-            sheep(
-                1,
-                "web",
-                ProcStatus::Online,
-                Some(48_212),
-                0,
-                Some(2.9),
-                Some(178 << 20),
-                Some("edge"),
-            ),
-            sheep(
-                2,
-                "api",
-                ProcStatus::Errored,
-                None,
-                14,
-                None,
-                None,
-                Some("edge"),
-            ),
-            sheep(
-                3,
-                "billing-reconciliation-worker",
-                ProcStatus::WaitingRestart,
-                None,
-                3,
-                None,
-                None,
-                None,
-            ),
-            sheep(4, "cron", ProcStatus::Stopped, None, 0, None, None, None),
-            sheep(
-                5,
-                "metrics",
-                ProcStatus::Online,
-                Some(48_240),
-                0,
-                Some(0.4),
-                Some(11 << 20),
-                None,
-            ),
-        ],
+        Scene::Folds => poll_twice(
+            &mut app,
+            t0,
+            vec![
+                sheep(
+                    20,
+                    "reindexer",
+                    ProcStatus::Online,
+                    Some(48_500),
+                    0,
+                    Some(1.2),
+                    Some(20 << 20),
+                    Some("batch"),
+                ),
+                sheep(
+                    21,
+                    "backfill",
+                    ProcStatus::Online,
+                    Some(48_501),
+                    3,
+                    Some(0.4),
+                    Some(12 << 20),
+                    Some("batch"),
+                ),
+                sheep(
+                    22,
+                    "worker",
+                    ProcStatus::Online,
+                    Some(48_510),
+                    0,
+                    Some(2.0),
+                    Some(96 << 20),
+                    Some("core"),
+                ),
+                // `instance` always sets fold to `edge`, which is exactly
+                // the fold this scene wants its one grouped app in.
+                instance(23, "web", 0, 0, 3.4, 182 << 20, 4_512_000),
+                instance(24, "web", 1, 2, 2.9, 178 << 20, 300_000),
+                instance(25, "web", 2, 1, 3.1, 180 << 20, 9_000_000),
+                sheep(
+                    26,
+                    "api",
+                    ProcStatus::Online,
+                    Some(48_219),
+                    1,
+                    Some(7.1),
+                    Some(241 << 20),
+                    Some("edge"),
+                ),
+                sheep(
+                    27,
+                    "cron",
+                    ProcStatus::Online,
+                    Some(48_233),
+                    0,
+                    Some(0.1),
+                    Some(8 << 20),
+                    None,
+                ),
+                sheep(
+                    28,
+                    "metrics",
+                    ProcStatus::Online,
+                    Some(48_240),
+                    0,
+                    Some(0.4),
+                    Some(11 << 20),
+                    None,
+                ),
+                dog_sheep(90, "bark", DogSource::BuiltIn, None),
+            ],
+            &[
+                (20, 30, 54),
+                (21, 10, 18),
+                (22, 60, 100),
+                (23, 90, 158),
+                (24, 70, 128),
+                (25, 80, 142),
+                (26, 150, 292),
+                (27, 5, 7),
+                (28, 10, 18),
+            ],
+        ),
+        Scene::Errored | Scene::Frozen | Scene::LambsUnknown => poll_twice(
+            &mut app,
+            t0,
+            vec![
+                sheep(
+                    0,
+                    "web",
+                    ProcStatus::Online,
+                    Some(48_211),
+                    0,
+                    Some(3.4),
+                    Some(182 << 20),
+                    Some("edge"),
+                ),
+                sheep(
+                    1,
+                    "web",
+                    ProcStatus::Online,
+                    Some(48_212),
+                    0,
+                    Some(2.9),
+                    Some(178 << 20),
+                    Some("edge"),
+                ),
+                sheep(
+                    2,
+                    "api",
+                    ProcStatus::Errored,
+                    None,
+                    14,
+                    None,
+                    None,
+                    Some("edge"),
+                ),
+                sheep(
+                    3,
+                    "billing-reconciliation-worker",
+                    ProcStatus::WaitingRestart,
+                    None,
+                    3,
+                    None,
+                    None,
+                    None,
+                ),
+                sheep(4, "cron", ProcStatus::Stopped, None, 0, None, None, None),
+                sheep(
+                    5,
+                    "metrics",
+                    ProcStatus::Online,
+                    Some(48_240),
+                    0,
+                    Some(0.4),
+                    Some(11 << 20),
+                    None,
+                ),
+            ],
+            &[(0, 90, 158), (1, 70, 128), (5, 10, 18)],
+        ),
         // Two dog processes: `otel` up and healthy, `bark` up but never
         // handshook. `ledger` has no row here, which is what "enabled and
         // absent" means in the settings snapshot below.
@@ -829,64 +906,74 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
         ],
         // A flock's two sections at once: three sheep, a healthy built-in
         // dog and a silent adopted one.
-        Scene::WithDogs => vec![
-            sheep(
-                0,
-                "web",
-                ProcStatus::Online,
-                Some(48_211),
-                0,
-                Some(3.4),
-                Some(182 << 20),
-                Some("edge"),
-            ),
-            sheep(
-                1,
-                "api",
-                ProcStatus::Online,
-                Some(48_219),
-                1,
-                Some(7.1),
-                Some(241 << 20),
-                Some("edge"),
-            ),
-            sheep(
-                2,
-                "cron",
-                ProcStatus::Online,
-                Some(48_233),
-                0,
-                Some(0.1),
-                Some(8 << 20),
-                None,
-            ),
-            dog_sheep(90, "bark", DogSource::BuiltIn, None),
-            dog_sheep(
-                91,
-                "log-rotate",
-                DogSource::Adopted {
-                    path: "/usr/local/bin/shep-log-rotate".to_string(),
-                },
-                Some(false),
-            ),
-        ],
+        Scene::WithDogs => poll_twice(
+            &mut app,
+            t0,
+            vec![
+                sheep(
+                    0,
+                    "web",
+                    ProcStatus::Online,
+                    Some(48_211),
+                    0,
+                    Some(3.4),
+                    Some(182 << 20),
+                    Some("edge"),
+                ),
+                sheep(
+                    1,
+                    "api",
+                    ProcStatus::Online,
+                    Some(48_219),
+                    1,
+                    Some(7.1),
+                    Some(241 << 20),
+                    Some("edge"),
+                ),
+                sheep(
+                    2,
+                    "cron",
+                    ProcStatus::Online,
+                    Some(48_233),
+                    0,
+                    Some(0.1),
+                    Some(8 << 20),
+                    None,
+                ),
+                dog_sheep(90, "bark", DogSource::BuiltIn, None),
+                dog_sheep(
+                    91,
+                    "log-rotate",
+                    DogSource::Adopted {
+                        path: "/usr/local/bin/shep-log-rotate".to_string(),
+                    },
+                    Some(false),
+                ),
+            ],
+            &[(0, 90, 158), (1, 150, 292), (2, 5, 7)],
+        ),
         // Decision 7's three MEM/CEIL states, which no other scene's
         // fixtures exercise: every other call to `sheep` leaves
         // `max_memory` at the wire default, `None`.
-        Scene::MemCeiling => vec![
-            sheep_with_ceiling(0, "web-headroom", 128 << 20, 512 << 20),
-            sheep_with_ceiling(1, "web-hot", 480 << 20, 512 << 20),
-            sheep(
-                2,
-                "batch-worker",
-                ProcStatus::Online,
-                Some(48_303),
-                0,
-                Some(1.0),
-                Some(64 << 20),
-                None,
-            ),
-        ],
+        Scene::MemCeiling => poll_twice(
+            &mut app,
+            t0,
+            vec![
+                sheep_with_ceiling(0, "web-headroom", 128 << 20, 512 << 20),
+                sheep_with_ceiling(1, "web-hot", 480 << 20, 512 << 20),
+                sheep(
+                    2,
+                    "batch-worker",
+                    ProcStatus::Online,
+                    Some(48_303),
+                    0,
+                    Some(1.0),
+                    Some(64 << 20),
+                    None,
+                ),
+            ],
+            &[(0, 40, 74), (1, 90, 168), (2, 10, 30)],
+        ),
         // The CFG column's two markers, `!N` and `*N`, plus a CPU history
         // long enough that `CpuSpark` draws a shape rather than one bar.
         // Neither has a fixture anywhere else in the gallery: no other
@@ -986,101 +1073,136 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
             }
             vec![row]
         }
-        _ => vec![
-            sheep(
-                0,
-                "web",
-                ProcStatus::Online,
-                Some(48_211),
-                0,
-                Some(3.4),
-                Some(182 << 20),
-                Some("edge"),
-            ),
-            sheep(
-                1,
-                "web",
-                ProcStatus::Online,
-                Some(48_212),
-                0,
-                Some(2.9),
-                Some(178 << 20),
-                Some("edge"),
-            ),
-            sheep(
-                2,
-                "api",
-                ProcStatus::Online,
-                Some(48_219),
-                1,
-                Some(7.1),
-                Some(241 << 20),
-                Some("edge"),
-            ),
-            sheep(
-                3,
-                "billing-reconciliation-worker",
-                ProcStatus::Online,
-                Some(48_230),
-                0,
-                Some(0.8),
-                Some(96 << 20),
-                None,
-            ),
-            sheep(
-                4,
-                "cron",
-                ProcStatus::Online,
-                Some(48_233),
-                0,
-                Some(0.1),
-                Some(8 << 20),
-                None,
-            ),
-            sheep(
-                5,
-                "metrics",
-                ProcStatus::Online,
-                Some(48_240),
-                0,
-                Some(0.4),
-                Some(11 << 20),
-                None,
-            ),
-        ],
+        _ => {
+            let mut rows = vec![
+                sheep(
+                    0,
+                    "web",
+                    ProcStatus::Online,
+                    Some(48_211),
+                    0,
+                    Some(3.4),
+                    Some(182 << 20),
+                    Some("edge"),
+                ),
+                sheep(
+                    1,
+                    "web",
+                    ProcStatus::Online,
+                    Some(48_212),
+                    0,
+                    Some(2.9),
+                    Some(178 << 20),
+                    Some("edge"),
+                ),
+                sheep(
+                    2,
+                    "api",
+                    ProcStatus::Online,
+                    Some(48_219),
+                    1,
+                    Some(7.1),
+                    Some(241 << 20),
+                    Some("edge"),
+                ),
+                sheep(
+                    3,
+                    "billing-reconciliation-worker",
+                    ProcStatus::Online,
+                    Some(48_230),
+                    0,
+                    Some(0.8),
+                    Some(96 << 20),
+                    None,
+                ),
+                sheep(
+                    4,
+                    "cron",
+                    ProcStatus::Online,
+                    Some(48_233),
+                    0,
+                    Some(0.1),
+                    Some(8 << 20),
+                    None,
+                ),
+                sheep(
+                    5,
+                    "metrics",
+                    ProcStatus::Online,
+                    Some(48_240),
+                    0,
+                    Some(0.4),
+                    Some(11 << 20),
+                    None,
+                ),
+            ];
+            // Round 2, finding 2: `log_row`'s on-disk size had never
+            // rendered anywhere in the gallery, because every fixture's
+            // `out_file`/`err_file` name a path (`/home/ada/.shep/logs/...`)
+            // that never exists on the machine running the test, so
+            // `fs::metadata` always failed silently. `HealthyWide`'s
+            // selected sheep, `api`, points at two real files instead,
+            // committed under `crates/shep-cli/tests/fixtures/gallery-logs/`,
+            // fixed at 1024 bytes each so the rendered size (`2.0K`) is the
+            // same on every machine and every run.
+            //
+            // The path is relative rather than the fictional absolute shape
+            // every other fixture uses: cargo sets a test binary's cwd to
+            // its own crate's manifest directory on every platform, so
+            // `fs::metadata` resolves this same string against the same
+            // real file wherever the gallery is regenerated. An absolute
+            // path would either stay fictional (the `/home/ada/...` shape,
+            // never real) or, made real, would have to embed either a
+            // random tempdir name (breaking `write_the_gallery`'s
+            // idempotency: it must diff clean run twice) or the actual
+            // checkout's home directory, which must never land in a file
+            // this repository commits.
+            //
+            // Applied here, before `poll_twice` runs, rather than after: the
+            // two polls below are this scene's only delivery into
+            // `self.flock` now, so a patch applied afterward would never
+            // reach it.
+            if which == Scene::HealthyWide
+                && let Some(api) = rows.iter_mut().find(|sheep| sheep.id == 2)
+            {
+                api.out_file = Some("tests/fixtures/gallery-logs/api-out.log".to_string());
+                api.err_file = Some("tests/fixtures/gallery-logs/api-err.log".to_string());
+            }
+            poll_twice(
+                &mut app,
+                t0,
+                rows,
+                &[
+                    (0, 90, 158),
+                    (1, 70, 128),
+                    (2, 150, 292),
+                    (3, 10, 26),
+                    (4, 5, 7),
+                    (5, 10, 18),
+                ],
+            )
+        }
     };
 
-    // Round 2, finding 2: `log_row`'s on-disk size had never rendered
-    // anywhere in the gallery, because every fixture's `out_file`/
-    // `err_file` name a path (`/home/ada/.shep/logs/...`) that never
-    // exists on the machine running the test, so `fs::metadata` always
-    // failed silently. `HealthyWide`'s selected sheep, `api`, points at
-    // two real files instead, committed under
-    // `crates/shep-cli/tests/fixtures/gallery-logs/`, fixed at 1024 bytes
-    // each so the rendered size (`2.0K`) is the same on every machine and
-    // every run.
-    //
-    // The path is relative rather than the fictional absolute shape every
-    // other fixture uses: cargo sets a test binary's cwd to its own
-    // crate's manifest directory on every platform, so `fs::metadata`
-    // resolves this same string against the same real file wherever the
-    // gallery is regenerated. An absolute path would either stay
-    // fictional (the `/home/ada/...` shape, never real) or, made real,
-    // would have to embed either a random tempdir name (breaking
-    // `write_the_gallery`'s idempotency: it must diff clean run twice) or
-    // the actual checkout's home directory, which must never land in a
-    // file this repository commits.
-    if which == Scene::HealthyWide
-        && let Some(api) = flock.iter_mut().find(|sheep| sheep.id == 2)
-    {
-        api.out_file = Some("tests/fixtures/gallery-logs/api-out.log".to_string());
-        api.err_file = Some("tests/fixtures/gallery-logs/api-err.log".to_string());
+    // `Empty` and the settings-dogs trio never call `App::update` while
+    // building `flock` above: `Empty`'s flock is empty and the dogs table
+    // carries no CPU column, so neither needs `poll_twice`'s two-poll
+    // shape, and this is the only snapshot either of them gets. Every other
+    // scene already delivered its own final state through `poll_twice` (or,
+    // for `CfgDrift` and the sheep-pane group, its own inline loop);
+    // resending the same rows here at `t0`, older than that already-applied
+    // poll, would difference against a zero or negative window and corrupt
+    // the very last sample `poll_twice` just recorded back to `0.0` or
+    // `None` — the bug this round exists to fix, not reintroduce.
+    if matches!(
+        which,
+        Scene::Empty | Scene::SettingsDogs | Scene::SettingsNarrow | Scene::SettingsShort
+    ) {
+        app.update(Msg::Snapshot {
+            rows: flock,
+            at: t0,
+        });
     }
-
-    app.update(Msg::Snapshot {
-        rows: flock,
-        at: t0,
-    });
     app.update(Msg::Tick {
         now: t0 + Duration::from_secs(7),
     });
@@ -2159,13 +2281,12 @@ mod tests {
         // Summed restarts, CPU and memory; uptime is the minimum (300s
         // plus the 600s this frame renders at), not the oldest member's.
         //
-        // CPU reads `-`, not a summed percent: this scene is one poll, and
-        // a CPU figure needs two before it has anything differenced to
-        // report. `cpu 9.4%` was this test's own value while the column
-        // still read `ProcessInfo::cpu_percent`; a single-poll scene
-        // honestly has no reading yet.
+        // 9.5% is the three instances' differenced `cpu_ms` readings
+        // (3.5 + 2.9 + 3.1) summed, not `ProcessInfo::cpu_percent`: see
+        // `poll_twice`'s own doc for why this scene has anything to
+        // difference at all.
         assert!(rollup.contains("restarts 3"), "summed restarts: {rollup:?}");
-        assert!(rollup.contains("cpu -"), "summed cpu: {rollup:?}");
+        assert!(rollup.contains("cpu 9.5%"), "summed cpu: {rollup:?}");
         assert!(rollup.contains("mem 540.0M"), "summed memory: {rollup:?}");
         assert!(rollup.contains("uptime 15m"), "the shortest: {rollup:?}");
         assert!(

@@ -4,14 +4,14 @@ expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                                                                3 in the flock
                                                                                                                                             
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 1 parked   flock cpu - ▃█▄▇▃▅▇▁   f…
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 1 parked   flock cpu 6.5% ▆▃█▄▇▃▅▇ …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
                                                                                                                                             
   ID    NAME          STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM       UPTIME    FOLD        SMIT         
    ██ FLOCK                                                                                                                                 
-  11    api           online           48411    0         -          *1    ▁▁▁▁▁▁▁▁▁▁  -       96.0M     1h 41m    edge        -            
-  12    cron          online           48412    0         -          -     ▁▁▁▁▁▁▁▁▁▁  -       8.0M      1h 43m    -           -            
-  10    web           online           48410    0         -          !2     ▆▃█▄▇▃▅▇▁  -       64.0M     1h 40m    edge        -            
+  11    api           online           48411    0         -          *1     ▁▁▁▁▁▁▁▁▁  -       96.0M     1h 41m    edge        -            
+  12    cron          online           48412    0         -          -      ▁▁▁▁▁▁▁▁▁  -       8.0M      1h 43m    -           -            
+  10    web           online           48410    0         -          !2      ▆▃█▄▇▃▅▇  6.5%    64.0M     1h 40m    edge        -            
                                                                                                                                             
                                                                                                                                             
                                                                                                                                             
@@ -20,7 +20,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                                                                                                                                             
                                                                                                                                             
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ SHEEP 10  web   online   pid 48410   restarts 0   uptime 1h 40m   cpu -   mem 64.0M   fold edge   cfg !2 pending                        
+ ██ SHEEP 10  web   online   pid 48410   restarts 0   uptime 1h 40m   cpu 6.5%   mem 64.0M   fold edge   cfg !2 pending                     
 lambs  not read yet                                                                                                                         
 out  /home/ada/.shep/logs/web-10-out.log   │   err  /home/ada/.shep/logs/web-10-err.log                                                     
                                                                                                                                             

@@ -3,8 +3,8 @@ source: crates/shep-cli/src/lookout/frames.rs
 expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                       1 in the flock
- ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 0.0%   mem 30.0M   fold …
-CPU 20s        ▆▅█▅▁      MEM/CEIL   █████░░░░░                                                    
+ ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 20.0%   mem 30.0M   fold…
+CPU 20s         ▆▅█▅      MEM/CEIL   █████░░░░░                                                    
                                                                                                    
                                                                                                    
                                                                                                    
