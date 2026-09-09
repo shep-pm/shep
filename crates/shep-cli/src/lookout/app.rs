@@ -2781,7 +2781,7 @@ impl App {
                 self.close_pane();
                 Effect::None
             }
-            KeyPress::Edit => self.ask_for_config(),
+            KeyPress::Edit => self.ask_for_sheep_pane_config(),
             KeyPress::StepDown => self.step_sheep_pane(1),
             KeyPress::StepUp => self.step_sheep_pane(-1),
             KeyPress::Action(verb) => self.arm_sheep_pane(verb),
@@ -3305,6 +3305,26 @@ impl App {
             Some(name) => self.ask_for_sheep_config(name, ConfigFor::Editor),
             None => Effect::None,
         }
+    }
+
+    /// `e`'s own handler from inside the sheep pane: targets the pane's own
+    /// pinned sheep, never [`Self::selected_row`]/[`Self::selected_name`].
+    ///
+    /// The same reasoning [`Self::arm_sheep_pane`]'s own doc gives:
+    /// `Msg::Snapshot` reseats the dashboard's selection whatever screen is
+    /// showing, so reading the selection here would open a neighbour's
+    /// config under the pane's own title the instant the pinned sheep left
+    /// the flock. Refuses instead of substituting. A pane is never pinned
+    /// on a dog, so [`Self::ask_for_config`]'s dog branch has no twin here.
+    fn ask_for_sheep_pane_config(&mut self) -> Effect {
+        let Some(row) = self.sheep_pane_row() else {
+            self.notice = Some(Notice {
+                text: "that sheep is no longer in the flock".to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        };
+        self.ask_for_sheep_config(row.info.name.clone(), ConfigFor::Editor)
     }
 
     /// Sends `Request::SheepConfig` for `name`, recording which screen it is
@@ -6338,6 +6358,41 @@ mod tests {
             app.action().is_none(),
             "refused rather than arming against bravo"
         );
+        assert!(app.notice().is_some_and(Notice::is_grave));
+    }
+
+    /// `e` from inside the sheep pane targets the pane's own pinned sheep
+    /// (`alpha`, id 1), not the dashboard's selection: nothing has moved
+    /// the selection out from under the pane yet, so the two agree here,
+    /// but only [`Self::sheep_pane_row`] is asked.
+    #[test]
+    fn e_asks_for_the_panes_own_pinned_sheeps_config() {
+        let mut app = fixture_with_two_sheep();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(matches!(app.body(), Body::Sheep(_)), "pinned to alpha");
+        let request = wire(app.update(Msg::Key(KeyPress::Edit)));
+        assert_eq!(
+            request,
+            Request::SheepConfig {
+                name: "alpha".to_string()
+            }
+        );
+    }
+
+    /// The regression the reviewer reproduced: pane pinned to `alpha`,
+    /// `Msg::Snapshot` reseats the dashboard's selection onto `bravo` once
+    /// `alpha` leaves the flock, and `e` must refuse rather than open
+    /// `bravo`'s config under a pane still titled `alpha`.
+    #[test]
+    fn e_refuses_once_the_pinned_sheep_has_left_the_flock() {
+        let mut app = fixture_with_two_sheep();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(matches!(app.body(), Body::Sheep(_)), "pinned to alpha");
+        app.update(Msg::Snapshot {
+            rows: vec![sheep(2, "bravo", ProcStatus::Online)],
+            at: Instant::now(),
+        });
+        assert_eq!(app.update(Msg::Key(KeyPress::Edit)), Effect::None);
         assert!(app.notice().is_some_and(Notice::is_grave));
     }
 
