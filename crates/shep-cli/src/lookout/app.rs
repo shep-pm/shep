@@ -4635,12 +4635,7 @@ impl App {
     ///
     /// Empty for a sheep with no history yet and for one that has left the
     /// flock, on [`Self::cpu_history`]'s terms.
-    ///
-    /// No non-test caller yet: the memory chart that reads this lands in a
-    /// later task, so `#[allow(dead_code)]` says so rather than inventing
-    /// one.
     #[must_use]
-    #[allow(dead_code)]
     pub fn rss_history(&self, id: u32) -> &[u64] {
         self.rss_history
             .get(&id)
