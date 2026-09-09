@@ -1491,7 +1491,10 @@ mod tests {
     /// (`view/pane.rs`'s `field_line`), not `!`: pending and overridden are
     /// different facts, and `field_row_line` had no branch for this one at
     /// all before this task, so `SheepConfigView::overridden` was read by
-    /// nothing in this column.
+    /// nothing in this column. `restart_delay` is neither pending nor
+    /// overridden in this fixture, so its row must stay unmarked: a
+    /// regression that marked every row once the list was non-empty would
+    /// still pass the `max_memory` assertion alone.
     #[test]
     fn an_overridden_field_is_marked_with_the_editing_panes_own_glyph() {
         let row = field_row_of(&web_view_overridden(), "max_memory");
@@ -1499,6 +1502,12 @@ mod tests {
         assert!(
             !row.contains("awaits respawn"),
             "overridden is not pending: {row:?}"
+        );
+
+        let other_row = field_row_of(&web_view_overridden(), "restart_delay");
+        assert!(
+            !other_row.starts_with('*') && !other_row.starts_with('!'),
+            "an unrelated field must not pick up the marker: {other_row:?}"
         );
     }
 
