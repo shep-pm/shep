@@ -530,21 +530,43 @@ fn focused_lines(
     ]
 }
 
-/// WHO READS IT's four content lines for `row`: up to three readers, then a
-/// caption naming where a reference can live, matching [`focused_lines`]'
-/// own row count so the two panels stay lined up.
+/// How many readers [`who_reads_it_lines`] has room to list before it has
+/// to spend a line on an overflow notice instead.
+const READER_ROWS: usize = PANEL_CONTENT_ROWS as usize - 1;
+
+/// The text for each of [`READER_ROWS`] reader lines: one per reader when
+/// they all fit, otherwise the first `READER_ROWS - 1` plus a line naming
+/// how many more there are, so this panel's own total always matches
+/// [`focused_lines`]' `named by {} sheep` rather than looking
+/// complete at three when a key has five.
+fn reader_row_texts(readers: &[Reader]) -> Vec<String> {
+    if readers.is_empty() {
+        return vec!["nothing names this key".to_string()];
+    }
+    if readers.len() <= READER_ROWS {
+        return readers.iter().map(reader_line).collect();
+    }
+    let mut texts: Vec<String> = readers[..READER_ROWS - 1].iter().map(reader_line).collect();
+    let overflow = readers.len() - (READER_ROWS - 1);
+    texts.push(format!(
+        "+ {overflow} more, named by {} sheep",
+        readers.len()
+    ));
+    texts
+}
+
+/// WHO READS IT's four content lines for `row`: up to [`READER_ROWS`]
+/// readers, then a caption naming where a reference can live, matching
+/// [`focused_lines`]' own row count so the two panels stay lined up.
 fn who_reads_it_lines(
     row: Option<&SecretRow>,
     width: u16,
 ) -> [Line<'static>; PANEL_CONTENT_ROWS as usize] {
-    const READER_ROWS: usize = PANEL_CONTENT_ROWS as usize - 1;
     let readers = row.map(|row| row.readers.as_slice()).unwrap_or_default();
+    let texts = reader_row_texts(readers);
     let mut lines: Vec<Line<'static>> = (0..READER_ROWS)
-        .map(|index| match readers.get(index) {
-            Some(reader) => Line::from(Span::raw(fit(&reader_line(reader), width))),
-            None if index == 0 && readers.is_empty() => {
-                Line::from(Span::raw(fit("nothing names this key", width)))
-            }
+        .map(|index| match texts.get(index) {
+            Some(text) => Line::from(Span::raw(fit(text, width))),
             None => Line::default(),
         })
         .collect();
@@ -1212,6 +1234,24 @@ mod tests {
         assert!(
             text.iter().any(|l| l.contains("roll") && l.contains("1h")),
             "a failed roll write only warns, so the age is the only signal: {text:?}"
+        );
+    }
+
+    /// Five readers on one key, three rows to list them in: WHO READS IT
+    /// has to say two are missing rather than looking complete at three,
+    /// and its own total has to match FOCUSED's `named by 5 sheep`.
+    #[test]
+    fn who_reads_it_states_an_overflow_it_cannot_list() {
+        let buffer = fixtures::render_secrets_with_more_readers_than_fit();
+        let text = fixtures::rows_of(&buffer);
+
+        assert!(
+            text.iter().any(|l| l.contains("named by 5 sheep")),
+            "FOCUSED states the true count: {text:?}"
+        );
+        assert!(
+            text.iter().any(|l| l.contains("+ 3 more")),
+            "WHO READS IT states what it could not list: {text:?}"
         );
     }
 

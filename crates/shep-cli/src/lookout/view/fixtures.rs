@@ -1491,6 +1491,22 @@ pub fn render_secrets_with_readers() -> Buffer {
     render(&app, 160, 48)
 }
 
+/// The secrets pane rendered with `DB_PASSWORD` named by five readers, more
+/// than WHO READS IT has rows for. For the overflow line's own test.
+pub fn render_secrets_with_more_readers_than_fit() -> Buffer {
+    let app = app_with_one_row_and_readers(
+        ["catcher", "web", "worker", "api", "scheduler"]
+            .into_iter()
+            .map(|name| Reader {
+                name: name.to_string(),
+                environment: "production".to_string(),
+                online: true,
+            })
+            .collect(),
+    );
+    render(&app, 160, 48)
+}
+
 /// The secrets pane rendered with `[secrets] allow_read` off, the default
 /// [`SecretsModel::allow_read`].
 pub fn render_secrets_gate_shut() -> Buffer {
