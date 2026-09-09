@@ -95,13 +95,16 @@ impl SheepPane {
     /// `App::note_body_rows` first, the way the editing panes' own
     /// `set_rows` does: the column's height is fixed by the frame, not by
     /// the terminal.
-    fn column_len(&self) -> usize {
+    ///
+    /// Named `body_len`, not `column_len`, so it reads as its own method
+    /// rather than as the free [`column_len`] it wraps calling itself.
+    fn body_len(&self) -> usize {
         column_len(self.config())
     }
 
     /// `j`, one line.
     pub(crate) fn move_by(&mut self, delta: isize) {
-        let len = self.column_len();
+        let len = self.body_len();
         self.view
             .set_rows(super::view::sheep::COLUMN_BODY_ROWS, len);
         self.view.move_by(delta, len);
@@ -109,7 +112,7 @@ impl SheepPane {
 
     /// `g`.
     pub(crate) fn move_to_first(&mut self) {
-        let len = self.column_len();
+        let len = self.body_len();
         self.view
             .set_rows(super::view::sheep::COLUMN_BODY_ROWS, len);
         self.view.move_to(0, len);
@@ -117,7 +120,7 @@ impl SheepPane {
 
     /// `G`.
     pub(crate) fn move_to_last(&mut self) {
-        let len = self.column_len();
+        let len = self.body_len();
         self.view
             .set_rows(super::view::sheep::COLUMN_BODY_ROWS, len);
         self.view.move_to(len.saturating_sub(1), len);
