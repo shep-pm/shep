@@ -1517,24 +1517,35 @@ impl SecretsPane {
         self.selected == self.model.rows.len()
     }
 
-    /// Every screen slot `j`/`k`/`g`/`G` can land the cursor on, in the
-    /// order [`view::secrets::draw`] draws them: `None` is the `+ new key`
-    /// affordance, placed right where it always draws — after the last
-    /// visible operator row, before the first namespace group's header —
-    /// even when the operator group has no members at all, matching
-    /// `view::secrets::draw`'s own placement.
+    /// The `model.rows` index the `+ new key` affordance sits after: the
+    /// highest-index operator row, or `None` when the store holds none, in
+    /// which case the affordance is first on screen instead.
     ///
-    /// Real rows never move relative to each other here, so a row hidden by
-    /// a fold is simply absent, the same as [`Self::visible_row_indices`].
-    fn screen_slots(&self) -> Vec<Option<usize>> {
-        let anchor = self
-            .model
+    /// The single source of truth for where the affordance goes.
+    /// [`Self::screen_slots`] (the cursor) and [`view::secrets::draw`] (the
+    /// render) both derive their placement from this rather than each
+    /// running its own scan, so the two cannot disagree about which line
+    /// the affordance is on.
+    pub(crate) fn new_key_anchor(&self) -> Option<usize> {
+        self.model
             .rows
             .iter()
             .enumerate()
             .filter(|(_, row)| row.source == Source::Operator)
             .map(|(index, _)| index)
-            .max();
+            .max()
+    }
+
+    /// Every screen slot `j`/`k`/`g`/`G` can land the cursor on, in the
+    /// order [`view::secrets::draw`] draws them: `None` is the `+ new key`
+    /// affordance, placed right after [`Self::new_key_anchor`], or first on
+    /// screen when there is none, matching `view::secrets::draw`'s own
+    /// placement.
+    ///
+    /// Real rows never move relative to each other here, so a row hidden by
+    /// a fold is simply absent, the same as [`Self::visible_row_indices`].
+    fn screen_slots(&self) -> Vec<Option<usize>> {
+        let anchor = self.new_key_anchor();
         let visible = self.visible_row_indices();
         let insert_at = match anchor {
             Some(anchor) => visible

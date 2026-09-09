@@ -1219,6 +1219,49 @@ pub fn app_with_secrets_and_a_provider_row() -> App {
     app
 }
 
+/// Operator, namespace, operator, in that order: `SecretsModel::rows` is
+/// contiguous by source everywhere else in this pane, so this is the one
+/// fixture that is not, for the test pinning `SecretsPane::new_key_anchor`
+/// as the single computation both the cursor and the renderer read.
+pub fn app_with_interleaved_secret_sources() -> App {
+    let mut app = full_app();
+    app.update(Msg::Key(KeyPress::Secrets));
+    app.update(Msg::Secrets {
+        environment: "production".to_string(),
+        result: Ok(Box::new(SecretsModel {
+            environments: vec!["production".to_string()],
+            rows: vec![
+                SecretRow {
+                    key: "FIRST_OPERATOR_KEY".to_string(),
+                    source: Source::Operator,
+                    in_force: Some("production".to_string()),
+                    set_in: vec!["production".to_string()],
+                    byte_len: Some(1),
+                    readers: Vec::new(),
+                },
+                SecretRow {
+                    key: "vercel/API_TOKEN".to_string(),
+                    source: Source::Namespace("vercel".to_string()),
+                    in_force: Some("production".to_string()),
+                    set_in: vec!["production".to_string()],
+                    byte_len: Some(6),
+                    readers: Vec::new(),
+                },
+                SecretRow {
+                    key: "SECOND_OPERATOR_KEY".to_string(),
+                    source: Source::Operator,
+                    in_force: Some("production".to_string()),
+                    set_in: vec!["production".to_string()],
+                    byte_len: Some(2),
+                    readers: Vec::new(),
+                },
+            ],
+            ..SecretsModel::default()
+        })),
+    });
+    app
+}
+
 /// The value [`app_with_secrets_and_reads`] stores, and so the exact text a
 /// reveal has to put on screen.
 pub const REVEALED_VALUE: &str = "hunter2-not-really";

@@ -552,24 +552,22 @@ pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
     buffer.set_line(area.x, y, &status::rule_line(palette.line(), width), width);
     y += 1;
 
+    // `pane.new_key_anchor()` is the one place that decides where the
+    // affordance sits: `SecretsPane::screen_slots` (the cursor) reads the
+    // same call, so a row drawn here at the wrong spot would also move the
+    // cursor there, never leave the two disagreeing about which line it is.
+    let anchor = pane.new_key_anchor();
     let mut new_key_row_drawn = false;
+    if anchor.is_none() {
+        draw_new_key_row(pane, columns, palette, area, buffer, &mut y);
+        new_key_row_drawn = true;
+    }
     let mut last_source: Option<&Source> = None;
     for (index, row) in pane.model.rows.iter().enumerate() {
         if y >= bottom {
             break;
         }
         if last_source != Some(&row.source) {
-            // The first row that is not the operator's own closes the
-            // operator group: the affordance draws here, once, before that
-            // group's header — even an operator group with zero members
-            // still closes right where its members would have been.
-            if !new_key_row_drawn && !matches!(row.source, Source::Operator) {
-                draw_new_key_row(pane, columns, palette, area, buffer, &mut y);
-                new_key_row_drawn = true;
-                if y >= bottom {
-                    break;
-                }
-            }
             buffer.set_line(
                 area.x + GUTTER,
                 y,
@@ -608,11 +606,21 @@ pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
             table_width,
         );
         y += 1;
+
+        // This row is the anchor: the affordance draws right after it,
+        // closing the operator group even when zero-membered, matching
+        // `SecretsPane::screen_slots`'s own insertion point exactly.
+        if !new_key_row_drawn && anchor == Some(index) {
+            draw_new_key_row(pane, columns, palette, area, buffer, &mut y);
+            new_key_row_drawn = true;
+            if y >= bottom {
+                break;
+            }
+        }
     }
 
-    // Every row was the operator's own (or there were no rows at all): the
-    // affordance never found a namespace header to close the group before,
-    // so it draws last instead.
+    // The anchor row never got drawn (truncated by `bottom` before reaching
+    // it): the affordance still belongs on screen if there is room left.
     if !new_key_row_drawn {
         draw_new_key_row(pane, columns, palette, area, buffer, &mut y);
     }
@@ -644,7 +652,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::lookout::app::Msg;
+    use crate::lookout::app::{Body, KeyPress, Msg};
     use crate::lookout::view::fixtures;
 
     /// The first data row `draw` places, fixed regardless of which source
@@ -814,6 +822,37 @@ mod tests {
             provider_header,
             new_key_row + 1,
             "and right before the provider group's own header"
+        );
+    }
+
+    /// Interleaved sources (operator, namespace, operator): `draw`'s own
+    /// scan used to close the operator group at the first row that was not
+    /// the operator's own, index 1, while `SecretsPane::screen_slots` (the
+    /// cursor) anchored on the highest operator index, 2. `G` would then
+    /// select the affordance while it rendered two lines above where the
+    /// cursor logic put it. Both now read [`SecretsPane::new_key_anchor`],
+    /// so `G`'s target and the drawn affordance are the same line.
+    #[test]
+    fn interleaved_sources_still_agree_between_the_cursor_and_the_drawn_affordance() {
+        let mut app = fixtures::app_with_interleaved_secret_sources();
+        app.update(Msg::Key(KeyPress::SelectLast));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert!(
+            pane.selected_is_new_key_row(),
+            "G lands on the affordance: it is the last screen slot here"
+        );
+        let buffer = fixtures::render(&app, 160, 48);
+
+        let last_operator_row = row_of(&buffer, "SECOND_OPERATOR_KEY");
+        let new_key_row = row_of(&buffer, "+ new key");
+
+        assert_eq!(
+            new_key_row,
+            last_operator_row + 1,
+            "the affordance draws right after the highest-index operator \
+             row, matching the cursor's own anchor"
         );
     }
 
