@@ -339,7 +339,7 @@ fn secrets_armed(app: &App) -> Option<&str> {
     let Body::Secrets(pane) = app.body() else {
         return None;
     };
-    pane.armed.as_deref()
+    pane.armed.as_ref().map(|a| a.key.as_str())
 }
 
 /// The bleats pane's key hint: the design's own status-bar line, plus `m`

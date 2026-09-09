@@ -1465,15 +1465,22 @@ pub(crate) struct SecretsPane {
     /// answer is drawn only while this still names its key, so every
     /// trigger that clears a reveal also drops one in flight.
     pub pending_reveal: Option<String>,
-    /// The key whose deletion is armed, or `None`. While this is set,
-    /// `Enter` confirms the delete rather than opening the value input.
-    pub armed: Option<String>,
-    /// When `armed` was set, for the expiry the tick runs. `None` exactly
-    /// when `armed` is, the same pairing every other armed thing in this
-    /// module keeps.
-    pub armed_at: Option<Instant>,
+    /// The armed delete, or `None`. While this is set, `Enter` confirms the
+    /// delete rather than opening the value input.
+    pub armed: Option<ArmedDelete>,
     /// The open text input, or `None`.
     pub typing: Option<Typing>,
+}
+
+/// A delete armed on the secrets pane: the key and when it armed, one value
+/// rather than two so a caller cannot set one without the other, the same
+/// pairing [`PanePending::Armed`] keeps for the config pane.
+#[derive(Debug, Clone)]
+pub(crate) struct ArmedDelete {
+    /// The key waiting on `Enter` to confirm the delete.
+    pub key: String,
+    /// When it armed, for the expiry the tick runs.
+    pub at: Instant,
 }
 
 impl SecretsPane {
@@ -1641,7 +1648,7 @@ impl fmt::Debug for SecretsPane {
             .field("collapsed", &self.collapsed.len())
             .field("revealing", &self.reveal.is_some())
             .field("pending_reveal", &self.pending_reveal)
-            .field("armed", &self.armed)
+            .field("armed", &self.armed.as_ref().map(|a| &a.key))
             .field("typing", &self.typing.is_some())
             .finish()
     }
@@ -2024,11 +2031,11 @@ impl App {
                 // stale for the shepherd being gone. `now`, not `self.now`.
                 if let Some(pane) = self.secrets_pane_mut()
                     && pane
-                        .armed_at
-                        .is_some_and(|at| now.saturating_duration_since(at) >= CONFIRM_EXPIRY)
+                        .armed
+                        .as_ref()
+                        .is_some_and(|a| now.saturating_duration_since(a.at) >= CONFIRM_EXPIRY)
                 {
                     pane.armed = None;
-                    pane.armed_at = None;
                 }
                 // The bleats pane has no timer of its own; it rides every
                 // tick instead of the dashboard's own cadence, which is
@@ -2324,7 +2331,6 @@ impl App {
                             // an arm from before it landed named a row this
                             // model may no longer even have.
                             pane.armed = None;
-                            pane.armed_at = None;
                             // Only on the very first load, where the pane's
                             // model is still the empty default and so has no
                             // tab yet: the daemon's own default environment
@@ -3062,7 +3068,6 @@ impl App {
                     reveal: None,
                     pending_reveal: None,
                     armed: None,
-                    armed_at: None,
                     typing: None,
                 });
                 Effect::LoadSecrets
@@ -3374,8 +3379,10 @@ impl App {
         let Some(pane) = self.secrets_pane_mut() else {
             return Effect::None;
         };
-        pane.armed = Some(row.key);
-        pane.armed_at = Some(now);
+        pane.armed = Some(ArmedDelete {
+            key: row.key,
+            at: now,
+        });
         Effect::None
     }
 
@@ -3385,10 +3392,9 @@ impl App {
         let Some(pane) = self.secrets_pane_mut() else {
             return Effect::None;
         };
-        let Some(key) = pane.armed.take() else {
+        let Some(ArmedDelete { key, .. }) = pane.armed.take() else {
             return Effect::None;
         };
-        pane.armed_at = None;
         let Some(environment) = pane.environment().map(str::to_string) else {
             return Effect::None;
         };
@@ -3408,10 +3414,8 @@ impl App {
     /// Clears an armed delete, and says whether one was there. `Escape`'s
     /// cue not to also close the pane on the same press.
     fn disarm_secret_delete(&mut self) -> bool {
-        self.secrets_pane_mut().is_some_and(|pane| {
-            pane.armed_at = None;
-            pane.armed.take().is_some()
-        })
+        self.secrets_pane_mut()
+            .is_some_and(|pane| pane.armed.take().is_some())
     }
 
     /// The secrets pane's own text keymap, in force while
@@ -8671,7 +8675,6 @@ mod tests {
             }),
             pending_reveal: None,
             armed: None,
-            armed_at: None,
             typing: Some(Typing {
                 what: TypingWhat::ValueFor("K".into()),
                 buffer: "hunter2".into(),
@@ -8715,7 +8718,7 @@ mod tests {
     /// The key an armed delete names, or `None`.
     fn armed_of(app: &App) -> Option<String> {
         match app.body() {
-            Body::Secrets(pane) => pane.armed.clone(),
+            Body::Secrets(pane) => pane.armed.as_ref().map(|a| a.key.clone()),
             _ => None,
         }
     }
