@@ -348,15 +348,14 @@ const fn pane_hint(control: Control, screen: PaneScreen) -> &'static str {
 /// `x stop`, `R restart` and `L reload` are appended only under
 /// [`Control::Allowed`], the same rule [`hint_for`]'s own doc gives for the
 /// dashboard's write keys: a hint naming a key that is inert where the
-/// operator is reading it teaches them the key is broken. Rows 2 to 46 are
-/// still blank, so none of these five act on anything yet; the hint names
-/// the pane the design settles on, not the one built so far.
+/// operator is reading it teaches them the key is broken. `b full log` and
+/// `/ filter` are not named here yet, for the same reason: rows 2 to 46 are
+/// still blank, and those two route to the feed Task 10 adds. All three of
+/// `x`/`R`/`L` are wired, against the pane's own pinned sheep.
 const fn sheep_pane_hint(control: Control) -> &'static str {
     match control {
-        Control::ReadOnly => "esc flock   e edit   b full log   J/K next sheep   / filter",
-        Control::Allowed => {
-            "esc flock   e edit   b full log   J/K next sheep   / filter   x stop   R restart   L reload"
-        }
+        Control::ReadOnly => "esc flock   e edit   J/K next sheep",
+        Control::Allowed => "esc flock   e edit   J/K next sheep   x stop   R restart   L reload",
     }
 }
 
@@ -1032,5 +1031,50 @@ mod tests {
             "scrolled back, no longer following: {scrolled}"
         );
         assert!(scrolled.contains("read-only"), "got {scrolled}");
+    }
+
+    /// `x`/`R`/`L` are wired now, so the hint keeps naming them; `b`/`/`
+    /// still route to nothing (the feed they would act on is Task 10's),
+    /// so the hint drops them until then, the same rule that gates the
+    /// write keys behind `Control::Allowed` just below.
+    #[test]
+    fn the_sheep_panes_hint_names_the_write_keys_and_drops_the_feeds_own() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        app.set_control_for_tests(Control::Allowed);
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let bar = rendered(&status_line(&app, 200));
+        for key in [
+            "esc flock",
+            "e edit",
+            "J/K next sheep",
+            "x stop",
+            "R restart",
+            "L reload",
+        ] {
+            assert!(bar.contains(key), "missing {key:?}: got {bar}");
+        }
+        assert!(!bar.contains("b full log"), "got {bar}");
+        assert!(!bar.contains("/ filter"), "got {bar}");
+    }
+
+    /// `x`/`R`/`L` are hidden under `Control::ReadOnly`, the same rule
+    /// `hint_for`'s own dashboard forms follow: a hint naming a key that is
+    /// inert where the operator is reading it teaches them the key is
+    /// broken.
+    #[test]
+    fn the_sheep_panes_hint_drops_the_write_keys_under_read_only() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let bar = rendered(&status_line(&app, 200));
+        assert!(bar.contains("esc flock"), "got {bar}");
+        assert!(!bar.contains("x stop"), "got {bar}");
+        assert!(!bar.contains("R restart"), "got {bar}");
+        assert!(!bar.contains("L reload"), "got {bar}");
     }
 }
