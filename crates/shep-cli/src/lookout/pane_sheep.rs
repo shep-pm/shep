@@ -205,4 +205,71 @@ mod tests {
             r#"SheepPane { sheep: Sheep(9), config: Some(SheepConfigView { name: "web", env_keys: 0, env_secrets: 0, overridden: 0, pending: 0 }), feed: BleatsPane { sheep: Sheep(9), filters: Filters { stream: None, min_level: None, matcher: None, order: [] }, match_snapshot: None, scroll_offset: 0, following: true, body_rows: 0, width: 0, wrap: false }, view: Viewport { cursor: 0, offset: 0, rows: 0 } }"#
         );
     }
+
+    /// A default Flockfile's own config, wide enough that the column's body
+    /// runs past `COLUMN_BODY_ROWS` and the scroll tests below have
+    /// somewhere to move to.
+    fn scrollable_pane() -> SheepPane {
+        let mut pane = SheepPane::new(RowKey::Sheep(1));
+        pane.adopt_config(SheepConfigView::new(
+            AppConfig::default(),
+            Vec::new(),
+            Vec::new(),
+        ));
+        pane
+    }
+
+    /// `j`/`k` (`move_by`) walk the column's cursor one line at a time and
+    /// clamp rather than run past either end, the same rule `move_by`'s own
+    /// doc gives.
+    #[test]
+    fn move_by_walks_the_column_and_clamps_at_both_ends() {
+        let mut pane = scrollable_pane();
+        let len = pane.body_len();
+        assert_eq!(pane.view().cursor(), 0);
+        pane.move_by(1);
+        assert_eq!(pane.view().cursor(), 1);
+        pane.move_by(-5);
+        assert_eq!(pane.view().cursor(), 0, "clamped at the top");
+        pane.move_by(isize::try_from(len).unwrap() + 5);
+        assert_eq!(pane.view().cursor(), len - 1, "clamped at the bottom");
+    }
+
+    /// `g` and `G` (`move_to_first`/`move_to_last`) jump straight to either
+    /// end rather than walking there one `move_by` at a time.
+    #[test]
+    fn move_to_first_and_last_jump_to_either_end() {
+        let mut pane = scrollable_pane();
+        let len = pane.body_len();
+        pane.move_to_last();
+        assert_eq!(pane.view().cursor(), len - 1);
+        pane.move_to_first();
+        assert_eq!(pane.view().cursor(), 0);
+    }
+
+    /// Scrolling the cursor past the visible `COLUMN_BODY_ROWS` moves the
+    /// offset forward, and `move_to_last` never leaves it past `len - rows`:
+    /// the same `ensure_visible` contract `Viewport` already carries, pinned
+    /// here through the pane's own entry points rather than `Viewport`
+    /// alone, since those are what a keypress actually calls.
+    #[test]
+    fn scrolling_past_the_visible_rows_advances_the_offset() {
+        let mut pane = scrollable_pane();
+        let len = pane.body_len();
+        assert!(
+            len > super::super::view::sheep::COLUMN_BODY_ROWS,
+            "setup: a default config must scroll: {len} lines, {} visible",
+            super::super::view::sheep::COLUMN_BODY_ROWS
+        );
+        for _ in 0..super::super::view::sheep::COLUMN_BODY_ROWS + 3 {
+            pane.move_by(1);
+        }
+        assert!(pane.view().offset() > 0, "offset: {}", pane.view().offset());
+        pane.move_to_last();
+        assert_eq!(
+            pane.view().offset(),
+            len - super::super::view::sheep::COLUMN_BODY_ROWS,
+            "the last page, not scrolled past the end"
+        );
+    }
 }

@@ -5930,6 +5930,35 @@ mod tests {
         assert!(matches!(app.body(), Body::FlockTable));
     }
 
+    /// `on_sheep_pane_key`'s own `SelectUp`/`SelectDown`/`SelectFirst`/
+    /// `SelectLast` arms, exercised through `App::update` rather than by
+    /// calling `SheepPane::move_by` directly: this pins the routing itself,
+    /// the surface `pane_sheep.rs`'s own unit tests cannot reach.
+    #[test]
+    fn j_k_g_and_capital_g_scroll_the_sheep_panes_column() {
+        let mut app = fixture_with_two_sheep();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "alpha".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(
+                fixtures::sheep_config_view(),
+            ))),
+        });
+        let len = crate::lookout::view::sheep::column_len(app.sheep_pane().unwrap().config());
+
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        assert_eq!(app.sheep_pane().unwrap().view().cursor(), 1);
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        assert_eq!(app.sheep_pane().unwrap().view().cursor(), 0);
+
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        assert_eq!(app.sheep_pane().unwrap().view().cursor(), len - 1);
+        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
+        assert_eq!(app.sheep_pane().unwrap().view().cursor(), 0);
+    }
+
     /// `J` walks the flock without leaving the pane, and asks for the new
     /// sheep's config.
     #[test]
