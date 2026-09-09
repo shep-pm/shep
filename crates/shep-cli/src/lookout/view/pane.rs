@@ -71,24 +71,32 @@ const VALUE_WIDTH: u16 = KEY_MIN + 2 + VALUE_MIN;
 /// page.
 const BLURB_WRAP: u16 = 66;
 
-/// The panel's own width, until Task 10 replaces this fixed number with
-/// the real 45%-of-terminal-width ladder (`panel_width`). [`pane_lines`]
-/// clamps a caller's own `width` argument to this ceiling rather than
-/// trusting it, which is what keeps every row under 72 columns regardless
-/// of the terminal width passed in.
-const PANEL_CEILING: u16 = 72;
+/// The narrowest left column that still draws a marker, a key and a value.
+const LEFT_MIN: u16 = 40;
 
-/// The field list's own width at the design target, paired with
-/// [`PANEL_CEILING`] for the panel beside it. Task 10 replaces both this
-/// constant and the fixed threshold below with `panel_width`'s continuous
-/// ladder; until then the pane draws the panel only at exactly the design
-/// target's split, and draws as it always has below it.
-const DESIGN_LEFT_WIDTH: u16 = 88;
+/// The narrowest panel that holds a wrapped blurb and a validation list.
+const PANEL_MIN: u16 = 50;
 
-/// The terminal width the fixed 88/72 split activates at: [`DESIGN_LEFT_WIDTH`]
-/// plus [`PANEL_CEILING`], the design target from
-/// `docs/brainstorming/specs/2026-09-08-lookout-1e-editing-pane-design.md`.
-const DESIGN_TARGET_WIDTH: u16 = DESIGN_LEFT_WIDTH + PANEL_CEILING;
+/// The panel at the design target, and the ceiling everywhere else.
+const PANEL_MAX: u16 = 72;
+
+/// How wide the explanation panel is, and [`None`] when it does not draw.
+///
+/// 45% of 160 is 72, so the design target from
+/// `docs/brainstorming/specs/2026-09-08-lookout-1e-editing-pane-design.md`
+/// falls out of the formula rather than being special cased. Below it the
+/// clamp to [`PANEL_MAX`] holds the panel at the design target's own width
+/// rather than growing it to fill a wider terminal: the left column takes
+/// the remainder instead, the same way [`super::flock`]'s own table grows.
+/// Above [`LEFT_MIN`] short of `width` the panel cannot hold a wrapped
+/// blurb and a validation list beside a left column with room for a
+/// marker, a key and a value, and [`pane_lines`] falls back to the single
+/// column it always drew.
+fn panel_width(width: u16) -> Option<u16> {
+    let wanted = (u32::from(width) * 45 / 100) as u16;
+    let panel = wanted.clamp(PANEL_MIN, PANEL_MAX);
+    (width.saturating_sub(panel) >= LEFT_MIN).then_some(panel)
+}
 
 /// The width the rows are laid out in: the terminal minus [`GUTTER`].
 const fn body_width(width: u16) -> u16 {
@@ -121,8 +129,16 @@ const fn cost_label(group: ApplyGroup) -> &'static str {
 /// COST goes first when the terminal narrows: arming a field repeats its
 /// cost verbatim in the status bar, which is the same reasoning
 /// [`super::settings`] gives for dropping its own cost cell first.
-fn widths(width: u16) -> (u16, u16, u16) {
-    if width >= FULL_WIDTH {
+///
+/// `show_cost` is `false` whenever the explanation panel is drawn beside
+/// this body: the panel's own impact sentence already says what COST
+/// would, and the `LANDS` cell and the panel saying the same thing on the
+/// same screen is exactly the duplication the width ladder exists to
+/// avoid. `false` here behaves as if `width` had fallen under
+/// [`FULL_WIDTH`] on its own, freeing what COST would have spent onto
+/// VALUE instead.
+fn widths(width: u16, show_cost: bool) -> (u16, u16, u16) {
+    if show_cost && width >= FULL_WIDTH {
         let rest = width - COST_W - 2;
         let key = KEY_W.min(rest - VALUE_MIN - 2);
         (key, rest - key - 2, COST_W)
@@ -199,11 +215,12 @@ fn field_line(
     selected: bool,
     width: u16,
     palette: Palette,
+    panel: bool,
 ) -> Line<'static> {
     let Some(field) = pane.fields().fields().get(index) else {
         return Line::default();
     };
-    let (key_w, value_w, cost_w) = widths(body_width(width));
+    let (key_w, value_w, cost_w) = widths(body_width(width), !panel);
     let flag = match (pane.is_pending(&field.key), pane.is_overridden(&field.key)) {
         (true, _) => '!',
         (false, true) => '*',
@@ -600,8 +617,8 @@ fn hairline_line(palette: Palette, width: u16) -> Line<'static> {
 /// [`field_line`]'s own cells. Drawn in place of [`top_line`] when neither
 /// the apply menu nor `h`'s help text is up, so the slot under the tab row
 /// always says something.
-fn column_header_line(palette: Palette, width: u16) -> Line<'static> {
-    let (key_w, value_w, cost_w) = widths(body_width(width));
+fn column_header_line(palette: Palette, width: u16, panel: bool) -> Line<'static> {
+    let (key_w, value_w, cost_w) = widths(body_width(width), !panel);
     let mut text = String::from("  ");
     text.push_str(&fit("FIELD", key_w));
     if value_w > 0 {
@@ -703,6 +720,7 @@ fn pending_and_env_lines(
     palette: Palette,
     width: u16,
     budget: usize,
+    panel: bool,
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
     if budget == 0 {
@@ -723,7 +741,7 @@ fn pending_and_env_lines(
     if pending_len + env_len > budget
         && let Some(PaneRow::Env(_) | PaneRow::AddEnv) = pane.cursor()
     {
-        return vec![cursor_env_row_line(pane, width, palette)];
+        return vec![cursor_env_row_line(pane, width, palette, panel)];
     }
     let mut remaining = budget;
 
@@ -756,12 +774,12 @@ fn pending_and_env_lines(
             break;
         }
         let selected = pane.cursor() == Some(PaneRow::Env(index));
-        lines.push(env_row_line(pane, name, selected, width, palette));
+        lines.push(env_row_line(pane, name, selected, width, palette, panel));
         remaining -= 1;
     }
     if remaining > 0 {
         let selected = pane.cursor() == Some(PaneRow::AddEnv);
-        lines.push(add_env_row_line(pane, selected, width, palette));
+        lines.push(add_env_row_line(pane, selected, width, palette, panel));
     }
     lines
 }
@@ -770,16 +788,21 @@ fn pending_and_env_lines(
 /// [`cursor_only`]'s twin for the env rows below the field list. Panics if
 /// the cursor is not on [`PaneRow::Env`] or [`PaneRow::AddEnv`]; every
 /// caller has already checked.
-fn cursor_env_row_line(pane: &ConfigPane, width: u16, palette: Palette) -> Line<'static> {
+fn cursor_env_row_line(
+    pane: &ConfigPane,
+    width: u16,
+    palette: Palette,
+    panel: bool,
+) -> Line<'static> {
     match pane.cursor() {
         Some(PaneRow::Env(index)) => {
             let name = pane
                 .env_key_names()
                 .get(index)
                 .expect("the cursor names a real env row");
-            env_row_line(pane, name, true, width, palette)
+            env_row_line(pane, name, true, width, palette, panel)
         }
-        Some(PaneRow::AddEnv) => add_env_row_line(pane, true, width, palette),
+        Some(PaneRow::AddEnv) => add_env_row_line(pane, true, width, palette, panel),
         Some(PaneRow::Field(_)) | None => {
             unreachable!("callers check the cursor is on an env row first")
         }
@@ -797,8 +820,9 @@ fn env_row_line(
     selected: bool,
     width: u16,
     palette: Palette,
+    panel: bool,
 ) -> Line<'static> {
-    let (key_w, value_w, _) = widths(body_width(width));
+    let (key_w, value_w, _) = widths(body_width(width), !panel);
     let typing = selected
         .then(|| pane.env_typing())
         .flatten()
@@ -842,8 +866,9 @@ fn add_env_row_line(
     selected: bool,
     width: u16,
     palette: Palette,
+    panel: bool,
 ) -> Line<'static> {
-    let (key_w, _, _) = widths(body_width(width));
+    let (key_w, _, _) = widths(body_width(width), !panel);
     let typing = selected
         .then(|| pane.env_typing())
         .flatten()
@@ -885,6 +910,7 @@ fn grouped_body_lines(
     palette: Palette,
     width: u16,
     budget: usize,
+    panel: bool,
 ) -> Vec<Line<'static>> {
     // The cursor's own row has to draw somewhere in this budget, per the
     // rule every screen in this file holds. When it is on an env row or
@@ -894,10 +920,10 @@ fn grouped_body_lines(
     // `pending_and_env_lines` goes first then, and the field body takes
     // whatever it leaves, rather than the other way around.
     if matches!(pane.cursor(), Some(PaneRow::Env(_) | PaneRow::AddEnv)) {
-        let tail = pending_and_env_lines(pane, palette, width, budget);
+        let tail = pending_and_env_lines(pane, palette, width, budget, panel);
         let remaining = budget.saturating_sub(tail.len());
         let mut lines = if !pane.field_rows().is_empty() && remaining > 0 {
-            body_from(pane, palette, width, remaining, 0, false).lines
+            body_from(pane, palette, width, remaining, 0, false, panel).lines
         } else {
             Vec::new()
         };
@@ -913,14 +939,16 @@ fn grouped_body_lines(
         super::scroll::to_cursor(
             cursor_row,
             pane.view().offset(),
-            |offset| body_from(pane, palette, width, budget, offset, false),
-            || cursor_only(pane, palette, width, budget, cursor_row),
+            |offset| body_from(pane, palette, width, budget, offset, false, panel),
+            || cursor_only(pane, palette, width, budget, cursor_row, panel),
         )
     } else {
         Vec::new()
     };
     let remaining = budget.saturating_sub(lines.len());
-    lines.extend(pending_and_env_lines(pane, palette, width, remaining));
+    lines.extend(pending_and_env_lines(
+        pane, palette, width, remaining, panel,
+    ));
     lines
 }
 
@@ -944,46 +972,45 @@ fn grouped_pane_lines(
 /// are chrome, not per-field, so widening them into the panel's own
 /// column would only paint over where the panel sits.
 ///
-/// Everything, chrome included, is laid out at [`DESIGN_TARGET_WIDTH`],
-/// never the caller's own `width`: a terminal wider than the design
-/// target still draws the fixed 88/72 split rather than stretching the
-/// title band's own reverse-video band into the gap, so nothing this
-/// function draws ever spills past column 160.
+/// Chrome is laid out at the real `width`, not clamped to the design
+/// target: a terminal wider than 160 stretches the title band's own
+/// reverse-video band and the hairlines the rest of the way, rather than
+/// leaving blank space to the right of a pane pinned at 160. `panel_width`
+/// governs how much of that width the panel itself claims; nothing here
+/// grows the panel past [`PANEL_MAX`].
 ///
-/// Only reached at exactly [`DESIGN_TARGET_WIDTH`] and above; a narrower
-/// terminal never calls this and keeps today's single column, per Task
-/// 10's own responsive ladder taking every other width.
+/// Only reached when [`panel_width`] returns `Some`; a narrower terminal
+/// never calls this and keeps today's single column.
 fn grouped_pane_with_panel_lines(
     pane: &ConfigPane,
     menu: Option<&PaneMenu>,
     palette: Palette,
+    width: u16,
+    panel_w: u16,
     budget: usize,
 ) -> Vec<Line<'static>> {
-    let panel = panel_lines(pane, palette, PANEL_CEILING);
-    grouped_pane_lines_with_panel(
-        pane,
-        menu,
-        palette,
-        DESIGN_TARGET_WIDTH,
-        budget,
-        Some(panel),
-    )
+    let panel = panel_lines(pane, palette, panel_w);
+    grouped_pane_lines_with_panel(pane, menu, palette, width, budget, Some((panel, panel_w)))
 }
 
 /// The body shared by [`grouped_pane_lines`] and
 /// [`grouped_pane_with_panel_lines`]: `panel` is `None` for the former,
 /// which lays the body out at `width` exactly as it always has, and
-/// `Some` for the latter, which lays the body out at [`DESIGN_LEFT_WIDTH`]
-/// instead and merges `panel`'s own lines beside it, since that is the
-/// one region tall enough and narrow enough to hold both.
+/// `Some((lines, panel_width))` for the latter, which lays the body out at
+/// `width - panel_width` instead and merges `lines` beside it, since that
+/// is the one region tall enough and narrow enough to hold both.
 fn grouped_pane_lines_with_panel(
     pane: &ConfigPane,
     menu: Option<&PaneMenu>,
     palette: Palette,
     width: u16,
     budget: usize,
-    panel: Option<Vec<Line<'static>>>,
+    panel: Option<(Vec<Line<'static>>, u16)>,
 ) -> Vec<Line<'static>> {
+    let has_panel = panel.is_some();
+    let left_width = panel
+        .as_ref()
+        .map_or(width, |(_, panel_width)| width.saturating_sub(*panel_width));
     let mut lines = vec![title_band_line(pane, palette, width)];
     let mut remaining = budget - 1;
     if remaining == 0 {
@@ -1010,7 +1037,7 @@ fn grouped_pane_lines_with_panel(
                 style,
             )));
         } else {
-            lines.push(column_header_line(palette, width));
+            lines.push(column_header_line(palette, left_width, has_panel));
         }
         remaining -= 1;
     }
@@ -1029,14 +1056,9 @@ fn grouped_pane_lines_with_panel(
     };
     let body_budget = remaining - footer_lines;
     if body_budget > 0 {
-        let body_width = if panel.is_some() {
-            DESIGN_LEFT_WIDTH
-        } else {
-            width
-        };
-        let body = grouped_body_lines(pane, palette, body_width, body_budget);
+        let body = grouped_body_lines(pane, palette, left_width, body_budget, has_panel);
         lines.extend(match panel {
-            Some(panel) => merge_beside_panel(body, panel, DESIGN_LEFT_WIDTH, body_budget),
+            Some((panel, _)) => merge_beside_panel(body, panel, left_width, body_budget),
             None => body,
         });
     }
@@ -1051,8 +1073,8 @@ fn grouped_pane_lines_with_panel(
 
 /// The columns `line`'s spans occupy, added rather than measured against a
 /// fixed cell: a blank separator or an unselected section header is
-/// shorter than [`DESIGN_LEFT_WIDTH`] on its own, and only the panel's own
-/// starting column cares where it ends.
+/// shorter than the left column's own width on its own, and only the
+/// panel's own starting column cares where it ends.
 fn line_columns(line: &Line<'_>) -> usize {
     line.spans
         .iter()
@@ -1166,13 +1188,13 @@ pub fn pane_lines(
         return list_lines(pane, list, palette, width, budget);
     }
     if has_groups(pane) {
-        if width >= DESIGN_TARGET_WIDTH {
-            return grouped_pane_with_panel_lines(pane, menu, palette, budget);
+        if let Some(panel_w) = panel_width(width) {
+            return grouped_pane_with_panel_lines(pane, menu, palette, width, panel_w, budget);
         }
         return grouped_pane_lines(pane, menu, palette, width, budget);
     }
-    if width >= DESIGN_TARGET_WIDTH {
-        return ungrouped_pane_with_panel_lines(pane, menu, palette, budget);
+    if let Some(panel_w) = panel_width(width) {
+        return ungrouped_pane_with_panel_lines(pane, menu, palette, width, panel_w, budget);
     }
     let mut lines = vec![title_line(pane, palette, width)];
     // The title is unconditional, so the body is laid out against what is
@@ -1207,8 +1229,8 @@ pub fn pane_lines(
         lines.extend(super::scroll::to_cursor(
             cursor_row,
             pane.view().offset(),
-            |offset| body_from(pane, palette, width, body_budget, offset, true),
-            || cursor_only(pane, palette, width, body_budget, cursor_row),
+            |offset| body_from(pane, palette, width, body_budget, offset, true, false),
+            || cursor_only(pane, palette, width, body_budget, cursor_row, false),
         ));
     }
     push_footer_line(&mut lines, footer, width, palette);
@@ -1223,21 +1245,23 @@ pub fn pane_lines(
 /// No tab row: a dog's schema carries no group to name, so `pane_lines`
 /// never draws one for it even without a panel, and adding the panel is not
 /// a reason to invent one. Otherwise the same shape as
-/// [`grouped_pane_with_panel_lines`]: laid out at [`DESIGN_TARGET_WIDTH`]
-/// rather than the caller's own `width`, and the trailing "shep
+/// [`grouped_pane_with_panel_lines`]: the title is laid out at the real
+/// `width`, the body at `width - panel_w`, and the trailing "shep
 /// publishes..." footer is chrome, reserved out of the budget before the
 /// body claims what is left, the same order [`pane_lines`]'s own
 /// single-column path reserves it in.
 ///
-/// Only reached at exactly [`DESIGN_TARGET_WIDTH`] and above, mirroring
+/// Only reached when [`panel_width`] returns `Some`, mirroring
 /// [`grouped_pane_with_panel_lines`]'s own threshold.
 fn ungrouped_pane_with_panel_lines(
     pane: &ConfigPane,
     menu: Option<&PaneMenu>,
     palette: Palette,
+    width: u16,
+    panel_w: u16,
     budget: usize,
 ) -> Vec<Line<'static>> {
-    let width = DESIGN_TARGET_WIDTH;
+    let left_width = width.saturating_sub(panel_w);
     let mut lines = vec![title_line(pane, palette, width)];
     let mut body_budget = budget - 1;
     if let Some((text, style)) = top_line(pane, menu, palette)
@@ -1254,21 +1278,16 @@ fn ungrouped_pane_with_panel_lines(
         body_budget -= 1;
     }
     if !pane.fields().is_empty() && body_budget > 0 {
-        let panel = panel_lines(pane, palette, PANEL_CEILING);
+        let panel = panel_lines(pane, palette, panel_w);
         let total = pane.rows().len();
         let cursor_row = pane.view().cursor().min(total - 1);
         let body = super::scroll::to_cursor(
             cursor_row,
             pane.view().offset(),
-            |offset| body_from(pane, palette, DESIGN_LEFT_WIDTH, body_budget, offset, true),
-            || cursor_only(pane, palette, DESIGN_LEFT_WIDTH, body_budget, cursor_row),
+            |offset| body_from(pane, palette, left_width, body_budget, offset, true, true),
+            || cursor_only(pane, palette, left_width, body_budget, cursor_row, true),
         );
-        lines.extend(merge_beside_panel(
-            body,
-            panel,
-            DESIGN_LEFT_WIDTH,
-            body_budget,
-        ));
+        lines.extend(merge_beside_panel(body, panel, left_width, body_budget));
     }
     push_footer_line(&mut lines, footer, width, palette);
     lines
@@ -1287,6 +1306,7 @@ fn body_from(
     budget: usize,
     offset: usize,
     show_group_headers: bool,
+    panel: bool,
 ) -> Attempt {
     let rows = pane.field_rows();
     let total = rows.len();
@@ -1355,6 +1375,7 @@ fn body_from(
             pane.cursor() == Some(*row),
             width,
             palette,
+            panel,
         ));
         drawn += 1;
     }
@@ -1404,11 +1425,12 @@ fn cursor_only(
     width: u16,
     budget: usize,
     cursor_row: usize,
+    panel: bool,
 ) -> Vec<Line<'static>> {
     let rows = pane.field_rows();
     let mut lines = Vec::new();
     if let Some(PaneRow::Field(index)) = rows.get(cursor_row).copied() {
-        lines.push(field_line(pane, index, true, width, palette));
+        lines.push(field_line(pane, index, true, width, palette, panel));
     }
     let hidden_below = rows.len().saturating_sub(cursor_row + 1);
     if cursor_row > 0 && lines.len() < budget {
@@ -1561,8 +1583,9 @@ fn bounded_row(
 }
 
 /// The right-hand explanation panel: everything about `field` alone, drawn
-/// at `width` columns (clamped to [`PANEL_CEILING`] until Task 10 makes the
-/// clamp a real ladder).
+/// at `width` columns, clamped to [`PANEL_MAX`] as a defensive floor under
+/// a caller that has not already run `width` through [`panel_width`]'s own
+/// ladder.
 ///
 /// Six regions, top to bottom, each omitted entirely when its own source is
 /// empty rather than drawn with nothing under its heading: the `FOCUSED`
@@ -1578,7 +1601,7 @@ pub(super) fn panel_for_field(
     palette: Palette,
     width: u16,
 ) -> Vec<Line<'static>> {
-    let width = width.min(PANEL_CEILING);
+    let width = width.min(PANEL_MAX);
     let mut lines = Vec::new();
 
     // 1: the FOCUSED chip, the field name, its type.
@@ -1588,8 +1611,15 @@ pub(super) fn panel_for_field(
         Span::styled(format!("  {}", type_label(field)), palette.muted()),
     ]));
 
-    // 2: the blurb, wrapped.
-    for row in wrap(&field.help, usize::from(BLURB_WRAP.min(width))) {
+    // 2: the blurb, wrapped. The leading two-space indent below is part of
+    // the row's own width, so the wrap budget is `width` minus those two
+    // columns, not `width` itself: at the design target's fixed 72 columns
+    // `BLURB_WRAP` (66) left enough headroom that this never showed, but
+    // the ladder's own floor of 50 does not.
+    for row in wrap(
+        &field.help,
+        usize::from(BLURB_WRAP.min(width.saturating_sub(2))),
+    ) {
         lines.push(Line::from(Span::raw(format!("  {row}"))));
     }
 
@@ -1730,6 +1760,7 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
+    use super::super::MIN_TERM_WIDTH;
     use super::super::fixtures;
     use super::*;
     use crate::lookout::app::{Effect, KeyPress, Msg};
@@ -1810,7 +1841,7 @@ mod tests {
         let instances = lines
             .iter()
             .find(|line| text_of(core::slice::from_ref(line))[0].contains("instances"))
-            .expect("every field is drawn at 120 columns");
+            .expect("every field is drawn at 89 columns");
         assert!(
             text_of(core::slice::from_ref(instances))[0].contains("read-only"),
             "{instances:?}"
@@ -1839,13 +1870,18 @@ mod tests {
 
     /// Every field row over all eight groups, walked with `next_group`,
     /// styled by `palette`. What a test that used to find any field at
-    /// 120 columns in one shot now needs, since the active group is the
+    /// one width in one shot now needs, since the active group is the
     /// only one a single render draws.
+    ///
+    /// 89 columns, one short of [`panel_width`]'s own floor: these tests
+    /// are about a field row's own COST cell and lock glyph, which the
+    /// panel suppresses once it draws, so the width has to stay below the
+    /// ladder rather than at the 120 it used before the ladder existed.
     fn all_group_lines(palette: Palette) -> Vec<Line<'static>> {
         let mut pane = web_pane();
         let mut lines = Vec::new();
         for _ in 0..GROUP_ORDER.len() {
-            lines.extend(pane_lines(&pane, None, palette, 120, 0));
+            lines.extend(pane_lines(&pane, None, palette, 89, 0));
             pane.next_group();
         }
         lines
@@ -1896,7 +1932,7 @@ mod tests {
         assert_eq!(
             rows_of(&text).len(),
             40,
-            "every field but env is drawn at 120"
+            "every field but env is drawn at 89"
         );
     }
 
@@ -1930,7 +1966,7 @@ mod tests {
         let row = |key: &str| {
             text.iter()
                 .find(|line| line.contains(key))
-                .unwrap_or_else(|| panic!("{key} is drawn at 120 columns: {text:?}"))
+                .unwrap_or_else(|| panic!("{key} is drawn at 89 columns: {text:?}"))
         };
         assert!(
             row("kill_timeout").contains("1600ms"),
@@ -2083,13 +2119,17 @@ mod tests {
         );
     }
 
+    /// Below the panel's own floor: the panel prints the cursor's field's
+    /// blurb unconditionally, `h` or no `h`, so this has to run where the
+    /// panel does not draw at all to see the top line's own text disappear
+    /// on the second toggle.
     #[test]
     fn toggling_help_again_dismisses_it() {
         let mut pane = web_pane();
         pane.move_to_key("max_memory");
         pane.toggle_help();
         pane.toggle_help();
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 89, 0));
         assert!(
             !text.iter().any(|line| line.contains("Restart the app")),
             "{text:?}"
@@ -2260,11 +2300,13 @@ mod tests {
             let mut app = fixtures::app_in_sheep_pane_with_control();
             pane_to(&mut app, key);
 
+            // Below the panel's own floor: the panel suppresses the row's own
+            // COST cell, which is exactly what this test reads.
             let text = text_of(&pane_lines(
                 app.config_pane().unwrap(),
                 None,
                 fixtures::plain(),
-                120,
+                89,
                 0,
             ));
             // A group header line is bare, just its name; a field row always
@@ -2281,7 +2323,7 @@ mod tests {
                             .as_mut()
                             .is_some_and(|w| w.next() == Some(key) && w.next().is_some())
                 })
-                .unwrap_or_else(|| panic!("{key} is drawn at 120 columns: {text:?}"));
+                .unwrap_or_else(|| panic!("{key} is drawn at 89 columns: {text:?}"));
             assert!(row.contains(column), "{key}: {row:?}");
 
             app.update(Msg::Key(KeyPress::Cycle));
@@ -2976,46 +3018,42 @@ mod tests {
     /// pins the wiring itself, through the same [`pane_lines`] the real
     /// draw path calls, not through a fixture built to reach
     /// [`panel_lines`] directly.
+    ///
+    /// The "not below the design target" half of this test's original name
+    /// no longer holds: Task 10 replaced the fixed 160-column threshold
+    /// with `panel_width`'s continuous ladder, so the panel now draws down
+    /// to 90 columns. What still has to hold, and what this pins instead,
+    /// is the panel's own floor: nothing below it.
     #[test]
     fn the_panel_draws_beside_the_field_list_at_the_design_target() {
         let app = fixtures::app_in_sheep_pane();
         let pane = app.config_pane().expect("the pane is open");
-        let at_target = text_of(&pane_lines(
-            pane,
-            None,
-            fixtures::plain(),
-            DESIGN_TARGET_WIDTH,
-            48,
-        ));
+        let at_target = text_of(&pane_lines(pane, None, fixtures::plain(), 160, 48));
         assert!(
             at_target.iter().any(|line| line.contains("FOCUSED")),
             "the panel never drew at the design target: {at_target:?}"
         );
-        let below_target = text_of(&pane_lines(
-            pane,
-            None,
-            fixtures::plain(),
-            DESIGN_TARGET_WIDTH - 1,
-            48,
-        ));
+        let below_floor = text_of(&pane_lines(pane, None, fixtures::plain(), 89, 48));
         assert!(
-            !below_target.iter().any(|line| line.contains("FOCUSED")),
-            "a fixed split must not invent a rule below the design target: {below_target:?}"
+            !below_floor.iter().any(|line| line.contains("FOCUSED")),
+            "the panel must not draw below its own floor: {below_floor:?}"
         );
     }
 
-    /// Left is 88, the panel is 72, and neither this task nor Task 10 may
-    /// let a row cross that boundary or run past column 160, no matter how
-    /// wide the real terminal is.
+    /// No row may cross the panel boundary or run past the terminal it was
+    /// drawn for, at the design target and at a terminal wider than it: the
+    /// chrome now stretches to fill a wide terminal instead of capping at
+    /// 160 with blank space to the right, so the ceiling this checks
+    /// against is `width` itself, not a fixed 160.
     #[test]
-    fn no_row_spills_across_the_panel_boundary_or_past_the_design_target() {
+    fn no_row_spills_across_the_panel_boundary_or_past_its_own_width() {
         let app = fixtures::app_in_sheep_pane();
         let pane = app.config_pane().expect("the pane is open");
-        for width in [DESIGN_TARGET_WIDTH, DESIGN_TARGET_WIDTH + 40] {
+        for width in [160, 200] {
             for line in pane_lines(pane, None, fixtures::plain(), width, 48) {
                 let cols = line_columns(&line);
                 assert!(
-                    cols <= usize::from(DESIGN_TARGET_WIDTH),
+                    cols <= usize::from(width),
                     "a row is {cols} columns wide at terminal width {width}: {line:?}"
                 );
             }
@@ -3029,12 +3067,12 @@ mod tests {
     fn a_dogs_panel_draws_beside_its_field_list_at_the_design_target() {
         let app = fixtures::app_in_dog_pane();
         assert!(
-            fixtures::config_pane_draws_a_panel(&app, DESIGN_TARGET_WIDTH),
+            fixtures::config_pane_draws_a_panel(&app, 160),
             "the panel never drew for a dog at the design target"
         );
         assert!(
-            !fixtures::config_pane_draws_a_panel(&app, DESIGN_TARGET_WIDTH - 1),
-            "a fixed split must not invent a rule below the design target"
+            !fixtures::config_pane_draws_a_panel(&app, 89),
+            "the panel must not draw below its own floor"
         );
     }
 
@@ -3045,7 +3083,7 @@ mod tests {
     #[test]
     fn a_dogs_panel_has_no_impact_region() {
         let app = fixtures::app_in_dog_pane();
-        let panel = fixtures::config_pane_panel_for_tests(&app, DESIGN_TARGET_WIDTH);
+        let panel = fixtures::config_pane_panel_for_tests(&app, 160);
         assert!(
             panel.iter().any(|line| line.contains("FOCUSED")),
             "the panel must actually be drawn for its own absence to mean anything: {panel:?}"
@@ -3064,12 +3102,92 @@ mod tests {
     fn a_dogs_panel_layout_draws_no_tab_row() {
         let app = fixtures::app_in_dog_pane();
         assert!(
-            fixtures::config_pane_draws_a_panel(&app, DESIGN_TARGET_WIDTH),
+            fixtures::config_pane_draws_a_panel(&app, 160),
             "the panel must actually be drawn for its own absence to mean anything"
         );
         assert!(
-            !fixtures::config_pane_draws_a_tab_row(&app, DESIGN_TARGET_WIDTH),
+            !fixtures::config_pane_draws_a_tab_row(&app, 160),
             "a dog has no groups to tab through"
         );
+    }
+
+    // --- Task 10: the responsive ladder ---
+
+    #[test]
+    fn the_design_target_splits_eighty_eight_and_seventy_two() {
+        assert_eq!(panel_width(160), Some(72));
+    }
+
+    /// [`pane_lines`]'s own rows for the sheep [`fixtures::app_in_sheep_pane`]
+    /// opens, rendered plain: the config pane's own equivalent of
+    /// [`fixtures::draw_lines`], which draws the bleats pane instead.
+    fn config_pane_lines_for_tests(app: &App, width: u16, height: u16) -> Vec<Line<'static>> {
+        let pane = app.config_pane().expect("the pane is open");
+        pane_lines(pane, None, fixtures::plain(), width, height)
+    }
+
+    /// The panel and the LANDS cell say the same thing, so exactly one of
+    /// them is on screen at any width. This is the invariant the whole
+    /// ladder rests on, and it is asserted at every width rather than at
+    /// three of them, through the real render path
+    /// ([`pane_lines`]/[`config_pane_lines_for_tests`]) rather than
+    /// [`widths`] called directly: `widths`'s own `show_cost` parameter is
+    /// wired from the caller's own `panel` state, so calling it directly
+    /// with a fixed `show_cost` cannot see whether that wiring is actually
+    /// in place.
+    #[test]
+    fn the_panel_and_the_lands_cell_are_never_both_present() {
+        let app = fixtures::app_in_sheep_pane();
+        for width in MIN_TERM_WIDTH..=200 {
+            let rows = fixtures::render_all(&config_pane_lines_for_tests(&app, width, 48));
+            let panel = rows.contains("FOCUSED");
+            let lands = rows.contains("LANDS");
+            assert!(!(panel && lands), "both are drawn at {width} columns");
+        }
+    }
+
+    #[test]
+    fn the_panel_goes_below_ninety_columns() {
+        assert!(panel_width(90).is_some());
+        assert_eq!(panel_width(89), None);
+    }
+
+    #[test]
+    fn the_panel_never_drops_below_its_own_floor() {
+        for width in 90..=200 {
+            let panel = panel_width(width).expect("the panel is drawn above 89");
+            assert!((50..=72).contains(&panel), "{panel} at {width}");
+        }
+    }
+
+    #[test]
+    fn the_left_column_never_falls_below_its_own_floor() {
+        for width in 90..=200 {
+            let panel = panel_width(width).expect("the panel is drawn above 89");
+            assert!(width - panel >= 40, "{} left at {width}", width - panel);
+        }
+    }
+
+    /// Every width the pane can be drawn at draws inside itself. This is
+    /// the same sweep the existing pane tests run and it stays.
+    #[test]
+    fn every_row_fits_the_width_it_was_drawn_for() {
+        for width in MIN_TERM_WIDTH..=200 {
+            let app = fixtures::app_in_sheep_pane();
+            for row in config_pane_lines_for_tests(&app, width, 48) {
+                assert!(
+                    fixtures::render_all(&[row.clone()]).chars().count() <= usize::from(width),
+                    "a row overflows at {width}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_short_body_sheds_the_legend_before_the_tab_row() {
+        let app = fixtures::app_in_sheep_pane();
+        let rows = fixtures::render_all(&config_pane_lines_for_tests(&app, 160, 6));
+        assert!(rows.contains("tab next group"), "the tab row must survive");
+        assert!(!rows.contains("changed by you"), "the legend must go first");
     }
 }
