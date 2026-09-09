@@ -1076,5 +1076,7 @@ mod tests {
         assert!(!bar.contains("x stop"), "got {bar}");
         assert!(!bar.contains("R restart"), "got {bar}");
         assert!(!bar.contains("L reload"), "got {bar}");
+        assert!(!bar.contains("b full log"), "got {bar}");
+        assert!(!bar.contains("/ filter"), "got {bar}");
     }
 }
