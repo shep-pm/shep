@@ -132,7 +132,7 @@ fn column_body_lines(view: &SheepConfigView, palette: Palette) -> Vec<Line<'stat
 
 /// The one line the column draws while [`SheepPane::config`] is still
 /// `None`: read once by [`draw_column`] and by
-/// [`SheepPane::column_len`](super::super::pane_sheep::SheepPane), so
+/// [`SheepPane::body_len`](super::super::pane_sheep::SheepPane), so
 /// scrolling can never claim a body one line longer than what is actually
 /// drawn.
 fn waiting_line(palette: Palette) -> Line<'static> {
