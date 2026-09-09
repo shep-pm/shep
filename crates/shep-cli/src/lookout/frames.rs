@@ -25,7 +25,10 @@ use shep_core::protocol::{
 };
 use shep_core::status::ProcStatus;
 
-use super::app::{ActionVerb, App, Control, KeyPress, Msg, RowKey, Sent, SettingsRow};
+use super::app::{
+    ActionVerb, App, Control, KeyPress, Msg, RevealedValue, RowKey, Sent, SettingsRow,
+};
+use super::secrets::{SecretRow, SecretsModel, Source};
 use super::source::HostSample;
 use super::tail::{Stream, Tail, TailLine};
 use super::theme::Palette;
@@ -34,6 +37,7 @@ use crate::commands::settings::{
     DogView, ScalarView, SettingField, SettingsSnapshot, load_settings,
 };
 use crate::commands::shep_toml::ShepToml;
+use crate::secret_readers::Reader;
 use crate::style::{StyleLevel, StyleSource};
 
 /// One rendered buffer as plain text: one line per row, trailing spaces
@@ -256,6 +260,11 @@ pub enum Scene {
     /// stream, a minimum level and a regex, wrapping turned on so the one
     /// surviving line's full text is on screen rather than truncated.
     Bleats,
+    /// `S` pressed: the secrets pane, with `DB_PASSWORD` revealed, a
+    /// `vercel` provider group and `ELSEWHERE_ONLY` sitting unresolved for
+    /// this environment, tall enough to draw both the FOCUSED and WHO
+    /// READS IT panels.
+    Secrets,
 }
 }
 
@@ -301,6 +310,7 @@ impl Scene {
             Self::SettingsNarrow => "settings_narrow",
             Self::SettingsShort => "settings_short",
             Self::Bleats => "bleats",
+            Self::Secrets => "secrets",
         }
     }
 
@@ -423,6 +433,9 @@ impl Scene {
             Self::Bleats => {
                 "The full-screen bleats pane, pinned to api, with a stream, a minimum level and a regex all stacked: only out, only warn and above, only a line mentioning retrying or jitter. The filter row states the composition and counts one surviving line out of sixteen, and that one line is also the longest in the fixture, so wrapping is on and its full text runs onto a second row instead of an ellipsis."
             }
+            Self::Secrets => {
+                "The secrets pane, opened with `S`. DB_PASSWORD is revealed and named by one reader; vercel/API_TOKEN sits in its own read-only provider group; ELSEWHERE_ONLY has a slot in ci but not here, so it reads unresolved for this tab. The frame is tall enough to carry both the FOCUSED panel and WHO READS IT below the table."
+            }
         }
     }
 
@@ -498,6 +511,10 @@ impl Scene {
             // this scene exists for. `the_title_names_the_window_and_what_
             // fell_below_it` covers the figures at a width that fits them.
             Self::Bleats => (100, 14),
+            // Tall enough that `content_bottom` leaves room for both
+            // `draw_panels`' FOCUSED and WHO READS IT rows below the table,
+            // the frame this scene exists to show.
+            Self::Secrets => (160, 48),
             // HealthyWide, Errored, Grouped, WithDogs, Retrying, Frozen,
             // Refused, FeedGap, FeedMissing, HostUnknown, Lambs, LambsUnknown:
             // every scene that carries all three optional panes at their
@@ -1117,6 +1134,64 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
         }
         app.update(Msg::Key(KeyPress::TextApply));
         app.update(Msg::Key(KeyPress::WrapToggle));
+    }
+
+    // Opens the secrets pane on `production`, with an operator row
+    // revealed, a provider group and a row that has a slot elsewhere but
+    // not here. `Msg::Revealed` is handed the value directly rather than
+    // routed through a real store on disk: the pane's reducer only checks
+    // the key and environment echo the pending reveal and that the gate is
+    // open, which `allow_read: true` below already covers.
+    if which == Scene::Secrets {
+        app.update(Msg::Key(KeyPress::Secrets));
+        app.update(Msg::Secrets {
+            environment: "production".to_string(),
+            result: Ok(Box::new(SecretsModel {
+                environments: vec![
+                    "all".to_string(),
+                    "ci".to_string(),
+                    "production".to_string(),
+                ],
+                rows: vec![
+                    SecretRow {
+                        key: "DB_PASSWORD".to_string(),
+                        source: Source::Operator,
+                        in_force: Some("production".to_string()),
+                        set_in: vec!["production".to_string()],
+                        byte_len: Some("hunter2-not-really".len()),
+                        readers: vec![Reader {
+                            name: "catcher".to_string(),
+                            environment: "production".to_string(),
+                            online: true,
+                        }],
+                    },
+                    SecretRow {
+                        key: "ELSEWHERE_ONLY".to_string(),
+                        source: Source::Operator,
+                        in_force: None,
+                        set_in: vec!["ci".to_string()],
+                        byte_len: None,
+                        readers: Vec::new(),
+                    },
+                    SecretRow {
+                        key: "vercel/API_TOKEN".to_string(),
+                        source: Source::Namespace("vercel".to_string()),
+                        in_force: Some("production".to_string()),
+                        set_in: vec!["production".to_string()],
+                        byte_len: Some(6),
+                        readers: Vec::new(),
+                    },
+                ],
+                allow_read: true,
+                ..SecretsModel::default()
+            })),
+        });
+        app.update(Msg::Key(KeyPress::Reveal));
+        app.update(Msg::Revealed {
+            key: "DB_PASSWORD".to_string(),
+            environment: "production".to_string(),
+            value: Some(RevealedValue("hunter2-not-really".to_string())),
+        });
     }
 
     // Applied while the link is still `Live`: `on_lambs` refuses once it
@@ -1742,9 +1817,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all thirty-seven scenes through the same coloured
+frames.ansi renders all thirty-eight scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same thirty-seven scenes through the flattened NO_COLOR palette
+renders the same thirty-eight scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -1917,11 +1992,12 @@ mod tests {
     /// which is the form a reader sees.
     #[test]
     fn the_gallery_preamble_counts_the_scenes_it_has() {
-        const NUMBERS: [(usize, &str); 4] = [
+        const NUMBERS: [(usize, &str); 5] = [
             (34, "thirty-four"),
             (35, "thirty-five"),
             (36, "thirty-six"),
             (37, "thirty-seven"),
+            (38, "thirty-eight"),
         ];
         let spelled = NUMBERS
             .iter()
@@ -2680,7 +2756,8 @@ mod tests {
             Scene::SettingsDogs => Some(Scene::SettingsNarrow),
             Scene::SettingsNarrow => Some(Scene::SettingsShort),
             Scene::SettingsShort => Some(Scene::Bleats),
-            Scene::Bleats => None,
+            Scene::Bleats => Some(Scene::Secrets),
+            Scene::Secrets => None,
         }
     }
 

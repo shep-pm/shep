@@ -352,20 +352,23 @@ const BLEATS_HINT: &str = "esc back   j/k line   ctrl-d/u page   G end   \
 
 /// The secrets pane's own key hint.
 ///
-/// `\u{21b5} set a value` names `Enter` only under [`Control::Allowed`],
-/// mirroring [`hint_for`]'s own split: a hint naming a key that always
-/// refuses teaches the operator the key is broken. Delete is Task 8's. `v`
-/// names no gate, which the pane's own gates row two lines above the table
-/// already states.
+/// `\u{21b5} set a value` and `D delete` name keys gated on
+/// [`Control::Allowed`], mirroring [`hint_for`]'s own split: a hint naming
+/// a key that always refuses teaches the operator the key is broken. `D`
+/// sits beside `\u{21b5}` because both write; `y` sits outside that split
+/// because copying an already-revealed value writes nothing. `v` and `y`
+/// name no gate of their own, which the pane's own gates row two lines
+/// above the table already states.
 fn secrets_hint(control: Control) -> String {
     match control {
         Control::ReadOnly => {
-            "esc/S close   \u{2190}/\u{2192} tab   z collapse   v reveal for 10s   q quit"
+            "esc/S close   \u{2190}/\u{2192} tab   z collapse   v reveal for 10s   \
+             y copy   q quit"
                 .to_string()
         }
         Control::Allowed => {
             "esc/S close   \u{2190}/\u{2192} tab   z collapse   v reveal for 10s   \
-             \u{21b5} set a value   q quit"
+             \u{21b5} set a value   D delete   y copy   q quit"
                 .to_string()
         }
     }
