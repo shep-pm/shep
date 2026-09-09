@@ -1499,10 +1499,13 @@ impl SecretsPane {
                 visible[next]
             }
             // The selection itself just went hidden (`z` folded its own
-            // group away): land on the nearest visible neighbour in the
+            // group away, or a reload's clamp landed on a row a standing
+            // fold hides): land on the nearest visible neighbour in the
             // direction requested, rather than guessing a position inside
-            // a list the old selection is not part of. Only a single step
-            // (`j`/`k`) ever reaches this arm.
+            // a list the old selection is not part of. `j`/`k` reach this
+            // arm with `delta` of 1 or -1; the `Collapse` arm and the
+            // `Msg::Secrets` clamp call with `delta` 0 to reuse the same
+            // landing logic without moving the selection themselves.
             None => {
                 let boundary = visible.partition_point(|&index| index < self.selected);
                 if delta < 0 {
@@ -2194,10 +2197,9 @@ impl App {
                                     .unwrap_or(0);
                             }
                             // The environments list is a union recomputed on
-                            // every load, so it can shrink: unsetting the
-                            // last key in an environment drops it. Clamp so
-                            // a tab that pointed past the new end lands on
-                            // the last surviving tab instead of dangling.
+                            // every load and can shrink, so clamp a tab past
+                            // the new end onto the last surviving one
+                            // instead of dangling.
                             pane.tab = pane.tab.min(model.environments.len().saturating_sub(1));
                             pane.selected = pane.selected.min(model.rows.len().saturating_sub(1));
                             pane.model = model;
@@ -3010,12 +3012,10 @@ impl App {
                     if !pane.collapsed.remove(&namespace) {
                         pane.collapsed.insert(namespace);
                         // Folding away the group `selected` sits in leaves
-                        // no marked row on screen and, worse, a `v` past
-                        // this point would reveal a value nobody can see.
-                        // `move_by`'s own hidden-selection fallback already
-                        // knows how to land on the nearest visible
-                        // neighbour, so reuse it rather than duplicate the
-                        // boundary search here.
+                        // no marked row on screen, and a `v` past this
+                        // point would reveal a value nobody can see. Reuse
+                        // `move_by`'s hidden-selection fallback rather than
+                        // duplicate the boundary search here.
                         pane.move_by(0);
                     }
                 }
