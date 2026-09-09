@@ -11,6 +11,8 @@ use shep_core::protocol::SheepConfigView;
 use super::app::RowKey;
 use super::link::FLOCK_POLL;
 use super::pane_bleats::BleatsPane;
+use super::view::sheep::column_len;
+use super::viewport::Viewport;
 
 /// The span a chart of `body_cells` covers, one poll per cell.
 ///
@@ -47,9 +49,12 @@ pub fn scale_top(peak: f64, floor: f64) -> f64 {
 /// and a filter set, neither of which is a value the pane withholds; and a
 /// [`RowKey`] is a bare integer.
 ///
-/// No scroll state of its own yet: rows 2 to 46 are still blank, so there
-/// is nothing to scroll into view. Tasks 8 through 10 add it alongside the
-/// rows it scrolls.
+/// The left column ([`super::view::sheep::draw_column`]) is the only
+/// scroller a sheep pane owns today: the two charts have no cursor, and the
+/// feed is [`BleatsPane`]'s own. `Viewport` counts lines rather than data
+/// rows here, since a group header costs a blank, a rule and a label that
+/// no field owns; [`column_len`] is the one place both this and the column
+/// itself read that count off, so they cannot drift apart.
 #[derive(Debug)]
 pub struct SheepPane {
     sheep: RowKey,
@@ -62,6 +67,8 @@ pub struct SheepPane {
     /// [`Self::set_sheep`]) so the feed is not starting cold the first time
     /// something draws it.
     feed: BleatsPane,
+    /// The config/env column's own cursor and offset.
+    view: Viewport,
 }
 
 impl SheepPane {
@@ -73,7 +80,47 @@ impl SheepPane {
             sheep,
             config: None,
             feed,
+            view: Viewport::new(),
         }
+    }
+
+    /// The config/env column's own cursor and offset.
+    #[must_use]
+    pub fn view(&self) -> &Viewport {
+        &self.view
+    }
+
+    /// `COLUMN_BODY_ROWS` never changes, so every entry point below records
+    /// it itself rather than asking a caller to have called
+    /// `App::note_body_rows` first, the way the editing panes' own
+    /// `set_rows` does: the column's height is fixed by the frame, not by
+    /// the terminal.
+    fn column_len(&self) -> usize {
+        column_len(self.config())
+    }
+
+    /// `j`, one line.
+    pub(crate) fn move_by(&mut self, delta: isize) {
+        let len = self.column_len();
+        self.view
+            .set_rows(super::view::sheep::COLUMN_BODY_ROWS, len);
+        self.view.move_by(delta, len);
+    }
+
+    /// `g`.
+    pub(crate) fn move_to_first(&mut self) {
+        let len = self.column_len();
+        self.view
+            .set_rows(super::view::sheep::COLUMN_BODY_ROWS, len);
+        self.view.move_to(0, len);
+    }
+
+    /// `G`.
+    pub(crate) fn move_to_last(&mut self) {
+        let len = self.column_len();
+        self.view
+            .set_rows(super::view::sheep::COLUMN_BODY_ROWS, len);
+        self.view.move_to(len.saturating_sub(1), len);
     }
 
     /// The sheep this pane describes right now. Changes under `J`/`K`
@@ -152,7 +199,7 @@ mod tests {
         pane.adopt_config(SheepConfigView::new(config, Vec::new(), Vec::new()));
         assert_eq!(
             format!("{pane:?}"),
-            r#"SheepPane { sheep: Sheep(9), config: Some(SheepConfigView { name: "web", env_keys: 0, env_secrets: 0, overridden: 0, pending: 0 }), feed: BleatsPane { sheep: Sheep(9), filters: Filters { stream: None, min_level: None, matcher: None, order: [] }, match_snapshot: None, scroll_offset: 0, following: true, body_rows: 0, width: 0, wrap: false } }"#
+            r#"SheepPane { sheep: Sheep(9), config: Some(SheepConfigView { name: "web", env_keys: 0, env_secrets: 0, overridden: 0, pending: 0 }), feed: BleatsPane { sheep: Sheep(9), filters: Filters { stream: None, min_level: None, matcher: None, order: [] }, match_snapshot: None, scroll_offset: 0, following: true, body_rows: 0, width: 0, wrap: false }, view: Viewport { cursor: 0, offset: 0, rows: 0 } }"#
         );
     }
 }

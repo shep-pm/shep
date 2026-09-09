@@ -10,10 +10,15 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
+use serde_json::{Map, Value};
+use shep_core::protocol::SheepConfigView;
 
 use super::super::app::{App, CPU_CEILING_FLOOR, HISTORY, RowKey};
+use super::super::field::Field;
+use super::super::pane;
 use super::super::pane_sheep::{SheepPane, scale_top, window};
 use super::super::theme::Palette;
+use super::flock::fit;
 use super::{cell, detail};
 
 /// Left gutter width, in cells, for both charts: room for a label like
@@ -49,6 +54,239 @@ const AXIS_ROW: u16 = 16;
 /// already did before this task. Task 11 replaces this all-or-nothing gate
 /// with the responsive ladder's own row tiers.
 const MIN_HEIGHT_FOR_CHARTS: u16 = AXIS_ROW + 1;
+
+/// The config/env column's own header row, relative to `area`.
+const COLUMN_HEADER_ROW: u16 = 19;
+/// The column's first body row.
+const COLUMN_FIRST_ROW: u16 = 20;
+/// The column's last body row.
+const COLUMN_LAST_ROW: u16 = 45;
+/// How many body rows the column draws: [`COLUMN_FIRST_ROW`] through
+/// [`COLUMN_LAST_ROW`], inclusive.
+pub(crate) const COLUMN_BODY_ROWS: usize = (COLUMN_LAST_ROW - COLUMN_FIRST_ROW + 1) as usize;
+/// The column's own width, left of the divider Task 10's feed sits after.
+const COLUMN_WIDTH: u16 = 76;
+/// The KEY cell within the column: wide enough for `exp_backoff_restart_delay`
+/// plus its `!` flag, `view::pane`'s own `KEY_W` rounded down to fit a
+/// narrower column.
+const COLUMN_NAME_W: u16 = 24;
+/// The shortest `area` the column draws into.
+const MIN_HEIGHT_FOR_COLUMN: u16 = COLUMN_LAST_ROW + 1;
+
+/// The eight Flockfile groups' fields, plus the env keys, as the column
+/// scrolls through them: one entry per rendered row, and every group label
+/// this pass actually emitted, in the order it emitted them.
+///
+/// Both halves are read off the same walk, so a group header the field
+/// loop below skips or misorders shows up wrong in both places at once
+/// rather than only in the one a test happens to check.
+fn column_body(view: &SheepConfigView, palette: Palette) -> (Vec<Line<'static>>, Vec<String>) {
+    let (fields, values) = pane::sheep_fields(&view.config);
+    let mut lines = Vec::new();
+    let mut groups = Vec::new();
+    let mut current: Option<&str> = None;
+    for field in fields.fields() {
+        // `env` is its own section below, with its own keys; a second row
+        // here would repeat it under a `Map` field's own placeholder text.
+        if field.key == "env" {
+            continue;
+        }
+        if field.group.as_deref() != current {
+            current = field.group.as_deref();
+            let label = current.unwrap_or_default().to_owned();
+            push_group_header(&mut lines, &label, palette);
+            groups.push(label);
+        }
+        let pending = view.pending.iter().any(|key| key == &field.key);
+        lines.push(field_row_line(field, &values, pending, palette));
+    }
+    push_group_header(&mut lines, "env", palette);
+    for key in &view.env_keys {
+        let sealed = view.env_secrets.iter().any(|secret| secret == key);
+        lines.push(env_row_line(key, sealed, palette));
+    }
+    (lines, groups)
+}
+
+/// A blank separator, a rule the column's own width, then `label`: the
+/// chrome [`column_body`] spends above every group and above the env
+/// section it closes with.
+fn push_group_header(lines: &mut Vec<Line<'static>>, label: &str, palette: Palette) {
+    lines.push(Line::default());
+    lines.push(Line::from(Span::styled(
+        "\u{2500}".repeat(usize::from(COLUMN_WIDTH)),
+        palette.muted(),
+    )));
+    lines.push(Line::from(Span::styled(label.to_owned(), palette.muted())));
+}
+
+/// [`column_body`]'s lines alone, for [`draw_column`] and [`column_len`],
+/// neither of which needs the group labels back.
+fn column_body_lines(view: &SheepConfigView, palette: Palette) -> Vec<Line<'static>> {
+    column_body(view, palette).0
+}
+
+/// The one line the column draws while [`SheepPane::config`] is still
+/// `None`: read once by [`draw_column`] and by
+/// [`SheepPane::column_len`](super::super::pane_sheep::SheepPane), so
+/// scrolling can never claim a body one line longer than what is actually
+/// drawn.
+fn waiting_line(palette: Palette) -> Line<'static> {
+    Line::from(Span::styled("reading config\u{2026}", palette.muted()))
+}
+
+/// How many lines [`draw_column`] would need to show every one of
+/// `config`'s groups and env keys, or the single waiting line while there
+/// is none yet. What [`SheepPane`]'s own `Viewport` scrolls through.
+///
+/// Colour never changes a line count, so [`Palette::detect`] is called
+/// with nothing set rather than threading the real palette through from a
+/// key handler that has no `Frame` to read one off.
+#[must_use]
+pub(crate) fn column_len(config: Option<&SheepConfigView>) -> usize {
+    match config {
+        Some(view) => column_body_lines(view, Palette::detect(None, None, None)).len(),
+        None => 1,
+    }
+}
+
+/// One field's row: the name, `!`-flagged and butter when
+/// [`SheepConfigView::pending`] names it, the value, `(unset)`/`(default)`
+/// muted like the name, anything else in the column's own body colour, and
+/// `awaits respawn` right-aligned when pending.
+///
+/// Read-only: no lock glyph, no cost cell. Those belong to the editing
+/// pane this column never opens; a value here is what `shep edit` already
+/// shows, laid out for a screen with no cursor to carry.
+fn field_row_line(
+    field: &Field,
+    values: &Map<String, Value>,
+    pending: bool,
+    palette: Palette,
+) -> Line<'static> {
+    let raw = field_value_text(field, values);
+    let flag = if pending { "!" } else { "" };
+    let note = if pending { "awaits respawn" } else { "" };
+    let value_w = usize::from(COLUMN_WIDTH).saturating_sub(usize::from(COLUMN_NAME_W) + 2);
+    let left_w = value_w.saturating_sub(note.chars().count());
+    let key_style = if pending {
+        palette.attention()
+    } else {
+        palette.muted()
+    };
+    let value_style = if pending {
+        palette.attention()
+    } else if matches!(raw.as_str(), "(unset)" | "(default)") {
+        palette.muted()
+    } else {
+        Style::default()
+    };
+    let mut spans = vec![
+        Span::styled(
+            fit(&format!("{flag}{}", field.key), COLUMN_NAME_W),
+            key_style,
+        ),
+        Span::raw("  "),
+        Span::styled(fit(&raw, left_w as u16), value_style),
+    ];
+    if !note.is_empty() {
+        spans.push(Span::styled(note.to_owned(), palette.attention()));
+    }
+    Line::from(spans)
+}
+
+/// `field`'s current value, the way this column shows it: `(unset)` for a
+/// JSON `null` or a key the config never carried, `(default)` when what is
+/// there is exactly the schema's own default, else the value itself.
+///
+/// Bare, unlike [`ConfigPane::display_value`](super::super::pane::ConfigPane::display_value):
+/// no `MemSize`/`UpDuration` suffix. This column only ever reads, so the
+/// digits an operator would recognise from their own Flockfile are enough;
+/// resolving the grammar is the editing pane's job.
+fn field_value_text(field: &Field, values: &Map<String, Value>) -> String {
+    let raw = match values.get(&field.key) {
+        None | Some(Value::Null) => return "(unset)".to_owned(),
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Bool(flag)) => flag.to_string(),
+        Some(Value::Number(number)) => number.to_string(),
+        Some(other) => other.to_string(),
+    };
+    if field.default.as_deref() == Some(raw.as_str()) {
+        "(default)".to_owned()
+    } else {
+        raw
+    }
+}
+
+/// One env row: the key alone, or, when [`SheepConfigView::env_secrets`]
+/// names it, a butter block run standing in for the value it never
+/// carries, the word `sealed`, and `edit in S` right-aligned. No value is
+/// ever read: the block run is a fixed run of glyphs, not sized to
+/// anything the store holds.
+fn env_row_line(key: &str, sealed: bool, palette: Palette) -> Line<'static> {
+    if !sealed {
+        return Line::from(Span::raw(key.to_owned()));
+    }
+    let note = "edit in S";
+    let value_w = usize::from(COLUMN_WIDTH).saturating_sub(usize::from(COLUMN_NAME_W) + 2);
+    let left_w = value_w.saturating_sub(note.chars().count());
+    let mid = format!("{}  sealed", "\u{2588}".repeat(8));
+    Line::from(vec![
+        Span::styled(fit(key, COLUMN_NAME_W), palette.muted()),
+        Span::raw("  "),
+        Span::styled(fit(&mid, left_w as u16), palette.attention()),
+        Span::styled(note.to_owned(), palette.muted()),
+    ])
+}
+
+/// The header row: `e edit`, `tab next group`, and how many fields
+/// [`SheepConfigView::pending`] is still carrying, once there is a config
+/// to read one off.
+fn column_header_line(pane: &SheepPane, palette: Palette) -> Line<'static> {
+    let mut text = "\u{2588}\u{2588} CONFIG & ENV   e edit  tab next group".to_owned();
+    if let Some(pending) = pane
+        .config()
+        .map(|view| view.pending.len())
+        .filter(|count| *count > 0)
+    {
+        text.push_str(&format!("   {pending} pending"));
+    }
+    Line::from(Span::styled(text, palette.muted()))
+}
+
+/// Rows [`COLUMN_HEADER_ROW`] to [`COLUMN_LAST_ROW`]: the header, then as
+/// much of [`column_body`] as [`SheepPane::view`]'s own offset scrolls
+/// into [`COLUMN_BODY_ROWS`].
+///
+/// Reads [`SheepPane::config`], never [`App::selected`]: the same rule
+/// [`draw`]'s own identity band and [`draw_charts`] already follow, for
+/// the reason both of their own doc comments give.
+fn draw_column(pane: &SheepPane, area: Rect, buffer: &mut Buffer, palette: Palette) {
+    write_column_row(
+        buffer,
+        area,
+        COLUMN_HEADER_ROW,
+        &column_header_line(pane, palette),
+    );
+    let body = match pane.config() {
+        Some(view) => column_body_lines(view, palette),
+        None => vec![waiting_line(palette)],
+    };
+    let offset = pane.view().offset();
+    for (i, line) in body.iter().skip(offset).take(COLUMN_BODY_ROWS).enumerate() {
+        write_column_row(buffer, area, COLUMN_FIRST_ROW + i as u16, line);
+    }
+}
+
+/// Writes one already-styled line into `buffer`, `row` cells below `area`'s
+/// own top, clipped to [`COLUMN_WIDTH`] rather than the pane's own width:
+/// this column never spends the cells Task 10's feed sits after.
+fn write_column_row(buffer: &mut Buffer, area: Rect, row: u16, line: &Line<'static>) {
+    if row >= area.height {
+        return;
+    }
+    buffer.set_line(area.x, area.y + row, line, COLUMN_WIDTH);
+}
 
 /// Draws the pane into `area`: the identity band on its first row, the two
 /// histories over rows `CPU_HEADER_ROW` through `AXIS_ROW`, and nothing
@@ -111,7 +349,12 @@ pub fn draw(app: &App, pane: &SheepPane, area: Rect, buffer: &mut Buffer) {
     {
         draw_charts(app, row.info.id, row.info.max_memory, area, buffer, palette);
     }
-    // Rows 18 to 46 stay blank here; Tasks 9 and 10 fill them.
+    // Rows `COLUMN_HEADER_ROW` to `COLUMN_LAST_ROW`, left `COLUMN_WIDTH`
+    // cells: the config and env column. Task 10 fills what is to its
+    // right; nothing here is drawn past `COLUMN_WIDTH`.
+    if area.height >= MIN_HEIGHT_FOR_COLUMN {
+        draw_column(pane, area, buffer, palette);
+    }
 }
 
 /// Rows `CPU_HEADER_ROW` to `AXIS_ROW`: the CPU history, the memory
@@ -367,7 +610,9 @@ mod tests {
     use shep_core::protocol::ProcessInfo;
     use shep_core::status::ProcStatus;
 
-    use super::super::super::app::{Body, Control, KeyPress, Msg};
+    use shep_core::protocol::Response;
+
+    use super::super::super::app::{Body, Control, KeyPress, Msg, Sent};
     use super::super::super::frames::render_text;
     use super::super::fixtures;
     use super::*;
@@ -675,5 +920,205 @@ mod tests {
             "CPU chart's bottom row ends at column {cpu_end}, memory's at \
              {mem_end}: {cpu_last_row:?} vs {mem_last_row:?}"
         );
+    }
+
+    use shep_core::config::AppConfig;
+
+    /// `web`, with `max_memory` parked until a respawn and two env keys.
+    fn web_view() -> SheepConfigView {
+        let mut config = AppConfig {
+            name: "web".to_owned(),
+            ..AppConfig::default()
+        };
+        config
+            .env
+            .insert("DB_HOST".to_owned(), "db.internal".to_owned());
+        config
+            .env
+            .insert("API_KEY".to_owned(), "{{secret:API}}".to_owned());
+        SheepConfigView::new(config, Vec::new(), vec!["max_memory".to_owned()])
+    }
+
+    /// A bare config carrying exactly `pairs` as its env, nothing pending or
+    /// overridden: what [`a_sealed_key_is_marked_and_a_plain_one_is_not`]
+    /// needs to tell a plain key from a sealed one without `web_view`'s own
+    /// pending field in the way.
+    fn view_with_env(pairs: &[(&str, &str)]) -> SheepConfigView {
+        let mut config = AppConfig {
+            name: "test".to_owned(),
+            ..AppConfig::default()
+        };
+        for (key, value) in pairs {
+            config.env.insert((*key).to_owned(), (*value).to_owned());
+        }
+        SheepConfigView::new(config, Vec::new(), Vec::new())
+    }
+
+    /// One line as a plain string, styles dropped: the same flattening
+    /// `view::pane`'s own `text_of` does, one line at a time.
+    fn line_text(line: &Line<'static>) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect()
+    }
+
+    /// The groups [`column_body`] actually emitted, in the order it emitted
+    /// them: read off the same walk [`draw_column`] draws from, not
+    /// recomputed independently, so a bug in that walk shows up here too.
+    fn group_labels_of(view: &SheepConfigView) -> Vec<String> {
+        column_body(view, fixtures::plain()).1
+    }
+
+    /// The rendered text of the one row naming `key`.
+    fn field_row_of(view: &SheepConfigView, key: &str) -> String {
+        column_body_lines(view, fixtures::plain())
+            .iter()
+            .map(line_text)
+            .find(|line| line.trim_start_matches('!').starts_with(key))
+            .unwrap_or_else(|| panic!("no row for {key}"))
+    }
+
+    /// The env section's own rows, everything after the `env` label line.
+    fn env_rows_of(view: &SheepConfigView) -> Vec<String> {
+        let lines: Vec<String> = column_body_lines(view, fixtures::plain())
+            .iter()
+            .map(line_text)
+            .collect();
+        let label = lines
+            .iter()
+            .position(|line| line.trim() == "env")
+            .expect("column_body always closes with an env label");
+        lines[label + 1..].to_vec()
+    }
+
+    /// The one row naming `key`, out of `rows`.
+    fn row_for<'a>(key: &str, rows: &'a [String]) -> &'a str {
+        rows.iter()
+            .find(|row| row.contains(key))
+            .unwrap_or_else(|| panic!("no row for {key} in {rows:?}"))
+    }
+
+    /// The whole column's text, `None` standing in for a pane whose config
+    /// has not landed yet.
+    fn column_of(config: Option<SheepConfigView>) -> String {
+        let lines = match &config {
+            Some(view) => column_body_lines(view, fixtures::plain()),
+            None => vec![waiting_line(fixtures::plain())],
+        };
+        lines.iter().map(line_text).collect::<Vec<_>>().join("\n")
+    }
+
+    /// Eight groups, in the schema's own order. The frame lists seven and
+    /// puts `restart` second; `cron` is missing from it entirely.
+    #[test]
+    fn the_groups_are_the_schemas_eight_in_its_own_order() {
+        let labels = group_labels_of(&web_view());
+        assert_eq!(
+            labels,
+            [
+                "process",
+                "logging",
+                "inputs",
+                "restart",
+                "readiness",
+                "shutdown",
+                "watch",
+                "cron"
+            ]
+        );
+    }
+
+    /// A field parked until the next respawn is marked and says so.
+    #[test]
+    fn a_pending_field_is_marked_and_annotated() {
+        let row = field_row_of(&web_view(), "max_memory");
+        assert!(row.starts_with('!'), "{row:?}");
+        assert!(row.contains("awaits respawn"), "{row:?}");
+    }
+
+    /// The wire clears env before the struct is built, so no pane can show a
+    /// value. This test exists so a later change that starts carrying them
+    /// fails here rather than shipping.
+    #[test]
+    fn no_env_value_reaches_the_column() {
+        let rendered = env_rows_of(&web_view()).join("");
+        assert!(!rendered.contains("hunter2"), "{rendered:?}");
+    }
+
+    /// A key the store fills renders sealed; a Flockfile key does not.
+    #[test]
+    fn a_sealed_key_is_marked_and_a_plain_one_is_not() {
+        let rows = env_rows_of(&view_with_env(&[
+            ("PLAIN", "v"),
+            ("SEALED", "{{secret:PW}}"),
+        ]));
+        assert!(row_for("SEALED", &rows).contains("sealed"));
+        assert!(!row_for("PLAIN", &rows).contains("sealed"));
+    }
+
+    /// Until the reply lands there is no config, and an empty group list
+    /// would read as a sheep that has none.
+    #[test]
+    fn a_pane_without_its_config_yet_says_so() {
+        assert!(column_of(None).contains("reading config"));
+    }
+
+    /// The regression Tasks 7 and 8 both shipped once each: a pane pinned to
+    /// a sheep the flock table has since reseated its selection away from.
+    /// The column reads `SheepPane::config` — set only by `adopt_config` and
+    /// `set_sheep`, never by the reseat — so it has no equivalent bug
+    /// surface to begin with; this pins that a later change cannot grow one
+    /// by threading `App::selected` into the column instead.
+    #[test]
+    fn the_column_does_not_draw_the_sheep_that_replaced_the_pinned_one() {
+        let mut app = fixtures::app_with(
+            vec![
+                ProcessInfo::builder(1, "alpha", ProcStatus::Online).build(),
+                ProcessInfo::builder(2, "bravo", ProcStatus::Online).build(),
+            ],
+            fixtures::plain(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(
+            matches!(app.body(), Body::Sheep(_)),
+            "setup: the pane opened on alpha"
+        );
+        let alpha_config = AppConfig {
+            name: "alpha".to_owned(),
+            ..AppConfig::default()
+        };
+        app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "alpha".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(SheepConfigView::new(
+                alpha_config,
+                Vec::new(),
+                Vec::new(),
+            )))),
+        });
+        let _ = app.update(Msg::Snapshot {
+            rows: vec![ProcessInfo::builder(2, "bravo", ProcStatus::Online).build()],
+            at: std::time::Instant::now(),
+        });
+        assert_eq!(
+            app.selected(),
+            Some(RowKey::Sheep(2)),
+            "setup: the reseat moved the selection to bravo"
+        );
+
+        let Body::Sheep(pane) = app.body() else {
+            panic!("the pane is still open");
+        };
+        let area = Rect::new(0, 0, 80, MIN_HEIGHT_FOR_COLUMN);
+        let mut buffer = Buffer::empty(area);
+        draw(&app, pane, area, &mut buffer);
+        let text = render_text(&buffer);
+        assert!(
+            text.contains("name                      alpha"),
+            "must still draw the pinned sheep's own `name` field: {text:?}"
+        );
+        assert!(!text.contains("bravo"), "{text:?}");
     }
 }

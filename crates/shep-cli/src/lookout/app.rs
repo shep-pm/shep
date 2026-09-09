@@ -2738,9 +2738,10 @@ impl App {
     /// other key cancels it, the same as the dashboard's own armed check
     /// just below in [`Self::on_key`] — needed here too, in its own copy,
     /// because `on_key` routes to this method ahead of that check, so an
-    /// action armed from inside this pane never reaches it. Every other
-    /// key is inert for now: rows 2 to 46 are still blank, and the two keys
-    /// the status bar names for them (`b`, `/`) arrive with Task 10.
+    /// action armed from inside this pane never reaches it. `j`/`k` and
+    /// `g`/`G` scroll the config/env column through its own `Viewport`.
+    /// Every other key is inert for now: the feed is still blank, and the
+    /// two keys the status bar names for it (`b`, `/`) arrive with Task 10.
     fn on_sheep_pane_key(&mut self, key: KeyPress) -> Effect {
         if self
             .action
@@ -2766,11 +2767,31 @@ impl App {
             KeyPress::StepDown => self.step_sheep_pane(1),
             KeyPress::StepUp => self.step_sheep_pane(-1),
             KeyPress::Action(verb) => self.arm_sheep_pane(verb),
-            KeyPress::SelectUp
-            | KeyPress::SelectDown
-            | KeyPress::SelectFirst
-            | KeyPress::SelectLast
-            | KeyPress::Refresh
+            KeyPress::SelectUp => {
+                if let Some(pane) = self.sheep_pane_mut() {
+                    pane.move_by(-1);
+                }
+                Effect::None
+            }
+            KeyPress::SelectDown => {
+                if let Some(pane) = self.sheep_pane_mut() {
+                    pane.move_by(1);
+                }
+                Effect::None
+            }
+            KeyPress::SelectFirst => {
+                if let Some(pane) = self.sheep_pane_mut() {
+                    pane.move_to_first();
+                }
+                Effect::None
+            }
+            KeyPress::SelectLast => {
+                if let Some(pane) = self.sheep_pane_mut() {
+                    pane.move_to_last();
+                }
+                Effect::None
+            }
+            KeyPress::Refresh
             | KeyPress::Confirm
             | KeyPress::FilterStart
             | KeyPress::TextChar(_)
