@@ -67,9 +67,13 @@ pub(crate) const COLUMN_BODY_ROWS: usize = (COLUMN_LAST_ROW - COLUMN_FIRST_ROW +
 /// The column's own width, left of the divider Task 10's feed sits after.
 const COLUMN_WIDTH: u16 = 76;
 /// The KEY cell within the column: wide enough for `exp_backoff_restart_delay`
-/// plus its `!` flag, `view::pane`'s own `KEY_W` rounded down to fit a
-/// narrower column.
-const COLUMN_NAME_W: u16 = 24;
+/// (25 characters) plus its `!` flag (26), pinned by
+/// `the_longest_pending_field_name_is_not_truncated` rather than trusted
+/// from this comment alone. Matches `view::pane`'s own `KEY_W`, not rounded
+/// down: the column is narrower than that pane's own body, but the longest
+/// name is the same schema's, so shrinking this cell would truncate it
+/// regardless of how much room the rest of the row has.
+const COLUMN_NAME_W: u16 = 26;
 /// The shortest `area` the column draws into.
 const MIN_HEIGHT_FOR_COLUMN: u16 = COLUMN_LAST_ROW + 1;
 
@@ -1064,6 +1068,27 @@ mod tests {
         assert!(column_of(None).contains("reading config"));
     }
 
+    /// `exp_backoff_restart_delay` is the Flockfile schema's longest field
+    /// name: 25 characters, 26 with the pending `!` flag. `COLUMN_NAME_W`
+    /// has to fit that exactly, not "wide enough" by a comment's own say-so.
+    #[test]
+    fn the_longest_pending_field_name_is_not_truncated() {
+        let config = AppConfig {
+            name: "web".to_owned(),
+            ..AppConfig::default()
+        };
+        let view = SheepConfigView::new(
+            config,
+            Vec::new(),
+            vec!["exp_backoff_restart_delay".to_owned()],
+        );
+        let row = field_row_of(&view, "exp_backoff_restart_delay");
+        assert!(
+            row.starts_with("!exp_backoff_restart_delay  "),
+            "the flagged name and its separator must survive whole: {row:?}"
+        );
+    }
+
     /// The regression Tasks 7 and 8 both shipped once each: a pane pinned to
     /// a sheep the flock table has since reseated its selection away from.
     /// The column reads `SheepPane::config` — set only by `adopt_config` and
@@ -1116,7 +1141,7 @@ mod tests {
         draw(&app, pane, area, &mut buffer);
         let text = render_text(&buffer);
         assert!(
-            text.contains("name                      alpha"),
+            text.contains("name                        alpha"),
             "must still draw the pinned sheep's own `name` field: {text:?}"
         );
         assert!(!text.contains("bravo"), "{text:?}");
