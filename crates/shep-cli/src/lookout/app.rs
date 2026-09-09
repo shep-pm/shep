@@ -2729,11 +2729,29 @@ impl App {
     /// `Some`. `esc` closes it; `e` opens the config editor over it,
     /// routed by [`ConfigFor`] once the reply lands, since both send the
     /// same request; `J`/`K` step to the next or previous sheep without
-    /// leaving the pane. Every other key is inert for now: rows 2 to 46 are
-    /// still blank, and the keys the status bar names for them (`b`, `/`,
-    /// `x`, `R`, `L`) are wired once there is something there for them to
-    /// act on.
+    /// leaving the pane; `x`/`R`/`L` arm a confirm against the pane's own
+    /// pinned sheep ([`Self::arm_sheep_pane`]), `↵` confirms it and any
+    /// other key cancels it, the same as the dashboard's own armed check
+    /// just below in [`Self::on_key`] — needed here too, in its own copy,
+    /// because `on_key` routes to this method ahead of that check, so an
+    /// action armed from inside this pane never reaches it. Every other
+    /// key is inert for now: rows 2 to 46 are still blank, and the two keys
+    /// the status bar names for them (`b`, `/`) arrive with Task 10.
     fn on_sheep_pane_key(&mut self, key: KeyPress) -> Effect {
+        if self
+            .action
+            .as_ref()
+            .is_some_and(|action| action.stage == Stage::Armed)
+        {
+            if key == KeyPress::Confirm {
+                return self.confirm();
+            }
+            if key == KeyPress::Quit {
+                return Effect::Quit;
+            }
+            self.action = None;
+            return Effect::None;
+        }
         match key {
             KeyPress::Quit => Effect::Quit,
             KeyPress::Escape => {
@@ -2743,12 +2761,12 @@ impl App {
             KeyPress::Edit => self.ask_for_config(),
             KeyPress::StepDown => self.step_sheep_pane(1),
             KeyPress::StepUp => self.step_sheep_pane(-1),
+            KeyPress::Action(verb) => self.arm_sheep_pane(verb),
             KeyPress::SelectUp
             | KeyPress::SelectDown
             | KeyPress::SelectFirst
             | KeyPress::SelectLast
             | KeyPress::Refresh
-            | KeyPress::Action(_)
             | KeyPress::Confirm
             | KeyPress::FilterStart
             | KeyPress::TextChar(_)
@@ -4201,6 +4219,51 @@ impl App {
             target,
             name,
             count,
+            at: self.now,
+            stage: Stage::Armed,
+        });
+        Effect::None
+    }
+
+    /// `x`/`R`/`L` from inside the sheep pane: arms a confirm against the
+    /// pane's own pinned sheep, never [`Self::selected`].
+    ///
+    /// Arming against the selection here would be the same mistake
+    /// [`Self::sheep_pane_row`]'s own doc explains: `Msg::Snapshot` reseats
+    /// the selection whatever screen is showing, so a pinned sheep that
+    /// leaves the flock would arm an action against whichever sheep
+    /// replaced it while the pane still names the first. Refuses instead.
+    ///
+    /// The ladder is gate, link, one already in flight, same as [`Self::arm`]'s
+    /// own three; [`Self::arm`]'s "nothing selected" case cannot happen
+    /// here, since the pane would not be open without a sheep, so its place
+    /// in the ladder is taken by the pinned sheep having left instead.
+    fn arm_sheep_pane(&mut self, verb: ActionVerb) -> Effect {
+        let refusal = if self.control == Control::ReadOnly {
+            Some(READ_ONLY_REFUSAL.to_string())
+        } else if let Some(text) = self.link_refusal() {
+            Some(text)
+        } else if self.action.is_some() {
+            Some("one action is already in flight".to_string())
+        } else {
+            None
+        };
+        if let Some(text) = refusal {
+            self.notice = Some(Notice { text, grave: true });
+            return Effect::None;
+        }
+        let Some(row) = self.sheep_pane_row() else {
+            self.notice = Some(Notice {
+                text: "that sheep is no longer in the flock".to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        };
+        self.action = Some(Action {
+            verb,
+            target: RowKey::Sheep(row.info.id),
+            name: row.info.name.clone(),
+            count: 1,
             at: self.now,
             stage: Stage::Armed,
         });
@@ -5838,6 +5901,122 @@ mod tests {
                 name: "bravo".to_string()
             })
         );
+    }
+
+    /// `allowed()`'s cursor is parked on `web`, id 1; `↵` pins the pane to
+    /// it.
+    fn allowed_in_the_sheep_pane() -> App {
+        let mut app = allowed();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        app
+    }
+
+    /// `x` arms against the pane's own pinned sheep (`web`, id 1), the same
+    /// target the dashboard's own `arm` would reach for the same cursor
+    /// position — the two agree here because nothing has moved the
+    /// selection out from under the pane yet.
+    #[test]
+    fn x_arms_a_confirm_against_the_panes_pinned_sheep() {
+        let mut app = allowed_in_the_sheep_pane();
+        assert_eq!(
+            app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop))),
+            Effect::None
+        );
+        let armed = app.action().expect("armed");
+        assert_eq!(armed.verb, ActionVerb::Stop);
+        assert_eq!(armed.target, &RowKey::Sheep(1));
+        assert_eq!(armed.name, "web");
+        assert!(!armed.sent, "nothing has gone out");
+        assert!(
+            matches!(app.body(), Body::Sheep(_)),
+            "arming does not close the pane"
+        );
+    }
+
+    /// `↵` confirms the armed action from inside the pane, the same send
+    /// the dashboard's own `confirm` produces.
+    #[test]
+    fn confirm_inside_the_pane_sends_the_armed_action() {
+        let mut app = allowed_in_the_sheep_pane();
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        let Effect::Send(sent) = app.update(Msg::Key(KeyPress::Confirm)) else {
+            panic!("Enter sends the armed action");
+        };
+        assert_eq!(
+            sent,
+            Sent::Action {
+                verb: ActionVerb::Restart,
+                target: RowKey::Sheep(1),
+                name: "web".to_string(),
+            }
+        );
+        assert!(
+            matches!(app.body(), Body::Sheep(_)),
+            "confirming does not close the pane"
+        );
+    }
+
+    /// Every key but `↵` and `q` cancels an action armed from inside the
+    /// pane, the same rule the dashboard's own armed check applies — needed
+    /// in the pane's own copy, since `on_key` routes here ahead of that
+    /// check.
+    #[test]
+    fn any_other_key_cancels_an_action_armed_inside_the_pane() {
+        for key in [
+            KeyPress::Escape,
+            KeyPress::StepDown,
+            KeyPress::StepUp,
+            KeyPress::Edit,
+        ] {
+            let mut app = allowed_in_the_sheep_pane();
+            app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+            assert!(app.action().is_some(), "armed before {key:?}");
+            assert_eq!(
+                app.update(Msg::Key(key)),
+                Effect::None,
+                "{key:?} sent something"
+            );
+            assert!(app.action().is_none(), "{key:?} did not cancel");
+            assert!(
+                matches!(app.body(), Body::Sheep(_)),
+                "{key:?} must not also close the pane"
+            );
+        }
+    }
+
+    /// `--read-only` refuses the same way it refuses the dashboard's own
+    /// `x`/`R`/`L`, with the same sentence.
+    #[test]
+    fn x_refuses_under_read_only_from_inside_the_pane() {
+        let mut app = fixture_with_two_sheep();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+        assert!(app.action().is_none());
+        assert_eq!(
+            app.notice().map(ToString::to_string).as_deref(),
+            Some("read-only: from --read-only or lookout.allow_control")
+        );
+    }
+
+    /// The pinned sheep can leave the flock entirely while the pane stays
+    /// open on it (nothing but `Escape` closes it): arming then must refuse
+    /// rather than target whoever replaced it.
+    #[test]
+    fn arming_refuses_once_the_pinned_sheep_has_left_the_flock() {
+        let mut app = fixture_with_two_sheep();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(matches!(app.body(), Body::Sheep(_)), "pinned to alpha");
+        app.set_control_for_tests(Control::Allowed);
+        app.update(Msg::Snapshot {
+            rows: vec![sheep(2, "bravo", ProcStatus::Online)],
+            at: Instant::now(),
+        });
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+        assert!(
+            app.action().is_none(),
+            "refused rather than arming against bravo"
+        );
+        assert!(app.notice().is_some_and(Notice::is_grave));
     }
 
     #[test]
