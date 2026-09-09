@@ -176,6 +176,13 @@ pub enum KeyPress {
     /// `N`: the same, toward the oldest matching line. Ignored on the
     /// dashboard.
     MatchPrev,
+    /// `D`: arms the removal of the selected key's value in the current
+    /// tab's environment, in the secrets pane. `Enter` confirms.
+    ///
+    /// Capital, and `d` is left alone: `d` is already
+    /// [`Self::ListRemove`], and `map_key` dispatches on mode rather than
+    /// pane, so the two cannot share a key.
+    SecretDelete,
 }
 
 /// Everything that can change the dashboard.
@@ -2298,6 +2305,10 @@ impl App {
                 if let Body::Secrets(pane) = &mut self.body {
                     match result {
                         Ok(model) => {
+                            // A fresh read describes the store as it is now;
+                            // an arm from before it landed named a row this
+                            // model may no longer even have.
+                            pane.armed = None;
                             // Only on the very first load, where the pane's
                             // model is still the empty default and so has no
                             // tab yet: the daemon's own default environment
@@ -3043,7 +3054,9 @@ impl App {
             // keyboard while `self.body` is `Body::Secrets`; reached here
             // only from the dashboard, where there is no tab to move and no
             // secret selected to show.
-            KeyPress::TabPrev | KeyPress::TabNext | KeyPress::Reveal => Effect::None,
+            KeyPress::TabPrev | KeyPress::TabNext | KeyPress::Reveal | KeyPress::SecretDelete => {
+                Effect::None
+            }
             // Also the read, not the open: the pane shows the shepherd's
             // answer or nothing. `selected_row` is `None` for a group too,
             // but a group's name is what `Request::SheepConfig` wants, so
@@ -3127,7 +3140,18 @@ impl App {
                 self.hide_revealed();
                 Effect::Quit
             }
-            KeyPress::Secrets | KeyPress::Escape => {
+            KeyPress::Secrets => {
+                self.hide_revealed();
+                self.body = Body::FlockTable;
+                Effect::None
+            }
+            // An armed delete eats the first `Escape` rather than also
+            // closing the pane: a delete waiting on a confirm is a state
+            // the operator should see cleared before anything else moves.
+            KeyPress::Escape => {
+                if self.disarm_secret_delete() {
+                    return Effect::None;
+                }
                 self.hide_revealed();
                 self.body = Body::FlockTable;
                 Effect::None
@@ -3135,6 +3159,7 @@ impl App {
             KeyPress::Reveal => self.reveal_selected(),
             KeyPress::TabPrev | KeyPress::TabNext => {
                 self.hide_revealed();
+                self.disarm_secret_delete();
                 let Some(pane) = self.secrets_pane_mut() else {
                     return Effect::None;
                 };
@@ -3174,6 +3199,7 @@ impl App {
             | KeyPress::SelectFirst
             | KeyPress::SelectLast => {
                 self.hide_revealed();
+                self.disarm_secret_delete();
                 if let Some(pane) = self.secrets_pane_mut() {
                     match key {
                         KeyPress::SelectUp => pane.move_by(-1),
@@ -3193,12 +3219,23 @@ impl App {
                 self.hide_revealed();
                 Effect::LoadSecrets
             }
-            // Not armed here: this pane has no delete yet (Task 8), so
-            // `Enter` only ever opens an input.
-            KeyPress::Confirm => self.secrets_confirm(),
-            // Nothing else means anything here yet: delete lands in Task 8.
-            // Listed rather than a wildcard, so a new `KeyPress` variant
-            // cannot fall silently into an arm that ignores it.
+            // `Enter` means two things here: armed, it confirms the delete;
+            // otherwise, it opens an input. Armed wins, or a delete waiting
+            // on a confirm would silently reopen the value box instead.
+            KeyPress::Confirm => {
+                if self
+                    .secrets_pane_mut()
+                    .is_some_and(|pane| pane.armed.is_some())
+                {
+                    self.confirm_secret_delete()
+                } else {
+                    self.secrets_confirm()
+                }
+            }
+            KeyPress::SecretDelete => self.arm_secret_delete(),
+            // Nothing else means anything here. Listed rather than a
+            // wildcard, so a new `KeyPress` variant cannot fall silently
+            // into an arm that ignores it.
             KeyPress::Action(_)
             | KeyPress::FilterStart
             | KeyPress::TextChar(_)
@@ -3288,6 +3325,71 @@ impl App {
         });
         self.mode = InputMode::Text;
         Effect::None
+    }
+
+    /// `D`: arms the removal of the selected key's value in the current
+    /// tab's environment. Refuses a provider row and a read-only lookout,
+    /// mirroring [`Self::secrets_confirm`]'s own two checks, and refuses
+    /// silently on the `+ new key` affordance and on a selection folded out
+    /// of view: neither names a real, visible key to delete, the same gate
+    /// [`Self::reveal_selected`] applies before a read.
+    fn arm_secret_delete(&mut self) -> Effect {
+        let Some(pane) = self.secrets_pane_mut() else {
+            return Effect::None;
+        };
+        if !pane.visible_row_indices().contains(&pane.selected) {
+            return Effect::None;
+        }
+        let Some(row) = pane.model.rows.get(pane.selected).cloned() else {
+            return Effect::None;
+        };
+        if matches!(row.source, Source::Namespace(_)) {
+            self.notice = Some(Notice {
+                text: PROVIDER_ROW_REFUSAL.to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
+        if self.authorize_write().is_none() {
+            return Effect::None;
+        }
+        let Some(pane) = self.secrets_pane_mut() else {
+            return Effect::None;
+        };
+        pane.armed = Some(row.key);
+        Effect::None
+    }
+
+    /// `Enter` on the secrets pane while [`SecretsPane::armed`] holds a key:
+    /// sends the delete and disarms.
+    fn confirm_secret_delete(&mut self) -> Effect {
+        let Some(pane) = self.secrets_pane_mut() else {
+            return Effect::None;
+        };
+        let Some(key) = pane.armed.take() else {
+            return Effect::None;
+        };
+        let Some(environment) = pane.environment().map(str::to_string) else {
+            return Effect::None;
+        };
+        let Some(authority) = self.authorize_write() else {
+            return Effect::None;
+        };
+        Effect::WriteSecret(
+            SecretEdit {
+                key,
+                environment,
+                value: None,
+            },
+            authority,
+        )
+    }
+
+    /// Clears an armed delete, and says whether one was there. `Escape`'s
+    /// cue not to also close the pane on the same press.
+    fn disarm_secret_delete(&mut self) -> bool {
+        self.secrets_pane_mut()
+            .is_some_and(|pane| pane.armed.take().is_some())
     }
 
     /// The secrets pane's own text keymap, in force while
@@ -3585,7 +3687,8 @@ impl App {
             | KeyPress::Secrets
             | KeyPress::Reveal
             | KeyPress::TabPrev
-            | KeyPress::TabNext => Effect::None,
+            | KeyPress::TabNext
+            | KeyPress::SecretDelete => Effect::None,
         }
     }
 
@@ -3715,6 +3818,7 @@ impl App {
             | KeyPress::Reveal
             | KeyPress::TabPrev
             | KeyPress::TabNext
+            | KeyPress::SecretDelete
             | KeyPress::Collapse => {}
             KeyPress::StreamCycle
             | KeyPress::LevelCycle
@@ -3912,6 +4016,7 @@ impl App {
             | KeyPress::Reveal
             | KeyPress::TabPrev
             | KeyPress::TabNext
+            | KeyPress::SecretDelete
             | KeyPress::Collapse => {}
             KeyPress::StreamCycle
             | KeyPress::LevelCycle
@@ -4021,6 +4126,7 @@ impl App {
             | KeyPress::Reveal
             | KeyPress::TabPrev
             | KeyPress::TabNext
+            | KeyPress::SecretDelete
             | KeyPress::Collapse => Effect::None,
             KeyPress::StreamCycle
             | KeyPress::LevelCycle
@@ -4413,6 +4519,7 @@ impl App {
             | KeyPress::Reveal
             | KeyPress::TabPrev
             | KeyPress::TabNext
+            | KeyPress::SecretDelete
             | KeyPress::Collapse => {}
             KeyPress::StreamCycle
             | KeyPress::LevelCycle
@@ -4508,6 +4615,7 @@ impl App {
             | KeyPress::Reveal
             | KeyPress::TabPrev
             | KeyPress::TabNext
+            | KeyPress::SecretDelete
             | KeyPress::Collapse => {}
             KeyPress::StreamCycle
             | KeyPress::LevelCycle
@@ -8581,6 +8689,14 @@ mod tests {
         app.notice().map(ToString::to_string)
     }
 
+    /// The key an armed delete names, or `None`.
+    fn armed_of(app: &App) -> Option<String> {
+        match app.body() {
+            Body::Secrets(pane) => pane.armed.clone(),
+            _ => None,
+        }
+    }
+
     /// How many rows the table currently holds, for the test proving a
     /// failed write redraws nothing.
     fn row_count(app: &App) -> usize {
@@ -8749,6 +8865,104 @@ mod tests {
         assert!(
             notice_of(&app).is_some_and(|n| n.contains("pushed by a dog")),
             "and it says why rather than doing nothing"
+        );
+    }
+
+    #[test]
+    fn enter_sets_when_nothing_is_armed_and_confirms_when_something_is() {
+        let mut idle = fixtures::app_with_secrets_and_control();
+
+        let _ = idle.update(Msg::Key(KeyPress::Confirm));
+
+        assert!(
+            typing_of(&idle).is_some(),
+            "unarmed Enter opens the value input"
+        );
+
+        let mut armed = fixtures::app_with_secrets_and_control();
+        let _ = armed.update(Msg::Key(KeyPress::SecretDelete));
+
+        let effect = armed.update(Msg::Key(KeyPress::Confirm));
+
+        assert!(
+            typing_of(&armed).is_none(),
+            "armed Enter must not also open the input"
+        );
+        let Effect::WriteSecret(edit, _) = effect else {
+            panic!("expected the delete, got {effect:?}");
+        };
+        assert_eq!(edit.key, "DB_PASSWORD");
+        assert_eq!(edit.value, None, "None is what removes the slot");
+    }
+
+    #[test]
+    fn escape_disarms_before_it_closes_the_pane() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+
+        assert!(
+            matches!(app.body(), Body::Secrets(_)),
+            "the pane stays open"
+        );
+        assert!(armed_of(&app).is_none(), "and the arm is gone");
+
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+
+        assert!(
+            matches!(app.body(), Body::FlockTable),
+            "a second Escape closes it"
+        );
+    }
+
+    #[test]
+    fn moving_the_selection_disarms() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+
+        assert!(
+            armed_of(&app).is_none(),
+            "an arm must not follow the cursor onto another key"
+        );
+    }
+
+    #[test]
+    fn a_delete_refuses_without_the_control_gate() {
+        let mut app = fixtures::app_with_secrets_read_only();
+
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+
+        assert!(armed_of(&app).is_none());
+        assert!(notice_of(&app).is_some_and(|n| n.contains("read-only")));
+    }
+
+    #[test]
+    fn a_provider_row_refuses_a_delete() {
+        let mut app = fixtures::app_with_a_pushed_secret_selected_and_control();
+
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+
+        assert!(armed_of(&app).is_none());
+        assert!(notice_of(&app).is_some_and(|n| n.contains("pushed by a dog")));
+    }
+
+    #[test]
+    fn d_does_not_arm_the_new_key_row() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        assert!(
+            matches!(app.body(), Body::Secrets(pane) if pane.selected_is_new_key_row()),
+            "sanity: `G` landed on the affordance"
+        );
+
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+
+        assert!(
+            armed_of(&app).is_none(),
+            "there is no value there to delete"
         );
     }
 
