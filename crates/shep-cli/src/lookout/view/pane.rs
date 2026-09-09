@@ -72,14 +72,23 @@ const VALUE_WIDTH: u16 = KEY_MIN + 2 + VALUE_MIN;
 const BLURB_WRAP: u16 = 66;
 
 /// The panel's own width, until Task 10 replaces this fixed number with
-/// the real 45%-of-terminal-width ladder (`panel_width`, wired into this
-/// module's own `pane_lines`). This task draws the panel as a standalone,
-/// directly-testable set of lines; nothing here calls it from
-/// [`pane_lines`] yet, so a caller's own `width` argument is clamped to
-/// this ceiling rather than trusted, which is what keeps every row this
-/// task's own tests draw under 72 columns regardless of the terminal
-/// width a future caller passes in.
+/// the real 45%-of-terminal-width ladder (`panel_width`). [`pane_lines`]
+/// clamps a caller's own `width` argument to this ceiling rather than
+/// trusting it, which is what keeps every row under 72 columns regardless
+/// of the terminal width passed in.
 const PANEL_CEILING: u16 = 72;
+
+/// The field list's own width at the design target, paired with
+/// [`PANEL_CEILING`] for the panel beside it. Task 10 replaces both this
+/// constant and the fixed threshold below with `panel_width`'s continuous
+/// ladder; until then the pane draws the panel only at exactly the design
+/// target's split, and draws as it always has below it.
+const DESIGN_LEFT_WIDTH: u16 = 88;
+
+/// The terminal width the fixed 88/72 split activates at: [`DESIGN_LEFT_WIDTH`]
+/// plus [`PANEL_CEILING`], the design target from
+/// `docs/brainstorming/specs/2026-09-08-lookout-1e-editing-pane-design.md`.
+const DESIGN_TARGET_WIDTH: u16 = DESIGN_LEFT_WIDTH + PANEL_CEILING;
 
 /// The width the rows are laid out in: the terminal minus [`GUTTER`].
 const fn body_width(width: u16) -> u16 {
@@ -893,6 +902,55 @@ fn grouped_pane_lines(
     width: u16,
     budget: usize,
 ) -> Vec<Line<'static>> {
+    grouped_pane_lines_with_panel(pane, menu, palette, width, budget, None)
+}
+
+/// [`grouped_pane_lines`], with the cursor's own field's [`panel_lines`]
+/// drawn beside the body only: the title band, tab row, hairline and
+/// header row above it, and the trailing hairline and legend below it,
+/// are chrome, not per-field, so widening them into the panel's own
+/// column would only paint over where the panel sits.
+///
+/// Everything, chrome included, is laid out at [`DESIGN_TARGET_WIDTH`],
+/// never the caller's own `width`: a terminal wider than the design
+/// target still draws the fixed 88/72 split rather than stretching the
+/// title band's own reverse-video band into the gap, so nothing this
+/// function draws ever spills past column 160.
+///
+/// Only reached at exactly [`DESIGN_TARGET_WIDTH`] and above; a narrower
+/// terminal never calls this and keeps today's single column, per Task
+/// 10's own responsive ladder taking every other width.
+fn grouped_pane_with_panel_lines(
+    pane: &ConfigPane,
+    menu: Option<&PaneMenu>,
+    palette: Palette,
+    budget: usize,
+) -> Vec<Line<'static>> {
+    let panel = panel_lines(pane, palette, PANEL_CEILING);
+    grouped_pane_lines_with_panel(
+        pane,
+        menu,
+        palette,
+        DESIGN_TARGET_WIDTH,
+        budget,
+        Some(panel),
+    )
+}
+
+/// The body shared by [`grouped_pane_lines`] and
+/// [`grouped_pane_with_panel_lines`]: `panel` is `None` for the former,
+/// which lays the body out at `width` exactly as it always has, and
+/// `Some` for the latter, which lays the body out at [`DESIGN_LEFT_WIDTH`]
+/// instead and merges `panel`'s own lines beside it, since that is the
+/// one region tall enough and narrow enough to hold both.
+fn grouped_pane_lines_with_panel(
+    pane: &ConfigPane,
+    menu: Option<&PaneMenu>,
+    palette: Palette,
+    width: u16,
+    budget: usize,
+    panel: Option<Vec<Line<'static>>>,
+) -> Vec<Line<'static>> {
     let mut lines = vec![title_band_line(pane, palette, width)];
     let mut remaining = budget - 1;
     if remaining == 0 {
@@ -938,7 +996,16 @@ fn grouped_pane_lines(
     };
     let body_budget = remaining - footer_lines;
     if body_budget > 0 {
-        lines.extend(grouped_body_lines(pane, palette, width, body_budget));
+        let body_width = if panel.is_some() {
+            DESIGN_LEFT_WIDTH
+        } else {
+            width
+        };
+        let body = grouped_body_lines(pane, palette, body_width, body_budget);
+        lines.extend(match panel {
+            Some(panel) => merge_beside_panel(body, panel, DESIGN_LEFT_WIDTH, body_budget),
+            None => body,
+        });
     }
     if footer_lines >= 1 {
         lines.push(hairline_line(palette, width));
@@ -947,6 +1014,61 @@ fn grouped_pane_lines(
         lines.push(legend_line(palette, width));
     }
     lines
+}
+
+/// The columns `line`'s spans occupy, added rather than measured against a
+/// fixed cell: a blank separator or an unselected section header is
+/// shorter than [`DESIGN_LEFT_WIDTH`] on its own, and only the panel's own
+/// starting column cares where it ends.
+fn line_columns(line: &Line<'_>) -> usize {
+    line.spans
+        .iter()
+        .flat_map(|span| span.content.chars())
+        .map(char_columns)
+        .sum()
+}
+
+/// `left`'s lines and `panel`'s lines, side by side: `left` padded out to
+/// exactly `left_width` columns with a blank span (never truncated, since
+/// every left line is already laid out to fit inside its own width), then
+/// whichever `panel` row shares that index appended after it.
+///
+/// `left` and `panel` are rarely the same length: a short field list (a
+/// dog's group-free body, or a group with few fields) can run out before
+/// `NEIGHBOURS` does, and a field with nothing to say in three of its six
+/// regions can leave `panel` shorter than the field list above it. Either
+/// side short of the other draws blank rather than dropping the longer
+/// side's own rows, up to `budget`, the same vertical ceiling
+/// [`grouped_body_lines`] was already laid out against: this only ever
+/// lengthens `left`'s own count, never grows past what the caller already
+/// reserved room for.
+fn merge_beside_panel(
+    left: Vec<Line<'static>>,
+    panel: Vec<Line<'static>>,
+    left_width: u16,
+    budget: usize,
+) -> Vec<Line<'static>> {
+    let left_width = usize::from(left_width);
+    // `left` never exceeds `budget` on its own, since `grouped_body_lines`
+    // already laid it out against the same ceiling; the `min` only ever
+    // trims `panel`'s own overrun.
+    let rows = left.len().max(panel.len()).min(budget);
+    let mut left = left.into_iter();
+    let mut panel = panel.into_iter();
+    (0..rows)
+        .map(|_| {
+            let line = left.next().unwrap_or_default();
+            let used = line_columns(&line);
+            let mut spans = line.spans;
+            if used < left_width {
+                spans.push(Span::raw(" ".repeat(left_width - used)));
+            }
+            if let Some(panel_line) = panel.next() {
+                spans.extend(panel_line.spans);
+            }
+            Line::from(spans)
+        })
+        .collect()
 }
 
 /// Every line of the pane, top to bottom, laid out for a terminal `height`
@@ -982,6 +1104,9 @@ pub fn pane_lines(
         return env_lines(pane, env, palette, width, budget);
     }
     if has_groups(pane) {
+        if width >= DESIGN_TARGET_WIDTH {
+            return grouped_pane_with_panel_lines(pane, menu, palette, budget);
+        }
         return grouped_pane_lines(pane, menu, palette, width, budget);
     }
     let mut lines = vec![title_line(pane, palette, width)];
@@ -2703,5 +2828,56 @@ mod tests {
             "a panel row overflows its column: {panel:?}"
         );
         assert!(panel.iter().filter(|row| !row.trim().is_empty()).count() > 3);
+    }
+
+    /// The finding this fix round closes: nothing on the live screen drew
+    /// the panel, because nothing called it outside a test fixture. This
+    /// pins the wiring itself, through the same [`pane_lines`] the real
+    /// draw path calls, not through a fixture built to reach
+    /// [`panel_lines`] directly.
+    #[test]
+    fn the_panel_draws_beside_the_field_list_at_the_design_target() {
+        let app = fixtures::app_in_sheep_pane();
+        let pane = app.config_pane().expect("the pane is open");
+        let at_target = text_of(&pane_lines(
+            pane,
+            None,
+            fixtures::plain(),
+            DESIGN_TARGET_WIDTH,
+            48,
+        ));
+        assert!(
+            at_target.iter().any(|line| line.contains("FOCUSED")),
+            "the panel never drew at the design target: {at_target:?}"
+        );
+        let below_target = text_of(&pane_lines(
+            pane,
+            None,
+            fixtures::plain(),
+            DESIGN_TARGET_WIDTH - 1,
+            48,
+        ));
+        assert!(
+            !below_target.iter().any(|line| line.contains("FOCUSED")),
+            "a fixed split must not invent a rule below the design target: {below_target:?}"
+        );
+    }
+
+    /// Left is 88, the panel is 72, and neither this task nor Task 10 may
+    /// let a row cross that boundary or run past column 160, no matter how
+    /// wide the real terminal is.
+    #[test]
+    fn no_row_spills_across_the_panel_boundary_or_past_the_design_target() {
+        let app = fixtures::app_in_sheep_pane();
+        let pane = app.config_pane().expect("the pane is open");
+        for width in [DESIGN_TARGET_WIDTH, DESIGN_TARGET_WIDTH + 40] {
+            for line in pane_lines(pane, None, fixtures::plain(), width, 48) {
+                let cols = line_columns(&line);
+                assert!(
+                    cols <= usize::from(DESIGN_TARGET_WIDTH),
+                    "a row is {cols} columns wide at terminal width {width}: {line:?}"
+                );
+            }
+        }
     }
 }
