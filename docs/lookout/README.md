@@ -185,7 +185,7 @@ debt.
   readings exist for a sheep, the same shape a fresh `cpu_percent` already
   had.
 - **`↵` opens a full-screen pane on the selected sheep.** Silent on a group
-  row, a fold header, or a dog — none has a single process to chart or a
+  row, a fold header, or a dog: none has a single process to chart or a
   Flockfile to show. `esc` closes it.
 - **Two charts, CPU and memory, share a time axis and one poll per
   column.** The window is computed from the columns actually available and
