@@ -291,22 +291,35 @@ const BLEATS_HINT: &str = "esc back   j/k line   ctrl-d/u page   G end   \
 /// names `d`/`K`/`J`. `* yours`/`! parked` repeat the field list's glyphs
 /// ([`super::pane::field_line`]); the flock table's `CFG` column carries the
 /// same two with no legend of its own.
+///
+/// `Control::Allowed` at [`PaneScreen::Fields`] says `esc write & close`, not
+/// `esc close`: since Task 5, `esc` there sends every filed edit before it
+/// closes the pane. The design doc for this pane (see the crate's own
+/// `docs/brainstorming/specs/`) does spell it `esc close`, because a later
+/// frame adds a confirmation dialog that intercepts the close and asks
+/// first; once that dialog exists, `esc` stops writing on its own and this
+/// line should revert. Until then, do not "simplify" this back to match the
+/// design doc: the design doc describes a frame that is not built yet.
+///
+/// Said unconditionally, whether or not anything is filed, rather than
+/// keyed on the edit count: `esc` writes zero edits the same way it writes
+/// three, so the sentence is true either way and this stays a `const fn`.
 const fn pane_hint(control: Control, screen: PaneScreen) -> &'static str {
     match (control, screen) {
         (Control::ReadOnly, PaneScreen::Fields) => {
             "esc close   j/k select   g/G first/last   r refresh   h help   * yours   ! parked   q quit"
         }
         (Control::Allowed, PaneScreen::Fields) => {
-            "esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   h help   * yours   ! parked   q quit"
+            "esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   u undo   h help   * yours   ! parked   q quit"
         }
         (Control::ReadOnly, PaneScreen::Env | PaneScreen::List) => {
             "esc back   j/k select   g/G first/last   r refresh   q quit"
         }
         (Control::Allowed, PaneScreen::Env) => {
-            "esc back   j/k select   g/G first/last   r refresh   e set   q quit"
+            "esc back   j/k select   g/G first/last   r refresh   e set   u undo   q quit"
         }
         (Control::Allowed, PaneScreen::List) => {
-            "esc back   j/k select   g/G first/last   r refresh   e edit   d remove   K/J move   q quit"
+            "esc back   j/k select   g/G first/last   r refresh   e edit   d remove   K/J move   u undo   q quit"
         }
     }
 }
@@ -767,8 +780,12 @@ mod tests {
                 "{key} missing with the gate open: {open:?}"
             );
         }
+        assert!(closed.contains("esc close"), "got {closed:?}");
+        assert!(
+            open.contains("esc write & close"),
+            "the gate is open, so esc can write: {open:?}"
+        );
         for both in [&closed, &open] {
-            assert!(both.contains("esc close"), "got {both:?}");
             assert!(both.contains("h help"), "got {both:?}");
             assert!(both.contains("* yours"), "got {both:?}");
             assert!(both.contains("! parked"), "got {both:?}");
@@ -854,7 +871,7 @@ mod tests {
         let bar = rendered(&status_line(&app, 200));
         assert!(!bar.contains("enter confirms"), "got {bar:?}");
         assert!(!bar.contains("sent, waiting"), "got {bar:?}");
-        assert!(bar.contains("esc close"), "got {bar:?}");
+        assert!(bar.contains("esc write & close"), "got {bar:?}");
     }
 
     #[test]

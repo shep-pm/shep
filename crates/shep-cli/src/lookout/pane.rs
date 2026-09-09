@@ -125,6 +125,23 @@ impl FieldValue {
     pub fn as_value(&self) -> &Value {
         &self.0
     }
+
+    /// The value, printed, when printing it cannot leak anything: a bool or
+    /// a number can never hold a secret, a token or a home directory
+    /// (IR-41). Every other kind stays [`None`], for the same reason
+    /// [`Debug`](core::fmt::Debug) above never prints one either.
+    ///
+    /// Exists so a notice that reports a field being set can say which way
+    /// it moved (`reuse_port set to true` versus `false`) without touching
+    /// the kinds this type exists to guard.
+    #[must_use]
+    pub fn safe_summary(&self) -> Option<String> {
+        match &self.0 {
+            Value::Bool(value) => Some(value.to_string()),
+            Value::Number(value) => Some(value.to_string()),
+            Value::Null | Value::String(_) | Value::Array(_) | Value::Object(_) => None,
+        }
+    }
 }
 
 impl From<Value> for FieldValue {
@@ -939,6 +956,11 @@ impl ConfigPane {
     /// first and that menu reads the pane it is offering about. The write
     /// still goes out on that keypress, so the set has to leave whether
     /// the screen does or not.
+    ///
+    /// `#[must_use]`: this is the only door the filed set leaves through.
+    /// A caller that drops the return value drops every edit with it,
+    /// silently, since the pane already holds nothing once this returns.
+    #[must_use]
     pub(super) fn close(&mut self) -> Edits {
         core::mem::take(&mut self.edits)
     }

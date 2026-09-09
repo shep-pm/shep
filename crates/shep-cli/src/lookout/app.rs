@@ -1651,7 +1651,9 @@ impl App {
                 Sent::SheepConfig { name } => self.on_sheep_config(&name, result),
                 Sent::DogSection { name } => self.on_dog_section(&name, result),
                 Sent::SetDogSection { name, .. } => self.on_dog_section_set(&name, result),
-                Sent::ApplyField { name, key, .. } => self.on_field_applied(&name, &key, result),
+                Sent::ApplyField {
+                    name, key, value, ..
+                } => self.on_field_applied(&name, &key, &value, result),
                 Sent::SetEnv {
                     name, key, value, ..
                 } => self.on_env_set(&name, &key, value.is_some(), result),
@@ -2300,21 +2302,32 @@ impl App {
     /// the whole set at once, so several of these can land in a row and a
     /// refusal that named only the sheep would not say which write failed.
     ///
+    /// The success sentence also names the new value when
+    /// [`FieldValue::safe_summary`] says that is safe: without it, setting
+    /// `reuse_port` to `true` and setting it back to `false` print the
+    /// identical sentence, which is wrong on its own rather than merely
+    /// incomplete.
+    ///
     /// `pending` is the shepherd's answer, not this pane's guess: it knows
     /// about fields like `autostart` that `apply_group` cannot derive.
     fn on_field_applied(
         &mut self,
         name: &str,
         key: &str,
+        value: &FieldValue,
         result: Result<Response, RequestError>,
     ) -> Effect {
         match result {
             Ok(Response::SheepFieldSet { pending, .. }) => {
+                let key_text = match value.safe_summary() {
+                    Some(v) => format!("{key} set to {v}"),
+                    None => format!("{key} is set"),
+                };
                 self.notice = Some(Notice {
                     text: if pending {
-                        format!("{name}: {key} is set, and waits for `shep reload {name}`")
+                        format!("{name}: {key_text}, and waits for `shep reload {name}`")
                     } else {
-                        format!("{name}: {key} is set")
+                        format!("{name}: {key_text}")
                     },
                     grave: false,
                 });
@@ -9701,7 +9714,7 @@ mod tests {
     /// on a field whose config subset would not normalize.
     #[test]
     fn a_landed_write_re_reads_the_config_and_reports_what_the_shepherd_said() {
-        for (pending, wanted) in [(false, "is set"), (true, "shep reload")] {
+        for (pending, wanted) in [(false, "set to false"), (true, "shep reload")] {
             let mut app = fixtures::app_in_sheep_pane_with_control();
             pane_to(&mut app, "autorestart");
             let _ = app.update(Msg::Key(KeyPress::Cycle));

@@ -1272,7 +1272,7 @@ mod tests {
     fn the_cost_column_predicts_and_the_status_bar_reports() {
         for (key, column, pending, sentence) in [
             ("watch", "now", true, "waits for `shep reload web`"),
-            ("autostart", "next start", false, "is set"),
+            ("autostart", "next start", false, "set to false"),
         ] {
             let mut app = fixtures::app_in_sheep_pane_with_control();
             pane_to(&mut app, key);
