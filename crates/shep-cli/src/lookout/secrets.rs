@@ -53,8 +53,9 @@ pub(crate) struct SecretRow {
 /// Everything the pane needs for one environment tab.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SecretsModel {
-    /// Every environment the store holds a slot for, plus
-    /// [`ALL_ENVIRONMENTS`], in name order. The tab row.
+    /// Every environment either store holds a slot for, the operator's own
+    /// and the providers' cache alike, plus [`ALL_ENVIRONMENTS`], in name
+    /// order. The tab row, and `SET IN`'s denominator.
     pub environments: Vec<String>,
     /// Operator rows first, then each namespace's, keys in order within
     /// each.
@@ -102,6 +103,15 @@ pub(crate) fn model(paths: &ShepPaths, procs: &[ProcessInfo], environment: &str)
     environments.insert(ALL_ENVIRONMENTS.to_string());
     for slots in store.values() {
         environments.extend(slots.keys().cloned());
+    }
+    // Both stores, not the operator's alone. A dog can push an environment
+    // the operator never named, and this list is both `SET IN`'s denominator
+    // and the tab row: leaving those out prints a count bigger than its own
+    // denominator and hides the environment from every tab.
+    for keys in providers.values.values() {
+        for slots in keys.values() {
+            environments.extend(slots.keys().cloned());
+        }
     }
 
     let mut rows = Vec::new();
@@ -294,6 +304,44 @@ mod tests {
         let built = model(&paths, &[], "production");
 
         assert_eq!(built.environments, [ALL_ENVIRONMENTS, "ci", "production"]);
+    }
+
+    /// `Request::PutSecrets` checks a pushed environment's name against
+    /// `is_name` and nothing else, so a dog can name one the operator's own
+    /// store never mentions. `SET IN` divides a row's slot count by this
+    /// list, and the tab row is drawn from it, so a pushed name left out
+    /// prints a count larger than its own denominator and hides the
+    /// environment from the tabs.
+    #[test]
+    fn a_pushed_environment_the_store_does_not_name_is_still_an_environment() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_under(dir.path());
+        secrets::set(&paths.secrets, "K", "production", "x").unwrap();
+        std::fs::write(
+            &paths.secrets_cache,
+            format!(
+                r#"{{"version":{PROVIDER_CACHE_VERSION},"namespaces":{{"vercel":{{"API_TOKEN":{{"preview":"tok","production":"tok","staging":"tok"}}}}}},"pushed":{{"vercel":["preview","production","staging"]}}}}"#
+            ),
+        )
+        .unwrap();
+
+        let built = model(&paths, &[], "production");
+
+        assert_eq!(
+            built.environments,
+            [ALL_ENVIRONMENTS, "preview", "production", "staging"]
+        );
+        let row = built
+            .rows
+            .iter()
+            .find(|row| row.key == "vercel/API_TOKEN")
+            .unwrap();
+        assert!(
+            row.set_in.len() <= built.environments.len(),
+            "SET IN would print `{} of {}`",
+            row.set_in.len(),
+            built.environments.len()
+        );
     }
 
     #[test]
