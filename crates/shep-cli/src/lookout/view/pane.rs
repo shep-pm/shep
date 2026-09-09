@@ -164,6 +164,19 @@ fn title_line(pane: &ConfigPane, palette: Palette, width: u16) -> Line<'static> 
     ))
 }
 
+/// Masks a secret field's rendered value: `(unset)` passes through, since
+/// there is nothing to hide, and anything else becomes `<set>`. The one rule
+/// every render path in this file applies to a secret field before its value
+/// reaches the screen, kept in one place so a new call site cannot spell the
+/// condition differently from the rest.
+fn mask_secret(secret: bool, raw: String) -> String {
+    if secret && raw != "(unset)" {
+        "<set>".to_owned()
+    } else {
+        raw
+    }
+}
+
 /// One field's row: the selection mark, a lock glyph, a flag, the key, the
 /// value and what changing it costs.
 ///
@@ -212,8 +225,7 @@ fn field_line(
         .map(|typing| &typing.buffer);
     let value = match typing {
         Some(buffer) => format!("{buffer}\u{258f}"),
-        None if field.secret && raw != "(unset)" => "<set>".to_owned(),
-        None => raw,
+        None => mask_secret(field.secret, raw),
     };
 
     let lock = match pane.lock(&field.key) {
@@ -1570,8 +1582,14 @@ pub(super) fn panel_for_field(
     // 3: now, default, example. `now` is never empty; the other two show a
     // placeholder rather than dropping their own row, so the panel always
     // names all three questions even when the schema answers only one.
+    // `now` is masked the same way `field_line` masks its own value cell:
+    // it is `pane.display_value`, the live config, and a dog's schema can
+    // mark that secret. `default` and `example` are never masked: both come
+    // from the schema itself (`init.default`/`init.example`), authored by
+    // whoever wrote the schema, not by an operator, so neither can carry a
+    // value this pane owes any secrecy to.
     lines.push(Line::default());
-    let now = pane.display_value(&field.key);
+    let now = mask_secret(field.secret, pane.display_value(&field.key));
     let default = field.default.clone().unwrap_or_else(|| "(none)".to_owned());
     let example = field.example.clone().unwrap_or_else(|| "(none)".to_owned());
     for (label, value) in [("now", now), ("default", default), ("example", example)] {
@@ -2595,6 +2613,28 @@ mod tests {
         assert!(!text.contains("ab12cd34"), "the old value leaked: {text}");
         assert!(!text.contains("ef56gh78"), "the new value leaked: {text}");
         assert!(text.contains("<set> -> <set>"), "{text}");
+    }
+
+    /// `panel_for_field`'s `now` row is the panel's own live-config read,
+    /// same as `field_line`'s value cell, and has to mask a secret the same
+    /// way. Cursor left off `token` on purpose: every new test in the
+    /// previous round left it on field 0, which is why the panel's `now`
+    /// row leaked a real webhook URL and nothing caught it.
+    #[test]
+    fn the_explanation_panel_masks_a_secret_fields_value() {
+        let pane = secret_dog_pane_with_an_edit();
+        let field = pane.fields().by_key("token").expect("token is a field");
+        let lines = panel_for_field(field, &pane, fixtures::plain(), 120);
+        let text: String = lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .map(|span| span.content.as_ref())
+            .collect();
+        assert!(
+            !text.contains("ab12cd34"),
+            "the current value leaked: {text}"
+        );
+        assert!(text.contains("<set>"), "{text}");
     }
 
     /// No Flockfile field is secret today, but a dog's schema can mark one,
