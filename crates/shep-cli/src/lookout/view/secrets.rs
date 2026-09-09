@@ -307,7 +307,7 @@ fn pad(spans: &mut Vec<Span<'static>>, used: u16, width: u16, style: Style) {
 
 /// The `+ new key` row's own [`Line`]: `KEY` names the affordance, `VALUE`
 /// echoes the name step's own buffer while it is open, and every other
-/// column is blank — there is no key yet for any of them to describe.
+/// column is blank: there is no key yet for any of them to describe.
 fn new_key_row_line(
     pane: &SecretsPane,
     columns: &[Column],

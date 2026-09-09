@@ -1497,7 +1497,7 @@ impl SecretsPane {
     /// Every index into `model.rows` this pane currently draws: a
     /// collapsed namespace's members contribute none, the same rows
     /// `view::secrets::draw` skips on screen. Never the `+ new key` row,
-    /// which is not a `model.rows` index — [`Self::reveal_selected`] reads
+    /// which is not a `model.rows` index: [`Self::reveal_selected`] reads
     /// this to decide whether anything real is even on screen, so it stays
     /// real-rows-only rather than growing the affordance into it.
     fn visible_row_indices(&self) -> Vec<usize> {
@@ -1567,8 +1567,8 @@ impl SecretsPane {
     /// A selection `z` just folded away is not itself in [`Self::screen_slots`]:
     /// rather than guess where inside it the old position belonged, this
     /// lands on the nearest surviving *real* row in the direction `delta`
-    /// points, over [`Self::visible_row_indices`] alone — never the
-    /// affordance, so a reload or a fold can never strand the cursor on it
+    /// points, over [`Self::visible_row_indices`] alone (never the
+    /// affordance), so a reload or a fold can never strand the cursor on it
     /// by accident.
     pub(crate) fn move_by(&mut self, delta: isize) {
         let slots = self.screen_slots();
@@ -2361,12 +2361,10 @@ impl App {
                 self.on_revealed(&key, &environment, value);
                 Effect::None
             }
-            // `Ok` re-reads, exactly as `Msg::SettingWritten` does, so the
-            // table shows what the file now holds rather than what was
-            // typed, and takes any revealed value off screen: it belonged to
-            // the store as it stood before this write. `Err` raises no
-            // reload, so the table keeps saying what the store last actually
-            // held.
+            // `Ok` re-reads (like `Msg::SettingWritten`) so the table shows
+            // the file's new contents rather than what was typed, and clears
+            // any revealed value, which belonged to the prior store. `Err`
+            // raises no reload, so the table keeps its last known-good read.
             Msg::SecretWritten { result } => match result {
                 Ok(()) => {
                     self.hide_revealed();
