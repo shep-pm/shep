@@ -82,6 +82,19 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             format!("match  {buffer}\u{258f}   enter applies   esc cancels"),
             palette.attention(),
         )
+    } else if let Some(buffer) = app
+        .sheep_pane()
+        .and_then(|pane| pane.feed().match_editing())
+    {
+        // The same box, embedded: the sheep pane's own feed shares
+        // `InputMode::Text` with the dashboard's name filter too, and a
+        // fall-through here would label the dashboard's untouched query as
+        // this feed's match, the same mislabel the branch above already
+        // guards against for the full-screen pane.
+        (
+            format!("match  {buffer}\u{258f}   enter applies   esc cancels"),
+            palette.attention(),
+        )
     } else if let Some((label, buffer)) = app.config_pane().and_then(pane_editor) {
         // The pane's own free-text editor, and the env sub-screen's, ahead
         // of the filter branch: all three share `InputMode::Text`, and a
@@ -349,13 +362,14 @@ const fn pane_hint(control: Control, screen: PaneScreen) -> &'static str {
 /// [`Control::Allowed`], the same rule [`hint_for`]'s own doc gives for the
 /// dashboard's write keys: a hint naming a key that is inert where the
 /// operator is reading it teaches them the key is broken. `b full log` and
-/// `/ filter` are not named here yet, for the same reason: rows 2 to 46 are
-/// still blank, and those two route to the feed Task 10 adds. All three of
-/// `x`/`R`/`L` are wired, against the pane's own pinned sheep.
+/// `/ filter` are named for every control level, the same as `esc`/`e`/`J`/`K`:
+/// both now route to the embedded feed Task 10 wired in.
 const fn sheep_pane_hint(control: Control) -> &'static str {
     match control {
-        Control::ReadOnly => "esc flock   e edit   J/K next sheep",
-        Control::Allowed => "esc flock   e edit   J/K next sheep   x stop   R restart   L reload",
+        Control::ReadOnly => "esc flock   e edit   J/K next sheep   b full log   / filter",
+        Control::Allowed => {
+            "esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter"
+        }
     }
 }
 
@@ -1033,12 +1047,12 @@ mod tests {
         assert!(scrolled.contains("read-only"), "got {scrolled}");
     }
 
-    /// `x`/`R`/`L` are wired now, so the hint keeps naming them; `b`/`/`
-    /// still route to nothing (the feed they would act on is Task 10's),
-    /// so the hint drops them until then, the same rule that gates the
-    /// write keys behind `Control::Allowed` just below.
+    /// `x`/`R`/`L` are wired, so the hint keeps naming them; `b`/`/` are
+    /// wired too now, so the hint names them alongside the write keys
+    /// rather than dropping them, the same rule that gates the write keys
+    /// behind `Control::Allowed` just below.
     #[test]
-    fn the_sheep_panes_hint_names_the_write_keys_and_drops_the_feeds_own() {
+    fn the_sheep_panes_hint_names_the_write_keys_and_the_feeds_own() {
         use shep_core::protocol::ProcessInfo;
         use shep_core::status::ProcStatus;
 
@@ -1053,11 +1067,11 @@ mod tests {
             "x stop",
             "R restart",
             "L reload",
+            "b full log",
+            "/ filter",
         ] {
             assert!(bar.contains(key), "missing {key:?}: got {bar}");
         }
-        assert!(!bar.contains("b full log"), "got {bar}");
-        assert!(!bar.contains("/ filter"), "got {bar}");
     }
 
     /// `x`/`R`/`L` are hidden under `Control::ReadOnly`, the same rule
@@ -1076,7 +1090,7 @@ mod tests {
         assert!(!bar.contains("x stop"), "got {bar}");
         assert!(!bar.contains("R restart"), "got {bar}");
         assert!(!bar.contains("L reload"), "got {bar}");
-        assert!(!bar.contains("b full log"), "got {bar}");
-        assert!(!bar.contains("/ filter"), "got {bar}");
+        assert!(bar.contains("b full log"), "got {bar}");
+        assert!(bar.contains("/ filter"), "got {bar}");
     }
 }

@@ -1638,18 +1638,20 @@ impl App {
                 {
                     pane.cancel();
                 }
-                // The bleats pane has no timer of its own; it rides every
-                // tick instead of the dashboard's own cadence, which is
-                // fixed for the connection's lifetime (see `RefreshFeed`'s
-                // own doc). The dashboard raises nothing here, or every
-                // lookout would poll twice as often for nothing.
-                // `Link::Lost` too: `Msg::Bleats` throws the tail away
-                // while the link is down, so every read would be work done
-                // and discarded once a second. `Msg::Snapshot` and
+                // Neither full-screen feed has a timer of its own; each
+                // rides every tick instead of the dashboard's own cadence,
+                // which is fixed for the connection's lifetime (see
+                // `RefreshFeed`'s own doc). The dashboard raises nothing
+                // here, or every lookout would poll twice as often for
+                // nothing. `Link::Lost` too: `Msg::Bleats` throws the tail
+                // away while the link is down, so every read would be work
+                // done and discarded once a second. `Msg::Snapshot` and
                 // `select_at` guard on the same thing, and
                 // `a_frozen_dashboard_does_not_re_read_anything` states the
                 // rule.
-                if matches!(self.body, Body::Bleats(_)) && !matches!(self.link, Link::Lost { .. }) {
+                if matches!(self.body, Body::Bleats(_) | Body::Sheep(_))
+                    && !matches!(self.link, Link::Lost { .. })
+                {
                     Effect::RefreshFeed
                 } else {
                     Effect::None
@@ -2662,6 +2664,19 @@ impl App {
         Effect::None
     }
 
+    /// `b`, from inside the sheep pane: hands the embedded feed's own state
+    /// to `Body::Bleats` rather than [`BleatsPane::new`]ing a fresh one, so
+    /// a filter narrowed in the pane's own column survives going full
+    /// screen. A no-op on any other screen; `on_sheep_pane_key` only reaches
+    /// this while [`Self::sheep_pane`] is `Some`, but the match on `body`
+    /// stays defensive rather than assuming that.
+    fn promote_feed_to_full_screen(&mut self) -> Effect {
+        if let Body::Sheep(pane) = &self.body {
+            self.body = Body::Bleats(pane.feed().clone());
+        }
+        Effect::None
+    }
+
     /// `Enter`'s own handler on the dashboard: opens the sheep pane on the
     /// selected sheep and asks for its config in the same step, since the
     /// pane's own left column has nothing to draw without it.
@@ -2740,8 +2755,11 @@ impl App {
     /// because `on_key` routes to this method ahead of that check, so an
     /// action armed from inside this pane never reaches it. `j`/`k` and
     /// `g`/`G` scroll the config/env column through its own `Viewport`.
-    /// Every other key is inert for now: the feed is still blank, and the
-    /// two keys the status bar names for it (`b`, `/`) arrive with Task 10.
+    /// `/`, `o`, `m`, `f`, `w`, `n` and `N` belong to the embedded feed
+    /// ([`Self::sheep_feed_mut`]), the same axes [`Self::on_bleats_key`]
+    /// wires for the full-screen pane, and `b` hands that same feed to
+    /// [`Self::promote_feed_to_full_screen`] rather than opening a fresh one.
+    /// Every other key is inert.
     fn on_sheep_pane_key(&mut self, key: KeyPress) -> Effect {
         if self
             .action
@@ -2791,9 +2809,91 @@ impl App {
                 }
                 Effect::None
             }
+            // `b`: hands the embedded feed's own state to `Body::Bleats`
+            // rather than rebuilding one, so a filter narrowed here survives
+            // going full screen.
+            KeyPress::Bleats => self.promote_feed_to_full_screen(),
+            // Opens the feed's own match box: `on_text_key` routes the
+            // keystrokes that follow to `on_sheep_feed_text_key` once this
+            // pane owns `InputMode::Text`, the same shape
+            // `on_bleats_key`'s own `FilterStart` arm follows.
+            KeyPress::FilterStart => {
+                if let Some(feed) = self.sheep_feed_mut() {
+                    feed.begin_match_edit();
+                }
+                self.mode = InputMode::Text;
+                Effect::None
+            }
+            // `o`: cycles the embedded feed's stream axis, the same cycle
+            // `on_bleats_key`'s own arm follows.
+            KeyPress::StreamCycle => {
+                if let Some(feed) = self.sheep_feed_mut() {
+                    let next = match feed.filters().stream {
+                        None => Some(Stream::Out),
+                        Some(Stream::Out) => Some(Stream::Err),
+                        Some(Stream::Err) => None,
+                    };
+                    feed.set_stream(next);
+                }
+                Effect::None
+            }
+            // `m`: cycles the embedded feed's minimum-level axis, the same
+            // cycle `on_bleats_key`'s own arm follows.
+            KeyPress::LevelCycle => {
+                if let Some(feed) = self.sheep_feed_mut() {
+                    let next = match feed.filters().min_level {
+                        None => Some(Level::Trace),
+                        Some(Level::Trace) => Some(Level::Debug),
+                        Some(Level::Debug) => Some(Level::Info),
+                        Some(Level::Info) => Some(Level::Warn),
+                        Some(Level::Warn) => Some(Level::Error),
+                        Some(Level::Error) => None,
+                    };
+                    feed.set_min_level(next);
+                }
+                Effect::None
+            }
+            // `f`: toggles following explicitly.
+            KeyPress::FollowToggle => {
+                if let Some(feed) = self.sheep_feed_mut() {
+                    feed.toggle_follow();
+                }
+                Effect::None
+            }
+            // `w`: toggles whether a long line wraps or truncates.
+            KeyPress::WrapToggle => {
+                if let Some(feed) = self.sheep_feed_mut() {
+                    feed.toggle_wrap();
+                }
+                Effect::None
+            }
+            // `n`: one match toward the newest line. A no-op with no match
+            // axis set: see `BleatsPane::match_next`.
+            KeyPress::MatchNext => {
+                if let Some(feed) = self.sheep_feed_mut() {
+                    feed.match_next();
+                }
+                Effect::None
+            }
+            // `N`: the same, toward the oldest matching line. Unlike
+            // `on_bleats_key`'s own `MatchPrev` arm, this does not clamp
+            // through `bleats_full::max_scroll_offset`: the embedded feed
+            // draws no scrollback of its own (there is no `j`/`k` for it
+            // here, unlike the full-screen pane), so an offset past the
+            // oldest survivor only ever matters once `b` promotes the pane,
+            // and `window_range` already saturates a stale one rather than
+            // reading past the end.
+            KeyPress::MatchPrev => {
+                let stepping = self
+                    .sheep_pane()
+                    .is_some_and(|pane| pane.feed().filters().matcher.is_some());
+                if stepping && let Some(feed) = self.sheep_feed_mut() {
+                    feed.scroll_up(1);
+                }
+                Effect::None
+            }
             KeyPress::Refresh
             | KeyPress::Confirm
-            | KeyPress::FilterStart
             | KeyPress::TextChar(_)
             | KeyPress::TextBackspace
             | KeyPress::TextApply
@@ -2804,15 +2904,8 @@ impl App {
             | KeyPress::ListRemove
             | KeyPress::FoldView
             | KeyPress::Collapse
-            | KeyPress::Bleats
-            | KeyPress::StreamCycle
-            | KeyPress::LevelCycle
             | KeyPress::PageDown
-            | KeyPress::PageUp
-            | KeyPress::FollowToggle
-            | KeyPress::WrapToggle
-            | KeyPress::MatchNext
-            | KeyPress::MatchPrev => Effect::None,
+            | KeyPress::PageUp => Effect::None,
         }
     }
 
@@ -3023,6 +3116,48 @@ impl App {
                 self.mode = InputMode::Normal;
                 if let Some(pane) = self.bleats_pane_mut() {
                     pane.abandon_match_edit();
+                }
+                Effect::None
+            }
+            _ => Effect::None,
+        }
+    }
+
+    /// The embedded feed's own match box, in force while it owns
+    /// [`InputMode::Text`]. [`Self::on_bleats_text_key`]'s own body, against
+    /// [`Self::sheep_feed_mut`] instead of [`Self::bleats_pane_mut`]: the two
+    /// panes never coexist, but each opens its match box against its own
+    /// filter state.
+    fn on_sheep_feed_text_key(&mut self, key: KeyPress) -> Effect {
+        match key {
+            KeyPress::Quit => Effect::Quit,
+            KeyPress::TextChar(typed) => {
+                if let Some(feed) = self.sheep_feed_mut() {
+                    let mut text = feed.filters().matcher.clone().unwrap_or_default();
+                    text.push(typed);
+                    feed.set_match(text);
+                }
+                Effect::None
+            }
+            KeyPress::TextBackspace => {
+                if let Some(feed) = self.sheep_feed_mut() {
+                    let mut text = feed.filters().matcher.clone().unwrap_or_default();
+                    text.pop();
+                    feed.set_match(text);
+                }
+                Effect::None
+            }
+            KeyPress::TextApply => {
+                self.mode = InputMode::Normal;
+                if let Some(feed) = self.sheep_feed_mut() {
+                    feed.commit_match_edit();
+                }
+                Effect::None
+            }
+            KeyPress::TextAbandon => {
+                self.mode = InputMode::Normal;
+                if let Some(feed) = self.sheep_feed_mut() {
+                    feed.abandon_match_edit();
                 }
                 Effect::None
             }
@@ -4548,12 +4683,12 @@ impl App {
     /// closed, [`Self::on_settings_text_key`]'s editor while it is open. The
     /// two never both own [`InputMode::Text`].
     fn on_text_key(&mut self, key: KeyPress) -> Effect {
-        // Four now, and the split is still total: the config pane, the
-        // settings screen and the bleats pane cannot coexist with each
-        // other (`e` and `s` reach the dashboard only from the dashboard,
-        // and `b` only from there too), and none of them coexist with the
-        // dashboard's own filter box, which `Msg::Settings`'s own arm
-        // closed the window on.
+        // Five now, and the split is still total: the config pane, the
+        // settings screen, the bleats pane and the sheep pane cannot coexist
+        // with each other (`e` and `s` reach the dashboard only from the
+        // dashboard, and `b`/`↵` only from there too), and none of them
+        // coexist with the dashboard's own filter box, which `Msg::Settings`'s
+        // own arm closed the window on.
         if self.config_pane().is_some() {
             return self.on_pane_text_key(key);
         }
@@ -4562,6 +4697,9 @@ impl App {
         }
         if self.bleats_pane().is_some() {
             return self.on_bleats_text_key(key);
+        }
+        if self.sheep_pane().is_some() {
+            return self.on_sheep_feed_text_key(key);
         }
         self.on_filter_text_key(key)
     }
@@ -4958,14 +5096,16 @@ impl App {
     }
 
     /// The row whose log files the feed should read: the bleats pane's
-    /// pinned sheep while that pane is open, and the selection otherwise.
+    /// pinned sheep while that pane is open, the sheep pane's own pinned
+    /// sheep while its embedded feed is open, and the selection otherwise.
     ///
-    /// The two are not the same and the difference is operator-visible. The
-    /// pane pins one sheep for its lifetime, but `Msg::Snapshot` reseats the
-    /// selection whatever screen is showing, so a pinned sheep leaving the
-    /// flock moves the selection to another one. Reading the selection here
-    /// would then draw that other sheep's lines under a title still naming
-    /// the pinned sheep, which is one sheep's output presented as another's.
+    /// The three are not the same and the difference is operator-visible.
+    /// Both panes pin one sheep for their lifetime, but `Msg::Snapshot`
+    /// reseats the selection whatever screen is showing, so a pinned sheep
+    /// leaving the flock moves the selection to another one. Reading the
+    /// selection here would then draw that other sheep's lines under a
+    /// title still naming the pinned sheep, which is one sheep's output
+    /// presented as another's.
     ///
     /// `None` once the pinned sheep is gone, so the pane shows its own
     /// "no longer in the flock" title over nothing rather than over somebody
@@ -4977,7 +5117,13 @@ impl App {
                 RowKey::Sheep(id) => self.flock.get(id),
                 _ => None,
             },
-            None => self.selected_row(),
+            None => match self.sheep_pane() {
+                Some(pane) => match pane.feed_sheep() {
+                    RowKey::Sheep(id) => self.flock.get(id),
+                    _ => None,
+                },
+                None => self.selected_row(),
+            },
         }
     }
 
@@ -5428,6 +5574,16 @@ impl App {
             Body::Sheep(pane) => Some(pane.as_mut()),
             Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) | Body::Bleats(_) => None,
         }
+    }
+
+    /// The embedded feed inside the open sheep pane, or `None` while the
+    /// pane itself is closed.
+    ///
+    /// [`Self::sheep_pane_mut`] and [`SheepPane::feed_mut`] composed once,
+    /// for `on_sheep_pane_key`'s own filter-axis arms, which would otherwise
+    /// repeat the two-step `and_then` at every one of them.
+    fn sheep_feed_mut(&mut self) -> Option<&mut BleatsPane> {
+        self.sheep_pane_mut().map(SheepPane::feed_mut)
     }
 
     /// The apply offer over the open pane, or `None`.
@@ -5976,6 +6132,97 @@ mod tests {
                 name: "bravo".to_string()
             })
         );
+    }
+
+    /// `fixture_with_two_sheep`, with a tail already landed for `alpha`: two
+    /// lines, one of them containing `boom`, so the embedded feed's filter
+    /// and promotion tests below have something to narrow and a second
+    /// sheep to step onto.
+    fn fixture_with_feed() -> App {
+        let mut app = fixture_with_two_sheep();
+        app.update(Msg::Bleats {
+            tail: super::super::tail::Tail {
+                lines: vec![
+                    super::super::tail::TailLine {
+                        stream: Stream::Out,
+                        text: "boom detected".to_string(),
+                    },
+                    super::super::tail::TailLine {
+                        stream: Stream::Out,
+                        text: "all quiet".to_string(),
+                    },
+                ],
+                missed_lines: 0,
+                missed_bytes: 0,
+                read_bytes: 0,
+                note: None,
+            },
+        });
+        app
+    }
+
+    /// Types `text` into the embedded feed's match box and applies it,
+    /// through the same keys an operator presses (`FilterStart`, one
+    /// `TextChar` per byte, `TextApply`) rather than reaching into
+    /// `SheepPane` directly: this is what `on_sheep_pane_key`'s own filter
+    /// arms are for, and a fixture that skipped them would not exercise the
+    /// routing this task adds.
+    fn apply_match(app: &mut App, text: &str) {
+        let _ = app.update(Msg::Key(KeyPress::FilterStart));
+        for ch in text.chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(ch)));
+        }
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+    }
+
+    /// The embedded feed's surviving lines, filtered the way its own
+    /// `Filters` would narrow them, for a test to inspect without reaching
+    /// into `view::sheep::draw` for a rendered row.
+    fn feed_rows(app: &App) -> Vec<String> {
+        let Body::Sheep(pane) = app.body() else {
+            panic!("the sheep pane is not open")
+        };
+        pane.feed()
+            .visible(&app.feed().lines)
+            .into_iter()
+            .map(|line| line.text.clone())
+            .collect()
+    }
+
+    /// The pane's own filters, not a second set. The header advertises them,
+    /// so they have to work here and not only in the full-screen pane.
+    #[test]
+    fn a_filter_applied_in_the_sheep_pane_narrows_its_feed() {
+        let mut app = fixture_with_feed();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        apply_match(&mut app, "boom");
+        assert!(feed_rows(&app).iter().all(|row| row.contains("boom")));
+    }
+
+    /// `b` hands the same pane the whole screen, carrying its filters.
+    #[test]
+    fn b_promotes_the_feed_to_full_screen_with_its_filters() {
+        let mut app = fixture_with_feed();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        apply_match(&mut app, "boom");
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let Body::Bleats(pane) = app.body() else {
+            panic!("full screen")
+        };
+        assert_eq!(pane.match_filter(), Some("boom"));
+    }
+
+    /// Stepping to another sheep re-scopes the feed. A feed left on the
+    /// previous sheep under a new title is worse than an empty one.
+    #[test]
+    fn stepping_re_scopes_the_feed() {
+        let mut app = fixture_with_feed();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::StepDown));
+        let Body::Sheep(pane) = app.body() else {
+            panic!("still in the sheep pane")
+        };
+        assert_eq!(pane.feed_sheep(), &RowKey::Sheep(2));
     }
 
     /// `allowed()`'s cursor is parked on `web`, id 1; `↵` pins the pane to
@@ -9028,6 +9275,49 @@ mod tests {
         );
         app.select(RowKey::Sheep(9));
         let _ = app.update(Msg::Key(KeyPress::Bleats));
+        assert_eq!(
+            app.feed_row().map(|row| row.info.id),
+            Some(9),
+            "the pane opened on 9"
+        );
+
+        // 9 leaves the flock. The reseat moves the selection to 4.
+        let _ = app.update(Msg::Snapshot {
+            rows: vec![ProcessInfo::builder(4, "billing", ProcStatus::Online).build()],
+            at: Instant::now(),
+        });
+        assert_eq!(
+            app.selected(),
+            Some(RowKey::Sheep(4)),
+            "the selection did move, which is the setup for the bug"
+        );
+        assert_eq!(
+            app.feed_row().map(|row| row.info.id),
+            None,
+            "and the feed reads nothing rather than billing's log"
+        );
+    }
+
+    /// The same regression as [`the_feed_follows_the_pinned_sheep_when_the_selection_moves`],
+    /// through the sheep pane's own embedded feed rather than the
+    /// full-screen one: `Confirm` pins the pane to sheep 9, `feed_row`
+    /// answers 9 while it is open, sheep 9 then leaves the flock and the
+    /// reseat moves the selection to 4, and `feed_row` must still answer
+    /// `None` (sheep 9 is gone) rather than 4 (the selection's own new row).
+    /// Before this task, `feed_row` had no `Body::Sheep` branch at all and
+    /// fell through to `self.selected_row()` unconditionally, so this would
+    /// have read billing's log under a pane still naming `web`.
+    #[test]
+    fn the_feed_row_follows_the_sheep_panes_own_pinned_sheep_when_the_selection_moves() {
+        let mut app = fixtures::app_with(
+            vec![
+                ProcessInfo::builder(9, "web", ProcStatus::Online).build(),
+                ProcessInfo::builder(4, "billing", ProcStatus::Online).build(),
+            ],
+            fixtures::plain(),
+        );
+        app.select(RowKey::Sheep(9));
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
         assert_eq!(
             app.feed_row().map(|row| row.info.id),
             Some(9),

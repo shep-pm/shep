@@ -16,8 +16,11 @@ use shep_core::protocol::SheepConfigView;
 use super::super::app::{App, CPU_CEILING_FLOOR, HISTORY, RowKey};
 use super::super::field::{Field, FieldSet};
 use super::super::pane;
+use super::super::pane_bleats::{BleatsPane, Filters};
 use super::super::pane_sheep::{SheepPane, scale_top, window};
+use super::super::tail::{Stream, Tail, TailLine};
 use super::super::theme::Palette;
+use super::detail::chip_text;
 use super::flock::fit;
 use super::{cell, detail};
 
@@ -76,6 +79,24 @@ const COLUMN_WIDTH: u16 = 76;
 const COLUMN_NAME_W: u16 = 26;
 /// The shortest `area` the column draws into.
 const MIN_HEIGHT_FOR_COLUMN: u16 = COLUMN_LAST_ROW + 1;
+
+/// The divider column between the config/env column and the feed, relative
+/// to `area`: one cell past [`COLUMN_WIDTH`], drawn its own full height
+/// rather than folded into either side's own width.
+const DIVIDER_COL: u16 = COLUMN_WIDTH;
+/// The feed's own first column, relative to `area`: one past the divider.
+const FEED_X: u16 = DIVIDER_COL + 1;
+/// The feed's own width in cells: `160 - 76 - 1`, the same arithmetic
+/// [`COLUMN_WIDTH`]'s own doc gives for the divider.
+const FEED_WIDTH: u16 = 83;
+/// The feed's own header row, relative to `area`: the same row the config
+/// column's header sits on, so the two chips line up.
+const FEED_HEADER_ROW: u16 = COLUMN_HEADER_ROW;
+/// The feed's first body row, running through [`COLUMN_LAST_ROW`]
+/// inclusive, the same rows [`COLUMN_BODY_ROWS`] counts for the column
+/// beside it. The feed keeps no cursor of its own, so nothing needs its own
+/// named row count the way that constant is for the scrollable column.
+const FEED_FIRST_ROW: u16 = COLUMN_FIRST_ROW;
 
 /// The eight Flockfile groups' fields, plus the env keys, as the column
 /// scrolls through them: one entry per rendered row, and every group label
@@ -289,12 +310,140 @@ fn draw_column(pane: &SheepPane, area: Rect, buffer: &mut Buffer, palette: Palet
 
 /// Writes one already-styled line into `buffer`, `row` cells below `area`'s
 /// own top, clipped to [`COLUMN_WIDTH`] rather than the pane's own width:
-/// this column never spends the cells Task 10's feed sits after.
+/// this column never spends the cells the feed sits after.
 fn write_column_row(buffer: &mut Buffer, area: Rect, row: u16, line: &Line<'static>) {
     if row >= area.height {
         return;
     }
     buffer.set_line(area.x, area.y + row, line, COLUMN_WIDTH);
+}
+
+/// The `\u{2502}` rule between the config/env column and the feed, one cell
+/// wide, for every row the two sides draw into.
+fn draw_divider(area: Rect, buffer: &mut Buffer, palette: Palette) {
+    let rule = Line::from(Span::styled("\u{2502}", palette.muted()));
+    for row in COLUMN_HEADER_ROW..=COLUMN_LAST_ROW {
+        if row >= area.height {
+            break;
+        }
+        buffer.set_line(area.x + DIVIDER_COL, area.y + row, &rule, 1);
+    }
+}
+
+/// Rows [`FEED_HEADER_ROW`] to [`COLUMN_LAST_ROW`], right of the divider:
+/// the header, then the window's newest surviving lines that fit, oldest at
+/// the top.
+///
+/// Reads [`SheepPane::feed_sheep`]'s tail through [`App::feed`], never
+/// [`App::selected`]: the same rule [`draw`]'s own identity band, charts and
+/// config column already follow, now enforced one level up too, in
+/// [`App::feed_row`] itself — `app.feed()` already answers with the pinned
+/// sheep's own lines while this pane is open, not the dashboard's selection.
+///
+/// No scrolling: unlike [`super::bleats_full::draw`], this column has no
+/// cursor of its own to page through, so a line past what fits is only
+/// counted by the header's own `N earlier` clause, never drawn.
+fn draw_feed(app: &App, pane: &SheepPane, area: Rect, buffer: &mut Buffer, palette: Palette) {
+    let feed = pane.feed();
+    let tail = app.feed();
+    write_feed_row(
+        buffer,
+        area,
+        FEED_HEADER_ROW,
+        &feed_header_line(feed, tail, palette),
+    );
+
+    let survivors = feed.visible(&tail.lines);
+    let shown = survivors.len().saturating_sub(COLUMN_BODY_ROWS);
+    for (i, line) in survivors.iter().skip(shown).enumerate() {
+        write_feed_row(
+            buffer,
+            area,
+            FEED_FIRST_ROW + i as u16,
+            &feed_line(line, palette),
+        );
+    }
+}
+
+/// One feed line: the stream tag, muted the same way
+/// [`super::bleats::feed_lines`] draws it (stderr is most runtimes' default,
+/// not `--bark`), then the text, truncated rather than wrapped — this
+/// column has no row budget to spend on a second line for one that
+/// overruns.
+fn feed_line(line: &TailLine, palette: Palette) -> Line<'static> {
+    let tag = match line.stream {
+        Stream::Out => "out",
+        Stream::Err => "err",
+    };
+    Line::from(vec![
+        Span::styled(format!("{tag}  "), palette.muted()),
+        Span::raw(fit(&line.text, FEED_WIDTH.saturating_sub(5))),
+    ])
+}
+
+/// The feed's header row: the `BLEATS` chip, then `out then err`, then how
+/// many of the window's surviving lines this column has no room to show,
+/// then a bracketed chip per filter axis currently set, then `/ narrow`,
+/// naming the one key this row does not otherwise spell out.
+fn feed_header_line(feed: &BleatsPane, tail: &Tail, palette: Palette) -> Line<'static> {
+    let chip = chip_text("BLEATS");
+    let chip_width = u16::try_from(chip.chars().count() + 1).unwrap_or(FEED_WIDTH);
+    let budget = FEED_WIDTH.saturating_sub(chip_width);
+    Line::from(vec![
+        Span::styled(chip, palette.band(crate::vocabulary::Role::Butter)),
+        Span::raw(" "),
+        Span::styled(fit(&feed_header_text(feed, tail), budget), palette.muted()),
+    ])
+}
+
+/// [`feed_header_line`]'s own sentence, built separately so a test can pin
+/// its wording without rendering a [`Line`] back into a string.
+fn feed_header_text(feed: &BleatsPane, tail: &Tail) -> String {
+    let survivors = feed.visible(&tail.lines);
+    let hidden = survivors.len().saturating_sub(COLUMN_BODY_ROWS);
+    let mut parts = vec!["out then err".to_string()];
+    if hidden > 0 {
+        parts.push(format!("{hidden} earlier"));
+    }
+    for chip in feed_chip_labels(feed.filters()) {
+        parts.push(format!("[{chip}]"));
+    }
+    parts.push("/ narrow".to_string());
+    parts.join(" \u{b7} ")
+}
+
+/// One chip's text per filter axis currently set on the embedded feed, in
+/// field order. Deliberately its own, smaller vocabulary rather than
+/// `view::bleats_full`'s private `chip_labels`: this row has 83 cells for
+/// the whole sentence, not a dedicated filter row underneath it.
+fn feed_chip_labels(filters: &Filters) -> Vec<String> {
+    let mut chips = Vec::new();
+    if let Some(stream) = filters.stream {
+        chips.push(match stream {
+            Stream::Out => "out only".to_string(),
+            Stream::Err => "err only".to_string(),
+        });
+    }
+    if let Some(min) = filters.min_level {
+        chips.push(format!(
+            "level\u{2265}{}",
+            format!("{min:?}").to_lowercase()
+        ));
+    }
+    if let Some(text) = &filters.matcher {
+        chips.push(format!("match {text}"));
+    }
+    chips
+}
+
+/// Writes one already-styled line into `buffer`, `row` cells below `area`'s
+/// own top and [`FEED_X`] cells right of its own left edge, clipped to
+/// [`FEED_WIDTH`].
+fn write_feed_row(buffer: &mut Buffer, area: Rect, row: u16, line: &Line<'static>) {
+    if row >= area.height {
+        return;
+    }
+    buffer.set_line(area.x + FEED_X, area.y + row, line, FEED_WIDTH);
 }
 
 /// Draws the pane into `area`: the identity band on its first row, the two
@@ -359,10 +508,22 @@ pub fn draw(app: &App, pane: &SheepPane, area: Rect, buffer: &mut Buffer) {
         draw_charts(app, row.info.id, row.info.max_memory, area, buffer, palette);
     }
     // Rows `COLUMN_HEADER_ROW` to `COLUMN_LAST_ROW`, left `COLUMN_WIDTH`
-    // cells: the config and env column. Task 10 fills what is to its
-    // right; nothing here is drawn past `COLUMN_WIDTH`.
+    // cells: the config and env column.
     if area.height >= MIN_HEIGHT_FOR_COLUMN {
         draw_column(pane, area, buffer, palette);
+    }
+    // The same rows, right of the divider: the bleats feed, embedded rather
+    // than a strip of its own. Gated on `area.width` reaching past
+    // `FEED_WIDTH`'s own room, not on `sheep_row`: a sheep that has left the
+    // flock still draws a feed, the same "no longer read" header
+    // `view::bleats_full`'s own title states for the full-screen pane, once
+    // `App::feed_row` next answers `None` and the tail this reads goes
+    // empty.
+    if area.height >= MIN_HEIGHT_FOR_COLUMN
+        && usize::from(area.width) >= usize::from(FEED_X + FEED_WIDTH)
+    {
+        draw_divider(area, buffer, palette);
+        draw_feed(app, pane, area, buffer, palette);
     }
 }
 
@@ -623,6 +784,7 @@ mod tests {
 
     use super::super::super::app::{Body, Control, KeyPress, Msg, Sent};
     use super::super::super::frames::render_text;
+    use super::super::super::level::Level;
     use super::super::fixtures;
     use super::*;
 
@@ -1220,5 +1382,179 @@ mod tests {
             "must still draw the pinned sheep's own `name` field: {text:?}"
         );
         assert!(!text.contains("bravo"), "{text:?}");
+    }
+
+    /// `draw_feed` draws whatever `App::feed` holds, filtered through the
+    /// pane's own pinned `BleatsPane`, and never reaches for `App::selected`
+    /// itself: this pins that half. It does *not* pin `App::feed_row`'s own
+    /// scoping to the pane's pinned sheep rather than the reseated
+    /// selection — a fixture with no polling loop cannot re-fetch the tail
+    /// after the reseat below, so the tail this test asserts on is exactly
+    /// the one `Msg::Bleats` injected before it, whatever `feed_row` would
+    /// answer now. `the_feed_row_follows_the_sheep_panes_own_pinned_sheep_when_the_selection_moves`
+    /// in `app.rs` is what pins that half; a mutation removing `feed_row`'s
+    /// own `Body::Sheep` branch left this test green.
+    ///
+    /// The area is 160x46, at [`FEED_X`] plus [`FEED_WIDTH`] and
+    /// [`MIN_HEIGHT_FOR_COLUMN`] exactly: `draw`'s own gate skips
+    /// `draw_feed` below either floor, and a narrower or shorter area would
+    /// pass this test whether or not `draw_feed` ever ran, the same way a
+    /// too-small area let Task 8's own chart bug through once.
+    #[test]
+    fn the_feed_does_not_draw_the_sheep_that_replaced_the_pinned_one() {
+        let mut app = fixtures::app_with(
+            vec![
+                ProcessInfo::builder(1, "alpha", ProcStatus::Online).build(),
+                ProcessInfo::builder(2, "bravo", ProcStatus::Online).build(),
+            ],
+            fixtures::plain(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(
+            matches!(app.body(), Body::Sheep(_)),
+            "setup: the pane opened on alpha"
+        );
+        app.update(Msg::Bleats {
+            tail: Tail {
+                lines: vec![TailLine {
+                    stream: Stream::Out,
+                    text: "alpha wrote this".to_string(),
+                }],
+                missed_lines: 0,
+                missed_bytes: 0,
+                read_bytes: 0,
+                note: None,
+            },
+        });
+        let _ = app.update(Msg::Snapshot {
+            rows: vec![ProcessInfo::builder(2, "bravo", ProcStatus::Online).build()],
+            at: std::time::Instant::now(),
+        });
+        assert_eq!(
+            app.selected(),
+            Some(RowKey::Sheep(2)),
+            "setup: the reseat moved the selection to bravo"
+        );
+
+        let Body::Sheep(pane) = app.body() else {
+            panic!("the pane is still open");
+        };
+        let area = Rect::new(0, 0, FEED_X + FEED_WIDTH, MIN_HEIGHT_FOR_COLUMN);
+        let mut buffer = Buffer::empty(area);
+        draw(&app, pane, area, &mut buffer);
+        let text = render_text(&buffer);
+        assert!(
+            text.contains("alpha wrote this"),
+            "the pinned sheep's own line must still draw: {text:?}"
+        );
+    }
+
+    /// [`feed_header_text`]'s own chip: `[level≥warn]`, the same word
+    /// [`Level`]'s own doc says the filter row
+    /// renders it as, once a minimum is set on the embedded feed.
+    #[test]
+    fn the_headers_level_chip_names_the_minimum() {
+        let mut feed = BleatsPane::new(RowKey::Sheep(1));
+        feed.set_min_level(Some(Level::Warn));
+        let text = feed_header_text(&feed, &Tail::default());
+        assert!(text.contains("[level≥warn]"), "got {text:?}");
+        assert!(text.contains("/ narrow"), "got {text:?}");
+    }
+
+    /// The `N earlier` clause counts survivors the body has no room to show,
+    /// never the raw line count: with `COLUMN_BODY_ROWS` rows to draw into
+    /// and one more line than that, exactly one line is hidden.
+    #[test]
+    fn the_headers_earlier_clause_counts_hidden_survivors_not_raw_lines() {
+        let feed = BleatsPane::new(RowKey::Sheep(1));
+        let tail = Tail {
+            lines: (0..COLUMN_BODY_ROWS + 1)
+                .map(|n| TailLine {
+                    stream: Stream::Out,
+                    text: format!("line-{n}"),
+                })
+                .collect(),
+            missed_lines: 0,
+            missed_bytes: 0,
+            read_bytes: 0,
+            note: None,
+        };
+        let text = feed_header_text(&feed, &tail);
+        assert!(text.contains("1 earlier"), "got {text:?}");
+    }
+
+    /// The feed shows the window's newest lines, oldest at the top, and
+    /// truncates a line too long for [`FEED_WIDTH`] rather than wrapping it
+    /// onto a second row: this column has no row budget to spend on one.
+    #[test]
+    fn the_feed_shows_the_newest_lines_and_truncates_a_long_one() {
+        let mut app = fixtures::app_with(
+            vec![ProcessInfo::builder(1, "alpha", ProcStatus::Online).build()],
+            fixtures::plain(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        app.update(Msg::Bleats {
+            tail: Tail {
+                lines: (0..COLUMN_BODY_ROWS + 5)
+                    .map(|n| TailLine {
+                        stream: Stream::Out,
+                        text: format!("line-{n}"),
+                    })
+                    .chain(std::iter::once(TailLine {
+                        stream: Stream::Err,
+                        text: "x".repeat(200),
+                    }))
+                    .collect(),
+                missed_lines: 0,
+                missed_bytes: 0,
+                read_bytes: 0,
+                note: None,
+            },
+        });
+        let Body::Sheep(pane) = app.body() else {
+            panic!("the pane is still open");
+        };
+        let area = Rect::new(0, 0, FEED_X + FEED_WIDTH, MIN_HEIGHT_FOR_COLUMN);
+        let mut buffer = Buffer::empty(area);
+        draw(&app, pane, area, &mut buffer);
+        let text = render_text(&buffer);
+        assert!(
+            !text.contains("line-0\n") && !text.contains("line-0 "),
+            "the oldest lines scroll off the top: {text:?}"
+        );
+        assert!(
+            text.contains(&format!("{}\u{2026}", "x".repeat(77))),
+            "the long line truncates with an ellipsis at the column's own \
+             width (78 cells: 77 characters plus the ellipsis), not before \
+             it and not after: {text:?}"
+        );
+        assert!(
+            !text.contains(&"x".repeat(78)),
+            "and no further: a truncated line, not a wrapped one: {text:?}"
+        );
+    }
+
+    /// The divider sits one cell past the config column, at
+    /// [`COLUMN_WIDTH`], for every row the two sides draw into.
+    #[test]
+    fn the_divider_runs_the_full_height_of_the_column_and_feed() {
+        let mut app = fixtures::app_with(
+            vec![ProcessInfo::builder(1, "alpha", ProcStatus::Online).build()],
+            fixtures::plain(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let Body::Sheep(pane) = app.body() else {
+            panic!("the pane is still open");
+        };
+        let area = Rect::new(0, 0, FEED_X + FEED_WIDTH, MIN_HEIGHT_FOR_COLUMN);
+        let mut buffer = Buffer::empty(area);
+        draw(&app, pane, area, &mut buffer);
+        for row in COLUMN_HEADER_ROW..=COLUMN_LAST_ROW {
+            assert_eq!(
+                buffer[(COLUMN_WIDTH, row)].symbol(),
+                "\u{2502}",
+                "row {row} has no divider"
+            );
+        }
     }
 }

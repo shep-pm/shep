@@ -133,6 +133,30 @@ impl SheepPane {
         &self.sheep
     }
 
+    /// The sheep the embedded feed is scoped to.
+    ///
+    /// Always equal to [`Self::sheep`] once [`Self::set_sheep`] re-pins
+    /// both, but read through the feed itself rather than through
+    /// `sheep()`: a stepping regression that re-pinned one field and not the
+    /// other would still pass a test that read `sheep()` alone.
+    #[must_use]
+    pub fn feed_sheep(&self) -> &RowKey {
+        self.feed.sheep()
+    }
+
+    /// The embedded feed's own state, for the sheep pane's keymap to route
+    /// the keys it owns (`/`, `o`, `m`, `f`, `w`, `n`, `N`) and for
+    /// [`super::view::sheep::draw`] to render it.
+    #[must_use]
+    pub fn feed(&self) -> &BleatsPane {
+        &self.feed
+    }
+
+    /// [`Self::feed`]'s mutable twin, for the same keymap.
+    pub(crate) fn feed_mut(&mut self) -> &mut BleatsPane {
+        &mut self.feed
+    }
+
     /// The sheep's config, or `None` while the read is still in flight, or
     /// after a refusal that left nothing to show.
     #[must_use]
