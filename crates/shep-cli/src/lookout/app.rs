@@ -8244,6 +8244,31 @@ mod tests {
         );
     }
 
+    /// `Enter` pressed before the first `Msg::Secrets` load lands: `Secrets`
+    /// opens against a placeholder model with no rows, where `selected` (0)
+    /// and `model.rows.len()` (also 0) coincide, so `selected_is_new_key_row`
+    /// reads true over data that never resolved. Deterministic and needs no
+    /// async round trip: `KeyPress::Secrets` sets the placeholder
+    /// synchronously, and this drives `Confirm` before any `Msg::Secrets`
+    /// ever arrives.
+    #[test]
+    fn confirm_before_the_first_load_lands_does_not_open_the_new_key_input() {
+        let mut app = fixtures::full_app();
+        app.set_control_for_tests(Control::Allowed);
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+
+        let effect = app.update(Msg::Key(KeyPress::Confirm));
+
+        assert_eq!(effect, Effect::None);
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert!(
+            pane.typing.is_none(),
+            "the placeholder model must not open the value input"
+        );
+    }
+
     /// A cursor that stepped over `model.rows` itself, one index at a
     /// time, would land inside a namespace `z` just folded away: the two
     /// hidden rows between `FIRST` and `LAST` are exactly wide enough that
