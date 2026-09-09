@@ -1136,64 +1136,6 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
         app.update(Msg::Key(KeyPress::WrapToggle));
     }
 
-    // Opens the secrets pane on `production`, with an operator row
-    // revealed, a provider group and a row that has a slot elsewhere but
-    // not here. `Msg::Revealed` is handed the value directly rather than
-    // routed through a real store on disk: the pane's reducer only checks
-    // the key and environment echo the pending reveal and that the gate is
-    // open, which `allow_read: true` below already covers.
-    if which == Scene::Secrets {
-        app.update(Msg::Key(KeyPress::Secrets));
-        app.update(Msg::Secrets {
-            environment: "production".to_string(),
-            result: Ok(Box::new(SecretsModel {
-                environments: vec![
-                    "all".to_string(),
-                    "ci".to_string(),
-                    "production".to_string(),
-                ],
-                rows: vec![
-                    SecretRow {
-                        key: "DB_PASSWORD".to_string(),
-                        source: Source::Operator,
-                        in_force: Some("production".to_string()),
-                        set_in: vec!["production".to_string()],
-                        byte_len: Some("hunter2-not-really".len()),
-                        readers: vec![Reader {
-                            name: "catcher".to_string(),
-                            environment: "production".to_string(),
-                            online: true,
-                        }],
-                    },
-                    SecretRow {
-                        key: "ELSEWHERE_ONLY".to_string(),
-                        source: Source::Operator,
-                        in_force: None,
-                        set_in: vec!["ci".to_string()],
-                        byte_len: None,
-                        readers: Vec::new(),
-                    },
-                    SecretRow {
-                        key: "vercel/API_TOKEN".to_string(),
-                        source: Source::Namespace("vercel".to_string()),
-                        in_force: Some("production".to_string()),
-                        set_in: vec!["production".to_string()],
-                        byte_len: Some(6),
-                        readers: Vec::new(),
-                    },
-                ],
-                allow_read: true,
-                ..SecretsModel::default()
-            })),
-        });
-        app.update(Msg::Key(KeyPress::Reveal));
-        app.update(Msg::Revealed {
-            key: "DB_PASSWORD".to_string(),
-            environment: "production".to_string(),
-            value: Some(RevealedValue("hunter2-not-really".to_string())),
-        });
-    }
-
     // Applied while the link is still `Live`: `on_lambs` refuses once it
     // is `Lost`, the same guard `Msg::Bleats` carries.
     if matches!(which, Scene::Lambs | Scene::Frozen) {
@@ -1312,10 +1254,65 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
         _ => {}
     }
 
-    // Applied last, for the same reason: `SettingsConfirm` arms a
-    // candidate that expires on the same `CONFIRM_EXPIRY`, so it must be
-    // armed after the tick at `age`.
+    // Applied last, for the same reason: `SettingsConfirm` and `Secrets`
+    // each arm a candidate that expires (on `CONFIRM_EXPIRY` or
+    // `REVEAL_HOLDS`), so both must be armed after the tick at `age`.
     match which {
+        Scene::Secrets => {
+            // Opens the secrets pane on `production`: an operator row
+            // revealed, a provider group, and a row with a slot
+            // elsewhere but not here. `Msg::Revealed` is handed the
+            // value directly; the reducer only checks the gate below.
+            app.update(Msg::Key(KeyPress::Secrets));
+            app.update(Msg::Secrets {
+                environment: "production".to_string(),
+                result: Ok(Box::new(SecretsModel {
+                    environments: vec![
+                        "all".to_string(),
+                        "ci".to_string(),
+                        "production".to_string(),
+                    ],
+                    rows: vec![
+                        SecretRow {
+                            key: "DB_PASSWORD".to_string(),
+                            source: Source::Operator,
+                            in_force: Some("production".to_string()),
+                            set_in: vec!["production".to_string()],
+                            byte_len: Some("hunter2-not-really".len()),
+                            readers: vec![Reader {
+                                name: "catcher".to_string(),
+                                environment: "production".to_string(),
+                                online: true,
+                            }],
+                        },
+                        SecretRow {
+                            key: "ELSEWHERE_ONLY".to_string(),
+                            source: Source::Operator,
+                            in_force: None,
+                            set_in: vec!["ci".to_string()],
+                            byte_len: None,
+                            readers: Vec::new(),
+                        },
+                        SecretRow {
+                            key: "vercel/API_TOKEN".to_string(),
+                            source: Source::Namespace("vercel".to_string()),
+                            in_force: Some("production".to_string()),
+                            set_in: vec!["production".to_string()],
+                            byte_len: Some(6),
+                            readers: Vec::new(),
+                        },
+                    ],
+                    allow_read: true,
+                    ..SecretsModel::default()
+                })),
+            });
+            app.update(Msg::Key(KeyPress::Reveal));
+            app.update(Msg::Revealed {
+                key: "DB_PASSWORD".to_string(),
+                environment: "production".to_string(),
+                value: Some(RevealedValue("hunter2-not-really".to_string())),
+            });
+        }
         Scene::SettingsFresh => {
             // A fresh document, not a hand-edited snapshot: first run
             // leaves only `[interpreters]`, and `load_settings` is the
@@ -2869,6 +2866,33 @@ mod tests {
             let (label, buffer) = scene(*which);
             insta::assert_snapshot!(label, render_text(&buffer));
         }
+    }
+
+    /// `Scene::Secrets` claims a revealed row in its own doc, caption and
+    /// the hand-copied frame in `web/`. Assert the frame actually shows
+    /// the plaintext and a countdown, not a mask: a snapshot alone would
+    /// pass on an expired reveal, since nothing names what "revealed"
+    /// means.
+    #[test]
+    fn the_secrets_scene_shows_a_revealed_row_not_a_mask() {
+        let text = render_text(&scene(Scene::Secrets).1);
+        let revealed = text
+            .lines()
+            .find(|line| line.contains("DB_PASSWORD"))
+            .expect("the secrets scene draws a DB_PASSWORD row");
+
+        assert!(
+            revealed.contains("hunter2-not-really"),
+            "DB_PASSWORD's row should show the revealed plaintext, not a mask: {revealed:?}"
+        );
+        assert!(
+            !revealed.contains("bytes"),
+            "the VALUE cell should show plaintext, not a masked byte count: {revealed:?}"
+        );
+        assert!(
+            revealed.contains("visible"),
+            "a revealed row should show a countdown, not the unrevealed dash: {revealed:?}"
+        );
     }
 
     /// The two gallery files' text: plain, then ANSI.

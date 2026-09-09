@@ -1111,7 +1111,7 @@ The secrets pane, opened with `S`. DB_PASSWORD is revealed and named by one read
   [0m[38;5;245mKEY                         VALUE                         IN FORCE      SET IN                READ BY               LANDS                                     [0m
 [0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;245m▾ operator ×2 · you set these                                                                                                                                 [0m
-[0m[48;5;235m [0m [0m[48;5;235mDB_PASSWORD                 ██████████████████ 18 bytes   production    1 of 3 · production   1 (1 online)          -                                         [0m
+[0m[48;5;235m [0m [0m[48;5;235mDB_PASSWORD                 hunter2-not-really            production    1 of 3 · production   1 (1 online)          visible 10s ██████████                    [0m
   ELSEWHERE_ONLY              not set here                  -             1 of 3 · ci           -                     -                                         [0m
   + new key                                                                                                                                                     [0m
   [0m[38;5;245m▾ vercel (dog) ×1 · pushed by a provider · read-only here                                                                                                     [0m

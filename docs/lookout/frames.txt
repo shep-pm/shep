@@ -1074,7 +1074,7 @@ all  ci  [production]                                                           
   KEY                         VALUE                         IN FORCE      SET IN                READ BY               LANDS                                     
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   ▾ operator ×2 · you set these                                                                                                                                 
-> DB_PASSWORD                 ██████████████████ 18 bytes   production    1 of 3 · production   1 (1 online)          -                                         
+> DB_PASSWORD                 hunter2-not-really            production    1 of 3 · production   1 (1 online)          visible 10s ██████████                    
   ELSEWHERE_ONLY              not set here                  -             1 of 3 · ci           -                     -                                         
   + new key                                                                                                                                                     
   ▾ vercel (dog) ×1 · pushed by a provider · read-only here                                                                                                     

@@ -306,7 +306,7 @@ all  ci  [production]                                                           
   KEY                         VALUE                         IN FORCE      SET IN                READ BY               LANDS
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   ▾ operator ×2 · you set these
-> DB_PASSWORD                 ██████████████████ 18 bytes   production    1 of 3 · production   1 (1 online)          -
+> DB_PASSWORD                 hunter2-not-really            production    1 of 3 · production   1 (1 online)          visible 10s ██████████
   ELSEWHERE_ONLY              not set here                  -             1 of 3 · ci           -                     -
   + new key
   ▾ vercel (dog) ×1 · pushed by a provider · read-only here
@@ -774,9 +774,10 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
     </ul>
     <p class="fine">
       A reveal clears on far more than its own timeout: moving the
-      selection, changing tabs, pressing <code>Esc</code>, closing the
-      pane, quitting, or a write landing all drop it early, so a value
-      never sits on screen describing a row it no longer belongs to.
+      selection, changing tabs, pressing <code>Esc</code>, reloading with{" "}
+      <code>r</code>, closing the pane, quitting, or a write landing all
+      drop it early, so a value never sits on screen describing a row it
+      no longer belongs to.
     </p>
     <p class="fine">
       <code>y</code> only says the value was sent to the terminal, never
