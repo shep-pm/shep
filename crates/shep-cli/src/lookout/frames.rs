@@ -1019,7 +1019,7 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
             // rather than a single bar padded with blanks. The first of
             // the nine only records a baseline (see `Self::record_samples`),
             // so the history holds eight differenced samples plus the
-            // trailing one below, which carries no reading at all.
+            // trailing one below, which carries the loop's final reading.
             let mut cpu_ms = 0_u64;
             let mut at = t0;
             for delta_ms in [20_u64, 120, 50, 160, 70, 140, 40, 100, 130] {
@@ -1032,6 +1032,11 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
                     at,
                 });
             }
+            // The returned row has to carry the same reading the loop's
+            // last snapshot sent, not the pre-loop clone: this used to
+            // mutate `warming_up` only, leaving `pending_row.cpu_ms` at
+            // `None` forever.
+            pending_row.cpu_ms = Some(cpu_ms);
             vec![pending_row, overridden_row, plain_row]
         }
         // The one sheep every sheep-pane scene draws, `web`, run through
