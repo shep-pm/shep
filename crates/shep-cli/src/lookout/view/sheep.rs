@@ -64,12 +64,14 @@ const HAIRLINE_ROW: u16 = AXIS_ROW + 1;
 /// leaving those two constants quietly meaning body rows.
 const TERMINAL_OVERHEAD: u16 = 2;
 
-/// The shortest terminal height any chart tier draws into at all, decision
-/// 8's own "under 20 rows" floor, restated one past [`COLUMN_HEADER_ROW`]
-/// (plus [`TERMINAL_OVERHEAD`]): that is the same floor stated in terms of
-/// the row the config column would otherwise sit on. Below it the pane
-/// still opens; the charts just stay blank and [`column_top_row`] moves the
-/// config and feed columns up to reclaim the rows the charts would have
+/// The shortest terminal height any chart tier draws into at all: 21 rows
+/// (`18 + 1 + 2`), one past [`COLUMN_HEADER_ROW`] plus [`TERMINAL_OVERHEAD`],
+/// rather than decision 8's own "under 20 rows" floor exactly. The extra row
+/// is deliberate: it keeps this constant derived from [`COLUMN_HEADER_ROW`]
+/// instead of restated as a bare 20, and that coupling is what prevents the
+/// config column and the chart tier from claiming the same row. Below it the
+/// pane still opens; the charts just stay blank and [`column_top_row`] moves
+/// the config and feed columns up to reclaim the rows the charts would have
 /// used, rather than the all-or-nothing gate this constant named before
 /// this task.
 const MIN_HEIGHT_FOR_CHARTS: u16 = COLUMN_HEADER_ROW + 1 + TERMINAL_OVERHEAD;
