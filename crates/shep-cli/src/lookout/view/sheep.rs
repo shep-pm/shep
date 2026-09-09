@@ -11,7 +11,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::super::app::{App, CPU_CEILING_FLOOR, RowKey};
+use super::super::app::{App, CPU_CEILING_FLOOR, HISTORY, RowKey};
 use super::super::pane_sheep::{SheepPane, scale_top, window};
 use super::super::theme::Palette;
 use super::{cell, detail};
@@ -199,11 +199,15 @@ fn write_row(buffer: &mut Buffer, area: Rect, row: u16, text: &str, style: Style
 /// 140 = 8 gutter + 120 body + 12 margin
 /// ```
 ///
-/// No cap at `HISTORY` yet: a terminal wide enough to ask for more than the
-/// buffer holds is task 11's own tier, and `cell::chart`'s own left-pad
-/// already keeps a too-wide request from panicking in the meantime.
+/// Capped at [`HISTORY`]: past 160 columns the arithmetic above would ask
+/// for more samples than the buffer ever holds, and an uncapped body keeps
+/// [`cpu_header_text`] reading `collecting` forever even once the buffer is
+/// full. Which charts draw at which width past that point is task 11's own
+/// tier; this is only the ceiling the header's own claim has to respect.
 fn chart_body_cells(width: u16) -> usize {
-    usize::from(width).saturating_sub(GUTTER + MARGIN)
+    usize::from(width)
+        .saturating_sub(GUTTER + MARGIN)
+        .min(HISTORY)
 }
 
 /// `d` as `MmSSs`: `4m40s`, not `4m 40s` or a dropped `0m`. Neither
@@ -444,6 +448,19 @@ mod tests {
             !mem_rows_with_limit(None)
                 .iter()
                 .any(|row| row.contains("ceiling"))
+        );
+    }
+
+    /// Past 160 columns [`chart_body_cells`] would ask for more samples than
+    /// [`HISTORY`] ever holds; capped, or [`cpu_header_text`] would read
+    /// `collecting` forever even once the buffer is full.
+    #[test]
+    fn chart_body_stays_within_the_history_buffer() {
+        let body = chart_body_cells(300);
+        assert_eq!(body, HISTORY);
+        assert!(
+            !cpu_header_text(HISTORY, body).contains("collecting"),
+            "a full buffer past the cap must not still read collecting"
         );
     }
 

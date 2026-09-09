@@ -1287,7 +1287,7 @@ const READ_ONLY_REFUSAL: &str = "read-only: from --read-only or lookout.allow_co
 /// 140-cell chart body. Sized for the charts now so the sheep pane
 /// inherits a filled buffer rather than starting cold on a pane the
 /// operator has just opened.
-const HISTORY: usize = 140;
+pub(crate) const HISTORY: usize = 140;
 
 /// The lowest ceiling [`App::cpu_ceiling`] will report, in percent of one
 /// core.
