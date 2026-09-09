@@ -332,8 +332,17 @@ the built binary, grep `web/src/pages/docs/*.astro` for the keymap, then run bot
 `npx astro build` and `npx astro check`. `check` is the one that catches a wrong
 prop.
 
-The 1k keymap overlay gains `S` under `LOOKING`, and `v`, `D` and `y` under the
-pane's own listing.
+The 1k keymap overlay does not exist. It is a frame in the design bundle that
+nothing has built, so there is no `LOOKING` column for `S` to go under. What
+lookout has instead is two status-bar hints in `view/status.rs`: the secrets
+pane's own, which names `v`, `Enter`, `D` and `y`, and the dashboard's compact
+one, which does not name `S`.
+
+That omission is deliberate. `the_legend_fits_wherever_the_cfg_column_is_drawn`
+pins the dashboard hint's width with about seven characters of headroom, and
+`S secrets` needs twelve. The same hint has never named `b` for the full-screen
+bleats pane either, so a pane-opening key living only in the docs is the
+established answer rather than a new compromise. `web/` is where both are found.
 
 ## Not in this pane
 
