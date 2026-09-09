@@ -787,6 +787,13 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       both <code>Enter</code> and <code>D</code> outright; it's a cache of
       what a dog pushed, not something lookout can write back.
     </p>
+    <p class="fine">
+      A row taking its value from the <code>all</code> slot refuses{" "}
+      <code>D</code> on a named tab: removing that slot changes every
+      environment at once, so the <code>all</code> tab is where you do it
+      deliberately. A delete that finds no value to remove says so rather
+      than reporting a success it did not have.
+    </p>
     <h2>The config pane</h2>
     <p>
       <code>e</code> on a selected sheep opens its config over the dashboard:

@@ -1359,6 +1359,15 @@ pub fn app_with_secrets_and_control() -> App {
     app
 }
 
+/// [`app_with_secrets`] with the control gate open: a named tab
+/// (`production`) holding rows whose value comes from the `all` slot, which
+/// is the shape a delete has to refuse rather than retarget.
+pub fn app_with_secrets_on_a_named_tab_and_control() -> App {
+    let mut app = app_with_secrets();
+    app.set_control_for_tests(Control::Allowed);
+    app
+}
+
 /// [`app_with_secrets_and_control`] with `DB_PASSWORD`'s value input open:
 /// `Enter` on the operator's only row, already selected by default.
 pub fn app_typing_a_value() -> App {

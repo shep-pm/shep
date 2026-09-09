@@ -20,6 +20,7 @@ use shep_core::protocol::{
     BusEvent, DogSectionToml, DogSource, EnvValue, Lamb, ProcessEventKind, ProcessInfo, Request,
     Response, SelectorSpec, SheepRefusal,
 };
+use shep_core::secrets::ALL_ENVIRONMENTS;
 use shep_core::status::ProcStatus;
 
 use super::field::{FieldKind, FieldSet};
@@ -342,7 +343,11 @@ pub enum Msg {
         /// What the write returned, its error already rendered: a
         /// `SecretError` names a key, never a value, but the pane has no
         /// use for the type.
-        result: Result<(), String>,
+        ///
+        /// `Ok(true)` means the store changed. `Ok(false)` is `secrets::unset`
+        /// reporting that there was no slot to remove, which a delete must
+        /// say out loud rather than report as a success.
+        result: Result<bool, String>,
     },
 }
 
@@ -1399,6 +1404,26 @@ const READ_ONLY_REFUSAL: &str = "read-only: from --read-only or lookout.allow_co
 /// this operator's to set.
 const PROVIDER_ROW_REFUSAL: &str = "read-only: pushed by a dog, not set here";
 
+/// `D`'s refusal on a row whose value comes from the `all` slot while a
+/// named environment's tab is open.
+///
+/// Refuses rather than retargets, both ways round. Unsetting the tab's own
+/// environment would remove nothing and report success, and unsetting `all`
+/// from here would change every environment at once, which is not what a row
+/// reading `all` under `IN FORCE` invites anyone to expect.
+const ALL_SLOT_REFUSAL: &str = "this value comes from the `all` slot: removing it \
+     affects every environment, so switch to the `all` tab to mean it";
+
+/// [`Msg::SecretWritten`]'s answer to an unset that found no slot, whether
+/// the store changed under the pane or the row never resolved in this tab.
+const NOTHING_REMOVED: &str = "nothing to remove: this key holds no value in this environment";
+
+/// Whether deleting `row` from the tab named `environment` would have to
+/// remove the `all` slot, which only the `all` tab may do.
+fn deletes_the_all_slot(row: &SecretRow, environment: &str) -> bool {
+    row.in_force.as_deref() == Some(ALL_ENVIRONMENTS) && environment != ALL_ENVIRONMENTS
+}
+
 /// The grammar a new key's name is checked against, matching `shep secret`'s
 /// own `--help` wording (`cli.rs`) rather than a second copy of it.
 const NEW_KEY_GRAMMAR: &str =
@@ -2440,9 +2465,20 @@ impl App {
             // any revealed value, which belonged to the prior store. `Err`
             // raises no reload, so the table keeps its last known-good read.
             Msg::SecretWritten { result } => match result {
-                Ok(()) => {
+                Ok(true) => {
                     self.hide_revealed();
                     Effect::LoadSecrets
+                }
+                // `secrets::unset` found no slot. Nothing changed, so
+                // nothing is re-read, and the operator hears about it: a
+                // destructive action reporting success over a no-op is the
+                // one answer this pane must never give.
+                Ok(false) => {
+                    self.notice = Some(Notice {
+                        text: NOTHING_REMOVED.to_string(),
+                        grave: true,
+                    });
+                    Effect::None
                 }
                 Err(message) => {
                     self.notice = Some(Notice {
@@ -3399,6 +3435,9 @@ impl App {
     /// silently on the `+ new key` affordance and on a selection folded out
     /// of view: neither names a real, visible key to delete, the same gate
     /// [`Self::reveal_selected`] applies before a read.
+    ///
+    /// A row taking its value from the `all` slot refuses too
+    /// ([`ALL_SLOT_REFUSAL`]), before it arms rather than after the write.
     fn arm_secret_delete(&mut self) -> Effect {
         let Some(pane) = self.secrets_pane_mut() else {
             return Effect::None;
@@ -3409,9 +3448,17 @@ impl App {
         let Some(row) = pane.model.rows.get(pane.selected).cloned() else {
             return Effect::None;
         };
+        let environment = pane.environment().map(str::to_string);
         if matches!(row.source, Source::Namespace(_)) {
             self.notice = Some(Notice {
                 text: PROVIDER_ROW_REFUSAL.to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
+        if environment.is_some_and(|tab| deletes_the_all_slot(&row, &tab)) {
+            self.notice = Some(Notice {
+                text: ALL_SLOT_REFUSAL.to_string(),
                 grave: true,
             });
             return Effect::None;
@@ -3442,6 +3489,23 @@ impl App {
         let Some(environment) = pane.environment().map(str::to_string) else {
             return Effect::None;
         };
+        // The same refusal the arm already made, taken again on the last
+        // step before an unrecoverable write. No keypress reaches here with
+        // an `all` row armed today, since a tab move and a reload both
+        // disarm, so this is depth rather than a live path.
+        let refuses = pane
+            .model
+            .rows
+            .iter()
+            .find(|row| row.key == key)
+            .is_some_and(|row| deletes_the_all_slot(row, &environment));
+        if refuses {
+            self.notice = Some(Notice {
+                text: ALL_SLOT_REFUSAL.to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
         let Some(authority) = self.authorize_write() else {
             return Effect::None;
         };
@@ -8809,6 +8873,24 @@ mod tests {
         }
     }
 
+    /// Walks [`fixtures::app_with_secrets`]'s cursor onto `SET_EVERYWHERE`,
+    /// whose only slot is `all` while the tab names `production`.
+    ///
+    /// # Panics
+    /// If the cursor did not land on a row taking its value from `all`.
+    #[track_caller]
+    fn select_the_all_slot_row(app: &mut App) {
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is not open");
+        };
+        let row = &pane.model.rows[pane.selected];
+        assert_eq!(row.key, "SET_EVERYWHERE");
+        assert_eq!(row.in_force.as_deref(), Some("all"));
+        assert_eq!(pane.environment(), Some("production"));
+    }
+
     /// How many rows the table currently holds, for the test proving a
     /// failed write redraws nothing.
     fn row_count(app: &App) -> usize {
@@ -8916,7 +8998,7 @@ mod tests {
     fn a_successful_write_takes_a_revealed_value_off_the_screen() {
         let mut app = fixtures::app_revealing_with_control();
 
-        let _ = app.update(Msg::SecretWritten { result: Ok(()) });
+        let _ = app.update(Msg::SecretWritten { result: Ok(true) });
 
         assert!(
             reveal_of(&app).is_none(),
@@ -9116,6 +9198,67 @@ mod tests {
 
         assert!(armed_of(&app).is_none());
         assert!(notice_of(&app).is_some_and(|n| n.contains("pushed by a dog")));
+    }
+
+    /// The row's value comes from the `all` slot, so an unset against the
+    /// tab's own environment would remove nothing and report success, and an
+    /// unset against `all` would change every environment at once.
+    #[test]
+    fn a_value_that_comes_from_the_all_slot_refuses_a_delete_on_a_named_tab() {
+        let mut app = fixtures::app_with_secrets_on_a_named_tab_and_control();
+        select_the_all_slot_row(&mut app);
+
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+
+        assert!(armed_of(&app).is_none(), "it must refuse before it arms");
+        assert!(
+            notice_of(&app).is_some_and(|n| n.contains("`all` slot")
+                && n.contains("every environment")
+                && n.contains("`all` tab")),
+            "the notice says where the value lives, what removing it costs, \
+             and how to do it deliberately"
+        );
+    }
+
+    #[test]
+    fn the_all_tab_still_deletes_an_all_slot() {
+        let mut app = fixtures::app_with_secrets_and_control();
+
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        let effect = app.update(Msg::Key(KeyPress::Confirm));
+
+        let Effect::WriteSecret(edit, _) = effect else {
+            panic!("expected a write, got {effect:?}");
+        };
+        assert_eq!(edit.key, "DB_PASSWORD");
+        assert_eq!(edit.environment, "all");
+        assert!(edit.value.is_none(), "a delete sends no value");
+    }
+
+    #[test]
+    fn an_unset_that_removed_nothing_says_so_rather_than_reporting_success() {
+        let mut app = fixtures::app_with_secrets_and_control();
+
+        let effect = app.update(Msg::SecretWritten { result: Ok(false) });
+
+        assert!(
+            matches!(effect, Effect::None),
+            "nothing changed, so nothing is re-read"
+        );
+        assert!(
+            notice_of(&app).is_some_and(|n| n.contains("nothing to remove")),
+            "a delete that removed nothing must not read as a delete that worked"
+        );
+    }
+
+    #[test]
+    fn a_write_that_changed_the_store_re_reads_it() {
+        let mut app = fixtures::app_with_secrets_and_control();
+
+        let effect = app.update(Msg::SecretWritten { result: Ok(true) });
+
+        assert!(matches!(effect, Effect::LoadSecrets));
+        assert!(notice_of(&app).is_none(), "and says nothing about it");
     }
 
     #[test]

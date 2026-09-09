@@ -621,13 +621,17 @@ where
             // reason. `_authority` is dropped as it is there.
             Effect::WriteSecret(edit, _authority) => {
                 let store = paths.secrets.clone();
+                // The `bool` is `unset`'s own answer: `false` means there was
+                // no slot to remove. It reaches `Msg::SecretWritten` rather
+                // than being dropped, so a delete that removed nothing
+                // cannot arrive looking like a delete that worked. A `set`
+                // always changed the store, so it says `true`.
                 let handle = tokio::task::spawn_blocking(move || match edit.value {
                     Some(value) => {
                         shep_core::secrets::set(&store, &edit.key, &edit.environment, &value)
+                            .map(|()| true)
                     }
-                    None => {
-                        shep_core::secrets::unset(&store, &edit.key, &edit.environment).map(|_| ())
-                    }
+                    None => shep_core::secrets::unset(&store, &edit.key, &edit.environment),
                 });
                 inflight.push(Box::pin(async move {
                     let result = handle
