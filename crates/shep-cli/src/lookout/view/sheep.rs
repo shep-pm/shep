@@ -146,7 +146,10 @@ fn column_body(view: &SheepConfigView, palette: Palette) -> (Vec<Line<'static>>,
             groups.push(label);
         }
         let pending = view.pending.iter().any(|key| key == &field.key);
-        lines.push(field_row_line(&fields, field, &values, pending, palette));
+        let overridden = view.overridden.iter().any(|key| key == &field.key);
+        lines.push(field_row_line(
+            &fields, field, &values, pending, overridden, palette,
+        ));
     }
     push_group_header(&mut lines, "env", palette);
     for key in &view.env_keys {
@@ -199,7 +202,10 @@ pub(crate) fn column_len(config: Option<&SheepConfigView>) -> usize {
 }
 
 /// One field's row: the name, `!`-flagged and butter when
-/// [`SheepConfigView::pending`] names it, the value, `(unset)`/`(default)`
+/// [`SheepConfigView::pending`] names it, `*`-flagged when
+/// [`SheepConfigView::overridden`] names it instead (pending wins when both
+/// apply, [`super::pane::field_line`]'s own rule, since the value on screen
+/// is not what the running child holds), the value, `(unset)`/`(default)`
 /// muted like the name, anything else in the column's own body colour, and
 /// `awaits respawn` right-aligned when pending.
 ///
@@ -211,10 +217,17 @@ fn field_row_line(
     field: &Field,
     values: &Map<String, Value>,
     pending: bool,
+    overridden: bool,
     palette: Palette,
 ) -> Line<'static> {
     let raw = field_value_text(fields, field, values);
-    let flag = if pending { "!" } else { "" };
+    let flag = if pending {
+        "!"
+    } else if overridden {
+        "*"
+    } else {
+        ""
+    };
     let note = if pending { "awaits respawn" } else { "" };
     let value_w = usize::from(COLUMN_WIDTH).saturating_sub(usize::from(COLUMN_NAME_W) + 2);
     let left_w = value_w.saturating_sub(note.chars().count());
@@ -1335,6 +1348,17 @@ mod tests {
         SheepConfigView::new(config, Vec::new(), vec!["max_memory".to_owned()])
     }
 
+    /// `web`, with `max_memory` overridden and nothing pending: the
+    /// editing pane's own `*` glyph (`view/pane.rs`'s `field_line`), pinned
+    /// on this column's side of Decision 4's "same markers" rule.
+    fn web_view_overridden() -> SheepConfigView {
+        let config = AppConfig {
+            name: "web".to_owned(),
+            ..AppConfig::default()
+        };
+        SheepConfigView::new(config, vec!["max_memory".to_owned()], Vec::new())
+    }
+
     /// A bare config carrying exactly `pairs` as its env, nothing pending or
     /// overridden: what [`a_sealed_key_is_marked_and_a_plain_one_is_not`]
     /// needs to tell a plain key from a sealed one without `web_view`'s own
@@ -1371,7 +1395,7 @@ mod tests {
         column_body_lines(view, fixtures::plain())
             .iter()
             .map(line_text)
-            .find(|line| line.trim_start_matches('!').starts_with(key))
+            .find(|line| line.trim_start_matches(['!', '*']).starts_with(key))
             .unwrap_or_else(|| panic!("no row for {key}"))
     }
 
@@ -1442,6 +1466,21 @@ mod tests {
         let row = field_row_of(&web_view(), "max_memory");
         assert!(row.starts_with('!'), "{row:?}");
         assert!(row.contains("awaits respawn"), "{row:?}");
+    }
+
+    /// An overridden field carries the editing pane's own `*` glyph
+    /// (`view/pane.rs`'s `field_line`), not `!`: pending and overridden are
+    /// different facts, and `field_row_line` had no branch for this one at
+    /// all before this task, so `SheepConfigView::overridden` was read by
+    /// nothing in this column.
+    #[test]
+    fn an_overridden_field_is_marked_with_the_editing_panes_own_glyph() {
+        let row = field_row_of(&web_view_overridden(), "max_memory");
+        assert!(row.starts_with('*'), "{row:?}");
+        assert!(
+            !row.contains("awaits respawn"),
+            "overridden is not pending: {row:?}"
+        );
     }
 
     /// The wire clears env before the struct is built, so no pane can show a
