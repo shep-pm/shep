@@ -138,15 +138,15 @@ not write. A controlling lookout without it can rotate a secret it cannot read.
   KEY                         VALUE                         IN FORCE      SET IN                READ BY               LANDS
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 ██ OPERATOR   17 keys · you set these
-  DB_PASSWORD                 ██████ 12 bytes               production    3 of 4                2 of flock · 2 up    at next start of catcher, web
-> SENTRY_DSN                  hunter2-not-really            all           1 of 4 · all          1 of flock · 1 up    visible 6s ███████░░░
+  DB_PASSWORD                 ██████ 12 bytes               production    3 of 4                2 (2 online)         at next start of catcher, web
+> SENTRY_DSN                  hunter2-not-really            all           1 of 4 · all          1 (1 online)         visible 6s ███████░░░
   STRIPE_KEY                  not set here                  -             1 of 4 · ci           nothing reads it      no sheep names it yet
   OLD_TOKEN                   ████ 31 bytes                 production    1 of 4 · production   nothing reads it      no sheep names it yet
   + new key                   NEW_KEY_█                                   letters, digits, . _ -                      up to 128 bytes, not starting with a dot
 
 ██ vercel (dog)   4 keys · pushed by a provider · read-only here
-  vercel/API_TOKEN            ████████ 40 bytes             production    2 of 4 · all, produ…  1 of flock · 0 up    at next start of api
-  vercel/PROJECT_ID           ████ 24 bytes                 all           1 of 4 · all          1 of flock · 0 up    at next start of api
+  vercel/API_TOKEN            ████████ 40 bytes             production    2 of 4 · all, produ…  1 (0 online)         at next start of api
+  vercel/PROJECT_ID           ████ 24 bytes                 all           1 of 4 · all          1 (0 online)         at next start of api
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 FOCUSED  SENTRY_DSN                                                                     WHO READS IT  SENTRY_DSN
@@ -180,7 +180,8 @@ which names a slot outside its own denominator.
 
 Neither panel nor column says a bare "sheep" for a count. `docs/terminology.md`
 rules that out: the plural is always the flock, because a bare "sheep" cannot be
-told from the singular. A count reads `2 of flock`, and `named by 1 of the flock`.
+told from the singular. `READ BY` sidesteps it with a bare number, `2 (2 online)`,
+and the panel spells it, `named by 1 of the flock`.
 
 `IN FORCE` names the slot supplying this tab's value: the exact environment, or
 `all` as fallback, or `-` when nothing resolves here. It mirrors
