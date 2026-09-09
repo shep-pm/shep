@@ -3230,6 +3230,16 @@ impl App {
     /// environment. `z` toggles the selected row's namespace rather than a
     /// fold, since the flock table is not what is on screen.
     fn on_secrets_key(&mut self, key: KeyPress) -> Effect {
+        // `view::status`'s armed prompt promises "enter confirms, any other
+        // key cancels", so every other key cancels here, the way the
+        // dashboard's own armed confirm already does. Unlike the dashboard
+        // the key is not also swallowed: a cursor move that disarms still
+        // moves, which is what the pane has always done.
+        //
+        // `Quit` is the exception the dashboard makes too: an operator whose
+        // ctrl-c does nothing reaches for `kill -9`.
+        let was_armed =
+            !matches!(key, KeyPress::Confirm | KeyPress::Quit) && self.disarm_secret_delete();
         match key {
             // Mirrors `on_bleats_key`'s own arm: every full-screen pane
             // answers `q`/`ctrl-c`, the one key a cancelling armed action
@@ -3250,7 +3260,7 @@ impl App {
             // closing the pane: a delete waiting on a confirm is a state
             // the operator should see cleared before anything else moves.
             KeyPress::Escape => {
-                if self.disarm_secret_delete() {
+                if was_armed {
                     return Effect::None;
                 }
                 self.hide_revealed();
@@ -3261,7 +3271,6 @@ impl App {
             KeyPress::Copy => self.copy_revealed(),
             KeyPress::TabPrev | KeyPress::TabNext => {
                 self.hide_revealed();
-                self.disarm_secret_delete();
                 let Some(pane) = self.secrets_pane_mut() else {
                     return Effect::None;
                 };
@@ -3301,7 +3310,6 @@ impl App {
             | KeyPress::SelectFirst
             | KeyPress::SelectLast => {
                 self.hide_revealed();
-                self.disarm_secret_delete();
                 if let Some(pane) = self.secrets_pane_mut() {
                     match key {
                         KeyPress::SelectUp => pane.move_by(-1),
@@ -3519,8 +3527,11 @@ impl App {
         )
     }
 
-    /// Clears an armed delete, and says whether one was there. `Escape`'s
-    /// cue not to also close the pane on the same press.
+    /// Clears an armed delete, and says whether one was there.
+    ///
+    /// Called once per keypress, from [`Self::on_secrets_key`]'s own head,
+    /// so every key but the confirm and the quit cancels. Its answer is
+    /// `Escape`'s cue not to also close the pane on the same press.
     fn disarm_secret_delete(&mut self) -> bool {
         self.secrets_pane_mut()
             .is_some_and(|pane| pane.armed.take().is_some())
@@ -9121,6 +9132,41 @@ mod tests {
             armed_of(&app).is_none(),
             "an arm must not follow the cursor onto another key"
         );
+    }
+
+    /// The armed prompt says "enter confirms, any other key cancels", so
+    /// every key but the confirm and the quit has to cancel. `v`, `y` and
+    /// `z` are the three that used to leave the arm standing under the
+    /// sentence promising they would not.
+    #[test]
+    fn any_key_but_the_confirm_and_the_quit_disarms() {
+        for key in [
+            KeyPress::Reveal,
+            KeyPress::Copy,
+            KeyPress::Collapse,
+            KeyPress::Refresh,
+            KeyPress::Help,
+            KeyPress::Settings,
+            KeyPress::Bleats,
+        ] {
+            let mut app = fixtures::app_armed_to_delete_a_secret();
+
+            let _ = app.update(Msg::Key(key));
+
+            assert!(
+                armed_of(&app).is_none(),
+                "{key:?} left the delete armed while the bar promised it cancelled"
+            );
+        }
+    }
+
+    #[test]
+    fn quit_still_quits_while_a_delete_is_armed() {
+        let mut app = fixtures::app_armed_to_delete_a_secret();
+
+        let effect = app.update(Msg::Key(KeyPress::Quit));
+
+        assert!(matches!(effect, Effect::Quit));
     }
 
     #[test]
