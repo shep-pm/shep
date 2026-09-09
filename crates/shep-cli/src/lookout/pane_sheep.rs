@@ -4,10 +4,41 @@
 //! anything here, so history keeps filling while the pane is shut and a
 //! pane opened on a sheep that has been running all along starts full.
 
+use std::time::Duration;
+
 use shep_core::protocol::SheepConfigView;
 
 use super::app::RowKey;
+use super::link::FLOCK_POLL;
 use super::pane_bleats::BleatsPane;
+
+/// The span a chart of `body_cells` covers, one poll per cell.
+///
+/// Computed rather than written into a label: the body is
+/// `min(width - 20, HISTORY)`, so the window is 4m40s at 160 columns and
+/// 4m00s at 140, and any literal would be wrong at one of them.
+#[must_use]
+pub fn window(body_cells: usize) -> Duration {
+    FLOCK_POLL * body_cells as u32
+}
+
+/// `peak` rounded up a 1-2-5 ladder, never below `floor`.
+///
+/// The ladder is what puts the gutter labels on round numbers. The floor
+/// is [`super::app::CPU_CEILING_FLOOR`]'s reason in a second place: below
+/// it there is nothing to see, and saying so is the honest answer.
+#[must_use]
+pub fn scale_top(peak: f64, floor: f64) -> f64 {
+    let peak = peak.max(floor);
+    let decade = 10f64.powf(peak.log10().floor());
+    for step in [1.0, 2.0, 5.0, 10.0] {
+        let candidate = step * decade;
+        if candidate >= peak {
+            return candidate;
+        }
+    }
+    10.0 * decade
+}
 
 /// One sheep, given the whole screen.
 ///
@@ -81,6 +112,29 @@ mod tests {
     use shep_core::config::AppConfig;
 
     use super::*;
+
+    /// One cell per poll. The frame says six minutes at 5s samples and both
+    /// halves are wrong: the poll is 2s, so 140 cells is 4m40s.
+    #[test]
+    fn the_window_is_one_poll_per_cell() {
+        assert_eq!(window(140), Duration::from_secs(280));
+        assert_eq!(window(120), Duration::from_secs(240));
+    }
+
+    /// A 1-2-5 ladder so the gutter labels land on round numbers.
+    #[test]
+    fn a_scale_top_rounds_up_the_ladder() {
+        assert_eq!(scale_top(34.0, 2.0), 50.0);
+        assert_eq!(scale_top(6.0, 2.0), 10.0);
+        assert_eq!(scale_top(1.2, 2.0), 2.0);
+    }
+
+    /// Floored, so a flock genuinely doing nothing stays flat instead of
+    /// having its rounding noise stretched into a shape.
+    #[test]
+    fn a_scale_top_never_falls_below_its_floor() {
+        assert_eq!(scale_top(0.01, 2.0), 2.0);
+    }
 
     /// [`SheepConfigView`]'s own `Debug` already withholds `args` and `cwd`;
     /// this pins that [`SheepPane`]'s derived one does not undo that by

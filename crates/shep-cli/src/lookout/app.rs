@@ -1296,7 +1296,11 @@ const HISTORY: usize = 140;
 /// jitter scaled to full height, so the busiest thing on screen would be
 /// noise. Two percent is low enough that any real work clears it and high
 /// enough that nothing else does.
-const CPU_CEILING_FLOOR: f32 = 2.0;
+///
+/// `pub(crate)`, not private: `pane_sheep::scale_top`'s own floor argument
+/// is this same number for the sheep pane's CPU chart, and a second
+/// constant carrying the value would be the thing that drifts.
+pub(crate) const CPU_CEILING_FLOOR: f32 = 2.0;
 
 /// What occupies the body between the title band and the status bar.
 ///

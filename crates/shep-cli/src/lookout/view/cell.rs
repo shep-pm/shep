@@ -104,12 +104,7 @@ pub fn sparkline(samples: &[f32], cells: usize, ceiling: f32) -> String {
 /// caller today produces one: the `as usize` cast on the line below sends it
 /// to a height of `0` (a saturating cast, not a wrapping one), which reads as
 /// blank rather than as a spurious full column.
-///
-/// No non-test caller yet: the sheep pane that draws with this cell lands
-/// in a later task, so `#[allow(dead_code)]` says so rather than inventing
-/// one.
 #[must_use]
-#[allow(dead_code)]
 pub fn chart(samples: &[f32], ceiling: f32, cols: usize, rows: usize) -> Vec<String> {
     // A zero `cols` or `rows` degrades through the general path below with
     // no guard needed: don't re-add one without a test proving it wrong.
