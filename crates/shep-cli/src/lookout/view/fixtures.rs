@@ -1552,6 +1552,10 @@ pub fn render_secrets_with_roll_age(age: Duration) -> Buffer {
 /// The secrets pane rendered with no muster roll at all, [`SecretsModel::roll_age`]
 /// still `None`: the state the roll status line has to tell apart from a key
 /// nothing reads.
+///
+/// The same screen [`render_secrets_gate_shut`] draws, since
+/// `SecretsModel::default` shuts the gate and carries no roll at once. One
+/// expression, two names, each saying which half its own test is about.
 pub fn render_secrets_with_no_roll() -> Buffer {
-    render(&app_with_secrets(), 160, 48)
+    render_secrets_gate_shut()
 }

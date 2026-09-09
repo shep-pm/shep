@@ -144,6 +144,15 @@ pub(super) fn columns_for(width: u16) -> &'static [Column] {
         })
 }
 
+/// `len` in bytes, singular when there is one of them.
+fn byte_count(len: usize) -> String {
+    if len == 1 {
+        "1 byte".to_string()
+    } else {
+        format!("{len} bytes")
+    }
+}
+
 /// What one row shows in `VALUE`.
 ///
 /// A run proportional to the value's length rather than equal to it: the
@@ -170,7 +179,7 @@ fn value_cell(
     let Some(len) = row.byte_len else {
         return "not set here".to_string();
     };
-    let suffix = format!(" {len} bytes");
+    let suffix = format!(" {}", byte_count(len));
     let run = usize::from(width)
         .saturating_sub(suffix.len())
         .saturating_sub(1)
@@ -482,6 +491,11 @@ fn reader_line(reader: &Reader) -> String {
     }
 }
 
+/// What both panels say when no row is selected, so the `+ new key`
+/// affordance cannot have one panel calling it nothing and the other
+/// describing a key that does not exist.
+const NO_KEY_SELECTED: &str = "no key selected";
+
 /// FOCUSED's four content lines for `row`, or a placeholder when nothing is
 /// selected (the `+ new key` row, or an empty pane).
 ///
@@ -495,7 +509,7 @@ fn focused_lines(
 ) -> [Line<'static>; PANEL_CONTENT_ROWS as usize] {
     let Some(row) = row else {
         return [
-            Line::from(Span::raw(fit("no key selected", width))),
+            Line::from(Span::raw(fit(NO_KEY_SELECTED, width))),
             Line::default(),
             Line::default(),
             Line::default(),
@@ -508,7 +522,8 @@ fn focused_lines(
     };
     let detail = match row.byte_len {
         Some(len) => format!(
-            "{set_in} \u{b7} length {len} bytes \u{b7} named by {} of the flock",
+            "{set_in} \u{b7} length {} \u{b7} named by {} of the flock",
+            byte_count(len),
             row.readers.len()
         ),
         None => set_in,
@@ -562,8 +577,18 @@ fn who_reads_it_lines(
     row: Option<&SecretRow>,
     width: u16,
 ) -> [Line<'static>; PANEL_CONTENT_ROWS as usize] {
-    let readers = row.map(|row| row.readers.as_slice()).unwrap_or_default();
-    let texts = reader_row_texts(readers);
+    // No row is the `+ new key` affordance, where there is no key for
+    // anything to name. Says what FOCUSED says rather than answering a
+    // question about a key that does not exist yet.
+    let Some(row) = row else {
+        return [
+            Line::from(Span::raw(fit(NO_KEY_SELECTED, width))),
+            Line::default(),
+            Line::default(),
+            Line::default(),
+        ];
+    };
+    let texts = reader_row_texts(&row.readers);
     let mut lines: Vec<Line<'static>> = (0..READER_ROWS)
         .map(|index| match texts.get(index) {
             Some(text) => Line::from(Span::raw(fit(text, width))),
@@ -1071,6 +1096,39 @@ mod tests {
         );
     }
 
+    /// One row of one byte: the length is printed in two places and both
+    /// used to read `1 bytes`.
+    #[test]
+    fn a_one_byte_value_is_one_byte_in_both_places_that_print_a_length() {
+        assert_eq!(byte_count(1), "1 byte");
+        assert_eq!(byte_count(0), "0 bytes");
+        assert_eq!(byte_count(9), "9 bytes");
+    }
+
+    /// The affordance names no key, so WHO READS IT cannot answer a
+    /// question about one. Both panels say the same thing there.
+    #[test]
+    fn the_new_key_row_says_no_key_is_selected_in_both_panels() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        app.update(Msg::Key(KeyPress::SelectLast));
+        let buffer = fixtures::render(&app, 160, 48);
+        let text = fixtures::rows_of(&buffer);
+
+        assert!(
+            !text.iter().any(|l| l.contains("nothing names this key")),
+            "there is no key here for anything to name: {text:?}"
+        );
+        let panels = text
+            .iter()
+            .find(|l| l.contains("no key selected"))
+            .unwrap_or_else(|| panic!("neither panel says it: {text:?}"));
+        assert_eq!(
+            panels.matches("no key selected").count(),
+            2,
+            "FOCUSED and WHO READS IT sit on one line and both say it: {panels:?}"
+        );
+    }
+
     #[test]
     fn a_provider_group_says_it_is_read_only() {
         let app = fixtures::app_with_a_pushed_secret();
@@ -1214,12 +1272,24 @@ mod tests {
         );
     }
 
+    /// The gate is named in the chrome and nowhere else: `focused_lines`
+    /// never spells `allow_read`, so a test asserting it over the whole
+    /// buffer under a name about the panel passes for the wrong reason.
     #[test]
-    fn the_focused_panel_states_the_gate_and_not_an_audit() {
+    fn the_chrome_states_the_gate_and_no_panel_promises_an_audit() {
         let buffer = fixtures::render_secrets_gate_shut();
         let text = fixtures::rows_of(&buffer);
 
-        assert!(text.iter().any(|l| l.contains("allow_read")));
+        assert!(
+            text.iter()
+                .any(|l| l.contains("allow_read") && l.contains("reveal")),
+            "the chrome's own gate line: {text:?}"
+        );
+        assert!(
+            text.iter()
+                .any(|l| l.contains("nothing records that you looked")),
+            "FOCUSED says what is not kept: {text:?}"
+        );
         assert!(
             !text.iter().any(|l| l.contains("audit")),
             "there is no audit log, so promising one is a promise nothing keeps"
