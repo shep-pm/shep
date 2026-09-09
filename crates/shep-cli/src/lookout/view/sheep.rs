@@ -398,6 +398,58 @@ mod tests {
         );
     }
 
+    /// The chart-drawing twin of the test above: pane pinned to alpha,
+    /// alpha leaves the flock, bravo (with its own, distinct `max_memory`)
+    /// takes the reseated selection. `draw`'s own gate reads
+    /// `App::sheep_pane_row`, which is `None` once alpha is gone, so
+    /// nothing charts at all; reading `App::selected_row` instead would
+    /// draw bravo's ceiling under a pane still naming alpha. The area here
+    /// is tall and wide enough to reach `draw_charts`, unlike the test
+    /// above's 80x3.
+    #[test]
+    fn the_charts_do_not_draw_the_sheep_that_replaced_the_pinned_one() {
+        let mut app = fixtures::app_with(
+            vec![
+                ProcessInfo::builder(1, "alpha", ProcStatus::Online).build(),
+                ProcessInfo::builder(2, "bravo", ProcStatus::Online)
+                    .max_memory(Some(64 << 20))
+                    .build(),
+            ],
+            fixtures::plain(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(
+            matches!(app.body(), Body::Sheep(_)),
+            "setup: the pane opened on alpha"
+        );
+        let _ = app.update(Msg::Snapshot {
+            rows: vec![
+                ProcessInfo::builder(2, "bravo", ProcStatus::Online)
+                    .max_memory(Some(64 << 20))
+                    .build(),
+            ],
+            at: std::time::Instant::now(),
+        });
+        assert_eq!(
+            app.selected(),
+            Some(RowKey::Sheep(2)),
+            "setup: the reseat moved the selection to bravo"
+        );
+
+        let Body::Sheep(pane) = app.body() else {
+            panic!("the pane is still open");
+        };
+        let area = Rect::new(0, 0, 40, MIN_HEIGHT_FOR_CHARTS);
+        let mut buffer = Buffer::empty(area);
+        draw(&app, pane, area, &mut buffer);
+        let text = render_text(&buffer);
+        assert!(
+            !text.contains("ceiling"),
+            "bravo's own max_memory must not draw once the pinned sheep is \
+             gone: {text:?}"
+        );
+    }
+
     /// Thin wrapper over the real header function: a full buffer, so the
     /// "drawn window" branch runs rather than the "collecting" one.
     fn header_at(width: u16) -> String {
