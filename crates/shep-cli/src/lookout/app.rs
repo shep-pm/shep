@@ -6023,6 +6023,27 @@ mod tests {
         assert!(app.notice().is_some_and(Notice::is_grave));
     }
 
+    /// `arm` and `arm_sheep_pane` share their refusal ladder through
+    /// `confirm_refusal`, but nothing before this test exercised
+    /// `arm_sheep_pane`'s own copy of the "one already in flight" branch: a
+    /// hand-copied ladder that dropped it silently would still pass every
+    /// other sheep-pane test, since none of them arm twice.
+    #[test]
+    fn a_second_arm_from_inside_the_sheep_pane_refuses_while_one_is_in_flight() {
+        let mut app = allowed_in_the_sheep_pane();
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+        app.update(Msg::Key(KeyPress::Confirm));
+        assert!(app.action().is_some_and(|action| action.sent), "in flight");
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        assert_eq!(
+            app.notice().map(ToString::to_string).as_deref(),
+            Some("one action is already in flight")
+        );
+        let action = app.action().expect("the first one is untouched");
+        assert_eq!(action.verb, ActionVerb::Stop);
+        assert!(action.sent);
+    }
+
     /// `↵` confirms an armed action, correctly: a question awaiting an
     /// answer keeps `↵`. But once sent (`Stage::Sent`), it is in flight and
     /// no longer asking anything — a regression that let `Stage::Sent` keep
