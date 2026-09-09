@@ -16,7 +16,7 @@ use shep_core::protocol::SheepConfigView;
 use super::super::app::{App, CPU_CEILING_FLOOR, HISTORY, RowKey};
 use super::super::field::{Field, FieldSet};
 use super::super::pane;
-use super::super::pane_bleats::{BleatsPane, Filters};
+use super::super::pane_bleats::{BleatsPane, Filters, MatchKind};
 use super::super::pane_sheep::{SheepPane, scale_top, window};
 use super::super::tail::{Stream, Tail, TailLine};
 use super::super::theme::Palette;
@@ -431,7 +431,12 @@ fn feed_chip_labels(filters: &Filters) -> Vec<String> {
         ));
     }
     if let Some(text) = &filters.matcher {
-        chips.push(format!("match {text}"));
+        let suffix = match filters.match_kind() {
+            Some(MatchKind::Literal) | None => "",
+            Some(MatchKind::Regex) => " (regex)",
+            Some(MatchKind::Invalid) => " (invalid regex, matches nothing)",
+        };
+        chips.push(format!("match {text}{suffix}"));
     }
     chips
 }
@@ -1459,6 +1464,32 @@ mod tests {
         let text = feed_header_text(&feed, &Tail::default());
         assert!(text.contains("[level≥warn]"), "got {text:?}");
         assert!(text.contains("/ narrow"), "got {text:?}");
+    }
+
+    /// A regex matcher's chip names itself a regex, the same suffix
+    /// `bleats_full.rs`'s own `chip_labels` carries: an operator who
+    /// narrows the embedded feed with `/…/` needs the same tell this
+    /// column's full-screen twin already gives.
+    #[test]
+    fn the_headers_match_chip_names_a_regex() {
+        let mut feed = BleatsPane::new(RowKey::Sheep(1));
+        feed.set_match("/po+l/".to_string());
+        let text = feed_header_text(&feed, &Tail::default());
+        assert!(text.contains("match /po+l/ (regex)"), "got {text:?}");
+    }
+
+    /// A pattern that fails to compile says so on the chip, rather than the
+    /// embedded feed just going quiet with no explanation until the
+    /// operator presses `b` to reach the full-screen pane's own chip.
+    #[test]
+    fn the_headers_match_chip_names_an_invalid_regex() {
+        let mut feed = BleatsPane::new(RowKey::Sheep(1));
+        feed.set_match("/pool(/".to_string());
+        let text = feed_header_text(&feed, &Tail::default());
+        assert!(
+            text.contains("invalid regex, matches nothing"),
+            "got {text:?}"
+        );
     }
 
     /// The `N earlier` clause counts survivors the body has no room to show,
