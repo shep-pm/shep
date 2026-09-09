@@ -14,7 +14,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::super::app::{App, Control, REVEAL_HOLDS, Reveal, SecretsPane};
+use super::super::app::{App, Control, REVEAL_HOLDS, Reveal, SecretsPane, TypingWhat};
 use super::super::secrets::{SecretRow, Source};
 use super::super::theme::Palette;
 use super::flock::{GUTTER, fit, gutter};
@@ -149,7 +149,20 @@ pub(super) fn columns_for(width: u16) -> &'static [Column] {
 /// column is 30 cells against `MAX_VALUE_BYTES`'s 4096, so an equal run
 /// cannot be drawn. It stops one cell short of `width` so it never touches
 /// `IN FORCE`'s own text.
-fn value_cell(row: &SecretRow, revealed: Option<&Reveal>, width: u16) -> String {
+///
+/// `typing` wins over a reveal: the operator is looking at what they are
+/// about to send, not at what the store already holds. The block run and a
+/// reveal both name a length or a plaintext already on screen; typed text is
+/// the same kind of thing, one keystroke ahead of the store.
+fn value_cell(
+    row: &SecretRow,
+    revealed: Option<&Reveal>,
+    typing: Option<&str>,
+    width: u16,
+) -> String {
+    if let Some(buffer) = typing {
+        return fit(&format!("{buffer}\u{2588}"), width);
+    }
     if let Some(reveal) = revealed {
         return fit(&reveal.value, width);
     }
@@ -218,12 +231,13 @@ fn row_cell(
     row: &SecretRow,
     column: Column,
     revealed: Option<&Reveal>,
+    typing: Option<&str>,
     environment_count: usize,
     now: Instant,
 ) -> String {
     match column {
         Column::Key => row.key.clone(),
-        Column::Value => value_cell(row, revealed, column.width()),
+        Column::Value => value_cell(row, revealed, typing, column.width()),
         Column::InForce => row.in_force.clone().unwrap_or_else(|| "-".to_string()),
         Column::SetIn => set_in_cell(row, environment_count),
         Column::ReadBy => {
@@ -258,12 +272,20 @@ fn row_line(
         Style::default()
     };
     let revealed = pane.reveal.as_ref().filter(|reveal| reveal.key == row.key);
+    let typing = if selected {
+        pane.typing.as_ref().and_then(|typing| match &typing.what {
+            TypingWhat::ValueFor(key) if key == &row.key => Some(typing.buffer.as_str()),
+            TypingWhat::ValueFor(_) | TypingWhat::NewKey => None,
+        })
+    } else {
+        None
+    };
     let environment_count = pane.model.environments.len();
     let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len());
     let mut used = 0u16;
     for column in columns {
         let text = fit(
-            &row_cell(row, *column, revealed, environment_count, now),
+            &row_cell(row, *column, revealed, typing, environment_count, now),
             column.width(),
         );
         spans.push(Span::styled(text, ground));
@@ -281,6 +303,44 @@ fn pad(spans: &mut Vec<Span<'static>>, used: u16, width: u16, style: Style) {
     if short > 0 {
         spans.push(Span::styled(" ".repeat(usize::from(short)), style));
     }
+}
+
+/// The `+ new key` row's own [`Line`]: `KEY` names the affordance, `VALUE`
+/// echoes the name step's own buffer while it is open, and every other
+/// column is blank — there is no key yet for any of them to describe.
+fn new_key_row_line(
+    pane: &SecretsPane,
+    columns: &[Column],
+    width: u16,
+    palette: Palette,
+    selected: bool,
+) -> Line<'static> {
+    let ground = if selected {
+        palette.ground()
+    } else {
+        Style::default()
+    };
+    let typing_name = selected
+        .then_some(pane.typing.as_ref())
+        .flatten()
+        .and_then(|typing| {
+            matches!(typing.what, TypingWhat::NewKey).then_some(typing.buffer.as_str())
+        });
+    let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len());
+    let mut used = 0u16;
+    for column in columns {
+        let text = match column {
+            Column::Key => "+ new key".to_string(),
+            Column::Value => {
+                typing_name.map_or_else(String::new, |buffer| format!("{buffer}\u{2588}"))
+            }
+            Column::InForce | Column::SetIn | Column::ReadBy | Column::Lands => String::new(),
+        };
+        spans.push(Span::styled(fit(&text, column.width()), ground));
+        used += column.width();
+    }
+    pad(&mut spans, used, width, ground);
+    Line::from(spans)
 }
 
 /// The column headings, muted, packed the same way [`row_line`] packs a
@@ -496,6 +556,25 @@ pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
             table_width,
         );
         y += 1;
+    }
+
+    // The `+ new key` affordance, last on screen: it is where an operator
+    // adding a key looks once every existing one has scrolled past.
+    if y < bottom {
+        let selected = pane.selected_is_new_key_row();
+        let (gutter_text, gutter_style) = gutter(selected, palette);
+        buffer.set_line(
+            area.x,
+            y,
+            &Line::from(Span::styled(gutter_text, gutter_style)),
+            1,
+        );
+        buffer.set_line(
+            area.x + GUTTER,
+            y,
+            &new_key_row_line(pane, columns, table_width, palette, selected),
+            table_width,
+        );
     }
 }
 

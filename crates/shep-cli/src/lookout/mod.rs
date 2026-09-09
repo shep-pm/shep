@@ -616,6 +616,28 @@ where
                 }));
                 dirty = true;
             }
+            // `secrets::set`/`secrets::unset` take `secrets.json.lock`,
+            // which acquires with no deadline, for `Effect::WriteSetting`'s
+            // reason. `_authority` is dropped as it is there.
+            Effect::WriteSecret(edit, _authority) => {
+                let store = paths.secrets.clone();
+                let handle = tokio::task::spawn_blocking(move || match edit.value {
+                    Some(value) => {
+                        shep_core::secrets::set(&store, &edit.key, &edit.environment, &value)
+                    }
+                    None => {
+                        shep_core::secrets::unset(&store, &edit.key, &edit.environment).map(|_| ())
+                    }
+                });
+                inflight.push(Box::pin(async move {
+                    let result = handle
+                        .await
+                        .map_err(|err| err.to_string())
+                        .and_then(|inner| inner.map_err(|err| err.to_string()));
+                    Msg::SecretWritten { result }
+                }));
+                dirty = true;
+            }
             Effect::None => dirty = true,
         }
     }

@@ -8,7 +8,7 @@ use ratatui::text::{Line, Span};
 
 use super::super::app::{
     ActionState, App, Body, Control, Grouping, InputMode, Link, RowKey, Settings, SettingsPrompt,
-    retrying_sentence,
+    TypingWhat, retrying_sentence,
 };
 use super::super::pane::{ConfigPane, PanePending};
 use super::super::pane_bleats::BleatsPane;
@@ -107,6 +107,14 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             ),
             palette.attention(),
         )
+    } else if let Some((label, buffer)) = secrets_typing(app) {
+        // Ahead of the filter-box branch below, for the reason the config
+        // pane's own free-text branch above gives: this shares
+        // `InputMode::Text` with `App::filter` too.
+        (
+            format!("{label}  {buffer}\u{258f}   enter applies   esc cancels"),
+            palette.attention(),
+        )
     } else if app.mode() == InputMode::Text {
         // Above the notice: bus events arrive with no keypress and
         // `on_text_key` never clears them, so ranking the notice higher
@@ -164,7 +172,7 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // The pane owns the keyboard here too, same reasoning as the config
         // pane's own branch above: `x stop`/`R restart`/`L reload`/`F folds`
         // belong to the dashboard underneath and do nothing on this screen.
-        (SECRETS_HINT.to_string(), palette.attention())
+        (secrets_hint(app.control()), palette.attention())
     } else if app.settings().is_none() && !app.filter().is_empty() {
         // Gated on the screen being closed: the filter survives the swap
         // into settings (`App::on_settings_key` never touches it), but `/`
@@ -303,6 +311,20 @@ fn pane_editor(pane: &ConfigPane) -> Option<(String, &str)> {
     }
 }
 
+/// The secrets pane's open input, labelled by which step it is: the
+/// `+ new key` row's name, or a key's value.
+fn secrets_typing(app: &App) -> Option<(String, &str)> {
+    let Body::Secrets(pane) = app.body() else {
+        return None;
+    };
+    let typing = pane.typing.as_ref()?;
+    let label = match &typing.what {
+        TypingWhat::NewKey => "new key".to_string(),
+        TypingWhat::ValueFor(key) => format!("value for {key}"),
+    };
+    Some((label, typing.buffer.as_str()))
+}
+
 /// The bleats pane's key hint: the design's own status-bar line, plus `m`
 /// for the minimum-level axis. The design names a key for every other axis
 /// (`o` for the stream) but none for this one, so `m` is this crate's own
@@ -313,12 +335,24 @@ const BLEATS_HINT: &str = "esc back   j/k line   ctrl-d/u page   G end   \
 
 /// The secrets pane's own key hint.
 ///
-/// Names only what `on_secrets_key` answers today: set and delete are Tasks
-/// 7-8's, and a hint naming a key that does nothing teaches the operator the
-/// key is broken. `v` names no gate, which the pane's own gates row two
-/// lines above the table already states.
-const SECRETS_HINT: &str =
-    "esc/S close   \u{2190}/\u{2192} tab   z collapse   v reveal for 10s   q quit";
+/// `\u{21b5} set a value` names `Enter` only under [`Control::Allowed`],
+/// mirroring [`hint_for`]'s own split: a hint naming a key that always
+/// refuses teaches the operator the key is broken. Delete is Task 8's. `v`
+/// names no gate, which the pane's own gates row two lines above the table
+/// already states.
+fn secrets_hint(control: Control) -> String {
+    match control {
+        Control::ReadOnly => {
+            "esc/S close   \u{2190}/\u{2192} tab   z collapse   v reveal for 10s   q quit"
+                .to_string()
+        }
+        Control::Allowed => {
+            "esc/S close   \u{2190}/\u{2192} tab   z collapse   v reveal for 10s   \
+             \u{21b5} set a value   q quit"
+                .to_string()
+        }
+    }
+}
 
 /// The config pane's own key hint.
 ///

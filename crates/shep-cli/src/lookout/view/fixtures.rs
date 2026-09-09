@@ -1238,6 +1238,85 @@ pub fn secrets_model(home: &Path, allow_read: bool) -> SecretsModel {
     }
 }
 
+/// One operator row, `DB_PASSWORD` set for `all`, over three environment
+/// tabs (`all` first, so `TabNext` actually moves): the shared model behind
+/// every set-a-value fixture below.
+fn secrets_write_model() -> SecretsModel {
+    SecretsModel {
+        environments: vec![
+            "all".to_string(),
+            "ci".to_string(),
+            "production".to_string(),
+        ],
+        rows: vec![SecretRow {
+            key: "DB_PASSWORD".to_string(),
+            source: Source::Operator,
+            in_force: Some("all".to_string()),
+            set_in: vec!["all".to_string()],
+            byte_len: Some(9),
+            readers: Vec::new(),
+        }],
+        ..SecretsModel::default()
+    }
+}
+
+/// The secrets pane, opened and loaded on [`secrets_write_model`], read-only
+/// (the default [`Control`]).
+pub fn app_with_secrets_read_only() -> App {
+    let mut app = full_app();
+    app.update(Msg::Key(KeyPress::Secrets));
+    app.update(Msg::Secrets {
+        environment: "all".to_string(),
+        result: Ok(Box::new(secrets_write_model())),
+    });
+    app
+}
+
+/// [`app_with_secrets_read_only`] with the control gate open, for every
+/// test that means to write.
+pub fn app_with_secrets_and_control() -> App {
+    let mut app = app_with_secrets_read_only();
+    app.set_control_for_tests(Control::Allowed);
+    app
+}
+
+/// [`app_with_secrets_and_control`] with `DB_PASSWORD`'s value input open:
+/// `Enter` on the operator's only row, already selected by default.
+pub fn app_typing_a_value() -> App {
+    let mut app = app_with_secrets_and_control();
+    app.update(Msg::Key(KeyPress::Confirm));
+    app
+}
+
+/// [`app_with_secrets_and_control`] with the `+ new key` row's name input
+/// open: `G` lands on the trailing `+ new key` row, then `Enter` opens it.
+pub fn app_typing_a_new_key() -> App {
+    let mut app = app_with_secrets_and_control();
+    app.update(Msg::Key(KeyPress::SelectLast));
+    app.update(Msg::Key(KeyPress::Confirm));
+    app
+}
+
+/// [`app_with_a_pushed_secret`] with the control gate open, for the test
+/// proving a provider row refuses a write anyway.
+pub fn app_with_a_pushed_secret_selected_and_control() -> App {
+    let mut app = app_with_a_pushed_secret();
+    app.set_control_for_tests(Control::Allowed);
+    app
+}
+
+/// [`app_revealing`] with the control gate open, for the test proving a
+/// successful write clears a reveal.
+pub fn app_revealing_with_control() -> App {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = app_revealing(dir.path());
+    app.set_control_for_tests(Control::Allowed);
+    // Leaked deliberately: the fixture owns no `home` the caller can keep
+    // alive, and the pane never touches the directory again once revealed.
+    let _ = dir.keep();
+    app
+}
+
 /// Presses `v` and does the read its effect asks for, handing back the
 /// answer rather than applying it, so a test can move the pane underneath a
 /// reveal that is still in flight.
