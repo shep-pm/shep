@@ -1018,24 +1018,35 @@ mod tests {
         lines.iter().map(line_text).collect::<Vec<_>>().join("\n")
     }
 
-    /// Eight groups, in the schema's own order. The frame lists seven and
-    /// puts `restart` second; `cron` is missing from it entirely.
+    /// The group labels [`super::super::pane::ConfigPane`]'s own field set
+    /// carries for `web_view`'s config, in schema order, deduplicated
+    /// consecutively the same way [`column_body`]'s own walk dedupes. The
+    /// source of truth [`the_groups_are_the_schemas_eight_in_its_own_order`]
+    /// checks the column against, instead of a copy of the order typed by
+    /// hand: `column_body` layers its own `env`-skipping logic on top of the
+    /// same [`pane::sheep_fields`] this reads, so a real cross-check is what
+    /// would catch that column-specific divergence and a literal cannot.
+    fn config_pane_group_labels(view: &SheepConfigView) -> Vec<String> {
+        let pane = crate::lookout::pane::ConfigPane::sheep(view.clone());
+        let mut labels = Vec::new();
+        let mut current: Option<&str> = None;
+        for field in pane.fields().fields() {
+            if field.group.as_deref() != current {
+                current = field.group.as_deref();
+                labels.push(current.unwrap_or_default().to_owned());
+            }
+        }
+        labels
+    }
+
+    /// Eight groups, in the schema's own order, the same order
+    /// [`ConfigPane`](super::super::pane::ConfigPane)'s own field set gives
+    /// for the same config. The frame lists seven and puts `restart` second;
+    /// `cron` is missing from it entirely.
     #[test]
     fn the_groups_are_the_schemas_eight_in_its_own_order() {
-        let labels = group_labels_of(&web_view());
-        assert_eq!(
-            labels,
-            [
-                "process",
-                "logging",
-                "inputs",
-                "restart",
-                "readiness",
-                "shutdown",
-                "watch",
-                "cron"
-            ]
-        );
+        let view = web_view();
+        assert_eq!(group_labels_of(&view), config_pane_group_labels(&view));
     }
 
     /// A field parked until the next respawn is marked and says so.
