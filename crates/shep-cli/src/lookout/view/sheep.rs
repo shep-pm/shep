@@ -51,6 +51,9 @@ const MEM_ROWS: usize = 5;
 /// The shared x axis's row, relative to `area`, `now` ending on its last
 /// column.
 const AXIS_ROW: u16 = 16;
+/// The full-width hairline rule's row, relative to `area`, between the axis
+/// and the column headers.
+const HAIRLINE_ROW: u16 = AXIS_ROW + 1;
 /// The shortest `area.height` any chart tier draws into at all: decision
 /// 8's row ladder drops both charts under 20 rows, and one past
 /// [`COLUMN_HEADER_ROW`] is that same floor stated in terms of the row the
@@ -68,11 +71,11 @@ const MIN_HEIGHT_FOR_CHARTS: u16 = COLUMN_HEADER_ROW + 1;
 const FULL_TIER_MIN_HEIGHT: u16 = 26;
 
 /// The config/env column's own header row, relative to `area`.
-const COLUMN_HEADER_ROW: u16 = 19;
+const COLUMN_HEADER_ROW: u16 = 18;
 /// The column's first body row.
-const COLUMN_FIRST_ROW: u16 = 20;
+const COLUMN_FIRST_ROW: u16 = 19;
 /// The column's last body row.
-const COLUMN_LAST_ROW: u16 = 45;
+const COLUMN_LAST_ROW: u16 = 44;
 /// How many body rows the column draws: [`COLUMN_FIRST_ROW`] through
 /// [`COLUMN_LAST_ROW`], inclusive.
 pub(crate) const COLUMN_BODY_ROWS: usize = (COLUMN_LAST_ROW - COLUMN_FIRST_ROW + 1) as usize;
@@ -526,7 +529,8 @@ pub fn draw(app: &App, pane: &SheepPane, area: Rect, buffer: &mut Buffer) {
     // `record_samples` drops it), so there is nothing to chart once
     // `sheep_row` is `None`.
     if let Some(row) = sheep_row {
-        match chart_tier(area.width, area.height) {
+        let tier = chart_tier(area.width, area.height);
+        match tier {
             ChartTier::Full => {
                 draw_charts(app, row.info.id, row.info.max_memory, area, buffer, palette);
             }
@@ -537,6 +541,11 @@ pub fn draw(app: &App, pane: &SheepPane, area: Rect, buffer: &mut Buffer) {
                 draw_sparkline_row(app, &row.info, area, buffer, palette);
             }
             ChartTier::None => {}
+        }
+        // Only the two tiers that draw an axis at `AXIS_ROW` have a rule to
+        // draw under it: `Sparkline` and `None` never reach that row.
+        if matches!(tier, ChartTier::Full | ChartTier::CpuOnly) {
+            draw_hairline(area, buffer, palette);
         }
     }
     // The config and env column, starting at `top`: `COLUMN_HEADER_ROW`
@@ -739,6 +748,19 @@ fn mem_line_text(current_rss: u64, max_memory: Option<u64>) -> String {
         ),
         None => format!("rss {} {gauge}", crate::output::human_bytes(current_rss)),
     }
+}
+
+/// The full-width hairline rule at [`HAIRLINE_ROW`], between the axis and
+/// the column headers: the same `─` run [`super::status::rule_line`] draws
+/// under the pane's own header elsewhere in `lookout`.
+fn draw_hairline(area: Rect, buffer: &mut Buffer, palette: Palette) {
+    write_row(
+        buffer,
+        area,
+        HAIRLINE_ROW,
+        &cell::rule(usize::from(area.width)),
+        palette.muted(),
+    );
 }
 
 /// [`ChartTier::Sparkline`]'s own row: 1a's own `CPU 20s` sparkline and
@@ -1846,14 +1868,48 @@ mod tests {
         assert!(rendered.contains("CPU 20s"), "got {rendered:?}");
     }
 
+    /// The column block and the hairline rule above it, pinned against the
+    /// spec's own absolute row numbering rather than against
+    /// `COLUMN_HEADER_ROW` or `HAIRLINE_ROW` themselves: a transcription
+    /// bug that moves a constant to match its own miscount would still
+    /// pass a test that only re-reads the constant back.
+    #[test]
+    fn the_hairline_and_column_headers_sit_at_the_spec_s_own_rows() {
+        let rendered = render_at(160, 48);
+        let lines: Vec<&str> = rendered.lines().collect();
+        // Spec row 17: the shared axis, `now` on the last column.
+        assert!(
+            lines[16].contains("now"),
+            "row 16 (spec 17): {:?}",
+            lines.get(16)
+        );
+        // Spec row 18: a full-width hairline rule, nothing else.
+        let hairline = lines[17].trim_end();
+        assert!(
+            !hairline.is_empty() && hairline.chars().all(|c| c == '\u{2500}'),
+            "row 17 (spec 18) is not a hairline rule: {:?}",
+            lines.get(17)
+        );
+        // Spec row 19: the column headers.
+        assert!(
+            lines[18].contains("\u{2588}\u{2588} CONFIG & ENV"),
+            "row 18 (spec 19): {:?}",
+            lines.get(18)
+        );
+    }
+
     /// Rows too: the charts hold 2 to 17, and the config and feed columns
     /// are what the pane is for, so they give ground last.
+    ///
+    /// 20 is under `FULL_TIER_MIN_HEIGHT` (26), so the memory chart is
+    /// already gone; 18 is under `MIN_HEIGHT_FOR_CHARTS` (19), so every
+    /// chart is gone.
     #[test]
     fn a_short_terminal_drops_the_charts_before_the_columns() {
-        assert!(!render_at(160, 25).contains("\u{2588}\u{2588} MEM"));
-        assert!(render_at(160, 25).contains("\u{2588}\u{2588} CONFIG & ENV"));
-        assert!(!render_at(160, 19).contains("\u{2588}\u{2588} CPU"));
-        assert!(render_at(160, 19).contains("\u{2588}\u{2588} CONFIG & ENV"));
+        assert!(!render_at(160, 20).contains("\u{2588}\u{2588} MEM"));
+        assert!(render_at(160, 20).contains("\u{2588}\u{2588} CONFIG & ENV"));
+        assert!(!render_at(160, 18).contains("\u{2588}\u{2588} CPU"));
+        assert!(render_at(160, 18).contains("\u{2588}\u{2588} CONFIG & ENV"));
     }
 
     /// The Full tier's own floor: at exactly 140 columns both charts still
