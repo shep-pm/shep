@@ -168,20 +168,30 @@ pub fn panes_for(height: u16) -> Panes {
 ///
 /// `run_ui` calls this before each draw, so [`App::note_body_rows`] always
 /// reflects the terminal about to be drawn to. `draw` builds the same four
-/// full-screen panes' own `Rect`s off this value, so it has to count the
-/// blank row `draw` spends under the title on a roomy terminal
-/// ([`ROOMY_HEIGHT`]): a body that did not know about that row would get a
-/// `Rect` one row taller than the space actually left before the status
-/// bar, and its last row would be drawn only to be overwritten.
+/// full-screen panes' own `Rect`s off [`title_gap_rows`], so a body that did
+/// not know about the rows spent there would get a `Rect` taller than the
+/// space actually left before the status bar, and its last row would be
+/// drawn only to be overwritten.
 #[must_use]
 pub fn body_rows(area: Rect) -> u16 {
     if area.width < MIN_TERM_WIDTH || area.height < MIN_HEIGHT {
         return 0;
     }
-    // The title row and the status bar, plus the blank row under the title
-    // on a roomy terminal.
-    let chrome = if area.height >= ROOMY_HEIGHT { 3 } else { 2 };
-    area.height - chrome
+    // The status bar's own row, plus everything `title_gap_rows` spends
+    // before a full-screen pane's body starts.
+    area.height - 1 - title_gap_rows(area.height)
+}
+
+/// Rows `draw` spends between the top of the frame and a full-screen pane's
+/// body: the title band, plus a blank row under it on a roomy terminal
+/// ([`ROOMY_HEIGHT`]).
+///
+/// The one function both `draw` and [`body_rows`] call for this, so the two
+/// can't drift the way they once did: a row added here reaches both without
+/// a second edit.
+#[must_use]
+fn title_gap_rows(height: u16) -> u16 {
+    1 + u16::from(height >= ROOMY_HEIGHT)
 }
 
 /// Real caller: `super::mod`'s `run_ui`, once per frame.
@@ -217,15 +227,11 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     let buffer = frame.buffer_mut();
 
     buffer.set_line(area.x, y, &title_band(app, width), width);
-    y += 1;
-    // A blank row under the title, and another under the rule further down.
-    // Both come from the design's own row allocation, and both are spent
-    // only where there is height to spare: on a short terminal every row
-    // belongs to the table.
+    // `title_gap_rows` also covers the blank row under the title on a
+    // roomy terminal; the rule further down spends a second one of its
+    // own, both from the design's own row allocation.
+    y += title_gap_rows(height);
     let roomy = height >= ROOMY_HEIGHT;
-    if roomy {
-        y += 1;
-    }
 
     // The settings screen and the config pane each own the whole body
     // between the title and the status bar: a swap, not an overlay, so
