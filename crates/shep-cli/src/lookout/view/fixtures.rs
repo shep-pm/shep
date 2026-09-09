@@ -1055,19 +1055,37 @@ pub fn app_in_sheep_pane() -> App {
 }
 
 /// Walks an open config pane's cursor onto `key`, the way an operator
-/// walks it: no fixture reaches into the pane to place it.
+/// walks it: `tab`/a digit onto `key`'s own group first, when it carries
+/// one, then down the filtered list onto the row itself. No fixture
+/// reaches into the pane to place it.
 ///
 /// Panics if the pane is closed or has no field by that name, which is a
 /// fixture bug rather than a failure the test is about.
 pub fn select_field(app: &mut App, key: &str) {
-    let index = app
-        .config_pane()
-        .expect("the pane is open")
+    let pane = app.config_pane().expect("the pane is open");
+    let group = pane
         .fields()
-        .fields()
+        .by_key(key)
+        .unwrap_or_else(|| panic!("no field named {key}"))
+        .group
+        .clone();
+    if let Some(group) = group
+        && let Some(position) = shep_core::config::GROUP_ORDER
+            .iter()
+            .position(|known| *known == group)
+    {
+        let digit = u8::try_from(position + 1).expect("eight groups fit a u8");
+        app.update(Msg::Key(KeyPress::Group(digit)));
+    }
+    let pane = app.config_pane().expect("the pane is open");
+    let index = pane
+        .rows()
         .iter()
-        .position(|field| field.key == key)
-        .unwrap_or_else(|| panic!("no field named {key}"));
+        .position(|row| {
+            let crate::lookout::pane::PaneRow::Field(field_index) = row;
+            pane.fields().fields()[*field_index].key == key
+        })
+        .unwrap_or_else(|| panic!("{key} is not in the active group's rows"));
     app.update(Msg::Key(KeyPress::SelectFirst));
     for _ in 0..index {
         app.update(Msg::Key(KeyPress::SelectDown));
@@ -1075,17 +1093,22 @@ pub fn select_field(app: &mut App, key: &str) {
 }
 
 /// [`app_in_sheep_pane_with_nothing_parked`] with two edits filed, driven
-/// by real key presses: `cwd` typed, and `max_restarts` typed.
+/// by real key presses: `cwd` typed, and `max_memory` typed.
 ///
 /// Two, and not one, because a batch of one cannot tell a loop from a
 /// `take(1)`. Two different fields rather than two shapes of edit, since
 /// the set is keyed by field and a second edit to one key replaces it.
+/// The two also carry different groups on purpose (`cwd` is `process`,
+/// `max_memory` is `restart`), which is what the pending-edits section's
+/// own tests need: a group's own field list only ever shows one group at
+/// a time, so a test that an edit from elsewhere still turns up has to
+/// file one there.
 ///
 /// Nothing parked, so `Escape` writes and leaves rather than stopping to
 /// offer the apply menu.
 pub fn app_in_sheep_pane_with_two_edits() -> App {
     let mut app = app_in_sheep_pane_with_nothing_parked();
-    for (key, typed) in [("cwd", "/srv/web"), ("max_restarts", "40")] {
+    for (key, typed) in [("cwd", "/srv/web"), ("max_memory", "40")] {
         select_field(&mut app, key);
         app.update(Msg::Key(KeyPress::Confirm));
         for _ in 0..64 {
@@ -1102,6 +1125,81 @@ pub fn app_in_sheep_pane_with_two_edits() -> App {
         "the fixture files two edits"
     );
     app
+}
+
+/// The active group's own field rows, as their key names: a bounded slice
+/// of the config pane's state rather than a search over the rendered
+/// frame, which is what keeps a test on this from passing off a match in
+/// the legend or another section.
+///
+/// # Panics
+///
+/// Panics if the pane is closed, which is a fixture bug rather than a
+/// failure the test is about.
+pub fn config_pane_field_rows_for_tests(app: &App) -> Vec<String> {
+    let pane = app.config_pane().expect("the pane is open");
+    pane.rows()
+        .into_iter()
+        .map(|crate::lookout::pane::PaneRow::Field(index)| {
+            pane.fields().fields()[index].key.clone()
+        })
+        .collect()
+}
+
+/// Every filed edit's own key, as [`config_pane_field_rows_for_tests`] does
+/// for the active group's own fields: a bounded slice of the pane's own
+/// edit set, never a search over the rendered frame.
+///
+/// # Panics
+///
+/// Panics if the pane is closed.
+pub fn config_pane_pending_rows_for_tests(app: &App) -> Vec<String> {
+    let pane = app.config_pane().expect("the pane is open");
+    pane.edits()
+        .iter()
+        .map(|(key, _)| match key {
+            crate::lookout::edits::EditKey::Field(name) => name.clone(),
+            crate::lookout::edits::EditKey::Env(name) => format!("env.{name}"),
+        })
+        .collect()
+}
+
+/// The one rendered line naming `key`, wherever it draws: the active
+/// group's own field row, or the pending-edits section when `key` belongs
+/// to a group not on screen. Bounded to that single row by stripping the
+/// mark, lock and flag columns and requiring what is left to start with
+/// `key`, which is what keeps this from matching a longer key or the
+/// legend.
+///
+/// # Panics
+///
+/// Panics if the pane is closed or draws no row for `key`.
+pub fn config_pane_row_for_tests(app: &App, key: &str) -> String {
+    let pane = app.config_pane().expect("the pane is open");
+    let lines =
+        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), 160, 0);
+    lines
+        .iter()
+        .map(rendered)
+        .find(|line| {
+            line.trim_start_matches(['>', ' ', '=', '~', '!', '*'])
+                .starts_with(key)
+        })
+        .unwrap_or_else(|| panic!("no row for {key}"))
+}
+
+/// The pane's own title band, alone: line zero of the rendered frame, the
+/// one line [`crate::lookout::view::pane::pane_lines`] ever puts the edit
+/// count in.
+///
+/// # Panics
+///
+/// Panics if the pane is closed.
+pub fn config_pane_title_band_for_tests(app: &App, width: u16) -> String {
+    let pane = app.config_pane().expect("the pane is open");
+    let lines =
+        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), width, 0);
+    rendered(&lines[0])
 }
 
 /// The shepherd's refusal of one write, for the tests about what a reply

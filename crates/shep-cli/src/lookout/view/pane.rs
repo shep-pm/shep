@@ -16,15 +16,17 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use shep_core::config::ApplyGroup;
+use shep_core::config::{ApplyGroup, GROUP_ORDER};
 
 use super::super::app::{App, PaneMenu};
 use super::super::pane::{
-    ConfigPane, EnvPane, EnvRow, ListPane, ListRow, Lock, PaneRow, PaneTarget,
+    ConfigPane, EnvPane, EnvRow, ListPane, ListRow, Lock, PaneEdit, PaneRow, PaneTarget,
 };
 use super::super::theme::Palette;
+use super::cell;
 use super::flock::{fit, mark};
 use super::scroll::Attempt;
+use crate::vocabulary::Role;
 
 /// The columns every line spends on the selection mark and the space after
 /// it, before any cell is drawn. [`super::settings::GUTTER`]'s twin, and it
@@ -145,6 +147,11 @@ fn title_line(pane: &ConfigPane, palette: Palette, width: u16) -> Line<'static> 
 /// The lock is a glyph, not a style, since a style says nothing in
 /// `plain`. It sits between the mark and the flag rather than in the cost
 /// cell, since cost is the first column [`widths`] drops. See [`Lock`].
+///
+/// A field with a filed edit shows `old -> new` in the value cell, in
+/// butter, and keeps its own flag and lock exactly as computed: `!` and `*`
+/// are the shepherd's own words for a different fact, and an edit an
+/// operator has not sent yet earns neither.
 fn field_line(
     pane: &ConfigPane,
     index: usize,
@@ -189,25 +196,55 @@ fn field_line(
         Some(Lock::NoWidget) => '~',
         None => ' ',
     };
-    let mut text = format!("{}{lock}", mark(selected));
-    text.push_str(&fit(&format!("{flag}{}", field.key), key_w));
-    if value_w > 0 {
-        text.push_str("  ");
-        text.push_str(&fit(&value, value_w));
-    }
-    if cost_w > 0 {
-        text.push_str("  ");
-        let cost = pane.cost(&field.key).map_or("", cost_label);
-        text.push_str(&fit(cost, cost_w));
-    }
-    // Muting reinforces the glyph but carries no fact alone: a `plain`
-    // palette renders muted as nothing, so style could not tell a locked
-    // row from an editable one on its own.
-    if field.editable {
-        Line::from(Span::raw(text))
+    let mut prefix = format!("{}{lock}", mark(selected));
+    prefix.push_str(&fit(&format!("{flag}{}", field.key), key_w));
+    let cost_cell = (cost_w > 0).then(|| fit(pane.cost(&field.key).map_or("", cost_label), cost_w));
+
+    // A filed edit, with nothing being typed over it right now: the value
+    // cell becomes `old -> new` instead of the stored value alone. Never
+    // reached for a locked field, since no key files an edit for one, so
+    // `field.editable` is not re-checked here.
+    let edited = typing
+        .is_none()
+        .then(|| pane.edited_value(&field.key))
+        .flatten();
+    let Some(new_value) = edited else {
+        let mut text = prefix;
+        if value_w > 0 {
+            text.push_str("  ");
+            text.push_str(&fit(&value, value_w));
+        }
+        if let Some(cost) = &cost_cell {
+            text.push_str("  ");
+            text.push_str(cost);
+        }
+        // Muting reinforces the glyph but carries no fact alone: a `plain`
+        // palette renders muted as nothing, so style could not tell a
+        // locked row from an editable one on its own.
+        return if field.editable {
+            Line::from(Span::raw(text))
+        } else {
+            Line::from(Span::styled(text, palette.muted()))
+        };
+    };
+    let new_value = if field.secret && new_value != "(unset)" {
+        "<set>".to_owned()
     } else {
-        Line::from(Span::styled(text, palette.muted()))
+        new_value
+    };
+    let mut spans = vec![Span::raw(prefix)];
+    if value_w > 0 {
+        spans.push(Span::raw("  "));
+        spans.push(Span::styled(
+            fit(&format!("{value} -> {new_value}"), value_w),
+            palette.attention(),
+        ));
     }
+    if let Some(cost) = cost_cell {
+        spans.push(Span::raw("  "));
+        spans.push(Span::raw(cost));
+    }
+    Line::from(spans)
 }
 
 /// The apply menu's own sentence.
@@ -537,6 +574,303 @@ fn list_body_from(
     }
 }
 
+/// Whether `pane`'s own fields carry a group at all.
+///
+/// True for every sheep, whose Flockfile schema tags all 41 fields. False
+/// for a dog, whose schema declares none (see [`ConfigPane::dog`]), which
+/// is what keeps the tab row and the pending/env sections below a
+/// sheep-only elaboration: a control that filters nothing would be a
+/// tab row lying about what it does.
+fn has_groups(pane: &ConfigPane) -> bool {
+    pane.fields()
+        .fields()
+        .iter()
+        .any(|field| field.group.is_some())
+}
+
+/// The pane's own reverse-video summary band: the target's name and how
+/// many edits are filed and unsent.
+///
+/// Never the shepherd's own word for a field that is written and parked:
+/// `pending` is what `shep flock`'s CFG column and this same pane's `!`
+/// flag already mean, and a second meaning for the same word on the
+/// screen an operator moves to next is exactly the confusion this counts
+/// around instead.
+fn title_band_line(pane: &ConfigPane, palette: Palette, width: u16) -> Line<'static> {
+    let count = pane.edits().len();
+    let edits = match count {
+        1 => "1 edit".to_owned(),
+        n => format!("{n} edits"),
+    };
+    let text = format!("{}  {edits}", pane.target().name());
+    Line::from(Span::styled(
+        cell::band(&text, usize::from(width)),
+        palette.band(Role::Butter),
+    ))
+}
+
+/// The tab row: every group in [`GROUP_ORDER`], the active one drawn as a
+/// paper-2 chip in ink and the rest in ink-3, then the two keys that move
+/// between them.
+fn tab_row_line(pane: &ConfigPane, palette: Palette, width: u16) -> Line<'static> {
+    let active = pane.group();
+    let chip = |group: &str| format!(" {group} ");
+    let chips = GROUP_ORDER
+        .iter()
+        .map(|group| chip(group))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let full = format!("{chips}    tab next group   1\u{2026}8 jump");
+    let text = fit(&full, body_width(width));
+    let marker = chip(active);
+    let mut spans = vec![Span::raw("  ")];
+    if let Some(start) = text.find(&marker) {
+        let end = start + marker.len();
+        if start > 0 {
+            spans.push(Span::styled(text[..start].to_owned(), palette.muted()));
+        }
+        spans.push(Span::styled(text[start..end].to_owned(), palette.ground()));
+        if end < text.len() {
+            spans.push(Span::styled(text[end..].to_owned(), palette.muted()));
+        }
+    } else {
+        // The active chip fell off the fitted text at a width too narrow
+        // to hold it: the row still shows, muted throughout, rather than
+        // claiming a chip it cannot draw.
+        spans.push(Span::styled(text, palette.muted()));
+    }
+    Line::from(spans)
+}
+
+/// A rule of box-drawing horizontals, the full width of the body.
+fn hairline_line(palette: Palette, width: u16) -> Line<'static> {
+    Line::from(Span::styled(
+        format!("  {}", cell::rule(usize::from(body_width(width)))),
+        palette.line(),
+    ))
+}
+
+/// The column header row: `KEY`, `VALUE` and `COST`, aligned over
+/// [`field_line`]'s own cells. Drawn in place of [`top_line`] when neither
+/// the apply menu nor `h`'s help text is up, so the slot under the tab row
+/// always says something.
+fn column_header_line(palette: Palette, width: u16) -> Line<'static> {
+    let (key_w, value_w, cost_w) = widths(body_width(width));
+    let mut text = String::from("  ");
+    text.push_str(&fit("KEY", key_w));
+    if value_w > 0 {
+        text.push_str("  ");
+        text.push_str(&fit("VALUE", value_w));
+    }
+    if cost_w > 0 {
+        text.push_str("  ");
+        text.push_str(&fit("COST", cost_w));
+    }
+    Line::from(Span::styled(text, palette.muted()))
+}
+
+/// The pane's own key hints, drawn once at the foot rather than repeated
+/// per group: the status bar's own hint already names `esc`/`tab`/space`
+/// for the screen as a whole, and this line is the pane's local footnote
+/// on top of it.
+fn legend_line(palette: Palette, width: u16) -> Line<'static> {
+    Line::from(Span::styled(
+        format!(
+            "  {}",
+            fit(
+                "enter edit   space cycle   tab group   u undo   esc save & close",
+                body_width(width)
+            )
+        ),
+        palette.muted(),
+    ))
+}
+
+/// One entry of the pending-edits section: the field or env key it is
+/// filed under, and what it will send.
+///
+/// A field edit shows `old -> new`, the same cell [`field_line`] draws for
+/// one still visible in the active group; an env edit shows only that it
+/// is set or removed, since the pane never holds an env value to show
+/// either side of.
+fn pending_edit_line(
+    pane: &ConfigPane,
+    edit: &PaneEdit,
+    width: u16,
+    palette: Palette,
+) -> Line<'static> {
+    let text = match edit {
+        PaneEdit::Set { key, .. } => {
+            let old = pane.display_value(key);
+            let new = pane.edited_value(key).unwrap_or_default();
+            format!("{key}  {old} -> {new}")
+        }
+        PaneEdit::SetEnv { key, value } => match value {
+            Some(_) => format!("env.{key}  -> <set>"),
+            None => format!("env.{key}  removed"),
+        },
+    };
+    Line::from(Span::styled(
+        format!("    {}", fit(&text, body_width(width).saturating_sub(4))),
+        palette.attention(),
+    ))
+}
+
+/// The pending-edits and env sections that follow the active group's own
+/// fields: every filed edit regardless of which group it belongs to, then
+/// the sheep's own env key names and a hint to add one.
+///
+/// Appended rather than scrolled: both are short by construction, an
+/// operator files a handful of edits and a Flockfile carries a handful of
+/// env keys, so neither earns the `... N below` machinery the field list's
+/// 41 rows need.
+fn pending_and_env_lines(
+    pane: &ConfigPane,
+    palette: Palette,
+    width: u16,
+    budget: usize,
+) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    if budget == 0 {
+        return lines;
+    }
+    let mut remaining = budget;
+
+    if !pane.edits().is_empty() && remaining > 0 {
+        lines.push(Line::default());
+        remaining -= 1;
+        if remaining > 0 {
+            lines.push(section_header("pending edits", palette));
+            remaining -= 1;
+        }
+        for (_, entry) in pane.edits().iter() {
+            if remaining == 0 {
+                break;
+            }
+            lines.push(pending_edit_line(pane, entry.edit(), width, palette));
+            remaining -= 1;
+        }
+    }
+
+    if remaining > 0 {
+        lines.push(Line::default());
+        remaining -= 1;
+    }
+    if remaining > 0 {
+        lines.push(section_header("env", palette));
+        remaining -= 1;
+    }
+    for name in pane.env_key_names() {
+        if remaining == 0 {
+            break;
+        }
+        lines.push(Line::from(Span::raw(format!("    {name}  <set>"))));
+        remaining -= 1;
+    }
+    if remaining > 0 {
+        lines.push(Line::from(Span::styled(
+            "    + add a key".to_owned(),
+            palette.muted(),
+        )));
+    }
+    lines
+}
+
+/// The active group's fields, laid out through [`super::scroll::to_cursor`]
+/// exactly as [`body_from`] already does for the groupless fallback, then
+/// [`pending_and_env_lines`] appended after.
+fn grouped_body_lines(
+    pane: &ConfigPane,
+    palette: Palette,
+    width: u16,
+    budget: usize,
+) -> Vec<Line<'static>> {
+    let mut lines = if !pane.fields().is_empty() && budget > 0 {
+        let total = pane.rows().len();
+        let cursor_row = pane.view().cursor().min(total.saturating_sub(1));
+        super::scroll::to_cursor(
+            cursor_row,
+            pane.view().offset(),
+            |offset| body_from(pane, palette, width, budget, offset, false),
+            || cursor_only(pane, palette, width, budget, cursor_row),
+        )
+    } else {
+        Vec::new()
+    };
+    let remaining = budget.saturating_sub(lines.len());
+    lines.extend(pending_and_env_lines(pane, palette, width, remaining));
+    lines
+}
+
+/// The pane's lines when its fields carry groups (every sheep): the butter
+/// title band, the provenance row naming the target, the tab row, a
+/// hairline, the menu or help line when one is up else the column header
+/// row, the body, a hairline, and the legend.
+fn grouped_pane_lines(
+    pane: &ConfigPane,
+    menu: Option<&PaneMenu>,
+    palette: Palette,
+    width: u16,
+    budget: usize,
+) -> Vec<Line<'static>> {
+    let mut lines = vec![title_band_line(pane, palette, width)];
+    let mut remaining = budget - 1;
+    if remaining == 0 {
+        return lines;
+    }
+    lines.push(title_line(pane, palette, width));
+    remaining -= 1;
+    // Everything from here down is best-effort, and every push below is
+    // gated on `remaining > 1` rather than `> 0`: the body's own cursor
+    // outranks every one of these lines, per `cursor_only`'s own doc that
+    // the selected row is drawn at every height the pane claims to
+    // support, so a chrome line is only added when doing so still leaves
+    // at least one line for the body once the budget reaches it.
+    if remaining > 1 {
+        lines.push(tab_row_line(pane, palette, width));
+        remaining -= 1;
+    }
+    if remaining > 1 {
+        lines.push(hairline_line(palette, width));
+        remaining -= 1;
+    }
+    if remaining > 1 {
+        if let Some((text, style)) = top_line(pane, menu, palette) {
+            lines.push(Line::from(Span::styled(
+                format!("  {}", fit(&text, body_width(width))),
+                style,
+            )));
+        } else {
+            lines.push(column_header_line(palette, width));
+        }
+        remaining -= 1;
+    }
+    if remaining == 0 {
+        return lines;
+    }
+    // The trailing hairline and legend are reserved ahead of the body,
+    // same rule every other footer in this module follows (see
+    // `body_from`'s own doc on markers): a line nothing counted is a line
+    // that can overrun. Never the body's last line, though, for the same
+    // reason as above.
+    let footer_lines = if remaining > 1 {
+        2.min(remaining - 1)
+    } else {
+        0
+    };
+    let body_budget = remaining - footer_lines;
+    if body_budget > 0 {
+        lines.extend(grouped_body_lines(pane, palette, width, body_budget));
+    }
+    if footer_lines >= 1 {
+        lines.push(hairline_line(palette, width));
+    }
+    if footer_lines >= 2 {
+        lines.push(legend_line(palette, width));
+    }
+    lines
+}
+
 /// Every line of the pane, top to bottom, laid out for a terminal `height`
 /// rows tall.
 ///
@@ -568,6 +902,9 @@ pub fn pane_lines(
     }
     if let Some(env) = pane.env() {
         return env_lines(pane, env, palette, width, budget);
+    }
+    if has_groups(pane) {
+        return grouped_pane_lines(pane, menu, palette, width, budget);
     }
     let mut lines = vec![title_line(pane, palette, width)];
     // The title is unconditional, so the body is laid out against what is
@@ -606,7 +943,7 @@ pub fn pane_lines(
         lines.extend(super::scroll::to_cursor(
             cursor_row,
             pane.view().offset(),
-            |offset| body_from(pane, palette, width, body_budget, offset),
+            |offset| body_from(pane, palette, width, body_budget, offset, true),
             || cursor_only(pane, palette, width, body_budget, cursor_row),
         ));
     }
@@ -631,6 +968,7 @@ fn body_from(
     width: u16,
     budget: usize,
     offset: usize,
+    show_group_headers: bool,
 ) -> Attempt {
     let rows = pane.rows();
     let total = rows.len();
@@ -651,6 +989,10 @@ fn body_from(
     // the first, held here rather than pushed straight away: it is pushed
     // alongside the first row of its group that survives the offset skip,
     // so a window opening in the middle of `control` still says `control`.
+    // Never populated when `show_group_headers` is false: the grouped
+    // layout's own tab row already names the one group `rows` ever holds,
+    // so a second header line here would only cost the tight-height cursor
+    // guarantee a line it has no header content to spend.
     let mut pending_header: Vec<Line<'static>> = Vec::new();
     let mut drawn = 0usize;
 
@@ -661,7 +1003,7 @@ fn body_from(
             .fields()
             .get(field_index)
             .and_then(|field| field.group.as_deref());
-        if current_group != group {
+        if show_group_headers && current_group != group {
             let mut header = Vec::new();
             if current_group.is_some() {
                 header.push(Line::default());
@@ -820,7 +1162,10 @@ mod tests {
     }
 
     #[test]
-    fn a_sheep_pane_scrolled_to_the_cron_section_labels_it() {
+    fn a_sheep_pane_scrolled_to_the_last_field_of_a_group_shows_it() {
+        // `cron` has only two fields, both of which always fit; `process`,
+        // the group a fresh pane opens on, has ten, which is what forces
+        // the scroll this test is about.
         let mut pane = web_pane();
         pane.set_rows(8);
         pane.move_to_last();
@@ -828,8 +1173,8 @@ mod tests {
         assert!(text.len() <= 9, "{text:?}");
         assert!(text.iter().any(|line| line.contains("above")), "{text:?}");
         assert!(
-            text.iter().any(|line| line.trim() == "cron"),
-            "the visible section is labelled: {text:?}"
+            text.iter().any(|line| line.contains("user")),
+            "process's last field is visible: {text:?}"
         );
         assert!(!text.iter().any(|line| line.contains("below")), "{text:?}");
     }
@@ -854,8 +1199,7 @@ mod tests {
     /// both reasons a row can be locked, not just the structural one.
     #[test]
     fn a_structural_field_renders_muted_and_the_cost_column_says_why() {
-        let pane = web_pane();
-        let lines = pane_lines(&pane, None, fixtures::coloured(), 120, 0);
+        let lines = all_group_lines(fixtures::coloured());
         let instances = lines
             .iter()
             .find(|line| text_of(core::slice::from_ref(line))[0].contains("instances"))
@@ -884,6 +1228,20 @@ mod tests {
             fixtures::coloured().muted(),
             "muting says `not from here`, which is true of both kinds"
         );
+    }
+
+    /// Every field row over all eight groups, walked with `next_group`,
+    /// styled by `palette`. What a test that used to find any field at
+    /// 120 columns in one shot now needs, since the active group is the
+    /// only one a single render draws.
+    fn all_group_lines(palette: Palette) -> Vec<Line<'static>> {
+        let mut pane = web_pane();
+        let mut lines = Vec::new();
+        for _ in 0..GROUP_ORDER.len() {
+            lines.extend(pane_lines(&pane, None, palette, 120, 0));
+            pane.next_group();
+        }
+        lines
     }
 
     /// A field row split into its four fixed leading parts: the selection
@@ -916,7 +1274,7 @@ mod tests {
 
     #[test]
     fn the_flags_mark_exactly_the_overridden_and_pending_fields() {
-        let text = text_of(&pane_lines(&web_pane(), None, fixtures::plain(), 120, 0));
+        let text = text_of(&all_group_lines(fixtures::plain()));
         let flagged = |wanted: char| -> Vec<String> {
             rows_of(&text)
                 .into_iter()
@@ -935,7 +1293,7 @@ mod tests {
     /// `read-only`.
     #[test]
     fn a_refused_field_and_one_the_pane_has_no_widget_for_get_different_glyphs() {
-        let text = text_of(&pane_lines(&web_pane(), None, fixtures::plain(), 120, 0));
+        let text = text_of(&all_group_lines(fixtures::plain()));
         let glyphed = |wanted: char| -> Vec<String> {
             rows_of(&text)
                 .into_iter()
@@ -954,7 +1312,7 @@ mod tests {
     /// with one.
     #[test]
     fn a_bare_duration_or_mem_size_shows_its_resolved_unit_in_the_row() {
-        let text = text_of(&pane_lines(&web_pane(), None, fixtures::plain(), 120, 0));
+        let text = text_of(&all_group_lines(fixtures::plain()));
         let row = |key: &str| {
             text.iter()
                 .find(|line| line.contains(key))
@@ -982,16 +1340,22 @@ mod tests {
     /// operator is most likely to be in.
     #[test]
     fn the_two_glyphs_survive_the_narrowest_width_and_a_palette_with_no_colour() {
-        let mut pane = web_pane();
-        pane.move_to_last();
         let width = super::super::MIN_TERM_WIDTH;
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0));
-        let rows = rows_of(&text);
+        let mut pane = web_pane();
+        let mut rows = Vec::new();
+        let mut all_text = Vec::new();
+        for _ in 0..GROUP_ORDER.len() {
+            pane.move_to_last();
+            let text = text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0));
+            rows.extend(rows_of(&text));
+            all_text.extend(text);
+            pane.next_group();
+        }
         assert!(
-            !text[1..]
+            !all_text
                 .iter()
                 .any(|line| parts(line).is_some() && line.contains("read-only")),
-            "no field row can afford the cost cell at {width}: {text:?}"
+            "no field row can afford the cost cell at {width}: {all_text:?}"
         );
         let glyph = |key: &str| rows.iter().find(|(_, _, _, k)| k == key).map(|r| r.1);
         assert_eq!(glyph("instances"), Some('='));
@@ -1116,9 +1480,9 @@ mod tests {
         pane.cycle();
         let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
         assert!(
-            text[1].contains("Restarts the process automatically"),
-            "{:?}",
-            text[1]
+            text.iter()
+                .any(|line| line.contains("Restarts the process automatically")),
+            "{text:?}"
         );
     }
 
@@ -1247,19 +1611,11 @@ mod tests {
     }
 
     /// The pane's cursor, walked onto `key` the way an operator walks it.
+    /// A thin wrapper: [`fixtures::select_field`] is this exact walk, and
+    /// this module had its own copy before the tab row gave a field's
+    /// group somewhere to switch to first.
     fn pane_to(app: &mut crate::lookout::app::App, key: &str) {
-        let index = app
-            .config_pane()
-            .expect("the pane is open")
-            .fields()
-            .fields()
-            .iter()
-            .position(|field| field.key == key)
-            .unwrap_or_else(|| panic!("no field named {key}"));
-        app.update(Msg::Key(KeyPress::SelectFirst));
-        for _ in 0..index {
-            app.update(Msg::Key(KeyPress::SelectDown));
-        }
+        fixtures::select_field(app, key);
     }
 
     /// Both directions: `watch` is `Live`, draws `now`, and can still
@@ -1529,8 +1885,10 @@ mod tests {
     fn the_title_names_the_target_and_no_longer_calls_it_read_only() {
         let text = text_of(&pane_lines(&web_pane(), None, fixtures::plain(), 120, 0));
         assert!(text[0].contains("web"), "{:?}", text[0]);
-        assert!(text[0].contains("(sheep config)"), "{:?}", text[0]);
+        assert!(text[1].contains("web"), "{:?}", text[1]);
+        assert!(text[1].contains("(sheep config)"), "{:?}", text[1]);
         assert!(!text[0].contains("read-only"), "{:?}", text[0]);
+        assert!(!text[1].contains("read-only"), "{:?}", text[1]);
     }
 
     /// A sheep whose `args` are `args`, for the list sub-screen's own
@@ -1718,5 +2076,97 @@ mod tests {
                 app.update(Msg::Key(KeyPress::SelectDown));
             }
         }
+    }
+
+    /// Eight groups, in `GROUP_ORDER`, and every one of them reachable.
+    /// This is the test that would have caught a filter axis nothing
+    /// could set.
+    #[test]
+    fn tab_walks_every_group_and_each_one_shows_its_own_fields() {
+        let mut app = fixtures::app_in_sheep_pane();
+        let mut seen = Vec::new();
+        for _ in 0..GROUP_ORDER.len() {
+            let group = app.config_pane().unwrap().group().to_owned();
+            let rendered = pane_lines(
+                app.config_pane().unwrap(),
+                app.pane_menu().as_ref(),
+                fixtures::plain(),
+                160,
+                48,
+            );
+            let listed = fixtures::render_all(&rendered);
+            assert!(listed.contains(&group), "the tab row does not name {group}");
+            seen.push(group);
+            app.update(Msg::Key(KeyPress::NextGroup));
+        }
+        assert_eq!(seen, GROUP_ORDER.to_vec());
+    }
+
+    #[test]
+    fn tab_wraps_from_the_last_group_to_the_first() {
+        let mut app = fixtures::app_in_sheep_pane();
+        for _ in 0..GROUP_ORDER.len() {
+            app.update(Msg::Key(KeyPress::NextGroup));
+        }
+        assert_eq!(app.config_pane().unwrap().group(), GROUP_ORDER[0]);
+    }
+
+    /// The digits reach the same eight groups `tab` does. A key that
+    /// reaches nothing is exactly the shape this plan exists to avoid.
+    #[test]
+    fn the_digits_reach_the_same_groups_tab_does() {
+        for (index, wanted) in GROUP_ORDER.iter().enumerate() {
+            let mut app = fixtures::app_in_sheep_pane();
+            let digit = u8::try_from(index + 1).unwrap();
+            app.update(Msg::Key(KeyPress::Group(digit)));
+            assert_eq!(&app.config_pane().unwrap().group(), wanted);
+        }
+    }
+
+    #[test]
+    fn the_list_shows_only_the_active_groups_fields() {
+        let mut app = fixtures::app_in_sheep_pane();
+        app.update(Msg::Key(KeyPress::Group(1)));
+        let rows = fixtures::config_pane_field_rows_for_tests(&app);
+        assert!(rows.iter().any(|row| row.contains("cwd")), "{rows:?}");
+        assert!(
+            !rows.iter().any(|row| row.contains("kill_timeout")),
+            "a shutdown field is showing under process: {rows:?}"
+        );
+    }
+
+    /// The pending section spans every group, which is the whole reason
+    /// it is a section rather than a marker.
+    #[test]
+    fn the_pending_section_lists_an_edit_from_another_group() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Group(1)));
+        let rows = fixtures::config_pane_pending_rows_for_tests(&app);
+        assert!(
+            rows.iter().any(|row| row.contains("max_memory")),
+            "{rows:?}"
+        );
+    }
+
+    /// `pending` is the shepherd's word for a field already written and
+    /// parked until a respawn, and it is what the flock table's own `cfg
+    /// !2 pending` cell means. This pane's own count of unsent edits must
+    /// not borrow it.
+    #[test]
+    fn the_title_band_counts_edits_without_calling_them_pending() {
+        let app = fixtures::app_in_sheep_pane_with_two_edits();
+        let band = fixtures::config_pane_title_band_for_tests(&app, 160);
+        assert!(band.contains("2 edits"), "{band}");
+        assert!(!band.contains("pending"), "{band}");
+    }
+
+    /// An edited row shows its own change rather than borrowing the `!`
+    /// the shepherd's parked-field marker already owns.
+    #[test]
+    fn an_edited_row_shows_old_then_new_and_takes_no_marker() {
+        let app = fixtures::app_in_sheep_pane_with_two_edits();
+        let row = fixtures::config_pane_row_for_tests(&app, "max_memory");
+        assert!(row.contains("->"), "{row}");
+        assert!(!row.trim_start().starts_with('!'), "{row}");
     }
 }

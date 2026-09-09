@@ -745,19 +745,11 @@ mod tests {
     }
 
     /// The pane's cursor, walked onto `key` the way an operator walks it.
+    /// A thin wrapper: [`super::super::fixtures::select_field`] is this
+    /// exact walk, and this module had its own copy before the tab row
+    /// gave a field's group somewhere to switch to first.
     fn pane_to(app: &mut App, key: &str) {
-        let index = app
-            .config_pane()
-            .expect("the pane is open")
-            .fields()
-            .fields()
-            .iter()
-            .position(|field| field.key == key)
-            .unwrap_or_else(|| panic!("no field named {key}"));
-        app.update(Msg::Key(KeyPress::SelectFirst));
-        for _ in 0..index {
-            app.update(Msg::Key(KeyPress::SelectDown));
-        }
+        super::super::fixtures::select_field(app, key);
     }
 
     #[test]

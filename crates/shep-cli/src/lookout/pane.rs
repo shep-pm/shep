@@ -691,6 +691,23 @@ fn list_value(item: ListItem, elements: &[String]) -> Value {
     Value::Array(elements.iter().map(element).collect())
 }
 
+/// A JSON value rendered the way a config row draws it: a scalar shows
+/// bare, `null` shows `(unset)`, anything else shows compact JSON.
+///
+/// Shared by [`ConfigPane::value`], reading the stored value, and
+/// [`ConfigPane::edited_value`], reading a filed one, so the two sides of
+/// an `old -> new` cell are rendered by one rule rather than two that can
+/// drift.
+fn render_json(value: &Value) -> String {
+    match value {
+        Value::Null => "(unset)".to_owned(),
+        Value::String(text) => text.clone(),
+        Value::Bool(flag) => flag.to_string(),
+        Value::Number(number) => number.to_string(),
+        other => other.to_string(),
+    }
+}
+
 /// The state of an open pane.
 ///
 /// `Debug` is manual and redacted (IR-41): `values` is a sheep's config with
@@ -711,6 +728,10 @@ pub struct ConfigPane {
     /// set of unwritten changes; the two words come from opposite ends and
     /// the collision is the shepherd's.
     pending: Vec<String>,
+    /// Index into [`GROUP_ORDER`]: which group's fields the field list
+    /// draws. Meaningless for a dog pane, whose fields carry no group and
+    /// so are visible under any of them; see [`Self::rows`].
+    group: usize,
     view: Viewport,
     /// The open text editor, or [`None`].
     typing: Option<PaneTyping>,
@@ -816,6 +837,7 @@ impl ConfigPane {
             env_keys: view.env_keys,
             overridden: view.overridden,
             pending: view.pending,
+            group: 0,
             view: Viewport::new(),
             typing: None,
             edits: Edits::default(),
@@ -880,6 +902,7 @@ impl ConfigPane {
             env_keys: Vec::new(),
             overridden: Vec::new(),
             pending: Vec::new(),
+            group: 0,
             view: Viewport::new(),
             typing: None,
             edits: Edits::default(),
@@ -975,6 +998,17 @@ impl ConfigPane {
     #[must_use]
     pub fn env(&self) -> Option<&EnvPane> {
         self.env.as_ref()
+    }
+
+    /// The sheep's own env key names, without opening the sub-screen.
+    /// Empty for a dog, which reads its own section rather than this list
+    /// (see [`Self::dog`]).
+    ///
+    /// What the field list's own `env` rule draws; [`Self::env`] is what a
+    /// full sub-screen over the same names reads once one is open.
+    #[must_use]
+    pub fn env_key_names(&self) -> &[String] {
+        &self.env_keys
     }
 
     pub(super) fn env_mut(&mut self) -> Option<&mut EnvPane> {
@@ -1338,13 +1372,23 @@ impl ConfigPane {
                 count => format!("{count} keys"),
             };
         }
-        match self.values.get(key) {
-            None | Some(Value::Null) => "(unset)".to_owned(),
-            Some(Value::String(text)) => text.clone(),
-            Some(Value::Bool(flag)) => flag.to_string(),
-            Some(Value::Number(number)) => number.to_string(),
-            Some(other) => other.to_string(),
-        }
+        self.values
+            .get(key)
+            .map_or_else(|| render_json(&Value::Null), render_json)
+    }
+
+    /// The value a filed edit holds for `key`, rendered the way
+    /// [`Self::value`] renders a stored one, or [`None`] when nothing is
+    /// filed for it. Only ever answers for a config field: an env edit has
+    /// no field key to be filed under.
+    #[must_use]
+    pub fn edited_value(&self, key: &str) -> Option<String> {
+        let PaneEdit::Set { value, .. } = self.edits.get(&EditKey::Field(key.to_owned()))?.edit()
+        else {
+            return None;
+        };
+        let raw = render_json(value.as_value());
+        Some(self.resolved_display(key, &raw))
     }
 
     /// [`Self::value`], resolved through its own grammar for a
@@ -1467,10 +1511,53 @@ impl ConfigPane {
         self.view.set_rows(rows, len);
     }
 
-    /// One row per field, in display order.
+    /// The active group's name, one of the eight in [`GROUP_ORDER`],
+    /// defaulting to the first.
+    ///
+    /// Meaningless for a dog pane in the sense that nothing filters on it:
+    /// a dog's schema carries no `init.group`, so every one of its fields
+    /// is visible under any name this returns. See [`Self::rows`].
+    #[must_use]
+    pub fn group(&self) -> &'static str {
+        GROUP_ORDER
+            .get(self.group)
+            .copied()
+            .unwrap_or(GROUP_ORDER[0])
+    }
+
+    /// Walks to the next group, wrapping from the last back to the first.
+    pub fn next_group(&mut self) {
+        self.group = (self.group + 1) % GROUP_ORDER.len();
+    }
+
+    /// Jumps to the `digit`th group, one-based, the way `1`..`8` name them
+    /// on the tab row. A digit past [`GROUP_ORDER`]'s length is ignored, so
+    /// a ninth group added later needs a key of its own before it is
+    /// reachable.
+    pub fn set_group(&mut self, digit: u8) {
+        let Some(index) = usize::from(digit).checked_sub(1) else {
+            return;
+        };
+        if index < GROUP_ORDER.len() {
+            self.group = index;
+        }
+    }
+
+    /// One row per field of the active group, in display order. A field
+    /// carrying no group at all (every field on a dog pane, whose schema
+    /// declares none) is visible regardless of which group is active,
+    /// which is what keeps a dog's flat list undisturbed by a control
+    /// meant for a sheep's eight.
     #[must_use]
     pub fn rows(&self) -> Vec<PaneRow> {
-        (0..self.fields.len()).map(PaneRow::Field).collect()
+        let group = self.group();
+        self.fields
+            .fields()
+            .iter()
+            .enumerate()
+            .filter(|(_, field)| field.group.as_deref().is_none_or(|g| g == group))
+            .map(|(index, _)| PaneRow::Field(index))
+            .collect()
     }
 
     /// The row under the cursor, or `None` for an empty form.
@@ -1546,16 +1633,25 @@ impl ConfigPane {
         self.list = Some(list);
     }
 
+    /// Switches to `key`'s own group, then walks the cursor onto it, the
+    /// way an operator reaches a field in a different group than the one
+    /// the pane opened on. A no-op for a name no field carries.
     #[cfg(test)]
     pub(crate) fn move_to_key(&mut self, key: &str) {
-        if let Some(index) = self
-            .fields
-            .fields()
-            .iter()
-            .position(|field| field.key == key)
+        let Some(field) = self.fields.by_key(key) else {
+            return;
+        };
+        if let Some(group) = field.group.clone()
+            && let Some(index) = GROUP_ORDER.iter().position(|known| *known == group)
         {
+            self.group = index;
+        }
+        if let Some(row_index) = self.rows().iter().position(|row| {
+            let PaneRow::Field(field_index) = row;
+            self.fields.fields()[*field_index].key == key
+        }) {
             let len = self.rows().len();
-            self.view.move_to(index, len);
+            self.view.move_to(row_index, len);
         }
     }
 }
@@ -1757,11 +1853,13 @@ mod tests {
         pane.move_by(-5);
         assert_eq!(pane.cursor(), Some(PaneRow::Field(0)));
         pane.move_to_last();
-        assert_eq!(pane.cursor(), Some(PaneRow::Field(40)));
+        // `process`, the group a fresh pane opens on, has ten fields, at
+        // indices `0..10` since it sorts first.
+        assert_eq!(pane.cursor(), Some(PaneRow::Field(9)));
         assert_eq!(
-            pane.fields().fields()[40].key,
-            "cron_timezone",
-            "the last row is the last field"
+            pane.fields().fields()[9].key,
+            "user",
+            "the last row is process's own last field"
         );
         pane.move_to_first();
         assert_eq!(pane.cursor(), Some(PaneRow::Field(0)));
@@ -1775,7 +1873,7 @@ mod tests {
         let carried = pane.view().clone();
         let mut fresh = ConfigPane::sheep(web());
         fresh.adopt_view(carried);
-        assert_eq!(fresh.cursor(), Some(PaneRow::Field(40)));
+        assert_eq!(fresh.cursor(), Some(PaneRow::Field(9)));
     }
 
     #[test]

@@ -3095,8 +3095,21 @@ impl App {
                     pane.undo_edit();
                 }
             }
-            // No-op here for now: Task 6 gives these two a reducer arm.
-            KeyPress::NextGroup | KeyPress::Group(_) => {}
+            // `tab` walks the groups; a digit jumps straight to one. Both
+            // reset the cursor to the group's first field, so `j`/`k` never
+            // start on a row the new tab does not draw.
+            KeyPress::NextGroup => {
+                if let Some(pane) = self.config_pane_mut() {
+                    pane.next_group();
+                    pane.move_to_first();
+                }
+            }
+            KeyPress::Group(digit) => {
+                if let Some(pane) = self.config_pane_mut() {
+                    pane.set_group(digit);
+                    pane.move_to_first();
+                }
+            }
         }
         Effect::None
     }
@@ -9073,7 +9086,8 @@ mod tests {
         app.update(Msg::Key(KeyPress::SelectDown));
         assert_eq!(app.config_pane().unwrap().view().cursor(), 2);
         app.update(Msg::Key(KeyPress::SelectLast));
-        assert_eq!(app.config_pane().unwrap().view().cursor(), 40);
+        // `process`, the group a fresh pane opens on, has ten fields.
+        assert_eq!(app.config_pane().unwrap().view().cursor(), 9);
         app.update(Msg::Key(KeyPress::SelectFirst));
         assert_eq!(app.config_pane().unwrap().view().cursor(), 0);
     }
@@ -9095,7 +9109,8 @@ mod tests {
                 fixtures::sheep_config_view(),
             ))),
         });
-        assert_eq!(app.config_pane().unwrap().view().cursor(), 40);
+        // `process`, the group a fresh pane opens on, has ten fields.
+        assert_eq!(app.config_pane().unwrap().view().cursor(), 9);
     }
 
     #[test]
@@ -9137,27 +9152,19 @@ mod tests {
     #[test]
     fn the_pane_gets_the_body_height_minus_its_own_title() {
         let mut app = fixtures::app_in_sheep_pane();
-        app.note_body_rows(20);
+        app.note_body_rows(6);
         app.update(Msg::Key(KeyPress::SelectLast));
-        assert_eq!(app.config_pane().unwrap().view().offset(), 41 - 19);
+        // `process`, the group a fresh pane opens on, has ten fields.
+        assert_eq!(app.config_pane().unwrap().view().offset(), 10 - 5);
     }
 
     /// Walks the pane's cursor onto `key`. The pane is a public type with
     /// no public "go to this field" key, so the cursor is driven the way
-    /// an operator drives it.
+    /// an operator drives it. A thin wrapper: `view::fixtures::select_field`
+    /// is this exact walk, and this module had its own copy before the tab
+    /// row gave a field's group somewhere to switch to first.
     fn pane_to(app: &mut App, key: &str) {
-        let index = app
-            .config_pane()
-            .expect("the pane is open")
-            .fields()
-            .fields()
-            .iter()
-            .position(|field| field.key == key)
-            .unwrap_or_else(|| panic!("no field named {key}"));
-        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
-        for _ in 0..index {
-            let _ = app.update(Msg::Key(KeyPress::SelectDown));
-        }
+        fixtures::select_field(app, key);
     }
 
     /// Lands a `Request::SheepConfig` reply for `web` carrying `env_keys`,
