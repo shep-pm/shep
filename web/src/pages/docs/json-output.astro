@@ -213,10 +213,14 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       <li>
         <code>cpu_ms</code> is cumulative CPU-milliseconds the sheep's
         process tree has spent since it started, the raw counter{" "}
-        <code>cpu_percent</code> is one view of. <code>null</code> for the
-        same reasons <code>cpu_percent</code> is: not running, or no sample
-        yet. <code>shep lookout</code> reads this field directly and
-        differences two polls of its own rather than trusting{" "}
+        <code>cpu_percent</code> is one view of. <code>null</code> only when
+        the shepherd isn't sampling the sheep at all (not running, or the
+        peer daemon predates the field); it's the one case
+        <code>cpu_percent</code> can't cover the same way, since a sheep
+        spawned since the last periodic tick has a counter already but no
+        baseline yet to turn it into a percent. <code>shep lookout</code>{" "}
+        reads this field directly and differences two polls of its own
+        rather than trusting{" "}
         <code>cpu_percent</code>'s window, which is why the two can show
         different numbers for the same sheep at the same instant.
       </li>
