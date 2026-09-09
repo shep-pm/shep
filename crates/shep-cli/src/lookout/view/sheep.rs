@@ -415,9 +415,9 @@ mod tests {
     /// Thin wrapper over the real row function, over a fixture with a real
     /// shape: a flat history would prove nothing about the ceiling row's
     /// placement.
-    fn mem_rows_with_limit(max_memory: Option<u64>) -> Vec<String> {
+    fn mem_rows_with_limit(max_memory: Option<u64>) -> (Vec<String>, Option<usize>) {
         let history = [20 << 20, 25 << 20, 30 << 20, 40 << 20, 48 << 20];
-        mem_chart_rows(&history, max_memory, 20).0
+        mem_chart_rows(&history, max_memory, 20)
     }
 
     /// Thin wrapper over the real header function.
@@ -441,11 +441,19 @@ mod tests {
     }
 
     /// With a limit set the ceiling is the limit, drawn as its own row and
-    /// labelled.
+    /// labelled, and specifically the row this fixture's own scaling puts
+    /// it at: row 0 (the top) would be wrong here, so pinning presence alone
+    /// would not catch a placement bug that always drew row 0.
     #[test]
     fn the_memory_chart_labels_a_real_ceiling() {
-        let rows = mem_rows_with_limit(Some(52 << 20));
-        assert!(rows.iter().any(|row| row.contains("ceiling")));
+        let (rows, marked) = mem_rows_with_limit(Some(52 << 20));
+        assert_eq!(
+            marked,
+            Some(2),
+            "a 52M limit against this fixture's 48M peak scales to a 100M \
+             ceiling, 20M per row, so the marked row is 2, not the top"
+        );
+        assert!(rows[2].contains("ceiling"), "got {rows:?}");
     }
 
     /// With no limit there is no ceiling row and the header says what it
@@ -458,6 +466,7 @@ mod tests {
         assert!(header.contains("scaled to peak"));
         assert!(
             !mem_rows_with_limit(None)
+                .0
                 .iter()
                 .any(|row| row.contains("ceiling"))
         );
