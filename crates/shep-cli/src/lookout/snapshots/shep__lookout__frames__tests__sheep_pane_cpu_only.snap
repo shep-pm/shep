@@ -1,0 +1,52 @@
+---
+source: crates/shep-cli/src/lookout/frames.rs
+expression: render_text(&buffer)
+---
+shep lookout   /home/ada/.shep                                                                                               1 in the flock
+ ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 0.0%   mem 30.0M   fold edge                                     
+██ CPU   collecting · 0m10s of 3m58s                                                                                                       
+    50%                                                                                                                                    
+      |                                                                                                                                    
+    38%                                                                                                                     ▄              
+      |                                                                                                                     █              
+    25%                                                                                                                   █ █              
+      |                                                                                                                   ████             
+    12%                                                                                                                   ████             
+      0                                                                                                                   ████             
+rss 30.0M of 64.0M █████░░░░░                                                                                                              
+                                                                                                                                           
+                                                                                                                                           
+                                                                                                                                           
+                                                                                                                                           
+                                                                                                                                           
+        ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────now            
+                                                                                                                                           
+                                                                                                                                           
+██ CONFIG & ENV   e edit                                                                                                                   
+                                                                                                                                           
+────────────────────────────────────────────────────────────────────────────                                                               
+process                                                                                                                                    
+cwd                         (unset)                                                                                                        
+depends_on                  (default)                                                                                                      
+fold                        (unset)                                                                                                        
+group                       (unset)                                                                                                        
+instances                   3                                                                                                              
+interpreter                 (unset)                                                                                                        
+name                        web                                                                                                            
+reuse_port                  (default)                                                                                                      
+script                      ./srv                                                                                                          
+user                        (unset)                                                                                                        
+                                                                                                                                           
+────────────────────────────────────────────────────────────────────────────                                                               
+logging                                                                                                                                    
+err_file                    (unset)                                                                                                        
+merge_logs                  (default)                                                                                                      
+out_file                    (unset)                                                                                                        
+                                                                                                                                           
+────────────────────────────────────────────────────────────────────────────                                                               
+inputs                                                                                                                                     
+args                        ["--port","8080"]                                                                                              
+channel                     (default)                                                                                                      
+environment                 (unset)                                                                                                        
+stdin                       (default)                                                                                                      
+esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                 control enabled

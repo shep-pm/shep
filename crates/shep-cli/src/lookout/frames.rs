@@ -20,8 +20,9 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 
 use shep_client::RequestError;
+use shep_core::config::AppConfig;
 use shep_core::protocol::{
-    DogSource, ExitInfo, Lamb, ProcessInfo, Response, RpcError, RpcErrorCode,
+    DogSource, ExitInfo, Lamb, ProcessInfo, Response, RpcError, RpcErrorCode, SheepConfigView,
 };
 use shep_core::status::ProcStatus;
 
@@ -256,6 +257,19 @@ pub enum Scene {
     /// stream, a minimum level and a regex, wrapping turned on so the one
     /// surviving line's full text is on screen rather than truncated.
     Bleats,
+    /// The sheep pane at its design size, 160x48: both charts, the config
+    /// and env column, and the embedded feed, all up at once.
+    SheepPane,
+    /// 139x48: under 140 columns, the memory chart becomes a one-line
+    /// `rss` summary and the CPU chart draws alone.
+    SheepPaneCpuOnly,
+    /// 99x48: under 100 columns, both charts collapse into 1a's own
+    /// `CPU 20s` sparkline and `MEM/CEIL` gauge, one row.
+    SheepPaneSparklines,
+    /// 160x25: the charts hold their design width but not their design
+    /// height. The memory chart is gone; the config and feed columns,
+    /// which give ground last, are still up.
+    SheepPaneShort,
 }
 }
 
@@ -301,6 +315,10 @@ impl Scene {
             Self::SettingsNarrow => "settings_narrow",
             Self::SettingsShort => "settings_short",
             Self::Bleats => "bleats",
+            Self::SheepPane => "sheep_pane",
+            Self::SheepPaneCpuOnly => "sheep_pane_cpu_only",
+            Self::SheepPaneSparklines => "sheep_pane_sparklines",
+            Self::SheepPaneShort => "sheep_pane_short",
         }
     }
 
@@ -423,6 +441,18 @@ impl Scene {
             Self::Bleats => {
                 "The full-screen bleats pane, pinned to api, with a stream, a minimum level and a regex all stacked: only out, only warn and above, only a line mentioning retrying or jitter. The filter row states the composition and counts one surviving line out of sixteen, and that one line is also the longest in the fixture, so wrapping is on and its full text runs onto a second row instead of an ellipsis."
             }
+            Self::SheepPane => {
+                "The sheep pane on web, at its design size: 160 = 8 gutter + 140 body + 12 margin for each chart, and 160 = 76 config + 1 divider + 83 feed across the row below them. Both charts draw their full body, the config and env column lists web's own fields, and the embedded feed carries its own lines, all on one screen. web's cpu_ms counter is differenced across several two-second polls, rising by varying deltas, so both charts draw a shape rather than a single repeated bar."
+            }
+            Self::SheepPaneCpuOnly => {
+                "139 columns: one cell under the 140 the full two-chart body needs. The CPU chart still draws at its own body width, but the memory chart is gone, replaced by a one-line `rss` summary and a ten-cell gauge: memory still has a gauge to fall back on, and the CPU chart is the more diagnostic of the two, so it is the one that stays."
+            }
+            Self::SheepPaneSparklines => {
+                "99 columns: one cell under the 100 the CPU-only tier needs. Both charts are gone, and the pane falls back to 1a's own pair: the `CPU 20s` sparkline and the `MEM/CEIL` gauge, on one row."
+            }
+            Self::SheepPaneShort => {
+                "160 columns, 25 rows: the charts hold their design width but not their design height. Under 26 rows the memory chart goes; the CPU chart and the config and env column, which give ground last, are still up."
+            }
         }
     }
 
@@ -498,6 +528,20 @@ impl Scene {
             // this scene exists for. `the_title_names_the_window_and_what_
             // fell_below_it` covers the figures at a width that fits them.
             Self::Bleats => (100, 14),
+            // 160 = 8 gutter + 140 body + 12 margin for each chart, and
+            // 160 = 76 config + 1 divider + 83 feed: the sheep pane's own
+            // design size, wide enough for every column at once.
+            Self::SheepPane => (160, 48),
+            // 139: one cell under the 140 the full two-chart body needs, so
+            // `chart_tier` downgrades to `CpuOnly` on width alone.
+            Self::SheepPaneCpuOnly => (139, 48),
+            // 99: one cell under the 100 `CpuOnly` needs, so `chart_tier`
+            // downgrades again, to `Sparkline`.
+            Self::SheepPaneSparklines => (99, 48),
+            // 25 rows: one short of `FULL_TIER_MIN_HEIGHT` (26), so the
+            // memory chart drops while the CPU chart, the config column and
+            // the feed all still fit.
+            Self::SheepPaneShort => (160, 25),
             // HealthyWide, Errored, Grouped, WithDogs, Retrying, Frozen,
             // Refused, FeedGap, FeedMissing, HostUnknown, Lambs, LambsUnknown:
             // every scene that carries all three optional panes at their
@@ -903,6 +947,45 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
             }
             vec![pending_row, overridden_row, plain_row]
         }
+        // The one sheep every sheep-pane scene draws, `web`, run through
+        // six real polls two seconds apart, cpu_ms and memory_bytes both
+        // rising by varying deltas: task 4's counter differencing needs a
+        // poll to differ against, so a scene built from a single snapshot
+        // would draw an idle-looking chart while looking fine, the same
+        // trap `Scene::CfgDrift`'s own fixture above exists to avoid.
+        Scene::SheepPane
+        | Scene::SheepPaneCpuOnly
+        | Scene::SheepPaneSparklines
+        | Scene::SheepPaneShort => {
+            let mut at = t0;
+            let mut row = sheep(
+                20,
+                "web",
+                ProcStatus::Online,
+                Some(48_500),
+                0,
+                Some(0.0),
+                Some(10 << 20),
+                Some("edge"),
+            );
+            row.max_memory = Some(64 << 20);
+            for (cpu_ms, memory) in [
+                (400_u64, 14 << 20),
+                (900, 20 << 20),
+                (1_300, 28 << 20),
+                (2_000, 34 << 20),
+                (2_400, 30 << 20),
+            ] {
+                at += Duration::from_secs(2);
+                row.cpu_ms = Some(cpu_ms);
+                row.memory_bytes = Some(memory);
+                app.update(Msg::Snapshot {
+                    rows: vec![row.clone()],
+                    at,
+                });
+            }
+            vec![row]
+        }
         _ => vec![
             sheep(
                 0,
@@ -1020,6 +1103,10 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
             | Scene::SettingsDogs
             | Scene::SettingsNarrow
             | Scene::SettingsShort
+            | Scene::SheepPane
+            | Scene::SheepPaneCpuOnly
+            | Scene::SheepPaneSparklines
+            | Scene::SheepPaneShort
     ) {
         select_id(&mut app, 2);
     }
@@ -1065,6 +1152,27 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
     // for the selected sheep.
     if which == Scene::CfgDrift {
         select_id(&mut app, 10);
+    }
+
+    // Every sheep-pane scene parks on `web`, id 20 (the only row in its
+    // own flock), opens the pane the same way the event loop does (`Enter`
+    // on the selected row), and answers the config request it fires so the
+    // config column has real fields to draw rather than "reading config…".
+    if matches!(
+        which,
+        Scene::SheepPane
+            | Scene::SheepPaneCpuOnly
+            | Scene::SheepPaneSparklines
+            | Scene::SheepPaneShort
+    ) {
+        select_id(&mut app, 20);
+        app.update(Msg::Key(KeyPress::Confirm));
+        app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "web".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(sheep_pane_config_view()))),
+        });
     }
 
     match which {
@@ -1532,6 +1640,27 @@ fn sheep_with_ceiling(id: u32, name: &str, memory: u64, ceiling: u64) -> Process
     info
 }
 
+/// `web`'s own config, the way the shepherd would answer
+/// `Request::SheepConfig`: every sheep-pane scene's config column reads
+/// this rather than sitting on "reading config…".
+fn sheep_pane_config_view() -> SheepConfigView {
+    let mut config = AppConfig {
+        name: "web".to_string(),
+        script: "./srv".to_string(),
+        args: vec!["--port".to_string(), "8080".to_string()],
+        max_restarts: 32,
+        instances: 3,
+        ..AppConfig::default()
+    };
+    config
+        .env
+        .insert("DB_HOST".to_string(), "db.internal".to_string());
+    config
+        .env
+        .insert("LOG_LEVEL".to_string(), "debug".to_string());
+    SheepConfigView::new(config, Vec::new(), Vec::new())
+}
+
 /// One instance of a clustered app: the row a shepherd reports for slot
 /// `slot` of `name`.
 ///
@@ -1749,9 +1878,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all thirty-seven scenes through the same coloured
+frames.ansi renders all forty-one scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same thirty-seven scenes through the flattened NO_COLOR palette
+renders the same forty-one scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -1924,11 +2053,15 @@ mod tests {
     /// which is the form a reader sees.
     #[test]
     fn the_gallery_preamble_counts_the_scenes_it_has() {
-        const NUMBERS: [(usize, &str); 4] = [
+        const NUMBERS: [(usize, &str); 8] = [
             (34, "thirty-four"),
             (35, "thirty-five"),
             (36, "thirty-six"),
             (37, "thirty-seven"),
+            (38, "thirty-eight"),
+            (39, "thirty-nine"),
+            (40, "forty"),
+            (41, "forty-one"),
         ];
         let spelled = NUMBERS
             .iter()
@@ -2581,6 +2714,67 @@ mod tests {
             bleats.contains("esc back") && bleats.contains("\u{2588} following"),
             "the full key line, and the pane is still following the tail: {bleats:?}"
         );
+
+        // SheepPane: both charts, the config column, and the feed, all at
+        // 160x48.
+        let sheep_pane = render_text(&scene(Scene::SheepPane).1);
+        assert!(
+            sheep_pane.contains("\u{2588}\u{2588} CPU")
+                && sheep_pane.contains("\u{2588}\u{2588} MEM"),
+            "both charts draw: {sheep_pane:?}"
+        );
+        assert!(
+            sheep_pane.contains("\u{2588}\u{2588} CONFIG & ENV") && sheep_pane.contains("script"),
+            "the config column lists web's own fields: {sheep_pane:?}"
+        );
+        assert!(
+            sheep_pane.contains("\u{2588}\u{2588} BLEATS") || sheep_pane.contains("BLEATS"),
+            "the embedded feed carries its own header: {sheep_pane:?}"
+        );
+
+        // SheepPaneCpuOnly: 139 columns, the CPU chart alone plus a
+        // one-line memory summary.
+        let cpu_only = render_text(&scene(Scene::SheepPaneCpuOnly).1);
+        assert!(
+            cpu_only.contains("\u{2588}\u{2588} CPU"),
+            "the CPU chart still draws: {cpu_only:?}"
+        );
+        assert!(
+            !cpu_only.contains("\u{2588}\u{2588} MEM"),
+            "the memory chart is gone: {cpu_only:?}"
+        );
+        assert!(
+            cpu_only.contains("rss "),
+            "replaced by a one-line rss summary: {cpu_only:?}"
+        );
+
+        // SheepPaneSparklines: 99 columns, 1a's own pair on one row.
+        let sparklines = render_text(&scene(Scene::SheepPaneSparklines).1);
+        assert!(
+            !sparklines.contains("\u{2588}\u{2588} CPU")
+                && !sparklines.contains("\u{2588}\u{2588} MEM"),
+            "both charts are gone: {sparklines:?}"
+        );
+        assert!(
+            sparklines.contains("CPU 20s") && sparklines.contains("MEM/CEIL"),
+            "1a's own pair draws instead: {sparklines:?}"
+        );
+
+        // SheepPaneShort: 160x25, the memory chart gone, the CPU chart and
+        // the config column still up.
+        let short_pane = render_text(&scene(Scene::SheepPaneShort).1);
+        assert!(
+            short_pane.contains("\u{2588}\u{2588} CPU"),
+            "the CPU chart still draws: {short_pane:?}"
+        );
+        assert!(
+            !short_pane.contains("\u{2588}\u{2588} MEM"),
+            "the memory chart is gone under 26 rows: {short_pane:?}"
+        );
+        assert!(
+            short_pane.contains("\u{2588}\u{2588} CONFIG & ENV"),
+            "the config column, which gives ground last, is still up: {short_pane:?}"
+        );
     }
 
     /// Two grouped apps, four sheep, six visible rows: a `0..=flock_len()`
@@ -2693,7 +2887,11 @@ mod tests {
             Scene::SettingsDogs => Some(Scene::SettingsNarrow),
             Scene::SettingsNarrow => Some(Scene::SettingsShort),
             Scene::SettingsShort => Some(Scene::Bleats),
-            Scene::Bleats => None,
+            Scene::Bleats => Some(Scene::SheepPane),
+            Scene::SheepPane => Some(Scene::SheepPaneCpuOnly),
+            Scene::SheepPaneCpuOnly => Some(Scene::SheepPaneSparklines),
+            Scene::SheepPaneSparklines => Some(Scene::SheepPaneShort),
+            Scene::SheepPaneShort => None,
         }
     }
 

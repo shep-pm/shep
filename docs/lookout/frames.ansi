@@ -7,9 +7,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all thirty-seven scenes through the same coloured
+frames.ansi renders all forty-one scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same thirty-seven scenes through the flattened NO_COLOR palette
+renders the same forty-one scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -1096,3 +1096,192 @@ The full-screen bleats pane, pinned to api, with a stream, a minimum level and a
                                                                                                     [0m
                                                                                                     [0m
 [0m[38;5;221m[48;5;235mesc back   j/k line   ctrl-d/u page   G end   / search   n/N match   f follow   w wrap …[0m[38;5;245m[48;5;235m █ following[0m
+
+
+=== sheep_pane  (160x48) ===
+The sheep pane on web, at its design size: 160 = 8 gutter + 140 body + 12 margin for each chart, and 160 = 76 config + 1 divider + 83 feed across the row below them. Both charts draw their full body, the config and env column lists web's own fields, and the embedded feed carries its own lines, all on one screen. web's cpu_ms counter is differenced across several two-second polls, rising by varying deltas, so both charts draw a shape rather than a single repeated bar.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                    1 in the flock[0m
+[0m[7m[38;5;29m ██ SHEEP 20[0m  web   [0m[38;5;29monline[0m   pid 48500   restarts 0   uptime 1h 55m   cpu 0.0%   mem 30.0M   fold edge                                                          [0m
+[0m[38;5;245m██ CPU   collecting · 0m10s of 4m40s[0m                                                                                                                            [0m
+    50%                                                                                                                                                         [0m
+      |                                                                                                                                                         [0m
+    38%                                                                                                                                          ▄              [0m
+      |                                                                                                                                          █              [0m
+    25%                                                                                                                                        █ █              [0m
+      |                                                                                                                                        ████             [0m
+    12%                                                                                                                                        ████             [0m
+      0                                                                                                                                        ████             [0m
+[0m[38;5;245m██ MEM   rss   same window   ·   ceiling 64.0M[0m                                                                                                                  [0m
+  95.4M                                                                                                                                                         [0m
+[0m[38;5;221m  76.3M ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ ceiling[0m    [0m
+  57.2M                                                                                                                                                         [0m
+  38.1M                                                                                                                                         ▄█▄▄            [0m
+      0                                                                                                                                       ▄█████            [0m
+[0m[38;5;245m        ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────now[0m            [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+[0m[38;5;245m██ CONFIG & ENV   e edit[0m                                                    [0m[38;5;245m│[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;245mout then err · / narrow                                                 [0m
+                                                                            [0m[38;5;245m│out  [0mlistening on 0.0.0.0:8080                                                     [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────│out  [0mGET /healthz 200 3ms                                                          [0m
+[0m[38;5;245mprocess[0m                                                                     [0m[38;5;245m│out  [0mGET /v1/orders 200 44ms                                                       [0m
+[0m[38;5;245mcwd                       [0m  [0m[38;5;245m(unset)                                         │out  [0mPOST /v1/orders 201 88ms                                                      [0m
+[0m[38;5;245mdepends_on                [0m  [0m[38;5;245m(default)                                       │out  [0mGET /v1/orders/8821 200 9ms                                                   [0m
+[0m[38;5;245mfold                      [0m  [0m[38;5;245m(unset)                                         │out  [0mconnection pool: 14/50 in use                                                 [0m
+[0m[38;5;245mgroup                     [0m  [0m[38;5;245m(unset)                                         │[0m                                                                                   [0m
+[0m[38;5;245minstances                 [0m  3                                               [0m[38;5;245m│[0m                                                                                   [0m
+[0m[38;5;245minterpreter               [0m  [0m[38;5;245m(unset)                                         │[0m                                                                                   [0m
+[0m[38;5;245mname                      [0m  web                                             [0m[38;5;245m│[0m                                                                                   [0m
+[0m[38;5;245mreuse_port                [0m  [0m[38;5;245m(default)                                       │[0m                                                                                   [0m
+[0m[38;5;245mscript                    [0m  ./srv                                           [0m[38;5;245m│[0m                                                                                   [0m
+[0m[38;5;245muser                      [0m  [0m[38;5;245m(unset)                                         │[0m                                                                                   [0m
+                                                                            [0m[38;5;245m│[0m                                                                                   [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────│[0m                                                                                   [0m
+[0m[38;5;245mlogging[0m                                                                     [0m[38;5;245m│[0m                                                                                   [0m
+[0m[38;5;245merr_file                  [0m  [0m[38;5;245m(unset)                                         │[0m                                                                                   [0m
+[0m[38;5;245mmerge_logs                [0m  [0m[38;5;245m(default)                                       │[0m                                                                                   [0m
+[0m[38;5;245mout_file                  [0m  [0m[38;5;245m(unset)                                         │[0m                                                                                   [0m
+                                                                            [0m[38;5;245m│[0m                                                                                   [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────│[0m                                                                                   [0m
+[0m[38;5;245minputs[0m                                                                      [0m[38;5;245m│[0m                                                                                   [0m
+[0m[38;5;245margs                      [0m  ["--port","8080"]                               [0m[38;5;245m│[0m                                                                                   [0m
+[0m[38;5;245mchannel                   [0m  [0m[38;5;245m(default)                                       │[0m                                                                                   [0m
+[0m[38;5;245menvironment               [0m  [0m[38;5;245m(unset)                                         │[0m                                                                                   [0m
+[0m[38;5;245mstdin                     [0m  [0m[38;5;245m(default)                                       │[0m                                                                                   [0m
+[0m[38;5;221m[48;5;235mesc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                                     [0m[38;5;245m[48;5;235m control enabled[0m
+
+
+=== sheep_pane_cpu_only  (139x48) ===
+139 columns: one cell under the 140 the full two-chart body needs. The CPU chart still draws at its own body width, but the memory chart is gone, replaced by a one-line `rss` summary and a ten-cell gauge: memory still has a gauge to fall back on, and the CPU chart is the more diagnostic of the two, so it is the one that stays.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                               1 in the flock[0m
+[0m[7m[38;5;29m ██ SHEEP 20[0m  web   [0m[38;5;29monline[0m   pid 48500   restarts 0   uptime 1h 55m   cpu 0.0%   mem 30.0M   fold edge                                     [0m
+[0m[38;5;245m██ CPU   collecting · 0m10s of 3m58s[0m                                                                                                       [0m
+    50%                                                                                                                                    [0m
+      |                                                                                                                                    [0m
+    38%                                                                                                                     ▄              [0m
+      |                                                                                                                     █              [0m
+    25%                                                                                                                   █ █              [0m
+      |                                                                                                                   ████             [0m
+    12%                                                                                                                   ████             [0m
+      0                                                                                                                   ████             [0m
+rss 30.0M of 64.0M █████░░░░░                                                                                                              [0m
+                                                                                                                                           [0m
+                                                                                                                                           [0m
+                                                                                                                                           [0m
+                                                                                                                                           [0m
+                                                                                                                                           [0m
+[0m[38;5;245m        ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────now[0m            [0m
+                                                                                                                                           [0m
+                                                                                                                                           [0m
+[0m[38;5;245m██ CONFIG & ENV   e edit[0m                                                                                                                   [0m
+                                                                                                                                           [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────[0m                                                               [0m
+[0m[38;5;245mprocess[0m                                                                                                                                    [0m
+[0m[38;5;245mcwd                       [0m  [0m[38;5;245m(unset)                                         [0m                                                               [0m
+[0m[38;5;245mdepends_on                [0m  [0m[38;5;245m(default)                                       [0m                                                               [0m
+[0m[38;5;245mfold                      [0m  [0m[38;5;245m(unset)                                         [0m                                                               [0m
+[0m[38;5;245mgroup                     [0m  [0m[38;5;245m(unset)                                         [0m                                                               [0m
+[0m[38;5;245minstances                 [0m  3                                                                                                              [0m
+[0m[38;5;245minterpreter               [0m  [0m[38;5;245m(unset)                                         [0m                                                               [0m
+[0m[38;5;245mname                      [0m  web                                                                                                            [0m
+[0m[38;5;245mreuse_port                [0m  [0m[38;5;245m(default)                                       [0m                                                               [0m
+[0m[38;5;245mscript                    [0m  ./srv                                                                                                          [0m
+[0m[38;5;245muser                      [0m  [0m[38;5;245m(unset)                                         [0m                                                               [0m
+                                                                                                                                           [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────[0m                                                               [0m
+[0m[38;5;245mlogging[0m                                                                                                                                    [0m
+[0m[38;5;245merr_file                  [0m  [0m[38;5;245m(unset)                                         [0m                                                               [0m
+[0m[38;5;245mmerge_logs                [0m  [0m[38;5;245m(default)                                       [0m                                                               [0m
+[0m[38;5;245mout_file                  [0m  [0m[38;5;245m(unset)                                         [0m                                                               [0m
+                                                                                                                                           [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────[0m                                                               [0m
+[0m[38;5;245minputs[0m                                                                                                                                     [0m
+[0m[38;5;245margs                      [0m  ["--port","8080"]                                                                                              [0m
+[0m[38;5;245mchannel                   [0m  [0m[38;5;245m(default)                                       [0m                                                               [0m
+[0m[38;5;245menvironment               [0m  [0m[38;5;245m(unset)                                         [0m                                                               [0m
+[0m[38;5;245mstdin                     [0m  [0m[38;5;245m(default)                                       [0m                                                               [0m
+[0m[38;5;221m[48;5;235mesc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                [0m[38;5;245m[48;5;235m control enabled[0m
+
+
+=== sheep_pane_sparklines  (99x48) ===
+99 columns: one cell under the 100 the CPU-only tier needs. Both charts are gone, and the pane falls back to 1a's own pair: the `CPU 20s` sparkline and the `MEM/CEIL` gauge, on one row.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                       1 in the flock[0m
+[0m[7m[38;5;29m ██ SHEEP 20[0m  web   [0m[38;5;29monline[0m   pid 48500   restarts 0   uptime 1h 55m   cpu 0.0%   mem 30.0M   fold …[0m
+[0m[38;5;245mCPU 20s        ▆▅█▅▁      MEM/CEIL   █████░░░░░[0m                                                    [0m
+                                                                                                   [0m
+                                                                                                   [0m
+                                                                                                   [0m
+                                                                                                   [0m
+                                                                                                   [0m
+                                                                                                   [0m
+                                                                                                   [0m
+                                                                                                   [0m
+                                                                                                   [0m
+                                                                                                   [0m
+                                                                                                   [0m
+                                                                                                   [0m
+                                                                                                   [0m
+                                                                                                   [0m
+                                                                                                   [0m
+                                                                                                   [0m
+                                                                                                   [0m
+[0m[38;5;245m██ CONFIG & ENV   e edit[0m                                                                           [0m
+                                                                                                   [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────[0m                       [0m
+[0m[38;5;245mprocess[0m                                                                                            [0m
+[0m[38;5;245mcwd                       [0m  [0m[38;5;245m(unset)                                         [0m                       [0m
+[0m[38;5;245mdepends_on                [0m  [0m[38;5;245m(default)                                       [0m                       [0m
+[0m[38;5;245mfold                      [0m  [0m[38;5;245m(unset)                                         [0m                       [0m
+[0m[38;5;245mgroup                     [0m  [0m[38;5;245m(unset)                                         [0m                       [0m
+[0m[38;5;245minstances                 [0m  3                                                                      [0m
+[0m[38;5;245minterpreter               [0m  [0m[38;5;245m(unset)                                         [0m                       [0m
+[0m[38;5;245mname                      [0m  web                                                                    [0m
+[0m[38;5;245mreuse_port                [0m  [0m[38;5;245m(default)                                       [0m                       [0m
+[0m[38;5;245mscript                    [0m  ./srv                                                                  [0m
+[0m[38;5;245muser                      [0m  [0m[38;5;245m(unset)                                         [0m                       [0m
+                                                                                                   [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────[0m                       [0m
+[0m[38;5;245mlogging[0m                                                                                            [0m
+[0m[38;5;245merr_file                  [0m  [0m[38;5;245m(unset)                                         [0m                       [0m
+[0m[38;5;245mmerge_logs                [0m  [0m[38;5;245m(default)                                       [0m                       [0m
+[0m[38;5;245mout_file                  [0m  [0m[38;5;245m(unset)                                         [0m                       [0m
+                                                                                                   [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────[0m                       [0m
+[0m[38;5;245minputs[0m                                                                                             [0m
+[0m[38;5;245margs                      [0m  ["--port","8080"]                                                      [0m
+[0m[38;5;245mchannel                   [0m  [0m[38;5;245m(default)                                       [0m                       [0m
+[0m[38;5;245menvironment               [0m  [0m[38;5;245m(unset)                                         [0m                       [0m
+[0m[38;5;245mstdin                     [0m  [0m[38;5;245m(default)                                       [0m                       [0m
+[0m[38;5;221m[48;5;235mesc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log  …[0m[38;5;245m[48;5;235m control enabled[0m
+
+
+=== sheep_pane_short  (160x25) ===
+160 columns, 25 rows: the charts hold their design width but not their design height. Under 26 rows the memory chart goes; the CPU chart and the config and env column, which give ground last, are still up.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                    1 in the flock[0m
+[0m[7m[38;5;29m ██ SHEEP 20[0m  web   [0m[38;5;29monline[0m   pid 48500   restarts 0   uptime 1h 55m   cpu 0.0%   mem 30.0M   fold edge                                                          [0m
+[0m[38;5;245m██ CPU   collecting · 0m10s of 4m40s[0m                                                                                                                            [0m
+    50%                                                                                                                                                         [0m
+      |                                                                                                                                                         [0m
+    38%                                                                                                                                          ▄              [0m
+      |                                                                                                                                          █              [0m
+    25%                                                                                                                                        █ █              [0m
+      |                                                                                                                                        ████             [0m
+    12%                                                                                                                                        ████             [0m
+      0                                                                                                                                        ████             [0m
+rss 30.0M of 64.0M █████░░░░░                                                                                                                                   [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+[0m[38;5;245m        ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────now[0m            [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+[0m[38;5;245m██ CONFIG & ENV   e edit[0m                                                    [0m[38;5;245m│[0m[7m[38;5;221m ██ BLEATS[0m [0m[38;5;245mout then err · / narrow                                                 [0m
+                                                                            [0m[38;5;245m│out  [0mlistening on 0.0.0.0:8080                                                     [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────│out  [0mGET /healthz 200 3ms                                                          [0m
+[0m[38;5;245mprocess[0m                                                                     [0m[38;5;245m│out  [0mGET /v1/orders 200 44ms                                                       [0m
+[0m[38;5;221m[48;5;235mesc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                                     [0m[38;5;245m[48;5;235m control enabled[0m

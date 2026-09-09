@@ -21,7 +21,7 @@ use super::super::pane_sheep::{SheepPane, scale_top, window};
 use super::super::tail::{Stream, Tail, TailLine};
 use super::super::theme::Palette;
 use super::detail::chip_text;
-use super::flock::fit;
+use super::flock::{self, fit};
 use super::{cell, detail};
 
 /// Left gutter width, in cells, for both charts: room for a label like
@@ -51,12 +51,21 @@ const MEM_ROWS: usize = 5;
 /// The shared x axis's row, relative to `area`, `now` ending on its last
 /// column.
 const AXIS_ROW: u16 = 16;
-/// The shortest `area` the charts will draw into: the identity band's own
-/// row plus rows `CPU_HEADER_ROW` through `AXIS_ROW`. Below it, the pane
-/// still opens; it just stays the identity band and blank rows, the way it
-/// already did before this task. Task 11 replaces this all-or-nothing gate
-/// with the responsive ladder's own row tiers.
-const MIN_HEIGHT_FOR_CHARTS: u16 = AXIS_ROW + 1;
+/// The shortest `area.height` any chart tier draws into at all: decision
+/// 8's row ladder drops both charts under 20 rows, and one past
+/// [`COLUMN_HEADER_ROW`] is that same floor stated in terms of the row the
+/// config column would otherwise sit on. Below it the pane still opens; the
+/// charts just stay blank and [`column_top_row`] moves the config and feed
+/// columns up to reclaim the rows the charts would have used, rather than
+/// the all-or-nothing gate this constant named before this task.
+const MIN_HEIGHT_FOR_CHARTS: u16 = COLUMN_HEADER_ROW + 1;
+
+/// `area.height` past which the full two-chart body has room for the
+/// memory chart's own five rows on top of the CPU chart's own eight.
+/// Below it, [`chart_tier`] downgrades [`ChartTier::Full`] to
+/// [`ChartTier::CpuOnly`] regardless of width, per decision 8's "under 26
+/// rows the memory chart goes."
+const FULL_TIER_MIN_HEIGHT: u16 = 26;
 
 /// The config/env column's own header row, relative to `area`.
 const COLUMN_HEADER_ROW: u16 = 19;
@@ -77,8 +86,27 @@ const COLUMN_WIDTH: u16 = 76;
 /// name is the same schema's, so shrinking this cell would truncate it
 /// regardless of how much room the rest of the row has.
 const COLUMN_NAME_W: u16 = 26;
-/// The shortest `area` the column draws into.
+/// The design-size `area.height` every full-design fixture in this
+/// module's own tests builds its `area` at. No longer read by [`draw`]
+/// itself: [`column_top_row`] decides whether and where the column draws
+/// now, so this is test-only.
+#[cfg(test)]
 const MIN_HEIGHT_FOR_COLUMN: u16 = COLUMN_LAST_ROW + 1;
+
+/// Where the config/env column and the feed start, in rows relative to
+/// `area`: [`COLUMN_HEADER_ROW`] whenever `height` still reaches it, or
+/// right below the identity band once it drops under
+/// [`MIN_HEIGHT_FOR_CHARTS`] and the charts stop drawing at all. The config
+/// and feed columns are what the pane is for, so they give ground last,
+/// reclaiming the rows the charts would have used rather than staying
+/// pinned to a row a short terminal can never reach.
+fn column_top_row(height: u16) -> u16 {
+    if height > COLUMN_HEADER_ROW {
+        COLUMN_HEADER_ROW
+    } else {
+        1
+    }
+}
 
 /// The divider column between the config/env column and the feed, relative
 /// to `area`: one cell past [`COLUMN_WIDTH`], drawn its own full height
@@ -89,14 +117,6 @@ const FEED_X: u16 = DIVIDER_COL + 1;
 /// The feed's own width in cells: `160 - 76 - 1`, the same arithmetic
 /// [`COLUMN_WIDTH`]'s own doc gives for the divider.
 const FEED_WIDTH: u16 = 83;
-/// The feed's own header row, relative to `area`: the same row the config
-/// column's header sits on, so the two chips line up.
-const FEED_HEADER_ROW: u16 = COLUMN_HEADER_ROW;
-/// The feed's first body row, running through [`COLUMN_LAST_ROW`]
-/// inclusive, the same rows [`COLUMN_BODY_ROWS`] counts for the column
-/// beside it. The feed keeps no cursor of its own, so nothing needs its own
-/// named row count the way that constant is for the scrollable column.
-const FEED_FIRST_ROW: u16 = COLUMN_FIRST_ROW;
 
 /// The eight Flockfile groups' fields, plus the env keys, as the column
 /// scrolls through them: one entry per rendered row, and every group label
@@ -284,27 +304,25 @@ fn column_header_line(pane: &SheepPane, palette: Palette) -> Line<'static> {
     Line::from(Span::styled(text, palette.muted()))
 }
 
-/// Rows [`COLUMN_HEADER_ROW`] to [`COLUMN_LAST_ROW`]: the header, then as
-/// much of [`column_body`] as [`SheepPane::view`]'s own offset scrolls
-/// into [`COLUMN_BODY_ROWS`].
+/// `top` to [`COLUMN_BODY_ROWS`] rows below it: the header, then as much of
+/// [`column_body`] as [`SheepPane::view`]'s own offset scrolls into.
+///
+/// `top` is [`column_top_row`]'s answer, not always [`COLUMN_HEADER_ROW`]:
+/// a short terminal moves the whole column up rather than truncating it
+/// from a fixed row that terminal can never reach.
 ///
 /// Reads [`SheepPane::config`], never [`App::selected`]: the same rule
 /// [`draw`]'s own identity band and [`draw_charts`] already follow, for
 /// the reason both of their own doc comments give.
-fn draw_column(pane: &SheepPane, area: Rect, buffer: &mut Buffer, palette: Palette) {
-    write_column_row(
-        buffer,
-        area,
-        COLUMN_HEADER_ROW,
-        &column_header_line(pane, palette),
-    );
+fn draw_column(pane: &SheepPane, top: u16, area: Rect, buffer: &mut Buffer, palette: Palette) {
+    write_column_row(buffer, area, top, &column_header_line(pane, palette));
     let body = match pane.config() {
         Some(view) => column_body_lines(view, palette),
         None => vec![waiting_line(palette)],
     };
     let offset = pane.view().offset();
     for (i, line) in body.iter().skip(offset).take(COLUMN_BODY_ROWS).enumerate() {
-        write_column_row(buffer, area, COLUMN_FIRST_ROW + i as u16, line);
+        write_column_row(buffer, area, top + 1 + i as u16, line);
     }
 }
 
@@ -319,10 +337,12 @@ fn write_column_row(buffer: &mut Buffer, area: Rect, row: u16, line: &Line<'stat
 }
 
 /// The `\u{2502}` rule between the config/env column and the feed, one cell
-/// wide, for every row the two sides draw into.
-fn draw_divider(area: Rect, buffer: &mut Buffer, palette: Palette) {
+/// wide, for every row the two sides draw into, from `top` (the same row
+/// [`draw_column`] and [`draw_feed`] were handed) through
+/// [`COLUMN_BODY_ROWS`] below it.
+fn draw_divider(top: u16, area: Rect, buffer: &mut Buffer, palette: Palette) {
     let rule = Line::from(Span::styled("\u{2502}", palette.muted()));
-    for row in COLUMN_HEADER_ROW..=COLUMN_LAST_ROW {
+    for row in top..=(top + COLUMN_BODY_ROWS as u16) {
         if row >= area.height {
             break;
         }
@@ -330,8 +350,9 @@ fn draw_divider(area: Rect, buffer: &mut Buffer, palette: Palette) {
     }
 }
 
-/// Rows [`FEED_HEADER_ROW`] to [`COLUMN_LAST_ROW`], right of the divider:
-/// the header, then the window's newest surviving lines that fit, oldest at
+/// `top` (the same row [`draw_column`] and [`draw_divider`] were handed)
+/// through [`COLUMN_BODY_ROWS`] rows below it, right of the divider: the
+/// header, then the window's newest surviving lines that fit, oldest at
 /// the top.
 ///
 /// Reads [`SheepPane::feed_sheep`]'s tail through [`App::feed`], never
@@ -343,25 +364,22 @@ fn draw_divider(area: Rect, buffer: &mut Buffer, palette: Palette) {
 /// No scrolling: unlike [`super::bleats_full::draw`], this column has no
 /// cursor of its own to page through, so a line past what fits is only
 /// counted by the header's own `N earlier` clause, never drawn.
-fn draw_feed(app: &App, pane: &SheepPane, area: Rect, buffer: &mut Buffer, palette: Palette) {
+fn draw_feed(
+    app: &App,
+    pane: &SheepPane,
+    top: u16,
+    area: Rect,
+    buffer: &mut Buffer,
+    palette: Palette,
+) {
     let feed = pane.feed();
     let tail = app.feed();
-    write_feed_row(
-        buffer,
-        area,
-        FEED_HEADER_ROW,
-        &feed_header_line(feed, tail, palette),
-    );
+    write_feed_row(buffer, area, top, &feed_header_line(feed, tail, palette));
 
     let survivors = feed.visible(&tail.lines);
     let shown = survivors.len().saturating_sub(COLUMN_BODY_ROWS);
     for (i, line) in survivors.iter().skip(shown).enumerate() {
-        write_feed_row(
-            buffer,
-            area,
-            FEED_FIRST_ROW + i as u16,
-            &feed_line(line, palette),
-        );
+        write_feed_row(buffer, area, top + 1 + i as u16, &feed_line(line, palette));
     }
 }
 
@@ -502,20 +520,33 @@ pub fn draw(app: &App, pane: &SheepPane, area: Rect, buffer: &mut Buffer) {
     let line = Line::from(spans);
     buffer.set_line(area.x, area.y, &line, area.width);
 
-    // Rows `CPU_HEADER_ROW` to `AXIS_ROW`: the two charts, on the pinned
-    // sheep only. A sheep that has left the flock has no history left
-    // either (`App::cpu_history`'s own doc says `record_samples` drops it),
-    // so there is nothing to chart once `sheep_row` is `None`.
-    if let Some(row) = sheep_row
-        && usize::from(area.width) >= GUTTER + MARGIN
-        && area.height >= MIN_HEIGHT_FOR_CHARTS
-    {
-        draw_charts(app, row.info.id, row.info.max_memory, area, buffer, palette);
+    // Rows `CPU_HEADER_ROW` to `AXIS_ROW`, however much of them the current
+    // tier draws, on the pinned sheep only. A sheep that has left the flock
+    // has no history left either (`App::cpu_history`'s own doc says
+    // `record_samples` drops it), so there is nothing to chart once
+    // `sheep_row` is `None`.
+    if let Some(row) = sheep_row {
+        match chart_tier(area.width, area.height) {
+            ChartTier::Full => {
+                draw_charts(app, row.info.id, row.info.max_memory, area, buffer, palette);
+            }
+            ChartTier::CpuOnly => {
+                draw_cpu_only(app, row.info.id, row.info.max_memory, area, buffer, palette);
+            }
+            ChartTier::Sparkline => {
+                draw_sparkline_row(app, &row.info, area, buffer, palette);
+            }
+            ChartTier::None => {}
+        }
     }
-    // Rows `COLUMN_HEADER_ROW` to `COLUMN_LAST_ROW`, left `COLUMN_WIDTH`
-    // cells: the config and env column.
-    if area.height >= MIN_HEIGHT_FOR_COLUMN {
-        draw_column(pane, area, buffer, palette);
+    // The config and env column, starting at `top`: `COLUMN_HEADER_ROW`
+    // whenever the terminal still reaches it, or right below the identity
+    // band once the charts above have stopped drawing entirely. It gives
+    // ground last: nothing about its own gate depends on width, since
+    // `write_column_row` already clips every row to `COLUMN_WIDTH`.
+    let top = column_top_row(area.height);
+    if area.height > top {
+        draw_column(pane, top, area, buffer, palette);
     }
     // The same rows, right of the divider: the bleats feed, embedded rather
     // than a strip of its own. Gated on `area.width` reaching past
@@ -524,11 +555,48 @@ pub fn draw(app: &App, pane: &SheepPane, area: Rect, buffer: &mut Buffer) {
     // `view::bleats_full`'s own title states for the full-screen pane, once
     // `App::feed_row` next answers `None` and the tail this reads goes
     // empty.
-    if area.height >= MIN_HEIGHT_FOR_COLUMN
-        && usize::from(area.width) >= usize::from(FEED_X + FEED_WIDTH)
-    {
-        draw_divider(area, buffer, palette);
-        draw_feed(app, pane, area, buffer, palette);
+    if area.height > top && usize::from(area.width) >= usize::from(FEED_X + FEED_WIDTH) {
+        draw_divider(top, area, buffer, palette);
+        draw_feed(app, pane, top, area, buffer, palette);
+    }
+}
+
+/// Which of the sheep pane's own charts fit `width` and `height`, decision
+/// 8's own ladder: both charts at 140 columns and [`FULL_TIER_MIN_HEIGHT`]
+/// rows, the CPU chart alone with a one-line memory summary from 100
+/// columns, a single sparkline-and-gauge row below that (down to
+/// [`flock::MIN_WIDTH`], the whole app's own floor, refused before this
+/// pane ever opens), and nothing at all under [`MIN_HEIGHT_FOR_CHARTS`]
+/// rows regardless of width.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChartTier {
+    /// Both charts, full height: [`draw_charts`].
+    Full,
+    /// The CPU chart and a one-line memory summary: [`draw_cpu_only`].
+    CpuOnly,
+    /// 1a's own CPU sparkline and memory gauge, one row: [`draw_sparkline_row`].
+    Sparkline,
+    /// No chart content at all; the row belongs to the config column instead.
+    None,
+}
+
+fn chart_tier(width: u16, height: u16) -> ChartTier {
+    if height < MIN_HEIGHT_FOR_CHARTS {
+        return ChartTier::None;
+    }
+    let by_width = if width >= 140 {
+        ChartTier::Full
+    } else if width >= 100 {
+        ChartTier::CpuOnly
+    } else if width >= flock::MIN_WIDTH {
+        ChartTier::Sparkline
+    } else {
+        ChartTier::None
+    };
+    if by_width == ChartTier::Full && height < FULL_TIER_MIN_HEIGHT {
+        ChartTier::CpuOnly
+    } else {
+        by_width
     }
 }
 
@@ -597,6 +665,100 @@ fn draw_charts(
         area,
         AXIS_ROW,
         &axis_row(body_cells),
+        palette.muted(),
+    );
+}
+
+/// [`ChartTier::CpuOnly`]'s own rows: the CPU chart, unchanged, and in
+/// [`MEM_HEADER_ROW`]'s own slot, [`mem_line_text`]'s single line in place
+/// of the memory chart's header and five rows — memory still has a gauge
+/// to fall back on; the CPU chart is the more diagnostic of the two, so it
+/// is the one that stays.
+fn draw_cpu_only(
+    app: &App,
+    sheep_id: u32,
+    max_memory: Option<u64>,
+    area: Rect,
+    buffer: &mut Buffer,
+    palette: Palette,
+) {
+    let body_cells = chart_body_cells(area.width);
+    let cpu_history = app.cpu_history(sheep_id);
+    let rss_history = app.rss_history(sheep_id);
+
+    let cpu_header = cpu_header_text(cpu_history.len(), body_cells);
+    write_row(
+        buffer,
+        area,
+        CPU_HEADER_ROW,
+        &format!("\u{2588}\u{2588} CPU   {cpu_header}"),
+        palette.muted(),
+    );
+    for (i, row_text) in cpu_chart_rows(cpu_history, body_cells)
+        .into_iter()
+        .enumerate()
+    {
+        write_row(
+            buffer,
+            area,
+            CPU_CHART_ROW + i as u16,
+            &row_text,
+            Style::default(),
+        );
+    }
+
+    let current_rss = rss_history.last().copied().unwrap_or(0);
+    write_row(
+        buffer,
+        area,
+        MEM_HEADER_ROW,
+        &mem_line_text(current_rss, max_memory),
+        Style::default(),
+    );
+    write_row(
+        buffer,
+        area,
+        AXIS_ROW,
+        &axis_row(body_cells),
+        palette.muted(),
+    );
+}
+
+/// [`ChartTier::CpuOnly`]'s own memory line: `rss` against its ceiling
+/// when a ceiling exists, per the arithmetic in decision 8:
+/// `rss 48.3M of 52M` plus a 10-cell gauge. With no ceiling set, the
+/// gauge has nothing to fill against, the same no-limit case
+/// [`cell::gauge`]'s own doc already covers.
+fn mem_line_text(current_rss: u64, max_memory: Option<u64>) -> String {
+    let gauge = cell::gauge(current_rss, max_memory, 10);
+    match max_memory {
+        Some(limit) => format!(
+            "rss {} of {} {gauge}",
+            crate::output::human_bytes(current_rss),
+            crate::output::human_bytes(limit),
+        ),
+        None => format!("rss {} {gauge}", crate::output::human_bytes(current_rss)),
+    }
+}
+
+/// [`ChartTier::Sparkline`]'s own row: 1a's own `CPU 20s` sparkline and
+/// `MEM/CEIL` gauge, the pair [`super::flock`]'s own flat-view columns
+/// already draw, on the one row this tier has left once both charts have
+/// given up their own sixteen.
+fn draw_sparkline_row(
+    app: &App,
+    info: &shep_core::protocol::ProcessInfo,
+    area: Rect,
+    buffer: &mut Buffer,
+    palette: Palette,
+) {
+    let spark = cell::sparkline(app.cpu_history(info.id), 10, app.cpu_ceiling());
+    let gauge = cell::gauge(info.memory_bytes.unwrap_or(0), info.max_memory, 10);
+    write_row(
+        buffer,
+        area,
+        CPU_HEADER_ROW,
+        &format!("CPU 20s   {spark}      MEM/CEIL   {gauge}"),
         palette.muted(),
     );
 }
@@ -1587,5 +1749,110 @@ mod tests {
                 "row {row} has no divider"
             );
         }
+    }
+
+    /// The arithmetic, asserted rather than trusted:
+    ///     160 = 8 gutter + 140 body + 12 margin
+    ///     body = min(width - 20, HISTORY)
+    /// A scene one cell short of its own column set silently drops the
+    /// thing it exists to show, which is why this is a test and not a
+    /// comment.
+    #[test]
+    fn the_chart_body_is_the_width_less_its_gutter_and_margin() {
+        assert_eq!(chart_body_cells(160), 140);
+        assert_eq!(chart_body_cells(140), 120);
+    }
+
+    /// Past the design target the buffer runs out before the columns do, so
+    /// the margin grows rather than leaving cells that can never fill.
+    #[test]
+    fn a_wider_terminal_grows_the_margin_rather_than_the_body() {
+        assert_eq!(chart_body_cells(200), 140);
+    }
+
+    /// A sheep pane over several real polls, cpu and rss both rising: task
+    /// 4's counter differencing needs a poll to differ against, so a scene
+    /// built from a single snapshot would demonstrate nothing while looking
+    /// fine, the same trap `Scene::CfgDrift` was rewritten to avoid.
+    fn render_at(width: u16, height: u16) -> String {
+        let t0 = std::time::Instant::now();
+        let mut app = App::new(
+            fixtures::plain(),
+            Control::ReadOnly,
+            "/home/ada/.shep".to_string(),
+            t0,
+        );
+        app.update(Msg::Snapshot {
+            rows: vec![
+                ProcessInfo::builder(7, "web", ProcStatus::Online)
+                    .cpu_ms(Some(0))
+                    .memory_bytes(Some(10 << 20))
+                    .max_memory(Some(64 << 20))
+                    .build(),
+            ],
+            at: t0,
+        });
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        for i in 1..6u64 {
+            let at = t0 + Duration::from_secs(2 * i);
+            app.update(Msg::Snapshot {
+                rows: vec![
+                    ProcessInfo::builder(7, "web", ProcStatus::Online)
+                        .cpu_ms(Some(i * 400))
+                        .memory_bytes(Some((10 + i * 4) << 20))
+                        .max_memory(Some(64 << 20))
+                        .build(),
+                ],
+                at,
+            });
+        }
+        let Body::Sheep(pane) = app.body() else {
+            panic!("setup: the pane opened on web")
+        };
+        let area = Rect::new(0, 0, width, height);
+        let mut buffer = Buffer::empty(area);
+        draw(&app, pane, area, &mut buffer);
+        render_text(&buffer)
+    }
+
+    /// Memory goes first and CPU stays: a CPU chart is the more diagnostic
+    /// of the two, and memory still has a gauge to fall back on.
+    #[test]
+    fn below_a_hundred_and_forty_columns_only_the_cpu_chart_draws() {
+        let rendered = render_at(139, 48);
+        assert!(
+            rendered.contains("\u{2588}\u{2588} CPU"),
+            "got {rendered:?}"
+        );
+        assert!(rendered.contains("rss "), "got {rendered:?}");
+        assert!(
+            !rendered.contains("\u{2588}\u{2588} MEM"),
+            "got {rendered:?}"
+        );
+    }
+
+    /// Below 100 both go and the pane falls back to 1a's pair.
+    #[test]
+    fn below_a_hundred_columns_both_charts_become_the_sparkline_pair() {
+        let rendered = render_at(99, 48);
+        assert!(
+            !rendered.contains("\u{2588}\u{2588} CPU"),
+            "got {rendered:?}"
+        );
+        assert!(
+            !rendered.contains("\u{2588}\u{2588} MEM"),
+            "got {rendered:?}"
+        );
+        assert!(rendered.contains("CPU 20s"), "got {rendered:?}");
+    }
+
+    /// Rows too: the charts hold 2 to 17, and the config and feed columns
+    /// are what the pane is for, so they give ground last.
+    #[test]
+    fn a_short_terminal_drops_the_charts_before_the_columns() {
+        assert!(!render_at(160, 25).contains("\u{2588}\u{2588} MEM"));
+        assert!(render_at(160, 25).contains("\u{2588}\u{2588} CONFIG & ENV"));
+        assert!(!render_at(160, 19).contains("\u{2588}\u{2588} CPU"));
+        assert!(render_at(160, 19).contains("\u{2588}\u{2588} CONFIG & ENV"));
     }
 }

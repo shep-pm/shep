@@ -1,0 +1,29 @@
+---
+source: crates/shep-cli/src/lookout/frames.rs
+expression: render_text(&buffer)
+---
+shep lookout   /home/ada/.shep                                                                                                                    1 in the flock
+ ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 0.0%   mem 30.0M   fold edge                                                          
+██ CPU   collecting · 0m10s of 4m40s                                                                                                                            
+    50%                                                                                                                                                         
+      |                                                                                                                                                         
+    38%                                                                                                                                          ▄              
+      |                                                                                                                                          █              
+    25%                                                                                                                                        █ █              
+      |                                                                                                                                        ████             
+    12%                                                                                                                                        ████             
+      0                                                                                                                                        ████             
+rss 30.0M of 64.0M █████░░░░░                                                                                                                                   
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+        ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────now            
+                                                                                                                                                                
+                                                                                                                                                                
+██ CONFIG & ENV   e edit                                                    │ ██ BLEATS out then err · / narrow                                                 
+                                                                            │out  listening on 0.0.0.0:8080                                                     
+────────────────────────────────────────────────────────────────────────────│out  GET /healthz 200 3ms                                                          
+process                                                                     │out  GET /v1/orders 200 44ms                                                       
+esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                                      control enabled

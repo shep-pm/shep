@@ -7,9 +7,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all thirty-seven scenes through the same coloured
+frames.ansi renders all forty-one scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same thirty-seven scenes through the flattened NO_COLOR palette
+renders the same forty-one scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -1060,3 +1060,188 @@ out  WARN retrying upstream payment gateway after a timeout, backing off 500ms b
                                                                                                     
                                                                                                     
 esc back   j/k line   ctrl-d/u page   G end   / search   n/N match   f follow   w wrap … █ following
+
+=== sheep_pane  (160x48) ===
+The sheep pane on web, at its design size: 160 = 8 gutter + 140 body + 12 margin for each chart, and 160 = 76 config + 1 divider + 83 feed across the row below them. Both charts draw their full body, the config and env column lists web's own fields, and the embedded feed carries its own lines, all on one screen. web's cpu_ms counter is differenced across several two-second polls, rising by varying deltas, so both charts draw a shape rather than a single repeated bar.
+
+shep lookout   /home/ada/.shep                                                                                                                    1 in the flock
+ ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 0.0%   mem 30.0M   fold edge                                                          
+██ CPU   collecting · 0m10s of 4m40s                                                                                                                            
+    50%                                                                                                                                                         
+      |                                                                                                                                                         
+    38%                                                                                                                                          ▄              
+      |                                                                                                                                          █              
+    25%                                                                                                                                        █ █              
+      |                                                                                                                                        ████             
+    12%                                                                                                                                        ████             
+      0                                                                                                                                        ████             
+██ MEM   rss   same window   ·   ceiling 64.0M                                                                                                                  
+  95.4M                                                                                                                                                         
+  76.3M ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ ceiling    
+  57.2M                                                                                                                                                         
+  38.1M                                                                                                                                         ▄█▄▄            
+      0                                                                                                                                       ▄█████            
+        ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────now            
+                                                                                                                                                                
+                                                                                                                                                                
+██ CONFIG & ENV   e edit                                                    │ ██ BLEATS out then err · / narrow                                                 
+                                                                            │out  listening on 0.0.0.0:8080                                                     
+────────────────────────────────────────────────────────────────────────────│out  GET /healthz 200 3ms                                                          
+process                                                                     │out  GET /v1/orders 200 44ms                                                       
+cwd                         (unset)                                         │out  POST /v1/orders 201 88ms                                                      
+depends_on                  (default)                                       │out  GET /v1/orders/8821 200 9ms                                                   
+fold                        (unset)                                         │out  connection pool: 14/50 in use                                                 
+group                       (unset)                                         │                                                                                   
+instances                   3                                               │                                                                                   
+interpreter                 (unset)                                         │                                                                                   
+name                        web                                             │                                                                                   
+reuse_port                  (default)                                       │                                                                                   
+script                      ./srv                                           │                                                                                   
+user                        (unset)                                         │                                                                                   
+                                                                            │                                                                                   
+────────────────────────────────────────────────────────────────────────────│                                                                                   
+logging                                                                     │                                                                                   
+err_file                    (unset)                                         │                                                                                   
+merge_logs                  (default)                                       │                                                                                   
+out_file                    (unset)                                         │                                                                                   
+                                                                            │                                                                                   
+────────────────────────────────────────────────────────────────────────────│                                                                                   
+inputs                                                                      │                                                                                   
+args                        ["--port","8080"]                               │                                                                                   
+channel                     (default)                                       │                                                                                   
+environment                 (unset)                                         │                                                                                   
+stdin                       (default)                                       │                                                                                   
+esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                                      control enabled
+
+=== sheep_pane_cpu_only  (139x48) ===
+139 columns: one cell under the 140 the full two-chart body needs. The CPU chart still draws at its own body width, but the memory chart is gone, replaced by a one-line `rss` summary and a ten-cell gauge: memory still has a gauge to fall back on, and the CPU chart is the more diagnostic of the two, so it is the one that stays.
+
+shep lookout   /home/ada/.shep                                                                                               1 in the flock
+ ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 0.0%   mem 30.0M   fold edge                                     
+██ CPU   collecting · 0m10s of 3m58s                                                                                                       
+    50%                                                                                                                                    
+      |                                                                                                                                    
+    38%                                                                                                                     ▄              
+      |                                                                                                                     █              
+    25%                                                                                                                   █ █              
+      |                                                                                                                   ████             
+    12%                                                                                                                   ████             
+      0                                                                                                                   ████             
+rss 30.0M of 64.0M █████░░░░░                                                                                                              
+                                                                                                                                           
+                                                                                                                                           
+                                                                                                                                           
+                                                                                                                                           
+                                                                                                                                           
+        ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────now            
+                                                                                                                                           
+                                                                                                                                           
+██ CONFIG & ENV   e edit                                                                                                                   
+                                                                                                                                           
+────────────────────────────────────────────────────────────────────────────                                                               
+process                                                                                                                                    
+cwd                         (unset)                                                                                                        
+depends_on                  (default)                                                                                                      
+fold                        (unset)                                                                                                        
+group                       (unset)                                                                                                        
+instances                   3                                                                                                              
+interpreter                 (unset)                                                                                                        
+name                        web                                                                                                            
+reuse_port                  (default)                                                                                                      
+script                      ./srv                                                                                                          
+user                        (unset)                                                                                                        
+                                                                                                                                           
+────────────────────────────────────────────────────────────────────────────                                                               
+logging                                                                                                                                    
+err_file                    (unset)                                                                                                        
+merge_logs                  (default)                                                                                                      
+out_file                    (unset)                                                                                                        
+                                                                                                                                           
+────────────────────────────────────────────────────────────────────────────                                                               
+inputs                                                                                                                                     
+args                        ["--port","8080"]                                                                                              
+channel                     (default)                                                                                                      
+environment                 (unset)                                                                                                        
+stdin                       (default)                                                                                                      
+esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                 control enabled
+
+=== sheep_pane_sparklines  (99x48) ===
+99 columns: one cell under the 100 the CPU-only tier needs. Both charts are gone, and the pane falls back to 1a's own pair: the `CPU 20s` sparkline and the `MEM/CEIL` gauge, on one row.
+
+shep lookout   /home/ada/.shep                                                       1 in the flock
+ ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 0.0%   mem 30.0M   fold …
+CPU 20s        ▆▅█▅▁      MEM/CEIL   █████░░░░░                                                    
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+██ CONFIG & ENV   e edit                                                                           
+                                                                                                   
+────────────────────────────────────────────────────────────────────────────                       
+process                                                                                            
+cwd                         (unset)                                                                
+depends_on                  (default)                                                              
+fold                        (unset)                                                                
+group                       (unset)                                                                
+instances                   3                                                                      
+interpreter                 (unset)                                                                
+name                        web                                                                    
+reuse_port                  (default)                                                              
+script                      ./srv                                                                  
+user                        (unset)                                                                
+                                                                                                   
+────────────────────────────────────────────────────────────────────────────                       
+logging                                                                                            
+err_file                    (unset)                                                                
+merge_logs                  (default)                                                              
+out_file                    (unset)                                                                
+                                                                                                   
+────────────────────────────────────────────────────────────────────────────                       
+inputs                                                                                             
+args                        ["--port","8080"]                                                      
+channel                     (default)                                                              
+environment                 (unset)                                                                
+stdin                       (default)                                                              
+esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log  … control enabled
+
+=== sheep_pane_short  (160x25) ===
+160 columns, 25 rows: the charts hold their design width but not their design height. Under 26 rows the memory chart goes; the CPU chart and the config and env column, which give ground last, are still up.
+
+shep lookout   /home/ada/.shep                                                                                                                    1 in the flock
+ ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 0.0%   mem 30.0M   fold edge                                                          
+██ CPU   collecting · 0m10s of 4m40s                                                                                                                            
+    50%                                                                                                                                                         
+      |                                                                                                                                                         
+    38%                                                                                                                                          ▄              
+      |                                                                                                                                          █              
+    25%                                                                                                                                        █ █              
+      |                                                                                                                                        ████             
+    12%                                                                                                                                        ████             
+      0                                                                                                                                        ████             
+rss 30.0M of 64.0M █████░░░░░                                                                                                                                   
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+        ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────now            
+                                                                                                                                                                
+                                                                                                                                                                
+██ CONFIG & ENV   e edit                                                    │ ██ BLEATS out then err · / narrow                                                 
+                                                                            │out  listening on 0.0.0.0:8080                                                     
+────────────────────────────────────────────────────────────────────────────│out  GET /healthz 200 3ms                                                          
+process                                                                     │out  GET /v1/orders 200 44ms                                                       
+esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                                      control enabled
