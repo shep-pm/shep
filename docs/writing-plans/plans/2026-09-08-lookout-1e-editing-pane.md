@@ -1468,8 +1468,8 @@ git commit -m "feat(cli): list a sheep's env keys in the config pane itself"
 - Modify: `crates/shep-cli/src/lookout/pane.rs` (`edited_section` near line 930)
 
 **Interfaces:**
-- Consumes: `Edits` from Task 1, `ConfigPane::close` from Task 5.
-- Produces: `ConfigPane::edited_section_with(&Edits) -> Option<String>`.
+- Consumes: `Edits` from Task 1, `ConfigPane::close` from Task 5, the panel from Task 7.
+- Produces: `ConfigPane::edited_section_with(&Edits) -> Option<String>`, **and the panel wired into the dog branch of `pane_lines`**. Task 7 wired only the sheep branch, a dog has no config groups so it takes a different branch, and no other task claimed it. Note what that reachability implies: a dog's schema can mark a field secret and a sheep's cannot, so every value the panel prints needs the mask `field_line` already applies.
 
 - [ ] **Step 1: Write the failing tests**
 
