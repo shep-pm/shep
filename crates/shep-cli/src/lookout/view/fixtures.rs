@@ -2,7 +2,7 @@
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -23,6 +23,7 @@ use super::super::source::HostSample;
 use super::super::tail::{Stream, Tail, TailLine};
 use super::super::theme::Palette;
 use crate::commands::settings::{DogView, ScalarView, SettingField, SettingsSnapshot};
+use crate::secret_readers::Reader;
 use crate::style::StyleSource;
 
 /// No colour at all: the palette every fixture uses unless the test is about
@@ -1446,4 +1447,82 @@ pub fn app_revealing(home: &Path) -> App {
         "the fixture starts with a value on screen"
     );
     app
+}
+
+/// A single operator row, `DB_PASSWORD`, selected by default, named by two
+/// sheep: `catcher` online, `web` not. For the WHO READS IT panel's own
+/// caption test.
+fn app_with_one_row_and_readers(readers: Vec<Reader>) -> App {
+    let mut app = full_app();
+    app.update(Msg::Key(KeyPress::Secrets));
+    app.update(Msg::Secrets {
+        environment: "production".to_string(),
+        result: Ok(Box::new(SecretsModel {
+            environments: vec!["production".to_string()],
+            rows: vec![SecretRow {
+                key: "DB_PASSWORD".to_string(),
+                source: Source::Operator,
+                in_force: Some("production".to_string()),
+                set_in: vec!["production".to_string()],
+                byte_len: Some(9),
+                readers,
+            }],
+            ..SecretsModel::default()
+        })),
+    });
+    app
+}
+
+/// The secrets pane rendered with `DB_PASSWORD` named by one online and one
+/// offline reader.
+pub fn render_secrets_with_readers() -> Buffer {
+    let app = app_with_one_row_and_readers(vec![
+        Reader {
+            name: "catcher".to_string(),
+            environment: "production".to_string(),
+            online: true,
+        },
+        Reader {
+            name: "web".to_string(),
+            environment: "production".to_string(),
+            online: false,
+        },
+    ]);
+    render(&app, 160, 48)
+}
+
+/// The secrets pane rendered with `[secrets] allow_read` off, the default
+/// [`SecretsModel::allow_read`].
+pub fn render_secrets_gate_shut() -> Buffer {
+    render(&app_with_secrets(), 160, 48)
+}
+
+/// The secrets pane rendered with the muster roll `age` old.
+pub fn render_secrets_with_roll_age(age: Duration) -> Buffer {
+    let mut app = full_app();
+    app.update(Msg::Key(KeyPress::Secrets));
+    app.update(Msg::Secrets {
+        environment: "production".to_string(),
+        result: Ok(Box::new(SecretsModel {
+            environments: vec!["production".to_string()],
+            rows: vec![SecretRow {
+                key: "DB_PASSWORD".to_string(),
+                source: Source::Operator,
+                in_force: Some("production".to_string()),
+                set_in: vec!["production".to_string()],
+                byte_len: Some(9),
+                readers: Vec::new(),
+            }],
+            roll_age: Some(age),
+            ..SecretsModel::default()
+        })),
+    });
+    render(&app, 160, 48)
+}
+
+/// The secrets pane rendered with no muster roll at all, [`SecretsModel::roll_age`]
+/// still `None`: the state the roll status line has to tell apart from a key
+/// nothing reads.
+pub fn render_secrets_with_no_roll() -> Buffer {
+    render(&app_with_secrets(), 160, 48)
 }

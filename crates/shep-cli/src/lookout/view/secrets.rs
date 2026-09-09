@@ -20,6 +20,7 @@ use super::super::theme::Palette;
 use super::flock::{GUTTER, fit, gutter};
 use super::status;
 use crate::output::human_duration;
+use crate::secret_readers::Reader;
 use crate::vocabulary::Role;
 
 /// One column of the secrets table.
@@ -370,7 +371,12 @@ fn roll_status_line(pane: &SecretsPane, palette: Palette) -> Line<'static> {
             palette.muted(),
         ));
     }
-    Line::default()
+    // Distinct from a key nothing reads: that reads "-" in `READ BY` with a
+    // roll behind it. This is the roll itself missing.
+    Line::from(Span::styled(
+        "no muster roll yet: READ BY and WHO READS IT show nothing until the shepherd writes one",
+        palette.muted(),
+    ))
 }
 
 /// The tab row: every environment [`super::super::secrets::SecretsModel`]
@@ -442,8 +448,185 @@ fn group_header_line(
     Line::from(Span::styled(fit(&text, width), palette.muted()))
 }
 
+/// The FOCUSED panel's width, fixed: the frame's own layout,
+/// `docs/brainstorming/specs/2026-09-08-lookout-1h-secrets-design.md`
+/// ("The frame"). WHO READS IT takes whatever is left of the row.
+const FOCUSED_WIDTH: u16 = 88;
+
+/// How many rows the two panels' own content spends, below their shared
+/// header line: fixed at the frame's own count, whatever either panel has
+/// to say.
+const PANEL_CONTENT_ROWS: u16 = 4;
+
+/// Everything below the hairline: the panels' own header line plus their
+/// content, on top of the hairline itself.
+const PANEL_ROWS: u16 = 1 + 1 + PANEL_CONTENT_ROWS;
+
+/// One [`Reader`]'s line in WHO READS IT: glyph and words together, since a
+/// signal carried by colour alone says nothing under `NO_COLOR`.
+///
+/// Never "holds the value": nothing tells a sheep spawned before a `set`
+/// from one spawned after, so the caption states only what the roll can
+/// prove either way.
+fn reader_line(reader: &Reader) -> String {
+    if reader.online {
+        format!(
+            "\u{2588} {}   online, was given a value at spawn",
+            reader.name
+        )
+    } else {
+        format!(
+            "\u{2591} {}   not running, reads it at next start",
+            reader.name
+        )
+    }
+}
+
+/// FOCUSED's four content lines for `row`, or a placeholder when nothing is
+/// selected (the `+ new key` row, or an empty pane).
+///
+/// The clipboard sentence lives here rather than only in `y`'s own status
+/// notice, since that notice reaches an operator after the value is already
+/// on their system clipboard: this is the standing warning, read before `y`
+/// is ever pressed.
+fn focused_lines(
+    row: Option<&SecretRow>,
+    width: u16,
+) -> [Line<'static>; PANEL_CONTENT_ROWS as usize] {
+    let Some(row) = row else {
+        return [
+            Line::from(Span::raw(fit("no key selected", width))),
+            Line::default(),
+            Line::default(),
+            Line::default(),
+        ];
+    };
+    let set_in = if row.set_in.is_empty() {
+        "not set here".to_string()
+    } else {
+        format!("set in {}", row.set_in.join(", "))
+    };
+    let detail = match row.byte_len {
+        Some(len) => format!(
+            "{set_in} \u{b7} length {len} bytes \u{b7} named by {} sheep",
+            row.readers.len()
+        ),
+        None => set_in,
+    };
+    [
+        Line::from(Span::raw(fit(
+            "the value leaves the screen after 10s. nothing records that you looked.",
+            width,
+        ))),
+        Line::from(Span::raw(fit(
+            "the store is 0600: anyone who can reveal can also delete a log.",
+            width,
+        ))),
+        Line::from(Span::raw(fit(
+            "the system clipboard is readable by every process on the desktop.",
+            width,
+        ))),
+        Line::from(Span::raw(fit(&detail, width))),
+    ]
+}
+
+/// WHO READS IT's four content lines for `row`: up to three readers, then a
+/// caption naming where a reference can live, matching [`focused_lines`]'
+/// own row count so the two panels stay lined up.
+fn who_reads_it_lines(
+    row: Option<&SecretRow>,
+    width: u16,
+) -> [Line<'static>; PANEL_CONTENT_ROWS as usize] {
+    const READER_ROWS: usize = PANEL_CONTENT_ROWS as usize - 1;
+    let readers = row.map(|row| row.readers.as_slice()).unwrap_or_default();
+    let mut lines: Vec<Line<'static>> = (0..READER_ROWS)
+        .map(|index| match readers.get(index) {
+            Some(reader) => Line::from(Span::raw(fit(&reader_line(reader), width))),
+            None if index == 0 && readers.is_empty() => {
+                Line::from(Span::raw(fit("nothing names this key", width)))
+            }
+            None => Line::default(),
+        })
+        .collect();
+    lines.push(Line::from(Span::styled(
+        fit("named in env, args, out_file or err_file", width),
+        Style::default(),
+    )));
+    lines.try_into().unwrap_or_else(|_| {
+        [
+            Line::default(),
+            Line::default(),
+            Line::default(),
+            Line::default(),
+        ]
+    })
+}
+
+/// Draws the FOCUSED and WHO READS IT panels into the last [`PANEL_ROWS`]
+/// rows of `area`, below a hairline of their own: FOCUSED at
+/// [`FOCUSED_WIDTH`], WHO READS IT taking the rest, per the frame.
+fn draw_panels(pane: &SecretsPane, palette: Palette, area: Rect, buffer: &mut Buffer, top: u16) {
+    let width = area.width;
+    buffer.set_line(
+        area.x,
+        top,
+        &status::rule_line(palette.line(), width),
+        width,
+    );
+    let row = pane.model.rows.get(pane.selected);
+    let key = row.map_or("", |row| row.key.as_str());
+    let right_x = area.x + FOCUSED_WIDTH.min(width);
+    let right_width = width.saturating_sub(FOCUSED_WIDTH);
+
+    buffer.set_line(
+        area.x,
+        top + 1,
+        &Line::from(Span::styled(
+            fit(&format!("FOCUSED  {key}"), FOCUSED_WIDTH.min(width)),
+            palette.muted(),
+        )),
+        FOCUSED_WIDTH.min(width),
+    );
+    if right_width > 0 {
+        buffer.set_line(
+            right_x,
+            top + 1,
+            &Line::from(Span::styled(
+                fit(&format!("WHO READS IT  {key}"), right_width),
+                palette.muted(),
+            )),
+            right_width,
+        );
+    }
+
+    for (offset, line) in focused_lines(row, FOCUSED_WIDTH.min(width))
+        .iter()
+        .enumerate()
+    {
+        let offset = u16::try_from(offset).unwrap_or(0);
+        buffer.set_line(area.x, top + 2 + offset, line, FOCUSED_WIDTH.min(width));
+    }
+    if right_width > 0 {
+        for (offset, line) in who_reads_it_lines(row, right_width).iter().enumerate() {
+            let offset = u16::try_from(offset).unwrap_or(0);
+            buffer.set_line(right_x, top + 2 + offset, line, right_width);
+        }
+    }
+}
+
+/// `area`'s own bottom, short by [`PANEL_ROWS`] whenever there is room for
+/// the two panels below it, so no data row ever draws underneath them.
+fn content_bottom(area: Rect) -> u16 {
+    let bottom = area.y + area.height;
+    if area.height > PANEL_ROWS {
+        bottom - PANEL_ROWS
+    } else {
+        bottom
+    }
+}
+
 /// Draws the `+ new key` affordance at the current `y` and advances it,
-/// stopping short of `area`'s own bottom the same way every row above it
+/// stopping short of [`content_bottom`] the same way every row above it
 /// does. `table_width` and `bottom` are `draw`'s own locals, not this
 /// function's arguments, since both are cheap to recompute from `area` and
 /// doing so keeps this under clippy's argument-count lint.
@@ -459,7 +642,7 @@ fn draw_new_key_row(
     buffer: &mut Buffer,
     y: &mut u16,
 ) {
-    let bottom = area.y + area.height;
+    let bottom = content_bottom(area);
     if *y >= bottom {
         return;
     }
@@ -490,6 +673,10 @@ fn draw_new_key_row(
 /// contiguous by source (`SecretsModel::rows`'s own doc comment: operator
 /// rows first, then each namespace's), with the `+ new key` affordance
 /// closing the operator group before the first namespace header prints.
+///
+/// The last [`PANEL_ROWS`] rows, when `area` is tall enough to spare them,
+/// belong to [`draw_panels`] instead: FOCUSED and WHO READS IT, below their
+/// own hairline.
 pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
     if area.width == 0 || area.height == 0 {
         return;
@@ -501,11 +688,12 @@ pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
     // design's own row width, gutter included.
     let columns = columns_for(width);
     let bottom = area.y + area.height;
+    let content_bottom = content_bottom(area);
     let mut y = area.y;
 
     buffer.set_line(area.x, y, &pane_band(width, palette), width);
     y += 1;
-    if y >= bottom {
+    if y >= content_bottom {
         return;
     }
 
@@ -516,25 +704,25 @@ pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
         width,
     );
     y += 1;
-    if y >= bottom {
+    if y >= content_bottom {
         return;
     }
 
     buffer.set_line(area.x, y, &gates_line(pane, app.control(), palette), width);
     y += 1;
-    if y >= bottom {
+    if y >= content_bottom {
         return;
     }
 
     buffer.set_line(area.x, y, &roll_status_line(pane, palette), width);
     y += 1;
-    if y >= bottom {
+    if y >= content_bottom {
         return;
     }
 
     buffer.set_line(area.x, y, &tab_line(pane, palette, width), width);
     y += 1;
-    if y >= bottom {
+    if y >= content_bottom {
         return;
     }
 
@@ -545,7 +733,7 @@ pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
         table_width,
     );
     y += 1;
-    if y >= bottom {
+    if y >= content_bottom {
         return;
     }
 
@@ -564,7 +752,7 @@ pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
     }
     let mut last_source: Option<&Source> = None;
     for (index, row) in pane.model.rows.iter().enumerate() {
-        if y >= bottom {
+        if y >= content_bottom {
             break;
         }
         if last_source != Some(&row.source) {
@@ -576,7 +764,7 @@ pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
             );
             y += 1;
             last_source = Some(&row.source);
-            if y >= bottom {
+            if y >= content_bottom {
                 break;
             }
         }
@@ -613,16 +801,21 @@ pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
         if !new_key_row_drawn && anchor == Some(index) {
             draw_new_key_row(pane, columns, palette, area, buffer, &mut y);
             new_key_row_drawn = true;
-            if y >= bottom {
+            if y >= content_bottom {
                 break;
             }
         }
     }
 
-    // The anchor row never got drawn (truncated by `bottom` before reaching
-    // it): the affordance still belongs on screen if there is room left.
+    // The anchor row never got drawn (truncated by `content_bottom` before
+    // reaching it): the affordance still belongs on screen if there is room
+    // left.
     if !new_key_row_drawn {
         draw_new_key_row(pane, columns, palette, area, buffer, &mut y);
+    }
+
+    if content_bottom < bottom {
+        draw_panels(pane, palette, area, buffer, content_bottom);
     }
 }
 
@@ -975,6 +1168,61 @@ mod tests {
         assert_eq!(
             cell(&buffer, row_of(&buffer, "DB_PASSWORD"), Column::Lands).trim(),
             "visible 4s \u{2588}\u{2588}\u{2588}\u{2588}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}"
+        );
+    }
+
+    #[test]
+    fn a_reader_is_never_said_to_hold_the_current_value() {
+        let buffer = fixtures::render_secrets_with_readers();
+        let text = fixtures::rows_of(&buffer);
+
+        assert!(
+            text.iter()
+                .any(|l| l.contains("was given a value at spawn")),
+            "an online reader: {text:?}"
+        );
+        assert!(
+            text.iter().any(|l| l.contains("reads it at next start")),
+            "an offline one: {text:?}"
+        );
+        assert!(
+            !text.iter().any(|l| l.contains("holds the value")),
+            "nothing can tell a sheep spawned before a set from one spawned \
+             after, so the pane must not claim it: {text:?}"
+        );
+    }
+
+    #[test]
+    fn the_focused_panel_states_the_gate_and_not_an_audit() {
+        let buffer = fixtures::render_secrets_gate_shut();
+        let text = fixtures::rows_of(&buffer);
+
+        assert!(text.iter().any(|l| l.contains("allow_read")));
+        assert!(
+            !text.iter().any(|l| l.contains("audit")),
+            "there is no audit log, so promising one is a promise nothing keeps"
+        );
+    }
+
+    #[test]
+    fn a_stale_roll_states_its_age() {
+        let buffer = fixtures::render_secrets_with_roll_age(Duration::from_secs(3600));
+        let text = fixtures::rows_of(&buffer);
+
+        assert!(
+            text.iter().any(|l| l.contains("roll") && l.contains("1h")),
+            "a failed roll write only warns, so the age is the only signal: {text:?}"
+        );
+    }
+
+    #[test]
+    fn a_missing_roll_says_so_rather_than_showing_an_empty_reader_list() {
+        let buffer = fixtures::render_secrets_with_no_roll();
+        let text = fixtures::rows_of(&buffer);
+
+        assert!(
+            text.iter().any(|l| l.contains("no muster roll")),
+            "an absent roll and a key nothing reads look identical otherwise: {text:?}"
         );
     }
 }
