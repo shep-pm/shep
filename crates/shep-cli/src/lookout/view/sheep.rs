@@ -244,7 +244,7 @@ fn cpu_chart_rows(history: &[f32], body_cells: usize) -> Vec<String> {
     let peak = window_slice.iter().copied().fold(0.0_f32, f32::max);
     let ceiling = scale_top(f64::from(peak), f64::from(CPU_CEILING_FLOOR));
     let bars = cell::chart(history, ceiling as f32, body_cells, CPU_ROWS);
-    gutter_lines(bars, &format!("{ceiling:.0}%"))
+    gutter_lines(bars, ceiling, |value| format!("{value:.0}%"))
 }
 
 /// Row `MEM_HEADER_ROW`'s second half: a real ceiling names itself; with
@@ -281,8 +281,9 @@ fn mem_chart_rows(
     let ceiling = scale_top(peak_for_scale as f64, 0.0);
     let samples: Vec<f32> = history.iter().map(|&bytes| bytes as f32).collect();
     let bars = cell::chart(&samples, ceiling as f32, body_cells, MEM_ROWS);
-    let top_label = crate::output::human_bytes(ceiling as u64);
-    let mut lines = gutter_lines(bars, &top_label);
+    let mut lines = gutter_lines(bars, ceiling, |value| {
+        crate::output::human_bytes(value as u64)
+    });
 
     let marked = max_memory.map(|limit| {
         if ceiling <= 0.0 {
@@ -302,20 +303,31 @@ fn mem_chart_rows(
     (lines, marked)
 }
 
-/// Prefixes each of `bars`' lines with [`GUTTER`] cells: `top_label`
-/// right-aligned on the top row, `0` on the bottom, blank between. Shared
-/// by the CPU and memory charts so one gutter width backs both.
-fn gutter_lines(bars: Vec<String>, top_label: &str) -> Vec<String> {
-    let last = bars.len().saturating_sub(1);
+/// Prefixes each of `bars`' lines with [`GUTTER`] cells: a value every other
+/// row, right-aligned and formatted by `format_value`, alternating with a
+/// bare `|` tick; the bottom row is always the literal `0` rather than
+/// `format_value(0.0)`, since a unit on a value that is always zero states
+/// nothing a bare `0` doesn't. [`scale_top`]'s own ladder is why two labels
+/// (the top and the bottom) used to be enough: every other row's value
+/// lands on a round number too, so leaving them blank bought nothing.
+fn gutter_lines(
+    bars: Vec<String>,
+    ceiling: f64,
+    format_value: impl Fn(f64) -> String,
+) -> Vec<String> {
+    let rows = bars.len();
+    let last = rows.saturating_sub(1);
     bars.into_iter()
         .enumerate()
         .map(|(i, bar)| {
-            let gutter = if i == 0 {
-                format!("{top_label:>7} ")
-            } else if i == last {
+            let gutter = if i == last {
                 format!("{:>7} ", "0")
+            } else if i % 2 == 0 {
+                #[allow(clippy::cast_precision_loss)] // display only, a gutter label
+                let value = ceiling * (rows - i) as f64 / rows as f64;
+                format!("{:>7} ", format_value(value))
             } else {
-                " ".repeat(GUTTER)
+                format!("{:>7} ", "|")
             };
             format!("{gutter}{bar}")
         })
@@ -461,6 +473,28 @@ mod tests {
         assert!(
             !cpu_header_text(HISTORY, body).contains("collecting"),
             "a full buffer past the cap must not still read collecting"
+        );
+    }
+
+    /// Two labels bought nothing once `scale_top`'s own ladder makes every
+    /// division round too: the gutter carries a value every other row,
+    /// alternating with a bare tick, not just at the top and the bottom.
+    #[test]
+    fn the_gutter_labels_more_than_the_ends() {
+        let history = [10.0_f32, 20.0, 30.0, 40.0, 45.0];
+        let rows = cpu_chart_rows(&history, 20);
+        let labelled: Vec<&str> = rows
+            .iter()
+            .map(|row| row[..GUTTER].trim())
+            .filter(|cell| !cell.is_empty())
+            .collect();
+        assert!(
+            labelled.len() > 2,
+            "expected more than just the top and bottom label: {rows:?}"
+        );
+        assert!(
+            rows.iter().any(|row| row[..GUTTER].contains('|')),
+            "expected a bare tick between labels: {rows:?}"
         );
     }
 
