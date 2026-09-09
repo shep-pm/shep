@@ -24,7 +24,7 @@ use shep_core::status::ProcStatus;
 
 use super::field::{FieldKind, FieldSet};
 use super::level::Level;
-use super::pane::{ConfigPane, FieldValue, Lock, PaneEdit, PaneTarget, ReloadKind};
+use super::pane::{ConfigPane, FieldValue, Lock, PaneEdit, PaneRow, PaneTarget, ReloadKind};
 use super::pane_bleats::BleatsPane;
 use super::tail::Stream;
 use super::theme::Palette;
@@ -2052,14 +2052,11 @@ impl App {
         match result {
             Ok(Response::SheepConfig(view)) => {
                 let carried = self.config_pane().map(|pane| pane.view().clone());
-                // The env sub-screen is carried too: a set re-reads the
-                // whole config, and without this it would close on the
-                // very keystroke that just added a row. Its cursor rides
-                // by key, not index, since a removal would rename it.
-                let carried_env = self
-                    .config_pane()
-                    .and_then(ConfigPane::env)
-                    .map(|env| (env.view().clone(), env.cursor_key().map(str::to_owned)));
+                // An env row's own cursor is carried by key, not index: a
+                // set re-reads the whole config, and a removal shortens the
+                // list, so an index that survived would name a different
+                // key. See `ConfigPane::cursor_env_key`.
+                let carried_env_key = self.config_pane().and_then(ConfigPane::cursor_env_key);
                 // The list sub-screen rides across for the same reason,
                 // and by index rather than by name: an element has no
                 // name. See `ListPane::adopt_view`.
@@ -2082,8 +2079,8 @@ impl App {
                 if let Some(carried) = carried {
                     pane.adopt_view(carried);
                 }
-                if let Some((carried, cursor_key)) = carried_env {
-                    pane.adopt_env_view(carried, cursor_key.as_deref());
+                if let Some(env_key) = carried_env_key {
+                    pane.adopt_env_cursor(env_key.as_deref());
                 }
                 if let Some((key, carried)) = carried_list {
                     pane.adopt_list_view(&key, carried);
@@ -2971,10 +2968,9 @@ impl App {
         if self.mode != InputMode::Text {
             return;
         }
-        let owned = self.config_pane().is_some_and(|pane| {
-            pane.env()
-                .map_or_else(|| pane.typing().is_some(), |env| env.typing().is_some())
-        });
+        let owned = self
+            .config_pane()
+            .is_some_and(|pane| pane.typing().is_some() || pane.env_typing().is_some());
         if !owned {
             self.mode = InputMode::Normal;
         }
@@ -3000,9 +2996,6 @@ impl App {
         }
         if self.config_pane().is_some_and(|pane| pane.list().is_some()) {
             return self.on_list_key(key);
-        }
-        if self.config_pane().is_some_and(|pane| pane.env().is_some()) {
-            return self.on_env_key(key);
         }
         if key == KeyPress::Quit {
             return Effect::Quit;
@@ -3451,7 +3444,8 @@ impl App {
     /// The operator's `Enter` on the config pane. Three meanings, picked in
     /// this order:
     ///
-    /// - The cursor is on `env`: opens the env sub-screen.
+    /// - The cursor is on an env row or `+ add a key`: opens the env
+    ///   editor, in place, on the same row.
     /// - The cursor is on an array field: opens the list sub-screen.
     /// - The cursor is on a typed field: opens the editor and switches
     ///   [`InputMode::Text`] on.
@@ -3459,24 +3453,28 @@ impl App {
     /// All three go through [`Self::authorize_write`], the editor included,
     /// for the reason [`Self::confirm_setting`]'s own doc gives: the gate
     /// is checked on the keystroke that would file an edit, not on the
-    /// close that writes them. The env sub-screen is gated too: it exists
-    /// only to write, since the shepherd never sends a value back for it
-    /// to show.
+    /// close that writes them.
     fn confirm_field(&mut self) -> Effect {
         let Some(pane) = self.config_pane() else {
             return Effect::None;
         };
+        if matches!(pane.cursor(), Some(PaneRow::Env(_) | PaneRow::AddEnv)) {
+            if self.authorize_write().is_none() {
+                return Effect::None;
+            }
+            if let Some(pane) = self.config_pane_mut() {
+                pane.begin_env_typing();
+                self.mode = InputMode::Text;
+            }
+            return Effect::None;
+        }
         let Some(kind) = pane.cursor_kind().cloned() else {
             return Effect::None;
         };
         let locked = pane.cursor_lock().map(|(key, lock)| (key.to_owned(), lock));
         let opens = matches!(
             kind,
-            FieldKind::Map
-                | FieldKind::List(_)
-                | FieldKind::Text
-                | FieldKind::Integer
-                | FieldKind::Suggested(_)
+            FieldKind::List(_) | FieldKind::Text | FieldKind::Integer | FieldKind::Suggested(_)
         );
         // A row `Enter` was never going to open raises nothing at all: a
         // refusal about a key that was never going to act trains an
@@ -3501,9 +3499,7 @@ impl App {
         let Some(pane) = self.config_pane_mut() else {
             return Effect::None;
         };
-        if kind == FieldKind::Map {
-            pane.open_env();
-        } else if matches!(kind, FieldKind::List(_)) {
+        if matches!(kind, FieldKind::List(_)) {
             pane.open_list();
         } else {
             pane.begin_typing();
@@ -3603,86 +3599,6 @@ impl App {
         Effect::None
     }
 
-    /// The env sub-screen's own keymap, in force for as long as the pane
-    /// holds one.
-    ///
-    /// `Escape` closes the sub-screen, not the pane, backing out of the
-    /// innermost thing first; `Escape` again, on the field list, is what
-    /// closes the pane and writes what it filed. `Enter` or `e` opens the
-    /// editor on the row under the cursor.
-    ///
-    /// Both a set and a removal file rather than write: nothing on this
-    /// screen reaches the shepherd before the pane closes, so an env key
-    /// typed by mistake costs an `u` rather than an override the operator
-    /// cannot read back.
-    fn on_env_key(&mut self, key: KeyPress) -> Effect {
-        if key == KeyPress::Quit {
-            return Effect::Quit;
-        }
-        match key {
-            KeyPress::Quit => return Effect::Quit,
-            KeyPress::Escape => {
-                if let Some(pane) = self.config_pane_mut() {
-                    pane.close_env();
-                }
-                self.release_text_mode_if_unowned();
-            }
-            KeyPress::SelectUp
-            | KeyPress::SelectDown
-            | KeyPress::SelectFirst
-            | KeyPress::SelectLast => {
-                if let Some(env) = self.config_pane_mut().and_then(ConfigPane::env_mut) {
-                    match key {
-                        KeyPress::SelectUp => env.move_by(-1),
-                        KeyPress::SelectDown => env.move_by(1),
-                        KeyPress::SelectFirst => env.move_to_first(),
-                        KeyPress::SelectLast => env.move_to_last(),
-                        _ => unreachable!(),
-                    }
-                }
-            }
-            KeyPress::Refresh => return self.reread_pane(),
-            // `e` does exactly what `Enter` does here, the same rule the
-            // field list follows.
-            KeyPress::Confirm | KeyPress::Edit => {
-                if self.authorize_write().is_none() {
-                    return Effect::None;
-                }
-                if let Some(env) = self.config_pane_mut().and_then(ConfigPane::env_mut) {
-                    env.begin_typing();
-                    self.mode = InputMode::Text;
-                }
-            }
-            KeyPress::Action(_)
-            | KeyPress::Cycle
-            | KeyPress::Settings
-            | KeyPress::FilterStart
-            | KeyPress::TextChar(_)
-            | KeyPress::TextBackspace
-            | KeyPress::TextApply
-            | KeyPress::TextAbandon
-            | KeyPress::Help
-            | KeyPress::Remove
-            | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown
-            | KeyPress::FoldView
-            | KeyPress::Collapse => {}
-            KeyPress::StreamCycle
-            | KeyPress::LevelCycle
-            | KeyPress::PageDown
-            | KeyPress::PageUp
-            | KeyPress::FollowToggle
-            | KeyPress::WrapToggle
-            | KeyPress::MatchNext
-            | KeyPress::MatchPrev
-            | KeyPress::Bleats => {}
-            // No-op here for now: Task 5 gives `NextGroup`/`Group` a
-            // reducer arm and Task 8 gives `Undo` one.
-            KeyPress::NextGroup | KeyPress::Group(_) | KeyPress::Undo => {}
-        }
-        Effect::None
-    }
-
     /// The config pane's own text keymap, in force for as long as one of
     /// its two editors owns [`InputMode::Text`].
     ///
@@ -3699,7 +3615,10 @@ impl App {
         if self.config_pane().is_some_and(|pane| pane.list().is_some()) {
             return self.on_list_text_key(key);
         }
-        if self.config_pane().is_some_and(|pane| pane.env().is_some()) {
+        if self
+            .config_pane()
+            .is_some_and(|pane| pane.env_typing().is_some())
+        {
             return self.on_env_text_key(key);
         }
         let Some(pane) = self.config_pane_mut() else {
@@ -3765,10 +3684,13 @@ impl App {
         Effect::None
     }
 
-    /// The env sub-screen's own text keymap.
+    /// The env editor's own text keymap, in force for as long as
+    /// [`ConfigPane::env_typing`] is `Some`.
     ///
-    /// `TextApply` files, exactly as the field editor's does. See
-    /// [`Self::on_env_key`] for why an env write waits for the close.
+    /// `TextApply` files, exactly as the field editor's does: nothing on
+    /// an env row reaches the shepherd before the pane closes, so an env
+    /// key typed by mistake costs an `u` rather than an override the
+    /// operator cannot read back.
     fn on_env_text_key(&mut self, key: KeyPress) -> Effect {
         // See the comment in `Self::take_pane_writes`: a direct field
         // match, not `Self::config_pane_mut`, so `self.mode` stays
@@ -3779,21 +3701,15 @@ impl App {
         }) else {
             return Effect::None;
         };
-        let Some(env) = pane.env_mut() else {
-            return Effect::None;
-        };
         match key {
-            KeyPress::TextChar(typed) => env.type_char(typed),
-            KeyPress::TextBackspace => env.type_backspace(),
+            KeyPress::TextChar(typed) => pane.type_env_char(typed),
+            KeyPress::TextBackspace => pane.type_env_backspace(),
             KeyPress::TextApply => {
-                let applied = env.apply_typing();
+                pane.apply_env_typing();
                 self.mode = InputMode::Normal;
-                if let Some((key, value)) = applied {
-                    pane.file_env(key, value.map(EnvValue::from));
-                }
             }
             KeyPress::TextAbandon => {
-                env.abandon_typing();
+                pane.abandon_env_typing();
                 self.mode = InputMode::Normal;
             }
             _ => {}
@@ -4924,11 +4840,6 @@ impl App {
             // `view::pane::pane_lines` draws before any row.
             let body = usize::from(rows.saturating_sub(1));
             pane.set_rows(body);
-            if let Some(env) = pane.env_mut() {
-                // The sub-screen draws its own title over the pane's, so
-                // it pays the same one line and no more.
-                env.set_rows(body);
-            }
             if let Some(list) = pane.list_mut() {
                 list.set_rows(body);
             }
@@ -8850,6 +8761,71 @@ mod tests {
         assert!(app.config_pane().is_none());
     }
 
+    /// The wire carries no env value for any key, Flockfile or store, so
+    /// every one renders the same way. SheepConfigView::new clears the map.
+    #[test]
+    fn every_env_value_renders_as_set_and_never_as_itself() {
+        let app = fixtures::app_in_sheep_pane_with_env(&[("NODE_ENV", "production")]);
+        let rows = fixtures::config_pane_env_rows_for_tests(&app);
+        assert!(rows.iter().any(|row| row.contains("NODE_ENV")), "{rows:?}");
+        assert!(
+            rows.iter().all(|row| !row.contains("production")),
+            "an env value reached the pane: {rows:?}"
+        );
+        assert!(rows.iter().any(|row| row.contains("(set)")), "{rows:?}");
+    }
+
+    #[test]
+    fn one_cursor_walks_from_the_last_field_into_the_env_keys() {
+        let mut app = fixtures::app_in_sheep_pane_with_env(&[("NODE_ENV", "x")]);
+        app.update(Msg::Key(KeyPress::SelectLast));
+        assert!(matches!(
+            app.config_pane().unwrap().rows().last(),
+            Some(PaneRow::AddEnv)
+        ));
+    }
+
+    #[test]
+    fn setting_an_env_key_files_an_edit_rather_than_sending() {
+        let mut app = fixtures::app_in_sheep_pane_with_env(&[("NODE_ENV", "x")]);
+        app.set_control_for_tests(Control::Allowed);
+        fixtures::select_env_key(&mut app, "NODE_ENV");
+        app.update(Msg::Key(KeyPress::Confirm));
+        for typed in "staging".chars() {
+            app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        let effect = app.update(Msg::Key(KeyPress::TextApply));
+        assert!(matches!(effect, Effect::None), "{effect:?}");
+        assert_eq!(app.config_pane().unwrap().edits().len(), 1);
+    }
+
+    /// An env edit and a config field of the same name are two entries,
+    /// which is the whole reason `EditKey` has two arms.
+    #[test]
+    fn an_env_edit_does_not_collide_with_the_env_config_field() {
+        let mut app = fixtures::app_in_sheep_pane_with_env(&[("env", "x")]);
+        app.set_control_for_tests(Control::Allowed);
+        fixtures::select_env_key(&mut app, "env");
+        fixtures::type_into_the_open_editor(&mut app, "y");
+        assert_eq!(app.config_pane().unwrap().edits().len(), 1);
+        assert!(
+            app.config_pane()
+                .unwrap()
+                .edits()
+                .get(&EditKey::Env("env".to_owned()))
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn the_add_a_key_row_opens_an_editor() {
+        let mut app = fixtures::app_in_sheep_pane_with_env(&[]);
+        app.set_control_for_tests(Control::Allowed);
+        app.update(Msg::Key(KeyPress::SelectLast));
+        app.update(Msg::Key(KeyPress::Confirm));
+        assert_eq!(app.mode(), InputMode::Text);
+    }
+
     /// The behaviour change this branch exists for: `e` used to close the
     /// pane, and now it does the field's own edit instead.
     #[test]
@@ -8874,47 +8850,20 @@ mod tests {
         );
     }
 
+    /// `e` opens the env editor exactly as `Enter` does, and does not close
+    /// the pane, the same as it does for any other field row: an env row
+    /// walks the same cursor and answers to the same key.
     #[test]
-    fn e_no_longer_closes_the_pane_from_the_env_sub_screen() {
+    fn e_opens_the_env_editor_the_same_as_enter_and_does_not_close_the_pane() {
         let mut app = fixtures::app_in_sheep_pane_with_control();
-        pane_to(&mut app, "env");
-        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        assert_eq!(app.config_pane().unwrap().cursor(), Some(PaneRow::AddEnv));
         let _ = app.update(Msg::Key(KeyPress::Edit));
-        assert!(
-            app.config_pane().unwrap().env().is_some(),
-            "e must not close the pane or the sub-screen from in here"
-        );
-    }
-
-    #[test]
-    fn e_opens_the_editor_in_the_env_sub_screen_the_same_as_enter() {
-        let mut app = fixtures::app_in_sheep_pane_with_control();
-        pane_to(&mut app, "env");
-        let _ = app.update(Msg::Key(KeyPress::Confirm));
-        let _ = app.update(Msg::Key(KeyPress::Edit));
-        assert_eq!(app.mode(), InputMode::Text, "e opens the editor here too");
-    }
-
-    /// One escape at a time: the sub-screen first, the pane on the next
-    /// press. Nothing in this module tested that walk at the reducer
-    /// level before; `view::status`'s own test only pinned the hint text.
-    #[test]
-    fn escape_backs_out_of_the_env_sub_screen_one_level_at_a_time() {
-        let mut app = fixtures::app_in_sheep_pane_with_nothing_parked();
-        pane_to(&mut app, "env");
-        let _ = app.update(Msg::Key(KeyPress::Confirm));
-        assert!(app.config_pane().unwrap().env().is_some());
-        let _ = app.update(Msg::Key(KeyPress::Escape));
         assert!(
             app.config_pane().is_some(),
-            "the first escape only backs out of the sub-screen"
+            "e must not close the pane from an env row"
         );
-        assert!(app.config_pane().unwrap().env().is_none());
-        let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(
-            app.config_pane().is_none(),
-            "the second escape closes the pane"
-        );
+        assert_eq!(app.mode(), InputMode::Text, "e opens the editor here too");
     }
 
     #[test]
@@ -9000,15 +8949,22 @@ mod tests {
         assert!(app.config_pane().is_none());
     }
 
+    /// `TextAbandon` drops the env editor and leaves the pane exactly as
+    /// `Escape` leaves the field editor: open, on the same row, nothing
+    /// filed. `Escape` from there walks the menu then the pane, the same
+    /// as it does for any other row.
     #[test]
-    fn escape_walks_out_of_the_sub_screen_then_the_menu_then_the_pane() {
+    fn abandoning_the_env_editor_leaves_the_pane_then_escape_walks_the_menu_then_the_pane() {
         let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
-        pane_to(&mut app, "env");
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        assert_eq!(app.config_pane().unwrap().cursor(), Some(PaneRow::AddEnv));
         let _ = app.update(Msg::Key(KeyPress::Confirm));
-        assert!(app.config_pane().unwrap().env().is_some());
-        let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.config_pane().unwrap().env().is_none());
-        assert!(app.pane_menu().is_none(), "the sub-screen went first");
+        assert_eq!(app.mode(), InputMode::Text);
+        let _ = app.update(Msg::Key(KeyPress::TextAbandon));
+        assert_eq!(app.mode(), InputMode::Normal);
+        assert!(app.config_pane().is_some(), "the pane stays open");
+        assert!(app.config_pane().unwrap().edits().is_empty());
+        assert!(app.pane_menu().is_none());
         let _ = app.update(Msg::Key(KeyPress::Escape));
         assert!(app.pane_menu().is_some());
         let _ = app.update(Msg::Key(KeyPress::Escape));
@@ -9049,15 +9005,17 @@ mod tests {
         assert!(app.config_pane().is_none());
     }
 
-    /// `h` has no field to show help for on the env sub-screen, so it is
-    /// silently ignored there rather than reaching back to the field list.
+    /// `h` on an env row has no field to show help for, so `top_line`
+    /// draws nothing for it even though the flag it toggles is the same
+    /// one a field row uses: `h` is bound once, on the whole field list,
+    /// not per row.
     #[test]
-    fn h_does_nothing_on_the_env_sub_screen() {
+    fn h_toggles_help_on_an_env_row_but_nothing_draws_it() {
         let mut app = fixtures::app_in_sheep_pane_with_control();
-        pane_to(&mut app, "env");
-        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        assert_eq!(app.config_pane().unwrap().cursor(), Some(PaneRow::AddEnv));
         assert_eq!(app.update(Msg::Key(KeyPress::Help)), Effect::None);
-        assert!(!app.config_pane().unwrap().help_open());
+        assert!(app.config_pane().unwrap().help_open());
     }
 
     #[test]
@@ -9086,8 +9044,10 @@ mod tests {
         app.update(Msg::Key(KeyPress::SelectDown));
         assert_eq!(app.config_pane().unwrap().view().cursor(), 2);
         app.update(Msg::Key(KeyPress::SelectLast));
-        // `process`, the group a fresh pane opens on, has ten fields.
-        assert_eq!(app.config_pane().unwrap().view().cursor(), 9);
+        // `process`, the group a fresh pane opens on, has ten fields, then
+        // the fixture's two env keys and `+ add a key`: thirteen rows,
+        // index 12.
+        assert_eq!(app.config_pane().unwrap().view().cursor(), 12);
         app.update(Msg::Key(KeyPress::SelectFirst));
         assert_eq!(app.config_pane().unwrap().view().cursor(), 0);
     }
@@ -9109,8 +9069,10 @@ mod tests {
                 fixtures::sheep_config_view(),
             ))),
         });
-        // `process`, the group a fresh pane opens on, has ten fields.
-        assert_eq!(app.config_pane().unwrap().view().cursor(), 9);
+        // `process`, the group a fresh pane opens on, has ten fields, then
+        // the fixture's two env keys and `+ add a key`: thirteen rows,
+        // index 12.
+        assert_eq!(app.config_pane().unwrap().view().cursor(), 12);
     }
 
     #[test]
@@ -9154,8 +9116,9 @@ mod tests {
         let mut app = fixtures::app_in_sheep_pane();
         app.note_body_rows(6);
         app.update(Msg::Key(KeyPress::SelectLast));
-        // `process`, the group a fresh pane opens on, has ten fields.
-        assert_eq!(app.config_pane().unwrap().view().offset(), 10 - 5);
+        // `process`, the group a fresh pane opens on, has ten fields, then
+        // the fixture's two env keys and `+ add a key`: thirteen rows.
+        assert_eq!(app.config_pane().unwrap().view().offset(), 13 - 5);
     }
 
     /// Walks the pane's cursor onto `key`. The pane is a public type with
@@ -9293,18 +9256,13 @@ mod tests {
     /// Routing through `ApplyConfig` would not work: no `ResetDepth`
     /// names a single key.
     #[test]
-    fn the_env_sub_screen_arms_then_sets_one_key_and_removes_another() {
+    fn the_env_rows_file_then_set_one_key_and_remove_another() {
         let mut app = fixtures::app_in_sheep_pane_with_control();
-        pane_to(&mut app, "env");
-        let _ = app.update(Msg::Key(KeyPress::Confirm));
-        assert!(
-            app.config_pane().unwrap().env().is_some(),
-            "enter on the env row opens the sub-screen"
-        );
-        // The `+ new` row, under the two keys the fixture's sheep has.
+        // `+ add a key`, under the two keys the fixture's sheep has.
         let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        assert_eq!(app.config_pane().unwrap().cursor(), Some(PaneRow::AddEnv));
         let _ = app.update(Msg::Key(KeyPress::Confirm));
-        assert_eq!(app.mode(), InputMode::Text);
+        assert_eq!(app.mode(), InputMode::Text, "enter opens the env editor");
         for typed in "API_TOKEN=hunter2".chars() {
             let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
         }
@@ -9315,14 +9273,16 @@ mod tests {
         );
         assert_eq!(app.mode(), InputMode::Normal);
 
-        // An existing key with an empty buffer removes it.
-        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
+        // An existing key with an empty buffer removes it. The cursor is
+        // still on `+ add a key`, since applying an edit does not move it;
+        // two steps up reaches `DB_HOST`, the fixture's first env key.
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        assert_eq!(app.config_pane().unwrap().cursor(), Some(PaneRow::Env(0)));
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         let _ = app.update(Msg::Key(KeyPress::TextApply));
 
-        // Both leave together, on the `Escape` that closes the pane: the
-        // sub-screen's own `Escape` backs out to the field list first.
-        let _ = app.update(Msg::Key(KeyPress::Escape));
+        // Both leave together, on the `Escape` that closes the pane.
         let requests = wire_all(app.update(Msg::Key(KeyPress::Escape)));
         assert_eq!(
             requests,
@@ -9348,32 +9308,34 @@ mod tests {
     #[test]
     fn the_env_cursor_is_carried_by_key_and_not_by_index_across_a_refresh() {
         let mut app = fixtures::app_in_sheep_pane_with_control();
-        pane_to(&mut app, "env");
-        let _ = app.update(Msg::Key(KeyPress::Confirm));
-        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        // `SelectLast` lands on `+ add a key`; one step up is `LOG_LEVEL`,
+        // the fixture's second env key.
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
         assert_eq!(
-            app.config_pane().unwrap().env().unwrap().cursor_key(),
+            app.config_pane().unwrap().cursor_env_key_name(),
             Some("LOG_LEVEL")
         );
         // A refresh that leaves both keys in place keeps the cursor on its
         // own key rather than on row 1.
         refresh_config(&mut app, &["DB_HOST", "LOG_LEVEL"]);
         assert_eq!(
-            app.config_pane().unwrap().env().unwrap().cursor_key(),
+            app.config_pane().unwrap().cursor_env_key_name(),
             Some("LOG_LEVEL")
         );
         // A refresh that removed the key above it keeps it on its own key,
         // which is now row 0. Carrying the index would have moved it to
-        // `+ new`; carrying nothing would have moved it to `DB_HOST`.
+        // `+ add a key`; carrying nothing would have moved it to `DB_HOST`.
         refresh_config(&mut app, &["LOG_LEVEL"]);
         assert_eq!(
-            app.config_pane().unwrap().env().unwrap().cursor_key(),
+            app.config_pane().unwrap().cursor_env_key_name(),
             Some("LOG_LEVEL")
         );
-        // A refresh that removed the cursor's own key lands on `+ new`,
-        // never on whatever took its place.
+        // A refresh that removed the cursor's own key lands on `+ add a
+        // key`, never on whatever took its place.
         refresh_config(&mut app, &["OTHER"]);
-        assert_eq!(app.config_pane().unwrap().env().unwrap().cursor_key(), None);
+        assert_eq!(app.config_pane().unwrap().cursor_env_key_name(), None);
+        assert_eq!(app.config_pane().unwrap().cursor(), Some(PaneRow::AddEnv));
     }
 
     /// A reply for a write from an earlier pane can land while a new one
@@ -9639,18 +9601,14 @@ mod tests {
     #[test]
     fn a_read_only_pane_refuses_every_door_that_writes() {
         // One pair per door: `space` cycles, `Enter` opens the text
-        // editor, `Enter` on `env` opens the sub-screen.
-        for (key, press) in [
-            ("autorestart", KeyPress::Cycle),
-            ("cwd", KeyPress::Confirm),
-            ("env", KeyPress::Confirm),
-        ] {
+        // editor.
+        for (key, press) in [("autorestart", KeyPress::Cycle), ("cwd", KeyPress::Confirm)] {
             let mut app = fixtures::app_in_sheep_pane();
             pane_to(&mut app, key);
             assert_eq!(app.update(Msg::Key(press)), Effect::None, "{key}");
             assert!(app.config_pane().unwrap().edits().is_empty(), "{key}");
             assert!(app.config_pane().unwrap().typing().is_none(), "{key}");
-            assert!(app.config_pane().unwrap().env().is_none(), "{key}");
+            assert!(app.config_pane().unwrap().env_typing().is_none(), "{key}");
             assert_eq!(app.mode(), InputMode::Normal, "{key}");
             assert_eq!(
                 app.notice().map(ToString::to_string),
@@ -9658,6 +9616,24 @@ mod tests {
                 "{key}"
             );
         }
+    }
+
+    /// `Enter` on an env row is the fourth door: it opens the env editor
+    /// exactly as `Enter` on a typed field does, so it is gated the same
+    /// way.
+    #[test]
+    fn a_read_only_pane_refuses_enter_on_an_env_row() {
+        let mut app = fixtures::app_in_sheep_pane();
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        assert_eq!(app.config_pane().unwrap().cursor(), Some(PaneRow::AddEnv));
+        assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
+        assert!(app.config_pane().unwrap().edits().is_empty());
+        assert!(app.config_pane().unwrap().env_typing().is_none());
+        assert_eq!(app.mode(), InputMode::Normal);
+        assert_eq!(
+            app.notice().map(ToString::to_string),
+            Some(READ_ONLY_REFUSAL.to_string())
+        );
     }
 
     /// Nothing is armed, so nothing eats a keystroke: the next key does
@@ -9791,14 +9767,20 @@ mod tests {
         );
 
         let mut app = fixtures::app_in_sheep_pane_with_control();
-        pane_to(&mut app, "env");
-        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        // `SelectLast` lands on `+ add a key`; two steps up is `DB_HOST`,
+        // the fixture's first env key.
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        assert_eq!(app.config_pane().unwrap().cursor(), Some(PaneRow::Env(0)));
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         for typed in "hunter2".chars() {
             let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
         }
         let _ = app.update(Msg::Key(KeyPress::TextApply));
-        let _ = app.update(Msg::Key(KeyPress::Escape));
+        // One `Escape`, not two: there is no sub-screen level to back out
+        // of any more, so the write goes out on the same keypress that
+        // closes the field list (or offers its menu).
         let env = app.update(Msg::Key(KeyPress::Escape));
         assert_eq!(
             format!("{env:?}"),
@@ -10222,11 +10204,11 @@ mod tests {
         );
     }
 
-    /// The env sub-screen writes through `Request::SetSheepEnv`, which
-    /// would name a sheep that does not exist. It refuses with
-    /// `Lock::NoWidget`'s own sentence instead.
+    /// A dog's env writes through `Request::SetSheepEnv`, which would name
+    /// a sheep that does not exist. It refuses with `Lock::NoWidget`'s own
+    /// sentence instead.
     #[test]
-    fn enter_on_a_dogs_map_field_refuses_rather_than_opening_the_env_screen() {
+    fn enter_on_a_dogs_map_field_refuses_rather_than_opening_an_editor() {
         let mut app = fixtures::app_in_dog_pane();
         let index = app
             .config_pane()
@@ -10242,8 +10224,11 @@ mod tests {
         }
         assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
         assert!(
-            app.config_pane().expect("still open").env().is_none(),
-            "a dog has no env sub-screen"
+            app.config_pane()
+                .expect("still open")
+                .env_typing()
+                .is_none(),
+            "a dog has no env editor"
         );
         let notice = app.notice().expect("a locked row answers").to_string();
         assert!(notice.contains("no editor in this pane"), "{notice}");

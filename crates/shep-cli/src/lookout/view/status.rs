@@ -256,7 +256,7 @@ fn in_flight_text(action: &ActionState<'_>) -> String {
 ///
 /// Three editors, one slot: a field edit is labelled with the field, an
 /// env edit with `env` and the key, a list edit with the field and the
-/// element's position, and either sub-screen's `+ new` row with what it
+/// element's position, and either `+ new`/`+ add a key` row with what it
 /// wants, since there is nothing yet to name.
 fn pane_editor(pane: &ConfigPane) -> Option<(String, &str)> {
     if let Some(list) = pane.list() {
@@ -265,10 +265,10 @@ fn pane_editor(pane: &ConfigPane) -> Option<(String, &str)> {
             (None, buffer) => Some((format!("new {} element", list.key()), buffer)),
         };
     }
-    if let Some(env) = pane.env() {
-        return match env.typing()? {
-            (Some(key), buffer) => Some((format!("env {key} ="), buffer)),
-            (None, buffer) => Some(("new env KEY=value".to_owned(), buffer)),
+    if let Some(env) = pane.env_typing() {
+        return match env.key() {
+            Some(key) => Some((format!("env {key} ="), env.buffer())),
+            None => Some(("new env KEY=value".to_owned(), env.buffer())),
         };
     }
     let typing = pane.typing()?;
@@ -312,11 +312,8 @@ const fn pane_hint(control: Control, screen: PaneScreen) -> &'static str {
         (Control::Allowed, PaneScreen::Fields) => {
             "esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   u undo   h help   * yours   ! parked   q quit"
         }
-        (Control::ReadOnly, PaneScreen::Env | PaneScreen::List) => {
+        (Control::ReadOnly, PaneScreen::List) => {
             "esc back   j/k select   g/G first/last   r refresh   q quit"
-        }
-        (Control::Allowed, PaneScreen::Env) => {
-            "esc back   j/k select   g/G first/last   r refresh   e set   u undo   q quit"
         }
         (Control::Allowed, PaneScreen::List) => {
             "esc back   j/k select   g/G first/last   r refresh   e edit   d remove   K/J move   u undo   q quit"
@@ -324,26 +321,21 @@ const fn pane_hint(control: Control, screen: PaneScreen) -> &'static str {
     }
 }
 
-/// Which of the pane's three screens is up.
+/// Which of the pane's two screens is up.
 ///
 /// `Debug` is derived (IR-41): a bare variant name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PaneScreen {
-    /// The field list.
+    /// The field list, which env rows now walk too.
     Fields,
-    /// The env sub-screen.
-    Env,
     /// The list sub-screen.
     List,
 }
 
-/// Which screen `pane` is showing. A sub-screen wins, and the two are
-/// never open at once.
+/// Which screen `pane` is showing.
 fn pane_screen(pane: &ConfigPane) -> PaneScreen {
     if pane.list().is_some() {
         PaneScreen::List
-    } else if pane.env().is_some() {
-        PaneScreen::Env
     } else {
         PaneScreen::Fields
     }
@@ -786,27 +778,29 @@ mod tests {
         }
     }
 
+    /// An env row is on the same screen as every field, so it carries the
+    /// field list's own hint: `esc write & close`, not a sub-screen's `esc
+    /// back`, and `e edit` since `begin_env_typing` is the same door
+    /// `confirm_field` already opens for a typed field.
     #[test]
-    fn the_env_sub_screen_says_esc_backs_out_rather_than_closes() {
+    fn an_env_rows_status_bar_hint_is_the_field_lists_own() {
         let mut app = super::super::fixtures::app_in_sheep_pane_with_control();
-        pane_to(&mut app, "env");
-        app.update(Msg::Key(KeyPress::Confirm));
+        app.update(Msg::Key(KeyPress::SelectLast));
+        assert!(matches!(
+            app.config_pane().unwrap().cursor(),
+            Some(crate::lookout::pane::PaneRow::Env(_) | crate::lookout::pane::PaneRow::AddEnv)
+        ));
         let bar = rendered(&status_line(&app, 200));
-        assert!(bar.contains("esc back"), "got {bar:?}");
-        assert!(bar.contains("e set"), "got {bar:?}");
-        assert!(
-            !bar.contains("e close"),
-            "e no longer closes anything: {bar:?}"
-        );
-        assert!(!bar.contains("enter set"), "got {bar:?}");
+        assert!(bar.contains("esc write & close"), "got {bar:?}");
+        assert!(bar.contains("e edit"), "got {bar:?}");
     }
 
-    /// `g`/`G` and `r` are bound on the field list and both sub-screens,
-    /// in both control states. A hint that needs a footnote is an
-    /// asterisk in both directions.
+    /// `g`/`G` and `r` are bound on the field list and the list
+    /// sub-screen, in both control states. A hint that needs a footnote is
+    /// an asterisk in both directions.
     #[test]
     fn every_pane_hint_names_the_movement_and_refresh_keys_it_binds() {
-        for screen in [PaneScreen::Fields, PaneScreen::Env, PaneScreen::List] {
+        for screen in [PaneScreen::Fields, PaneScreen::List] {
             for control in [Control::ReadOnly, Control::Allowed] {
                 let hint = pane_hint(control, screen);
                 for key in ["j/k select", "g/G first/last", "r refresh", "q quit"] {
@@ -819,7 +813,7 @@ mod tests {
     /// The legend for the flag glyphs `field_line` draws: `*` an
     /// operator's own override, `!` parked until the next respawn. Named
     /// in both control states, since the flags are informational rather
-    /// than something `--allow-control` gates. The env sub-screen has no
+    /// than something `--allow-control` gates. The list sub-screen has no
     /// rows of its own to flag, so it carries neither.
     #[test]
     fn the_field_lists_hint_carries_a_legend_for_its_own_flag_glyphs() {
@@ -827,25 +821,28 @@ mod tests {
             let hint = pane_hint(control, PaneScreen::Fields);
             assert!(hint.contains("* yours"), "{control:?}: {hint:?}");
             assert!(hint.contains("! parked"), "{control:?}: {hint:?}");
-            for screen in [PaneScreen::Env, PaneScreen::List] {
-                let sub = pane_hint(control, screen);
-                assert!(!sub.contains('*'), "{control:?} {screen:?}: {sub:?}");
-                assert!(!sub.contains('!'), "{control:?} {screen:?}: {sub:?}");
-            }
+            let sub = pane_hint(control, PaneScreen::List);
+            assert!(!sub.contains('*'), "{control:?}: {sub:?}");
+            assert!(!sub.contains('!'), "{control:?}: {sub:?}");
         }
     }
 
     /// Guards against the hint naming a key that does not actually work,
-    /// a lie rather than merely a gap.
+    /// a lie rather than merely a gap: `g`/`G` and `r` reach an env row
+    /// exactly as they reach a field.
     #[test]
-    fn the_env_sub_screens_movement_and_refresh_keys_do_what_the_hint_says() {
+    fn the_env_rows_movement_and_refresh_keys_do_what_the_hint_says() {
         let mut app = super::super::fixtures::app_in_sheep_pane_with_control();
-        pane_to(&mut app, "env");
-        app.update(Msg::Key(KeyPress::Confirm));
         app.update(Msg::Key(KeyPress::SelectLast));
-        assert_eq!(app.config_pane().unwrap().env().unwrap().view().cursor(), 2);
+        assert_eq!(
+            app.config_pane().unwrap().cursor(),
+            Some(crate::lookout::pane::PaneRow::AddEnv)
+        );
         app.update(Msg::Key(KeyPress::SelectFirst));
-        assert_eq!(app.config_pane().unwrap().env().unwrap().view().cursor(), 0);
+        assert_eq!(
+            app.config_pane().unwrap().cursor(),
+            Some(crate::lookout::pane::PaneRow::Field(0))
+        );
         assert!(matches!(
             app.update(Msg::Key(KeyPress::Refresh)),
             crate::lookout::app::Effect::Send(_)
@@ -877,8 +874,15 @@ mod tests {
         assert!(!field.contains("filter"), "got {field:?}");
         app.update(Msg::Key(KeyPress::TextAbandon));
 
-        pane_to(&mut app, "env");
-        app.update(Msg::Key(KeyPress::Confirm));
+        // `SelectLast` lands on `+ add a key`; two steps up is `DB_HOST`,
+        // the fixture's first env key.
+        app.update(Msg::Key(KeyPress::SelectLast));
+        app.update(Msg::Key(KeyPress::SelectUp));
+        app.update(Msg::Key(KeyPress::SelectUp));
+        assert_eq!(
+            app.config_pane().unwrap().cursor(),
+            Some(crate::lookout::pane::PaneRow::Env(0))
+        );
         app.update(Msg::Key(KeyPress::Confirm));
         app.update(Msg::Key(KeyPress::TextChar('y')));
         let env = rendered(&status_line(&app, 200));

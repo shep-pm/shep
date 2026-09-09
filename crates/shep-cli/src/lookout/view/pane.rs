@@ -21,7 +21,7 @@ use shep_core::config::{ApplyGroup, GROUP_ORDER};
 use super::super::app::{App, PaneMenu};
 use super::super::field::{Field, FieldKind, ValueKind};
 use super::super::pane::{
-    ConfigPane, EnvPane, EnvRow, ListPane, ListRow, Lock, PaneEdit, PaneRow, PaneTarget,
+    ConfigPane, EnvTyping, ListPane, ListRow, Lock, PaneEdit, PaneRow, PaneTarget,
 };
 use super::super::theme::Palette;
 use super::super::validation;
@@ -341,136 +341,9 @@ fn top_line(
     None
 }
 
-/// The env sub-screen: the sheep's env key names, and a row to add one on.
-///
-/// Values are never drawn: `Request::SheepConfig` answers with keys alone,
-/// so every key reads `<set>` regardless of what the pane knows. That is a
-/// property of the wire, not a truncation, and the title says so.
-///
-/// Laid out through [`super::scroll::to_cursor`], the same walk the field
-/// list uses (one uniform row, no group headers), so the cursor is drawn
-/// at every height this pane claims to support.
-fn env_lines(
-    pane: &ConfigPane,
-    env: &EnvPane,
-    palette: Palette,
-    width: u16,
-    budget: usize,
-) -> Vec<Line<'static>> {
-    let mut lines = vec![Line::from(Span::styled(
-        format!(
-            "  {}",
-            fit(
-                &format!("{}  env (write-only)", pane.target().name()),
-                body_width(width)
-            )
-        ),
-        palette.muted(),
-    ))];
-    let body_budget = budget - 1;
-    if body_budget == 0 {
-        return lines;
-    }
-    let rows = env.rows();
-    let cursor_row = env.view().cursor().min(rows.len().saturating_sub(1));
-    lines.extend(super::scroll::to_cursor(
-        cursor_row,
-        env.view().offset(),
-        |offset| env_body_from(env, palette, width, body_budget, offset),
-        || vec![env_line(env, cursor_row, true, width, palette)],
-    ));
-    lines
-}
-
-/// One row of the env sub-screen: the selection mark, the key, and `<set>`.
-///
-/// The `+ new` row carries no value cell: there is no key yet for one to
-/// belong to.
-fn env_line(
-    env: &EnvPane,
-    index: usize,
-    selected: bool,
-    width: u16,
-    palette: Palette,
-) -> Line<'static> {
-    let (key_w, value_w, _) = widths(body_width(width));
-    let typed = selected
-        .then(|| env.typing())
-        .flatten()
-        .map(|(_, buffer)| buffer);
-    let (key, value) = match env.rows().get(index).copied() {
-        Some(EnvRow::Key(key_index)) => (
-            env.keys().get(key_index).cloned().unwrap_or_default(),
-            typed.map_or_else(|| "<set>".to_owned(), |buffer| format!("{buffer}\u{258f}")),
-        ),
-        // On `+ new` the buffer is the whole `KEY=value`, so it replaces
-        // the key cell rather than the value cell.
-        Some(EnvRow::New) => match typed {
-            Some(buffer) => (format!("{buffer}\u{258f}"), String::new()),
-            None => ("+ new".to_owned(), String::new()),
-        },
-        None => return Line::default(),
-    };
-    let mut text = format!("{} ", mark(selected));
-    text.push_str(&fit(&key, key_w));
-    if value_w > 0 && !value.is_empty() {
-        text.push_str("  ");
-        text.push_str(&fit(&value, value_w));
-    }
-    if matches!(env.rows().get(index), Some(EnvRow::New)) {
-        return Line::from(Span::styled(text, palette.muted()));
-    }
-    Line::from(Span::raw(text))
-}
-
-/// Lays the sub-screen's body out from row `offset`, spending at most
-/// `budget` lines. Both markers are reserved before a row is admitted, the
-/// same rule [`body_from`] follows.
-fn env_body_from(
-    env: &EnvPane,
-    palette: Palette,
-    width: u16,
-    budget: usize,
-    offset: usize,
-) -> Attempt {
-    let rows = env.rows();
-    let total = rows.len();
-    let cursor_row = env.view().cursor().min(total.saturating_sub(1));
-    let above = usize::from(offset > 0);
-    let mut lines: Vec<Line<'static>> = Vec::new();
-    let mut drawn = 0usize;
-    for index in offset..total {
-        if lines.len() + 1 + above + usize::from(index + 1 < total) > budget {
-            break;
-        }
-        lines.push(env_line(env, index, index == cursor_row, width, palette));
-        drawn += 1;
-    }
-    let hidden_below = total.saturating_sub(offset + drawn);
-    if hidden_below > 0 {
-        lines.push(Line::from(Span::styled(
-            format!("  ... {hidden_below} below"),
-            palette.muted(),
-        )));
-    }
-    if offset > 0 {
-        lines.insert(
-            0,
-            Line::from(Span::styled(
-                format!("  ... {offset} above"),
-                palette.muted(),
-            )),
-        );
-    }
-    Attempt {
-        cursor_drawn: drawn > 0 && (offset..offset + drawn).contains(&cursor_row),
-        lines,
-    }
-}
-
 /// The list sub-screen: one array field's elements, and a row to add one on.
 ///
-/// Values are drawn, unlike [`env_lines`]: an array arrives with the
+/// Values are drawn, unlike an env row: an array arrives with the
 /// config, so hiding it would leave the screen unable to say which element
 /// the cursor is on.
 ///
@@ -823,6 +696,23 @@ fn pending_and_env_lines(
     if budget == 0 {
         return lines;
     }
+    // The cursor's own row has to draw somewhere in this budget, the same
+    // rule `body_from`/`cursor_only` hold for a field. Below the floor a
+    // full section (headers, blanks, every key) would cut it along with
+    // everything else, so at the floor this draws that one row alone and
+    // nothing else, rather than truncating from the bottom and losing
+    // whichever row the truncation happens to reach last.
+    let pending_len = if pane.edits().is_empty() {
+        0
+    } else {
+        2 + pane.edits().len()
+    };
+    let env_len = 2 + pane.env_key_names().len() + 1;
+    if pending_len + env_len > budget
+        && let Some(PaneRow::Env(_) | PaneRow::AddEnv) = pane.cursor()
+    {
+        return vec![cursor_env_row_line(pane, width, palette)];
+    }
     let mut remaining = budget;
 
     if !pane.edits().is_empty() && remaining > 0 {
@@ -849,20 +739,121 @@ fn pending_and_env_lines(
         lines.push(section_header("env", palette));
         remaining -= 1;
     }
-    for name in pane.env_key_names() {
+    for (index, name) in pane.env_key_names().iter().enumerate() {
         if remaining == 0 {
             break;
         }
-        lines.push(Line::from(Span::raw(format!("    {name}  <set>"))));
+        let selected = pane.cursor() == Some(PaneRow::Env(index));
+        lines.push(env_row_line(pane, name, selected, width, palette));
         remaining -= 1;
     }
     if remaining > 0 {
-        lines.push(Line::from(Span::styled(
-            "    + add a key".to_owned(),
-            palette.muted(),
-        )));
+        let selected = pane.cursor() == Some(PaneRow::AddEnv);
+        lines.push(add_env_row_line(pane, selected, width, palette));
     }
     lines
+}
+
+/// The cursor's own row, alone: [`pending_and_env_lines`]'s floor fallback,
+/// [`cursor_only`]'s twin for the env rows below the field list. Panics if
+/// the cursor is not on [`PaneRow::Env`] or [`PaneRow::AddEnv`]; every
+/// caller has already checked.
+fn cursor_env_row_line(pane: &ConfigPane, width: u16, palette: Palette) -> Line<'static> {
+    match pane.cursor() {
+        Some(PaneRow::Env(index)) => {
+            let name = pane
+                .env_key_names()
+                .get(index)
+                .expect("the cursor names a real env row");
+            env_row_line(pane, name, true, width, palette)
+        }
+        Some(PaneRow::AddEnv) => add_env_row_line(pane, true, width, palette),
+        Some(PaneRow::Field(_)) | None => {
+            unreachable!("callers check the cursor is on an env row first")
+        }
+    }
+}
+
+/// One env key's own row: the selection mark, the key, and `(set)`.
+///
+/// Every key reads `(set)`, never its own value: `SheepConfigView::new`
+/// clears `config.env` before this pane ever sees it, so no value for any
+/// key reaches here, and this is the one word every row can honestly draw.
+fn env_row_line(
+    pane: &ConfigPane,
+    name: &str,
+    selected: bool,
+    width: u16,
+    palette: Palette,
+) -> Line<'static> {
+    let (key_w, value_w, _) = widths(body_width(width));
+    let typing = selected
+        .then(|| pane.env_typing())
+        .flatten()
+        .filter(|typing| typing.key() == Some(name))
+        .map(EnvTyping::buffer);
+    let value = typing.map_or_else(|| "(set)".to_owned(), |buffer| format!("{buffer}\u{258f}"));
+    let ground = if selected {
+        palette.ground()
+    } else {
+        Style::default()
+    };
+    let mark_style = if selected {
+        palette.attention().patch(ground)
+    } else {
+        Style::default()
+    };
+    let mark_span = Span::styled(mark(selected), mark_style);
+    // A single blank standing in for `field_line`'s lock glyph: an env row
+    // has none, but `GUTTER` already spent that column out of
+    // `body_width`, so this row has to spend it too rather than draw one
+    // column short.
+    let mut text = String::from(" ");
+    text.push_str(&fit(name, key_w));
+    if value_w > 0 {
+        text.push_str("  ");
+        text.push_str(&fit(&value, value_w));
+    }
+    Line::from(vec![mark_span, Span::styled(text, ground)])
+}
+
+/// The `+ add a key` row: the selection mark, and either the caption or,
+/// while it is being typed, the whole `KEY=value` buffer.
+fn add_env_row_line(
+    pane: &ConfigPane,
+    selected: bool,
+    width: u16,
+    palette: Palette,
+) -> Line<'static> {
+    let (key_w, _, _) = widths(body_width(width));
+    let typing = selected
+        .then(|| pane.env_typing())
+        .flatten()
+        .filter(|typing| typing.key().is_none())
+        .map(EnvTyping::buffer);
+    let ground = if selected {
+        palette.ground()
+    } else {
+        Style::default()
+    };
+    let mark_style = if selected {
+        palette.attention().patch(ground)
+    } else {
+        Style::default()
+    };
+    let mark_span = Span::styled(mark(selected), mark_style);
+    let (caption, muted) = match typing {
+        Some(buffer) => (format!("{buffer}\u{258f}"), false),
+        None => ("+ add a key".to_owned(), true),
+    };
+    let mut text = String::from(" ");
+    text.push_str(&fit(&caption, key_w));
+    let style = if muted {
+        palette.muted()
+    } else {
+        Style::default()
+    };
+    Line::from(vec![mark_span, Span::styled(text, style.patch(ground))])
 }
 
 /// The active group's fields, laid out through [`super::scroll::to_cursor`]
@@ -874,9 +865,30 @@ fn grouped_body_lines(
     width: u16,
     budget: usize,
 ) -> Vec<Line<'static>> {
+    // The cursor's own row has to draw somewhere in this budget, per the
+    // rule every screen in this file holds. When it is on an env row or
+    // `+ add a key`, the field body has nothing to align to and its own
+    // windowing would spend the whole budget on fields none of which is
+    // selected, leaving nothing for the row that actually is. So
+    // `pending_and_env_lines` goes first then, and the field body takes
+    // whatever it leaves, rather than the other way around.
+    if matches!(pane.cursor(), Some(PaneRow::Env(_) | PaneRow::AddEnv)) {
+        let tail = pending_and_env_lines(pane, palette, width, budget);
+        let remaining = budget.saturating_sub(tail.len());
+        let mut lines = if !pane.field_rows().is_empty() && remaining > 0 {
+            body_from(pane, palette, width, remaining, 0, false).lines
+        } else {
+            Vec::new()
+        };
+        lines.extend(tail);
+        return lines;
+    }
     let mut lines = if !pane.fields().is_empty() && budget > 0 {
-        let total = pane.rows().len();
-        let cursor_row = pane.view().cursor().min(total.saturating_sub(1));
+        let field_rows = pane.field_rows();
+        let cursor_row = field_rows
+            .iter()
+            .position(|row| Some(*row) == pane.cursor())
+            .unwrap_or(0);
         super::scroll::to_cursor(
             cursor_row,
             pane.view().offset(),
@@ -1100,9 +1112,6 @@ pub fn pane_lines(
     if let Some(list) = pane.list() {
         return list_lines(pane, list, palette, width, budget);
     }
-    if let Some(env) = pane.env() {
-        return env_lines(pane, env, palette, width, budget);
-    }
     if has_groups(pane) {
         if width >= DESIGN_TARGET_WIDTH {
             return grouped_pane_with_panel_lines(pane, menu, palette, budget);
@@ -1173,9 +1182,17 @@ fn body_from(
     offset: usize,
     show_group_headers: bool,
 ) -> Attempt {
-    let rows = pane.rows();
+    let rows = pane.field_rows();
     let total = rows.len();
-    let cursor_row = pane.view().cursor().min(total.saturating_sub(1));
+    // The cursor may be on an env row rather than a field: nothing in
+    // this body is selected then, and row 0 stands in so the first
+    // attempt (offset 0) always finds it and never scrolls hunting for a
+    // row that is not here. See `grouped_body_lines`'s own doc.
+    let cursor_row = rows
+        .iter()
+        .position(|row| Some(*row) == pane.cursor())
+        .unwrap_or(0)
+        .min(total.saturating_sub(1));
     // The `... N above` marker is inserted at the top once everything under
     // it is laid out, so its line is held back from the very first check.
     let above = usize::from(offset > 0);
@@ -1200,7 +1217,9 @@ fn body_from(
     let mut drawn = 0usize;
 
     for (index, row) in rows.iter().enumerate() {
-        let PaneRow::Field(field_index) = *row;
+        let PaneRow::Field(field_index) = *row else {
+            continue;
+        };
         let group = pane
             .fields()
             .fields()
@@ -1280,7 +1299,7 @@ fn cursor_only(
     budget: usize,
     cursor_row: usize,
 ) -> Vec<Line<'static>> {
-    let rows = pane.rows();
+    let rows = pane.field_rows();
     let mut lines = Vec::new();
     if let Some(PaneRow::Field(index)) = rows.get(cursor_row).copied() {
         lines.push(field_line(pane, index, true, width, palette));
@@ -1641,7 +1660,10 @@ mod tests {
         // the scroll this test is about.
         let mut pane = web_pane();
         pane.set_rows(8);
-        pane.move_to_last();
+        // Not `move_to_last`: that now lands on `+ add a key`, past every
+        // field. `move_to_key` reaches `user`, `process`'s own last field,
+        // directly.
+        pane.move_to_key("user");
         let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 9));
         assert!(text.len() <= 9, "{text:?}");
         assert!(text.iter().any(|line| line.contains("above")), "{text:?}");
@@ -1757,7 +1779,13 @@ mod tests {
         };
         assert_eq!(flagged('*'), ["reuse_port", "max_restarts"]);
         assert_eq!(flagged('!'), ["kill_signal"]);
-        assert_eq!(rows_of(&text).len(), 41, "every field is drawn at 120");
+        // 40, not 41: `env` no longer draws its own field row, folded into
+        // the env rows below the field list instead.
+        assert_eq!(
+            rows_of(&text).len(),
+            40,
+            "every field but env is drawn at 120"
+        );
     }
 
     /// `=` is shep refusing the write outright; `~` is only this pane
@@ -1776,7 +1804,8 @@ mod tests {
         };
         assert_eq!(glyphed('='), ["instances", "name"]);
         assert_eq!(glyphed('~'), ["liveness_probe", "readiness_probe"]);
-        assert_eq!(glyphed(' ').len(), 41 - 2 - 2);
+        // 40, not 41: `env` no longer draws its own field row.
+        assert_eq!(glyphed(' ').len(), 40 - 2 - 2);
     }
 
     /// `kill_timeout` and `exp_backoff_restart_delay` default to 1600ms
@@ -2251,15 +2280,17 @@ mod tests {
         }
     }
 
-    /// The env sub-screen at a comfortable width. The snapshot is the
-    /// assertion: the title says write-only, both of the fixture's keys are
-    /// listed with `<set>` rather than a value, and the `+ new` row is last.
+    /// The folded env rows at a comfortable width: both of the fixture's
+    /// keys are listed with `(set)` rather than a value, and `+ add a key`
+    /// is last.
     #[test]
-    fn the_env_sub_screen_at_a_comfortable_width() {
-        let mut pane = web_pane();
-        pane.open_env();
-        let lines = pane_lines(&pane, None, fixtures::plain(), 120, 0);
-        insta::assert_snapshot!("env_sub_screen", text_of(&lines).join("\n"));
+    fn the_env_rows_draw_at_a_comfortable_width() {
+        let pane = web_pane();
+        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0)).join("\n");
+        assert!(text.contains("DB_HOST"), "{text}");
+        assert!(text.contains("LOG_LEVEL"), "{text}");
+        assert!(text.contains("(set)"), "{text}");
+        assert!(text.contains("+ add a key"), "{text}");
     }
 
     /// A filed env write draws nothing at all on this screen, and above
@@ -2267,22 +2298,24 @@ mod tests {
     #[test]
     fn a_filed_env_write_never_reaches_the_screen() {
         let mut pane = web_pane();
-        pane.open_env();
-        pane.env_mut().unwrap().begin_typing();
-        for typed in "hunter2".chars() {
-            pane.env_mut().unwrap().type_char(typed);
+        pane.move_to_last();
+        assert_eq!(pane.cursor(), Some(PaneRow::AddEnv));
+        pane.begin_env_typing();
+        for typed in "NEW_KEY=hunter2".chars() {
+            pane.type_env_char(typed);
         }
-        let (key, value) = pane.env_mut().unwrap().apply_typing().unwrap();
-        pane.file_env(key, value.map(Into::into));
+        pane.apply_env_typing();
         let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
         assert!(!text.join("\n").contains("hunter2"), "{text:?}");
     }
 
     /// The shepherd sends keys with no values at all, so a rendered value
-    /// could only have been invented.
+    /// could only have been invented. Replaces
+    /// `the_env_sub_screen_never_renders_a_value`, which pinned the same
+    /// fact on the sub-screen the env rows folded into.
     #[test]
-    fn the_env_sub_screen_never_renders_a_value() {
-        let mut pane = ConfigPane::sheep({
+    fn every_env_value_renders_as_set_and_never_as_itself() {
+        let pane = ConfigPane::sheep({
             let mut config = shep_core::config::AppConfig {
                 name: "web".to_string(),
                 ..Default::default()
@@ -2292,69 +2325,20 @@ mod tests {
                 .insert("DB_PASSWORD".to_string(), "hunter2".to_string());
             shep_core::protocol::SheepConfigView::new(config, Vec::new(), Vec::new())
         });
-        pane.open_env();
         let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0)).join("\n");
         assert!(text.contains("DB_PASSWORD"), "{text}");
         assert!(!text.contains("hunter2"), "{text}");
-        assert!(text.contains("<set>"), "{text}");
-    }
-
-    #[test]
-    fn the_env_cursor_survives_every_step_of_a_walk_down_and_back_up() {
-        let mut pane = ConfigPane::sheep({
-            let mut config = shep_core::config::AppConfig {
-                name: "web".to_string(),
-                ..Default::default()
-            };
-            for index in 0..20 {
-                config
-                    .env
-                    .insert(format!("KEY_{index:02}"), "x".to_string());
-            }
-            shep_core::protocol::SheepConfigView::new(config, Vec::new(), Vec::new())
-        });
-        pane.open_env();
-        for height in [1u16, 2, 3, 6, 8, 14, 30] {
-            pane.env_mut().unwrap().move_to_first();
-            let body = usize::from(height.saturating_sub(1));
-            pane.env_mut().unwrap().set_rows(body);
-            let total = pane.env().unwrap().rows().len();
-            for step in 0..=total {
-                let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, height));
-                assert!(
-                    text.len() <= usize::from(height),
-                    "height {height}, step {step}: {text:?}"
-                );
-                if height > 1 {
-                    assert_eq!(
-                        text.iter().filter(|line| line.starts_with('>')).count(),
-                        1,
-                        "height {height}, step {step}: {text:?}"
-                    );
-                }
-                pane.env_mut().unwrap().move_by(1);
-            }
-            for step in 0..=total {
-                let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, height));
-                if height > 1 {
-                    assert_eq!(
-                        text.iter().filter(|line| line.starts_with('>')).count(),
-                        1,
-                        "height {height}, step {step} up: {text:?}"
-                    );
-                }
-                pane.env_mut().unwrap().move_by(-1);
-            }
-        }
+        assert!(text.contains("(set)"), "{text}");
     }
 
     #[test]
     fn every_env_line_fits_the_width_it_was_drawn_for() {
         let mut pane = web_pane();
-        pane.open_env();
-        pane.env_mut().unwrap().begin_typing();
+        pane.move_to_last();
+        assert_eq!(pane.cursor(), Some(PaneRow::AddEnv));
+        pane.begin_env_typing();
         for typed in "A_VERY_LONG_ENV_KEY_NAME=and a value longer still".chars() {
-            pane.env_mut().unwrap().type_char(typed);
+            pane.type_env_char(typed);
         }
         for width in super::super::MIN_TERM_WIDTH..=200 {
             for line in text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0)) {

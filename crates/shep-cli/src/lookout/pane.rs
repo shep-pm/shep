@@ -83,18 +83,21 @@ pub enum Lock {
 
 /// One row of the pane.
 ///
-/// One variant, and it stays one: the env sub-screen went a different way
-/// and got [`EnvRow`] of its own, because its `+ new` row is not an index
-/// into anything and would have made this enum answer for two screens.
-/// Named rather than left as a bare index anyway, a `usize` travelling
-/// between [`ConfigPane::rows`], the viewport and the renderer says nothing
-/// about what it indexes, and this one says.
+/// Three variants, not one: the env sub-screen is gone, and its keys now
+/// walk the same cursor as every field, so this enum has to name a row in
+/// either territory. Named rather than left as a bare index anyway, a
+/// `usize` travelling between [`ConfigPane::rows`], the viewport and the
+/// renderer says nothing about what it indexes, and this one says.
 ///
-/// `Debug` is derived (IR-41): an index.
+/// `Debug` is derived (IR-41): an index, or a bare variant name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaneRow {
     /// Index into [`ConfigPane::fields`].
     Field(usize),
+    /// Index into [`ConfigPane::env_key_names`].
+    Env(usize),
+    /// The row that adds a new env key.
+    AddEnv,
 }
 
 /// One config field's new value, on its way out of the pane.
@@ -208,12 +211,12 @@ pub enum PaneEdit {
 /// one state left, so an enum named for a lifecycle would name two states
 /// that no longer exist.
 ///
-/// Shared by the field list and the env sub-screen. Both type, and neither
-/// needed a mechanism of its own: `view::status` renders whatever is here.
+/// A field's key always exists before its edit starts, which is what keeps
+/// this a bare `key: String` rather than the [`Option`] [`EnvTyping`] needs
+/// for its `+ add a key` row.
 ///
 /// `Debug` is manual and redacted (IR-41), exact-string-tested below. The
-/// buffer is what the operator is halfway through typing, which on the env
-/// screen is a secret.
+/// buffer is what the operator is halfway through typing.
 #[derive(Clone, PartialEq, Eq)]
 pub struct PaneTyping {
     /// Which field. Owns [`super::app::InputMode::Text`] for as long as
@@ -236,220 +239,50 @@ impl core::fmt::Debug for PaneTyping {
     }
 }
 
-/// One row of the env sub-screen.
+/// The pane's open env editor: which key, and what has been typed.
 ///
-/// `Debug` is derived (IR-41): an index, or a marker for the row that adds
-/// a key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EnvRow {
-    /// Index into [`EnvPane::keys`].
-    Key(usize),
-    /// The `+ new` row.
-    New,
-}
-
-/// The env sub-screen: key names, and a write-only editor over them.
+/// `key` is [`None`] on the `+ add a key` row, where the buffer is the
+/// whole `KEY=value` rather than a value alone: an env edit's key does not
+/// exist yet on that row, and forcing it through [`PaneTyping`]'s bare
+/// `key: String` would need an empty string as a sentinel, which is itself
+/// a legal env key name.
 ///
-/// Write-only, not a shortcut: `Request::SheepConfig` answers with the
-/// env keys and no values, so this screen has nothing to seed an editor
-/// with and never asks for one. A value goes out through
-/// `Request::SetSheepEnv`, one key at a time.
-///
-/// `Debug` is manual and redacted (IR-41), exact-string-tested below. Key
-/// names are withheld for the reason [`ConfigPane`]'s own `Debug`
-/// withholds `env_keys`; the buffer is withheld because on this screen it
-/// is the secret itself, the whole of `DB_PASSWORD=hunter2` in one
-/// string.
+/// `Debug` is manual and redacted (IR-41), exact-string-tested below. The
+/// buffer is the secret itself, the whole of `DB_PASSWORD=hunter2` in one
+/// string on the `+ add a key` row.
 #[derive(Clone, PartialEq, Eq)]
-pub struct EnvPane {
-    keys: Vec<String>,
-    view: Viewport,
-    /// `Some((None, buffer))` on the `+ new` row, where the buffer is
-    /// `KEY=value`; `Some((Some(key), buffer))` on an existing key, where
-    /// it is the value alone.
-    typing: Option<(Option<String>, String)>,
+pub struct EnvTyping {
+    key: Option<String>,
+    buffer: String,
 }
 
-/// Prints counts and never a key or a buffer. See the type doc for why.
-/// Exact-string-tested below (`an_env_panes_debug_names_no_key_and_no_value`).
-impl core::fmt::Debug for EnvPane {
+/// Prints whether a key is under edit and never the key or the buffer.
+/// See the type doc for why. Exact-string-tested below
+/// (`debug_names_no_key_and_no_value_on_an_env_typing`).
+impl core::fmt::Debug for EnvTyping {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "EnvPane {{ keys: {}, cursor: {}, typing: {} }}",
-            self.keys.len(),
-            self.view.cursor(),
-            self.typing.is_some()
+            "EnvTyping {{ key: {}, buffer: <{} chars> }}",
+            self.key.is_some(),
+            self.buffer.chars().count()
         )
     }
 }
 
-impl EnvPane {
-    /// A sub-screen over `keys`, cursor at the top and nothing being typed.
+impl EnvTyping {
+    /// Which key is under edit, or [`None`] on the `+ add a key` row,
+    /// where [`Self::buffer`] is the whole `KEY=value` rather than a
+    /// value alone.
     #[must_use]
-    pub fn new(keys: Vec<String>) -> Self {
-        Self {
-            keys,
-            view: Viewport::new(),
-            typing: None,
-        }
+    pub fn key(&self) -> Option<&str> {
+        self.key.as_deref()
     }
 
-    /// One row per key, then the `+ new` row.
+    /// What has been typed so far.
     #[must_use]
-    pub fn rows(&self) -> Vec<EnvRow> {
-        let mut rows: Vec<EnvRow> = (0..self.keys.len()).map(EnvRow::Key).collect();
-        rows.push(EnvRow::New);
-        rows
-    }
-
-    /// The row under the cursor. Never [`None`]: [`Self::rows`] always ends
-    /// with [`EnvRow::New`], so there is always at least one row.
-    #[must_use]
-    pub fn cursor(&self) -> Option<EnvRow> {
-        let rows = self.rows();
-        rows.get(self.view.cursor()).copied()
-    }
-
-    /// The key names, in display order.
-    #[must_use]
-    pub fn keys(&self) -> &[String] {
-        &self.keys
-    }
-
-    /// The key the cursor is on, or [`None`] on the `+ new` row.
-    ///
-    /// What a refresh carries across instead of the cursor's index. A
-    /// removal shortens the list, so an index that survived would name a
-    /// different key afterwards and a reflexive second `Enter` would arm a
-    /// write against the neighbour.
-    #[must_use]
-    pub fn cursor_key(&self) -> Option<&str> {
-        match self.cursor()? {
-            EnvRow::Key(index) => self.keys.get(index).map(String::as_str),
-            EnvRow::New => None,
-        }
-    }
-
-    /// The cursor and offset.
-    #[must_use]
-    pub fn view(&self) -> &Viewport {
-        &self.view
-    }
-
-    /// What is being typed: which key it is for (`None` on the `+ new`
-    /// row, where the buffer is the whole `KEY=value`) and the buffer.
-    /// [`None`] while no editor is open.
-    #[must_use]
-    pub fn typing(&self) -> Option<(Option<&str>, &str)> {
-        self.typing
-            .as_ref()
-            .map(|(key, buffer)| (key.as_deref(), buffer.as_str()))
-    }
-
-    /// Records the terminal's height, in rows of data.
-    pub fn set_rows(&mut self, rows: usize) {
-        let len = self.rows().len();
-        self.view.set_rows(rows, len);
-    }
-
-    pub(super) fn move_by(&mut self, delta: isize) {
-        let len = self.rows().len();
-        self.view.move_by(delta, len);
-    }
-
-    pub(super) fn move_to_first(&mut self) {
-        let len = self.rows().len();
-        self.view.move_to(0, len);
-    }
-
-    pub(super) fn move_to_last(&mut self) {
-        let len = self.rows().len();
-        self.view.move_to(len.saturating_sub(1), len);
-    }
-
-    /// Adopts a previous sub-screen's offset, and puts the cursor back on
-    /// `cursor_key` by name.
-    ///
-    /// A set re-reads the whole config, so without this the operator
-    /// would be thrown back to the first key by their own keystroke.
-    /// Carrying the cursor's index instead is worse: a removal shortens
-    /// the list, so the same index names the next key down and a
-    /// reflexive second `Enter` arms a write against a neighbour nobody
-    /// chose.
-    ///
-    /// A key that is gone puts the cursor on the `+ new` row instead of
-    /// whatever took its place, since that is the one row where `Enter`
-    /// destroys nothing.
-    pub(super) fn adopt_view(&mut self, view: Viewport, cursor_key: Option<&str>) {
-        self.view = view;
-        let len = self.rows().len();
-        let index = match cursor_key {
-            Some(key) => self
-                .keys
-                .iter()
-                .position(|name| name == key)
-                .unwrap_or(len - 1),
-            None => len - 1,
-        };
-        self.view.move_to(index, len);
-    }
-
-    /// Opens the editor on the row under the cursor.
-    ///
-    /// On a key: an empty buffer, because the value is never read back and
-    /// seeding one would mean this screen had been told a secret it is
-    /// built not to hear. On `+ new`: also empty, and the operator types
-    /// `KEY=value`.
-    pub fn begin_typing(&mut self) {
-        self.typing = match self.cursor() {
-            Some(EnvRow::Key(index)) => Some((Some(self.keys[index].clone()), String::new())),
-            Some(EnvRow::New) => Some((None, String::new())),
-            None => None,
-        };
-    }
-
-    /// Appends one typed character.
-    pub fn type_char(&mut self, typed: char) {
-        if let Some((_, buffer)) = self.typing.as_mut() {
-            buffer.push(typed);
-        }
-    }
-
-    /// Removes the last typed character.
-    pub fn type_backspace(&mut self) {
-        if let Some((_, buffer)) = self.typing.as_mut() {
-            buffer.pop();
-        }
-    }
-
-    /// Drops the editor, leaving the sub-screen open.
-    pub fn abandon_typing(&mut self) {
-        self.typing = None;
-    }
-
-    /// Closes the editor and reads what it holds.
-    ///
-    /// `(key, Some(value))` sets, `(key, None)` removes. [`None`] when
-    /// nothing was being typed, and for a `+ new` buffer with no `=` or an
-    /// empty key: neither names a key, and a screen that guessed one would
-    /// be inventing the operator's intent.
-    pub fn apply_typing(&mut self) -> Option<(String, Option<String>)> {
-        let (key, buffer) = self.typing.take()?;
-        match key {
-            // An existing key with an empty buffer is a removal. There is
-            // no separate unset key on this screen, and no widget for one
-            // either: an empty value and no value are the same keystroke
-            // here, and removing is the one of the two shep can express.
-            Some(key) => Some((key, (!buffer.is_empty()).then_some(buffer))),
-            None => {
-                let (key, value) = buffer.split_once('=')?;
-                if key.is_empty() {
-                    return None;
-                }
-                Some((key.to_owned(), Some(value.to_owned())))
-            }
-        }
+    pub fn buffer(&self) -> &str {
+        &self.buffer
     }
 }
 
@@ -468,7 +301,7 @@ pub enum ListRow {
 /// The list sub-screen: one array field's elements, and an editor over
 /// them.
 ///
-/// Values are drawn, unlike [`EnvPane`]: an array arrives with the
+/// Values are drawn, unlike an env row: an array arrives with the
 /// config, so hiding an element would leave the cursor unable to say
 /// which one it holds. `Debug` is manual and redacted (IR-41),
 /// exact-string-tested below, for the same reason as [`ConfigPane`]'s:
@@ -576,8 +409,8 @@ impl ListPane {
     /// Adopts a previous sub-screen's cursor and offset, clamped to this
     /// one's own row count.
     ///
-    /// By index rather than by name, unlike [`EnvPane::adopt_view`]: an
-    /// element has no name, and its position is the only thing that
+    /// By index rather than by name, unlike [`ConfigPane::adopt_env_cursor`]:
+    /// an element has no name, and its position is the only thing that
     /// identifies it. A cursor past the end lands on the `+ new` row,
     /// which is the one row where `Enter` destroys nothing.
     pub(super) fn adopt_view(&mut self, view: Viewport) {
@@ -738,10 +571,13 @@ pub struct ConfigPane {
     /// Everything the operator has changed and nothing has written yet.
     /// Emptied by [`Self::close`], which is the only door out.
     edits: Edits,
-    env: Option<EnvPane>,
-    /// The open list sub-screen. Never open at the same time as
-    /// [`Self::env`]: each opens on a field of its own kind, and `Escape`
+    /// The open env editor, or [`None`]. Never open at the same time as
+    /// [`Self::list`]: each opens on a row of its own kind, and `Escape`
     /// closes whichever is up before the pane.
+    env_typing: Option<EnvTyping>,
+    /// The open list sub-screen. Never open at the same time as
+    /// [`Self::env_typing`]: each opens on a row of its own kind, and
+    /// `Escape` closes whichever is up before the pane.
     list: Option<ListPane>,
     /// Whether `h` is showing the selected field's own help text.
     help_open: bool,
@@ -841,7 +677,7 @@ impl ConfigPane {
             view: Viewport::new(),
             typing: None,
             edits: Edits::default(),
-            env: None,
+            env_typing: None,
             list: None,
             help_open: false,
             section: None,
@@ -906,7 +742,7 @@ impl ConfigPane {
             view: Viewport::new(),
             typing: None,
             edits: Edits::default(),
-            env: None,
+            env_typing: None,
             list: None,
             help_open: false,
             section: Some(section),
@@ -993,36 +829,139 @@ impl ConfigPane {
         self.edits.undo()
     }
 
-    /// The open env sub-screen, or [`None`] when the field list is what is
-    /// on screen.
-    #[must_use]
-    pub fn env(&self) -> Option<&EnvPane> {
-        self.env.as_ref()
-    }
-
-    /// The sheep's own env key names, without opening the sub-screen.
-    /// Empty for a dog, which reads its own section rather than this list
-    /// (see [`Self::dog`]).
+    /// The sheep's own env key names. Empty for a dog, which reads its own
+    /// section rather than this list (see [`Self::dog`]).
     ///
-    /// What the field list's own `env` rule draws; [`Self::env`] is what a
-    /// full sub-screen over the same names reads once one is open.
+    /// What [`Self::rows`]'s trailing [`PaneRow::Env`] rows index into.
     #[must_use]
     pub fn env_key_names(&self) -> &[String] {
         &self.env_keys
     }
 
-    pub(super) fn env_mut(&mut self) -> Option<&mut EnvPane> {
-        self.env.as_mut()
+    /// The open env editor, or [`None`].
+    #[must_use]
+    pub fn env_typing(&self) -> Option<&EnvTyping> {
+        self.env_typing.as_ref()
     }
 
-    /// Opens the env sub-screen over this sheep's key names.
-    pub(super) fn open_env(&mut self) {
-        self.env = Some(EnvPane::new(self.env_keys.clone()));
+    /// Opens the env editor on the row under the cursor. Does nothing
+    /// unless the cursor is on [`PaneRow::Env`] or [`PaneRow::AddEnv`].
+    ///
+    /// Seeded empty always, on an existing key too: `Request::SheepConfig`
+    /// answers with the env key names alone, so there is no value to seed
+    /// an editor with, and seeding one would mean this pane had been told
+    /// a secret it never holds.
+    pub(super) fn begin_env_typing(&mut self) {
+        self.env_typing = match self.cursor() {
+            Some(PaneRow::Env(index)) => Some(EnvTyping {
+                key: self.env_keys.get(index).cloned(),
+                buffer: String::new(),
+            }),
+            Some(PaneRow::AddEnv) => Some(EnvTyping {
+                key: None,
+                buffer: String::new(),
+            }),
+            Some(PaneRow::Field(_)) | None => None,
+        };
     }
 
-    /// Closes it, leaving the field list up.
-    pub(super) fn close_env(&mut self) {
-        self.env = None;
+    /// Appends one typed character.
+    pub fn type_env_char(&mut self, typed: char) {
+        if let Some(typing) = self.env_typing.as_mut() {
+            typing.buffer.push(typed);
+        }
+    }
+
+    /// Removes the last typed character.
+    pub fn type_env_backspace(&mut self) {
+        if let Some(typing) = self.env_typing.as_mut() {
+            typing.buffer.pop();
+        }
+    }
+
+    /// Drops an editor under construction, leaving the pane open.
+    pub fn abandon_env_typing(&mut self) {
+        self.env_typing = None;
+    }
+
+    /// Closes the editor, reads what it holds, and files it.
+    ///
+    /// An existing key with an empty buffer removes it: there is no
+    /// separate unset key for env, and no widget for one either, so an
+    /// empty value and no value are the same keystroke here. On
+    /// `+ add a key` a buffer with no `=` or an empty key names nothing
+    /// and nothing is filed, since guessing a key would be inventing the
+    /// operator's intent.
+    pub fn apply_env_typing(&mut self) {
+        let Some(EnvTyping { key, buffer }) = self.env_typing.take() else {
+            return;
+        };
+        let (key, value) = match key {
+            Some(key) => (key, (!buffer.is_empty()).then_some(buffer)),
+            None => {
+                let Some((key, value)) = buffer.split_once('=') else {
+                    return;
+                };
+                if key.is_empty() {
+                    return;
+                }
+                (key.to_owned(), Some(value.to_owned()))
+            }
+        };
+        self.file_env(key, value.map(EnvValue::from));
+    }
+
+    /// The env key the cursor sits on, when it is on an env row:
+    /// `Some(Some(key))` on [`PaneRow::Env`], `Some(None)` on
+    /// [`PaneRow::AddEnv`], [`None`] when the cursor is on a field.
+    ///
+    /// What a refresh carries instead of the cursor's own index: adding or
+    /// removing an env key shifts every row after it, and an index that
+    /// survived would name a different key. See [`Self::adopt_env_cursor`].
+    #[must_use]
+    pub(super) fn cursor_env_key(&self) -> Option<Option<String>> {
+        match self.cursor()? {
+            PaneRow::Env(index) => Some(self.env_keys.get(index).cloned()),
+            PaneRow::AddEnv => Some(None),
+            PaneRow::Field(_) => None,
+        }
+    }
+
+    /// Puts the cursor back on `key`'s own row after a refresh, or on
+    /// `+ add a key` when `key` is [`None`] or is no longer among
+    /// [`Self::env_key_names`].
+    ///
+    /// Called only when [`Self::cursor_env_key`] read on the previous pane
+    /// reported the cursor was on an env row; every other case is a plain
+    /// [`Self::adopt_view`], index-clamped.
+    pub(super) fn adopt_env_cursor(&mut self, key: Option<&str>) {
+        let rows = self.rows();
+        let index = key
+            .and_then(|key| {
+                rows.iter().position(|row| match row {
+                    PaneRow::Env(env_index) => {
+                        self.env_keys.get(*env_index).map(String::as_str) == Some(key)
+                    }
+                    PaneRow::Field(_) | PaneRow::AddEnv => false,
+                })
+            })
+            .unwrap_or_else(|| rows.len().saturating_sub(1));
+        let len = rows.len();
+        self.view.move_to(index, len);
+    }
+
+    /// The key name of the env row the cursor is on, or [`None`] when the
+    /// cursor is on `+ add a key` or on a field. What
+    /// `the_env_cursor_is_carried_by_key_and_not_by_index_across_a_refresh`
+    /// reads directly, the way an assertion on `EnvPane::cursor_key` used
+    /// to before the sub-screen it belonged to folded into this list.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn cursor_env_key_name(&self) -> Option<&str> {
+        match self.cursor()? {
+            PaneRow::Env(index) => self.env_keys.get(index).map(String::as_str),
+            PaneRow::Field(_) | PaneRow::AddEnv => None,
+        }
     }
 
     /// The open list sub-screen, or [`None`] when the field list is what is
@@ -1145,16 +1084,20 @@ impl ConfigPane {
     /// than for a generic third.
     #[must_use]
     pub fn cursor_lock(&self) -> Option<(&str, Lock)> {
-        let PaneRow::Field(index) = self.cursor()?;
+        let PaneRow::Field(index) = self.cursor()? else {
+            return None;
+        };
         let field = self.fields.fields().get(index)?;
         self.lock(&field.key).map(|lock| (field.key.as_str(), lock))
     }
 
     /// The kind of widget the row under the cursor wants, or [`None`] for
-    /// no row at all.
+    /// no row at all, or for one on an env row, which has no [`FieldKind`].
     #[must_use]
     pub fn cursor_kind(&self) -> Option<&FieldKind> {
-        let PaneRow::Field(index) = self.cursor()?;
+        let PaneRow::Field(index) = self.cursor()? else {
+            return None;
+        };
         self.fields.fields().get(index).map(|field| &field.kind)
     }
 
@@ -1543,20 +1486,50 @@ impl ConfigPane {
         }
     }
 
-    /// One row per field of the active group, in display order. A field
-    /// carrying no group at all (every field on a dog pane, whose schema
-    /// declares none) is visible regardless of which group is active,
-    /// which is what keeps a dog's flat list undisturbed by a control
-    /// meant for a sheep's eight.
+    /// One row per field of the active group, in display order, then this
+    /// sheep's own env keys and the row that adds one. A field carrying no
+    /// group at all (every field on a dog pane, whose schema declares
+    /// none) is visible regardless of which group is active, which is
+    /// what keeps a dog's flat list undisturbed by a control meant for a
+    /// sheep's eight.
+    ///
+    /// The `env` field itself is left out of the field portion for a
+    /// sheep: its own [`PaneRow::Env`] rows are what replaced the sub-screen
+    /// it used to open, and a row that still showed the field's own "N
+    /// keys" summary beside them would be the same fact said twice. A
+    /// dog's schema is somebody else's and can declare a field named
+    /// `env` of its own, which stays.
     #[must_use]
     pub fn rows(&self) -> Vec<PaneRow> {
         let group = self.group();
-        self.fields
+        let is_sheep = matches!(self.target, PaneTarget::Sheep { .. });
+        let mut rows: Vec<PaneRow> = self
+            .fields
             .fields()
             .iter()
             .enumerate()
+            .filter(|(_, field)| !is_sheep || field.key != "env")
             .filter(|(_, field)| field.group.as_deref().is_none_or(|g| g == group))
             .map(|(index, _)| PaneRow::Field(index))
+            .collect();
+        if is_sheep {
+            rows.extend((0..self.env_keys.len()).map(PaneRow::Env));
+            rows.push(PaneRow::AddEnv);
+        }
+        rows
+    }
+
+    /// [`Self::rows`]'s own [`PaneRow::Field`] entries, alone: what the
+    /// field body's own scroll walk lays out. [`Self::rows`] is the
+    /// cursor's whole walk, env rows included; this is the narrower list
+    /// the renderer needs to lay the field portion out on its own, since
+    /// [`super::view::scroll::to_cursor`] has to know how many rows exist
+    /// in the body it is walking, not in the cursor's wider one.
+    #[must_use]
+    pub(super) fn field_rows(&self) -> Vec<PaneRow> {
+        self.rows()
+            .into_iter()
+            .filter(|row| matches!(row, PaneRow::Field(_)))
             .collect()
     }
 
@@ -1607,16 +1580,6 @@ impl ConfigPane {
         self.view.clamp(len);
     }
 
-    /// Re-opens the env sub-screen on the refreshed key list, at the cursor
-    /// and offset it had. Setting a key re-reads the whole config, and
-    /// without this the sub-screen would slam shut on the operator's own
-    /// keystroke, on the one screen where the keystroke adds a row.
-    pub(super) fn adopt_env_view(&mut self, view: Viewport, cursor_key: Option<&str>) {
-        let mut env = EnvPane::new(self.env_keys.clone());
-        env.adopt_view(view, cursor_key);
-        self.env = Some(env);
-    }
-
     /// Re-opens the list sub-screen on the refreshed array, at the cursor
     /// and offset it had. Setting an element re-reads the whole config,
     /// and without this the sub-screen would slam shut on the operator's
@@ -1646,9 +1609,9 @@ impl ConfigPane {
         {
             self.group = index;
         }
-        if let Some(row_index) = self.rows().iter().position(|row| {
-            let PaneRow::Field(field_index) = row;
-            self.fields.fields()[*field_index].key == key
+        if let Some(row_index) = self.rows().iter().position(|row| match row {
+            PaneRow::Field(field_index) => self.fields.fields()[*field_index].key == key,
+            PaneRow::Env(_) | PaneRow::AddEnv => false,
         }) {
             let len = self.rows().len();
             self.view.move_to(row_index, len);
@@ -1854,12 +1817,13 @@ mod tests {
         assert_eq!(pane.cursor(), Some(PaneRow::Field(0)));
         pane.move_to_last();
         // `process`, the group a fresh pane opens on, has ten fields, at
-        // indices `0..10` since it sorts first.
-        assert_eq!(pane.cursor(), Some(PaneRow::Field(9)));
+        // indices `0..10` since it sorts first, then `web`'s own one env
+        // key and the row that adds another.
+        assert_eq!(pane.cursor(), Some(PaneRow::AddEnv));
         assert_eq!(
             pane.fields().fields()[9].key,
             "user",
-            "the last row is process's own last field"
+            "the last field is process's own last one"
         );
         pane.move_to_first();
         assert_eq!(pane.cursor(), Some(PaneRow::Field(0)));
@@ -1873,7 +1837,7 @@ mod tests {
         let carried = pane.view().clone();
         let mut fresh = ConfigPane::sheep(web());
         fresh.adopt_view(carried);
-        assert_eq!(fresh.cursor(), Some(PaneRow::Field(9)));
+        assert_eq!(fresh.cursor(), Some(PaneRow::AddEnv));
     }
 
     #[test]
@@ -2166,22 +2130,43 @@ mod tests {
         );
     }
 
+    /// `web()` carries one env key, `DB_HOST`, so its rows are one
+    /// [`PaneRow::Env`] and the trailing [`PaneRow::AddEnv`].
     #[test]
-    fn the_env_pane_lists_keys_and_a_new_row_and_an_empty_apply_means_unset() {
-        let mut env = EnvPane::new(vec!["A".into(), "B".into()]);
-        assert_eq!(env.rows().len(), 3, "two keys and a + new row");
-        env.move_to_last();
-        env.begin_typing();
-        for c in "C=3".chars() {
-            env.type_char(c);
+    fn the_env_rows_list_keys_and_add_a_key_and_an_empty_apply_means_unset() {
+        let mut pane = ConfigPane::sheep(web());
+        let env_row_count = pane
+            .rows()
+            .into_iter()
+            .filter(|row| matches!(row, PaneRow::Env(_) | PaneRow::AddEnv))
+            .count();
+        assert_eq!(env_row_count, 2, "one key and a + add a key row");
+
+        pane.move_to_last();
+        assert_eq!(pane.cursor(), Some(PaneRow::AddEnv));
+        pane.begin_env_typing();
+        for c in "NEW_KEY=value".chars() {
+            pane.type_env_char(c);
         }
-        assert_eq!(
-            env.apply_typing(),
-            Some(("C".to_owned(), Some("3".to_owned())))
-        );
-        env.move_to_first();
-        env.begin_typing();
-        assert_eq!(env.apply_typing(), Some(("A".to_owned(), None)));
+        pane.apply_env_typing();
+        let entry = pane
+            .edits()
+            .get(&EditKey::Env("NEW_KEY".to_owned()))
+            .expect("NEW_KEY was filed");
+        assert!(matches!(entry.edit(), PaneEdit::SetEnv { key, .. } if key == "NEW_KEY"));
+
+        pane.move_by(-1);
+        assert_eq!(pane.cursor(), Some(PaneRow::Env(0)));
+        pane.begin_env_typing();
+        pane.apply_env_typing();
+        let removal = pane
+            .edits()
+            .get(&EditKey::Env("DB_HOST".to_owned()))
+            .expect("DB_HOST was filed");
+        assert!(matches!(
+            removal.edit(),
+            PaneEdit::SetEnv { key, value: None } if key == "DB_HOST"
+        ));
     }
 
     /// The bark section every dog test below reads: a comment, a scalar,
@@ -2383,19 +2368,25 @@ mod tests {
         );
     }
 
-    /// The buffer on the `+ new` row is the whole `KEY=value`, secret
+    /// The buffer on `+ add a key` is the whole `KEY=value`, secret
     /// included (IR-41).
     #[test]
-    fn an_env_panes_debug_names_no_key_and_no_value() {
-        let mut env = EnvPane::new(vec!["DB_PASSWORD".into(), "API_TOKEN".into()]);
-        env.move_to_last();
-        env.begin_typing();
-        for typed in "STRIPE_KEY=sk_live_1".chars() {
-            env.type_char(typed);
+    fn debug_names_no_key_and_no_value_on_an_env_typing() {
+        let mut pane = ConfigPane::sheep(web());
+        pane.move_to_last();
+        assert_eq!(pane.cursor(), Some(PaneRow::AddEnv));
+        pane.begin_env_typing();
+        let typed = "STRIPE_KEY=sk_live_1";
+        for typed in typed.chars() {
+            pane.type_env_char(typed);
         }
+        let typing = pane.env_typing().expect("the editor is open");
         assert_eq!(
-            format!("{env:?}"),
-            "EnvPane { keys: 2, cursor: 2, typing: true }"
+            format!("{typing:?}"),
+            format!(
+                "EnvTyping {{ key: false, buffer: <{} chars> }}",
+                typed.chars().count()
+            )
         );
     }
 

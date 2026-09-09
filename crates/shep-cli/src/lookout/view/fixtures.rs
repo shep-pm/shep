@@ -978,6 +978,77 @@ pub fn app_in_dog_pane() -> App {
     app
 }
 
+/// A sheep pane, control open, with exactly the env keys named. Values are
+/// what the fixture's own caller reads to know what it asked for; no value
+/// for any key ever reaches the pane itself, since `SheepConfigView::new`
+/// strips them before the struct is built.
+pub fn app_in_sheep_pane_with_env(env: &[(&str, &str)]) -> App {
+    let mut app = with_selection(
+        ProcessInfo::builder(9, "web", ProcStatus::Online)
+            .pid(Some(48_000))
+            .build(),
+    );
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::Edit));
+    let mut config = AppConfig {
+        name: "web".to_string(),
+        ..AppConfig::default()
+    };
+    for (key, value) in env {
+        config.env.insert((*key).to_string(), (*value).to_string());
+    }
+    app.update(Msg::Replied {
+        sent: Sent::SheepConfig {
+            name: "web".to_string(),
+        },
+        result: Ok(Response::SheepConfig(Box::new(SheepConfigView::new(
+            config,
+            Vec::new(),
+            Vec::new(),
+        )))),
+    });
+    app
+}
+
+/// Walks an open config pane's cursor onto the env row named `key`, the
+/// way [`select_field`] walks it onto a field: no fixture reaches into the
+/// pane to place it.
+///
+/// # Panics
+///
+/// Panics if the pane is closed or has no env key by that name, which is a
+/// fixture bug rather than a failure the test is about.
+pub fn select_env_key(app: &mut App, key: &str) {
+    let pane = app.config_pane().expect("the pane is open");
+    let index = pane
+        .rows()
+        .iter()
+        .position(|row| match row {
+            crate::lookout::pane::PaneRow::Env(env_index) => {
+                pane.env_key_names().get(*env_index).map(String::as_str) == Some(key)
+            }
+            crate::lookout::pane::PaneRow::Field(_) | crate::lookout::pane::PaneRow::AddEnv => {
+                false
+            }
+        })
+        .unwrap_or_else(|| panic!("no env key named {key}"));
+    app.update(Msg::Key(KeyPress::SelectFirst));
+    for _ in 0..index {
+        app.update(Msg::Key(KeyPress::SelectDown));
+    }
+}
+
+/// Opens the editor on whatever row the cursor is already on, types
+/// `text`, and applies it: `Confirm` then a character at a time then
+/// `TextApply`, the way an operator drives either editor this pane opens.
+pub fn type_into_the_open_editor(app: &mut App, text: &str) {
+    app.update(Msg::Key(KeyPress::Confirm));
+    for character in text.chars() {
+        app.update(Msg::Key(KeyPress::TextChar(character)));
+    }
+    app.update(Msg::Key(KeyPress::TextApply));
+}
+
 /// [`app_in_sheep_pane`] with the control gate open: the pane can write.
 ///
 /// The gate is set BEFORE the pane opens, so nothing about how it opened
@@ -1081,9 +1152,11 @@ pub fn select_field(app: &mut App, key: &str) {
     let index = pane
         .rows()
         .iter()
-        .position(|row| {
-            let crate::lookout::pane::PaneRow::Field(field_index) = row;
-            pane.fields().fields()[*field_index].key == key
+        .position(|row| match row {
+            crate::lookout::pane::PaneRow::Field(field_index) => {
+                pane.fields().fields()[*field_index].key == key
+            }
+            crate::lookout::pane::PaneRow::Env(_) | crate::lookout::pane::PaneRow::AddEnv => false,
         })
         .unwrap_or_else(|| panic!("{key} is not in the active group's rows"));
     app.update(Msg::Key(KeyPress::SelectFirst));
@@ -1140,10 +1213,53 @@ pub fn config_pane_field_rows_for_tests(app: &App) -> Vec<String> {
     let pane = app.config_pane().expect("the pane is open");
     pane.rows()
         .into_iter()
-        .map(|crate::lookout::pane::PaneRow::Field(index)| {
-            pane.fields().fields()[index].key.clone()
+        .filter_map(|row| match row {
+            crate::lookout::pane::PaneRow::Field(index) => {
+                Some(pane.fields().fields()[index].key.clone())
+            }
+            crate::lookout::pane::PaneRow::Env(_) | crate::lookout::pane::PaneRow::AddEnv => None,
         })
         .collect()
+}
+
+/// The active group's own env rows, walked by the same cursor as
+/// [`config_pane_field_rows_for_tests`]: one entry per env key, then
+/// `+ add a key`. Bounded to those rows via [`crate::lookout::pane::PaneRow::Env`]
+/// and [`crate::lookout::pane::PaneRow::AddEnv`], so a test on this cannot pass
+/// off a match anywhere else in the frame.
+///
+/// # Panics
+///
+/// Panics if the pane is closed, or draws no row for a key or for
+/// `+ add a key`, which is a fixture bug rather than a failure the test is
+/// about.
+pub fn config_pane_env_rows_for_tests(app: &App) -> Vec<String> {
+    let pane = app.config_pane().expect("the pane is open");
+    let lines =
+        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), 160, 0);
+    let rendered_lines: Vec<String> = lines.iter().map(rendered).collect();
+    let mut rows: Vec<String> = pane
+        .env_key_names()
+        .iter()
+        .map(|name| {
+            rendered_lines
+                .iter()
+                .find(|line| {
+                    line.trim_start_matches(['>', ' '])
+                        .starts_with(name.as_str())
+                })
+                .unwrap_or_else(|| panic!("no row for env key {name}"))
+                .clone()
+        })
+        .collect();
+    rows.push(
+        rendered_lines
+            .iter()
+            .find(|line| line.contains("add a key"))
+            .expect("the pane draws a + add a key row")
+            .clone(),
+    );
+    rows
 }
 
 /// Every filed edit's own key, as [`config_pane_field_rows_for_tests`] does
