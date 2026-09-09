@@ -19,13 +19,16 @@ use ratatui::text::{Line, Span};
 use shep_core::config::{ApplyGroup, GROUP_ORDER};
 
 use super::super::app::{App, PaneMenu};
+use super::super::field::{Field, FieldKind, ValueKind};
 use super::super::pane::{
     ConfigPane, EnvPane, EnvRow, ListPane, ListRow, Lock, PaneEdit, PaneRow, PaneTarget,
 };
 use super::super::theme::Palette;
+use super::super::validation;
 use super::cell;
 use super::flock::{fit, mark};
 use super::scroll::Attempt;
+use crate::output::width::char_columns;
 use crate::vocabulary::Role;
 
 /// The columns every line spends on the selection mark and the space after
@@ -61,6 +64,22 @@ const FULL_WIDTH: u16 = KEY_W + 2 + VALUE_MIN + 2 + COST_W;
 
 /// The narrowest body that still draws a VALUE beside the KEY.
 const VALUE_WIDTH: u16 = KEY_MIN + 2 + VALUE_MIN;
+
+/// The blurb's own wrap width, independent of whatever width the panel
+/// itself draws at: prose reads better narrower than the panel's outer
+/// ceiling allows, the same way a magazine column is narrower than the
+/// page.
+const BLURB_WRAP: u16 = 66;
+
+/// The panel's own width, until Task 10 replaces this fixed number with
+/// the real 45%-of-terminal-width ladder (`panel_width`, wired into this
+/// module's own `pane_lines`). This task draws the panel as a standalone,
+/// directly-testable set of lines; nothing here calls it from
+/// [`pane_lines`] yet, so a caller's own `width` argument is clamped to
+/// this ceiling rather than trusted, which is what keeps every row this
+/// task's own tests draw under 72 columns regardless of the terminal
+/// width a future caller passes in.
+const PANEL_CEILING: u16 = 72;
 
 /// The width the rows are laid out in: the terminal minus [`GUTTER`].
 const fn body_width(width: u16) -> u16 {
@@ -1158,6 +1177,276 @@ fn cursor_only(
         )));
     }
     lines
+}
+
+/// What an operator would call `field`'s shape: not the schema keyword, the
+/// grammar the widget and [`super::super::validation`] already treat it as.
+fn type_label(field: &Field) -> &'static str {
+    match field.value_kind {
+        Some(ValueKind::UpDuration) => return "duration",
+        Some(ValueKind::MemSize) => return "memory size",
+        None => {}
+    }
+    match &field.kind {
+        FieldKind::Bool => "bool",
+        FieldKind::Integer => "integer",
+        FieldKind::Text | FieldKind::Suggested(_) => "text",
+        FieldKind::Choice(_) => "choice",
+        FieldKind::Map => "map",
+        FieldKind::List(_) => "list",
+        FieldKind::Opaque => "opaque",
+    }
+}
+
+/// The glyph, the word [`cost_label`] already prints in the LANDS/COST
+/// cell, and one sentence naming what that word costs the operator, keyed
+/// on [`ApplyGroup`] the same way [`cost_label`] is.
+///
+/// `●` for a change the running sheep picks up on its own; `▲` for one
+/// that waits on a start the operator has to choose the timing of. Both
+/// are checked against the same East-Asian-width rule `flock.rs:46`
+/// applies to `mark`'s own glyph, in this module's own tests: a
+/// double-width rendering would shift every column after it.
+fn impact_tag(group: ApplyGroup) -> (char, &'static str, &'static str) {
+    match group {
+        ApplyGroup::Live => (
+            '\u{25cf}',
+            "now",
+            "the running sheep picks it up without stopping",
+        ),
+        ApplyGroup::NextSpawn => (
+            '\u{25b2}',
+            "next start",
+            "takes effect the next time the sheep starts",
+        ),
+        ApplyGroup::Structural => (
+            '\u{25b2}',
+            "read-only",
+            "shep never writes this; set it in the Flockfile instead",
+        ),
+        ApplyGroup::NeedsRespawn | _ => {
+            ('\u{25b2}', "respawn", "the sheep must stop and start again")
+        }
+    }
+}
+
+/// Wraps `text` at `width` columns, breaking on spaces. A single word
+/// longer than `width` is placed on its own (overlong) line rather than
+/// split mid-word: [`Field::help`] is prose, not data, and a rare overlong
+/// word is a smaller wrong than a hyphen this module invented.
+fn wrap(text: &str, width: usize) -> Vec<String> {
+    if width == 0 {
+        return vec![text.to_owned()];
+    }
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for word in text.split_whitespace() {
+        let word_w: usize = word.chars().map(char_columns).sum();
+        let current_w: usize = current.chars().map(char_columns).sum();
+        if current.is_empty() {
+            current.push_str(word);
+        } else if current_w + 1 + word_w <= width {
+            current.push(' ');
+            current.push_str(word);
+        } else {
+            lines.push(std::mem::take(&mut current));
+            current.push_str(word);
+        }
+    }
+    if !current.is_empty() || lines.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
+/// `text`, truncated (never padded) to at most `width` columns, marking a
+/// cut with a trailing `…` the way [`fit`] does.
+///
+/// Not [`fit`]: the panel's rows are prose, not a fixed-width table cell,
+/// so a short value stays short rather than growing padded trailing spaces
+/// across the column. This is the guard the panel's own width tests check:
+/// a row built from a live value or a schema-authored sentence cannot push
+/// the panel past its own column, even though nothing in today's schemas
+/// is long enough to exercise the truncation itself.
+fn clipped(text: &str, width: u16) -> String {
+    let width = usize::from(width);
+    let columns: usize = text.chars().map(char_columns).sum();
+    if columns <= width {
+        return text.to_owned();
+    }
+    if width == 0 {
+        return String::new();
+    }
+    let budget = width - 1;
+    let mut out = String::new();
+    let mut used = 0;
+    for c in text.chars() {
+        let w = char_columns(c);
+        if used + w > budget {
+            break;
+        }
+        out.push(c);
+        used += w;
+    }
+    out.push('…');
+    out
+}
+
+/// A row of `prefix` (already at its own fixed width) followed by `text`,
+/// clipped to whatever of `width` the prefix leaves: the guard that keeps
+/// a live value or a schema-authored sentence from pushing the row past
+/// the panel's own column.
+fn bounded_row(
+    prefix: Span<'static>,
+    prefix_cols: u16,
+    text: &str,
+    text_style: Style,
+    width: u16,
+) -> Line<'static> {
+    let budget = width.saturating_sub(prefix_cols);
+    Line::from(vec![
+        prefix,
+        Span::styled(clipped(text, budget), text_style),
+    ])
+}
+
+/// The right-hand explanation panel: everything about `field` alone, drawn
+/// at `width` columns (clamped to [`PANEL_CEILING`] until Task 10 makes the
+/// clamp a real ladder).
+///
+/// Six regions, top to bottom, each omitted entirely when its own source is
+/// empty rather than drawn with nothing under its heading: the `FOCUSED`
+/// chip and the blurb are unconditional (a field always has a key, a kind
+/// and a help string), `now`/`default`/`example` show a placeholder rather
+/// than disappearing since `now` is never empty, the impact tag is omitted
+/// for a dog (whose own binary decides what a change costs, not this
+/// pane), and `VALIDATION`/`NEIGHBOURS` are each omitted on their own when
+/// [`validation::bullets`] or [`Field::neighbours`] has nothing to say.
+pub(super) fn panel_for_field(
+    field: &Field,
+    pane: &ConfigPane,
+    palette: Palette,
+    width: u16,
+) -> Vec<Line<'static>> {
+    let width = width.min(PANEL_CEILING);
+    let mut lines = Vec::new();
+
+    // 1: the FOCUSED chip, the field name, its type.
+    lines.push(Line::from(vec![
+        Span::styled(" FOCUSED ", palette.band(Role::Butter)),
+        Span::raw(format!(" {}", field.key)),
+        Span::styled(format!("  {}", type_label(field)), palette.muted()),
+    ]));
+
+    // 2: the blurb, wrapped.
+    for row in wrap(&field.help, usize::from(BLURB_WRAP.min(width))) {
+        lines.push(Line::from(Span::raw(format!("  {row}"))));
+    }
+
+    // 3: now, default, example. `now` is never empty; the other two show a
+    // placeholder rather than dropping their own row, so the panel always
+    // names all three questions even when the schema answers only one.
+    lines.push(Line::default());
+    let now = pane.display_value(&field.key);
+    let default = field.default.clone().unwrap_or_else(|| "(none)".to_owned());
+    let example = field.example.clone().unwrap_or_else(|| "(none)".to_owned());
+    for (label, value) in [("now", now), ("default", default), ("example", example)] {
+        let prefix = format!("  {label:<8}");
+        let prefix_cols = u16::try_from(prefix.chars().count()).unwrap_or(u16::MAX);
+        lines.push(bounded_row(
+            Span::styled(prefix, palette.muted()),
+            prefix_cols,
+            &value,
+            Style::default(),
+            width,
+        ));
+    }
+
+    // 4: the impact tag and its sentence, omitted for a dog.
+    if let Some(group) = pane.cost(&field.key) {
+        let (glyph, word, sentence) = impact_tag(group);
+        lines.push(Line::default());
+        let prefix = format!("  {glyph} {word}  ");
+        let prefix_cols = u16::try_from(prefix.chars().count()).unwrap_or(u16::MAX);
+        lines.push(bounded_row(
+            Span::raw(prefix),
+            prefix_cols,
+            sentence,
+            Style::default(),
+            width,
+        ));
+        let hint = "pick the timing when you close the pane";
+        let hint_cols = u16::try_from(hint.chars().count()).unwrap_or(width);
+        let pad = width.saturating_sub(hint_cols);
+        lines.push(Line::from(Span::raw(format!(
+            "{}{hint}",
+            " ".repeat(usize::from(pad))
+        ))));
+    }
+
+    // 5: VALIDATION, omitted when the field has nothing accepted or refused.
+    let bullets = validation::bullets(field);
+    if !bullets.is_empty() {
+        lines.push(Line::default());
+        lines.push(hairline_line(palette, width));
+        lines.push(Line::from(Span::styled("  VALIDATION", palette.muted())));
+        for text in &bullets.accepts {
+            lines.push(bounded_row(
+                Span::styled("  \u{2588} ", palette.band(Role::Meadow)),
+                4,
+                text,
+                Style::default(),
+                width,
+            ));
+        }
+        for text in &bullets.refuses {
+            lines.push(bounded_row(
+                Span::styled("  \u{2588} ", palette.band(Role::Bark)),
+                4,
+                &format!("refused: {text}"),
+                Style::default(),
+                width,
+            ));
+        }
+    }
+
+    // 6: NEIGHBOURS, omitted when the field names none.
+    if !field.neighbours.is_empty() {
+        lines.push(Line::default());
+        lines.push(Line::from(Span::styled("  NEIGHBOURS", palette.muted())));
+        for neighbour in &field.neighbours {
+            let prefix = format!("  {}  ", neighbour.field);
+            let prefix_cols = u16::try_from(prefix.chars().count()).unwrap_or(u16::MAX);
+            lines.push(bounded_row(
+                Span::raw(prefix),
+                prefix_cols,
+                &neighbour.note,
+                Style::default(),
+                width,
+            ));
+        }
+    }
+
+    lines
+}
+
+/// The explanation panel for whichever field the pane's own cursor is on,
+/// or nothing when the cursor is not on a field at all (the env rows and
+/// the pending-edits section carry no [`Field`] of their own).
+///
+/// The panel follows the cursor: it describes the row [`ConfigPane::cursor`]
+/// names, never the row this call happened to be drawn from, so a caller
+/// that redraws on every cursor move sees new content on the same
+/// keypress that moved it.
+#[must_use]
+pub(super) fn panel_lines(pane: &ConfigPane, palette: Palette, width: u16) -> Vec<Line<'static>> {
+    let Some(PaneRow::Field(index)) = pane.cursor() else {
+        return Vec::new();
+    };
+    let Some(field) = pane.fields().fields().get(index) else {
+        return Vec::new();
+    };
+    panel_for_field(field, pane, palette, width)
 }
 
 /// Draws the pane into `area`, straight into `buffer`.
@@ -2320,5 +2609,99 @@ mod tests {
         let row = fixtures::config_pane_row_for_tests(&app, "max_memory");
         assert!(row.contains("->"), "{row}");
         assert!(!row.trim_start().starts_with('!'), "{row}");
+    }
+
+    /// `▲` and `●` join the vocabulary `flock.rs:46` already checks `mark`
+    /// against: East-Asian Ambiguous width would shift every column after
+    /// the glyph.
+    #[test]
+    fn the_impact_glyphs_are_one_column_wide() {
+        assert_eq!(char_columns('\u{25b2}'), 1);
+        assert_eq!(char_columns('\u{25cf}'), 1);
+    }
+
+    #[test]
+    fn the_panel_describes_the_focused_field_only() {
+        let app = fixtures::app_in_sheep_pane();
+        let panel = fixtures::config_pane_panel_for_tests(&app, 160);
+        assert!(panel.iter().any(|row| row.contains("cwd")), "{panel:?}");
+        assert!(
+            !panel.iter().any(|row| row.contains("kill_timeout")),
+            "the panel is showing a field that is not focused: {panel:?}"
+        );
+    }
+
+    #[test]
+    fn the_panel_names_now_default_and_example() {
+        let app = fixtures::app_in_sheep_pane();
+        let panel = fixtures::config_pane_panel_for_tests(&app, 160);
+        for label in ["now", "default", "example"] {
+            assert!(
+                panel.iter().any(|row| row.trim_start().starts_with(label)),
+                "no {label} row: {panel:?}"
+            );
+        }
+    }
+
+    /// The panel follows the cursor, and does so on the keypress that moves
+    /// it rather than on the next redraw.
+    #[test]
+    fn the_panel_follows_the_selection() {
+        let mut app = fixtures::app_in_sheep_pane();
+        let first = fixtures::config_pane_panel_for_tests(&app, 160);
+        app.update(Msg::Key(KeyPress::SelectDown));
+        let second = fixtures::config_pane_panel_for_tests(&app, 160);
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn a_duration_field_takes_its_bullets_from_the_type_table() {
+        let mut app = fixtures::app_in_sheep_pane();
+        app.update(Msg::Key(KeyPress::Group(4)));
+        let panel = fixtures::config_pane_panel_focused_on(&app, "min_uptime", 160);
+        assert!(
+            panel.iter().any(|row| row.contains("milliseconds")),
+            "{panel:?}"
+        );
+    }
+
+    /// A field with no accepted forms and no neighbours renders no heading,
+    /// not an empty one. Same rule as the detail pane's cfg cell.
+    #[test]
+    fn a_field_with_nothing_to_say_renders_no_headings() {
+        let app = fixtures::app_in_sheep_pane();
+        let panel = fixtures::config_pane_panel_focused_on(&app, "fold", 160);
+        assert!(
+            !panel.iter().any(|row| row.contains("VALIDATION")),
+            "{panel:?}"
+        );
+        assert!(
+            !panel.iter().any(|row| row.contains("NEIGHBOURS")),
+            "{panel:?}"
+        );
+    }
+
+    /// Colour is never the only carrier: a refused form has to read as
+    /// refused with every colour stripped.
+    #[test]
+    fn a_refused_form_reads_as_refused_without_colour() {
+        let app = fixtures::app_with_plain_palette_in_sheep_pane();
+        let panel = fixtures::config_pane_panel_for_tests(&app, 160);
+        let refusal = panel
+            .iter()
+            .find(|row| row.contains("cannot enter"))
+            .expect("cwd states a refusal");
+        assert!(refusal.contains("refused"), "{refusal}");
+    }
+
+    #[test]
+    fn the_blurb_wraps_rather_than_truncating() {
+        let app = fixtures::app_in_sheep_pane();
+        let panel = fixtures::config_pane_panel_for_tests(&app, 160);
+        assert!(
+            panel.iter().all(|row| row.chars().count() <= 72),
+            "a panel row overflows its column: {panel:?}"
+        );
+        assert!(panel.iter().filter(|row| !row.trim().is_empty()).count() > 3);
     }
 }

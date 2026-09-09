@@ -1221,6 +1221,49 @@ pub fn config_pane_tab_row_for_tests(app: &App, width: u16) -> String {
         .expect("the pane draws a tab row at this width")
 }
 
+/// [`app_in_sheep_pane`], named for the one test that cares the palette
+/// carries no colour. [`app_in_sheep_pane`] already builds on [`plain`], so
+/// this alias adds no behaviour; it exists to make that guarantee visible
+/// at the call site rather than left implicit in a fixture named for
+/// something else.
+pub fn app_with_plain_palette_in_sheep_pane() -> App {
+    app_in_sheep_pane()
+}
+
+/// The explanation panel for whichever field the pane's own cursor is on,
+/// as plain rows: what [`crate::lookout::view::pane::panel_lines`] draws,
+/// styles dropped, at the app's own palette.
+///
+/// # Panics
+///
+/// Panics if the pane is closed.
+pub fn config_pane_panel_for_tests(app: &App, width: u16) -> Vec<String> {
+    let pane = app.config_pane().expect("the pane is open");
+    crate::lookout::view::pane::panel_lines(pane, app.palette(), width)
+        .iter()
+        .map(rendered)
+        .collect()
+}
+
+/// The explanation panel for the field named `key`, regardless of where the
+/// pane's own cursor sits: a bounded look at one field's own panel content
+/// rather than a walk that would first have to move the cursor there.
+///
+/// # Panics
+///
+/// Panics if the pane is closed or has no field named `key`.
+pub fn config_pane_panel_focused_on(app: &App, key: &str, width: u16) -> Vec<String> {
+    let pane = app.config_pane().expect("the pane is open");
+    let field = pane
+        .fields()
+        .by_key(key)
+        .unwrap_or_else(|| panic!("no field named {key}"));
+    crate::lookout::view::pane::panel_for_field(field, pane, app.palette(), width)
+        .iter()
+        .map(rendered)
+        .collect()
+}
+
 /// The shepherd's refusal of one write, for the tests about what a reply
 /// says once the pane that asked for it has gone.
 pub fn a_refusal() -> RequestError {
