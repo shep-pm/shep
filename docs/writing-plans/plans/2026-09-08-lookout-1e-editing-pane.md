@@ -1231,7 +1231,7 @@ git commit -m "feat(cli): group the config pane's fields behind tabs"
 
 **Interfaces:**
 - Consumes: `Field::example`, `accepts`, `refuses`, `neighbours` from Task 2; `validation::bullets` from Task 2; the `init` copy from Task 3; the two-column body from Task 6.
-- Produces: the right-hand panel Task 10 makes responsive.
+- Produces: the right-hand panel Task 10 makes responsive, **drawn from `pane_lines` at a fixed 88/72 split**. Task 10 replaces that fixed split with the width ladder; it does not introduce the call. A panel that only its own tests can reach is unreachable code, and it cannot be checked by the capture this task's own steps require.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1561,8 +1561,8 @@ git commit -m "feat(cli): apply a dog's whole batch to one section write"
 - Modify: `crates/shep-cli/src/lookout/view/pane.rs` (`widths` near line 94, `pane_lines` near line 590)
 
 **Interfaces:**
-- Consumes: the panel from Task 7.
-- Produces: `panel_width(u16) -> Option<u16>`.
+- Consumes: the panel from Task 7, already called from `pane_lines` at a fixed 88/72 split.
+- Produces: `panel_width(u16) -> Option<u16>`, replacing that fixed split.
 
 - [ ] **Step 1: Write the failing tests**
 
