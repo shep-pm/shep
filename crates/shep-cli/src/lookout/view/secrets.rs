@@ -416,7 +416,7 @@ fn tab_line(pane: &SecretsPane, palette: Palette, width: u16) -> Line<'static> {
 ///
 /// The disclosure triangle mirrors `flock::fold_header_cell`'s own: filled
 /// when open, outlined when [`SecretsPane::collapsed`] holds this
-/// namespace. The operator group never collapses — `on_secrets_key`'s `z`
+/// namespace. The operator group never collapses: `on_secrets_key`'s `z`
 /// only ever inserts a namespace into `collapsed`.
 fn group_header_line(
     pane: &SecretsPane,

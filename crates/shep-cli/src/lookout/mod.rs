@@ -1314,7 +1314,7 @@ mod tests {
         msg_tx.send(Msg::Key(KeyPress::Secrets)).await.unwrap();
         // The sleep, not an immediate `Quit`: `Effect::LoadSecrets` answers
         // off `spawn_blocking`, and `Msg::Secrets` is dropped once it lands
-        // if `self.body` has already left `Body::Secrets` — quitting before
+        // if `self.body` has already left `Body::Secrets`: quitting before
         // the read comes back would draw the pane still empty.
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(2000)).await;
@@ -1370,8 +1370,8 @@ mod tests {
     /// down to one, sitting on the last tab, `TabPrev` once. Three down to
     /// two self-corrects either direction, which is why the narrower
     /// `app::tests::a_shrinking_environment_list_leaves_the_tab_somewhere_valid`
-    /// cannot exercise this arm — it is the reducer-level half of this same
-    /// bug, not this one.
+    /// cannot exercise this arm, since it is the reducer-level half of this
+    /// same bug, not this one.
     #[tokio::test]
     async fn a_tab_past_a_shrunk_environment_list_does_not_panic_the_loop() {
         let dir = tempfile::Builder::new().prefix("s").tempdir().unwrap();

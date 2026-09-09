@@ -3213,7 +3213,7 @@ impl App {
             }
             // `r`: re-reads the store, the provider cache and the roll,
             // the same effect a tab move already returns and for the same
-            // reason — `in_force`, the value and the byte length are read
+            // reason: `in_force`, the value and the byte length are read
             // off disk, not derived from what is already on screen.
             KeyPress::Refresh => {
                 self.hide_revealed();
@@ -8242,7 +8242,7 @@ mod tests {
 
     /// Three operator rows and nothing else: the `+ new key` affordance has
     /// no namespace group to sit in front of, so it is the true last thing
-    /// on screen, and a plain `j`/`G` from the last real row reaches it —
+    /// on screen, and a plain `j`/`G` from the last real row reaches it,
     /// the fix this pane's own reachability bug needed. `k` off the
     /// affordance lands back on that real row.
     #[test]
@@ -9050,8 +9050,8 @@ mod tests {
     /// `Body::FlockTable` outright, so a late answer landing there has
     /// nowhere to write and would show nothing whether or not the guard
     /// works. Reopening the pane before delivering it puts a real
-    /// `SecretsPane` back on screen — one with no pending reveal of its
-    /// own — so the guard actually has something to refuse.
+    /// `SecretsPane` back on screen, one with no pending reveal of its
+    /// own, so the guard actually has something to refuse.
     #[test]
     fn a_reveal_that_lands_after_the_pane_closed_and_reopened_shows_nothing() {
         for (name, press) in [("close", KeyPress::Secrets), ("escape", KeyPress::Escape)] {
