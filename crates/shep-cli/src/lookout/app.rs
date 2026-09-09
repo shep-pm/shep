@@ -108,6 +108,12 @@ pub enum KeyPress {
     /// secrets pane. Refuses when `[secrets] allow_read` is off, naming the
     /// gate. Ignored on every other screen.
     Reveal,
+    /// `y`: sends the already-revealed value to the terminal's clipboard
+    /// over OSC 52, in the secrets pane. A reveal by another route, so it
+    /// takes [`Self::Reveal`]'s own `[secrets] allow_read` gate rather than
+    /// a second one, and copies what [`Reveal`] already holds on screen
+    /// rather than reading the store afresh. Ignored on every other screen.
+    Copy,
     /// `Left`: the previous environment tab, in the secrets pane. Stops at
     /// the first rather than wrapping. Ignored elsewhere.
     TabPrev,
@@ -463,6 +469,16 @@ pub enum Effect {
     /// The [`WriteAuthority`] is not decoration: this variant cannot be
     /// named without having passed the gate.
     WriteSecret(SecretEdit, WriteAuthority),
+    /// Sends the carried value to the terminal's clipboard over OSC 52, by
+    /// [`KeyPress::Copy`]. `super::run_ui` writes it straight to the same
+    /// stdout handle `super::term` uses, never through `Terminal<B>` (a
+    /// `TestBackend` has none) and never through `tracing`: the value must
+    /// not reach a log.
+    ///
+    /// No [`WriteAuthority`]: this never touches `shep.toml`, and the value
+    /// it carries is one [`App::update`] already read off `pane.reveal`,
+    /// past the same `[secrets] allow_read` gate a reveal takes.
+    CopyToClipboard(ClipboardValue),
 }
 
 /// The connection's state, as the dashboard reports it.
@@ -1388,6 +1404,15 @@ const PROVIDER_ROW_REFUSAL: &str = "read-only: pushed by a dog, not set here";
 const NEW_KEY_GRAMMAR: &str =
     "letters, digits, `.`, `_` and `-`, up to 128 bytes, not starting with a dot";
 
+/// `y`'s notice on a successful copy.
+///
+/// Says the value was sent, never that it arrived: OSC 52 is write-only, the
+/// terminal never replies, and many terminals refuse the sequence by
+/// default, so no caller can confirm anything landed. Names the system
+/// clipboard's own reach in the same breath, since sending a value there is
+/// handing it to every process on the desktop, not just the terminal.
+const COPY_SENT_NOTICE: &str = "sent to the terminal's clipboard over OSC 52 \u{b7} readable there by every process on the desktop";
+
 /// How long a revealed value stays on screen.
 ///
 /// The pane prints this number, so the two cannot drift.
@@ -1686,6 +1711,22 @@ pub struct RevealedValue(pub(crate) String);
 impl fmt::Debug for RevealedValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "RevealedValue(<{} bytes>)", self.0.len())
+    }
+}
+
+/// A plaintext value on its way to the terminal's clipboard, in
+/// [`Effect::CopyToClipboard`].
+///
+/// A type of its own rather than a bare `String`: [`Effect`] derives
+/// `Debug`, so the redaction has to travel with the value, the same reason
+/// [`RevealedValue`] exists (IR-41).
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct ClipboardValue(pub(crate) String);
+
+/// Redacted (IR-41): the field is the secret.
+impl fmt::Debug for ClipboardValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ClipboardValue(<{} bytes>)", self.0.len())
     }
 }
 
@@ -3076,9 +3117,11 @@ impl App {
             // keyboard while `self.body` is `Body::Secrets`; reached here
             // only from the dashboard, where there is no tab to move and no
             // secret selected to show.
-            KeyPress::TabPrev | KeyPress::TabNext | KeyPress::Reveal | KeyPress::SecretDelete => {
-                Effect::None
-            }
+            KeyPress::TabPrev
+            | KeyPress::TabNext
+            | KeyPress::Reveal
+            | KeyPress::Copy
+            | KeyPress::SecretDelete => Effect::None,
             // Also the read, not the open: the pane shows the shepherd's
             // answer or nothing. `selected_row` is `None` for a group too,
             // but a group's name is what `Request::SheepConfig` wants, so
@@ -3179,6 +3222,7 @@ impl App {
                 Effect::None
             }
             KeyPress::Reveal => self.reveal_selected(),
+            KeyPress::Copy => self.copy_revealed(),
             KeyPress::TabPrev | KeyPress::TabNext => {
                 self.hide_revealed();
                 self.disarm_secret_delete();
@@ -3712,6 +3756,7 @@ impl App {
             // the bleats pane owns the screen instead.
             | KeyPress::Secrets
             | KeyPress::Reveal
+            | KeyPress::Copy
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::SecretDelete => Effect::None,
@@ -3842,6 +3887,7 @@ impl App {
             | KeyPress::FoldView
             | KeyPress::Secrets
             | KeyPress::Reveal
+            | KeyPress::Copy
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::SecretDelete
@@ -4040,6 +4086,7 @@ impl App {
             | KeyPress::FoldView
             | KeyPress::Secrets
             | KeyPress::Reveal
+            | KeyPress::Copy
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::SecretDelete
@@ -4150,6 +4197,7 @@ impl App {
             | KeyPress::FoldView
             | KeyPress::Secrets
             | KeyPress::Reveal
+            | KeyPress::Copy
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::SecretDelete
@@ -4543,6 +4591,7 @@ impl App {
             | KeyPress::FoldView
             | KeyPress::Secrets
             | KeyPress::Reveal
+            | KeyPress::Copy
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::SecretDelete
@@ -4639,6 +4688,7 @@ impl App {
             | KeyPress::FoldView
             | KeyPress::Secrets
             | KeyPress::Reveal
+            | KeyPress::Copy
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::SecretDelete
@@ -6055,6 +6105,42 @@ impl App {
             row,
             environment,
         }
+    }
+
+    /// `y`'s answer: the already-revealed value, on its way to
+    /// [`Effect::CopyToClipboard`], or the `allow_read` refusal.
+    ///
+    /// A reveal by another route, so it takes [`Self::reveal_gate_open`]'s
+    /// own gate rather than a second one, and it copies what
+    /// [`SecretsPane::reveal`] already holds on screen rather than reading
+    /// the store afresh: a fresh read would let `y` show a value the
+    /// operator never asked [`KeyPress::Reveal`] to put on screen, past the
+    /// same gate a reveal takes.
+    ///
+    /// Silent, not the `allow_read` refusal, when the gate is open but
+    /// nothing is revealed: the gate is not what is missing there, the same
+    /// silence [`Self::reveal_selected`] falls back to for an unrelated
+    /// selection.
+    fn copy_revealed(&mut self) -> Effect {
+        if !self.reveal_gate_open() {
+            self.notice = Some(Notice {
+                text: crate::commands::secret::HOW_TO_ALLOW_READ.to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
+        let Some(value) = self
+            .secrets_pane_mut()
+            .and_then(|pane| pane.reveal.as_ref())
+            .map(|reveal| reveal.value.clone())
+        else {
+            return Effect::None;
+        };
+        self.notice = Some(Notice {
+            text: COPY_SENT_NOTICE.to_string(),
+            grave: false,
+        });
+        Effect::CopyToClipboard(ClipboardValue(value))
     }
 
     /// An [`Effect::RevealSecret`] has landed.
@@ -9084,6 +9170,19 @@ mod tests {
         );
     }
 
+    /// Exact-string, [`the_msg_debug_never_prints_a_revealed_value`]'s own
+    /// reason: [`Effect`]'s own `Debug` is derived, so the redaction has to
+    /// live in [`ClipboardValue`] itself (IR-41).
+    #[test]
+    fn the_effect_debug_never_prints_a_copied_value() {
+        let effect = Effect::CopyToClipboard(ClipboardValue("hunter2".to_string()));
+
+        assert_eq!(
+            format!("{effect:?}"),
+            "CopyToClipboard(ClipboardValue(<7 bytes>))"
+        );
+    }
+
     /// The gate is why the round trip needs a guard at all: a value drawn
     /// after `allow_read` went false is the failure the gate exists to
     /// stop, and nothing hides a reveal when a fresh model arrives.
@@ -9206,6 +9305,47 @@ mod tests {
             Some(fixtures::REVEALED_VALUE),
             "the value comes off the store, not out of the model"
         );
+    }
+
+    #[test]
+    fn copying_says_it_was_sent_rather_than_that_it_arrived() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = fixtures::app_revealing(dir.path());
+
+        let _ = app.update(Msg::Key(KeyPress::Copy));
+
+        let notice = notice_of(&app).expect("a notice");
+        assert!(notice.contains("sent to the terminal"), "got {notice:?}");
+        assert!(
+            !notice.contains("copied"),
+            "OSC 52 is write-only and many terminals refuse it, so claiming \
+             success is a claim nothing can check: {notice:?}"
+        );
+    }
+
+    #[test]
+    fn copy_needs_a_revealed_value_rather_than_reading_the_store_behind_the_gate() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = fixtures::app_with_secrets_and_reads(dir.path(), false);
+
+        let _ = app.update(Msg::Key(KeyPress::Copy));
+
+        assert!(
+            notice_of(&app).is_some_and(|n| n.contains("allow_read")),
+            "copy is a reveal by another route and takes the same gate"
+        );
+    }
+
+    #[test]
+    fn copy_carries_the_revealed_value_to_the_effect() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = fixtures::app_revealing(dir.path());
+
+        let Effect::CopyToClipboard(value) = app.update(Msg::Key(KeyPress::Copy)) else {
+            panic!("an open gate over a revealed value copies it");
+        };
+
+        assert_eq!(value.0, fixtures::REVEALED_VALUE);
     }
 
     #[test]

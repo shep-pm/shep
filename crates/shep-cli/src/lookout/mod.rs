@@ -638,6 +638,17 @@ where
                 }));
                 dirty = true;
             }
+            // Straight to `io::stdout()` through `term`, not through
+            // `terminal` (`ratatui::Terminal`): a `TestBackend` has no real
+            // terminal behind it, so routing this write through there would
+            // compile and verify nothing in a test. Ignored on failure, the
+            // same as every other write `term` makes: there is nothing
+            // sensible to do with a broken pipe here, and the pane's own
+            // wording already says the copy was sent, not that it arrived.
+            Effect::CopyToClipboard(value) => {
+                let _ = term::copy_to_clipboard(&value.0);
+                dirty = true;
+            }
             Effect::None => dirty = true,
         }
     }

@@ -65,6 +65,7 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char('s') => Some(KeyPress::Settings),
         KeyCode::Char('S') => Some(KeyPress::Secrets),
         KeyCode::Char('v') => Some(KeyPress::Reveal),
+        KeyCode::Char('y') => Some(KeyPress::Copy),
         KeyCode::Left => Some(KeyPress::TabPrev),
         KeyCode::Right => Some(KeyPress::TabNext),
         KeyCode::Char('e') => Some(KeyPress::Edit),

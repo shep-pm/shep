@@ -192,12 +192,40 @@ fn credentials_match(presented: &[u8], expected: &[u8]) -> bool {
     hmac::verify(&key, expected, tag.as_ref()).is_ok()
 }
 
+/// Encodes standard base64 (RFC 4648, `=`-padded), the inverse of
+/// [`base64_decode`].
+///
+/// Written here rather than pulled in from a crate, the same reason
+/// [`base64_decode`] is: `lookout::term`'s OSC 52 sequence needs an encoder
+/// too, and this one already exists.
+pub(crate) fn base64_encode(input: &[u8]) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = chunk.get(1).copied();
+        let b2 = chunk.get(2).copied();
+        out.push(ALPHABET[(b0 >> 2) as usize] as char);
+        out.push(ALPHABET[(((b0 << 4) | (b1.unwrap_or(0) >> 4)) & 0x3f) as usize] as char);
+        out.push(match b1 {
+            Some(b1) => ALPHABET[(((b1 << 2) | (b2.unwrap_or(0) >> 6)) & 0x3f) as usize] as char,
+            None => '=',
+        });
+        out.push(match b2 {
+            Some(b2) => ALPHABET[(b2 & 0x3f) as usize] as char,
+            None => '=',
+        });
+    }
+    out
+}
+
 /// Decodes standard base64 (RFC 4648, `=`-padded). `None` for anything that
 /// is not exactly that: wrong length, a byte outside the alphabet, or a `=`
 /// outside the last two positions of its four-byte group.
 ///
-/// Written here rather than pulled in from a crate: the `Authorization`
-/// header is the only base64 anywhere in shep-cli.
+/// Written here rather than pulled in from a crate: base64 anywhere in
+/// shep-cli, the `Authorization` header included, goes through this and
+/// [`base64_encode`] beside it.
 fn base64_decode(input: &str) -> Option<Vec<u8>> {
     let bytes = input.as_bytes();
     if bytes.is_empty() || !bytes.len().is_multiple_of(4) {
@@ -236,29 +264,27 @@ fn base64_decode(input: &str) -> Option<Vec<u8>> {
 mod tests {
     use super::*;
 
-    /// Encodes standard base64, the inverse of [`base64_decode`].
+    /// [`base64_encode`], through a `&str` for the tests below that build a
+    /// header out of one.
     fn base64(input: &str) -> String {
-        const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        let bytes = input.as_bytes();
-        let mut out = String::new();
-        for chunk in bytes.chunks(3) {
-            let b0 = chunk[0];
-            let b1 = chunk.get(1).copied();
-            let b2 = chunk.get(2).copied();
-            out.push(ALPHABET[(b0 >> 2) as usize] as char);
-            out.push(ALPHABET[(((b0 << 4) | (b1.unwrap_or(0) >> 4)) & 0x3f) as usize] as char);
-            out.push(match b1 {
-                Some(b1) => {
-                    ALPHABET[(((b1 << 2) | (b2.unwrap_or(0) >> 6)) & 0x3f) as usize] as char
-                }
-                None => '=',
-            });
-            out.push(match b2 {
-                Some(b2) => ALPHABET[(b2 & 0x3f) as usize] as char,
-                None => '=',
-            });
+        base64_encode(input.as_bytes())
+    }
+
+    // No `""` here: `base64_decode` refuses an empty input outright (its own
+    // doc comment), so `""` is not a value this round trip can carry, and
+    // the brief's test list assumed otherwise. Grepped, not guessed: run
+    // with it included and this test panics with `left: None, right:
+    // Some([])`, decode rejecting exactly what it was built to reject.
+    #[test]
+    fn base64_encode_round_trips_through_the_decoder_beside_it() {
+        for input in ["a", "ab", "abc", "alice:s3cret", "hunter2"] {
+            let encoded = base64_encode(input.as_bytes());
+            assert_eq!(
+                base64_decode(&encoded).as_deref(),
+                Some(input.as_bytes()),
+                "{input:?} did not survive the round trip as {encoded:?}"
+            );
         }
-        out
     }
 
     /// fails if any of the four rejection shapes is accepted.
