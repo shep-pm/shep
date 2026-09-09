@@ -1468,6 +1468,10 @@ pub(crate) struct SecretsPane {
     /// The key whose deletion is armed, or `None`. While this is set,
     /// `Enter` confirms the delete rather than opening the value input.
     pub armed: Option<String>,
+    /// When `armed` was set, for the expiry the tick runs. `None` exactly
+    /// when `armed` is, the same pairing every other armed thing in this
+    /// module keeps.
+    pub armed_at: Option<Instant>,
     /// The open text input, or `None`.
     pub typing: Option<Typing>,
 }
@@ -2015,6 +2019,17 @@ impl App {
                 {
                     pane.hide();
                 }
+                // Outside the link guard for the same reason as the reveal
+                // above: an armed delete that can never be sent is no less
+                // stale for the shepherd being gone. `now`, not `self.now`.
+                if let Some(pane) = self.secrets_pane_mut()
+                    && pane
+                        .armed_at
+                        .is_some_and(|at| now.saturating_duration_since(at) >= CONFIRM_EXPIRY)
+                {
+                    pane.armed = None;
+                    pane.armed_at = None;
+                }
                 // The bleats pane has no timer of its own; it rides every
                 // tick instead of the dashboard's own cadence, which is
                 // fixed for the connection's lifetime (see `RefreshFeed`'s
@@ -2309,6 +2324,7 @@ impl App {
                             // an arm from before it landed named a row this
                             // model may no longer even have.
                             pane.armed = None;
+                            pane.armed_at = None;
                             // Only on the very first load, where the pane's
                             // model is still the empty default and so has no
                             // tab yet: the daemon's own default environment
@@ -3046,6 +3062,7 @@ impl App {
                     reveal: None,
                     pending_reveal: None,
                     armed: None,
+                    armed_at: None,
                     typing: None,
                 });
                 Effect::LoadSecrets
@@ -3353,10 +3370,12 @@ impl App {
         if self.authorize_write().is_none() {
             return Effect::None;
         }
+        let now = self.now;
         let Some(pane) = self.secrets_pane_mut() else {
             return Effect::None;
         };
         pane.armed = Some(row.key);
+        pane.armed_at = Some(now);
         Effect::None
     }
 
@@ -3369,6 +3388,7 @@ impl App {
         let Some(key) = pane.armed.take() else {
             return Effect::None;
         };
+        pane.armed_at = None;
         let Some(environment) = pane.environment().map(str::to_string) else {
             return Effect::None;
         };
@@ -3388,8 +3408,10 @@ impl App {
     /// Clears an armed delete, and says whether one was there. `Escape`'s
     /// cue not to also close the pane on the same press.
     fn disarm_secret_delete(&mut self) -> bool {
-        self.secrets_pane_mut()
-            .is_some_and(|pane| pane.armed.take().is_some())
+        self.secrets_pane_mut().is_some_and(|pane| {
+            pane.armed_at = None;
+            pane.armed.take().is_some()
+        })
     }
 
     /// The secrets pane's own text keymap, in force while
@@ -8649,6 +8671,7 @@ mod tests {
             }),
             pending_reveal: None,
             armed: None,
+            armed_at: None,
             typing: Some(Typing {
                 what: TypingWhat::ValueFor("K".into()),
                 buffer: "hunter2".into(),
@@ -8927,6 +8950,33 @@ mod tests {
             armed_of(&app).is_none(),
             "an arm must not follow the cursor onto another key"
         );
+    }
+
+    /// An armed delete is the fourth armed thing in this module the tick
+    /// expires, mirroring the config pane's own `armed_at` at
+    /// `app.rs:1999-2005`.
+    #[test]
+    fn an_armed_delete_expires_like_every_other_armed_thing() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        assert!(armed_of(&app).is_some(), "the delete armed");
+
+        let later = Instant::now() + CONFIRM_EXPIRY;
+        let _ = app.update(Msg::Tick { now: later });
+
+        assert!(armed_of(&app).is_none(), "it did not expire");
+    }
+
+    #[test]
+    fn an_armed_delete_survives_a_tick_just_before_the_deadline() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        assert!(armed_of(&app).is_some(), "the delete armed");
+
+        let almost = Instant::now() + CONFIRM_EXPIRY - Duration::from_secs(1);
+        let _ = app.update(Msg::Tick { now: almost });
+
+        assert!(armed_of(&app).is_some(), "not yet ten seconds");
     }
 
     #[test]
