@@ -882,7 +882,14 @@ fn mem_chart_rows(
     let window_slice = &history[history.len().saturating_sub(body_cells)..];
     let window_peak = window_slice.iter().copied().max().unwrap_or(0);
     let peak_for_scale = max_memory.map_or(window_peak, |limit| limit.max(window_peak));
-    let ceiling = scale_top(peak_for_scale as f64, 0.0);
+    // `scale_top`'s own ladder is decimal, but `human_bytes` renders the
+    // binary MiB `crate::output::human_bytes` always has: scaling in MiB
+    // rather than raw bytes is what keeps a labelled row's own value round
+    // in the unit it is shown in (`64.0M`, never `76.3M` for a 64M
+    // ceiling).
+    const MIB: f64 = (1u64 << 20) as f64;
+    let ceiling_mib = scale_top(peak_for_scale as f64 / MIB, 0.0);
+    let ceiling = ceiling_mib * MIB;
     let samples: Vec<f32> = history.iter().map(|&bytes| bytes as f32).collect();
     let bars = cell::chart(&samples, ceiling as f32, body_cells, MEM_ROWS);
     let mut lines = gutter_lines(bars, ceiling, GutterCadence::EveryRow, |value| {
@@ -894,15 +901,23 @@ fn mem_chart_rows(
             return 0;
         }
         let band = ceiling / MEM_ROWS as f64;
+        // The row nearest the limit, not the row at or below it: a ceiling
+        // that lands between two rows still has to pick one, and rounding
+        // down always draws the line above the real limit, which is the
+        // unsafe direction (a sheep already over its limit would still
+        // draw under the line).
         ((ceiling - limit as f64) / band)
-            .floor()
+            .round()
             .clamp(0.0, (MEM_ROWS - 1) as f64) as usize
     });
     if let Some(row) = marked {
-        // `GUTTER` is ASCII throughout (digits, `%`, `M`, spaces), so this
-        // is a valid byte index even though the chart body past it is not.
-        let gutter = lines[row][..GUTTER].to_string();
-        lines[row] = format!("{gutter}{} ceiling", "\u{254c}".repeat(body_cells));
+        // The marked row's own label states the ceiling's own configured
+        // value, never the ladder row it happens to land nearest: decision
+        // 8's frame draws `52M` for a 52M ceiling, not whatever round
+        // number the ladder rounded up to.
+        let limit = max_memory.unwrap_or_default();
+        let label = format!("{:>7} ", crate::output::human_bytes(limit));
+        lines[row] = format!("{label}{} ceiling", "\u{254c}".repeat(body_cells));
     }
     (lines, marked)
 }
@@ -1128,9 +1143,30 @@ mod tests {
             marked,
             Some(2),
             "a 52M limit against this fixture's 48M peak scales to a 100M \
-             ceiling, 20M per row, so the marked row is 2, not the top"
+             ceiling, 20M per row, so the marked row is nearest at 2, not \
+             the top"
         );
         assert!(rows[2].contains("ceiling"), "got {rows:?}");
+        assert!(
+            rows[2].contains("52.0M"),
+            "the marked row states the limit's own value, not the ladder \
+             row (60.0M) it happens to land nearest: {:?}",
+            rows[2]
+        );
+    }
+
+    /// The marked row is the nearest to the limit, not the row at or below
+    /// it: a 64M limit against a 10M peak scales to a 100M ceiling, 20M per
+    /// row, and 64 is 4M from the row at 60 but 16M from the row at 80.
+    /// Rounding down (the old behaviour) picked 80 and drew the ceiling
+    /// line above every real reading under 80M, so a sheep at 70M — over
+    /// its own 64M limit — drew below the line instead of above it.
+    #[test]
+    fn the_marked_row_is_the_nearest_one_not_the_floor() {
+        let history = [10 << 20; 20];
+        let (rows, marked) = mem_chart_rows(&history, Some(64 << 20), 20);
+        assert_eq!(marked, Some(2), "60.0M is nearer 64M than 80.0M is");
+        assert!(rows[2].contains("64.0M"), "got {:?}", rows[2]);
     }
 
     /// With no limit there is no ceiling row and the header says what it
