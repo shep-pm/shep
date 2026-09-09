@@ -1198,7 +1198,7 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
     // resending the same rows here at `t0`, older than that already-applied
     // poll, would difference against a zero or negative window and corrupt
     // the very last sample `poll_twice` just recorded back to `0.0` or
-    // `None` — the bug this round exists to fix, not reintroduce.
+    // `None`: the bug this round exists to fix, not reintroduce.
     if matches!(
         which,
         Scene::Empty | Scene::SettingsDogs | Scene::SettingsNarrow | Scene::SettingsShort
