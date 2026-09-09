@@ -347,7 +347,7 @@ mod tests {
     use shep_core::protocol::ProcessInfo;
     use shep_core::status::ProcStatus;
 
-    use super::super::super::app::{Body, KeyPress, Msg};
+    use super::super::super::app::{Body, Control, KeyPress, Msg};
     use super::super::super::frames::render_text;
     use super::super::fixtures;
     use super::*;
@@ -559,21 +559,66 @@ mod tests {
         );
     }
 
+    /// One sheep, run through two real polls so both `cpu_history` and
+    /// `rss_history` hold a differenced, nonzero last sample: the alignment
+    /// test below needs the rightmost column of both charts' bottom row to
+    /// be real content, not left-padding a too-short history would leave
+    /// blank there too.
+    fn app_with_two_polls(id: u32, name: &str, max_memory: Option<u64>) -> App {
+        let t0 = std::time::Instant::now();
+        let mut app = App::new(
+            fixtures::plain(),
+            Control::ReadOnly,
+            "/home/ada/.shep".to_string(),
+            t0,
+        );
+        app.update(Msg::Snapshot {
+            rows: vec![
+                ProcessInfo::builder(id, name, ProcStatus::Online)
+                    .cpu_ms(Some(0))
+                    .memory_bytes(Some(10 << 20))
+                    .max_memory(max_memory)
+                    .build(),
+            ],
+            at: t0,
+        });
+        let t1 = t0 + Duration::from_secs(2);
+        app.update(Msg::Snapshot {
+            rows: vec![
+                ProcessInfo::builder(id, name, ProcStatus::Online)
+                    .cpu_ms(Some(2000))
+                    .memory_bytes(Some(10 << 20))
+                    .max_memory(max_memory)
+                    .build(),
+            ],
+            at: t1,
+        });
+        app
+    }
+
     /// The whole reason this frame was picked over side-by-side charts: a
     /// memory step and a CPU spike land on the same column because both
     /// bodies are drawn to the same `body_cells`, not two calculations that
-    /// could quietly drift apart.
+    /// could quietly drift apart. Rendered through [`draw_charts`] itself,
+    /// not two calls typed with the same literal by hand: that would still
+    /// pass if the two calls' own `body_cells` argument drifted apart at the
+    /// call site, which is exactly the mutation this test exists to catch.
     #[test]
     fn the_two_charts_share_one_body_width() {
-        let cpu_history = [10.0, 20.0, 30.0, 15.0, 5.0];
-        let rss_history = [10 << 20, 20 << 20, 15 << 20, 12 << 20, 9 << 20];
-        let cpu_rows = cpu_chart_rows(&cpu_history, 20);
-        let (mem_rows, _) = mem_chart_rows(&rss_history, Some(30 << 20), 20);
-        let cpu_width = cpu_rows[0].chars().count();
-        let mem_width = mem_rows[0].chars().count();
+        let app = app_with_two_polls(1, "alpha", None);
+        let area = Rect::new(0, 0, 40, MIN_HEIGHT_FOR_CHARTS);
+        let mut buffer = Buffer::empty(area);
+        draw_charts(&app, 1, None, area, &mut buffer, fixtures::plain());
+        let text = render_text(&buffer);
+        let lines: Vec<&str> = text.lines().collect();
+        let cpu_last_row = lines[usize::from(CPU_CHART_ROW) + CPU_ROWS - 1];
+        let mem_last_row = lines[usize::from(MEM_CHART_ROW) + MEM_ROWS - 1];
+        let cpu_end = cpu_last_row.trim_end().chars().count();
+        let mem_end = mem_last_row.trim_end().chars().count();
         assert_eq!(
-            cpu_width, mem_width,
-            "CPU row is {cpu_width} cells, memory row is {mem_width}: {cpu_rows:?} vs {mem_rows:?}"
+            cpu_end, mem_end,
+            "CPU chart's bottom row ends at column {cpu_end}, memory's at \
+             {mem_end}: {cpu_last_row:?} vs {mem_last_row:?}"
         );
     }
 }
