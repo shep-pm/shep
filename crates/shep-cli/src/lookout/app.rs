@@ -6019,6 +6019,26 @@ mod tests {
         assert!(app.notice().is_some_and(Notice::is_grave));
     }
 
+    /// `↵` confirms an armed action, correctly: a question awaiting an
+    /// answer keeps `↵`. But once sent (`Stage::Sent`), it is in flight and
+    /// no longer asking anything — a regression that let `Stage::Sent` keep
+    /// swallowing `↵` (rather than falling through, here, to the dashboard's
+    /// own `Confirm` handler, which opens the pane) would pass
+    /// `a_second_confirm_does_not_resend_an_action_already_in_flight` above
+    /// just as easily, since that test only checks nothing resends.
+    #[test]
+    fn a_confirm_at_stage_sent_falls_through_to_opening_the_sheep_pane() {
+        let mut app = allowed();
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+        app.update(Msg::Key(KeyPress::Confirm));
+        assert!(app.action().is_some_and(|action| action.sent), "in flight");
+        app.update(Msg::Key(KeyPress::Confirm));
+        assert!(
+            matches!(app.body(), Body::Sheep(_)),
+            "the second Enter opened the pane rather than being swallowed"
+        );
+    }
+
     #[test]
     fn a_multi_instance_app_shows_a_group_row_above_its_slots() {
         let app = allowed_with_instances();
