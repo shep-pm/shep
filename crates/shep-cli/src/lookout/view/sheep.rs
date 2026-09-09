@@ -1855,4 +1855,59 @@ mod tests {
         assert!(!render_at(160, 19).contains("\u{2588}\u{2588} CPU"));
         assert!(render_at(160, 19).contains("\u{2588}\u{2588} CONFIG & ENV"));
     }
+
+    /// The Full tier's own floor: at exactly 140 columns both charts still
+    /// draw. `below_a_hundred_and_forty_columns_only_the_cpu_chart_draws`
+    /// pins the cell below this one; nothing pinned the boundary itself,
+    /// so a one-cell-generous mutation of `width >= 140` could hold the
+    /// Full tier open past its own name and every other test would stay
+    /// green.
+    #[test]
+    fn at_a_hundred_and_forty_columns_both_charts_still_draw() {
+        let rendered = render_at(140, 48);
+        assert!(
+            rendered.contains("\u{2588}\u{2588} CPU"),
+            "got {rendered:?}"
+        );
+        assert!(
+            rendered.contains("\u{2588}\u{2588} MEM"),
+            "got {rendered:?}"
+        );
+    }
+
+    /// The CpuOnly tier's own floor: at exactly 100 columns the CPU chart
+    /// still draws rather than falling to the sparkline pair.
+    #[test]
+    fn at_a_hundred_columns_the_cpu_chart_still_draws() {
+        let rendered = render_at(100, 48);
+        assert!(
+            rendered.contains("\u{2588}\u{2588} CPU"),
+            "got {rendered:?}"
+        );
+        assert!(!rendered.contains("CPU 20s"), "got {rendered:?}");
+    }
+
+    /// [`MIN_HEIGHT_FOR_CHARTS`]'s own floor: at exactly that height a
+    /// chart still draws rather than the pane falling straight to
+    /// [`ChartTier::None`].
+    #[test]
+    fn at_the_chart_height_floor_a_chart_still_draws() {
+        let rendered = render_at(160, MIN_HEIGHT_FOR_CHARTS);
+        assert!(
+            rendered.contains("\u{2588}\u{2588} CPU"),
+            "got {rendered:?}"
+        );
+    }
+
+    /// [`FULL_TIER_MIN_HEIGHT`]'s own floor: at exactly that height the
+    /// Full tier still holds rather than being downgraded to
+    /// [`ChartTier::CpuOnly`].
+    #[test]
+    fn at_the_full_tier_height_floor_the_memory_chart_still_draws() {
+        let rendered = render_at(160, FULL_TIER_MIN_HEIGHT);
+        assert!(
+            rendered.contains("\u{2588}\u{2588} MEM"),
+            "got {rendered:?}"
+        );
+    }
 }
