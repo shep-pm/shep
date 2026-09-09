@@ -508,7 +508,7 @@ fn focused_lines(
     };
     let detail = match row.byte_len {
         Some(len) => format!(
-            "{set_in} \u{b7} length {len} bytes \u{b7} named by {} sheep",
+            "{set_in} \u{b7} length {len} bytes \u{b7} named by {} of the flock",
             row.readers.len()
         ),
         None => set_in,
@@ -537,7 +537,7 @@ const READER_ROWS: usize = PANEL_CONTENT_ROWS as usize - 1;
 /// The text for each of [`READER_ROWS`] reader lines: one per reader when
 /// they all fit, otherwise the first `READER_ROWS - 1` plus a line naming
 /// how many more there are, so this panel's own total always matches
-/// [`focused_lines`]' `named by {} sheep` rather than looking
+/// [`focused_lines`]' `named by {} of the flock` rather than looking
 /// complete at three when a key has five.
 fn reader_row_texts(readers: &[Reader]) -> Vec<String> {
     if readers.is_empty() {
@@ -549,7 +549,7 @@ fn reader_row_texts(readers: &[Reader]) -> Vec<String> {
     let mut texts: Vec<String> = readers[..READER_ROWS - 1].iter().map(reader_line).collect();
     let overflow = readers.len() - (READER_ROWS - 1);
     texts.push(format!(
-        "+ {overflow} more, named by {} sheep",
+        "+ {overflow} more, named by {} of the flock",
         readers.len()
     ));
     texts
@@ -1239,14 +1239,14 @@ mod tests {
 
     /// Five readers on one key, three rows to list them in: WHO READS IT
     /// has to say two are missing rather than looking complete at three,
-    /// and its own total has to match FOCUSED's `named by 5 sheep`.
+    /// and its own total has to match FOCUSED's `named by 5 of the flock`.
     #[test]
     fn who_reads_it_states_an_overflow_it_cannot_list() {
         let buffer = fixtures::render_secrets_with_more_readers_than_fit();
         let text = fixtures::rows_of(&buffer);
 
         assert!(
-            text.iter().any(|l| l.contains("named by 5 sheep")),
+            text.iter().any(|l| l.contains("named by 5 of the flock")),
             "FOCUSED states the true count: {text:?}"
         );
         assert!(
