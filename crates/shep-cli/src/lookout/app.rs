@@ -4166,28 +4166,41 @@ impl App {
         }
     }
 
-    /// Arms a confirm, or refuses and says why.
-    ///
-    /// Every refusal happens here rather than at confirm time, so an operator
-    /// never answers a question that was never going to be honoured. The ladder
-    /// is gate, link, nothing selected, one already in flight.
-    fn arm(&mut self, verb: ActionVerb) -> Effect {
-        let refusal = if self.control == Control::ReadOnly {
+    /// The refusal ladder shared by [`Self::arm`] and [`Self::arm_sheep_pane`]:
+    /// the gate, the link, one action already in flight. Neither caller's
+    /// own target-specific refusal (nothing selected, the pane's pinned
+    /// sheep is gone) lives here, since that is the one place they differ;
+    /// each checks its own target only once this ladder has already said no
+    /// to nothing.
+    fn confirm_refusal(&self) -> Option<String> {
+        if self.control == Control::ReadOnly {
             Some(READ_ONLY_REFUSAL.to_string())
         } else if let Some(text) = self.link_refusal() {
             Some(text)
-        } else if self.selected.is_none() {
-            Some("no sheep is selected".to_string())
         } else if self.action.is_some() {
             Some("one action is already in flight".to_string())
         } else {
             None
-        };
-        if let Some(text) = refusal {
+        }
+    }
+
+    /// Arms a confirm, or refuses and says why.
+    ///
+    /// Every refusal happens here rather than at confirm time, so an operator
+    /// never answers a question that was never going to be honoured. The ladder
+    /// is [`Self::confirm_refusal`]'s own three, then nothing selected.
+    fn arm(&mut self, verb: ActionVerb) -> Effect {
+        if let Some(text) = self.confirm_refusal() {
             self.notice = Some(Notice { text, grave: true });
             return Effect::None;
         }
-        let key = self.selected.clone().expect("checked just above");
+        let Some(key) = self.selected.clone() else {
+            self.notice = Some(Notice {
+                text: "no sheep is selected".to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        };
         let (target, name, count) = match &key {
             RowKey::Sheep(id) => {
                 let row = self
@@ -4234,21 +4247,12 @@ impl App {
     /// leaves the flock would arm an action against whichever sheep
     /// replaced it while the pane still names the first. Refuses instead.
     ///
-    /// The ladder is gate, link, one already in flight, same as [`Self::arm`]'s
-    /// own three; [`Self::arm`]'s "nothing selected" case cannot happen
+    /// The ladder is [`Self::confirm_refusal`]'s own three, same as
+    /// [`Self::arm`]; [`Self::arm`]'s "nothing selected" case cannot happen
     /// here, since the pane would not be open without a sheep, so its place
-    /// in the ladder is taken by the pinned sheep having left instead.
+    /// is taken by the pinned sheep having left instead.
     fn arm_sheep_pane(&mut self, verb: ActionVerb) -> Effect {
-        let refusal = if self.control == Control::ReadOnly {
-            Some(READ_ONLY_REFUSAL.to_string())
-        } else if let Some(text) = self.link_refusal() {
-            Some(text)
-        } else if self.action.is_some() {
-            Some("one action is already in flight".to_string())
-        } else {
-            None
-        };
-        if let Some(text) = refusal {
+        if let Some(text) = self.confirm_refusal() {
             self.notice = Some(Notice { text, grave: true });
             return Effect::None;
         }
