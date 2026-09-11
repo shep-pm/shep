@@ -140,10 +140,20 @@
           }
         },
         "env": {
-          "description": "Environment for the sheep (merged over the daemon's filtered env)",
+          "description": "Environment for the sheep (merged over the daemon's filtered env).\n\nA value's type is not part of the contract: an operator may write a\nraw boolean or number (`SOME_BOOL = true`, `PORT = 8080`) instead of\nits quoted string (`\"true\"`, `\"8080\"`). A value is read in whatever\nform it arrives and written out as a string, so this field stays\n`BTreeMap<String, String>` and the wire always carries strings.",
           "type": "object",
           "additionalProperties": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              }
+            ]
           },
           "default": {},
           "init": {

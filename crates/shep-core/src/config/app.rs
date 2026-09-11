@@ -5,7 +5,7 @@ use core::fmt;
 use std::collections::BTreeMap;
 
 // use schemars::generate
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::values::{MemSize, UpDuration};
 
@@ -137,12 +137,26 @@ pub struct AppConfig {
         "blurb": "What runs the script. Set it to none to exec the file directly"
     })))]
     pub interpreter: Option<String>,
-    /// Environment for the sheep (merged over the daemon's filtered env)
-    #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "example": "{ NODE_ENV = 'production' }",
-        "group": "inputs",
-        "blurb": "Environment variables for this app, layered over the daemon's own"
-    })))]
+    /// Environment for the sheep (merged over the daemon's filtered env).
+    ///
+    /// A value's type is not part of the contract: an operator may write a
+    /// raw boolean or number (`SOME_BOOL = true`, `PORT = 8080`) instead of
+    /// its quoted string (`"true"`, `"8080"`). A value is read in whatever
+    /// form it arrives and written out as a string, so this field stays
+    /// `BTreeMap<String, String>` and the wire always carries strings.
+    #[serde(deserialize_with = "deserialize_env")]
+    #[cfg_attr(feature = "schema", schemars(
+        extend(
+            "init" = {
+                "example": "{ NODE_ENV = 'production' }",
+                "group": "inputs",
+                "blurb": "Environment variables for this app, layered over the daemon's own"
+            },
+            "additionalProperties" = {
+                "anyOf": [{ "type": "string" }, { "type": "boolean" }, { "type": "number" }]
+            }
+        )
+    ))]
     pub env: BTreeMap<String, String>,
     /// Which environment this sheep resolves `{{secret:...}}` in.
     ///
@@ -493,6 +507,106 @@ pub struct AppConfig {
     pub increment_var: Option<String>,
 }
 
+/// One value an `env` table may carry: a string, or a raw boolean or number
+/// an operator wrote without quoting.
+///
+/// Exists only to read a Flockfile, where the document is hand-written and a
+/// raw value is a plausible shortcut. It never rides the wire: [`AppConfig`]
+/// is serialized to `BTreeMap<String, String>` through its own impls, which
+/// see only `String`. A string is what leaves, whatever form arrived.
+#[derive(Debug)]
+enum EnvValue {
+    /// A quoted value, kept verbatim
+    Str(String),
+    /// A bare `true` or `false`
+    Bool(bool),
+    /// A whole number
+    Int(i64),
+    /// A floating point number
+    Real(f64),
+}
+
+impl EnvValue {
+    /// Renders the value as the string a process receives. Consuming: a borrow
+    /// would force the `Str` arm to clone.
+    #[must_use]
+    fn into_string(self) -> String {
+        match self {
+            Self::Str(s) => s,
+            Self::Bool(b) => b.to_string(),
+            Self::Int(n) => n.to_string(),
+            Self::Real(f) => f.to_string(),
+        }
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for EnvValue {
+    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        struct EnvValueVisitor;
+
+        impl serde::de::Visitor<'_> for EnvValueVisitor {
+            type Value = EnvValue;
+
+            fn expecting(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                f.write_str("a string, boolean, or number")
+            }
+
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<EnvValue, E> {
+                Ok(EnvValue::Str(v.to_string()))
+            }
+
+            fn visit_string<E: serde::de::Error>(self, v: String) -> Result<EnvValue, E> {
+                Ok(EnvValue::Str(v))
+            }
+
+            fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<EnvValue, E> {
+                Ok(EnvValue::Bool(v))
+            }
+
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<EnvValue, E> {
+                Ok(EnvValue::Int(v))
+            }
+
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<EnvValue, E> {
+                // A u64 beyond i64::MAX is valid JSON; wrapping it would turn
+                // it into a negative number.
+                Ok(EnvValue::Int(
+                    v.try_into().map_err(serde::de::Error::custom)?,
+                ))
+            }
+
+            fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<EnvValue, E> {
+                Ok(EnvValue::Real(v))
+            }
+        }
+
+        de.deserialize_any(EnvValueVisitor)
+    }
+}
+
+/// `env` table as a whole: a map of keys to [`EnvValue`], so a raw boolean or
+/// number is read rather than refused. Its only reader is the
+/// `deserialize_with` on the `env` field of [`AppConfig`].
+#[derive(Debug)]
+struct EnvTable {
+    vars: BTreeMap<String, String>,
+}
+
+impl<'de> serde::de::Deserialize<'de> for EnvTable {
+    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        let raw = BTreeMap::<String, EnvValue>::deserialize(de)?;
+        Ok(Self {
+            vars: raw.into_iter().map(|(k, v)| (k, v.into_string())).collect(),
+        })
+    }
+}
+
+/// Reads an `env` table, coercing a raw boolean or number to its string form
+/// while a string passes through verbatim.
+fn deserialize_env<'de, D: Deserializer<'de>>(de: D) -> Result<BTreeMap<String, String>, D::Error> {
+    Ok(EnvTable::deserialize(de)?.vars)
+}
+
 /// Redacts `env`: only its length is printed.
 impl fmt::Debug for AppConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -689,6 +803,63 @@ env = { RUST_LOG = "info" }
         assert_eq!(app.fold.as_deref(), Some("backend"));
         assert_eq!(app.env.get("RUST_LOG").map(String::as_str), Some("info"));
         assert_eq!(app.args, vec!["job.py", "--fast"]);
+    }
+
+    /// Raw TOML scalars in `env` read as their string form. `true` becomes
+    /// `"true"`, `8080` becomes `"8080"`, and quoted strings pass through.
+    /// A single test here covers the deserialization path; the
+    /// `flockfile` test that reads the same document through all four
+    /// formats covers the format dispatch.
+    #[test]
+    fn env_coerces_raw_scalars_to_their_string_form() {
+        let src = r#"
+name = "web"
+script = "./srv"
+env = { SOME_BOOL = true, PORT = 8080, NEG = -1, RATIO = 1.5, STR = "plain" }
+"#;
+        let app: AppConfig = toml::from_str(src).unwrap();
+        assert_eq!(app.env["SOME_BOOL"], "true");
+        assert_eq!(app.env["PORT"], "8080");
+        assert_eq!(app.env["NEG"], "-1");
+        assert_eq!(app.env["RATIO"], "1.5");
+        assert_eq!(app.env["STR"], "plain");
+    }
+
+    /// Serialization is the inverse of the coercion: whatever form a value
+    /// arrived as, the wire form is a string. A `true` that deserialized
+    /// into `"true"` must serialize to the JSON string `"true"`, not the
+    /// boolean `true`.
+    #[test]
+    fn env_serialization_is_always_string_regardless_of_input_form() {
+        let src = r#"
+name = "web"
+script = "./srv"
+env = { SOME_BOOL = true, PORT = 8080, STR = "hello" }
+"#;
+        let app: AppConfig = toml::from_str(src).unwrap();
+        let wire = serde_json::to_value(&app).unwrap();
+        for (key, expected) in [("SOME_BOOL", "true"), ("PORT", "8080"), ("STR", "hello")] {
+            assert_eq!(
+                wire["env"].get(key).and_then(serde_json::Value::as_str),
+                Some(expected),
+                "wire form of {key} must be a string, not a scalar"
+            );
+        }
+    }
+
+    /// A value that is neither a string, boolean, nor number is refused, not
+    /// guessed at. An array or object under `env` is a structural mistake —
+    /// an operator meant a table or a list, and guessing a serialization is
+    /// how a wrong value hides for months.
+    #[test]
+    fn env_refuses_structural_values() {
+        for (label, inner) in [("array", r#"["a", "b"]"#), ("object", r#"{"k": "v"}"#)] {
+            let src = format!(r#"{{ "name":"web","script":"./srv","env":{{"X":{inner}}}}}"#);
+            assert!(
+                serde_json::from_str::<AppConfig>(&src).is_err(),
+                "a {label} env value must be refused"
+            );
+        }
     }
 
     /// The wire path is the opposite of a Flockfile's: an unknown field

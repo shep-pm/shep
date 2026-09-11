@@ -995,6 +995,48 @@ env = { DB_HOST = "", NODE_ENV = "production" }
         assert!(apps[0].declared.contains("env"));
     }
 
+    /// A raw boolean or number anywhere under `env` reads as its string form,
+    /// in every format. This is the format-dispatch half of the coercion:
+    /// the `deserialize_with` on `AppConfig::env` is the one code path, so a
+    /// raw scalar must land at `config.env` through TOML, YAML, JSON, and
+    /// JSON5 without a format-specific branch.
+    #[test]
+    fn a_raw_scalar_env_value_is_a_string_in_every_format() {
+        let cases: [(FlockFormat, &str); 4] = [
+            (
+                FlockFormat::Toml,
+                "[[app]]\nname = \"web\"\nscript = \"./srv\"\nenv = { SOME_BOOL = true, PORT = 8080 }\n",
+            ),
+            (
+                FlockFormat::Yaml,
+                "app:\n  - name: web\n    script: ./srv\n    env:\n      SOME_BOOL: true\n      PORT: 8080\n",
+            ),
+            (
+                FlockFormat::Json,
+                r#"{"app":[{"name":"web","script":"./srv","env":{"SOME_BOOL":true,"PORT":8080}}]}"#,
+            ),
+            (
+                FlockFormat::Json5,
+                "{ app: [{ name: \"web\", script: \"./srv\", env: { SOME_BOOL: true, PORT: 8080 } }] }",
+            ),
+        ];
+        for (format, text) in cases {
+            let flock = Flockfile::parse(text, format)
+                .unwrap_or_else(|e| panic!("{format:?} refused a raw scalar env value: {e}"));
+            let env = &flock.apps[0].env;
+            assert_eq!(
+                env.get("SOME_BOOL").map(String::as_str),
+                Some("true"),
+                "{format:?}: SOME_BOOL"
+            );
+            assert_eq!(
+                env.get("PORT").map(String::as_str),
+                Some("8080"),
+                "{format:?}: PORT"
+            );
+        }
+    }
+
     /// A typo in a Flockfile must still be loud. This is the whole reason
     /// `deny_unknown_fields` was there.
     #[test]
