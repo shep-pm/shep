@@ -514,7 +514,10 @@ pub struct AppConfig {
 /// raw value is a plausible shortcut. It never rides the wire: [`AppConfig`]
 /// is serialized to `BTreeMap<String, String>` through its own impls, which
 /// see only `String`. A string is what leaves, whatever form arrived.
-#[derive(Debug)]
+///
+/// `Debug` is hand-implemented: a derived one would print the raw value, and
+/// a `{:?}` on a config carrying them is how a secret reaches a log. Only the
+/// kind is printed — never the value.
 enum EnvValue {
     /// A quoted value, kept verbatim
     Str(String),
@@ -524,6 +527,18 @@ enum EnvValue {
     Int(i128),
     /// A floating point number
     Real(f64),
+}
+
+impl fmt::Debug for EnvValue {
+    /// Prints only the shape of the value, never its contents.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Str(_) => f.write_str("<str>"),
+            Self::Bool(_) => f.write_str("<bool>"),
+            Self::Int(_) => f.write_str("<int>"),
+            Self::Real(_) => f.write_str("<real>"),
+        }
+    }
 }
 
 impl EnvValue {
@@ -541,6 +556,7 @@ impl EnvValue {
 }
 
 impl<'de> serde::de::Deserialize<'de> for EnvValue {
+    /// Reads one `env` value in whatever raw form it arrives.
     fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
         struct EnvValueVisitor;
 
@@ -551,23 +567,28 @@ impl<'de> serde::de::Deserialize<'de> for EnvValue {
                 f.write_str("a string, boolean, or number")
             }
 
+            /// A quoted value, kept verbatim.
             fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<EnvValue, E> {
                 Ok(EnvValue::Str(v.to_string()))
             }
 
+            /// A quoted value from a non-borrowed source.
             fn visit_string<E: serde::de::Error>(self, v: String) -> Result<EnvValue, E> {
                 Ok(EnvValue::Str(v))
             }
 
+            /// A bare `true` or `false`.
             fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<EnvValue, E> {
                 Ok(EnvValue::Bool(v))
             }
 
+            /// A whole signed number.
             fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<EnvValue, E> {
                 // i128 holds the full i64 range losslessly.
                 Ok(EnvValue::Int(i128::from(v)))
             }
 
+            /// A whole unsigned number.
             fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<EnvValue, E> {
                 // A u64 beyond i64::MAX is valid JSON (and TOML). i128 holds
                 // the full u64 range losslessly, so no value is refused and
@@ -575,6 +596,7 @@ impl<'de> serde::de::Deserialize<'de> for EnvValue {
                 Ok(EnvValue::Int(i128::from(v)))
             }
 
+            /// A floating point number.
             fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<EnvValue, E> {
                 Ok(EnvValue::Real(v))
             }
@@ -587,12 +609,31 @@ impl<'de> serde::de::Deserialize<'de> for EnvValue {
 /// `env` table as a whole: a map of keys to [`EnvValue`], so a raw boolean or
 /// number is read rather than refused. Its only reader is the
 /// `deserialize_with` on the `env` field of [`AppConfig`].
-#[derive(Debug)]
+///
+/// `Debug` is hand-implemented: a derived one would print every key *and*
+/// value, and a `{:?}` on a config mid-parse is how a secret reaches a log.
+/// Only the key names and count are printed.
 struct EnvTable {
     vars: BTreeMap<String, String>,
 }
 
+impl fmt::Debug for EnvTable {
+    /// Prints the key names and count, never any value.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let keys: Vec<&String> = self.vars.keys().collect();
+        write!(f, "EnvTable {{ {} vars: keys = [", self.vars.len())?;
+        for (i, k) in keys.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{k:?}")?;
+        }
+        write!(f, "] }}")
+    }
+}
+
 impl<'de> serde::de::Deserialize<'de> for EnvTable {
+    /// Reads the whole `env` table, coercing raw scalars to strings; its caller takes `vars`.
     fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
         let raw = BTreeMap::<String, EnvValue>::deserialize(de)?;
         Ok(Self {
@@ -922,6 +963,40 @@ target = "http://127.0.0.1:8080/healthz"
             format!("{app:?}"),
             "AppConfig { name: \"web\", script: \"./srv\", env: <2 vars>, .. }"
         );
+    }
+
+    /// `EnvValue::Debug` prints only the kind, never the value — the exact
+    /// string is pinned so a derived `Debug` (which prints the contents) fails
+    /// here. This is the unit half of the redaction guarantee.
+    #[test]
+    fn env_value_debug_never_prints_the_value() {
+        let cases = [
+            (EnvValue::Str("postgres://secret".to_string()), "<str>"),
+            (EnvValue::Bool(true), "<bool>"),
+            (EnvValue::Int(9_223_372_036_854_775_807), "<int>"),
+            (EnvValue::Real(1.5), "<real>"),
+        ];
+        for (value, expected) in cases {
+            assert_eq!(format!("{value:?}"), expected);
+        }
+    }
+
+    /// `EnvTable::Debug` prints the key names and count, never a value. Pinned
+    /// exactly: a derived `Debug` would dump `vars` and leak the secret.
+    #[test]
+    fn env_table_debug_prints_keys_not_values() {
+        let table = EnvTable {
+            vars: BTreeMap::from([
+                ("DATABASE_URL".to_string(), "postgres://secret".to_string()),
+                ("SOME_BOOL".to_string(), "true".to_string()),
+            ]),
+        };
+        assert_eq!(
+            format!("{table:?}"),
+            "EnvTable { 2 vars: keys = [\"DATABASE_URL\", \"SOME_BOOL\"] }"
+        );
+        // And the value itself must be nowhere in the output.
+        assert!(!format!("{table:?}").contains("postgres://secret"));
     }
 
     #[test]
