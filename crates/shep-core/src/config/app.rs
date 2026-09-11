@@ -520,8 +520,8 @@ enum EnvValue {
     Str(String),
     /// A bare `true` or `false`
     Bool(bool),
-    /// A whole number
-    Int(i64),
+    /// A whole number, signed or unsigned
+    Int(i128),
     /// A floating point number
     Real(f64),
 }
@@ -564,15 +564,15 @@ impl<'de> serde::de::Deserialize<'de> for EnvValue {
             }
 
             fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<EnvValue, E> {
-                Ok(EnvValue::Int(v))
+                // i128 holds the full i64 range losslessly.
+                Ok(EnvValue::Int(i128::from(v)))
             }
 
             fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<EnvValue, E> {
-                // A u64 beyond i64::MAX is valid JSON; wrapping it would turn
-                // it into a negative number.
-                Ok(EnvValue::Int(
-                    v.try_into().map_err(serde::de::Error::custom)?,
-                ))
+                // A u64 beyond i64::MAX is valid JSON (and TOML). i128 holds
+                // the full u64 range losslessly, so no value is refused and
+                // none is silently wrapped.
+                Ok(EnvValue::Int(i128::from(v)))
             }
 
             fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<EnvValue, E> {
@@ -823,6 +823,21 @@ env = { SOME_BOOL = true, PORT = 8080, NEG = -1, RATIO = 1.5, STR = "plain" }
         assert_eq!(app.env["NEG"], "-1");
         assert_eq!(app.env["RATIO"], "1.5");
         assert_eq!(app.env["STR"], "plain");
+    }
+
+    /// A whole number larger than `i64::MAX` is valid JSON and TOML, and a
+    /// Flockfile that writes one (a port, a token, an id) must still load. It
+    /// stringifies to its full, positive value — not a negative wrap and not a
+    /// refused error. Pinned to the exact string.
+    #[test]
+    fn env_reads_a_number_beyond_i64_max_without_wrapping() {
+        let beyond_i64 = u64::MAX; // 18446744073709551615
+        let src = format!(
+            r#"{{ "name":"web","script":"./srv","env":{{ "BIG": {beyond_i64} }} }}"#
+        );
+        let app = serde_json::from_str::<AppConfig>(&src)
+            .expect("a u64 beyond i64::MAX is valid JSON and must load");
+        assert_eq!(app.env["BIG"], "18446744073709551615");
     }
 
     /// Serialization is the inverse of the coercion: whatever form a value
