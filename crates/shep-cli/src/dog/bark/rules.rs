@@ -96,6 +96,16 @@ pub enum Trigger {
     },
 }
 
+/// What a [`Trigger::GaveUp`] firing says about `name`.
+///
+/// One function rather than the literal at both trigger sites: the bus
+/// route reads an `Errored` event and the poll route reads an `Errored`
+/// status, and an operator seeing two spellings of the same alert would
+/// read it as two different alerts.
+fn gave_up_message(name: &str) -> String {
+    format!("{name} gave up: restart budget exhausted")
+}
+
 /// The rule-kind name [`Bark::rule`] records for a firing: the same
 /// snake_case spelling a `[dog.bark.rules]` entry's own `on = "..."` key
 /// uses, so an operator reading `barks.jsonl` sees no vocabulary mismatch
@@ -277,19 +287,34 @@ impl Rules {
         }]
     }
 
-    /// Whether rule `idx` may fire for `subject` now, recording the firing
-    /// when it can. Shared by the bus route and the poll route, so an
-    /// event both see fires once.
-    fn try_fire(&mut self, idx: usize, subject: &str, now_ms: u64, debounce: UpDuration) -> bool {
+    /// The firing rule `idx` produces for `subject` now, or `None` when
+    /// its debounce has not elapsed. Shared by the bus route and the poll
+    /// route, so an event both see fires once.
+    ///
+    /// The caller decides whether the rule triggered at all and supplies
+    /// the `message`; everything from the debounce onward is the same on
+    /// both routes.
+    fn fire(&mut self, idx: usize, subject: &str, now_ms: u64, message: String) -> Option<Firing> {
+        let debounce = self.rules[idx].debounce;
         let state = self.subjects.entry(subject.to_owned()).or_default();
         let ready = state
             .last_fired
             .get(&idx)
             .is_none_or(|&last| now_ms.saturating_sub(last) >= debounce.as_millis());
-        if ready {
-            state.last_fired.insert(idx, now_ms);
+        if !ready {
+            return None;
         }
-        ready
+        state.last_fired.insert(idx, now_ms);
+        Some(Firing {
+            bark: Bark {
+                at_ms: now_ms,
+                rule: trigger_name(&self.rules[idx].when).to_owned(),
+                subject: subject.to_owned(),
+                message,
+                sinks: Vec::new(),
+            },
+            sinks: self.rules[idx].sinks.clone(),
+        })
     }
 
     /// Whether a `RestartRate` rule has accumulated `threshold` or more
@@ -330,32 +355,18 @@ impl Rules {
         let kind_wire = wire_spelling(kind);
         let mut firings = Vec::new();
         for idx in 0..self.rules.len() {
-            let debounce = self.rules[idx].debounce;
             let trigger = self.rules[idx].when.clone();
             let message = match &trigger {
                 Trigger::Event { kinds } if kinds.iter().any(|k| k == &kind_wire) => {
                     Some(format!("{} {kind_wire}", info.name))
                 }
                 Trigger::GaveUp {} if kind == ProcessEventKind::Errored => {
-                    Some(format!("{} gave up: restart budget exhausted", info.name))
+                    Some(gave_up_message(&info.name))
                 }
                 _ => None,
             };
             let Some(message) = message else { continue };
-            if !self.try_fire(idx, &info.name, now_ms, debounce) {
-                continue;
-            }
-            let sinks = self.rules[idx].sinks.clone();
-            firings.push(Firing {
-                bark: Bark {
-                    at_ms: now_ms,
-                    rule: trigger_name(&trigger).to_owned(),
-                    subject: info.name.clone(),
-                    message,
-                    sinks: Vec::new(),
-                },
-                sinks,
-            });
+            firings.extend(self.fire(idx, &info.name, now_ms, message));
         }
         firings
     }
@@ -372,13 +383,11 @@ impl Rules {
         let mut firings = Vec::new();
         for info in flock {
             for idx in 0..self.rules.len() {
-                let debounce = self.rules[idx].debounce;
                 let trigger = self.rules[idx].when.clone();
                 let message = match &trigger {
                     Trigger::Event { .. } => None,
-                    Trigger::GaveUp {} => (info.status == ProcStatus::Errored).then(|| {
-                        format!("{} gave up: restart budget exhausted", info.name)
-                    }),
+                    Trigger::GaveUp {} => (info.status == ProcStatus::Errored)
+                        .then(|| gave_up_message(&info.name)),
                     Trigger::RestartRate { restarts, within } => self
                         .restart_window_crossed(
                             idx,
@@ -405,20 +414,7 @@ impl Rules {
                     }),
                 };
                 let Some(message) = message else { continue };
-                if !self.try_fire(idx, &info.name, now_ms, debounce) {
-                    continue;
-                }
-                let sinks = self.rules[idx].sinks.clone();
-                firings.push(Firing {
-                    bark: Bark {
-                        at_ms: now_ms,
-                        rule: trigger_name(&trigger).to_owned(),
-                        subject: info.name.clone(),
-                        message,
-                        sinks: Vec::new(),
-                    },
-                    sinks,
-                });
+                firings.extend(self.fire(idx, &info.name, now_ms, message));
             }
         }
         firings
