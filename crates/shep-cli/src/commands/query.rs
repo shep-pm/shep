@@ -300,18 +300,15 @@ fn sheep_flourish(listing: &[ProcessInfo]) -> Option<String> {
 /// Each redraw is one `Request::ListFlock` rendered into a buffer and then
 /// written over the screen in a single write. Rendering before clearing is
 /// what keeps the terminal from sitting blank for the length of the round
-/// trip, which is what a clear issued ahead of the request would do.
+/// trip. The main screen, not the alternate one, so the last frame is still
+/// there afterwards. No flourish, which redrawn every second is noise.
 ///
-/// The main screen, not the alternate one: a follow that took the alternate
-/// screen would hand back a terminal with no trace of what the flock looked
-/// like, and the last frame is the thing an operator reads after stopping.
+/// An interrupt ends the follow at [`ExitCode::Success`], a shepherd that
+/// goes away mid-follow ends it carrying that refusal's own code. The two
+/// must not read as the same thing.
 ///
-/// No flourish. It is art above an empty flock, and art redrawn every second
-/// is noise.
-///
-/// A shepherd that goes away mid-follow ends the follow carrying its
-/// refusal's own exit code; an interrupt ends it at [`ExitCode::Success`].
-/// The two must not read as the same thing.
+/// Why each of those beat its alternative: `docs/decisions.md`, "Following
+/// the flock".
 pub(crate) async fn flock_follow(
     client: &Client,
     streams: &mut Streams<'_>,
