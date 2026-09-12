@@ -204,10 +204,15 @@ fn title_line(pane: &ConfigPane, palette: Palette, width: u16) -> Line<'static> 
 }
 
 /// Masks a secret field's rendered value: `(unset)` passes through, since
-/// there is nothing to hide, and anything else becomes `<set>`. The one rule
-/// every render path in this file applies to a secret field before its value
-/// reaches the screen, kept in one place so a new call site cannot spell the
-/// condition differently from the rest.
+/// there is nothing to hide, and anything else becomes `<set>`.
+///
+/// The one rule every render path in this file applies to a secret before
+/// its value reaches the screen, and every one of them calls this rather
+/// than spelling the condition again: [`field_line`]'s stored cell and its
+/// `old -> new` cell, [`list_line`]'s elements, and both halves of
+/// [`pending_edit_line`]. Four inline copies of it agreed with each other
+/// until they were routed through here, which is the state a fifth call
+/// site would have had to keep up.
 fn mask_secret(secret: bool, raw: String) -> String {
     if secret && raw != "(unset)" {
         "<set>".to_owned()
@@ -328,11 +333,7 @@ fn field_line(
             Span::styled(text, rest_style.patch(ground)),
         ]);
     };
-    let new_value = if field.secret && new_value != "(unset)" {
-        "<set>".to_owned()
-    } else {
-        new_value
-    };
+    let new_value = mask_secret(field.secret, new_value);
     let mut spans = vec![mark_span, Span::styled(rest, ground)];
     if value_w > 0 {
         spans.push(Span::styled("  ", ground));
@@ -468,11 +469,7 @@ fn list_line(
                         .get(item)
                         .cloned()
                         .unwrap_or_else(|| "(unset)".to_owned());
-                    if secret && raw != "(unset)" {
-                        "<set>".to_owned()
-                    } else {
-                        raw
-                    }
+                    mask_secret(secret, raw)
                 },
                 |buffer| format!("{buffer}\u{258f}"),
             ),
@@ -701,22 +698,8 @@ fn pending_edit_line(
             let secret = pane.fields().by_key(key).is_some_and(|field| field.secret);
             let old = pane.display_value(key);
             let new = pane.edited_value(key).unwrap_or_default();
-            let (old, new) = if secret {
-                (
-                    if old == "(unset)" {
-                        old
-                    } else {
-                        "<set>".to_owned()
-                    },
-                    if new == "(unset)" {
-                        new
-                    } else {
-                        "<set>".to_owned()
-                    },
-                )
-            } else {
-                (old, new)
-            };
+            let old = mask_secret(secret, old);
+            let new = mask_secret(secret, new);
             format!("{key}  {old} -> {new}")
         }
         PaneEdit::SetEnv { key, value } => match value {
@@ -2715,6 +2698,28 @@ mod tests {
         assert!(!text.contains("ab12cd34"), "the old value leaked: {text}");
         assert!(!text.contains("ef56gh78"), "the new value leaked: {text}");
         assert!(text.contains("<set> -> <set>"), "{text}");
+    }
+
+    /// The field list's own `old -> new` cell, which had no test of its
+    /// own while it spelled the mask inline. It is the path that draws a
+    /// secret an operator has just edited, on the row they edited it on.
+    #[test]
+    fn the_field_row_masks_both_halves_of_a_secrets_edited_value() {
+        let pane = secret_dog_pane_with_an_edit();
+        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
+        let row = text
+            .iter()
+            .find(|line| line.contains(" token"))
+            .expect("token is drawn at 120 columns");
+        assert!(row.contains("<set> -> <set>"), "{row:?}");
+        assert!(
+            !text.join("\n").contains("ab12cd34"),
+            "the old value leaked: {text:?}"
+        );
+        assert!(
+            !text.join("\n").contains("ef56gh78"),
+            "the new value leaked: {text:?}"
+        );
     }
 
     /// `panel_for_field`'s `now` row is the panel's own live-config read,
