@@ -196,6 +196,14 @@ fn declared_dog_names(table: &toml::Table) -> BTreeSet<String> {
     }
 }
 
+/// Whether `item` holds something, rather than being a bare table header.
+///
+/// An `Item` that is not a table at all counts as content: `dog = 3` is a
+/// section to carry over and refuse a collision on, not an empty one.
+fn item_has_content(item: &Item) -> bool {
+    !item.as_table_like().is_some_and(TableLike::is_empty)
+}
+
 /// Whether `value` holds nothing an operator could lose by not moving it.
 ///
 /// An empty table, an empty array, and an array of tables that are all empty.
@@ -205,15 +213,6 @@ fn declared_dog_names(table: &toml::Table) -> BTreeSet<String> {
 ///
 /// A `[[dog.metrics]]` that carries values is not this, and still refuses:
 /// there is no one section for it to become.
-/// Whether `item` holds something, rather than being a bare table header.
-///
-/// An `Item` that is not a table at all counts as content: `dog = 3` is a
-/// section to carry over and refuse a collision on, not an empty one.
-fn item_has_content(item: &Item) -> bool {
-    !item.as_table_like().is_some_and(TableLike::is_empty)
-}
-
-/// Whether `value` declares nothing at all.
 fn declares_nothing(value: &toml::Value) -> bool {
     match value {
         toml::Value::Table(table) => table.is_empty(),
