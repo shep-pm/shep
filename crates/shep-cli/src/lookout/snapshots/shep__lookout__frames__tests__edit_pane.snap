@@ -29,7 +29,7 @@ shep lookout   /home/ada/.shep                                                  
                                                                                           out_file  relative paths follow it too                                
                                                                                           watch_options  globs are rooted here                                  
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * overridden   -> changed by you, not yet written            
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 

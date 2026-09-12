@@ -1249,11 +1249,11 @@ pub fn config_pane_field_rows_for_tests(app: &App) -> Vec<String> {
         .collect()
 }
 
-/// The active group's own env rows, walked by the same cursor as
-/// [`config_pane_field_rows_for_tests`]: one entry per env key, then
-/// `+ add a key`. Bounded to those rows via [`crate::lookout::pane::PaneRow::Env`]
-/// and [`crate::lookout::pane::PaneRow::AddEnv`], so a test on this cannot pass
-/// off a match anywhere else in the frame.
+/// The active group's own env rows: one entry per env key, then
+/// `+ add a key`. Searched below the `env` section header and nowhere else,
+/// so a test on this cannot pass off a match from the field list above it:
+/// the keys and the field names share one namespace on screen, and a sheep
+/// has fields called `user` and `env`.
 ///
 /// Takes a `ConfigPane` directly rather than an `App`, since some of this
 /// pane's own tests build one without a dashboard around it. `menu` mirrors
@@ -1269,11 +1269,27 @@ pub fn config_pane_env_rows_for_tests(
 ) -> Vec<String> {
     let lines = crate::lookout::view::pane::pane_lines(pane, menu, plain(), 160, 0);
     let rendered_lines: Vec<String> = lines.iter().map(rendered).collect();
+    // The `env` section header is the bound. Everything above it is a field
+    // row or chrome, and a prefix match over the whole frame would hand back
+    // the `user` field's row for an env key named `user`.
+    //
+    // The header sits at column 2 and every row under it at column 3, which
+    // is what tells the header apart from a field called `env`. It is not
+    // matched whole because the explanation panel is merged to the right of
+    // it at this width, so the line carries the panel's own row too.
+    let header = rendered_lines
+        .iter()
+        .position(|line| {
+            line.strip_prefix("  env")
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with(' '))
+        })
+        .expect("the pane draws an env section header");
+    let env_rows = &rendered_lines[header + 1..];
     let mut rows: Vec<String> = pane
         .env_key_names()
         .iter()
         .map(|name| {
-            rendered_lines
+            env_rows
                 .iter()
                 .find(|line| {
                     line.trim_start_matches(['>', ' '])
@@ -1284,7 +1300,7 @@ pub fn config_pane_env_rows_for_tests(
         })
         .collect();
     rows.push(
-        rendered_lines
+        env_rows
             .iter()
             .find(|line| line.contains("add a key"))
             .expect("the pane draws a + add a key row")

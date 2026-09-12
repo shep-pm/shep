@@ -2494,8 +2494,8 @@ impl App {
             // only from text mode, already branched above. `map_key` also
             // sends `Remove`/`ListMoveUp`/`ListMoveDown` from Normal mode
             // (`d`/`K`/`J`), so those land here too, just inert.
-            // `NextGroup`/`Group`/`Undo` belong to the config pane; Task 5
-            // and Task 8 give them a reducer arm there.
+            // `NextGroup`/`Group`/`Undo` belong to the config pane: no other
+            // screen has groups to walk or a filed edit set to undo.
             KeyPress::TextChar(_)
             | KeyPress::TextBackspace
             | KeyPress::TextApply
@@ -2749,8 +2749,8 @@ impl App {
             | KeyPress::FoldView
             | KeyPress::Collapse
             | KeyPress::Bleats
-            // `NextGroup`/`Group`/`Undo` belong to the config pane; Task 5
-            // and Task 8 give them a reducer arm there.
+            // `NextGroup`/`Group`/`Undo` belong to the config pane: no other
+            // screen has groups to walk or a filed edit set to undo.
             | KeyPress::NextGroup
             | KeyPress::Group(_)
             | KeyPress::Undo => Effect::None,
@@ -2889,8 +2889,8 @@ impl App {
             | KeyPress::MatchNext
             | KeyPress::MatchPrev
             | KeyPress::Bleats
-            // `NextGroup`/`Group`/`Undo` belong to the config pane; Task 5
-            // and Task 8 give them a reducer arm there.
+            // `NextGroup`/`Group`/`Undo` belong to the config pane: no other
+            // screen has groups to walk or a filed edit set to undo.
             | KeyPress::NextGroup
             | KeyPress::Group(_)
             | KeyPress::Undo => {}
@@ -3305,8 +3305,8 @@ impl App {
             | KeyPress::MatchNext
             | KeyPress::MatchPrev
             | KeyPress::Bleats
-            // `NextGroup`/`Group`/`Undo` belong to the config pane; Task 5
-            // and Task 8 give them a reducer arm there.
+            // `NextGroup`/`Group`/`Undo` belong to the config pane: no other
+            // screen has groups to walk or a filed edit set to undo.
             | KeyPress::NextGroup
             | KeyPress::Group(_)
             | KeyPress::Undo => Effect::None,
@@ -8332,9 +8332,10 @@ mod tests {
     /// next step skipped eight more. Sized from the current window instead,
     /// the same walk is contiguous.
     ///
-    /// That is the Task 7 defect one level harder: there the jump was one
-    /// row too many, here it is most of a screen. Both were invisible for
-    /// the same reason, that paging back cancels the error out.
+    /// That is the off-by-one page size one level harder: sized from the
+    /// wrong place the jump was one row too many, here it is most of a
+    /// screen. Both were invisible for the same reason, that paging back
+    /// cancels the error out.
     ///
     /// `note_body_width` matters as much as `note_body_rows` here. The
     /// wrap-aware path is skipped entirely while the pane's width is `0`,

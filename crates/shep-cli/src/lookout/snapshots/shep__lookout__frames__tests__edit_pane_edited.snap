@@ -26,7 +26,7 @@ shep lookout   /home/ada/.shep                                                  
    NODE_ENV                   (set)                                                                                                                             
    + add a key                                                                                                                                                  
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * overridden   -> changed by you, not yet written            
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 

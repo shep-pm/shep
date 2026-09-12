@@ -295,8 +295,8 @@ const BLEATS_HINT: &str = "esc back   j/k line   ctrl-d/u page   G end   \
 /// same two with no legend of its own.
 ///
 /// `Control::Allowed` at [`PaneScreen::Fields`] says `esc write & close`, not
-/// `esc close`: since Task 5, `esc` there sends every filed edit before it
-/// closes the pane. The design doc for this pane (see the crate's own
+/// `esc close`: `esc` there sends every filed edit before it closes the
+/// pane, which is the whole of how a pane's edits reach the shepherd. The design doc for this pane (see the crate's own
 /// `docs/brainstorming/specs/`) does spell it `esc close`, because a later
 /// frame adds a confirmation dialog that intercepts the close and asks
 /// first; once that dialog exists, `esc` stops writing on its own and this

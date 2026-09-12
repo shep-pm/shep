@@ -662,13 +662,18 @@ fn column_header_line(palette: Palette, width: u16, show_lands: bool) -> Line<'s
 /// Names no key: `status.rs`'s `esc write & close` is the one place that
 /// wording lives, and a second copy here would only need to be kept in
 /// sync with it.
+///
+/// `* yours` rather than `* overridden`, because the status bar has said
+/// `* yours` on every screen that draws the glyph since before this pane
+/// existed. One glyph with two words for it was visible on one screen at
+/// once.
 fn legend_line(palette: Palette, width: u16) -> Line<'static> {
     Line::from(Span::styled(
         format!(
             "  {}",
             fit(
                 "= read-only, set it in the Flockfile   ~ no widget for this shape   \
-                 ! parked, awaits a respawn   * overridden   -> changed by you, not yet written",
+                 ! parked, awaits a respawn   * yours   -> changed by you, not yet written",
                 body_width(width)
             )
         ),
@@ -1202,9 +1207,35 @@ pub fn pane_lines(
         }
         return grouped_pane_lines(pane, menu, palette, width, budget);
     }
-    if let Some(panel_w) = panel_width(width) {
-        return ungrouped_pane_with_panel_lines(pane, menu, palette, width, panel_w, budget);
-    }
+    let panel = panel_width(width).map(|panel_w| (panel_lines(pane, palette, panel_w), panel_w));
+    ungrouped_pane_lines_with_panel(pane, menu, palette, width, budget, panel)
+}
+
+/// The body [`pane_lines`] draws for a pane with no groups, which is a
+/// dog's own shape: `panel` is [`None`] below [`panel_width`]'s floor, which
+/// lays the body out at `width` in one column, and `Some((lines,
+/// panel_width))` above it, which lays the body out at `width -
+/// panel_width` and merges `lines` beside it.
+///
+/// One parameter rather than two near-identical functions, the same
+/// treatment [`grouped_pane_lines_with_panel`] gives the grouped pair.
+///
+/// No tab row and no legend: a dog's schema carries no group to name, and
+/// adding the panel is not a reason to invent one. The title is laid out at
+/// the real `width`, and the trailing "shep publishes..." footer is chrome,
+/// reserved out of the budget before the body claims what is left.
+fn ungrouped_pane_lines_with_panel(
+    pane: &ConfigPane,
+    menu: Option<&PaneMenu>,
+    palette: Palette,
+    width: u16,
+    budget: usize,
+    panel: Option<(Vec<Line<'static>>, u16)>,
+) -> Vec<Line<'static>> {
+    let show_lands = lands_fits_beside_panel(width, panel.is_some());
+    let left_width = panel
+        .as_ref()
+        .map_or(width, |(_, panel_width)| width.saturating_sub(*panel_width));
     let mut lines = vec![title_line(pane, palette, width)];
     // The title is unconditional, so the body is laid out against what is
     // left after it. An empty form (unreachable for a sheep, whose schema
@@ -1235,62 +1266,6 @@ pub fn pane_lines(
     if !pane.fields().is_empty() && body_budget > 0 {
         let total = pane.rows().len();
         let cursor_row = pane.view().cursor().min(total - 1);
-        lines.extend(super::scroll::to_cursor(
-            cursor_row,
-            pane.view().offset(),
-            |offset| body_from(pane, palette, width, body_budget, offset, true, true),
-            || cursor_only(pane, palette, width, body_budget, cursor_row, true),
-        ));
-    }
-    push_footer_line(&mut lines, footer, width, palette);
-    lines
-}
-
-/// [`pane_lines`]'s own single-column body, above, with the cursor's own
-/// field's [`panel_lines`] drawn beside it: a dog's own shape, same layout
-/// a sheep gets, its group tab row and cost column simply empty because a
-/// dog's schema carries neither.
-///
-/// No tab row: a dog's schema carries no group to name, so `pane_lines`
-/// never draws one for it even without a panel, and adding the panel is not
-/// a reason to invent one. Otherwise the same shape as
-/// [`grouped_pane_with_panel_lines`]: the title is laid out at the real
-/// `width`, the body at `width - panel_w`, and the trailing "shep
-/// publishes..." footer is chrome, reserved out of the budget before the
-/// body claims what is left, the same order [`pane_lines`]'s own
-/// single-column path reserves it in.
-///
-/// Only reached when [`panel_width`] returns `Some`, mirroring
-/// [`grouped_pane_with_panel_lines`]'s own threshold.
-fn ungrouped_pane_with_panel_lines(
-    pane: &ConfigPane,
-    menu: Option<&PaneMenu>,
-    palette: Palette,
-    width: u16,
-    panel_w: u16,
-    budget: usize,
-) -> Vec<Line<'static>> {
-    let left_width = width.saturating_sub(panel_w);
-    let show_lands = lands_fits_beside_panel(width, true);
-    let mut lines = vec![title_line(pane, palette, width)];
-    let mut body_budget = budget - 1;
-    if let Some((text, style)) = top_line(pane, menu, palette)
-        && body_budget > 0
-    {
-        lines.push(Line::from(Span::styled(
-            format!("  {}", fit(&text, body_width(width))),
-            style,
-        )));
-        body_budget -= 1;
-    }
-    let footer = dog_footer_text(pane, body_budget);
-    if footer.is_some() {
-        body_budget -= 1;
-    }
-    if !pane.fields().is_empty() && body_budget > 0 {
-        let panel = panel_lines(pane, palette, panel_w);
-        let total = pane.rows().len();
-        let cursor_row = pane.view().cursor().min(total - 1);
         let body = super::scroll::to_cursor(
             cursor_row,
             pane.view().offset(),
@@ -1316,7 +1291,10 @@ fn ungrouped_pane_with_panel_lines(
                 )
             },
         );
-        lines.extend(merge_beside_panel(body, panel, left_width, body_budget));
+        lines.extend(match panel {
+            Some((panel, _)) => merge_beside_panel(body, panel, left_width, body_budget),
+            None => body,
+        });
     }
     push_footer_line(&mut lines, footer, width, palette);
     lines
@@ -3071,9 +3049,9 @@ mod tests {
     /// [`panel_lines`] directly.
     ///
     /// The "not below the design target" half of this test's original name
-    /// no longer holds: Task 10 replaced the fixed 160-column threshold
-    /// with `panel_width`'s continuous ladder, so the panel now draws down
-    /// to 90 columns. What still has to hold, and what this pins instead,
+    /// no longer holds: the fixed 160-column threshold became
+    /// [`panel_width`]'s continuous ladder, so the panel now draws down to
+    /// 90 columns. What still has to hold, and what this pins instead,
     /// is the panel's own floor: nothing below it.
     #[test]
     fn the_panel_draws_beside_the_field_list_at_the_design_target() {
@@ -3112,8 +3090,9 @@ mod tests {
     }
 
     /// A dog pane has no groups, so it takes `pane_lines`'s other branch,
-    /// and Task 7 wired the panel into the grouped one only. Same layout,
-    /// same panel, its empty regions simply empty.
+    /// which got the panel after the grouped one did and is the branch that
+    /// went without it for a while. Same layout, same panel, its empty
+    /// regions simply empty.
     #[test]
     fn a_dogs_panel_draws_beside_its_field_list_at_the_design_target() {
         let app = fixtures::app_in_dog_pane();
@@ -3162,7 +3141,7 @@ mod tests {
         );
     }
 
-    // --- Task 10: the responsive ladder ---
+    // --- the responsive ladder: what each width drops ---
 
     #[test]
     fn the_design_target_splits_eighty_eight_and_seventy_two() {

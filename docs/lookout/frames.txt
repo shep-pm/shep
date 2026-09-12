@@ -1097,7 +1097,7 @@ shep lookout   /home/ada/.shep                                                  
                                                                                           out_file  relative paths follow it too                                
                                                                                           watch_options  globs are rooted here                                  
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * overridden   -> changed by you, not yet written            
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
@@ -1117,7 +1117,7 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
-esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   u undo   h help   * yours   ! parked   q quit               control enabled
+esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked  … control enabled
 
 === edit_pane_edited  (160x48) ===
 The same pane with two edits filed: cwd, which needs a respawn, and max_memory, which lands at once. The pending edits section lists both under the active group's own fields, and the title band reads 2 edits.
@@ -1146,7 +1146,7 @@ shep lookout   /home/ada/.shep                                                  
    NODE_ENV                   (set)                                                                                                                             
    + add a key                                                                                                                                                  
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * overridden   -> changed by you, not yet written            
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
@@ -1169,7 +1169,7 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
-esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   u undo   h help   * yours   ! parked   q quit               control enabled
+esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked  … control enabled
 
 === edit_pane_squeezed  (120x48) ===
 The same fresh pane at 120 columns: narrow enough that LANDS gives way to the explanation panel, which still names the focused field's own cost in words.
@@ -1202,7 +1202,7 @@ shep lookout   /home/ada/.shep                                                  
                                                                     out_file  relative paths follow it too              
                                                                     watch_options  globs are rooted here                
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * overridden   -> ch…
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed…
                                                                                                                         
                                                                                                                         
                                                                                                                         
@@ -1221,7 +1221,7 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                         
                                                                                                                         
                                                                                                                         
-esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   u undo   h help   … control enabled
+esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default … control enabled
 
 === edit_pane_narrow  (88x48) ===
 The same fresh pane at 88 columns: narrow enough that the explanation panel is gone, so LANDS is back, since nothing else on screen carries cost.
