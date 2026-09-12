@@ -1,0 +1,113 @@
+name: web
+# Builds and typechecks `web/` on a pull request.
+#
+# pages.yml runs the same build, but only after a merge, so until this file
+# existed nothing read `web/` before the deploy that published it to
+# https://shep-pm.com. A page that failed to build, or one that built clean
+# and rendered wrong, reached production first and was found there.
+#
+# Found while bumping svgo for two removeScripts advisories (#221). That pull
+# request changed web/package-lock.json and nothing else, went green on 15
+# checks, and every one of them was a Rust job that never opens `web/`.
+#
+# Its own file rather than a job in pages.yml, because both of pages.yml's
+# workflow-level keys are wrong for a pull request:
+#
+#   * `permissions:` there grants `pages: write` and `id-token: write`. A job
+#     running code from a pull request must hold neither. Folding this in
+#     means overriding permissions per job and trusting that nobody widens
+#     the workflow-level block later.
+#   * `concurrency: { group: pages, cancel-in-progress: false }` is what stops
+#     two deploys overlapping. A pull-request job in that group would queue
+#     behind a deploy in flight and then refuse to be cancelled when the
+#     branch is pushed again.
+#
+# commits.yml and manifests.yml are each a small `on: pull_request` file for
+# the same reason. This is that shape.
+on:
+  pull_request:
+    # The filter pages.yml uses, plus this file. A Rust-only pull request does
+    # not pay for an npm install.
+    #
+    # docs/specs/deferred.md, docs/terminology.md and Cargo.toml are in the
+    # list because the site parses each at build time (`web/src/data/*.ts`),
+    # so a change to one of them can break the build with nothing under
+    # `web/` touched at all.
+    #
+    # The filter lives on the trigger, which means this workflow reports
+    # nothing whatsoever on a pull request that misses it, not even "skipped".
+    # So it must stay out of the required-status-check contexts on the `main`
+    # ruleset: a required context that never reports leaves every Rust-only
+    # pull request sitting at "Expected" forever. test.yml expresses the same
+    # kind of filter as job-level `if:` guards precisely because its contexts
+    # are required, and that machinery is the price of being required.
+    paths:
+      - "web/**"
+      - "docs/specs/deferred.md"
+      - "docs/terminology.md"
+      - "Cargo.toml"
+      - ".github/workflows/web.yml"
+
+permissions:
+  contents: read
+
+# One run per pull request. A newer push makes the old head's verdict moot,
+# and nothing here publishes, so cancelling costs nothing. pages.yml is the
+# opposite case and says so.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Not named `docs`: that context is test.yml's rustdoc job and is required
+  # on `main`. Two jobs reporting one context would let either satisfy it.
+  site:
+    name: docs site
+    runs-on: ubuntu-latest
+    # pages.yml's build job runs the same steps in a couple of minutes. 15 is
+    # a ceiling against a hang, not a budget.
+    timeout-minutes: 15
+    steps:
+      # Pinned by commit like every other workflow here, and moved by
+      # .github/dependabot.yml.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The same node setup as pages.yml, so the version that verifies a pull
+      # request is the version that builds the deploy, and `.nvmrc` stays the
+      # one home for it.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # `npm ci`, never `npm install`. On a Dependabot pull request the
+      # lockfile is the entire change under test, and `npm install` is free to
+      # resolve around it and prove nothing about the tree that ships.
+      - run: npm ci
+        working-directory: web
+      # Astro does not typecheck during a build, so the build step below does
+      # not cover this one. `/docs/output` once shipped two
+      # `<Callout kind="note">` against a component whose prop is `variant`:
+      # `variant` came out `undefined`, the rendered div lost its variant
+      # class and the label badge rendered empty. `astro build` was green the
+      # whole time, and `astro check` reported both at ts(2322) the first time
+      # it ran.
+      - run: npx astro check
+        working-directory: web
+      # The whole `build` script, not `astro build` alone. It is
+      # `check-node.mjs && node --test verify-dogs-index.ts && astro build &&
+      # pagefind --site dist && verify-pagefind-index.mjs`, and it is exactly
+      # what pages.yml runs.
+      #
+      # Anything this job skips is a step whose first run is still the
+      # production deploy, which is the hole this file exists to close. All
+      # five are offline and cost seconds next to the install, and two of them
+      # catch failures a build cannot see: `pagefind` exits 0 after indexing
+      # zero pages, so verify-pagefind-index.mjs is the only thing separating
+      # working docs search from search that silently returns nothing.
+      #
+      # `!cancelled()` rather than the implicit `success()`: a type error in
+      # the step above should not hide a broken build, so one run reports both
+      # verdicts instead of costing two round trips.
+      - if: ${{ !cancelled() }}
+        run: npm run build
+        working-directory: web
