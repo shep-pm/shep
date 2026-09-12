@@ -17,8 +17,8 @@ use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
 use sysinfo::{
-    CpuRefreshKind, DiskRefreshKind, Disks, MemoryRefreshKind, NetworkData, Networks, RefreshKind,
-    System,
+    CpuRefreshKind, DiskRefreshKind, Disks, IpNetwork, MemoryRefreshKind, NetworkData, Networks,
+    RefreshKind, System,
 };
 
 use crate::output::human_bytes;
@@ -121,7 +121,16 @@ fn distinct_disk_io(entries: impl IntoIterator<Item = DiskIo>) -> (u64, u64) {
 /// end. An interface with no addresses at all is not loopback; it also moves
 /// no bytes.
 fn is_loopback(interface: &NetworkData) -> bool {
-    let addresses = interface.ip_networks();
+    addresses_are_loopback(interface.ip_networks())
+}
+
+/// The judgement [`is_loopback`] makes, over the addresses alone.
+///
+/// Split out because `sysinfo::NetworkData` has no public constructor, so the
+/// rule above it is untestable while it is wired to one. It decides which
+/// interfaces reach the network rate at all, and a regression would inflate
+/// or deflate every number on the host line without failing anything.
+fn addresses_are_loopback(addresses: &[IpNetwork]) -> bool {
     !addresses.is_empty() && addresses.iter().all(|network| network.addr.is_loopback())
 }
 
@@ -365,5 +374,34 @@ mod tests {
 
         assert!(sample.memory_total_bytes > 0, "a machine has memory");
         assert!(sample.memory_used_bytes > 0);
+    }
+
+    fn net(addr: &str) -> IpNetwork {
+        IpNetwork {
+            addr: addr.parse().expect("a literal address"),
+            prefix: 8,
+        }
+    }
+
+    /// fails if loopback stops being judged by address. Judging by name was
+    /// the alternative, and `lo` and `lo0` are two spellings of a set with no
+    /// promised end.
+    #[test]
+    fn an_interface_is_loopback_only_when_every_address_is() {
+        assert!(addresses_are_loopback(&[net("127.0.0.1")]));
+        assert!(addresses_are_loopback(&[net("127.0.0.1"), net("::1")]));
+        assert!(!addresses_are_loopback(&[net("192.168.1.4")]));
+        assert!(
+            !addresses_are_loopback(&[net("127.0.0.1"), net("192.168.1.4")]),
+            "one routable address is enough to make an interface count"
+        );
+    }
+
+    /// The empty case the doc comment claims and nothing checked. An
+    /// interface with no addresses is not loopback, so it stays in the total;
+    /// it also moves no bytes, so it contributes nothing either way.
+    #[test]
+    fn an_interface_with_no_addresses_is_not_loopback() {
+        assert!(!addresses_are_loopback(&[]));
     }
 }
