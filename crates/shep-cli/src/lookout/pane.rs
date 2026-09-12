@@ -2458,8 +2458,8 @@ mod tests {
 
     /// A dog whose schema declares one secret string. No built-in has one:
     /// bark's only secret is a map, and a map has no editor to type a
-    /// secret into, so the leak the confirm sentence could carry was not
-    /// reachable from any fixture the pane already had.
+    /// secret into, so a typed secret is not reachable from any fixture
+    /// the pane already had.
     fn secret_dog_pane() -> ConfigPane {
         let schema = serde_json::json!({
             "properties": {
@@ -2472,6 +2472,33 @@ mod tests {
             schema,
             "webhook = \"https://hook/OLD\"\n".to_owned(),
         )
+    }
+
+    /// The one editor a secret can be typed into, and `secret_dog_pane` is
+    /// the only fixture that reaches it. Seeded empty rather than with what
+    /// the section holds: the screen draws `<set>` for a secret and the
+    /// pane must not hand the old credential back for a backspace to edit.
+    #[test]
+    fn a_dogs_secret_field_seeds_its_editor_empty_and_files_what_was_typed() {
+        let mut pane = secret_dog_pane();
+        pane.move_to_key("webhook");
+        pane.begin_typing();
+        assert_eq!(
+            pane.typing().expect("the editor is open").buffer,
+            "",
+            "a secret seeds empty, however much the section holds"
+        );
+        for typed in "https://hook/NEW".chars() {
+            pane.type_char(typed);
+        }
+        pane.apply_typing();
+        assert_eq!(
+            filed(&pane, "webhook"),
+            Some(serde_json::json!("https://hook/NEW"))
+        );
+        let debug = format!("{pane:?}");
+        assert!(!debug.contains("OLD"), "{debug}");
+        assert!(!debug.contains("NEW"), "{debug}");
     }
 
     /// `ConfigPane::dog` always leaves `env_keys` empty, so an `env` field

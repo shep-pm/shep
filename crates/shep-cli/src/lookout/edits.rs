@@ -63,6 +63,13 @@ impl Edit {
 
     /// What sending it costs, and [`None`] for a dog, which has no
     /// `apply_group` table.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "frame 1g's close dialog reads it; that frame is not built yet"
+        )
+    )]
     #[must_use]
     pub const fn impact(&self) -> Option<ApplyGroup> {
         self.impact
@@ -155,6 +162,13 @@ impl Edits {
     /// door that files an edit checks that lock first. `pane.rs`'s
     /// `no_key_files_an_edit_for_a_structural_field` is what holds the
     /// claim up.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "frame 1g's close dialog reads it; that frame is not built yet"
+        )
+    )]
     #[must_use]
     pub fn worst_impact(&self) -> Option<ApplyGroup> {
         self.entries
@@ -169,6 +183,13 @@ impl Edits {
 /// A local ordering over one notion of cost rather than a second notion of
 /// it: [`ApplyGroup`] is `#[non_exhaustive]` and derives no `Ord`, and a
 /// total order asserted in shep-core would claim more than this needs.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "frame 1g's close dialog reads `Edits::worst_impact`, which reads this"
+    )
+)]
 const fn rank(group: ApplyGroup) -> u8 {
     match group {
         ApplyGroup::Live => 0,

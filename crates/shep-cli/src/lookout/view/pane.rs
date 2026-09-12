@@ -3246,7 +3246,10 @@ mod tests {
             let app = fixtures::app_in_sheep_pane();
             for row in config_pane_lines_for_tests(&app, width, 48) {
                 assert!(
-                    fixtures::render_all(&[row.clone()]).chars().count() <= usize::from(width),
+                    fixtures::render_all(std::slice::from_ref(&row))
+                        .chars()
+                        .count()
+                        <= usize::from(width),
                     "a row overflows at {width}"
                 );
             }
