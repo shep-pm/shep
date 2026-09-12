@@ -1410,7 +1410,6 @@ pub struct CloseDialog {
     kill_timeout: String,
     graceful_timeout: String,
     name: String,
-    pid: Option<u32>,
     at: Instant,
 }
 
@@ -1419,9 +1418,6 @@ impl CloseDialog {
     /// everything else off `pane`: which reload it would get, its own
     /// `kill_timeout` and `graceful_timeout`, its name, and how many other
     /// filed edits (`live`) the running sheep already takes without one.
-    ///
-    /// `pid` is always [`None`] here: a [`ConfigPane`] carries no OS pid,
-    /// only the flock map does, and nothing this frame draws needs one.
     #[must_use]
     pub(super) fn new(unsent: Vec<String>, parked: usize, pane: &ConfigPane, at: Instant) -> Self {
         Self {
@@ -1433,7 +1429,6 @@ impl CloseDialog {
             kill_timeout: pane.display_value("kill_timeout"),
             graceful_timeout: pane.display_value("graceful_timeout"),
             name: pane.target().name().to_owned(),
-            pid: None,
             at,
         }
     }
@@ -1507,18 +1502,6 @@ impl CloseDialog {
     #[must_use]
     pub fn target_name(&self) -> &str {
         &self.name
-    }
-
-    /// The OS pid this sheep runs under, when there is exactly one to name.
-    ///
-    /// Always [`None`] in this frame: see [`Self::new`]'s own doc for why.
-    #[allow(
-        dead_code,
-        reason = "task 4's boxed form reads this; that frame is not built yet"
-    )]
-    #[must_use]
-    pub const fn pid(&self) -> Option<u32> {
-        self.pid
     }
 }
 
