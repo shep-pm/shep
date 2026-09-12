@@ -156,7 +156,8 @@
           "init": {
             "accepts": [
               "an absolute or relative path, expanded from cwd",
-              "~ expands, $VARS do not"
+              "~ expands, $VARS do not",
+              "a directory that does not exist yet: warned rather than refused, since a deploy may still create it before the next restart"
             ],
             "blurb": "Where the process runs. Without it, the daemon's own directory",
             "example": "/srv/app",
@@ -174,9 +175,6 @@
                 "field": "watch_options",
                 "note": "globs are rooted here"
               }
-            ],
-            "refuses": [
-              "a path the daemon's user cannot enter"
             ]
           }
         },
@@ -275,7 +273,8 @@
           "init": {
             "accepts": [
               "a path, relative paths follow cwd",
-              "{{instance}} and {{name}} expand"
+              "{{instance}} and {{name}} expand",
+              "a parent directory that does not exist yet: warned rather than refused, since a deploy may still create it before the next restart"
             ],
             "blurb": "Where stderr goes. Defaults to a file under $SHEP_HOME/logs",
             "example": "/var/log/my-first-sheep/err.log",
@@ -567,7 +566,8 @@
           "init": {
             "accepts": [
               "a path, relative paths follow cwd",
-              "{{instance}} and {{name}} expand"
+              "{{instance}} and {{name}} expand",
+              "a parent directory that does not exist yet: warned rather than refused, since a deploy may still create it before the next restart"
             ],
             "blurb": "Where stdout goes. Defaults to a file under $SHEP_HOME/logs",
             "example": "/var/log/my-first-sheep/out.log",
@@ -659,7 +659,8 @@
           "init": {
             "accepts": [
               "an absolute or relative path, expanded from cwd",
-              "~ expands, $VARS do not"
+              "~ expands, $VARS do not",
+              "a script or interpreter shep cannot yet resolve: warned rather than refused, since a deploy may still place it before the next restart"
             ],
             "blurb": "The script that shep should use to launch your app",
             "example": "./index.js",
@@ -673,9 +674,6 @@
                 "field": "interpreter",
                 "note": "picks what runs this script"
               }
-            ],
-            "refuses": [
-              "a path the daemon's user cannot enter"
             ]
           }
         },
