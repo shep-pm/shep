@@ -230,7 +230,7 @@ error of the kind rulings.md already lists several of.
 | 140 and up | both charts, body `min(width - 20, 140)` cells, window `body × 2s` |
 | 100 to 139 | CPU chart only; memory becomes one line, `rss 48.3M of 52M` and `cell::gauge` at 10 cells |
 | under 100 | 1a's `CPU 20s` sparkline and `MEM/CEIL` gauge on one row |
-| under 31 | refused, as today |
+| under 33 | refused, as today |
 
 Rows: the charts hold rows 2 to 17. Under 26 rows the memory chart goes; under
 20, both. The config and feed columns are what the pane is for, so they are
