@@ -444,7 +444,8 @@ fn json5_nesting_depth(source: &str) -> u32 {
     max_depth
 }
 
-const DISCOVERY_ORDER: [&str; 10] = [
+/// The filenames [`discover`] looks for, in the order it looks (spec §5)
+pub const DISCOVERY_ORDER: &[&str] = &[
     "Flockfile.toml",
     "Flockfile.yaml",
     "Flockfile.yml",
