@@ -1198,6 +1198,58 @@ impl ConfigPane {
         }
     }
 
+    /// `d` on the field list: restores the field under the cursor to its
+    /// default.
+    ///
+    /// Under batching, restoring a default means removing the operator's
+    /// value so the stored default shows through once sent, and that is
+    /// exactly what an empty typed buffer already means: see
+    /// [`Self::apply_typing`]. The value filed is the same [`Value::Null`],
+    /// through the same [`Self::file_field`] every other edit goes through,
+    /// so a re-edit back to the stored value still drops the entry rather
+    /// than counting a no-op.
+    ///
+    /// Files nothing when the row is already showing its default: see
+    /// [`Self::field_shows_default`]. A locked row is refused the same way
+    /// [`Self::cycle`] refuses one, since a key that reaches here has
+    /// already been refused once, by the caller's own lock check, and this
+    /// is the defense behind it.
+    pub(super) fn file_default(&mut self) {
+        let Some(PaneRow::Field(index)) = self.cursor() else {
+            return;
+        };
+        let Some(field) = self.fields.fields().get(index) else {
+            return;
+        };
+        if self.lock(&field.key).is_some() {
+            return;
+        }
+        let key = field.key.clone();
+        if self.field_shows_default(&key) {
+            return;
+        }
+        self.file_field(key, Value::Null);
+    }
+
+    /// Whether `key`'s row is already showing its stored default, with
+    /// nothing filed for it in this session either.
+    ///
+    /// A sheep's `values` is the effective config, defaults merged in, so a
+    /// bool field's default is never `null` and [`Self::stored_value_is`]
+    /// cannot answer this for it; [`Self::is_overridden`] is the fact that
+    /// can. A dog's `values` is the raw section text with no defaults
+    /// merged in, so an absent or `null` key already means default there,
+    /// which is exactly what [`Self::stored_value_is`] checks.
+    fn field_shows_default(&self, key: &str) -> bool {
+        if self.edits.get(&EditKey::Field(key.to_owned())).is_some() {
+            return false;
+        }
+        match &self.target {
+            PaneTarget::Sheep { .. } => !self.is_overridden(key),
+            PaneTarget::Dog { .. } => self.stored_value_is(key, &Value::Null),
+        }
+    }
+
     /// Opens the text editor on the row under the cursor. Does nothing for
     /// a locked field, or for one that is not typed.
     ///

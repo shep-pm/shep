@@ -285,10 +285,12 @@ const BLEATS_HINT: &str = "esc back   j/k line   ctrl-d/u page   G end   \
 
 /// The config pane's own key hint.
 ///
-/// Five forms: `space cycle`/`e edit` show only under [`Control::Allowed`]
-/// (`Enter` also opens the pane, sharing `e`'s slot). Each sub-screen gets its
-/// own, since `esc` backs out rather than closing there, and the list also
-/// names `d`/`K`/`J`. `* yours`/`! parked` repeat the field list's glyphs
+/// Five forms: `space cycle`/`e edit`/`d back to default` show only under
+/// [`Control::Allowed`] (`Enter` also opens the pane, sharing `e`'s slot).
+/// Each sub-screen gets its own, since `esc` backs out rather than closing
+/// there, and the list also names `d`/`K`/`J`, worded `d remove` there since
+/// it drops an element rather than restoring a default. `* yours`/`! parked`
+/// repeat the field list's glyphs
 /// ([`super::pane::field_line`]); the flock table's `CFG` column carries the
 /// same two with no legend of its own.
 ///
@@ -310,7 +312,7 @@ const fn pane_hint(control: Control, screen: PaneScreen) -> &'static str {
             "esc close   j/k select   g/G first/last   r refresh   h help   * yours   ! parked   q quit"
         }
         (Control::Allowed, PaneScreen::Fields) => {
-            "esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   u undo   h help   * yours   ! parked   q quit"
+            "esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked   q quit"
         }
         (Control::ReadOnly, PaneScreen::List) => {
             "esc back   j/k select   g/G first/last   r refresh   q quit"
