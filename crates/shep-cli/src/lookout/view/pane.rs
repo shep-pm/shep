@@ -584,18 +584,29 @@ fn close_dialog_reload_lines(
 /// drops the greatest first. [`DialogRow::Key`] is the floor and is never
 /// dropped, since a key an operator cannot see is an answer they cannot
 /// give, and `esc` no longer writes on its own.
+///
+/// [`DialogRow::Naming`] goes before [`DialogRow::Continuation`], which
+/// is the call this order exists to record. Losing the naming sentence
+/// costs a whole, self-contained row whose fields are also named by the
+/// heading's count and by the pane's own pending section behind the box.
+/// Losing a continuation costs the second half of a row that is still on
+/// screen: the reload sentence's tail is the `SO_REUSEPORT` caveat, which
+/// is the condition on the only cost claim this dialog makes, and
+/// `docs/lookout/design-files/rulings.md` refused the frame's own
+/// uncaveated `No downtime, slower` over exactly that. At 90x8 this
+/// ordering keeps the sentence whole.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum DialogRow {
     /// `R`, `L`, `c` and `esc`: the four rows that name a key.
     Key,
     /// The heading, naming both halves and the sheep.
     Heading,
+    /// The reload sentence's own wrapped tail.
+    Continuation,
     /// The sentence naming the fields a respawn is what applies.
     Naming,
     /// `Everything else you changed is already live.`
     Live,
-    /// The reload sentence's own wrapped tail.
-    Continuation,
     /// A separator.
     Blank,
 }
@@ -714,9 +725,10 @@ fn close_dialog_rows(
     lines
 }
 
-/// Drops rows from `rows` until it is no taller than `height`, cheapest
-/// first: the blank separators, then the reload sentence's wrapped tail,
-/// then the two explanatory sentences, then the heading.
+/// Drops rows from `rows` until it is no taller than `height`, in
+/// [`DialogRow`]'s own order: the blank separators, then the two
+/// explanatory sentences, then the reload sentence's wrapped tail, then
+/// the heading.
 ///
 /// The four [`DialogRow::Key`] rows survive every height, which is what
 /// the design means by flooring the borderless form: below six rows the
@@ -726,7 +738,15 @@ fn close_dialog_rows(
 /// terminal `view::draw` refuses outright, but [`Buffer`] indexes with a
 /// panic rather than a clip, so the truncation at the end is the one that
 /// keeps a resize from taking the dashboard down.
-fn shed_dialog_rows(rows: &mut Vec<(DialogRow, Line<'static>)>, height: u16) {
+///
+/// A shed continuation ends its sentence early, so the row above it takes
+/// the ellipsis [`fit`] leaves on a cell cut for width. What the screen
+/// cannot show, it says, the same rule the bleats feed follows when it
+/// counts the lines it discarded.
+///
+/// `width` is the whole row's, [`GUTTER`] included, since that is what a
+/// marked row must still fit inside.
+fn shed_dialog_rows(rows: &mut Vec<(DialogRow, Line<'static>)>, height: u16, width: u16) {
     let height = usize::from(height);
     while rows.len() > height {
         let sheddable = rows
@@ -736,9 +756,34 @@ fn shed_dialog_rows(rows: &mut Vec<(DialogRow, Line<'static>)>, height: u16) {
             .max_by_key(|(index, (kind, _))| (*kind, *index))
             .map(|(index, _)| index);
         let Some(index) = sheddable else { break };
-        rows.remove(index);
+        let cut = rows.remove(index).0 == DialogRow::Continuation;
+        // The last continuation is always the one shed, so the row above
+        // it is the rest of the same sentence: an earlier continuation, or
+        // the `L` row itself.
+        if cut && let Some((_, line)) = index.checked_sub(1).and_then(|above| rows.get_mut(above)) {
+            mark_cut(line, width);
+        }
     }
     rows.truncate(height);
+}
+
+/// Ends `line` with an ellipsis, inside `width` columns.
+///
+/// A no-op on a row that already carries one, which a row [`fit`] cut for
+/// width does: one marker says the row was cut, and two say nothing more.
+fn mark_cut(line: &mut Line<'static>, width: u16) {
+    let Some(span) = line.spans.last_mut() else {
+        return;
+    };
+    let mut text = span.content.trim_end().to_owned();
+    if text.ends_with('\u{2026}') {
+        return;
+    }
+    while columns(&text) + 1 > usize::from(width) {
+        text.pop();
+    }
+    text.push('\u{2026}');
+    span.content = text.into();
 }
 
 /// The list sub-screen: one array field's elements, and a row to add one on.
@@ -2167,7 +2212,7 @@ fn draw_borderless_close_dialog(
     buffer: &mut Buffer,
 ) {
     let mut rows = close_dialog_rows(dialog, palette, area.width, now);
-    shed_dialog_rows(&mut rows, area.height);
+    shed_dialog_rows(&mut rows, area.height, area.width);
     let top = area.y
         + area
             .height
@@ -2513,6 +2558,77 @@ mod tests {
                 let _ = fixtures::draw_pane_with_dialog(width, height);
             }
         }
+    }
+
+    /// The reload sentence is one sentence however many rows it takes,
+    /// and its tail is the `SO_REUSEPORT` caveat the rulings refused the
+    /// frame's own uncaveated copy over. A continuation shed for height
+    /// ends the row mid-clause (`No gap, if the app`, captured at 90x8),
+    /// which is the same half of the sentence going missing that the
+    /// width fix already dealt with once.
+    ///
+    /// Either the sentence survives whole or the cut is marked. Asserted
+    /// on the joined rows, never on a prefix: a `contains` on the first
+    /// row passes on exactly the broken output.
+    #[test]
+    fn a_shed_reload_continuation_leaves_the_cut_marked() {
+        let app = fixtures::app_with_close_dialog();
+        let dialog = app.close_dialog().expect("the dialog is up");
+        let whole = close_dialog_reload_sentence(dialog);
+        for width in [MIN_TERM_WIDTH, 40, 51, 89, 90, 120, 160] {
+            for height in MIN_HEIGHT..=24 {
+                let rendered = render_text(&fixtures::render_dialog(width, height));
+                let rows = reload_rows(&rendered);
+                let joined = rows.join(" ");
+                // Either the whole sentence is there, or some row says it
+                // was cut: a shed continuation marks the row above it, and
+                // a word longer than the column marks its own row. Never a
+                // prefix check, which passes on the broken output.
+                assert!(
+                    joined.contains(&whole) || rows.iter().any(|row| row.ends_with('\u{2026}')),
+                    "{width}x{height}: the caveat went missing unmarked: {rows:?}"
+                );
+            }
+        }
+    }
+
+    /// The reload sentence's own rows in `frame`: the `L` row and the
+    /// continuations indented under it, up to the `c` row that ends them.
+    ///
+    /// Read from inside the border when there is one, since the muted
+    /// pane behind the box keeps drawing to the right of it.
+    ///
+    /// # Panics
+    ///
+    /// If no `L` row is on screen, which every size draws one of.
+    #[track_caller]
+    fn reload_rows(frame: &str) -> Vec<String> {
+        let mut rows = Vec::new();
+        for line in frame.lines() {
+            let text = dialog_interior(line);
+            if rows.is_empty() {
+                if text.starts_with("L   reload") {
+                    rows.push(text);
+                }
+                continue;
+            }
+            if text.starts_with("c   continue") || text.is_empty() {
+                break;
+            }
+            rows.push(text);
+        }
+        assert!(!rows.is_empty(), "no reload row in:\n{frame}");
+        rows
+    }
+
+    /// One frame row's dialog content: what the box holds, or the whole
+    /// row when the borderless form is drawn.
+    fn dialog_interior(line: &str) -> String {
+        let inside = match (line.find(BOX_LEFT), line.rfind(BOX_RIGHT)) {
+            (Some(left), Some(right)) if left < right => &line[left + BOX_LEFT.len_utf8()..right],
+            _ => line,
+        };
+        inside.trim().to_owned()
     }
 
     /// Dimming changes style and leaves every character alone, so a test
