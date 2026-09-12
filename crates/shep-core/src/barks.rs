@@ -154,14 +154,10 @@ pub fn append(path: &Path, bark: &Bark, max_bytes: u64) -> Result<(), BarkError>
 /// - [`BarkError::Io`]: the file exists and could not be read. A missing
 ///   file is `Ok(Vec::new())`: no barks yet is not a fault.
 pub fn read(path: &Path) -> Result<Vec<Bark>, BarkError> {
-    match std::fs::read_to_string(path) {
-        Ok(text) => Ok(text
-            .lines()
-            .filter_map(|line| serde_json::from_str(line).ok())
-            .collect()),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(err) => Err(BarkError::Io(err)),
-    }
+    Ok(read_text(path)?
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect())
 }
 
 /// `path`'s existing lines, raw and unparsed, or an empty ring if the
@@ -172,9 +168,18 @@ pub fn read(path: &Path) -> Result<Vec<Bark>, BarkError> {
 /// left, still counts toward the byte cap and survives an eviction it
 /// does not trigger. [`read`] is where an unparseable line is dropped.
 fn read_lines(path: &Path) -> Result<Vec<String>, BarkError> {
+    Ok(read_text(path)?.lines().map(str::to_owned).collect())
+}
+
+/// `path`'s bytes, or an empty string if the file is not there yet.
+///
+/// A ring nobody has written to is an empty ring, not a fault, and both
+/// readers above want exactly that reading before they go their separate
+/// ways on what to do with the lines.
+fn read_text(path: &Path) -> Result<String, BarkError> {
     match std::fs::read_to_string(path) {
-        Ok(text) => Ok(text.lines().map(str::to_owned).collect()),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Ok(text) => Ok(text),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
         Err(err) => Err(BarkError::Io(err)),
     }
 }
