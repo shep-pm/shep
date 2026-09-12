@@ -628,6 +628,29 @@ mod tests {
         }
     }
 
+    /// A watch group over `root` treating every path under it as a trigger,
+    /// with the sender its batches go in through.
+    ///
+    /// The two cases that need a narrower filter build their own
+    /// [`RootedFilter`] and spawn inline.
+    fn spawn_group_matching_everything(
+        root: &Path,
+        name: &str,
+        handle: &SupervisorHandle,
+    ) -> (
+        mpsc::UnboundedSender<WatchBatch>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let (tx, group_rx) = mpsc::unbounded_channel();
+        let group = tokio::spawn(run_group(
+            name.to_string(),
+            matches_everything(root.to_path_buf()),
+            group_rx,
+            handle.clone(),
+        ));
+        (tx, group)
+    }
+
     /// Builds a batch with `rescan: false`.
     fn changed(paths: Vec<PathBuf>) -> WatchBatch {
         WatchBatch {
@@ -656,13 +679,7 @@ mod tests {
         let name = "web";
         start_app(&handle, name, 1).await;
         let root = PathBuf::from("/watched");
-        let (tx, group_rx) = mpsc::unbounded_channel();
-        let group = tokio::spawn(run_group(
-            name.to_string(),
-            matches_everything(root.clone()),
-            group_rx,
-            handle.clone(),
-        ));
+        let (tx, group) = spawn_group_matching_everything(&root, name, &handle);
 
         tx.send(changed(vec![root.join(".git/index")])).unwrap();
         assert_no_restart_within(&mut rx, name, Duration::from_secs(5)).await;
@@ -680,13 +697,7 @@ mod tests {
         let name = "web";
         start_app(&handle, name, 1).await;
         let root = PathBuf::from("/watched");
-        let (tx, group_rx) = mpsc::unbounded_channel();
-        let group = tokio::spawn(run_group(
-            name.to_string(),
-            matches_everything(root.clone()),
-            group_rx,
-            handle.clone(),
-        ));
+        let (tx, group) = spawn_group_matching_everything(&root, name, &handle);
 
         tx.send(changed(vec![root.join("src/main.rs")])).unwrap();
         let info = expect_restart(&mut rx, name, EVENT_WAIT).await;
@@ -734,13 +745,7 @@ mod tests {
         let name = "web";
         start_app(&handle, name, 1).await;
         let root = PathBuf::from("/watched");
-        let (tx, group_rx) = mpsc::unbounded_channel();
-        let group = tokio::spawn(run_group(
-            name.to_string(),
-            matches_everything(root.clone()),
-            group_rx,
-            handle.clone(),
-        ));
+        let (tx, group) = spawn_group_matching_everything(&root, name, &handle);
 
         // The root, with no rescan flag on it: a `chmod` of that inode, or
         // FSEvents' arm-time `Create(Folder)`.
@@ -765,13 +770,7 @@ mod tests {
         let name = "web";
         start_app(&handle, name, 1).await;
         let root = PathBuf::from("/watched");
-        let (tx, group_rx) = mpsc::unbounded_channel();
-        let group = tokio::spawn(run_group(
-            name.to_string(),
-            matches_everything(root.clone()),
-            group_rx,
-            handle.clone(),
-        ));
+        let (tx, group) = spawn_group_matching_everything(&root, name, &handle);
 
         tx.send(changed(vec![root.join(".git/index")])).unwrap();
         tx.send(rescan_marker()).unwrap();
@@ -795,13 +794,7 @@ mod tests {
         let name = "web";
         start_app(&handle, name, 1).await;
         let root = PathBuf::from("/watched");
-        let (tx, group_rx) = mpsc::unbounded_channel();
-        let group = tokio::spawn(run_group(
-            name.to_string(),
-            matches_everything(root.clone()),
-            group_rx,
-            handle.clone(),
-        ));
+        let (tx, group) = spawn_group_matching_everything(&root, name, &handle);
 
         // Batch 1 kicks off a restart. The scripted process ignores its
         // graceful signal, so the kill ladder is stuck on the full
@@ -828,13 +821,7 @@ mod tests {
     async fn dropping_the_sender_ends_the_group_task() {
         let (handle, _rx, _dir) = spawn_test_fixture(vec![]);
         let root = PathBuf::from("/watched");
-        let (tx, group_rx) = mpsc::unbounded_channel();
-        let group = tokio::spawn(run_group(
-            "ghost".to_string(),
-            matches_everything(root),
-            group_rx,
-            handle,
-        ));
+        let (tx, group) = spawn_group_matching_everything(&root, "ghost", &handle);
 
         drop(tx);
 
@@ -856,13 +843,7 @@ mod tests {
         handle.stop(ProcessSelector::Id(stopped_id)).await.unwrap();
 
         let root = PathBuf::from("/watched");
-        let (tx, group_rx) = mpsc::unbounded_channel();
-        let group = tokio::spawn(run_group(
-            name.to_string(),
-            matches_everything(root.clone()),
-            group_rx,
-            handle.clone(),
-        ));
+        let (tx, group) = spawn_group_matching_everything(&root, name, &handle);
 
         tx.send(changed(vec![root.join("src/main.rs")])).unwrap();
 
@@ -900,13 +881,7 @@ mod tests {
         let infos = start_app(&handle, name, 2).await;
         let (held, released) = (infos[0].id, infos[1].id);
         let root = PathBuf::from("/watched");
-        let (tx, group_rx) = mpsc::unbounded_channel();
-        let group = tokio::spawn(run_group(
-            name.to_string(),
-            matches_everything(root.clone()),
-            group_rx,
-            handle.clone(),
-        ));
+        let (tx, group) = spawn_group_matching_everything(&root, name, &handle);
 
         // The batch claims BOTH instances' next exit and starts both kill
         // ladders. Only the second sheep's ladder can finish without the clock
@@ -951,13 +926,7 @@ mod tests {
         let (handle, mut rx, _dir) = spawn_test_fixture(vec![ProcScript::never_exits(); 2]);
         let name = "ghost";
         let root = PathBuf::from("/watched");
-        let (tx, group_rx) = mpsc::unbounded_channel();
-        let group = tokio::spawn(run_group(
-            name.to_string(),
-            matches_everything(root.clone()),
-            group_rx,
-            handle.clone(),
-        ));
+        let (tx, group) = spawn_group_matching_everything(&root, name, &handle);
 
         // `name` matches nothing yet: the restart resolves `NotFound`, and
         // the loop must stay alive rather than returning.
@@ -995,13 +964,7 @@ mod tests {
         );
 
         let root = PathBuf::from("/watched");
-        let (tx, group_rx) = mpsc::unbounded_channel();
-        let group = tokio::spawn(run_group(
-            name.to_string(),
-            matches_everything(root.clone()),
-            group_rx,
-            handle,
-        ));
+        let (tx, group) = spawn_group_matching_everything(&root, name, &handle);
 
         tx.send(changed(vec![root.join("src/main.rs")])).unwrap();
         tokio::time::timeout(EVENT_WAIT, group)
@@ -1163,13 +1126,7 @@ mod tests {
                 handle.start(vec![normalize(app).unwrap()]).await.unwrap();
 
                 let root = PathBuf::from("/watched");
-                let (tx, group_rx) = mpsc::unbounded_channel();
-                let group = tokio::spawn(run_group(
-                    name.to_string(),
-                    matches_everything(root.clone()),
-                    group_rx,
-                    handle.clone(),
-                ));
+                let (tx, group) = spawn_group_matching_everything(&root, name, &handle);
 
                 let start = tokio::time::Instant::now();
                 // Drained by its own task, started before the first send:
