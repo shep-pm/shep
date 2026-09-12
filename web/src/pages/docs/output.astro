@@ -463,6 +463,44 @@ notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
       service is simply wrong.
     </Callout>
 
+    <h2>Following the flock</h2>
+    <p>
+      <code>shep flock --follow</code> keeps the table on screen and paints a
+      fresh one over it every second. <code>--interval</code> changes the
+      cadence. One second is the default and the floor.
+    </p>
+    <CodeBlock
+      label="shep flock --follow, 100 columns"
+    >{`host  cpu 63%  mem 32.7G/48.0G  disk r 58.4M/s w 177.0M/s  net rx 10.4M/s tx 10.6M/s
+
+┌────┬────────┬────────┬───────┬──────────┬──────┬─────┬──────┬──────┬─────────┬──────┬──────┐
+│ ID │ NAME   │ STATUS │ PID   │ RESTARTS │ EXIT │ CFG │ CPU  │ MEM  │ UPTIME  │ FOLD │ SMIT │
+├────┼────────┼────────┼───────┼──────────┼──────┼─────┼──────┼──────┼─────────┼──────┼──────┤
+│ 0  │ web    │ online │ 26932 │ 0        │ -    │ -   │ 0.0% │ 3.1M │ 17m 39s │ -    │ -    │
+│ 1  │ worker │ online │ 27395 │ 0        │ -    │ -   │ 0.1% │ 3.1M │ 17m 31s │ -    │ -    │
+└────┴────────┴────────┴───────┴──────────┴──────┴─────┴──────┴──────┴─────────┴──────┴──────┘`}</CodeBlock>
+    <p>
+      The top line is the machine, not the flock: CPU across every core, memory
+      in use against memory installed, and what the disks and the network moved
+      over the last interval. Loopback traffic is left out of the network
+      figures.
+    </p>
+    <Callout variant="note">
+      Three of those four are rates, so the first frame has nothing to divide
+      and prints <code>-</code> for each. They fill in on the next redraw.
+    </Callout>
+    <p>
+      A follow needs a live shepherd and a real terminal. A saved roll is one
+      moment, and a follow is about the moments after it. With stdout redirected
+      it refuses outright rather than writing escape sequences into a file, and{
+        " "
+      }<code>--format json</code> gets the same refusal.
+    </p>
+    <p class="fine">
+      A flock taller than the window is cut at the bottom, with a line saying how
+      many it dropped. <code>shep lookout</code> scrolls. This does not.
+    </p>
+
     <h2>Following logs</h2>
     <p>
       <code>shep bleats</code> prints the tail of each log before it starts
