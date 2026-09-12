@@ -571,6 +571,13 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       the terminal it's warning about:
     </p>
     <CodeBlock label="28×8">{tooNarrow}</CodeBlock>
+    <p>
+      The secrets pane has a floor of its own, at 74 columns. Its narrowest
+      tier is <code>KEY</code>, <code>VALUE</code> and <code>IN FORCE</code>,
+      and a key with no value and no scope answers nothing, so there is
+      nothing narrower to fall back to. Below 74 the pane says so, and the
+      rest of lookout still draws at 33.
+    </p>
 
     <h2>If the shepherd goes away</h2>
     <p>
