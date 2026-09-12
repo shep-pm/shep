@@ -46,7 +46,6 @@ on:
       - "docs/specs/deferred.md"
       - "docs/terminology.md"
       - "Cargo.toml"
-      - ".github/workflows/web.yml"
 
 permissions:
   contents: read
