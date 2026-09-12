@@ -126,16 +126,26 @@ Design target 160x48. Left column 88, right panel 72.
 
 ### Width
 
-One invariant carries the ladder: the left column's `LANDS` cell and the panel's
-impact sentence say the same thing, so exactly one of them is on screen at any
-width. This is the argument that put `MEM/CEIL` and `CPU 20s` first on the flock
-table's own drop ladder.
+**Corrected 2026-09-11.** This section previously said that `LANDS` and the panel
+say the same thing, so exactly one of them is on screen at any width. That was an
+invention of mine, and the frame refuses it: at 160 the frame draws the `LANDS`
+header and the `FOCUSED` panel on the same row, and `rulings.md` says 1e goes
+ahead as drawn.
+
+They do different jobs. `LANDS` is a column an operator scans to read every
+field's cost at once. The panel is a sentence about the one field under the
+cursor. Nothing but the column answers which of forty fields will cost a respawn
+without walking the cursor through all of them.
+
+What survives is the drop order rather than the exclusion. Where both fit, both
+draw. Where they cannot, `LANDS` gives way first, because the panel restates the
+focused field's cost in words and nothing restates the column.
 
 | Terminal width | Left | Panel | `LANDS` |
 |---|---|---|---|
-| 160 and up | 88 | 72 | present |
-| 90 to 159 | the remainder | 45% of width, clamped to 50..72 | dropped |
-| below 90 | today's `widths()` cascade | dropped | back |
+| 160 and up | 88 | 72 | present, both draw, as the frame shows |
+| 90 to 159 | the remainder | 45% of width, clamped to 50..72 | dropped, the panel still names the focused field's cost |
+| below 90 | today's `widths()` cascade | dropped | back, since nothing else carries cost |
 
 45% of 160 is 72, so the design target falls out of the formula rather than being
 special cased. Below 90 the panel cannot hold a wrapped blurb and a validation
