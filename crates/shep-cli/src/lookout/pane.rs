@@ -419,6 +419,19 @@ impl ListPane {
         self.view.clamp(len);
     }
 
+    /// Replaces the elements with the ones an edit has just filed, keeping
+    /// the cursor where it is and clamping it to the new row count.
+    ///
+    /// By index, for [`Self::adopt_view`]'s own reason: an element has no
+    /// name. A removal shortens the array under a cursor that stays put, so
+    /// the cursor lands on whatever took the removed element's place, which
+    /// is where an operator removing a run of elements wants it.
+    pub(super) fn set_elements(&mut self, elements: Vec<String>) {
+        self.elements = elements;
+        let len = self.rows().len();
+        self.view.clamp(len);
+    }
+
     /// Opens the editor on the row under the cursor, seeded with the
     /// element it is on and empty on `+ new`.
     pub fn begin_typing(&mut self) {
@@ -506,6 +519,22 @@ impl ListPane {
         elements.swap(index, target);
         Some(elements)
     }
+}
+
+/// A JSON value's elements as one string each, empty for anything that is
+/// not an array. A non-scalar element renders as compact JSON, which is
+/// what an editor would have to type back.
+fn array_elements(value: &Value) -> Vec<String> {
+    let Value::Array(values) = value else {
+        return Vec::new();
+    };
+    values
+        .iter()
+        .map(|value| match value {
+            Value::String(text) => text.clone(),
+            other => other.to_string(),
+        })
+        .collect()
 }
 
 /// The whole array as JSON, ready for `Request::SetSheepField`.
@@ -836,8 +865,21 @@ impl ConfigPane {
     }
 
     /// Drops the most recently filed edit and names it, for `u`.
+    ///
+    /// An open list sub-screen is re-read from what is filed afterwards, so
+    /// `u` inside one shows the array it just restored rather than the one
+    /// it has undone. One entry is one field, so a `u` there takes the
+    /// whole field back to the shepherd's array rather than one keystroke
+    /// of it.
     pub(super) fn undo_edit(&mut self) -> Option<EditKey> {
-        self.edits.undo()
+        let undone = self.edits.undo();
+        if let Some(key) = self.list.as_ref().map(|list| list.key().to_owned()) {
+            let elements = self.filed_elements_of(&key);
+            if let Some(list) = self.list.as_mut() {
+                list.set_elements(elements);
+            }
+        }
+        undone
     }
 
     /// The sheep's own env key names. Empty for a dog, which reads its own
@@ -999,7 +1041,7 @@ impl ConfigPane {
             return;
         };
         let key = field.key.clone();
-        let elements = self.elements_of(&key);
+        let elements = self.filed_elements_of(&key);
         self.list = Some(ListPane::new(key, item, elements));
     }
 
@@ -1008,20 +1050,36 @@ impl ConfigPane {
         self.list = None;
     }
 
-    /// `key`'s array as one string per element, empty when the field holds
-    /// no array. A non-scalar element renders as compact JSON, which is
-    /// what an editor would have to type back.
+    /// `key`'s stored array as one string per element, empty when the
+    /// field holds no array. What the shepherd last sent, which is only
+    /// the right seed for a field nothing is filed for: see
+    /// [`Self::filed_elements_of`].
     fn elements_of(&self, key: &str) -> Vec<String> {
-        let Some(Value::Array(values)) = self.values.get(key) else {
-            return Vec::new();
+        self.values.get(key).map(array_elements).unwrap_or_default()
+    }
+
+    /// `key`'s array as the operator has it: the elements of whatever is
+    /// filed for the field, and the shepherd's own array when nothing is.
+    ///
+    /// The filed entry is the source of truth, not the stored value, and
+    /// this is what makes a sub-screen compose. Nothing writes until the
+    /// pane closes, so the stored value stays as the shepherd sent it for
+    /// as long as the operator is editing: seeding from it would show an
+    /// operator who leaves the array and comes back none of their own
+    /// work, and would recompute the next keystroke from an array they
+    /// have already changed.
+    fn filed_elements_of(&self, key: &str) -> Vec<String> {
+        let filed = match self.edits.get(&EditKey::Field(key.to_owned())) {
+            Some(entry) => match entry.edit() {
+                PaneEdit::Set { value, .. } => Some(value.as_value()),
+                PaneEdit::SetEnv { .. } => None,
+            },
+            None => None,
         };
-        values
-            .iter()
-            .map(|value| match value {
-                Value::String(text) => text.clone(),
-                other => other.to_string(),
-            })
-            .collect()
+        match filed {
+            Some(value) => array_elements(value),
+            None => self.elements_of(key),
+        }
     }
 
     /// Files the whole array with `text` written at the sub-screen's
@@ -1054,6 +1112,15 @@ impl ConfigPane {
         self.file_list(elements);
     }
 
+    /// Files `elements` as the field's whole value, then makes the open
+    /// sub-screen show them.
+    ///
+    /// The second half is what stops a keystroke being lost. Every filing
+    /// door here rebuilds the whole array from the sub-screen's own
+    /// elements, so a sub-screen left showing the shepherd's array would
+    /// recompute the next keystroke from it and file an array missing this
+    /// one. The write that used to refresh the screen is gone: the pane
+    /// files and writes once, when it closes.
     fn file_list(&mut self, elements: Vec<String>) {
         let Some(list) = self.list.as_ref() else {
             return;
@@ -1061,6 +1128,9 @@ impl ConfigPane {
         let key = list.key().to_owned();
         let value = list_value(list.item(), &elements);
         self.file_field(key, value);
+        if let Some(list) = self.list.as_mut() {
+            list.set_elements(elements);
+        }
     }
 
     /// Whether `h` is showing the selected field's own help text.
@@ -1694,9 +1764,13 @@ impl ConfigPane {
     }
 
     /// Re-opens the list sub-screen on the refreshed array, at the cursor
-    /// and offset it had. Setting an element re-reads the whole config,
-    /// and without this the sub-screen would slam shut on the operator's
-    /// own keystroke.
+    /// and offset it had, so `r` does not slam the sub-screen shut on the
+    /// operator.
+    ///
+    /// Seeded from [`Self::filed_elements_of`], not from the config that
+    /// has just arrived: a refresh replaces the shepherd's values and keeps
+    /// the operator's filed set, and the sub-screen has to keep showing the
+    /// set.
     pub(super) fn adopt_list_view(&mut self, key: &str, view: Viewport) {
         let Some(item) = self.fields.by_key(key).and_then(|field| match field.kind {
             FieldKind::List(item) => Some(item),
@@ -1704,7 +1778,7 @@ impl ConfigPane {
         }) else {
             return;
         };
-        let mut list = ListPane::new(key.to_owned(), item, self.elements_of(key));
+        let mut list = ListPane::new(key.to_owned(), item, self.filed_elements_of(key));
         list.adopt_view(view);
         self.list = Some(list);
     }
@@ -2715,7 +2789,8 @@ mod tests {
     }
 
     /// The whole array goes out, so a removal and a reorder are the same
-    /// kind of write an element edit is.
+    /// kind of write an element edit is, and the reorder acts on what the
+    /// removal left rather than on the array the shepherd sent.
     #[test]
     fn removing_and_reordering_file_the_whole_array_too() {
         let mut pane = ConfigPane::sheep(web_with_args(&["a", "b", "c"]));
@@ -2728,10 +2803,46 @@ mod tests {
         pane.file_list_reorder(-1);
         assert_eq!(
             filed(&pane, "args"),
-            Some(serde_json::json!(["b", "a", "c"])),
-            "the second keystroke replaces the entry rather than adding one"
+            Some(serde_json::json!(["c", "a"])),
+            "the cursor is on `c` now, and moving it up files one entry, not two"
         );
         assert_eq!(pane.edits().len(), 1, "one field, one entry");
+    }
+
+    /// Two keystrokes in one sub-screen compose. The set holds one entry
+    /// per field, so the second action has to build on the array the first
+    /// one filed; recomputing from what the shepherd sent would throw the
+    /// first keystroke away.
+    #[test]
+    fn a_second_list_keystroke_builds_on_the_first() {
+        let mut pane = ConfigPane::sheep(web_with_args(&[]));
+        pane.move_to_key("args");
+        pane.open_list();
+        pane.list_mut().expect("open").move_to_last();
+        pane.file_list_element("abc".into());
+        pane.list_mut().expect("open").move_to_last();
+        pane.file_list_element("def".into());
+        assert_eq!(
+            filed(&pane, "args"),
+            Some(serde_json::json!(["abc", "def"]))
+        );
+        assert_eq!(pane.edits().len(), 1, "one field, one entry");
+    }
+
+    /// The sub-screen draws what is filed, not what the shepherd last
+    /// sent: nothing writes until the pane closes, so an operator who
+    /// leaves the array and comes back has to find their own work in it.
+    #[test]
+    fn re_opening_the_sub_screen_shows_what_was_filed() {
+        let mut pane = ConfigPane::sheep(web_with_args(&["a", "b"]));
+        pane.move_to_key("args");
+        pane.open_list();
+        pane.list_mut().expect("open").move_to(0);
+        pane.file_list_removal();
+        assert_eq!(pane.list().expect("open").elements(), ["b"]);
+        pane.close_list();
+        pane.open_list();
+        assert_eq!(pane.list().expect("re-opened").elements(), ["b"]);
     }
 
     /// `J`'s direction. Only `-1` is exercised above, and the two share

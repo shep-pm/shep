@@ -929,17 +929,19 @@ mod tests {
         assert!(bar.contains("esc back"), "got {bar:?}");
         assert!(bar.contains("d remove"), "got {bar:?}");
         assert!(bar.contains("K/J move"), "got {bar:?}");
-        app.update(Msg::Key(KeyPress::Remove));
-        assert_eq!(
-            filed_args(&app),
-            Some(serde_json::json!(["8080"])),
-            "d files the array without the element under the cursor"
-        );
         app.update(Msg::Key(KeyPress::ListMoveDown));
         assert_eq!(
             filed_args(&app),
             Some(serde_json::json!(["8080", "--port"])),
             "J files the array with the element moved down"
+        );
+        // Ordered J before d on purpose: the two compose, so a removal
+        // first would leave one element and nothing for J to move.
+        app.update(Msg::Key(KeyPress::Remove));
+        assert_eq!(
+            filed_args(&app),
+            Some(serde_json::json!(["--port"])),
+            "d files the array without the element under the cursor"
         );
     }
 

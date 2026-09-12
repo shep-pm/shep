@@ -10490,25 +10490,26 @@ mod tests {
         let _ = app.update(Msg::Key(KeyPress::ListMoveUp));
         assert_eq!(
             filed_value(&app, "args"),
-            serde_json::json!(["8080", "--port"]),
-            "K moves the element under the cursor up one place"
+            serde_json::json!(["9090", "--port"]),
+            "K moves the element under the cursor up one place, over the \
+             array the edit before it filed"
         );
         let _ = app.update(Msg::Key(KeyPress::Remove));
         assert_eq!(
             filed_value(&app, "args"),
-            serde_json::json!(["--port"]),
+            serde_json::json!(["9090"]),
             "d drops the element under the cursor"
         );
 
         // One field, one entry, however many keystrokes reached it, and
-        // the last one is what the wire carries.
+        // every one of them is in the array the wire carries.
         let _ = app.update(Msg::Key(KeyPress::Escape));
         let request = one_wire(app.update(Msg::Key(KeyPress::Escape)));
         let Request::SetSheepField { key, value, .. } = request else {
             panic!("expected SetSheepField, got {request:?}");
         };
         assert_eq!(key, "args");
-        assert_eq!(value, serde_json::json!(["--port"]));
+        assert_eq!(value, serde_json::json!(["9090"]));
     }
 
     /// The value the open pane has filed for `key`.
