@@ -8,20 +8,20 @@
 //! non-`Success` only when the RPC itself failed.
 
 use shep_client::Client;
-use shep_core::protocol::{Request, Response, SelectorSpec};
+use shep_core::protocol::{Request, Response};
 use shep_core::signals::OperatorSignal;
 
 use crate::cli::SignalArgs;
 use crate::commands::rpc::request_and_render;
-use crate::commands::selector::parse_selector;
+use crate::commands::selector::parse_selector_spec;
 use crate::exit::ExitCode;
 use crate::output::{SignalledRows, Streams};
 
 /// Sends `args.signal` to the sheep matching `args.selector`, and renders one
 /// row per match.
 pub async fn signal(client: &Client, streams: &mut Streams<'_>, args: &SignalArgs) -> ExitCode {
-    let selector = match parse_selector(streams, &args.selector) {
-        Ok(selector) => SelectorSpec::from(&selector),
+    let selector = match parse_selector_spec(streams, &args.selector) {
+        Ok(selector) => selector,
         Err(code) => return code,
     };
 
@@ -59,6 +59,7 @@ pub async fn signal(client: &Client, streams: &mut Streams<'_>, args: &SignalArg
 mod tests {
     use shep_client::testing::{fake_client_capturing_envelopes, fake_client_replying_err};
     use shep_core::protocol::RpcErrorCode;
+    use shep_core::protocol::SelectorSpec;
 
     use super::*;
     use crate::cli::Format;

@@ -26,7 +26,7 @@ use crate::cli::{ResetMode, SelectorArgs, StartArgs, StockArgs};
 use crate::commands::bounded::{Bounded, run_bounded};
 use crate::commands::dogs;
 use crate::commands::rpc::{client_error, request_payload, unexpected_response};
-use crate::commands::selector::parse_selector;
+use crate::commands::selector::{parse_selector, parse_selector_spec};
 use crate::exit::ExitCode;
 use crate::output::{
     DeletedIds, FlockRows, Render, Streams, emit, emit_flock, emit_partial, write_outcome,
@@ -435,7 +435,7 @@ fn parse_selectors(
 ) -> Result<Vec<SelectorSpec>, ExitCode> {
     let mut parsed = Vec::with_capacity(raw.len());
     for one in raw {
-        parsed.push(SelectorSpec::from(&parse_selector(streams, one)?));
+        parsed.push(parse_selector_spec(streams, one)?);
     }
     Ok(parsed)
 }

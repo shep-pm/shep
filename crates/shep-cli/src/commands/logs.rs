@@ -10,11 +10,11 @@
 
 use shep_client::{Client, LOG_PLANE_DEADLINE};
 use shep_core::paths::ShepPaths;
-use shep_core::protocol::{Request, Response, SelectorSpec};
+use shep_core::protocol::{Request, Response};
 
 use crate::cli::{FlushArgs, ReopenArgs};
 use crate::commands::rpc::request_and_render;
-use crate::commands::selector::parse_selector;
+use crate::commands::selector::parse_selector_spec;
 use crate::exit::ExitCode;
 use crate::launch;
 use crate::output::{
@@ -34,8 +34,8 @@ use crate::output::{
 /// Sent with [`LOG_PLANE_DEADLINE`]: the daemon visits matched sheep serially
 /// with no per-sheep bound, so the client's 5s default would time out.
 pub async fn reopen(client: &Client, streams: &mut Streams<'_>, args: &ReopenArgs) -> ExitCode {
-    let selector = match parse_selector(streams, &args.selector) {
-        Ok(selector) => SelectorSpec::from(&selector),
+    let selector = match parse_selector_spec(streams, &args.selector) {
+        Ok(selector) => selector,
         Err(code) => return code,
     };
     request_and_render(
@@ -72,8 +72,8 @@ pub async fn flush(client: &Client, streams: &mut Streams<'_>, args: &FlushArgs)
             "flush needs a selector, or --daemon for the shepherd's own logs",
         );
     };
-    let selector = match parse_selector(streams, raw) {
-        Ok(selector) => SelectorSpec::from(&selector),
+    let selector = match parse_selector_spec(streams, raw) {
+        Ok(selector) => selector,
         Err(code) => return code,
     };
     request_and_render(
@@ -147,6 +147,7 @@ mod tests {
     use crate::cli::Format;
     use shep_client::testing::{fake_client_capturing_envelopes, fake_client_replying_err};
     use shep_core::protocol::RpcErrorCode;
+    use shep_core::protocol::SelectorSpec;
 
     fn args(selector: &str) -> ReopenArgs {
         ReopenArgs {

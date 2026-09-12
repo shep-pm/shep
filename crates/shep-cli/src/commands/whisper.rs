@@ -11,19 +11,19 @@
 //! app read them.
 
 use shep_client::Client;
-use shep_core::protocol::{Request, Response, SelectorSpec};
+use shep_core::protocol::{Request, Response};
 
 use crate::cli::WhisperArgs;
 use crate::commands::rpc::request_and_render;
-use crate::commands::selector::parse_selector;
+use crate::commands::selector::parse_selector_spec;
 use crate::exit::ExitCode;
 use crate::output::{SentLineRows, Streams};
 
 /// Writes `args.line` to the stdin of the sheep matching `args.selector`,
 /// and renders one row per match.
 pub async fn whisper(client: &Client, streams: &mut Streams<'_>, args: &WhisperArgs) -> ExitCode {
-    let selector = match parse_selector(streams, &args.selector) {
-        Ok(selector) => SelectorSpec::from(&selector),
+    let selector = match parse_selector_spec(streams, &args.selector) {
+        Ok(selector) => selector,
         Err(code) => return code,
     };
 
@@ -57,6 +57,7 @@ pub async fn whisper(client: &Client, streams: &mut Streams<'_>, args: &WhisperA
 mod tests {
     use shep_client::testing::{fake_client_capturing_envelopes, fake_client_replying_err};
     use shep_core::protocol::RpcErrorCode;
+    use shep_core::protocol::SelectorSpec;
 
     use super::*;
     use crate::cli::Format;

@@ -9,11 +9,11 @@
 //! non-`Success` only when the RPC itself failed.
 
 use shep_client::{Client, TRIGGER_DEADLINE};
-use shep_core::protocol::{Request, Response, SelectorSpec};
+use shep_core::protocol::{Request, Response};
 
 use crate::cli::TriggerArgs;
 use crate::commands::rpc::request_and_render;
-use crate::commands::selector::parse_selector;
+use crate::commands::selector::parse_selector_spec;
 use crate::exit::ExitCode;
 use crate::output::{Streams, TriggeredRows};
 
@@ -23,8 +23,8 @@ use crate::output::{Streams, TriggeredRows};
 /// `action` and `params` are carried exactly as typed: neither this side nor
 /// the daemon parses them.
 pub async fn trigger(client: &Client, streams: &mut Streams<'_>, args: &TriggerArgs) -> ExitCode {
-    let selector = match parse_selector(streams, &args.selector) {
-        Ok(selector) => SelectorSpec::from(&selector),
+    let selector = match parse_selector_spec(streams, &args.selector) {
+        Ok(selector) => selector,
         Err(code) => return code,
     };
 
@@ -53,6 +53,7 @@ pub async fn trigger(client: &Client, streams: &mut Streams<'_>, args: &TriggerA
 mod tests {
     use shep_client::testing::{fake_client_capturing_envelopes, fake_client_replying_err};
     use shep_core::protocol::RpcErrorCode;
+    use shep_core::protocol::SelectorSpec;
 
     use super::*;
     use crate::cli::Format;

@@ -23,7 +23,7 @@ use shep_daemon::snapshot::FlockSnapshot;
 use crate::cli::{DogsArgs, FoldArgs, Format, SelectorArgs};
 use crate::commands::rpc::{client_error, request_and_render, unexpected_response};
 use crate::commands::secret::daemon_config;
-use crate::commands::selector::parse_selector;
+use crate::commands::selector::parse_selector_spec;
 use crate::dog_index::{self, AvailableDog, DogSourceKind};
 use crate::exit::ExitCode;
 use crate::fetch;
@@ -510,8 +510,8 @@ pub async fn describe(
     // a tree per sheep, so merging them would lose that shape.
     let mut failure: Option<ExitCode> = None;
     for raw in &args.selectors {
-        let selector = match parse_selector(streams, raw) {
-            Ok(selector) => SelectorSpec::from(&selector),
+        let selector = match parse_selector_spec(streams, raw) {
+            Ok(selector) => selector,
             Err(code) => return code,
         };
         let code = describe_selector(client, streams, paths, "describe", true, selector).await;
