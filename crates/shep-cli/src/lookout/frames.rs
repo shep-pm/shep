@@ -3333,10 +3333,19 @@ mod tests {
         );
 
         // CloseDialogFloor: 90x48, exactly the width the border needs.
+        // Read off the border's own row, the way both heading assertions
+        // here do: a frame-wide `contains` passes on the glyph turning up
+        // anywhere, and it is only this dialog that draws one today.
         let close_dialog_floor = render_text(&scene(Scene::CloseDialogFloor).1);
+        let floor_lines: Vec<&str> = close_dialog_floor.lines().collect();
+        let floor_border_row = floor_lines
+            .iter()
+            .position(|line| line.contains('▛')) // BOX_TOP_LEFT
+            .expect("the box border draws at the floor");
         assert!(
-            close_dialog_floor.contains('▛'),
-            "the border draws at the floor: {close_dialog_floor:?}"
+            floor_lines[floor_border_row].contains('▜'), // BOX_TOP_RIGHT
+            "the border's top row closes at the floor: {:?}",
+            floor_lines[floor_border_row]
         );
 
         // CloseDialogNarrow: 89x48, one column under the floor. No box
