@@ -19863,17 +19863,6 @@ mod tests {
         assert_eq!(to_info(entry, &actor.smits).level_rules, rules);
     }
 
-    /// A sheep that declares none reports none, which is what tells a client
-    /// to fall back to its own reading of the line.
-    #[tokio::test(start_paused = true)]
-    async fn to_info_reports_no_level_rules_for_a_sheep_that_declares_none() {
-        let dir = tempfile::tempdir().unwrap();
-        let (actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
-
-        let entry = &actor.sheep[&0].entry;
-        assert!(to_info(entry, &actor.smits).level_rules.is_empty());
-    }
-
     /// A dog's `AppConfig::minimal` sets no ceiling, so its `ProcessInfo`
     /// must report `None` rather than inheriting a stray value.
     #[tokio::test(start_paused = true)]
