@@ -2854,7 +2854,7 @@ mod tests {
             "the config column lists web's own fields: {sheep_pane:?}"
         );
         assert!(
-            sheep_pane.contains("\u{2588}\u{2588} BLEATS") || sheep_pane.contains("BLEATS"),
+            sheep_pane.contains("\u{2588}\u{2588} BLEATS"),
             "the embedded feed carries its own header: {sheep_pane:?}"
         );
 
