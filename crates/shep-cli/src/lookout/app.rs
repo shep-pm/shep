@@ -5043,12 +5043,11 @@ impl App {
         })
     }
 
-    /// The dialog's own keymap: `R` and `L` write and close, the same as
-    /// `c` does in this frame; a later frame makes them hold the verb until
-    /// the write is answered. `Escape` closes the dialog and not the pane,
-    /// which is the difference from the menu this replaces: `esc` here
-    /// means keep editing, so the filed set stays filed and nothing is
-    /// written.
+    /// The dialog's own keymap: `R` and `L` write and hold their verb until
+    /// the writes are answered ([`Self::answer_close`]), `c` writes and
+    /// holds nothing. `Escape` closes the dialog and not the pane, which is
+    /// the difference from the menu this replaces: `esc` here means keep
+    /// editing, so the filed set stays filed and nothing is written.
     fn on_close_dialog_key(&mut self, key: KeyPress) -> Effect {
         match key {
             KeyPress::Quit => Effect::Quit,

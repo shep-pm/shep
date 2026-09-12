@@ -558,8 +558,8 @@ enum DialogRow {
     Blank,
 }
 
-/// The dialog's rows, in its borderless form: what a terminal under 90
-/// columns gets, and what the boxed form draws inside its own border.
+/// The dialog's rows: what a terminal under [`BOX_FLOOR`] columns gets
+/// full width, and what the boxed form draws inside its own border.
 ///
 /// `now` is the caller's own clock, against which the `esc` row states
 /// what is left of [`CONFIRM_EXPIRY`] since `dialog.at()`: seconds and a
