@@ -14,9 +14,12 @@
 
 use std::fs::File;
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use assert_cmd::cargo::CommandCargoExt as _;
+
+mod common;
+use common::wait_bounded;
 
 /// Five seconds: generous headroom for a hook install and panic, not a
 /// tight bound. Enforced by hand (`wait_bounded`) rather than
@@ -43,7 +46,8 @@ fn the_restore_escape_lands_before_the_panic_backtrace() {
         .stdout(Stdio::from(sink))
         .stderr(Stdio::from(sink_for_stderr));
 
-    let status = wait_bounded(cmd, PROBE_TIMEOUT);
+    let mut child = cmd.spawn().expect("spawn the probe subprocess");
+    let status = wait_bounded(&mut child, PROBE_TIMEOUT, "the probe subprocess");
     assert!(
         !status.success(),
         "the probe is supposed to panic, not exit cleanly"
@@ -59,26 +63,6 @@ fn the_restore_escape_lands_before_the_panic_backtrace() {
          {panic_at}; merged output:\n{}",
         String::from_utf8_lossy(&merged)
     );
-}
-
-/// Spawns `cmd` and polls for its exit rather than blocking on
-/// `Command::status()`. A hung probe then fails with a named panic.
-/// The harness's own process timeout would instead fail the whole
-/// binary and name nothing.
-fn wait_bounded(mut cmd: Command, timeout: Duration) -> std::process::ExitStatus {
-    let mut child = cmd.spawn().expect("spawn the probe subprocess");
-    let deadline = Instant::now() + timeout;
-    loop {
-        if let Some(status) = child.try_wait().expect("poll the probe subprocess") {
-            return status;
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            panic!("probe subprocess did not exit within {timeout:?}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
 }
 
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {

@@ -23,6 +23,9 @@ use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use tempfile::TempDir;
 
+mod common;
+use common::wait_bounded;
+
 /// Bound on every wait in this file: reading the init's pid line, the
 /// flock coming online, and the process's exit after a signal. Generous
 /// headroom for a loaded CI boot, not a protocol timeout.
@@ -159,24 +162,6 @@ fn poll_online_sheep(home: &Path, deadline: Duration) -> serde_json::Value {
     }
 }
 
-/// Polls `child.try_wait()` until it exits, or `timeout` elapses. A
-/// named panic here, rather than the harness's own process timeout,
-/// which would fail the whole binary and name nothing.
-fn wait_bounded(child: &mut Child, timeout: Duration) -> std::process::ExitStatus {
-    let deadline = Instant::now() + timeout;
-    loop {
-        if let Some(status) = child.try_wait().expect("poll shep runtime") {
-            return status;
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            panic!("shep runtime did not exit within {timeout:?}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
 /// Best-effort cleanup so a panicking assertion never leaves a real
 /// daemon or sleeping sheep behind: SIGKILLs the supervisor, if known,
 /// then the init.
@@ -221,7 +206,7 @@ fn a_sigterm_to_the_init_reaches_the_flock_and_the_status_is_the_childs() {
 
     signal::kill(Pid::from_raw(init_pid), Signal::SIGTERM).expect("send SIGTERM to the init");
 
-    let status = wait_bounded(&mut guard.child, INIT_DEADLINE);
+    let status = wait_bounded(&mut guard.child, INIT_DEADLINE, "the shep runtime");
     assert_eq!(
         status.code(),
         Some(0),
@@ -254,7 +239,7 @@ fn a_supervisor_killed_by_sigkill_makes_the_init_exit_137() {
     signal::kill(Pid::from_raw(supervisor_pid), Signal::SIGKILL)
         .expect("SIGKILL the supervisor directly");
 
-    let status = wait_bounded(&mut guard.child, INIT_DEADLINE);
+    let status = wait_bounded(&mut guard.child, INIT_DEADLINE, "the shep runtime");
     assert_eq!(
         status.code(),
         Some(137),
