@@ -407,24 +407,6 @@ mod tests {
     }
 
     #[test]
-    fn env_adds_shep_instance() {
-        let app_config = AppConfig {
-            name: "web".to_string(),
-            script: "/usr/bin/python3".to_string(),
-            args: vec!["app.py".to_string()],
-            interpreter: Some("none".to_string()),
-            ..Default::default()
-        };
-        let app = normalize(app_config).unwrap();
-        let paths = test_paths();
-
-        let spec = assemble(&app, 1, &paths, None, &no_secrets()).unwrap();
-
-        assert!(spec.env.contains_key("SHEP_INSTANCE"));
-        assert_eq!(spec.env.get("SHEP_INSTANCE").map(|s| s.as_str()), Some("1"));
-    }
-
-    #[test]
     fn every_child_learns_its_slot_and_its_name() {
         let app = normalize(AppConfig {
             name: "worker".to_string(),

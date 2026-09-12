@@ -53,6 +53,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       "err_file": "/tmp/shepdemo/logs/web-0-err.log",
       "cpu_percent": null,
       "memory_bytes": 1212416,
+      "cpu_ms": 640,
       "dog": null,
       "lambs": null,
       "last_exit": null,
@@ -74,6 +75,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       "err_file": "/tmp/shepdemo/logs/worker-0-err.log",
       "cpu_percent": null,
       "memory_bytes": 1212416,
+      "cpu_ms": 610,
       "dog": null,
       "lambs": null,
       "last_exit": null,
@@ -142,6 +144,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       "err_file": "/tmp/shepdemo/logs/api-0-err.log",
       "cpu_percent": null,
       "memory_bytes": null,
+      "cpu_ms": null,
       "dog": null,
       "lambs": null,
       "last_exit": null,
@@ -206,6 +209,24 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
         a few hundred milliseconds old, most often. Table format prints the
         same case as <code>-</code>, for the same reason: a confident zero
         would be a claim shep can't back up.
+      </li>
+      <li>
+        <code>cpu_ms</code> is cumulative CPU-milliseconds the sheep's
+        process tree has spent since it started, the raw counter{" "}
+        <code>cpu_percent</code> is one view of. <code>null</code> when the
+        shepherd isn't sampling the sheep (not running, or the peer daemon
+        predates the field), and on any verb that answers without taking a
+        live reading: only <code>shep list</code> and{" "}
+        <code>shep describe</code> pay for one, so the{" "}
+        <code>shep reload</code> reply above shows a{" "}
+        <code>null</code> counter on an online sheep; it's the one case
+        <code>cpu_percent</code> can't cover the same way, since a sheep
+        spawned since the last periodic tick has a counter already but no
+        baseline yet to turn it into a percent. <code>shep lookout</code>{" "}
+        reads this field directly and differences two polls of its own
+        rather than trusting{" "}
+        <code>cpu_percent</code>'s window, which is why the two can show
+        different numbers for the same sheep at the same instant.
       </li>
       <li>
         <code>handshook</code> is about dogs and is <code>null</code> for

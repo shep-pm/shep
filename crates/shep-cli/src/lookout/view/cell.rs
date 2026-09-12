@@ -84,6 +84,54 @@ pub fn sparkline(samples: &[f32], cells: usize, ceiling: f32) -> String {
     out
 }
 
+/// A half-block area chart: `rows` rows of `cols` cells, oldest sample
+/// leftmost, top row first.
+///
+/// Sixteen steps in eight rows. For a sample of value `v` the column's
+/// height in half-steps is `h = round(v / ceiling * rows * 2)`; for row `r`
+/// counted from the top, `s = h - (rows - 1 - r) * 2`, and the cell is `█`
+/// when `s >= 2`, `▄` when `s == 1`, and blank otherwise.
+///
+/// Left-padded like [`sparkline`], and blank rather than a floor line with
+/// no samples, for the reasons that function's own doc gives.
+///
+/// A sample at or above `ceiling` fills its column, the same way
+/// [`gauge_fill`] saturates a value above its own ceiling: the row match
+/// below sends any height at or past the top row's floor to the same `█`
+/// arm regardless of how far past it the sample sits, so there is nothing
+/// for an explicit clamp to add on that side. A negative sample is a
+/// different case, one this function does need to get right even though no
+/// caller today produces one: the `as usize` cast on the line below sends it
+/// to a height of `0` (a saturating cast, not a wrapping one), which reads as
+/// blank rather than as a spurious full column.
+#[must_use]
+pub fn chart(samples: &[f32], ceiling: f32, cols: usize, rows: usize) -> Vec<String> {
+    // A zero `cols` or `rows` degrades through the general path below with
+    // no guard needed: don't re-add one without a test proving it wrong.
+    let window = &samples[samples.len().saturating_sub(cols)..];
+    let pad = cols - window.len();
+    let ceiling = if ceiling > 0.0 { ceiling } else { 1.0 };
+    let steps = rows * 2;
+    let heights: Vec<usize> = window
+        .iter()
+        .map(|sample| (sample / ceiling * steps as f32).round() as usize)
+        .collect();
+    (0..rows)
+        .map(|row| {
+            let floor = (rows - 1 - row) * 2;
+            let mut line = " ".repeat(pad);
+            for height in &heights {
+                line.push(match height.saturating_sub(floor) {
+                    0 => ' ',
+                    1 => '\u{2584}',
+                    _ => '\u{2588}',
+                });
+            }
+            line
+        })
+        .collect()
+}
+
 /// A rule of exactly `cells` box-drawing horizontals.
 ///
 /// `status::rule_line` is its only non-test caller today.
@@ -140,6 +188,59 @@ mod tests {
         // 4 of 10 cells: 44% rounds down, 45% rounds up.
         assert_eq!(gauge(44, Some(100), 10), "████░░░░░░");
         assert_eq!(gauge(45, Some(100), 10), "█████░░░░░");
+    }
+
+    #[test]
+    fn a_chart_at_the_ceiling_fills_every_row() {
+        assert_eq!(chart(&[100.0], 100.0, 1, 4), ["█", "█", "█", "█"]);
+    }
+
+    #[test]
+    fn a_chart_at_half_the_ceiling_fills_the_bottom_half() {
+        assert_eq!(chart(&[50.0], 100.0, 1, 4), [" ", " ", "█", "█"]);
+    }
+
+    /// The half-block is the whole point of the cell: four rows carry eight
+    /// steps, not four.
+    #[test]
+    fn an_odd_half_step_draws_the_lower_half_block() {
+        assert_eq!(chart(&[12.5], 100.0, 1, 4), [" ", " ", " ", "▄"]);
+    }
+
+    #[test]
+    fn a_chart_over_its_ceiling_fills_its_column() {
+        assert_eq!(chart(&[250.0], 100.0, 1, 2), ["█", "█"]);
+    }
+
+    /// The `as usize` cast that turns a height into a row count saturates a
+    /// negative value to zero rather than wrapping it, so a negative sample
+    /// reads as blank rather than as a spurious full column. Nothing today
+    /// produces a negative sample; this pins the cast anyway.
+    #[test]
+    fn a_negative_sample_reads_as_blank() {
+        assert_eq!(chart(&[-50.0], 100.0, 1, 2), [" ", " "]);
+    }
+
+    /// Left-padded like `sparkline`, so the chart grows into its column from
+    /// the right as history arrives rather than stretching to fit.
+    #[test]
+    fn a_chart_shorter_than_its_columns_pads_on_the_left() {
+        assert_eq!(chart(&[100.0], 100.0, 3, 1), ["  █"]);
+    }
+
+    #[test]
+    fn a_chart_longer_than_its_columns_keeps_the_newest() {
+        assert_eq!(chart(&[100.0, 0.0, 0.0], 100.0, 2, 1), ["  "]);
+    }
+
+    /// No samples is blank rather than a floor line, for `sparkline`'s reason:
+    /// a flat line reads as measured and idle, blank reads as not measured yet.
+    /// `chart` has no empty-samples branch to mutate today, so this guards a
+    /// future one: if a later change adds an explicit `is_empty` arm mirroring
+    /// `sparkline`'s and gets it wrong, this is the test that would catch it.
+    #[test]
+    fn an_empty_chart_is_blank_rather_than_a_floor_line() {
+        assert_eq!(chart(&[], 100.0, 3, 2), ["   ", "   "]);
     }
 
     #[test]

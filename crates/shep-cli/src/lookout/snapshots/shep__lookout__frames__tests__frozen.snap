@@ -2,33 +2,33 @@
 source: crates/shep-cli/src/lookout/frames.rs
 expression: render_text(&buffer)
 ---
-shep lookout   /home/ada/.shep                                                                            6 in the flock
-                                                                                                                        
-the shepherd has died: these values are frozen as of 2026-08-14 14:32:07                                                
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     1 errored · 0 parked   floc…
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-                                                                                                                        
-  ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
-   ██ FLOCK                                                                                                             
-  2     api         errored          -        14        1          -       -         1h 18m    edge        -            
-  3     billing-r…  waiting-restart  -        3         1          -       -         1h 19m    -           -            
-  4     cron        stopped          -        0         SIGTERM    -       -         1h 21m    -           -            
-  5     metrics     online           48240    0         -          0.4%    11.0M     1h 22m    -           -            
-  0     web         online           48211    0         -          3.4%    182.0M    1h 15m    edge        -            
-  1     web         online           48212    0         -          2.9%    178.0M    1h 16m    edge        -            
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ SHEEP 2  api   errored   pid -   restarts 14   uptime 1h 18m   cpu -   mem -   fold edge                            
-lambs  3 parent-pid descendants, read 0s ago   48220 node   48221 node   48222 node                                     
-out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                   
-                                                                                                                        
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS api  … 1 earlier line not shown                                                                              
-out  GET /healthz 200 3ms                                                                                               
-out  GET /v1/orders 200 44ms                                                                                            
-out  POST /v1/orders 201 88ms                                                                                           
-out  GET /v1/orders/8821 200 9ms                                                                                        
-out  connection pool: 14/50 in use                                                                                      
-q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled
+ THE SHEPHERD HAS DIED  ▖  these values are frozen as of 2026-08-14 14:32:07                                                 nothing here is live  ▖  q to quit 
+                                                                                                                                                                
+ shep lookout   /home/ada/.shep  ·  the dashboard stays up so you can read what it had  ·  it will not exit on its own                                          
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     1 errored · 0 parked   flock cpu 6.7%       ▁█   flock mem 371.0M  …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                                                                
+  ID    NAME                  STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       FROZEN    FOLD        SMIT         
+   ██ FLOCK                                                                                                                                                     
+  2     api                   errored          -        14        1          -             ▁▁  -       ░░░░░░░░░░  -         1h 18m    edge        -            
+  3     billing-reconciliat…  waiting-restart  -        3         1          -             ▁▁  -       ░░░░░░░░░░  -         1h 19m    -           -            
+  4     cron                  stopped          -        0         SIGTERM    -             ▁▁  -       ░░░░░░░░░░  -         1h 21m    -           -            
+  5     metrics               online           48240    0         -          -              ▂  0.4%    ░░░░░░░░░░  11.0M     1h 22m    -           -            
+  0     web                   online           48211    0         -          -              █  3.4%    ░░░░░░░░░░  182.0M    1h 15m    edge        -            
+  1     web                   online           48212    0         -          -              ▇  2.9%    ░░░░░░░░░░  178.0M    1h 16m    edge        -            
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ THE LINK  5 redials over 7.75s, all refused   ·   lookout has stopped polling and stopped re-dialling                                                       
+  ladder    █ 250ms  █ 500ms  █ 1s  █ 2s  █ 4s                                                                                                                  
+  refused   the shepherd did not answer: could not connect to `/home/ada/.shep/run/shep.sock`: Connection refused (os error 61)                                 
+  since     2026-08-14 14:32:07, 9m 53s ago      the sheep themselves may well still be running; lookout cannot see them to say                                 
+  try       shep muster, from another shell      then reopen lookout: it does not reconnect on its own                                                          
+q quit   j/k still moves   every other key is refused while the link is down                                                                            █ frozen

@@ -741,6 +741,21 @@ pub struct ProcessInfo {
     /// under the same three conditions as [`Self::cpu_percent`], minus the
     /// window one: memory needs no baseline.
     pub memory_bytes: Option<u64>,
+    /// The tree's cumulative CPU-milliseconds, or `None` when the shepherd
+    /// is not sampling this sheep.
+    ///
+    /// Present in one case [`Self::cpu_percent`] is not: a sheep spawned
+    /// since the last periodic tick has a counter already, but no baseline
+    /// to measure it against, so this is `Some` while the percent is still
+    /// `None`.
+    ///
+    /// The counter rather than a rate, so a client polling faster than the
+    /// shepherd's own sampling interval can difference two readings and get
+    /// the mean over its own interval. [`Self::cpu_percent`] cannot serve
+    /// that: it is measured against a baseline the shepherd rewrites on its
+    /// own schedule, so consecutive readings share one and each is a running
+    /// mean over a window that grows and then resets.
+    pub cpu_ms: Option<u64>,
     /// Set when this entry is a dog, naming where the dog came from;
     /// `None` for a sheep.
     ///
@@ -870,6 +885,7 @@ impl ProcessInfo {
                 err_file: None,
                 cpu_percent: None,
                 memory_bytes: None,
+                cpu_ms: None,
                 dog: None,
                 lambs: None,
                 last_exit: None,
@@ -951,6 +967,12 @@ impl ProcessInfoBuilder {
     /// Sets tree resident set size in bytes.
     pub fn memory_bytes(mut self, memory_bytes: Option<u64>) -> Self {
         self.info.memory_bytes = memory_bytes;
+        self
+    }
+
+    /// Sets the tree's cumulative CPU-milliseconds; `None` when unsampled.
+    pub fn cpu_ms(mut self, cpu_ms: Option<u64>) -> Self {
+        self.info.cpu_ms = cpu_ms;
         self
     }
 
@@ -1387,6 +1409,10 @@ pub struct SheepConfigView {
     pub config: AppConfig,
     /// The env keys, so the pane can list them. Never the values.
     pub env_keys: Vec<String>,
+    /// Which of [`Self::env_keys`] resolve from the secret store, so a pane
+    /// can mark the row without showing anything. Recorded before `env` is
+    /// cleared, which is the only moment the values exist to be read.
+    pub env_secrets: Vec<String>,
     /// Field names an operator has set that the Flockfile does not declare.
     pub overridden: Vec<String>,
     /// Field names parked until the next respawn.
@@ -1402,12 +1428,14 @@ impl SheepConfigView {
     /// a literal.
     #[must_use]
     pub fn new(mut config: AppConfig, overridden: Vec<String>, pending: Vec<String>) -> Self {
+        let env_secrets = crate::secrets::sealed_keys(&config);
         let env_keys = config.env.keys().cloned().collect();
         config.env.clear();
         Self {
             name: config.name.clone(),
             config,
             env_keys,
+            env_secrets,
             overridden,
             pending,
         }
@@ -1416,16 +1444,17 @@ impl SheepConfigView {
 
 /// Redacted (IR-41): `config` carries `args` and `cwd`, which routinely hold
 /// a token or a home directory, and this type is what a `{:?}` on a
-/// [`Response`] would print. The three lists are counted rather than named
-/// for the same reason: `env_keys` is a key set, which is itself worth
-/// keeping out of a log.
+/// [`Response`] would print. The four lists are counted rather than named
+/// for the same reason: `env_keys` and `env_secrets` are key sets, which are
+/// themselves worth keeping out of a log.
 impl fmt::Debug for SheepConfigView {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "SheepConfigView {{ name: {:?}, env_keys: {}, overridden: {}, pending: {} }}",
+            "SheepConfigView {{ name: {:?}, env_keys: {}, env_secrets: {}, overridden: {}, pending: {} }}",
             self.name,
             self.env_keys.len(),
+            self.env_secrets.len(),
             self.overridden.len(),
             self.pending.len()
         )
@@ -1909,6 +1938,7 @@ mod tests {
             // for a float the binary representation holds exactly.
             cpu_percent: Some(12.5),
             memory_bytes: Some(48 * 1024 * 1024),
+            cpu_ms: None,
             dog: None,
             lambs: None,
             last_exit: Some(ExitInfo {
@@ -1943,9 +1973,30 @@ mod tests {
         assert_eq!(info.err_file, None);
         assert_eq!(info.cpu_percent, None);
         assert_eq!(info.memory_bytes, None);
+        assert_eq!(info.cpu_ms, None);
         assert_eq!(info.dog, None);
         assert_eq!(info.lambs, None);
         assert_eq!(info.last_exit, None);
+    }
+
+    /// The raw counter rides the wire beside the percent. A client polling
+    /// faster than the shepherd's own sampling interval differences two of
+    /// these; `cpu_percent` cannot serve it, because consecutive readings
+    /// share a baseline.
+    #[test]
+    fn a_process_info_carries_the_cpu_counter() {
+        let info = ProcessInfo::builder(3, "web", ProcStatus::Online)
+            .cpu_ms(Some(1_234))
+            .build();
+        assert_eq!(info.cpu_ms, Some(1_234));
+    }
+
+    /// Absent by default, like every other sampled field: a lifecycle verb's
+    /// answer carries no reading.
+    #[test]
+    fn a_process_info_without_a_reading_has_no_counter() {
+        let info = ProcessInfo::builder(3, "web", ProcStatus::Online).build();
+        assert_eq!(info.cpu_ms, None);
     }
 
     /// Every field is given a value distinct from every other field's
@@ -2371,8 +2422,21 @@ mod tests {
         let view = SheepConfigView::new(config, vec!["max_restarts".to_string()], Vec::new());
         assert_eq!(
             format!("{view:?}"),
-            r#"SheepConfigView { name: "web", env_keys: 1, overridden: 1, pending: 0 }"#
+            r#"SheepConfigView { name: "web", env_keys: 1, env_secrets: 0, overridden: 1, pending: 0 }"#
         );
+    }
+
+    /// Recorded before the clear, since the values are what name a reference
+    /// and they are gone by the time anything else can look.
+    #[test]
+    fn a_config_view_records_which_env_keys_are_sealed() {
+        let mut config = AppConfig::minimal("web", "./srv");
+        config.env.insert("PLAIN".into(), "value".into());
+        config.env.insert("SEALED".into(), "{{secret:PW}}".into());
+        let view = SheepConfigView::new(config, Vec::new(), Vec::new());
+        assert!(view.config.env.is_empty());
+        assert_eq!(view.env_keys, ["PLAIN", "SEALED"]);
+        assert_eq!(view.env_secrets, ["SEALED"]);
     }
 
     #[test]

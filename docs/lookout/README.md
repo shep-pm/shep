@@ -16,10 +16,10 @@ phase before deciding what came next.
 
 ## Reading the frames
 
-- `frames.txt`, thirty-six scenes rendered through the flattened `NO_COLOR`
+- `frames.txt`, forty-one scenes rendered through the flattened `NO_COLOR`
   palette, the one an operator with `$NO_COLOR` set or a 16-colour terminal
   actually gets. Open it in any editor.
-- `frames.ansi`, the same thirty-six scenes rendered through the coloured
+- `frames.ansi`, the same forty-one scenes rendered through the coloured
   palette the pinned snapshot tests use. Read it with `less -R` so the
   escape codes render instead of printing literally.
 
@@ -42,11 +42,19 @@ cargo test -p shep --lib --all-features -- --ignored write_the_gallery
 - **Daemon death: bounded retry, then freeze, never exit.** The link task
   re-dials the shepherd 5 times, at 250/500/1000/2000/4000 ms — about 7.75 s
   of waiting — before it gives up. Once the ladder is exhausted, lookout
-  shows the frozen banner (`the shepherd has died: these values are frozen
-  as of <time>`), stops polling and re-dialling, and leaves the last known
-  values on screen. The uptime column stops advancing with it: a frozen
-  dashboard whose clock kept counting would be lying about a specific sheep
-  by name. lookout never exits on its own — the operator quits with `q`.
+  stops polling and re-dialling and leaves the last known values on screen.
+  The title band turns bark and carries `THE SHEPHERD HAS DIED ▖ these
+  values are frozen as of <time>`, and the table, the host strip and the
+  section bands all go to one muted ink, so no cell can be read as current.
+  The `UPTIME` header becomes `FROZEN` over a duration that stopped
+  advancing when the link did: a frozen dashboard whose clock kept counting
+  would be lying about a specific sheep by name. The detail band and the
+  bleats feed give their rows to the link panel, which names the ladder it
+  climbed, quotes the last dial's own error, counts how long ago that was,
+  and says what is left to try. lookout never exits on its own — the
+  operator quits with `q`. `r` is refused with the rest of the keymap:
+  `run_link` has already returned by then, so nothing survives to answer a
+  redial, and the panel says `shep muster` instead.
   A shepherd that was **never** running is a different case: that connect
   attempt happens before raw mode is entered, and a failure there is the
   ordinary `daemon_unreachable` refusal every other verb gives, not eight
@@ -69,8 +77,8 @@ cargo test -p shep --lib --all-features -- --ignored write_the_gallery
   no way to refuse a keypress it cannot tell apart from `shep stop`.
 - **Colour is always redundant with text.** Every coloured cell says the
   same thing in words that the colour is repeating — the STATUS column
-  prints `errored` under `--bark`, the banner prints `the shepherd has
-  died` under `--bark`. Nothing here is colour-only, so `NO_COLOR` and a
+  prints `errored` under `--bark`, the frozen band prints `THE SHEPHERD HAS
+  DIED` under `--bark`. Nothing here is colour-only, so `NO_COLOR` and a
   16-colour terminal both lose decoration, never information.
 - **Narrow terminals drop columns in a fixed order**, least diagnostic
   first, one at a time, at the width in brackets: `MEM/CEIL` (134), `CPU 20s`
@@ -156,7 +164,9 @@ debt.
 - **The title, the two section bands, and the selected row all paint now.**
   The title and the `FLOCK`/`DOGS` bands are reverse video: meadow for the
   flock band, sky for dogs, and the title turns bark when the link to the
-  shepherd has frozen. The selected row and the status bar are the only two
+  shepherd has frozen. Frozen, the two section bands go muted with the rest
+  of the table and are told apart by their own words, which is what
+  `NO_COLOR` already asks of them. The selected row and the status bar are the only two
   rows that ever paint a background; everywhere else the operator's own
   terminal background shows through. Under `NO_COLOR` the roles disappear
   but the reverse video stays, so a band still names its section in plain
@@ -174,6 +184,40 @@ debt.
   share a single row with a divider between them and the pair's combined
   size on disk after it, and the pane gained a `cfg !N pending` cell for a
   sheep still carrying an unapplied config change.
+
+## What 1d settled
+
+- **`ProcessInfo` and `SheepStats` gain `cpu_ms`, the raw counter
+  `cpu_percent` is one view of.** Lookout differences two polls of it
+  itself, rather than trusting `cpu_percent`'s own fifteen-second baseline
+  window, so a chart of it draws the sheep's true recent CPU instead of a
+  decaying mean that resets on a timer it cannot see. `None` until two
+  readings exist for a sheep, the same shape a fresh `cpu_percent` already
+  had.
+- **`↵` opens a full-screen pane on the selected sheep.** Silent on a group
+  row, a fold header, or a dog: none has a single process to chart or a
+  Flockfile to show. `esc` closes it.
+- **Two charts, CPU and memory, share a time axis and one poll per
+  column.** The window is computed from the columns actually available and
+  stated in the chart's own header rather than a constant, so a fresh pane
+  reads `collecting` until its buffer catches up. Memory draws a ceiling
+  line at `max_memory` when the sheep has one; with none set it scales to
+  the window's own peak and says so.
+- **Below the charts, a read-only config-and-env listing sits beside an
+  embedded feed scoped to the pane's sheep.** `e` opens the same full
+  editor the dashboard's own `e` does; `b` hands the embedded feed to the
+  full-screen bleats pane rather than opening a fresh one, filter and all;
+  `/` filters it in place.
+- **`J`/`K` step to the next or previous sheep** in the current sort and
+  filter, re-fetching config and re-scaling both charts without leaving the
+  pane. `x`, `R` and `L` arm and confirm against the pinned sheep, the same
+  gate the dashboard's own action keys use.
+- **Three width tiers below the 140-column design size.** 100 to 139 keeps
+  the CPU chart and folds memory into one line, an RSS reading and a
+  ten-cell gauge; under 100 both charts fall back to 1a's own `CPU 20s`
+  sparkline and `MEM/CEIL` gauge, one row. Rows drop before columns: the
+  memory chart goes below 26 rows, the CPU chart below 20, and the config
+  and feed columns give up ground last.
 
 ## What 1i settled
 

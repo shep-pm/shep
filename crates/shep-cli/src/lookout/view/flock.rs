@@ -154,6 +154,26 @@ impl Column {
         }
     }
 
+    /// The header text on a frozen dashboard.
+    ///
+    /// [`Self::header`] for every column but [`Self::Uptime`], whose cells
+    /// hold a duration that stopped advancing the moment the link did.
+    /// `UPTIME` over a stalled number is the one cell on the frozen frame
+    /// that reads as live, and the whole point of that screen is that none
+    /// of them may.
+    ///
+    /// `FROZEN`, not the design's own `FROZEN AT`: [`Self::width`] gives
+    /// this column 8 cells, `FROZEN AT` is 9, and widening it moves every
+    /// threshold in [`TIERS`]. The band two rows above already carries the
+    /// timestamp the `AT` would point at.
+    #[must_use]
+    pub const fn frozen_header(self) -> &'static str {
+        match self {
+            Self::Uptime => "FROZEN",
+            _ => self.header(),
+        }
+    }
+
     /// The fixed width of this column's cells. `Name` reports `0`: it is
     /// the column that takes the remainder, and [`name_width`] computes it.
     #[must_use]
@@ -583,8 +603,12 @@ pub fn fit(text: &str, width: u16) -> String {
 }
 
 /// The header line: every column name, muted.
+///
+/// `frozen` swaps [`Column::header`] for [`Column::frozen_header`], which
+/// differs for exactly one column. See that method for why the rename is
+/// the header's job rather than the cell's.
 #[must_use]
-pub fn header_line(columns: &[Column], width: u16, style: Style) -> Line<'static> {
+pub fn header_line(columns: &[Column], width: u16, style: Style, frozen: bool) -> Line<'static> {
     let name = name_width(width, columns);
     let mut text = String::new();
     for (index, column) in columns.iter().enumerate() {
@@ -596,7 +620,12 @@ pub fn header_line(columns: &[Column], width: u16, style: Style) -> Line<'static
         } else {
             column.width()
         };
-        text.push_str(&fit(column.header(), cell_width));
+        let header = if frozen {
+            column.frozen_header()
+        } else {
+            column.header()
+        };
+        text.push_str(&fit(header, cell_width));
     }
     Line::from(Span::styled(text, style))
 }
@@ -659,7 +688,7 @@ pub fn key_line(
             },
         ),
         RowKey::Group(name) => group_line(app, name, columns, width, selected),
-        RowKey::Section(label) => section_line(label, width, app.palette().muted()),
+        RowKey::Section(label) => section_line(label, width, app.data_palette().muted()),
         // Flat view never emits a `RowKey::Fold`: `push_fold_rows` builds
         // them and only runs under `Grouping::ByFold`, whose rows go through
         // `fold_key_line` instead. `key_line` is the flat renderer, reached
@@ -691,7 +720,7 @@ fn group_line(
     width: u16,
     selected: bool,
 ) -> Line<'static> {
-    let palette = app.palette();
+    let palette = app.data_palette();
     let totals = app.group_totals(name);
     let name_width = self::name_width(width, columns);
     let ground = if selected {
@@ -802,7 +831,7 @@ pub fn fold_key_line(
             || Line::from(Span::raw(" ".repeat(usize::from(width)))),
             |row| fold_member_line(app, row, columns, width, selected),
         ),
-        RowKey::Section(label) => section_line(label, width, app.palette().muted()),
+        RowKey::Section(label) => section_line(label, width, app.data_palette().muted()),
     }
 }
 
@@ -820,7 +849,7 @@ fn fold_header_line(
     width: u16,
     selected: bool,
 ) -> Line<'static> {
-    let palette = app.palette();
+    let palette = app.data_palette();
     let totals = app.fold_totals(name);
     let total_memory = total_flock_memory(app);
     let share_percent = fold_share_percent(totals.memory, total_memory);
@@ -962,7 +991,7 @@ fn fold_group_line(
     width: u16,
     selected: bool,
 ) -> Line<'static> {
-    let palette = app.palette();
+    let palette = app.data_palette();
     let totals = app.group_totals(name);
     let status = app.group_uniform_status(name);
     let status_style = status.map_or(Style::default(), |status| palette.status(status));
@@ -1025,7 +1054,7 @@ fn fold_member_line(
     width: u16,
     selected: bool,
 ) -> Line<'static> {
-    let palette = app.palette();
+    let palette = app.data_palette();
     let status_style = palette.reported(row.reported());
     let name_width = fold_name_width(width, columns);
     let ground = if selected {
@@ -1072,8 +1101,10 @@ fn fold_member_cell(app: &App, row: &Row, column: FoldColumn) -> String {
         FoldColumn::Mem => info
             .memory_bytes
             .map_or_else(|| "-".to_string(), human_bytes),
-        FoldColumn::Cpu => info
-            .cpu_percent
+        // `App::cpu_now`, not `info.cpu_percent`: see `cell`'s own
+        // `Column::Cpu` arm.
+        FoldColumn::Cpu => app
+            .cpu_now(info.id)
             .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
         FoldColumn::Uptime => app
             .uptime_ms(info.id)
@@ -1101,7 +1132,7 @@ pub fn row_line(
     grouped: bool,
     selected: bool,
 ) -> Line<'static> {
-    let palette = app.palette();
+    let palette = app.data_palette();
     let name = name_width(width, columns);
     let status_style = palette.reported(row.reported());
     let status = Some(row.info.status);
@@ -1174,8 +1205,11 @@ fn cell(app: &App, row: &Row, column: Column, grouped: bool) -> String {
         // pending-over-overridden precedence.
         Column::Cfg => cfg_cell(info.pending.as_deref(), info.overridden.as_deref()),
         Column::CpuSpark => cpu_spark_cell(app, info),
-        Column::Cpu => info
-            .cpu_percent
+        // `App::cpu_now`, the sparkline's own newest cell, not
+        // `info.cpu_percent`: the shepherd's running mean, differently
+        // windowed, would disagree with the shape beside it.
+        Column::Cpu => app
+            .cpu_now(info.id)
             .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
         Column::MemCeil => mem_ceil_cell(info),
         Column::Mem => info
@@ -1345,6 +1379,36 @@ mod tests {
     use super::super::fixtures;
     use super::*;
     use std::ffi::OsStr;
+
+    /// `FROZEN` has to fit the column it renames, and the column is not
+    /// growing to hold it: [`Column::width`] gives `Uptime` 8 cells, and
+    /// every threshold in [`TIERS`] is derived from the sum of those
+    /// widths. The design's own `FROZEN AT` is 9.
+    #[test]
+    fn the_frozen_header_fits_the_column_it_renames() {
+        use crate::output::width::visible_width;
+
+        assert_eq!(Column::Uptime.frozen_header(), "FROZEN");
+        assert!(
+            visible_width(Column::Uptime.frozen_header()) <= usize::from(Column::Uptime.width()),
+            "FROZEN does not fit UPTIME's own 8 cells"
+        );
+        assert!(
+            visible_width("FROZEN AT") > usize::from(Column::Uptime.width()),
+            "the design's own header now fits, so this rename has no reason to exist"
+        );
+    }
+
+    /// Exactly one column reads differently once the link is gone.
+    #[test]
+    fn only_the_uptime_column_is_renamed_by_a_freeze() {
+        let renamed: Vec<&str> = ALL
+            .iter()
+            .filter(|column| column.frozen_header() != column.header())
+            .map(|column| column.header())
+            .collect();
+        assert_eq!(renamed, vec!["UPTIME"]);
+    }
 
     #[test]
     fn the_painted_gutter_is_one_column_and_holds_no_glyph() {

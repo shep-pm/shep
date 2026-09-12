@@ -18,11 +18,15 @@ use super::settings::field_label;
 
 /// The banner, when there is one. `None` while the link is live.
 ///
-/// The frozen sentence names what happened and when the values stopped
-/// being current, so an operator reading `online` knows how much to trust
-/// it.
+///
+/// What happened and when the values stopped being current, so an operator
+/// reading `online` knows how much to trust it. The frozen row says neither:
+/// once the link is lost, `view::title_band` carries the death sentence in
+/// bark across the whole row above, and this row picks up the `$SHEP_HOME`
+/// the title band no longer has space for, plus the two things an operator
+/// staring at a dead dashboard actually needs told.
 #[must_use]
-pub fn banner_line(app: &App) -> Option<Line<'static>> {
+pub fn banner_line(app: &App, width: u16) -> Option<Line<'static>> {
     let palette = app.palette();
     match app.link() {
         Link::Live => None,
@@ -30,12 +34,36 @@ pub fn banner_line(app: &App) -> Option<Line<'static>> {
             retrying_sentence(*attempt),
             palette.attention(),
         ))),
-        Link::Lost { at_local } => Some(Line::from(Span::styled(
-            format!("the shepherd has died: these values are frozen as of {at_local}"),
-            palette.alarm(),
+        // Through `fit`, unlike the retrying sentence above, which is
+        // short enough that no terminal cuts it. Three clauses and a
+        // `$SHEP_HOME` do not fit 90 columns, and `Buffer::set_line` cuts
+        // what does not fit in silence: a sentence ending mid-word beside
+        // five other lines that all mark their own truncation reads as a
+        // rendering fault rather than as a narrow terminal.
+        Link::Lost { .. } => Some(Line::from(Span::styled(
+            fit(
+                &format!(
+                    " shep lookout   {}  ·  the dashboard stays up so you can read what it had  ·  it will not exit on its own",
+                    app.home()
+                ),
+                width,
+            ),
+            palette.muted(),
         ))),
     }
 }
+
+/// The key hint once the link is [`Link::Lost`].
+///
+/// Two keys, because two keys still do something: `q` leaves, and `j`/`k`
+/// move a cursor over values that are already history. `r` is not among
+/// them, whatever the design's own copy says: it is refused like the rest
+/// (`App::on_key`), and `super::super::link::run_link` has already returned
+/// by the time a freeze lands, so no task survives to answer a redial. The
+/// last clause is the whole rest of the keymap, said once rather than
+/// discovered a keypress at a time.
+const FROZEN_HINT: &str =
+    "q quit   j/k still moves   every other key is refused while the link is down";
 
 /// The bottom line: eight slots, highest priority first: the settings
 /// screen's armed or in-flight edit, a dashboard confirm, the settings
@@ -78,6 +106,19 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // the bleats pane's match box shares `InputMode::Text` with the
         // dashboard's name filter, and falling through would label the
         // dashboard's own untouched query as this pane's match.
+        (
+            format!("match  {buffer}\u{258f}   enter applies   esc cancels"),
+            palette.attention(),
+        )
+    } else if let Some(buffer) = app
+        .sheep_pane()
+        .and_then(|pane| pane.feed().match_editing())
+    {
+        // The same box, embedded: the sheep pane's own feed shares
+        // `InputMode::Text` with the dashboard's name filter too, and a
+        // fall-through here would label the dashboard's untouched query as
+        // this feed's match, the same mislabel the branch above already
+        // guards against for the full-screen pane.
         (
             format!("match  {buffer}\u{258f}   enter applies   esc cancels"),
             palette.attention(),
@@ -160,6 +201,15 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // it at all, so it is appended rather than inserted, the same rule
         // `hint_for`'s own doc gives for its dashboard forms.
         (BLEATS_HINT.to_string(), palette.attention())
+    } else if app.sheep_pane().is_some() {
+        // Checked below the bleats pane's own branch, the same as the
+        // config pane's above it: the four full-screen panes cannot be
+        // open at once, so their order here is documentation, not
+        // correctness.
+        (
+            sheep_pane_hint(app.control()).to_string(),
+            palette.attention(),
+        )
     } else if app.settings().is_none() && !app.filter().is_empty() {
         // Gated on the screen being closed: the filter survives the swap
         // into settings (`App::on_settings_key` never touches it), but `/`
@@ -169,6 +219,13 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             format!("filter \"{}\"   / edit   esc clear", app.filter()),
             palette.muted(),
         )
+    } else if matches!(app.link(), Link::Lost { .. }) {
+        // Only this branch, not the pane hints above: a pane opened before
+        // the freeze keeps naming its own keys, and this line is the flock
+        // table's. Every action key `hint_for` would name is refused once
+        // the link is gone, so naming them would teach the operator three
+        // keys that do nothing.
+        (FROZEN_HINT.to_string(), palette.attention())
     } else {
         // Butter: the keys, same rule as the pane's own hint above.
         (
@@ -182,7 +239,12 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
     // tail: control state means nothing on a screen with no action keys of
     // its own, and whether the view is pinned to the newest line is the
     // fact this screen's own operator needs a keystroke away from.
-    let right = if app.bleats_pane().is_some_and(BleatsPane::following) {
+    let right = if matches!(app.link(), Link::Lost { .. }) {
+        // Ahead of both: whether this dashboard is reading a live shepherd
+        // outranks whether a pane is pinned to the newest line, and it
+        // outranks a control state that no longer decides anything.
+        "\u{2588} frozen"
+    } else if app.bleats_pane().is_some_and(BleatsPane::following) {
         "\u{2588} following"
     } else {
         match app.control() {
@@ -330,6 +392,23 @@ const fn pane_hint(control: Control, screen: PaneScreen) -> &'static str {
         }
         (Control::Allowed, PaneScreen::List) => {
             "esc back   j/k select   g/G first/last   r refresh   e edit   d remove   K/J move   q quit"
+        }
+    }
+}
+
+/// The sheep pane's own key hint.
+///
+/// `x stop`, `R restart` and `L reload` are appended only under
+/// [`Control::Allowed`], the same rule [`hint_for`]'s own doc gives for the
+/// dashboard's write keys: a hint naming a key that is inert where the
+/// operator is reading it teaches them the key is broken. `b full log` and
+/// `/ filter` are named for every control level, the same as `esc`/`e`/`J`/`K`:
+/// both now route to the embedded feed Task 10 wired in.
+const fn sheep_pane_hint(control: Control) -> &'static str {
+    match control {
+        Control::ReadOnly => "esc flock   e edit   J/K next sheep   b full log   / filter",
+        Control::Allowed => {
+            "esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter"
         }
     }
 }
@@ -929,7 +1008,7 @@ mod tests {
         app.update(Msg::Key(KeyPress::ListRemove));
         assert!(app.config_pane().unwrap().is_armed(), "d arms a removal");
         app.update(Msg::Key(KeyPress::Escape));
-        app.update(Msg::Key(KeyPress::ListMoveDown));
+        app.update(Msg::Key(KeyPress::StepDown));
         assert!(app.config_pane().unwrap().is_armed(), "J arms a move");
     }
 
@@ -1006,5 +1085,52 @@ mod tests {
             "scrolled back, no longer following: {scrolled}"
         );
         assert!(scrolled.contains("read-only"), "got {scrolled}");
+    }
+
+    /// `x`/`R`/`L` are wired, so the hint keeps naming them; `b`/`/` are
+    /// wired too now, so the hint names them alongside the write keys
+    /// rather than dropping them, the same rule that gates the write keys
+    /// behind `Control::Allowed` just below.
+    #[test]
+    fn the_sheep_panes_hint_names_the_write_keys_and_the_feeds_own() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        app.set_control_for_tests(Control::Allowed);
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let bar = rendered(&status_line(&app, 200));
+        for key in [
+            "esc flock",
+            "e edit",
+            "J/K next sheep",
+            "x stop",
+            "R restart",
+            "L reload",
+            "b full log",
+            "/ filter",
+        ] {
+            assert!(bar.contains(key), "missing {key:?}: got {bar}");
+        }
+    }
+
+    /// `x`/`R`/`L` are hidden under `Control::ReadOnly`, the same rule
+    /// `hint_for`'s own dashboard forms follow: a hint naming a key that is
+    /// inert where the operator is reading it teaches them the key is
+    /// broken.
+    #[test]
+    fn the_sheep_panes_hint_drops_the_write_keys_under_read_only() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let bar = rendered(&status_line(&app, 200));
+        assert!(bar.contains("esc flock"), "got {bar}");
+        assert!(!bar.contains("x stop"), "got {bar}");
+        assert!(!bar.contains("R restart"), "got {bar}");
+        assert!(!bar.contains("L reload"), "got {bar}");
+        assert!(bar.contains("b full log"), "got {bar}");
+        assert!(bar.contains("/ filter"), "got {bar}");
     }
 }

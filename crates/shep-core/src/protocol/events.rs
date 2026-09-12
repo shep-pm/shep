@@ -253,6 +253,7 @@ mod tests {
                     // which never carries a resource reading.
                     cpu_percent: None,
                     memory_bytes: None,
+                    cpu_ms: None,
                     dog: None,
                     lambs: None,
                     // `handle_exited` sets `last_exit` before deciding what

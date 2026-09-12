@@ -24,7 +24,7 @@ use crate::output::{human_bytes, human_duration};
 /// The strip, fitted to `width`.
 #[must_use]
 pub fn strip_line(app: &App, width: u16) -> Line<'static> {
-    Line::from(Ink::fit(&runs(app), width, app.palette()))
+    Line::from(Ink::fit(&runs(app), width, app.data_palette()))
 }
 
 // One run of the strip and the role it renders in.
@@ -230,12 +230,18 @@ fn runs(app: &App) -> Vec<Run> {
 
     // Summed from the whole flock, `all_rows`, not the filtered `rows`, so
     // `-` here always means no reading, never "the filter matched nothing".
-    // `-`, not `0.0%`: `ProcessInfo::cpu_percent`'s `None` is unknown, and
-    // zero would claim a measurement the shepherd never made.
+    //
+    // `App::cpu_now`, the same per-sheep source `App::flock_cpu_history`
+    // sums into its own newest sample, not `cpu_percent`: that keeps this
+    // figure and the sparkline beside it answering the same question. Not
+    // read from `flock_cpu_history` directly, though: that buffer sums a
+    // zero for a sheep with no reading (so its window does not slide), and
+    // reading its sum back as `0.0%` when literally nothing in the flock
+    // has a reading yet would claim a measurement nobody made.
     let rows = app.all_rows();
     let cpu: Option<f32> = rows
         .iter()
-        .filter_map(|row| row.info.cpu_percent)
+        .filter_map(|row| app.cpu_now(row.info.id))
         .fold(None, |sum, value| Some(sum.unwrap_or(0.0) + value));
     let mem: Option<u64> = rows
         .iter()
@@ -400,11 +406,44 @@ mod tests {
 
     /// A filter matching nothing would otherwise make a running flock's
     /// strip print `-`, the same cell reserved for "no reading arrived yet".
+    ///
+    /// `with_host`/`flock_of` fire one poll, which never has anything
+    /// differenced to sum, so this test drives two by hand: a baseline
+    /// `cpu_ms` reading, then one two seconds later that has something to
+    /// difference.
     #[test]
     fn the_flock_totals_ignore_the_filter() {
-        let mut app = with_host(sample(), flock_of(4, 1));
+        use std::time::{Duration, Instant};
+
+        use super::super::super::app::{Control, Msg};
+
+        let row = |cpu_ms: u64| {
+            ProcessInfo::builder(1, "web", ProcStatus::Online)
+                .cpu_ms(Some(cpu_ms))
+                .build()
+        };
+        let t0 = Instant::now();
+        let mut app = App::new(
+            plain(),
+            Control::ReadOnly,
+            "/home/ada/.shep".to_string(),
+            t0,
+        );
+        app.update(Msg::Snapshot {
+            rows: vec![row(0)],
+            at: t0,
+        });
+        let t1 = t0 + Duration::from_secs(2);
+        app.update(Msg::Snapshot {
+            rows: vec![row(2_000)],
+            at: t1,
+        });
+        app.update(Msg::Host {
+            sample: Some(sample()),
+        });
+
         let full = rendered(&strip_line(&app, 200));
-        assert!(full.contains("flock cpu 3.5%"), "sanity: got {full:?}");
+        assert!(full.contains("flock cpu 100.0%"), "sanity: got {full:?}");
 
         // A filter matching nothing empties the table (`rows()`) without
         // touching the flock itself (`all_rows()`, what the strip reads).
@@ -419,6 +458,59 @@ mod tests {
         assert!(
             !filtered.contains("flock cpu -"),
             "a filter matching nothing is not the same as no reading arriving: {filtered:?}"
+        );
+    }
+
+    /// The flock cpu figure is a sum of `App::cpu_now` across the same
+    /// sheep `App::flock_cpu_history`'s own sum walks, so the text figure
+    /// and the sparkline's newest cell must agree, one sheep unsampled and
+    /// all.
+    #[test]
+    fn the_flock_figure_sums_the_same_sheep_the_flock_series_does() {
+        use std::time::{Duration, Instant};
+
+        use super::super::super::app::{Control, Msg};
+
+        let rows = |cpu_ms: [Option<u64>; 3]| {
+            vec![
+                ProcessInfo::builder(1, "web", ProcStatus::Online)
+                    .cpu_ms(cpu_ms[0])
+                    .build(),
+                ProcessInfo::builder(2, "api", ProcStatus::Online)
+                    .cpu_ms(cpu_ms[1])
+                    .build(),
+                // Never samples at all: an unsampled sheep among two live
+                // ones is the case that most easily lets a figure and a
+                // sparkline disagree.
+                ProcessInfo::builder(3, "cron", ProcStatus::Stopped)
+                    .cpu_ms(cpu_ms[2])
+                    .build(),
+            ]
+        };
+        let t0 = Instant::now();
+        let mut app = App::new(
+            plain(),
+            Control::ReadOnly,
+            "/home/ada/.shep".to_string(),
+            t0,
+        );
+        app.update(Msg::Snapshot {
+            rows: rows([Some(0), Some(0), None]),
+            at: t0,
+        });
+        let t1 = t0 + Duration::from_secs(2);
+        app.update(Msg::Snapshot {
+            rows: rows([Some(2_000), Some(4_000), None]),
+            at: t1,
+        });
+
+        let line = rendered(&strip_line(&app, 200));
+        // 100.0% (web) + 200.0% (api) + nothing from cron, the same sum
+        // `App::flock_cpu_history`'s own newest entry holds.
+        assert_eq!(app.flock_cpu_history().last().copied(), Some(300.0));
+        assert!(
+            line.contains("flock cpu 300.0%"),
+            "the figure must sum the same sheep the series does: {line:?}"
         );
     }
 

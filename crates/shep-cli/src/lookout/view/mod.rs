@@ -11,9 +11,11 @@ pub mod cell;
 pub mod detail;
 pub mod flock;
 pub mod host;
+pub mod link_panel;
 pub mod pane;
 pub mod scroll;
 pub mod settings;
+pub mod sheep;
 pub mod status;
 
 // `pub`, not private: a test in `super::super`'s own `mod tests` (it drives
@@ -210,6 +212,24 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
 
     buffer.set_line(area.x, y, &title_band(app, width), width);
     y += 1;
+
+    // The sheep pane owns the whole body between the title and the status
+    // bar too, the same as the three below, but row 1 is its own identity
+    // band rather than blank chrome, so it is checked here, ahead of the
+    // roomy blank row the other three are paid in: a tall terminal must not
+    // push the band down to row 2 the way it pushes their body down.
+    if let Body::Sheep(pane) = app.body() {
+        let body = Rect {
+            x: area.x,
+            y,
+            width,
+            height: bottom.saturating_sub(y),
+        };
+        sheep::draw(app, pane, body, buffer);
+        buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
+        return;
+    }
+
     // A blank row under the title, and another under the rule further down.
     // Both come from the design's own row allocation, and both are spent
     // only where there is height to spare: on a short terminal every row
@@ -218,6 +238,9 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     if roomy {
         y += 1;
     }
+    // Read four times below: the column header's own wording, and the three
+    // panes the bottom stack chooses between.
+    let frozen = matches!(app.link(), Link::Lost { .. });
 
     // The settings screen and the config pane each own the whole body
     // between the title and the status bar: a swap, not an overlay, so
@@ -258,10 +281,11 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
             buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
             return;
         }
+        Body::Sheep(_) => unreachable!("handled above, ahead of the roomy blank row"),
         Body::FlockTable => {}
     }
 
-    if let Some(banner) = status::banner_line(app) {
+    if let Some(banner) = status::banner_line(app, width) {
         buffer.set_line(area.x, y, &banner, width);
         y += 1;
     }
@@ -292,7 +316,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
         y += 1;
     }
     let header = match app.grouping() {
-        Grouping::Flat => flock::header_line(flat_columns, table_width, palette.muted()),
+        Grouping::Flat => flock::header_line(flat_columns, table_width, palette.muted(), frozen),
         Grouping::ByFold => {
             flock::fold_columns_header_line(fold_columns, table_width, palette.muted())
         }
@@ -304,11 +328,20 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     // the detail pane and the feed are up claim their rows off `bottom`
     // first, and the table gets whatever is left between `y` and `floor`.
     let mut floor = bottom;
-    let feed_at = panes.feed.then(|| {
+    // One pane or two, never both shapes. A frozen dashboard's detail band
+    // and feed are two more frozen readings, and neither answers the
+    // question their operator is holding; the link panel is the only thing
+    // on the screen that can. It claims the rows at the tier the feed
+    // appears at, since that is the shorter of the two the pair need.
+    let link_at = (frozen && panes.feed).then(|| {
+        floor -= link_panel::LINK_ROWS;
+        floor
+    });
+    let feed_at = (!frozen && panes.feed).then(|| {
         floor -= FEED_ROWS;
         floor
     });
-    let detail_at = panes.detail.then(|| {
+    let detail_at = (!frozen && panes.detail).then(|| {
         floor -= DETAIL_ROWS;
         floor
     });
@@ -358,7 +391,18 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
                 } else {
                     Role::Meadow
                 };
-                section_band(&label.to_ascii_uppercase(), role, &palette, table_width)
+                // The data palette, not the chrome one: this band sits
+                // inside the table, and a meadow row in a dead-grey table
+                // reads as the one thing on it that is still alive. Frozen,
+                // meadow and sky both resolve to the muted ink and the two
+                // bands are told apart by their own words, which is what
+                // `NO_COLOR` already asks of them.
+                section_band(
+                    &label.to_ascii_uppercase(),
+                    role,
+                    &app.data_palette(),
+                    table_width,
+                )
             } else {
                 match app.grouping() {
                     Grouping::Flat => {
@@ -398,6 +442,18 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
             buffer.set_line(area.x, top + 1 + offset, line, width);
         }
     }
+    if let Some(top) = link_at {
+        buffer.set_line(
+            area.x,
+            top,
+            &status::rule_line(palette.line(), width),
+            width,
+        );
+        for (offset, line) in link_panel::panel_lines(app, width).iter().enumerate() {
+            let offset = u16::try_from(offset).unwrap_or(0);
+            buffer.set_line(area.x, top + 1 + offset, line, width);
+        }
+    }
 
     buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
 }
@@ -411,22 +467,35 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
 /// ratatui paints a span's background, and applies `Modifier::REVERSED`,
 /// only under the cells its text occupies, so a band that stopped where its
 /// text stopped would leave the rest of the row unpainted.
+///
+/// The bark arm says something else entirely. A dead shepherd's row spends
+/// its whole width on what happened and when, since every other number on
+/// the screen is now history and the flock count is one of them;
+/// `status::banner_line` picks up the `$SHEP_HOME` this loses.
 fn title_band(app: &App, width: u16) -> Line<'static> {
-    let left = format!("shep lookout   {}", app.home());
-    let visible = app.rows().len();
-    let total = app.flock_len();
-    let right = if app.filter().is_empty() {
-        format!(" {total} in the flock")
-    } else {
-        format!(" {visible} of {total} in the flock")
+    let (left, right, role) = match app.link() {
+        Link::Lost { at_local, .. } => (
+            format!(" THE SHEPHERD HAS DIED  \u{2596}  these values are frozen as of {at_local}"),
+            " nothing here is live  \u{2596}  q to quit ".to_string(),
+            Role::Bark,
+        ),
+        Link::Live | Link::Retrying { .. } => {
+            let visible = app.rows().len();
+            let total = app.flock_len();
+            let right = if app.filter().is_empty() {
+                format!(" {total} in the flock")
+            } else {
+                format!(" {visible} of {total} in the flock")
+            };
+            (
+                format!("shep lookout   {}", app.home()),
+                right,
+                Role::Meadow,
+            )
+        }
     };
     let budget = width.saturating_sub(u16::try_from(right.chars().count()).unwrap_or(0));
     let text = format!("{}{right}", flock::fit(&left, budget));
-    let role = if matches!(app.link(), Link::Lost { .. }) {
-        Role::Bark
-    } else {
-        Role::Meadow
-    };
     band_line(text, width, app.palette().band(role))
 }
 
@@ -498,6 +567,7 @@ mod tests {
         let mut app = fixtures::app_with(Vec::new(), fixtures::coloured());
         app.update(Msg::Frozen {
             at_local: "2026-08-14 14:32:07".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
         let line = title_band(&app, 80);
         assert_eq!(line.spans[0].style.fg, Some(Color::Indexed(166)));
@@ -788,10 +858,66 @@ mod tests {
         assert_eq!(unpainted, 0, "an unselected row carries no ground at all");
     }
 
-    /// Last values stay on screen, with a sentence admitting they are
-    /// stale.
+    /// Also found by capturing a real screen: at 90 columns the row under
+    /// the band ran off the edge mid-word while the five lines below it all
+    /// marked their own cuts, which reads as a rendering fault rather than
+    /// as a narrow terminal.
     #[test]
-    fn a_frozen_link_puts_the_banner_under_the_title() {
+    fn the_row_under_the_band_marks_its_own_truncation() {
+        let mut app = fixtures::full_app();
+        app.update(Msg::Frozen {
+            at_local: "2026-08-14 14:32:07".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
+        });
+        let under = |width| {
+            draw_to(&app, width, 24)
+                .lines()
+                .nth(1)
+                .expect("a second line")
+                .to_string()
+        };
+        assert!(under(90).trim_end().ends_with('…'), "{:?}", under(90));
+        assert!(
+            under(160).contains("it will not exit on its own"),
+            "and the whole sentence survives where it fits: {:?}",
+            under(160)
+        );
+    }
+
+    /// Found by capturing a real dashboard rather than by any test here:
+    /// killing the shepherd leaves `the shepherd is shutting down` as a
+    /// notice, notices outrank the key hint, and the bar then spends the
+    /// rest of the session on a sentence about a process that is gone
+    /// instead of on the three keys that still work.
+    #[test]
+    fn a_freeze_clears_the_notice_that_would_sit_on_the_key_hint() {
+        let mut app = fixtures::full_app();
+        app.update(Msg::BusLagged { count: 4 });
+        assert!(app.notice().is_some(), "a notice to be cleared");
+
+        app.update(Msg::Frozen {
+            at_local: "2026-08-14 14:32:07".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
+        });
+        assert!(app.notice().is_none());
+
+        let bar = draw_to(&app, 160, 30)
+            .lines()
+            .next_back()
+            .expect("a status bar")
+            .to_string();
+        assert!(bar.contains("j/k still moves"), "{bar:?}");
+        assert!(
+            !bar.contains("   r "),
+            "the bar must not offer a key a freeze has already refused: {bar:?}"
+        );
+        assert!(bar.contains("\u{2588} frozen"), "{bar:?}");
+    }
+
+    /// Last values stay on screen, under a band that says in words how
+    /// stale they are.
+    #[test]
+    fn a_frozen_link_says_so_in_the_band_and_keeps_the_home_path_below_it() {
         let mut app = App::new(
             Palette::detect(None, None, None),
             Control::ReadOnly,
@@ -800,11 +926,28 @@ mod tests {
         );
         app.update(Msg::Frozen {
             at_local: "2026-08-14 14:32:07".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
-        let frame = draw_to(&app, 100, 12);
-        let banner = frame.lines().nth(1).expect("a second line").to_string();
-        assert!(banner.contains("the shepherd has died"));
-        assert!(banner.contains("2026-08-14 14:32:07"));
+        // 160, the design target: the row below the band carries three
+        // clauses and a `$SHEP_HOME`, and a narrower terminal truncates the
+        // tail rather than rewrapping it.
+        let frame = draw_to(&app, 160, 12);
+        let mut lines = frame.lines();
+
+        let band = lines.next().expect("a title band");
+        assert!(band.contains("THE SHEPHERD HAS DIED"), "{band:?}");
+        assert!(band.contains("2026-08-14 14:32:07"), "{band:?}");
+        assert!(
+            !band.contains("in the flock"),
+            "the flock count is one more frozen number: {band:?}"
+        );
+
+        // The row the band displaced. `$SHEP_HOME` is the one thing on the
+        // title row an operator still needs, since it says which dashboard
+        // they are looking at.
+        let under = lines.next().expect("a second line");
+        assert!(under.contains("/home/ada/.shep"), "{under:?}");
+        assert!(under.contains("it will not exit on its own"), "{under:?}");
     }
 
     /// An operator who does not know the control state is one keystroke
@@ -978,120 +1121,158 @@ mod tests {
 
     /// `Buffer::set_line` outside the area is a panic in debug and a silent
     /// no-op otherwise, and the arithmetic here has four moving parts.
+    ///
+    /// Swept in both link states, because they lay the bottom stack out
+    /// differently: live gets the detail band and the feed, frozen gets the
+    /// link panel in place of both.
     #[test]
     fn every_pane_lands_inside_its_own_rows_across_the_size_sweep() {
-        let mut app = fixtures::full_app();
-        app.update(Msg::Frozen {
+        let live = fixtures::full_app();
+        let mut lost = fixtures::full_app();
+        lost.update(Msg::Frozen {
             at_local: "2026-08-14 14:32:07".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
-        for height in flock::MIN_HEIGHT..=60 {
-            for width in [MIN_TERM_WIDTH, 40, 51, 80, 120, 200] {
-                let frame = draw_to(&app, width, height);
-                let lines: Vec<&str> = frame.lines().collect();
-                let panes = panes_for(height);
+        for (frozen, app) in [(false, &live), (true, &lost)] {
+            for height in flock::MIN_HEIGHT..=60 {
+                for width in [MIN_TERM_WIDTH, 40, 51, 80, 120, 200] {
+                    let frame = draw_to(app, width, height);
+                    let lines: Vec<&str> = frame.lines().collect();
+                    let panes = panes_for(height);
 
-                // The table's own row band, recomputed independently of
-                // `draw`: title (1) + banner (1, this fixture is frozen) +
-                // host strip if up + header/rule (2) is where it starts;
-                // `floor`, walked the same way `draw` does, is where it ends.
-                let table_body_start = 2 + if panes.host { HOST_ROWS } else { 0 } + 2;
-                let mut floor = height - 1;
-                if panes.feed {
-                    floor -= FEED_ROWS;
-                }
-                if panes.detail {
-                    floor -= DETAIL_ROWS;
-                }
-                let table_body_end = floor;
-                for (i, line) in lines.iter().enumerate() {
-                    let i = u16::try_from(i).unwrap_or(u16::MAX);
-                    if i < table_body_start || i >= table_body_end {
-                        continue;
+                    // The table's own row band, recomputed independently of
+                    // `draw`: title (1) + banner (1, both fixtures carry one) +
+                    // host strip if up + header/rule (2) is where it starts;
+                    // `floor`, walked the same way `draw` does, is where it ends.
+                    let table_body_start = 2 + if panes.host { HOST_ROWS } else { 0 } + 2;
+                    let mut floor = height - 1;
+                    if frozen {
+                        if panes.feed {
+                            floor -= link_panel::LINK_ROWS;
+                        }
+                    } else {
+                        if panes.feed {
+                            floor -= FEED_ROWS;
+                        }
+                        if panes.detail {
+                            floor -= DETAIL_ROWS;
+                        }
                     }
-                    assert!(
-                        !line.starts_with("bleats  "),
-                        "the feed header sits inside the table's own rows at \
+                    let table_body_end = floor;
+                    for (i, line) in lines.iter().enumerate() {
+                        let i = u16::try_from(i).unwrap_or(u16::MAX);
+                        if i < table_body_start || i >= table_body_end {
+                            continue;
+                        }
+                        assert!(
+                            !line.starts_with("bleats  "),
+                            "the feed header sits inside the table's own rows at \
                          {width}x{height}, row {i}"
-                    );
-                    assert!(
-                        !line.starts_with("out  /home/ada/.shep/logs/"),
-                        "the detail pane's out path sits inside the table's \
+                        );
+                        assert!(
+                            !line.starts_with("out  /home/ada/.shep/logs/"),
+                            "the detail pane's out path sits inside the table's \
                          own rows at {width}x{height}, row {i}"
-                    );
-                }
+                        );
+                    }
 
-                // Not `lines.len() == height`: `frames::render_text` maps
-                // `(0..area.height)` by construction, so that holds even for
-                // a `draw` that drew nothing. It is a property of the
-                // renderer, not of this layout.
-                let last = lines.last().unwrap();
-                assert!(
-                    last.contains("read-only"),
-                    "the status bar survived at {width}x{height}: {last:?}"
-                );
-                // The row above the status bar belongs to the bottom-most
-                // pane that is up, so it is never blank: a blank one means
-                // the upward layout left a hole.
-                if panes.feed || panes.detail {
-                    let above = lines[lines.len() - 2];
+                    // Not `lines.len() == height`: `frames::render_text` maps
+                    // `(0..area.height)` by construction, so that holds even for
+                    // a `draw` that drew nothing. It is a property of the
+                    // renderer, not of this layout.
+                    let last = lines.last().unwrap();
+                    let mark = if frozen {
+                        "\u{2588} frozen"
+                    } else {
+                        "read-only"
+                    };
                     assert!(
-                        !above.trim().is_empty(),
-                        "a blank row above the status bar at {width}x{height}"
+                        last.contains(mark),
+                        "the status bar survived at {width}x{height}: {last:?}"
                     );
-                }
-                // Every pane that is up appears exactly once and sits in
-                // its own band.
-                if panes.host {
-                    let positions: Vec<usize> = lines
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, l)| l.starts_with("host  "))
-                        .map(|(i, _)| i)
-                        .collect();
-                    assert_eq!(positions.len(), 1, "the strip at {width}x{height}");
-                    assert!(
-                        u16::try_from(positions[0]).unwrap_or(u16::MAX) < table_body_start,
-                        "the strip at {width}x{height} sits at row {}, at or below the table",
-                        positions[0]
-                    );
-                }
-                if panes.feed {
-                    // `contains`, not `starts_with`: the `BLEATS` chip
-                    // leads the line, and nothing else on screen carries it.
-                    let positions: Vec<usize> = lines
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, l)| l.contains("BLEATS"))
-                        .map(|(i, _)| i)
-                        .collect();
-                    assert_eq!(positions.len(), 1, "the feed header at {width}x{height}");
-                    assert!(
-                        u16::try_from(positions[0]).unwrap_or(0) >= table_body_end,
-                        "the feed header at {width}x{height} sits at row {}, inside or above the table",
-                        positions[0]
-                    );
-                }
-                if panes.detail {
-                    // The `\u{2502}` divider, not a bare `out  `: the feed's
-                    // own body lines are tagged `out  ` too, and the merged
-                    // log row's own path can truncate away at a narrow
-                    // width, but its divider never does.
-                    let positions: Vec<usize> = lines
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, l)| l.starts_with("out  ") && l.contains('\u{2502}'))
-                        .map(|(i, _)| i)
-                        .collect();
-                    assert_eq!(
-                        positions.len(),
-                        1,
-                        "the detail pane's out path at {width}x{height}"
-                    );
-                    assert!(
-                        u16::try_from(positions[0]).unwrap_or(0) >= table_body_end,
-                        "the detail pane's out path at {width}x{height} sits at row {}, inside or above the table",
-                        positions[0]
-                    );
+                    // The row above the status bar belongs to the bottom-most
+                    // pane that is up, so it is never blank: a blank one means
+                    // the upward layout left a hole. One condition for both
+                    // link states: `PANE_TIERS` never gives a terminal the
+                    // detail band without the feed, and the link panel draws
+                    // at the feed's own tier.
+                    if panes.feed || panes.detail {
+                        let above = lines[lines.len() - 2];
+                        assert!(
+                            !above.trim().is_empty(),
+                            "a blank row above the status bar at {width}x{height}"
+                        );
+                    }
+                    // Every pane that is up appears exactly once and sits in
+                    // its own band.
+                    if panes.host {
+                        let positions: Vec<usize> = lines
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, l)| l.starts_with("host  "))
+                            .map(|(i, _)| i)
+                            .collect();
+                        assert_eq!(positions.len(), 1, "the strip at {width}x{height}");
+                        assert!(
+                            u16::try_from(positions[0]).unwrap_or(u16::MAX) < table_body_start,
+                            "the strip at {width}x{height} sits at row {}, at or below the table",
+                            positions[0]
+                        );
+                    }
+                    if panes.feed {
+                        // `contains`, not `starts_with`: the chip leads the
+                        // line, and nothing else on screen carries either word.
+                        // A frozen frame's `BLEATS` is gone and `THE LINK` is
+                        // in its slot.
+                        let chip = if frozen { "THE LINK" } else { "BLEATS" };
+                        let positions: Vec<usize> = lines
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, l)| l.contains(chip))
+                            .map(|(i, _)| i)
+                            .collect();
+                        assert_eq!(positions.len(), 1, "the {chip} header at {width}x{height}");
+                        assert!(
+                            u16::try_from(positions[0]).unwrap_or(0) >= table_body_end,
+                            "the {chip} header at {width}x{height} sits at row {}, inside or above the table",
+                            positions[0]
+                        );
+                    }
+                    if panes.detail && !frozen {
+                        // The `\u{2502}` divider, not a bare `out  `: the feed's
+                        // own body lines are tagged `out  ` too, and the merged
+                        // log row's own path can truncate away at a narrow
+                        // width, but its divider never does.
+                        let positions: Vec<usize> = lines
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, l)| l.starts_with("out  ") && l.contains('\u{2502}'))
+                            .map(|(i, _)| i)
+                            .collect();
+                        assert_eq!(
+                            positions.len(),
+                            1,
+                            "the detail pane's out path at {width}x{height}"
+                        );
+                        assert!(
+                            u16::try_from(positions[0]).unwrap_or(0) >= table_body_end,
+                            "the detail pane's out path at {width}x{height} sits at row {}, inside or above the table",
+                            positions[0]
+                        );
+                    }
+                    // The two panes the link panel replaces are gone outright,
+                    // not merely moved: both are readings a dead shepherd
+                    // cannot refresh.
+                    if frozen {
+                        assert!(
+                            !lines.iter().any(|l| l.contains("BLEATS")),
+                            "the feed survived a freeze at {width}x{height}"
+                        );
+                        assert!(
+                            !lines.iter().any(|l| l.starts_with("lambs  ")),
+                            "the detail band survived a freeze at {width}x{height}"
+                        );
+                    }
                 }
             }
         }

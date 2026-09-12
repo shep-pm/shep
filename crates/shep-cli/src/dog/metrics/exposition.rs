@@ -42,13 +42,9 @@ impl MetricGroup {
     /// Appends one series line. `label_str` comes from [`labels`], braces
     /// included, or empty for a label-less metric.
     fn push(&mut self, label_str: &str, value: impl fmt::Display) {
-        let name = self.name;
-        let _ = writeln!(self.series_line(), "{name}{label_str} {value}");
-    }
-
-    fn series_line(&mut self) -> &mut String {
-        self.series.push(String::new());
-        self.series.last_mut().expect("just pushed")
+        let mut line = String::new();
+        let _ = writeln!(line, "{}{label_str} {value}", self.name);
+        self.series.push(line);
     }
 
     /// Renders this group's `# HELP`/`# TYPE` pair and series, or nothing

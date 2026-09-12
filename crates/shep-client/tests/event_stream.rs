@@ -7,14 +7,27 @@
 
 use std::time::Duration;
 
-use shep_client::Lagged;
 use shep_client::testing::{fake_client_with_push, sample_info};
+use shep_client::{EventStream, Lagged};
 use shep_core::protocol::{BusEvent, ProcessEventKind, Response};
 
 /// Every `stream.next()` in this file is wrapped in this bound so a broken
 /// implementation fails with a named assertion instead of hanging the test
 /// run.
 const EVENT_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// The next event, or a named panic for each of the three ways there is
+/// not one: the stream hangs, it ends, or it reports a lag.
+///
+/// `want` says what the caller was waiting for, and all three panics carry
+/// it. The two bare `unwrap`s this replaces did not.
+async fn next_event(stream: &mut EventStream, want: &str) -> BusEvent {
+    tokio::time::timeout(EVENT_TIMEOUT, stream.next())
+        .await
+        .unwrap_or_else(|_| panic!("{want}: nothing arrived within {EVENT_TIMEOUT:?}"))
+        .unwrap_or_else(|| panic!("{want}: the stream ended first"))
+        .unwrap_or_else(|Lagged { count }| panic!("{want}: lagged by {count} instead"))
+}
 
 #[tokio::test]
 async fn subscribe_yields_events_the_daemon_pushes() {
@@ -33,11 +46,7 @@ async fn subscribe_yields_events_the_daemon_pushes() {
     }
 
     for i in 0..3u32 {
-        let event = tokio::time::timeout(EVENT_TIMEOUT, stream.next())
-            .await
-            .expect("a pushed event must arrive, not hang")
-            .unwrap()
-            .unwrap();
+        let event = next_event(&mut stream, "a pushed event must arrive").await;
         assert_eq!(
             event,
             BusEvent::LogOut {
@@ -80,11 +89,11 @@ async fn subscribing_installs_the_receiver_before_the_request_is_sent() {
     .unwrap();
 
     assert!(matches!(
-        tokio::time::timeout(EVENT_TIMEOUT, stream.next())
-            .await
-            .expect("the pre-installed receiver must observe the queued event")
-            .unwrap()
-            .unwrap(),
+        next_event(
+            &mut stream,
+            "the pre-installed receiver must observe the queued event"
+        )
+        .await,
         BusEvent::Process {
             event: ProcessEventKind::Online,
             ..
@@ -108,11 +117,7 @@ async fn a_daemon_shutdown_event_ends_the_stream_cleanly() {
     daemon.close().await;
 
     assert_eq!(
-        tokio::time::timeout(EVENT_TIMEOUT, stream.next())
-            .await
-            .expect("the DaemonShutdown event must arrive, not hang")
-            .unwrap()
-            .unwrap(),
+        next_event(&mut stream, "the DaemonShutdown event must arrive").await,
         BusEvent::DaemonShutdown
     );
     assert!(

@@ -358,6 +358,30 @@ impl schemars::JsonSchema for UpDuration {
     }
 }
 
+/// Tree CPU over a window, as a percentage of one core.
+///
+/// `cpu_ms` is the CPU-milliseconds the tree spent during `window`. A value
+/// over 100 is a tree using more than one core, not a bug.
+///
+/// `None` when `window` is zero: dividing by it produces a nonsense figure
+/// rather than a large one.
+///
+/// Shared by the shepherd, which measures against its own periodic
+/// baseline, and by `shep lookout`, which differences two readings of
+/// [`ProcessInfo::cpu_ms`](crate::protocol::ProcessInfo::cpu_ms) over its
+/// own poll. Both put a percentage on the same screen, so the conversion
+/// lives in one place.
+#[must_use]
+pub fn cpu_percent(cpu_ms: u64, window: core::time::Duration) -> Option<f32> {
+    if window.is_zero() {
+        return None;
+    }
+    // CPU-milliseconds over wall-seconds is per-mille of one core. Computed
+    // in f64 and narrowed once at the end, since f32 would lose milliseconds
+    // off a counter that has run for a month.
+    Some((cpu_ms as f64 / window.as_secs_f64() / 10.0) as f32)
+}
+
 #[cfg(test)]
 mod mem_size_tests {
     use super::*;
@@ -528,5 +552,34 @@ mod up_duration_tests {
                 "FromStr accepts {rejected}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod cpu_percent_tests {
+    use core::time::Duration;
+
+    use super::*;
+
+    /// Per-mille of one core: 1000 CPU-milliseconds over one wall second is
+    /// 100% of one core, and the daemon and lookout must agree on that or the
+    /// two numbers on screen disagree.
+    #[test]
+    fn a_full_core_for_the_whole_window_is_a_hundred_percent() {
+        assert_eq!(cpu_percent(1000, Duration::from_secs(1)), Some(100.0));
+        assert_eq!(cpu_percent(1000, Duration::from_secs(2)), Some(50.0));
+    }
+
+    /// Over one core is a tree spanning several, not a bug.
+    #[test]
+    fn a_tree_over_one_core_reports_over_a_hundred() {
+        assert_eq!(cpu_percent(4000, Duration::from_secs(1)), Some(400.0));
+    }
+
+    /// A zero window would divide a near-zero delta by a near-zero number and
+    /// report anything from 0% to thousands.
+    #[test]
+    fn a_zero_window_has_no_honest_answer() {
+        assert_eq!(cpu_percent(1000, Duration::ZERO), None);
     }
 }

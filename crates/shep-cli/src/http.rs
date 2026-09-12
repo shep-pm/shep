@@ -249,19 +249,20 @@ fn strip_trailing_cr(line: &[u8]) -> &[u8] {
 /// The status line's reason phrase is empty (`HTTP/1.1 200 `), which RFC
 /// 7230 §3.1.2 allows; every caller here reads the status code.
 ///
+/// The head goes through [`write_head`] with no extra headers, so the one
+/// spelling of a response head in this module serves both functions and a
+/// change to it cannot reach one and miss the other.
+///
 /// # Errors
-/// - The underlying write failed.
+/// - The underlying write failed. No [`HttpError::BadHeader`] is possible:
+///   the header list is empty.
 pub async fn write_response<W: AsyncWrite + Unpin>(
     stream: &mut W,
     status: u16,
     content_type: &str,
     body: &[u8],
 ) -> Result<(), HttpError> {
-    let head = format!(
-        "HTTP/1.1 {status} \r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-        body.len()
-    );
-    stream.write_all(head.as_bytes()).await?;
+    write_head(stream, status, content_type, body.len() as u64, &[]).await?;
     stream.write_all(body).await?;
     Ok(())
 }
@@ -413,6 +414,26 @@ mod tests {
         assert!(response.contains("Connection: close\r\n"), "{response:?}");
         assert!(response.starts_with("HTTP/1.1 200 "), "{response:?}");
         assert!(response.ends_with("ok"), "{response:?}");
+    }
+
+    /// The head, byte for byte. `write_response` delegates to
+    /// `write_head`, and this is what pins the bytes that delegation
+    /// produces: a change to the status line, a header's spelling, or
+    /// their order fails here rather than in an operator's `curl`.
+    #[tokio::test]
+    async fn the_response_head_is_spelled_exactly_once() {
+        let (mut client, mut server) = tokio::io::duplex(4096);
+        write_response(&mut server, 404, "text/plain", b"gone")
+            .await
+            .unwrap();
+        drop(server);
+        let mut buf = Vec::new();
+        client.read_to_end(&mut buf).await.unwrap();
+        assert_eq!(
+            String::from_utf8(buf).unwrap(),
+            "HTTP/1.1 404 \r\nContent-Type: text/plain\r\nContent-Length: 4\r\n\
+             Connection: close\r\n\r\ngone",
+        );
     }
 
     /// Response splitting, reachable from a percent-encoded path in a
