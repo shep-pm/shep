@@ -13751,6 +13751,30 @@ mod tests {
         );
     }
 
+    /// Several instances name no one pid, so the heading names none. The
+    /// `api` row alongside is the control: it proves the fixture really
+    /// carries pids, without which the `web` assertion would pass on a
+    /// flock that had none to offer.
+    #[test]
+    fn a_sheep_with_two_running_instances_offers_no_single_pid() {
+        let mut app = allowed();
+        let at = app.now();
+        app.update(Msg::Snapshot {
+            rows: vec![
+                sheep(1, "web", ProcStatus::Online),
+                sheep(4, "web", ProcStatus::Online),
+                sheep(2, "api", ProcStatus::Online),
+            ],
+            at,
+        });
+        assert_eq!(app.running_state("web"), Some((ProcStatus::Online, None)));
+        assert_eq!(
+            app.running_state("api"),
+            Some((ProcStatus::Online, Some(1002))),
+            "one instance still names its pid"
+        );
+    }
+
     /// A reply that never comes cannot strand the verb.
     #[test]
     fn a_held_verb_expires() {

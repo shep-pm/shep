@@ -1005,6 +1005,21 @@ pub fn close_dialog_with(unsent: usize, parked: usize) -> CloseDialog {
     )
 }
 
+/// The same dialog [`close_dialog_with`] builds, over a sheep the
+/// shepherd runs several of: no one pid to name, so the heading's right
+/// clause carries none.
+pub fn close_dialog_without_a_pid() -> CloseDialog {
+    let pane = close_dialog_pane(true, false, false, 2);
+    CloseDialog::new(
+        vec!["cwd".to_string()],
+        0,
+        &pane,
+        ProcStatus::Online,
+        None,
+        Instant::now(),
+    )
+}
+
 /// A close dialog over a sheep whose reload takes `kind` and reaches
 /// `instances` of it: what the reload row's own tests read. One unsent
 /// field and nothing parked, since the reload row draws the same either

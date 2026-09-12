@@ -2340,6 +2340,18 @@ mod tests {
         assert!(heading.ends_with("web is online, pid 71578"), "{heading:?}");
     }
 
+    /// The other half of `running_state`'s answer: several instances name
+    /// no one pid, so the clause names the sheep and its state and stops
+    /// there, rather than trailing a `pid` with nothing after it.
+    #[test]
+    fn a_sheep_with_no_single_pid_gets_a_heading_that_names_none() {
+        let dialog = fixtures::close_dialog_without_a_pid();
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+        let heading = text_of(&lines)[0].trim().to_string();
+        assert!(heading.ends_with("web is online"), "{heading:?}");
+        assert!(!heading.contains("pid"), "{heading:?}");
+    }
+
     /// The right clause is the first thing to go when the row cannot hold
     /// both: the left clause is the question itself. Swept at every width
     /// the dialog draws at, so a clause that overran the border or
