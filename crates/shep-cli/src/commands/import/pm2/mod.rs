@@ -223,14 +223,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn an_existing_flockfile_is_not_overwritten_without_force() {
-        let dir = tempfile::tempdir().unwrap();
-        let out = dir.path().join("Flockfile.toml");
-        std::fs::write(&out, "[[app]]\nname = \"mine\"\nscript = \"./mine\"\n").unwrap();
-        let dump = dir.path().join("dump.pm2");
-        std::fs::write(&dump, include_str!("testdata/dump.pm2.json")).unwrap();
-
+    /// Runs `import` against a bare table-format `Streams` and hands back
+    /// its exit code beside everything it wrote.
+    fn run_import(args: &ImportPm2Args) -> (ExitCode, Vec<u8>, Vec<u8>) {
         let mut out_buf = Vec::new();
         let mut err_buf = Vec::new();
         let code = {
@@ -240,8 +235,20 @@ mod tests {
                 style: crate::style::Presentation::BARE,
                 fmt: Format::Table,
             };
-            import(&mut streams, &args(&dump, &out, false, false))
+            import(&mut streams, args)
         };
+        (code, out_buf, err_buf)
+    }
+
+    #[test]
+    fn an_existing_flockfile_is_not_overwritten_without_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("Flockfile.toml");
+        std::fs::write(&out, "[[app]]\nname = \"mine\"\nscript = \"./mine\"\n").unwrap();
+        let dump = dir.path().join("dump.pm2");
+        std::fs::write(&dump, include_str!("testdata/dump.pm2.json")).unwrap();
+
+        let (code, _out_buf, _err_buf) = run_import(&args(&dump, &out, false, false));
         assert_eq!(code, ExitCode::Usage);
         assert!(std::fs::read_to_string(&out).unwrap().contains("mine"));
     }
@@ -253,17 +260,7 @@ mod tests {
         std::fs::write(&dump, include_str!("testdata/dump.pm2.json")).unwrap();
         let out = dir.path().join("Flockfile.toml");
 
-        let mut out_buf = Vec::new();
-        let mut err_buf = Vec::new();
-        let code = {
-            let mut streams = Streams {
-                out: &mut out_buf,
-                err: &mut err_buf,
-                style: crate::style::Presentation::BARE,
-                fmt: Format::Table,
-            };
-            import(&mut streams, &args(&dump, &out, true, false))
-        };
+        let (code, out_buf, _err_buf) = run_import(&args(&dump, &out, true, false));
         assert_eq!(code, ExitCode::Success);
         assert!(!out.exists(), "--dry-run writes nothing");
         let printed = String::from_utf8(out_buf).unwrap();
@@ -285,17 +282,7 @@ mod tests {
         std::fs::write(&dump, include_str!("testdata/dump.pm2.json")).unwrap();
         let out = dir.path().join("Flockfile.toml");
 
-        let mut out_buf = Vec::new();
-        let mut err_buf = Vec::new();
-        {
-            let mut streams = Streams {
-                out: &mut out_buf,
-                err: &mut err_buf,
-                style: crate::style::Presentation::BARE,
-                fmt: Format::Table,
-            };
-            let _ = import(&mut streams, &args(&dump, &out, true, false));
-        }
+        let (_code, _out_buf, err_buf) = run_import(&args(&dump, &out, true, false));
         let report = String::from_utf8(err_buf).unwrap();
         assert!(report.contains("api"), "{report}");
         assert!(report.contains("SO_REUSEPORT"), "{report}");
@@ -310,17 +297,7 @@ mod tests {
         let dump = dir.path().join("nope.pm2");
         let out = dir.path().join("Flockfile.toml");
 
-        let mut out_buf = Vec::new();
-        let mut err_buf = Vec::new();
-        let code = {
-            let mut streams = Streams {
-                out: &mut out_buf,
-                err: &mut err_buf,
-                style: crate::style::Presentation::BARE,
-                fmt: Format::Table,
-            };
-            import(&mut streams, &args(&dump, &out, false, false))
-        };
+        let (code, _out_buf, err_buf) = run_import(&args(&dump, &out, false, false));
         assert_eq!(code, ExitCode::Usage);
         let report = String::from_utf8(err_buf).unwrap();
         assert!(report.contains(&dump.display().to_string()), "{report}");
@@ -334,17 +311,7 @@ mod tests {
         std::fs::write(&dump, "not json").unwrap();
         let out = dir.path().join("Flockfile.toml");
 
-        let mut out_buf = Vec::new();
-        let mut err_buf = Vec::new();
-        let code = {
-            let mut streams = Streams {
-                out: &mut out_buf,
-                err: &mut err_buf,
-                style: crate::style::Presentation::BARE,
-                fmt: Format::Table,
-            };
-            import(&mut streams, &args(&dump, &out, false, false))
-        };
+        let (code, _out_buf, _err_buf) = run_import(&args(&dump, &out, false, false));
         assert_eq!(code, ExitCode::InvalidConfig);
     }
 }

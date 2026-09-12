@@ -281,6 +281,39 @@ mod tests {
         paths
     }
 
+    /// Runs [`kill`] against a bare table-format `Streams` and hands back
+    /// its exit code beside everything it wrote.
+    async fn run_kill(paths: &ShepPaths) -> (ExitCode, Vec<u8>, Vec<u8>) {
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = Streams {
+                out: &mut out,
+                err: &mut err,
+                style: crate::style::Presentation::BARE,
+                fmt: Format::Table,
+            };
+            kill(paths, &mut streams).await
+        };
+        (code, out, err)
+    }
+
+    /// [`run_kill`] for the handshake path, which takes its client by value.
+    async fn run_kill_with_wait(client: Client, wait: Duration) -> (ExitCode, Vec<u8>, Vec<u8>) {
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = Streams {
+                out: &mut out,
+                err: &mut err,
+                style: crate::style::Presentation::BARE,
+                fmt: Format::Table,
+            };
+            kill_with_wait(client, &mut streams, wait).await
+        };
+        (code, out, err)
+    }
+
     /// Holds `paths`'s pidfile lock the way a live shepherd does, recording
     /// `pid` or leaving the file empty for one that has not reached its own
     /// `record` yet.
@@ -339,17 +372,7 @@ mod tests {
             status
         });
 
-        let mut out = Vec::new();
-        let mut err = Vec::new();
-        let code = {
-            let mut streams = Streams {
-                out: &mut out,
-                err: &mut err,
-                style: crate::style::Presentation::BARE,
-                fmt: Format::Table,
-            };
-            kill(&paths, &mut streams).await
-        };
+        let (code, _out, err) = run_kill(&paths).await;
         assert_eq!(code, ExitCode::Success, "{}", String::from_utf8_lossy(&err));
         let status = reaper.join().unwrap();
         assert_eq!(
@@ -367,17 +390,7 @@ mod tests {
 
         // Stale file, nothing holds the lock. Signalling 999999 could hit an
         // unrelated process that has since been given that pid.
-        let mut out = Vec::new();
-        let mut err = Vec::new();
-        let code = {
-            let mut streams = Streams {
-                out: &mut out,
-                err: &mut err,
-                style: crate::style::Presentation::BARE,
-                fmt: Format::Table,
-            };
-            kill(&paths, &mut streams).await
-        };
+        let (code, _out, err) = run_kill(&paths).await;
         assert_ne!(code, ExitCode::Success);
         let err = String::from_utf8(err).unwrap();
         assert!(err.contains("no shepherd"), "{err}");
@@ -392,17 +405,7 @@ mod tests {
         let paths = test_paths(&dir);
         let _lock = hold_pidfile_lock(&paths, None);
 
-        let mut out = Vec::new();
-        let mut err = Vec::new();
-        let code = {
-            let mut streams = Streams {
-                out: &mut out,
-                err: &mut err,
-                style: crate::style::Presentation::BARE,
-                fmt: Format::Table,
-            };
-            kill(&paths, &mut streams).await
-        };
+        let (code, _out, err) = run_kill(&paths).await;
         assert_ne!(code, ExitCode::Success);
         let err = String::from_utf8(err).unwrap();
         assert!(err.contains("starting up"), "{err}");
@@ -420,17 +423,7 @@ mod tests {
         daemon.reply_shutting_down_then_unlink_after(Duration::from_millis(120));
 
         assert!(path.exists());
-        let mut out = Vec::new();
-        let mut err = Vec::new();
-        let code = {
-            let mut streams = Streams {
-                out: &mut out,
-                err: &mut err,
-                style: crate::style::Presentation::BARE,
-                fmt: Format::Table,
-            };
-            kill_with_wait(client, &mut streams, KILL_TEARDOWN_WAIT).await
-        };
+        let (code, _out, _err) = run_kill_with_wait(client, KILL_TEARDOWN_WAIT).await;
         assert_eq!(code, ExitCode::Success);
         assert!(
             !path.exists(),
@@ -448,17 +441,7 @@ mod tests {
         let (client, daemon) = fake_client_on(&path).await;
         daemon.reply_shutting_down_and_never_unlink();
 
-        let mut out = Vec::new();
-        let mut err = Vec::new();
-        let code = {
-            let mut streams = Streams {
-                out: &mut out,
-                err: &mut err,
-                style: crate::style::Presentation::BARE,
-                fmt: Format::Table,
-            };
-            kill_with_wait(client, &mut streams, Duration::from_millis(80)).await
-        };
+        let (code, _out, _err) = run_kill_with_wait(client, Duration::from_millis(80)).await;
         assert_eq!(code, ExitCode::DeadlineExceeded);
         assert!(
             path.exists(),
