@@ -2259,10 +2259,9 @@ git commit -m "feat(lookout): draw the focused and who-reads-it panels"
 
 ---
 
-### Task 11: Keymap overlay, snapshot scene, and the docs site
+### Task 11: Snapshot scene and the docs site
 
 **Files:**
-- Modify: the 1k keymap overlay's key list
 - Modify: `crates/shep-cli/src/lookout/frames.rs` (a `Scene` for the pane)
 - Modify: `web/src/pages/docs/*.astro` (whichever pages name lookout's keys)
 - Regenerate: the CLI reference
@@ -2271,11 +2270,7 @@ git commit -m "feat(lookout): draw the focused and who-reads-it panels"
 
 Add a `Scene::Secrets` beside the existing variants, rendering `fixtures::app_with_secrets` with the pane open, one revealed row, one provider group and one `not set here` row. Follow how the existing scenes are registered and asserted.
 
-- [ ] **Step 2: Add the keys to the overlay**
-
-`S` under `LOOKING`. Inside the pane's own listing: `v reveal for 10s`, `Enter set a value`, `D delete the key`, `y copy to clipboard`. `D` sits with the destructive keys and carries the same `each one arms, Enter confirms` sentence the other three do.
-
-- [ ] **Step 3: Run the whole lib suite**
+- [ ] **Step 2: Run the whole lib suite**
 
 ```bash
 cargo test -p shep --lib --bins --all-features -- --skip ::slow::
@@ -2283,7 +2278,7 @@ cargo test -p shep --lib --bins --all-features -- --skip ::slow::
 
 Expected: PASS.
 
-- [ ] **Step 4: Regenerate the CLI reference**
+- [ ] **Step 3: Regenerate the CLI reference**
 
 ```bash
 cargo build --release
@@ -2294,11 +2289,11 @@ cargo build --release
 
 `git diff` afterwards is the check.
 
-- [ ] **Step 5: Update the prose pages**
+- [ ] **Step 4: Update the prose pages**
 
 Grep `web/src/pages/docs/` for the lookout keymap and for `allow_read`. Every page listing lookout's keys gains `S`, and the secrets page states both gates: `lookout.allow_control` for changing anything, `[secrets] allow_read` for revealing a value.
 
-- [ ] **Step 6: Build and check the site**
+- [ ] **Step 5: Build and check the site**
 
 ```bash
 cd web && npx astro build
@@ -2309,7 +2304,7 @@ cd web && npx astro check
 
 Both. `check` is the one that catches a wrong prop; `build` stays green through a prop the component does not have.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add crates/shep-cli/src/lookout/frames.rs web/
@@ -2353,7 +2348,7 @@ Every spec requirement, the task that implements it, and the test that pins it. 
 | block run proportional, byte count exact | 5 | `a_four_kilobyte_value_never_overflows_its_column` |
 | tiers and drop order | 5 | `every_tier_fits_the_width_it_claims`, `the_columns_drop_in_the_specified_order` |
 | reveal gated on `allow_read` | 6 | `v_reveals_only_when_allow_read_is_on` |
-| reveal clears on seven triggers | 6 | `a_reveal_clears_on_every_one_of_its_seven_triggers`, `a_reveal_survives_the_tick_before_it_expires` |
+| reveal clears on every trigger | 6 | `a_reveal_clears_on_every_one_of_its_triggers_that_exists_yet`, `a_reveal_survives_the_tick_before_it_expires` |
 | write gated on `allow_control` | 7, 8 | `a_write_refuses_without_the_control_gate`, `a_delete_refuses_without_the_control_gate` |
 | value input seeds empty | 7 | `enter_opens_the_value_input_seeded_empty` |
 | validation at the input | 7 | `a_value_over_the_cap_is_refused_at_the_input_not_at_the_file`, `a_key_outside_the_grammar_is_refused_with_the_grammar` |
@@ -2362,7 +2357,7 @@ Every spec requirement, the task that implements it, and the test that pins it. 
 | `Enter` collision resolved | 8 | `enter_sets_when_nothing_is_armed_and_confirms_when_something_is` |
 | an arm does not follow the cursor | 8 | `moving_the_selection_disarms` |
 | copy is honest and gated | 9 | `copying_says_it_was_sent_rather_than_that_it_arrived`, `copy_needs_a_revealed_value_rather_than_reading_the_store_behind_the_gate` |
-| no audit promise on screen | 10 | `the_focused_panel_states_the_gate_and_not_an_audit` |
+| no audit promise on screen | 10 | `the_chrome_states_the_gate_and_no_panel_promises_an_audit` |
 | three plaintext types redact (IR-41) | 4, 7 | `the_pane_debug_never_prints_a_revealed_value`, `a_secret_edit_debug_prints_a_length_and_never_the_value` |
 | unreadable store reports itself | 3 | `an_unreadable_store_reports_rather_than_reading_as_empty` |
 | selection glyph is not `▌` | 5 | covered by `flock::mark`'s existing test; add no second one |
