@@ -46,8 +46,10 @@ const BOX_WIDTH: u16 = 86;
 
 /// 86 interior plus a border cell each side is 88, plus a margin cell each
 /// side is 90. One column narrower and the border would have to clip, which
-/// `docs/lookout/design-files/rulings.md` refuses, so 89 draws the
-/// borderless form instead.
+/// `docs/lookout/design-files/README.md:332` refuses ("The 1g and 1k
+/// overlays need 90 and 132 columns; below that, draw them full-width with
+/// no border box rather than clipping"), so 89 draws the borderless form
+/// instead.
 const BOX_FLOOR: u16 = BOX_WIDTH + 4;
 
 /// The border's four corners, checked against `unicodedata.east_asian_width`
@@ -410,15 +412,28 @@ const fn plural(count: usize) -> &'static str {
     if count == 1 { "" } else { "S" }
 }
 
+/// `"NEEDS"` for one, `"NEED"` for every other count: the noun `plural`
+/// inflects and the verb agreeing with it are two different words, and
+/// every fixture in this file happens to file two edits, which is exactly
+/// why a mismatched verb went unnoticed until a real screen showed one.
+const fn needs_or_need(count: usize) -> &'static str {
+    if count == 1 { "NEEDS" } else { "NEED" }
+}
+
 /// The dialog's own heading, one of three depending on which half of the
 /// question fired.
 fn close_dialog_heading(dialog: &CloseDialog) -> String {
     match (dialog.unsent(), dialog.parked()) {
         (0, parked) => format!("{parked} FIELD{} ALREADY WAITING", plural(parked)),
-        (unsent, 0) => format!("{unsent} EDIT{} NEED A RESPAWN", plural(unsent)),
-        (unsent, parked) => format!(
-            "{unsent} EDIT{} NEED A RESPAWN, {parked} FIELD{} ALREADY DID",
+        (unsent, 0) => format!(
+            "{unsent} EDIT{} {} A RESPAWN",
             plural(unsent),
+            needs_or_need(unsent)
+        ),
+        (unsent, parked) => format!(
+            "{unsent} EDIT{} {} A RESPAWN, {parked} FIELD{} ALREADY DID",
+            plural(unsent),
+            needs_or_need(unsent),
             plural(parked)
         ),
     }
@@ -480,6 +495,46 @@ fn close_dialog_option_line(text: String, palette: Palette, width: u16) -> Line<
     ))
 }
 
+/// `"L   reload           "`, aligned with the `R` and `c` rows' own
+/// label columns (all three are the same width): what
+/// [`close_dialog_reload_lines`] indents a continuation row under.
+const RELOAD_LABEL: &str = "L   reload           ";
+
+/// The reload row, wrapped rather than truncated.
+///
+/// [`fit`] truncates with an ellipsis, which is right for a table cell but
+/// wrong here: the sentence's own tail is the `SO_REUSEPORT` caveat
+/// (`close_dialog_reload_sentence`'s own doc), the correction the design
+/// added after refusing an earlier, uncaveated "No downtime, slower". A
+/// truncated row ships exactly the claim that correction exists to
+/// prevent. `docs/lookout/design-files/README.md`'s own mock wraps this
+/// row onto a continuation line indented under the label instead, for
+/// both the overlap and the serial sentence, so this does too, at every
+/// width: the box's own interior is a fixed 86 columns regardless of the
+/// terminal's, so this wraps even at a comfortable terminal width.
+fn close_dialog_reload_lines(
+    dialog: &CloseDialog,
+    palette: Palette,
+    body: u16,
+) -> Vec<Line<'static>> {
+    let label_w = u16::try_from(RELOAD_LABEL.chars().count()).unwrap_or(0);
+    let sentence = close_dialog_reload_sentence(dialog);
+    let available = usize::from(body.saturating_sub(label_w));
+    let indent = " ".repeat(usize::from(label_w));
+    wrap(&sentence, available)
+        .into_iter()
+        .enumerate()
+        .map(|(index, chunk)| {
+            let text = if index == 0 {
+                format!("{RELOAD_LABEL}{chunk}")
+            } else {
+                format!("{indent}{chunk}")
+            };
+            close_dialog_option_line(text, palette, body)
+        })
+        .collect()
+}
+
 /// The dialog's rows, in its borderless form: what a terminal under 90
 /// columns gets, and what the boxed form (a later frame) draws inside its
 /// own border.
@@ -497,9 +552,14 @@ pub(super) fn close_dialog_lines(
     now: Instant,
 ) -> Vec<Line<'static>> {
     let body = body_width(width);
+    // `band`, not `attention`: every other band on this dashboard reverses
+    // its role's colour rather than merely tinting the text, and 12a's own
+    // rule is that colour is always redundant with the words, so `NO_COLOR`
+    // has to lose decoration, never information. `attention` alone drops
+    // both under `NO_COLOR`, since it carries no modifier at all.
     let mut lines = vec![Line::from(Span::styled(
         format!("  {}", fit(&close_dialog_heading(dialog), body)),
-        palette.attention(),
+        palette.band(Role::Butter),
     ))];
     if dialog.unsent() > 0 {
         let sentence = close_dialog_naming_sentence(dialog.unsent_fields());
@@ -521,14 +581,7 @@ pub(super) fn close_dialog_lines(
         palette,
         body,
     ));
-    lines.push(close_dialog_option_line(
-        format!(
-            "L   reload           {}",
-            close_dialog_reload_sentence(dialog)
-        ),
-        palette,
-        body,
-    ));
+    lines.extend(close_dialog_reload_lines(dialog, palette, body));
     lines.push(close_dialog_option_line(
         "c   continue         write them and leave it running. They wait for a respawn.".to_owned(),
         palette,
@@ -2075,6 +2128,18 @@ mod tests {
         );
     }
 
+    /// The noun and the verb are two different words `plural` and
+    /// `needs_or_need` each inflect on their own; every other fixture in
+    /// this file files two edits, which is exactly why a verb that never
+    /// agreed with a singular subject went unnoticed until a real screen
+    /// showed one.
+    #[test]
+    fn a_single_edit_gets_a_singular_verb() {
+        let dialog = fixtures::close_dialog_with(1, 0);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+        assert_eq!(text_of(&lines)[0].trim(), "1 EDIT NEEDS A RESPAWN");
+    }
+
     #[test]
     fn a_serial_reload_does_not_promise_no_gap() {
         let dialog = fixtures::close_dialog_reloading(ReloadKind::Serial, 1);
@@ -2093,6 +2158,31 @@ mod tests {
             reload.contains("if the app sets SO_REUSEPORT itself"),
             "{reload}"
         );
+    }
+
+    /// The caveat's own last word, not a `contains` on a prefix of it: a
+    /// row truncated with `fit`'s ellipsis would still pass
+    /// `contains("No gap")`, which is exactly the bug this test exists to
+    /// catch. Every width here is one the box or the borderless form
+    /// actually draws at (the box's own interior is a fixed [`BOX_WIDTH`]
+    /// regardless of the terminal, so a wide terminal still wraps).
+    #[test]
+    fn the_reload_sentence_wraps_rather_than_truncates_at_every_width() {
+        for width in [BOX_WIDTH, BOX_FLOOR - 1, MIN_TERM_WIDTH, 160] {
+            for kind in [ReloadKind::Overlap, ReloadKind::Serial] {
+                for instances in [1, 3] {
+                    let dialog = fixtures::close_dialog_reloading(kind, instances);
+                    let sentence = close_dialog_reload_sentence(&dialog);
+                    let last_word = sentence.split_whitespace().next_back().unwrap();
+                    let lines = close_dialog_lines(&dialog, fixtures::plain(), width, dialog.at());
+                    let joined = text_of(&lines).join(" ");
+                    assert!(
+                        joined.contains(last_word),
+                        "width {width}, {kind:?}, {instances} instances: {joined}"
+                    );
+                }
+            }
+        }
     }
 
     /// `docs/terminology.md:20`. The frame calls instances lambs; four
@@ -2178,7 +2268,7 @@ mod tests {
     #[test]
     fn the_borderless_form_spans_the_whole_width_and_never_clips() {
         let rendered = fixtures::render_dialog(89, 48);
-        let heading = fixtures::row_containing(&rendered, "NEED A RESPAWN");
+        let heading = fixtures::row_containing(&rendered, "NEEDS A RESPAWN");
         assert!(
             !heading.contains('▐'),
             "no border below the floor: {heading}"
@@ -2211,6 +2301,45 @@ mod tests {
         // when there is no colour to dim with.
         let title_band = buffer[(2, 0)].style();
         assert_eq!(title_band.add_modifier, ratatui::style::Modifier::empty());
+    }
+
+    /// The cell at `(x, y)` in `buffer`'s own rendered text where row `y`
+    /// contains `needle`, `x` being the column `needle` starts at plus
+    /// `offset`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no row contains `needle`, a fixture bug rather than a
+    /// failure the test is about.
+    #[track_caller]
+    fn cell_in_row_containing(buffer: &Buffer, needle: &str, offset: u16) -> ratatui::style::Style {
+        let text = render_text(buffer);
+        let (y, line) = text
+            .lines()
+            .enumerate()
+            .find(|(_, line)| line.contains(needle))
+            .unwrap_or_else(|| panic!("no row contains {needle:?}"));
+        let x = line.find(needle).unwrap_or(0);
+        let x = u16::try_from(x).unwrap_or(0) + offset;
+        let y = u16::try_from(y).unwrap_or(0);
+        buffer[(x, y)].style()
+    }
+
+    /// 12a's own rule: colour is always redundant with the text, so
+    /// `NO_COLOR` loses decoration and never information. The heading's
+    /// only decoration is the `REVERSED` band every other chip on this
+    /// dashboard carries; a heading styled with `attention` alone (a bare
+    /// foreground colour) would lose it entirely under `NO_COLOR`, since
+    /// `attention` sets no modifier for `NO_COLOR` to leave behind.
+    #[test]
+    fn the_heading_stays_a_reversed_band_under_no_color() {
+        let buffer = fixtures::draw_pane_with_dialog_and_palette(160, 48, fixtures::no_color());
+        let heading = cell_in_row_containing(&buffer, "NEEDS A RESPAWN", 0);
+        assert!(
+            heading
+                .add_modifier
+                .contains(ratatui::style::Modifier::REVERSED)
+        );
     }
 
     /// The three the check found. `▐` is Neutral and the four corners are
