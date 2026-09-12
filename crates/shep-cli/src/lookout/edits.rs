@@ -65,7 +65,13 @@ impl Edit {
     /// `apply_group` table.
     #[cfg_attr(
         not(test),
-        expect(
+        // `allow`, not `expect`: this is dead only through
+        // `Edits::worst_impact`, and whether a compiler propagates that is a
+        // toolchain detail. Rust 1.97 does and 1.93 does not, so an `expect`
+        // here is fulfilled on one and an error on the other. `worst_impact`
+        // itself is dead on both and keeps its `expect`; remove this when that
+        // one goes.
+        allow(
             dead_code,
             reason = "frame 1g's close dialog reads it; that frame is not built yet"
         )
@@ -185,7 +191,13 @@ impl Edits {
 /// total order asserted in shep-core would claim more than this needs.
 #[cfg_attr(
     not(test),
-    expect(
+    // `allow`, not `expect`: this is dead only through
+    // `Edits::worst_impact`, and whether a compiler propagates that is a
+    // toolchain detail. Rust 1.97 does and 1.93 does not, so an `expect`
+    // here is fulfilled on one and an error on the other. `worst_impact`
+    // itself is dead on both and keeps its `expect`; remove this when that
+    // one goes.
+    allow(
         dead_code,
         reason = "frame 1g's close dialog reads `Edits::worst_impact`, which reads this"
     )
