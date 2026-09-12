@@ -34,13 +34,20 @@ const UNRESOLVED_DEV_HOME: &str =
 /// land the forced `watch = true` on production apps.
 ///
 /// The home is injected as [`ShepPaths::resolve`]'s own answer for
-/// `SHEP_HOME`, so every derived path matches the other verbs.
-fn dev_home(env: &impl Fn(&str) -> Option<String>, home_dir: &Path) -> ShepPaths {
-    let home = env("SHEP_DEV_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home_dir.join(".shep-dev"));
+/// `SHEP_HOME`, so every derived path matches the other verbs. `resolve`
+/// therefore never reaches its own `home_dir` fallback, and is handed the
+/// dev home rather than a second path that would go unread.
+///
+/// `home_dir` is read for the `~/.shep-dev` fallback alone, so `None` (no
+/// passwd home, no `$HOME`) is answerable as long as `$SHEP_DEV_HOME` names
+/// somewhere. `None` back means neither did.
+fn dev_home(env: &impl Fn(&str) -> Option<String>, home_dir: Option<&Path>) -> Option<ShepPaths> {
+    let home = match env("SHEP_DEV_HOME") {
+        Some(dir) => PathBuf::from(dir),
+        None => home_dir?.join(".shep-dev"),
+    };
     let inject = |key: &str| (key == "SHEP_HOME").then(|| home.to_string_lossy().into_owned());
-    ShepPaths::resolve(&inject, home_dir)
+    Some(ShepPaths::resolve(&inject, &home))
 }
 
 /// Sets `watch = true` on every app, in place: rebuilding each [`AppConfig`]
@@ -131,15 +138,10 @@ pub async fn dev(
             None
         }
     };
-    let home_dir = match (
-        user_home(&|key| std::env::var_os(key)),
-        env("SHEP_DEV_HOME"),
-    ) {
-        (Some(dir), _) => dir,
-        (None, Some(_)) => PathBuf::new(),
-        (None, None) => return streams.fail(ExitCode::Usage, UNRESOLVED_DEV_HOME),
+    let home_dir = user_home(&|key| std::env::var_os(key));
+    let Some(paths) = dev_home(&env, home_dir.as_deref()) else {
+        return streams.fail(ExitCode::Usage, UNRESOLVED_DEV_HOME);
     };
-    let paths = dev_home(&env, &home_dir);
 
     let options = ForegroundOptions {
         paths,
@@ -161,7 +163,7 @@ mod tests {
             "SHEP_HOME" => Some("/srv/production".to_string()),
             _ => None,
         };
-        let paths = dev_home(&env, Path::new("/home/ada"));
+        let paths = dev_home(&env, Some(Path::new("/home/ada"))).unwrap();
         assert_eq!(paths.home, Path::new("/home/ada/.shep-dev"));
 
         let env = |key: &str| match key {
@@ -170,9 +172,19 @@ mod tests {
             _ => None,
         };
         assert_eq!(
-            dev_home(&env, Path::new("/home/ada")).home,
+            dev_home(&env, Some(Path::new("/home/ada"))).unwrap().home,
             Path::new("/tmp/t1")
         );
+
+        // No passwd home and no `$HOME`: `$SHEP_DEV_HOME` alone still
+        // answers, and without it there is nowhere to put a dev flock.
+        assert_eq!(
+            dev_home(&env, None).unwrap().home,
+            Path::new("/tmp/t1"),
+            "`$SHEP_DEV_HOME` names the home outright, so no fallback is needed"
+        );
+        let no_dev_home = |key: &str| (key == "SHEP_HOME").then(|| "/srv/production".to_string());
+        assert!(dev_home(&no_dev_home, None).is_none());
     }
 
     #[test]
