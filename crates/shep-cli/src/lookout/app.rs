@@ -238,6 +238,16 @@ pub enum Msg {
         /// What could not be sent.
         sent: Sent,
     },
+    /// An [`Effect::SendAll`] batch finished going out to the link task.
+    ///
+    /// `None` means every entry reached the channel; `send` only ever fails
+    /// there once the channel is closed, so the first casualty stands for
+    /// the rest of that batch, the same way a lone [`Effect::Send`] reports
+    /// only the one entry it carries.
+    BatchSent {
+        /// The first entry the channel refused, once closed.
+        unsent: Option<Sent>,
+    },
     /// The settings screen's read of `shep.toml` landed, answering an
     /// [`Effect::LoadSettings`]. A `String` error, since this reducer holds no
     /// error types from `commands`.
@@ -337,9 +347,12 @@ pub enum Effect {
     ///
     /// Its own variant rather than a `Vec` on [`Self::Send`], because
     /// every other sender raises exactly one request and would have to
-    /// wrap it. `super::run_ui` sends these the same way, one `try_send`
-    /// each, so a full channel refuses one entry and reports it rather
-    /// than blocking the screen on the rest.
+    /// wrap it. `super::run_ui` hands the whole batch to a spawned task
+    /// that awaits each `send` in turn on a cloned sender, so a channel
+    /// deeper than the batch never stalls the screen and a full one never
+    /// drops an entry; order survives because one task sends the whole
+    /// batch in sequence. Only a closed channel can still fail a send, and
+    /// [`Msg::BatchSent`] carries that casualty back.
     SendAll(Vec<Sent>),
     /// Leave.
     Quit,
@@ -1727,6 +1740,13 @@ impl App {
                     });
                     Effect::None
                 }
+            },
+            // Delegates to `Msg::Unsent`'s own match rather than repeating
+            // it: every arm there already reports the right notice for the
+            // `Sent` it carries, and returns `Effect::None`.
+            Msg::BatchSent { unsent } => match unsent {
+                Some(sent) => self.update(Msg::Unsent { sent }),
+                None => Effect::None,
             },
             // The screen opens on what this read found; a failed read leaves
             // the dashboard up. A landed write's re-read and `r` land here too,

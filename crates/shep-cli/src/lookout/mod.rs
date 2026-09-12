@@ -421,19 +421,14 @@ where
                 }
                 dirty = true;
             }
-            // The arm above, once per request, and nothing else: no lock
-            // is taken and nothing blocks, so a batch of five costs five
-            // `try_send` calls on this task. Each entry reports its own
-            // failure, so a channel that fills halfway through says which
-            // fields did not go.
+            // Off this task, unlike the arm above: `try_send` would drop
+            // the tail of a batch deeper than the channel, and this task
+            // has no `.await` point in a bare loop to let the link task
+            // drain it through. `send_batch` owns a cloned sender and
+            // awaits each entry in turn, in one task, so order survives
+            // and nothing is dropped for merely being full.
             Effect::SendAll(batch) => {
-                for sent in batch {
-                    if let Err(err) = requests.try_send(sent) {
-                        let (mpsc::error::TrySendError::Full(sent)
-                        | mpsc::error::TrySendError::Closed(sent)) = err;
-                        let _ = app.update(Msg::Unsent { sent });
-                    }
-                }
+                inflight.push(Box::pin(send_batch(requests.clone(), batch)));
                 dirty = true;
             }
             // Off this task: `spawn_blocking` even though the read takes no
@@ -563,6 +558,24 @@ where
     }
 
     terminal
+}
+
+/// Delivers an [`Effect::SendAll`] batch to the link task, in order, without
+/// blocking [`run_ui`].
+///
+/// One task, one cloned sender, one `send` per entry, awaited in sequence:
+/// a channel deeper than the batch never stalls the screen, and a channel
+/// merely full is a wait rather than a loss. `send` only fails once the
+/// channel is closed, so the entry it hands back there is the first
+/// casualty of a shepherd that is gone; every entry after it would fail
+/// the same way, so this stops rather than piling up identical reports.
+async fn send_batch(requests: mpsc::Sender<Sent>, batch: Vec<Sent>) -> Msg {
+    for sent in batch {
+        if let Err(mpsc::error::SendError(sent)) = requests.send(sent).await {
+            return Msg::BatchSent { unsent: Some(sent) };
+        }
+    }
+    Msg::BatchSent { unsent: None }
 }
 
 /// Renders [`crate::commands::dogs::EnableRefusal`] for the settings screen's
@@ -1166,5 +1179,65 @@ mod tests {
             std::thread::sleep(WRITE_POLL);
         }
         assert!(written, "the write that was in flight still landed");
+    }
+
+    /// The regression this exists for: a batch bigger than the request
+    /// channel used to drop its tail, because the old loop's `try_send`
+    /// had no `.await` point to let the link task drain it through. Five
+    /// entries into a channel of two, drained slower than they are filed,
+    /// must all land, in the order they were filed.
+    #[tokio::test]
+    async fn send_batch_delivers_every_entry_past_a_full_channel() {
+        let (request_tx, mut request_rx) = mpsc::channel(2);
+        let batch: Vec<Sent> = (0..5)
+            .map(|n| Sent::SheepConfig {
+                name: format!("sheep-{n}"),
+            })
+            .collect();
+        let expected = batch.clone();
+
+        let handle = tokio::spawn(send_batch(request_tx, batch));
+
+        let mut received = Vec::new();
+        for _ in 0..5 {
+            // No delay needed: the channel holds two, so the third
+            // `recv` already has to wait on `send_batch` making room,
+            // which is the condition under test.
+            received.push(
+                request_rx
+                    .recv()
+                    .await
+                    .expect("the batch is still arriving"),
+            );
+        }
+
+        assert_eq!(
+            received, expected,
+            "every entry landed, in the order it was filed"
+        );
+        let msg = handle.await.expect("send_batch does not panic");
+        assert!(matches!(msg, Msg::BatchSent { unsent: None }), "{msg:?}");
+    }
+
+    /// The channel closing mid-batch, rather than merely filling, is the
+    /// one case `send` actually fails: the shepherd going away must still
+    /// report, not be swallowed by the fix for the full case above.
+    #[tokio::test]
+    async fn send_batch_reports_the_first_casualty_once_the_channel_is_closed() {
+        let (request_tx, request_rx) = mpsc::channel(2);
+        drop(request_rx);
+        let batch = vec![Sent::SheepConfig {
+            name: "sheep-0".to_string(),
+        }];
+
+        let Msg::BatchSent { unsent } = send_batch(request_tx, batch).await else {
+            panic!("wanted a BatchSent");
+        };
+        assert_eq!(
+            unsent,
+            Some(Sent::SheepConfig {
+                name: "sheep-0".to_string()
+            })
+        );
     }
 }
