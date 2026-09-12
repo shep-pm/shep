@@ -129,7 +129,7 @@ fn lock_path(path: &Path) -> PathBuf {
         .map(std::ffi::OsStr::to_os_string)
         .unwrap_or_default();
     name.push(".lock");
-    path.parent().unwrap_or_else(|| Path::new(".")).join(name)
+    crate::atomic_file::parent_of(path).join(name)
 }
 
 #[cfg(test)]

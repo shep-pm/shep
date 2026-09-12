@@ -66,6 +66,16 @@ pub fn create_staging_file(
     builder.tempfile_in(parent)
 }
 
+/// The directory `path` lives in, or the current directory when `path` is a
+/// bare filename.
+///
+/// Every store under `$SHEP_HOME` stages, locks and publishes beside the
+/// file it is replacing, so all of them need this same fallback; written out
+/// separately at each site it is a decision four callers can disagree about.
+pub(crate) fn parent_of(path: &Path) -> &Path {
+    path.parent().unwrap_or_else(|| Path::new("."))
+}
+
 // `sync_all` on the staged file flushes its contents; the rename's
 // directory entry is a separate change to the parent directory, which
 // this flushes. Only an unclean shutdown can lose an entry a completed
@@ -112,7 +122,7 @@ pub fn publish(tmp: tempfile::NamedTempFile, path: &Path) -> std::io::Result<()>
     // inside the error and its `Drop` removes the staging file, so a failed
     // replace does not leave one behind.
     tmp.persist(path).map_err(|err| err.error)?;
-    sync_dir(path.parent().unwrap_or_else(|| Path::new(".")))
+    sync_dir(parent_of(path))
 }
 
 /// Replaces `path` with `value` as pretty-printed JSON and one trailing
@@ -132,8 +142,7 @@ where
 {
     use std::io::Write as _;
 
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let mut tmp = create_staging_file(parent, prefix, ".tmp")?;
+    let mut tmp = create_staging_file(parent_of(path), prefix, ".tmp")?;
 
     let json = serde_json::to_string_pretty(value).map_err(std::io::Error::other)?;
     tmp.write_all(json.as_bytes())?;

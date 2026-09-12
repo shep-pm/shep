@@ -194,7 +194,7 @@ fn ring_bytes(lines: &[String]) -> u64 {
 /// staging file. [`FileLock`] already keeps two appenders apart; this is
 /// the second lock for a caller that reaches `write_ring` another way.
 fn write_ring(path: &Path, lines: &[String]) -> Result<(), BarkError> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let parent = crate::atomic_file::parent_of(path);
     let mut tmp = crate::atomic_file::create_staging_file(parent, "barks", ".tmp")?;
 
     for line in lines {
