@@ -145,7 +145,7 @@ impl StatsState {
     /// For a caller with no index already in hand. The polling tick always
     /// has one and uses [`Self::record_baseline`] directly, so this has no
     /// production caller; it lets a test set a baseline in one line.
-    #[allow(dead_code, reason = "called only by this crate's tests")]
+    #[cfg(test)]
     pub(crate) fn record_baseline_now(&self, now: Instant) {
         let table = self.sampler.sample();
         self.record_baseline(&TreeIndex::build(&table), now);
