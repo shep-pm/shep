@@ -1458,7 +1458,7 @@ pub struct App {
     /// What makes a sample a mean over one poll rather than over the
     /// shepherd's own baseline window. Dropped when a sheep reports no
     /// reading, so a stop is never differenced across.
-    cpu_last: HashMap<u32, (u64, Instant)>,
+    cpu_last: HashMap<u32, (Option<u32>, u64, Instant)>,
     /// How [`Self::visible_rows`] gathers the flock table, toggled by `F`.
     grouping: Grouping,
     /// Fold names `z` has collapsed: [`Self::visible_rows`] skips a
@@ -4548,19 +4548,20 @@ impl App {
     fn record_samples(&mut self, at: Instant) {
         // Collected first: the differencing below needs `&mut self.cpu_last`
         // while a walk of `self.flock` would still be borrowing it.
-        let readings: Vec<(u32, Option<u64>, u64)> = self
+        let readings: Vec<(u32, Option<u32>, Option<u64>, u64)> = self
             .flock
             .values()
             .map(|row| {
                 (
                     row.info.id,
+                    row.info.pid,
                     row.info.cpu_ms,
                     row.info.memory_bytes.unwrap_or(0),
                 )
             })
             .collect();
         let mut sum = 0.0;
-        for (id, cpu_ms, rss) in readings {
+        for (id, pid, cpu_ms, rss) in readings {
             let rss_history = self.rss_history.entry(id).or_default();
             rss_history.push_back(rss);
             if rss_history.len() > HISTORY {
@@ -4573,12 +4574,22 @@ impl App {
                     self.cpu_last.remove(&id);
                     0.0
                 }
-                Some(now_ms) => match self.cpu_last.insert(id, (now_ms, at)) {
+                Some(now_ms) => match self.cpu_last.insert(id, (pid, now_ms, at)) {
                     // Nothing behind this reading to difference. The buffer
                     // stays one short of the poll count rather than claiming
                     // an idle sample it never measured.
                     None => continue,
-                    Some((then_ms, then)) => shep_core::values::cpu_percent(
+                    // A respawn keeps the sheep's id and takes a new pid, and
+                    // `cpu_ms` counts the tree under whichever pid the
+                    // shepherd is watching now. Differencing across that
+                    // boundary subtracts a dead process's counter from a live
+                    // one's: `saturating_sub` keeps it from ever reading as a
+                    // spike, but it still underreports the new process by
+                    // exactly what the old one had spent. A new process is a
+                    // first reading, so it records a baseline and appends
+                    // nothing, the same as a sheep the pane has never seen.
+                    Some((then_pid, _, _)) if then_pid != pid => continue,
+                    Some((_, then_ms, then)) => shep_core::values::cpu_percent(
                         now_ms.saturating_sub(then_ms),
                         at.saturating_duration_since(then),
                     )
@@ -5714,6 +5725,16 @@ mod tests {
             .build()
     }
 
+    /// A row naming its own pid, for the respawn case: one sheep id outlives
+    /// the process under it, and `cpu_ms` counts whichever tree the shepherd
+    /// watches now.
+    fn row_with_pid_and_cpu_ms(id: u32, pid: u32, cpu_ms: u64) -> ProcessInfo {
+        ProcessInfo::builder(id, format!("sheep-{id}"), ProcStatus::Online)
+            .pid(Some(pid))
+            .cpu_ms(Some(cpu_ms))
+            .build()
+    }
+
     /// The same row with no CPU reading, which is what a stopped sheep sends.
     fn row_without_cpu(id: u32) -> ProcessInfo {
         ProcessInfo::builder(id, format!("sheep-{id}"), ProcStatus::Stopped).build()
@@ -5858,6 +5879,27 @@ mod tests {
     /// A respawn gives a new tree whose counter starts below the old one's.
     /// Clamped to zero, the same rule the daemon applies, and it costs one
     /// dropped sample rather than a negative spike.
+    /// A respawn keeps the id and takes a new pid, so differencing across it
+    /// would subtract a dead process's counter from a live one's.
+    ///
+    /// The counter rising across the boundary is the case `saturating_sub`
+    /// cannot save: it reads as a real delta and underreports the new
+    /// process by exactly what the old one had spent. A new process is a
+    /// first reading, so it records a baseline and appends nothing.
+    #[test]
+    fn a_respawn_under_the_same_id_starts_a_new_baseline() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_pid_and_cpu_ms(1, 100, 50)]);
+        app.on_snapshot(vec![row_with_pid_and_cpu_ms(1, 100, 2_050)]);
+        assert_eq!(app.cpu_history(1), &[100.0], "the live process differences");
+        app.on_snapshot(vec![row_with_pid_and_cpu_ms(1, 200, 3_000)]);
+        assert_eq!(
+            app.cpu_history(1),
+            &[100.0],
+            "the new pid appends nothing rather than differencing 3000 against 2050"
+        );
+    }
+
     #[test]
     fn a_counter_that_went_backwards_reads_zero() {
         let mut app = fixture();
