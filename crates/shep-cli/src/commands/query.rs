@@ -447,7 +447,10 @@ fn fit_rows(frame: &str, columns: u16, rows: u16) -> String {
 /// once at its widest to reserve the rows, and once with the count it settled
 /// on.
 fn notice(dropped: usize) -> String {
-    format!("{dropped} more lines than this terminal shows")
+    // Singular is reachable: `dropped` is at least one wherever the notice
+    // prints at all, and a follow redraws this once a second.
+    let lines = if dropped == 1 { "line" } else { "lines" };
+    format!("{dropped} more {lines} than this terminal shows")
 }
 
 /// How many terminal rows `line` occupies once it wraps at `columns`.
@@ -737,6 +740,26 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// fails if the notice goes back to one spelling. Dropping exactly one
+    /// line is the common case on a window one row short, and it redraws
+    /// every second.
+    #[test]
+    fn the_notice_counts_one_dropped_line_in_the_singular() {
+        let frame = "one\ntwo\nthree\n";
+
+        // Four rows: one held for the cursor, one for the notice, two for
+        // content, so exactly one line drops and the word is singular.
+        assert_eq!(
+            fit_rows(frame, 80, 4),
+            "one\ntwo\n1 more line than this terminal shows\n"
+        );
+        // Three rows leaves one for content, so two drop and it is plural.
+        assert_eq!(
+            fit_rows(frame, 80, 3),
+            "one\n2 more lines than this terminal shows\n"
+        );
     }
 
     #[test]
