@@ -1,0 +1,53 @@
+---
+source: crates/shep-cli/src/lookout/frames.rs
+assertion_line: 2900
+expression: render_text(&buffer)
+---
+shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
+                                                                                                                                                                
+ ██ api  (sheep config)                                                                                                                                         
+   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab next group   1…8 jump                                                     
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS                                                                             
+>  cwd                        (unset)                                         respawn    FOCUSED  cwd  text                                                     
+   depends_on                 []                                              next start  Where the process runs. Without it, the daemon's own directory        
+   fold                       (unset)                                         now                                                                               
+   group                      (unset)                                         respawn     now     (unset)                                                       
+ = instances                  1                                               read-only   default (none)                                                        
+   interpreter                (unset)                                         respawn     example /srv/app                                                      
+ = name                       api                                             read-only                                                                         
+   reuse_port                 false                                           now         ▲ respawn  the sheep must stop and start again                        
+   script                     ./api/server.js                                 respawn                                    pick the timing when you close the pane
+   user                       (unset)                                         respawn                                                                           
+                                                                                          ──────────────────────────────────────────────────────────────────────
+  env                                                                                     VALIDATION                                                            
+   DATABASE_URL               (set)                                                       █ an absolute or relative path, expanded from cwd                     
+   NODE_ENV                   (set)                                                       █ ~ expands, $VARS do not                                             
+   + add a key                                                                            █ refused: a path the daemon's user cannot enter                      
+                                                                                                                                                                
+                                                                                          NEIGHBOURS                                                            
+                                                                                          script  resolved against this cwd                                     
+                                                                                          out_file  relative paths follow it too                                
+                                                                                          watch_options  globs are rooted here                                  
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * overridden   -> changed by you, not yet written            
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   u undo   h help   * yours   ! parked   q quit               control enabled
