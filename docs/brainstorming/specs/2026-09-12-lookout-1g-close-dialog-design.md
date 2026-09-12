@@ -314,6 +314,20 @@ underneath, which already says `2 edits`. The sentence below names the fields
 and truncates past three: `cwd, err_file and 3 more`. `Everything else you
 changed is already live` draws only when there is something else.
 
+**The right clause was left out of this section by mistake, and added back
+2026-09-12.** The frame draws the question on the left and the sheep on the
+right, `catcher is online, pid 71578`, and the rulings put 1g ahead as drawn.
+The name, the status and the pid, at column 36 when the row holds both clauses
+and one space of separation when the question runs past it. It comes off the
+flock map rather than the pane, which carries no pid, and names one only when
+a single instance is running, since several name no one pid. The dialog is
+modal over a title band that says the name too, but that band is dimmed behind
+the box, and an operator answering a question that restarts a process should
+not have to read around the dialog to learn which process.
+
+The right clause is also the first thing to drop when the row cannot hold
+both, since the left clause is the question itself.
+
 ## Terminology
 
 `pending` still means what 1e settled it means, and this dialog sits exactly on

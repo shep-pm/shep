@@ -982,6 +982,11 @@ fn close_dialog_pane(
     ConfigPane::sheep(SheepConfigView::new(config, Vec::new(), Vec::new()))
 }
 
+/// The pid every hand-built close dialog names, so a test reading the
+/// heading's right clause has one number to match rather than whichever
+/// the flock fixture handed out.
+const DIALOG_PID: u32 = 71_578;
+
 /// A close dialog naming `unsent` filed edits and `parked` shepherd
 /// fields, over a plain overlapping-reload sheep: what
 /// [`close_dialog_lines`](crate::lookout::view::pane::close_dialog_lines)'s
@@ -990,7 +995,14 @@ fn close_dialog_pane(
 pub fn close_dialog_with(unsent: usize, parked: usize) -> CloseDialog {
     let pane = close_dialog_pane(true, false, false, 1);
     let unsent_fields = (0..unsent).map(|i| format!("field{i}")).collect();
-    CloseDialog::new(unsent_fields, parked, &pane, Instant::now())
+    CloseDialog::new(
+        unsent_fields,
+        parked,
+        &pane,
+        ProcStatus::Online,
+        Some(DIALOG_PID),
+        Instant::now(),
+    )
 }
 
 /// A close dialog over a sheep whose reload takes `kind` and reaches
@@ -1005,7 +1017,14 @@ pub fn close_dialog_reloading(kind: ReloadKind, instances: u32) -> CloseDialog {
         ReloadKind::Serial => (false, true, false),
     };
     let pane = close_dialog_pane(wait_ready, has_probe, reuse_port, instances);
-    CloseDialog::new(vec!["cwd".to_string()], 0, &pane, Instant::now())
+    CloseDialog::new(
+        vec!["cwd".to_string()],
+        0,
+        &pane,
+        ProcStatus::Online,
+        Some(DIALOG_PID),
+        Instant::now(),
+    )
 }
 
 /// A close dialog raised over a pane with `cwd` really filed (it needs a
@@ -1029,6 +1048,8 @@ pub fn close_dialog_with_live_edit(with_live: bool) -> CloseDialog {
         pane.unsent_fields_needing_a_respawn(),
         pane.parked_count(),
         pane,
+        ProcStatus::Online,
+        Some(DIALOG_PID),
         Instant::now(),
     )
 }

@@ -22,7 +22,7 @@ shep lookout   /home/ada/.shep                                                  
   env                                                                                     VALIDATION                                                            
    DATABASE_URL               (set)                                                       █ an absolute or relative path, expanded from cwd                     
    NODE_ENV                   (set) ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                                    
-   + add a key                      ▐  1 FIELD ALREADY WAITING                                                             ▌r cannot enter                      
+   + add a key                      ▐  1 FIELD ALREADY WAITING             api is online, pid 48219                        ▌r cannot enter                      
                                     ▐                                                                                      ▌                                    
                                     ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌                                    
                                     ▐  L   reload           the replacement starts alongside and takes over. No gap, if the▌                                    

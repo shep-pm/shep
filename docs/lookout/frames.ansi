@@ -1583,7 +1583,7 @@ esc pressed with cwd and err_file edited and listen_timeout already parked from 
 [0m[38;5;245m   + add a key                                                                            VALIDATION                                                            [0m
 [0m[38;5;245m                                                                                          █ a path, relative paths follow cwd                                   [0m
 [0m[38;5;245m                                    [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m                                    [0m
-[0m[38;5;245m                                    [0m[38;5;238m▐[0m[7m[38;5;221m  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID                                         [0m[38;5;238m▌[0m[38;5;245m                                    [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m[7m[38;5;221m  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                [0m[38;5;238m▌[0m[38;5;245m                                    [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  cwd and err_file take hold when the process starts again.                           [0m[38;5;238m▌[0m[38;5;245mle across instances without merge_l…[0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m                                    [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  R   restart now      stop, then start. The stop takes up to 1600ms.                 [0m[38;5;238m▌[0m[38;5;245m                                    [0m
@@ -1636,7 +1636,7 @@ The same dialog at 90 columns, exactly the floor its border needs: 86 interior c
 [0m[38;5;245m   + add a key                            ────────────────────────────────────────────────[0m
 [0m[38;5;245m                                          VALIDATION                                      [0m
 [0m[38;5;245m [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m [0m
-[0m[38;5;245m [0m[38;5;238m▐[0m[7m[38;5;221m  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID                                         [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[7m[38;5;221m  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                [0m[38;5;238m▌[0m[38;5;245m [0m
 [0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  cwd and err_file take hold when the process starts again.                           [0m[38;5;238m▌[0m[38;5;245m [0m
 [0m[38;5;245m [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m…[0m
 [0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  R   restart now      stop, then start. The stop takes up to 1600ms.                 [0m[38;5;238m▌[0m[38;5;245m [0m
@@ -1707,7 +1707,7 @@ The same dialog one column under the floor, at 89: the border is dropped and the
 [0m[38;5;245m                                                                                         [0m
 [0m[38;5;245m                                                                                         [0m
 [0m[38;5;245m                                                                                         [0m
-[0m[7m[38;5;221m  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID                                            [0m
+[0m[7m[38;5;221m  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                   [0m
 [0m[48;5;235m  cwd and err_file take hold when the process starts again.                              [0m
                                                                                          [0m
 [0m[48;5;235m  R   restart now      stop, then start. The stop takes up to 1600ms.                    [0m
@@ -1742,7 +1742,7 @@ esc pressed with no edit of the operator's own, only listen_timeout already park
 [0m[38;5;245m  env                                                                                     VALIDATION                                                            [0m
 [0m[38;5;245m   DATABASE_URL               (set)                                                       █ an absolute or relative path, expanded from cwd                     [0m
 [0m[38;5;245m   NODE_ENV                   (set) [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m                                    [0m
-[0m[38;5;245m   + add a key                      [0m[38;5;238m▐[0m[7m[38;5;221m  1 FIELD ALREADY WAITING                                                             [0m[38;5;238m▌[0m[38;5;245mr cannot enter                      [0m
+[0m[38;5;245m   + add a key                      [0m[38;5;238m▐[0m[7m[38;5;221m  1 FIELD ALREADY WAITING             api is online, pid 48219                        [0m[38;5;238m▌[0m[38;5;245mr cannot enter                      [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m                                    [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  R   restart now      stop, then start. The stop takes up to 1600ms.                 [0m[38;5;238m▌[0m[38;5;245m                                    [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  L   reload           the replacement starts alongside and takes over. No gap, if the[0m[38;5;238m▌[0m[38;5;245m                                    [0m

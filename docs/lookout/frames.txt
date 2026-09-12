@@ -1537,7 +1537,7 @@ shep lookout   /home/ada/.shep                                                  
    + add a key                                                                            VALIDATION                                                            
                                                                                           █ a path, relative paths follow cwd                                   
                                     ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                                    
-                                    ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID                                         ▌                                    
+                                    ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                ▌                                    
                                     ▐  cwd and err_file take hold when the process starts again.                           ▌le across instances without merge_l…
                                     ▐                                                                                      ▌                                    
                                     ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌                                    
@@ -1589,7 +1589,7 @@ shep lookout   /home/ada/.shep                                              6 in
    + add a key                            ────────────────────────────────────────────────
                                           VALIDATION                                      
  ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜ 
- ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID                                         ▌ 
+ ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                ▌ 
  ▐  cwd and err_file take hold when the process starts again.                           ▌ 
  ▐                                                                                      ▌…
  ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌ 
@@ -1659,7 +1659,7 @@ shep lookout   /home/ada/.shep                                             6 in 
                                                                                          
                                                                                          
                                                                                          
-  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID                                            
+  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                   
   cwd and err_file take hold when the process starts again.                              
                                                                                          
   R   restart now      stop, then start. The stop takes up to 1600ms.                    
@@ -1693,7 +1693,7 @@ shep lookout   /home/ada/.shep                                                  
   env                                                                                     VALIDATION                                                            
    DATABASE_URL               (set)                                                       █ an absolute or relative path, expanded from cwd                     
    NODE_ENV                   (set) ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                                    
-   + add a key                      ▐  1 FIELD ALREADY WAITING                                                             ▌r cannot enter                      
+   + add a key                      ▐  1 FIELD ALREADY WAITING             api is online, pid 48219                        ▌r cannot enter                      
                                     ▐                                                                                      ▌                                    
                                     ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌                                    
                                     ▐  L   reload           the replacement starts alongside and takes over. No gap, if the▌                                    

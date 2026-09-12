@@ -420,8 +420,50 @@ const fn needs_or_need(count: usize) -> &'static str {
     if count == 1 { "NEEDS" } else { "NEED" }
 }
 
-/// The dialog's own heading, one of three depending on which half of the
-/// question fired.
+/// The column the heading's right clause starts at, when the row is wide
+/// enough to hold both clauses: `docs/lookout/design-files/README.md`'s
+/// own mock, which puts `catcher is online, pid 71578` there.
+const HEADING_SHEEP_COLUMN: usize = 36;
+
+/// The heading row: the question on the left, the sheep it is about on
+/// the right.
+///
+/// The right clause goes first when `body` cannot hold both. The left
+/// clause is the question itself, and the pane's own title band names the
+/// sheep too but is dimmed behind the box, which is the whole reason the
+/// right clause exists: an operator answering a question that restarts a
+/// process should not have to read around the dialog to learn which one.
+fn close_dialog_heading_row(dialog: &CloseDialog, body: u16) -> String {
+    let left = close_dialog_heading(dialog);
+    let right = close_dialog_sheep_clause(dialog);
+    let left_w = columns(&left);
+    // One space of separation at minimum, however far past the column the
+    // left clause runs.
+    let gap = HEADING_SHEEP_COLUMN.saturating_sub(left_w).max(1);
+    if left_w + gap + columns(&right) > usize::from(body) {
+        return left;
+    }
+    format!("{left}{}{right}", " ".repeat(gap))
+}
+
+/// `catcher is online, pid 71578`, or `catcher is online` for a sheep the
+/// shepherd runs several of, where no single pid is the answer.
+fn close_dialog_sheep_clause(dialog: &CloseDialog) -> String {
+    let state = format!("{} is {}", dialog.target_name(), dialog.status());
+    match dialog.pid() {
+        Some(pid) => format!("{state}, pid {pid}"),
+        None => state,
+    }
+}
+
+/// How many columns `text` occupies, the same count [`fit`] and
+/// [`clipped`] measure against.
+fn columns(text: &str) -> usize {
+    text.chars().map(char_columns).sum()
+}
+
+/// The question the heading asks, one of three depending on which half of
+/// it fired.
 fn close_dialog_heading(dialog: &CloseDialog) -> String {
     match (dialog.unsent(), dialog.parked()) {
         (0, parked) => format!("{parked} FIELD{} ALREADY WAITING", plural(parked)),
@@ -595,7 +637,7 @@ fn close_dialog_rows(
     let mut lines = vec![(
         DialogRow::Heading,
         Line::from(Span::styled(
-            format!("  {}", fit(&close_dialog_heading(dialog), body)),
+            format!("  {}", fit(&close_dialog_heading_row(dialog, body), body)),
             palette.band(Role::Butter),
         )),
     )];
@@ -2235,10 +2277,50 @@ mod tests {
     fn the_dialog_names_both_halves_in_its_heading() {
         let dialog = fixtures::close_dialog_with(2, 1);
         let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
-        assert_eq!(
-            text_of(&lines)[0].trim(),
-            "2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID"
+        let heading = text_of(&lines)[0].trim().to_string();
+        assert!(
+            heading.starts_with("2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID"),
+            "{heading:?}"
         );
+    }
+
+    /// The other half of the heading, and the only place the dialog says
+    /// which sheep it is about: the pane's own title band says so too, but
+    /// it is dimmed behind the box by the time this question is asked.
+    #[test]
+    fn the_heading_names_the_sheep_its_state_and_its_pid() {
+        let dialog = fixtures::close_dialog_with(1, 0);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+        let heading = text_of(&lines)[0].trim().to_string();
+        assert!(heading.ends_with("web is online, pid 71578"), "{heading:?}");
+    }
+
+    /// The right clause is the first thing to go when the row cannot hold
+    /// both: the left clause is the question itself. Swept at every width
+    /// the dialog draws at, so a clause that overran the border or
+    /// collided with the question would show up as a row wider than its
+    /// own body.
+    #[test]
+    fn a_narrow_heading_drops_the_sheep_and_keeps_the_question() {
+        for width in [MIN_TERM_WIDTH, 40, 51, 60, 89, BOX_WIDTH, 120, 160] {
+            let dialog = fixtures::close_dialog_with(2, 1);
+            let lines = close_dialog_lines(&dialog, fixtures::plain(), width, dialog.at());
+            let heading = text_of(&lines)[0].clone();
+            assert!(
+                visible_width(&heading) <= usize::from(width),
+                "{width}: {heading:?}"
+            );
+            let trimmed = heading.trim();
+            assert!(
+                trimmed.starts_with("2 EDITS") || trimmed.starts_with('2'),
+                "the question survives at {width}: {heading:?}"
+            );
+            // 43 for the question, 2 for the gutter, 1 for the gap and 24
+            // for `web is online, pid 71578`: the clause draws from 70
+            // columns up and is gone below that, never truncated.
+            let named = heading.contains("web is online, pid 71578");
+            assert_eq!(named, width >= 70, "{width}: {heading:?}");
+        }
     }
 
     /// The noun and the verb are two different words `plural` and
@@ -2250,7 +2332,13 @@ mod tests {
     fn a_single_edit_gets_a_singular_verb() {
         let dialog = fixtures::close_dialog_with(1, 0);
         let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
-        assert_eq!(text_of(&lines)[0].trim(), "1 EDIT NEEDS A RESPAWN");
+        assert!(
+            text_of(&lines)[0]
+                .trim()
+                .starts_with("1 EDIT NEEDS A RESPAWN"),
+            "{:?}",
+            text_of(&lines)[0]
+        );
     }
 
     #[test]

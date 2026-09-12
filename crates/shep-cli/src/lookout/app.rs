@@ -1399,7 +1399,8 @@ struct Action {
 /// the pane when the dialog goes up, and `parked` is the shepherd's own
 /// answer from the last fetch.
 ///
-/// `Debug` is derived (IR-41): three counts, a reload mode, a name, a time.
+/// `Debug` is derived (IR-41): three counts, a reload mode, a name, a
+/// status, a pid, a time.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CloseDialog {
     unsent: Vec<String>,
@@ -1410,6 +1411,8 @@ pub struct CloseDialog {
     kill_timeout: String,
     graceful_timeout: String,
     name: String,
+    status: ProcStatus,
+    pid: Option<u32>,
     at: Instant,
 }
 
@@ -1418,8 +1421,20 @@ impl CloseDialog {
     /// everything else off `pane`: which reload it would get, its own
     /// `kill_timeout` and `graceful_timeout`, its name, and how many other
     /// filed edits (`live`) the running sheep already takes without one.
+    ///
+    /// `status` and `pid` are the one pair a [`ConfigPane`] cannot answer,
+    /// since only the flock map carries them, and the heading names both:
+    /// an operator answering a question that restarts a process should not
+    /// have to read the dimmed pane behind the box to learn which one.
     #[must_use]
-    pub(super) fn new(unsent: Vec<String>, parked: usize, pane: &ConfigPane, at: Instant) -> Self {
+    pub(super) fn new(
+        unsent: Vec<String>,
+        parked: usize,
+        pane: &ConfigPane,
+        status: ProcStatus,
+        pid: Option<u32>,
+        at: Instant,
+    ) -> Self {
         Self {
             unsent,
             parked,
@@ -1429,6 +1444,8 @@ impl CloseDialog {
             kill_timeout: pane.display_value("kill_timeout"),
             graceful_timeout: pane.display_value("graceful_timeout"),
             name: pane.target().name().to_owned(),
+            status,
+            pid,
             at,
         }
     }
@@ -1502,6 +1519,20 @@ impl CloseDialog {
     #[must_use]
     pub fn target_name(&self) -> &str {
         &self.name
+    }
+
+    /// What the flock reported this sheep doing when the dialog went up.
+    #[must_use]
+    pub const fn status(&self) -> ProcStatus {
+        self.status
+    }
+
+    /// The OS pid this sheep runs under, when there is exactly one running
+    /// instance to name. [`None`] for a sheep the shepherd runs several of,
+    /// where no single pid is the answer.
+    #[must_use]
+    pub const fn pid(&self) -> Option<u32> {
+        self.pid
     }
 }
 
@@ -5016,31 +5047,42 @@ impl App {
         let PaneTarget::Sheep { name } = pane.target() else {
             return None;
         };
-        if !self.sheep_is_running(name) {
-            return None;
-        }
+        let (status, pid) = self.running_state(name)?;
         let unsent = pane.unsent_fields_needing_a_respawn();
         let parked = pane.parked_count();
         if unsent.is_empty() && parked == 0 {
             return None;
         }
-        Some(CloseDialog::new(unsent, parked, pane, self.now))
+        Some(CloseDialog::new(
+            unsent, parked, pane, status, pid, self.now,
+        ))
     }
 
-    /// Whether `name` has an instance the flock reports running.
+    /// Every instance of `name` the flock reports running.
     ///
     /// `Stopping` does not count: the drainee and its replacement hold the
     /// same slot ([`crate::lookout::pane::ReloadKind`]'s own reasoning), and
     /// a sheep with every instance stopping holds no config a respawn would
     /// replace.
-    fn sheep_is_running(&self, name: &str) -> bool {
-        self.flock.values().any(|row| {
+    fn running_instances<'a>(&'a self, name: &'a str) -> impl Iterator<Item = &'a Row> {
+        self.flock.values().filter(move |row| {
             row.info.name == name
                 && matches!(
                     row.info.status,
                     ProcStatus::Online | ProcStatus::Starting | ProcStatus::WaitingRestart
                 )
         })
+    }
+
+    /// What the close dialog's heading says about the sheep itself: the
+    /// status of the first running instance, and its pid when it is the
+    /// only one. Several instances name no single pid, so the heading
+    /// names none.
+    fn running_state(&self, name: &str) -> Option<(ProcStatus, Option<u32>)> {
+        let mut running = self.running_instances(name);
+        let first = running.next()?;
+        let alone = running.next().is_none();
+        Some((first.info.status, if alone { first.info.pid } else { None }))
     }
 
     /// The dialog's own keymap: `R` and `L` write and hold their verb until

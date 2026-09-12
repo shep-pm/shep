@@ -22,7 +22,7 @@ shep lookout   /home/ada/.shep                                                  
    + add a key                                                                            VALIDATION                                                            
                                                                                           █ a path, relative paths follow cwd                                   
                                     ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                                    
-                                    ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID                                         ▌                                    
+                                    ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                ▌                                    
                                     ▐  cwd and err_file take hold when the process starts again.                           ▌le across instances without merge_l…
                                     ▐                                                                                      ▌                                    
                                     ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌                                    
