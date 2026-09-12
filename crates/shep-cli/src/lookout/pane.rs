@@ -16,7 +16,7 @@ use shep_core::protocol::{EnvValue, SheepConfigView};
 use shep_core::values::{MemSize, UpDuration};
 
 use super::edits::{EditKey, Edits};
-use super::field::{FieldKind, FieldSet, ListItem, ValueKind};
+use super::field::{Field, FieldKind, FieldSet, ListItem, ValueKind};
 use super::viewport::Viewport;
 
 /// Which thing the pane is editing.
@@ -1245,11 +1245,30 @@ impl ConfigPane {
         if self.field_shows_default(&key) {
             return;
         }
-        let value = match &self.target {
+        let value = self.default_for(field);
+        self.file_field(key, value);
+    }
+
+    /// The value that restores `field` to its default, matching whichever
+    /// door the write leaves through. Shared by [`Self::file_default`] (`d`)
+    /// and [`Self::apply_typing`]'s empty-buffer case, which is the same
+    /// intent from a different key: clearing the field back to nothing.
+    ///
+    /// - A sheep's write is `Request::SetSheepField`, which re-validates
+    ///   against `AppConfig`'s own type for the key, and `null` only
+    ///   deserializes into an `Option<T>`. So this files
+    ///   [`Field::default_value`] when the schema names one, else
+    ///   [`Value::Null`].
+    /// - A dog's write patches the section's own TOML text, where `null`
+    ///   already means "remove this key" and removing it restores the dog's
+    ///   own compiled default. Filing the schema default there instead
+    ///   would hard-code it into the section rather than restoring it, so a
+    ///   dog always gets [`Value::Null`], regardless of the field's default.
+    fn default_for(&self, field: &Field) -> Value {
+        match &self.target {
             PaneTarget::Sheep { .. } => field.default_value.clone().unwrap_or(Value::Null),
             PaneTarget::Dog { .. } => Value::Null,
-        };
-        self.file_field(key, value);
+        }
     }
 
     /// Whether `key`'s row is already showing its stored default, with
@@ -1322,18 +1341,28 @@ impl ConfigPane {
 
     /// Files the buffer as an edit, typed to the field's kind.
     ///
-    /// An empty buffer is `null`, which is how a nullable field is unset.
-    /// An integer field whose buffer does not parse keeps the editor open
-    /// rather than filing a string the daemon would refuse: the operator
-    /// is mid-word, not wrong. Validation runs here, on the way in, so
+    /// An empty buffer restores the field's default, through
+    /// [`Self::default_for`] — the same value `d` files, and the same
+    /// reasoning: `Enter` is an explicit apply, not an ambient one, so a
+    /// buffer the operator has cleared all the way and then committed reads
+    /// as "put this back," not as a typo. That is a different keypress from
+    /// the one below it: an integer field whose buffer does not parse keeps
+    /// the editor open rather than filing a string the daemon would refuse,
+    /// because *non-empty, unparseable* text is the operator still mid-word.
+    /// An empty buffer has nothing left to finish typing, so there is no
+    /// "mid-word" reading available for it, only "unset" or "wrong sheep"
+    /// — and `Enter` picks unset. Validation runs here, on the way in, so
     /// every entry in the set is one the pane is willing to send.
     pub fn apply_typing(&mut self) {
         let Some(PaneTyping { key, buffer }) = self.typing.take() else {
             return;
         };
-        let kind = self.fields.by_key(&key).map(|field| field.kind.clone());
+        let field = self.fields.by_key(&key).cloned();
+        let kind = field.as_ref().map(|field| field.kind.clone());
         let value = match (kind, buffer.as_str()) {
-            (_, "") => Value::Null,
+            (_, "") => field
+                .as_ref()
+                .map_or(Value::Null, |field| self.default_for(field)),
             (Some(FieldKind::Integer), text) => match text.parse::<i64>() {
                 Ok(number) => Value::from(number),
                 Err(_) => {
@@ -2067,6 +2096,51 @@ mod tests {
         }
         pane.apply_typing();
         assert_eq!(filed(&pane, "max_restarts"), Some(serde_json::json!(40)));
+    }
+
+    /// The sibling of `d`'s own defect: emptying an integer field's buffer
+    /// used to file `Value::Null` regardless of the field's type, and
+    /// `max_restarts` is `u32`, not `Option<u32>`, so the daemon would have
+    /// refused it the same way it refused a bare `d` before that fix. An
+    /// emptied buffer now files the schema default through the same
+    /// [`ConfigPane::default_for`] `d` uses, not `null`.
+    #[test]
+    fn emptying_an_integer_field_and_applying_files_its_default_not_null() {
+        let mut pane = ConfigPane::sheep(web());
+        pane.move_to_key("max_restarts");
+        pane.begin_typing();
+        for _ in 0..10 {
+            pane.type_backspace();
+        }
+        assert_eq!(pane.typing().expect("still open").buffer, "");
+        pane.apply_typing();
+        assert_eq!(filed(&pane, "max_restarts"), Some(serde_json::json!(16)));
+    }
+
+    /// An `Option<T>` field with no schema default still unsets to `null`
+    /// through the emptied-buffer door: [`ConfigPane::default_for`] falls
+    /// back to [`Value::Null`] when [`Field::default_value`] is `None`,
+    /// which is exactly `cwd`'s case, so this path is unchanged for it.
+    #[test]
+    fn emptying_a_field_with_no_schema_default_still_unsets_to_null() {
+        let config = AppConfig {
+            name: "web".into(),
+            cwd: Some("/srv/web".into()),
+            ..AppConfig::default()
+        };
+        let mut pane = ConfigPane::sheep(SheepConfigView::new(config, vec!["cwd".into()], vec![]));
+        pane.move_to_key("cwd");
+        pane.begin_typing();
+        assert_eq!(
+            pane.typing().expect("the editor is open").buffer,
+            "/srv/web",
+            "the editor opens on what is on screen"
+        );
+        for _ in 0..8 {
+            pane.type_backspace();
+        }
+        pane.apply_typing();
+        assert_eq!(filed(&pane, "cwd"), Some(serde_json::Value::Null));
     }
 
     /// The request names one key and one JSON value; the daemon
