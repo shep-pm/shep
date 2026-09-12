@@ -14137,7 +14137,7 @@ mod tests {
         pane_to(&mut app, "cwd");
         fixtures::type_into_the_open_editor(&mut app, "/does/not/exist");
         let mut batch = wire_batch(app.update(Msg::Key(KeyPress::Escape)));
-        let _ = app.update(Msg::Replied {
+        let effect = app.update(Msg::Replied {
             sent: batch.remove(0),
             result: Ok(Response::SheepFieldSet {
                 name: "web".to_owned(),
@@ -14146,6 +14146,13 @@ mod tests {
                 warning: Some("/does/not/exist does not exist yet".to_owned()),
             }),
         });
+        // The re-read still goes out. This is the only test that answers
+        // with a warning at all, so discarding the effect here would let a
+        // refactor gate the re-read on there not being one.
+        assert!(
+            matches!(effect, Effect::Send(Sent::SheepConfig { .. })),
+            "{effect:?}"
+        );
         let notice = app.notice().expect("the outcome is reported");
         assert!(!notice.is_grave(), "{notice:?}");
         let text = notice.to_string();
