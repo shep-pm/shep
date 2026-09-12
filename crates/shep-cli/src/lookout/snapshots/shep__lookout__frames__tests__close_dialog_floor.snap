@@ -1,0 +1,52 @@
+---
+source: crates/shep-cli/src/lookout/frames.rs
+expression: render_text(&buffer)
+---
+shep lookout   /home/ada/.shep                                              6 in the flock
+                                                                                          
+ ██ api  (sheep config)  2 edits                                                          
+   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab nex…
+  ────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                                       
+>  err_file                   (unset) -… FOCUSED  err_file  text                          
+   merge_logs                 false       Where stderr goes. Defaults to a file under     
+   out_file                   (unset)     $SHEP_HOME/logs                                 
+                                                                                          
+  pending edits                           now     (unset)                                 
+    cwd  (unset) -> /srv/api              default (none)                                  
+    err_file  (unset) -> /var/log/api…    example /var/log/my-first-sheep/err.log         
+                                                                                          
+  env                                     ▲ respawn  the sheep must stop and start again  
+   DATABASE_URL               (set)                pick the timing when you close the pane
+   NODE_ENV                   (set)                                                       
+   + add a key                            ────────────────────────────────────────────────
+                                          VALIDATION                                      
+ ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜ 
+ ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID                                         ▌ 
+ ▐  cwd and err_file take hold when the process starts again.                           ▌ 
+ ▐                                                                                      ▌…
+ ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌ 
+ ▐  L   reload           the replacement starts alongside and takes over. No gap, if the▌ 
+ ▐                       app sets SO_REUSEPORT itself.                                  ▌ 
+ ▐  c   continue         write them and leave it running. They wait for a respawn.      ▌…
+ ▐                                                                                      ▌─
+ ▐  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        ▌…
+ ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟ 
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+the dialog owns the keyboard until it is answered or it expires            control enabled

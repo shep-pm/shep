@@ -1,0 +1,52 @@
+---
+source: crates/shep-cli/src/lookout/frames.rs
+expression: render_text(&buffer)
+---
+shep lookout   /home/ada/.shep                                             6 in the flock
+                                                                                         
+ ██ api  (sheep config)  2 edits                                                         
+   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab ne…
+  ───────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                            LANDS     
+>  err_file                   (unset) -> /var/log/api/err.log                  respawn   
+   merge_logs                 false                                            respawn   
+   out_file                   (unset)                                          respawn   
+                                                                                         
+  pending edits                                                                          
+    cwd  (unset) -> /srv/api                                                             
+    err_file  (unset) -> /var/log/api/err.log                                            
+                                                                                         
+  env                                                                                    
+   DATABASE_URL               (set)                                                      
+   NODE_ENV                   (set)                                                      
+   + add a key                                                                           
+  ───────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a…
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID                                            
+  cwd and err_file take hold when the process starts again.                              
+                                                                                         
+  R   restart now      stop, then start. The stop takes up to 1600ms.                    
+  L   reload           the replacement starts alongside and takes over. No gap, if the   
+                       app sets SO_REUSEPORT itself.                                     
+  c   continue         write them and leave it running. They wait for a respawn.         
+                                                                                         
+  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████           
+the dialog owns the keyboard until it is answered or it expires           control enabled

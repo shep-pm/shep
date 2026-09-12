@@ -294,6 +294,16 @@ pub enum Scene {
     /// The fresh pane at 88 columns: the panel is gone, so `LANDS` is
     /// back, since nothing else on screen carries cost.
     EditPaneNarrow,
+    /// The close dialog at the design size: two edits filed, one field
+    /// already parked, the box centred over the dimmed editing pane.
+    CloseDialog,
+    /// The same dialog at the exact width its border needs.
+    CloseDialogFloor,
+    /// One column below that, drawn full width with no border.
+    CloseDialogNarrow,
+    /// The parked half alone: no edit of the operator's own, and the
+    /// heading that says so.
+    CloseDialogParked,
 }
 }
 
@@ -348,6 +358,10 @@ impl Scene {
             Self::EditPaneEdited => "edit_pane_edited",
             Self::EditPaneSqueezed => "edit_pane_squeezed",
             Self::EditPaneNarrow => "edit_pane_narrow",
+            Self::CloseDialog => "close_dialog",
+            Self::CloseDialogFloor => "close_dialog_floor",
+            Self::CloseDialogNarrow => "close_dialog_narrow",
+            Self::CloseDialogParked => "close_dialog_parked",
         }
     }
 
@@ -497,6 +511,18 @@ impl Scene {
             Self::EditPaneNarrow => {
                 "The same fresh pane at 88 columns: narrow enough that the explanation panel is gone, so LANDS is back, since nothing else on screen carries cost."
             }
+            Self::CloseDialog => {
+                "esc pressed with cwd and err_file edited and listen_timeout already parked from before: the close dialog names both counts, boxed and centred at 160x48 over the dimmed editing pane."
+            }
+            Self::CloseDialogFloor => {
+                "The same dialog at 90 columns, exactly the floor its border needs: 86 interior cells plus a border cell and a margin cell each side."
+            }
+            Self::CloseDialogNarrow => {
+                "The same dialog one column under the floor, at 89: the border is dropped and the dialog draws full width instead of clipping."
+            }
+            Self::CloseDialogParked => {
+                "esc pressed with no edit of the operator's own, only listen_timeout already parked: the heading names the parked half alone."
+            }
         }
     }
 
@@ -620,6 +646,17 @@ impl Scene {
             // 88: short of `panel_width`'s `LEFT_MIN` floor (`88 - 50 <
             // 40`), so the panel does not draw at all and `LANDS` returns.
             Self::EditPaneNarrow => (88, 48),
+            // 160: the design target. The box is 86 interior plus a border
+            // cell each side, so (160 - 88) / 2 = 36 dimmed columns each
+            // side of it.
+            Self::CloseDialog | Self::CloseDialogParked => (160, 48),
+            // 90: the floor exactly, 86 + 2 border + 2 margin. A scene
+            // pinned one column short of its own box would draw the
+            // borderless form and silently stop showing the border it
+            // exists to show.
+            Self::CloseDialogFloor => (90, 48),
+            // 89: one below the floor, which is the borderless form.
+            Self::CloseDialogNarrow => (89, 48),
             // HealthyWide, Errored, Grouped, WithDogs, Retrying, Refused,
             // FeedGap, FeedMissing, HostUnknown, Lambs, LambsUnknown: every
             // scene that carries all three optional panes at their ordinary
@@ -1714,6 +1751,40 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
                 }
             }
         }
+        Scene::CloseDialog
+        | Scene::CloseDialogFloor
+        | Scene::CloseDialogNarrow
+        | Scene::CloseDialogParked => {
+            // The same `e` on `api` (id 2) that opens every edit-pane
+            // scene, but replied with a view that already carries one
+            // parked field, `listen_timeout`, so the close dialog has
+            // something to say about the parked half without any edit of
+            // the operator's own.
+            app.update(Msg::Key(KeyPress::Edit));
+            app.update(Msg::Replied {
+                sent: Sent::SheepConfig {
+                    name: "api".to_string(),
+                },
+                result: Ok(Response::SheepConfig(Box::new(close_dialog_config_view()))),
+            });
+            // `cwd` and `err_file` both need a respawn, so the dialog's
+            // heading names an unsent count alongside the parked one.
+            // `CloseDialogParked` files neither, relying on the fixture's
+            // own parked field alone.
+            if which != Scene::CloseDialogParked {
+                for (key, typed) in [("cwd", "/srv/api"), ("err_file", "/var/log/api/err.log")] {
+                    select_field(&mut app, key);
+                    app.update(Msg::Key(KeyPress::Confirm));
+                    for character in typed.chars() {
+                        app.update(Msg::Key(KeyPress::TextChar(character)));
+                    }
+                    app.update(Msg::Key(KeyPress::TextApply));
+                }
+            }
+            // Raises the dialog: `esc` stops writing on its own and asks
+            // first, which is the whole point of this frame.
+            app.update(Msg::Key(KeyPress::Escape));
+        }
         _ => {}
     }
 
@@ -2182,6 +2253,29 @@ fn edit_pane_config_view() -> SheepConfigView {
     SheepConfigView::new(config, Vec::new(), Vec::new())
 }
 
+/// `api`'s config for the close-dialog scenes: the same fields
+/// [`edit_pane_config_view`] carries, plus `listen_timeout` already
+/// parked, so `CloseDialogParked` has something to name without any edit
+/// of the operator's own, and the boxed scenes show both halves of the
+/// dialog's heading at once.
+fn close_dialog_config_view() -> SheepConfigView {
+    let mut config = AppConfig {
+        name: "api".to_string(),
+        script: "./api/server.js".to_string(),
+        args: vec!["--port".to_string(), "8080".to_string()],
+        max_restarts: 32,
+        instances: 1,
+        ..AppConfig::default()
+    };
+    config
+        .env
+        .insert("NODE_ENV".to_string(), "production".to_string());
+    config
+        .env
+        .insert("DATABASE_URL".to_string(), "postgres://db/api".to_string());
+    SheepConfigView::new(config, Vec::new(), vec!["listen_timeout".to_string()])
+}
+
 /// The header both gallery files open with.
 ///
 /// Not a doc comment on the test: this text is read by a person opening
@@ -2196,9 +2290,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all forty-six scenes through the same coloured
+frames.ansi renders all fifty scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same forty-six scenes through the flattened NO_COLOR palette
+renders the same fifty scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -2379,7 +2473,7 @@ mod tests {
     /// which is the form a reader sees.
     #[test]
     fn the_gallery_preamble_counts_the_scenes_it_has() {
-        const NUMBERS: [(usize, &str); 13] = [
+        const NUMBERS: [(usize, &str); 17] = [
             (34, "thirty-four"),
             (35, "thirty-five"),
             (36, "thirty-six"),
@@ -2393,6 +2487,10 @@ mod tests {
             (44, "forty-four"),
             (45, "forty-five"),
             (46, "forty-six"),
+            (47, "forty-seven"),
+            (48, "forty-eight"),
+            (49, "forty-nine"),
+            (50, "fifty"),
         ];
         let spelled = NUMBERS
             .iter()
@@ -3252,7 +3350,11 @@ mod tests {
             Scene::EditPane => Some(Scene::EditPaneEdited),
             Scene::EditPaneEdited => Some(Scene::EditPaneSqueezed),
             Scene::EditPaneSqueezed => Some(Scene::EditPaneNarrow),
-            Scene::EditPaneNarrow => None,
+            Scene::EditPaneNarrow => Some(Scene::CloseDialog),
+            Scene::CloseDialog => Some(Scene::CloseDialogFloor),
+            Scene::CloseDialogFloor => Some(Scene::CloseDialogNarrow),
+            Scene::CloseDialogNarrow => Some(Scene::CloseDialogParked),
+            Scene::CloseDialogParked => None,
         }
     }
 

@@ -1,0 +1,52 @@
+---
+source: crates/shep-cli/src/lookout/frames.rs
+expression: render_text(&buffer)
+---
+shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
+                                                                                                                                                                
+ ██ api  (sheep config)  2 edits                                                                                                                                
+   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab next group   1…8 jump                                                     
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS                                                                             
+>  err_file                   (unset) -> /var/log/api/err.log                 respawn    FOCUSED  err_file  text                                                
+   merge_logs                 false                                           respawn     Where stderr goes. Defaults to a file under $SHEP_HOME/logs           
+   out_file                   (unset)                                         respawn                                                                           
+                                                                                          now     (unset)                                                       
+  pending edits                                                                           default (none)                                                        
+    cwd  (unset) -> /srv/api                                                              example /var/log/my-first-sheep/err.log                               
+    err_file  (unset) -> /var/log/api/err.log                                                                                                                   
+                                                                                          ▲ respawn  the sheep must stop and start again                        
+  env                                                                                                                    pick the timing when you close the pane
+   DATABASE_URL               (set)                                                                                                                             
+   NODE_ENV                   (set)                                                       ──────────────────────────────────────────────────────────────────────
+   + add a key                                                                            VALIDATION                                                            
+                                                                                          █ a path, relative paths follow cwd                                   
+                                    ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                                    
+                                    ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID                                         ▌                                    
+                                    ▐  cwd and err_file take hold when the process starts again.                           ▌le across instances without merge_l…
+                                    ▐                                                                                      ▌                                    
+                                    ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌                                    
+                                    ▐  L   reload           the replacement starts alongside and takes over. No gap, if the▌n rule                              
+                                    ▐                       app sets SO_REUSEPORT itself.                                  ▌ne file on purpose                  
+  ──────────────────────────────────▐  c   continue         write them and leave it running. They wait for a respawn.      ▌────────────────────────────────────
+  = read-only, set it in the Flockfi▐                                                                                      ▌ou, not yet written                 
+                                    ▐  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        ▌                                    
+                                    ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟                                    
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+the dialog owns the keyboard until it is answered or it expires                                                                                  control enabled

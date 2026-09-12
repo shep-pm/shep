@@ -1,0 +1,52 @@
+---
+source: crates/shep-cli/src/lookout/frames.rs
+expression: render_text(&buffer)
+---
+shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
+                                                                                                                                                                
+ ██ api  (sheep config)                                                                                                                                         
+   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab next group   1…8 jump                                                     
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS                                                                             
+>  cwd                        (unset)                                         respawn    FOCUSED  cwd  text                                                     
+   depends_on                 []                                              next start  Where the process runs. Without it, the daemon's own directory        
+   fold                       (unset)                                         now                                                                               
+   group                      (unset)                                         respawn     now     (unset)                                                       
+ = instances                  1                                               read-only   default (none)                                                        
+   interpreter                (unset)                                         respawn     example /srv/app                                                      
+ = name                       api                                             read-only                                                                         
+   reuse_port                 false                                           now         ▲ respawn  the sheep must stop and start again                        
+   script                     ./api/server.js                                 respawn                                    pick the timing when you close the pane
+   user                       (unset)                                         respawn                                                                           
+                                                                                          ──────────────────────────────────────────────────────────────────────
+  env                                                                                     VALIDATION                                                            
+   DATABASE_URL               (set)                                                       █ an absolute or relative path, expanded from cwd                     
+   NODE_ENV                   (set) ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                                    
+   + add a key                      ▐  1 FIELD ALREADY WAITING                                                             ▌r cannot enter                      
+                                    ▐                                                                                      ▌                                    
+                                    ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌                                    
+                                    ▐  L   reload           the replacement starts alongside and takes over. No gap, if the▌                                    
+                                    ▐                       app sets SO_REUSEPORT itself.                                  ▌ too                                
+                                    ▐  c   continue         write them and leave it running. They wait for a respawn.      ▌re                                  
+  ──────────────────────────────────▐                                                                                      ▌────────────────────────────────────
+  = read-only, set it in the Flockfi▐  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        ▌ou, not yet written                 
+                                    ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟                                    
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+the dialog owns the keyboard until it is answered or it expires                                                                                  control enabled

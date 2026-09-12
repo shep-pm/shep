@@ -7,9 +7,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all forty-six scenes through the same coloured
+frames.ansi renders all fifty scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same forty-six scenes through the flattened NO_COLOR palette
+renders the same fifty scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -1398,7 +1398,7 @@ The redrawn editing pane on api, fresh: no edits filed, at 160x48. The tab row n
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
-[0m[38;5;221m[48;5;235mesc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked  …[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mesc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked   q quit  [0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === edit_pane_edited  (160x48) ===
@@ -1451,7 +1451,7 @@ The same pane with two edits filed: cwd, which needs a respawn, and max_memory, 
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
-[0m[38;5;221m[48;5;235mesc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked  …[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mesc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked   q quit  [0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === edit_pane_squeezed  (120x48) ===
@@ -1504,7 +1504,7 @@ The same fresh pane at 120 columns: narrow enough that LANDS gives way to the ex
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
-[0m[38;5;221m[48;5;235mesc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default …[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mesc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === edit_pane_narrow  (88x48) ===
@@ -1557,4 +1557,216 @@ The same fresh pane at 88 columns: narrow enough that the explanation panel is g
                                                                                         [0m
                                                                                         [0m
                                                                                         [0m
-[0m[38;5;221m[48;5;235mesc write & close   j/k select   g/G first/last   r refresh   space cyc…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mesc close   j/k select   g/G first/last   r refresh   space cycle   e e…[0m[38;5;245m[48;5;235m control enabled[0m
+
+
+=== close_dialog  (160x48) ===
+esc pressed with cwd and err_file edited and listen_timeout already parked from before: the close dialog names both counts, boxed and centred at 160x48 over the dimmed editing pane.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                    6 in the flock[0m
+                                                                                                                                                                [0m
+[0m[38;5;245m ██ api  (sheep config)  2 edits                                                                                                                                [0m
+[0m[38;5;245m   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab next group   1…8 jump                                                     [0m
+[0m[38;5;245m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  FIELD                       VALUE                                           LANDS                                                                             [0m
+[0m[38;5;245m>  err_file                   (unset) -> /var/log/api/err.log                 respawn    FOCUSED  err_file  text                                                [0m
+[0m[38;5;245m   merge_logs                 false                                           respawn     Where stderr goes. Defaults to a file under $SHEP_HOME/logs           [0m
+[0m[38;5;245m   out_file                   (unset)                                         respawn                                                                           [0m
+[0m[38;5;245m                                                                                          now     (unset)                                                       [0m
+[0m[38;5;245m  pending edits                                                                           default (none)                                                        [0m
+[0m[38;5;245m    cwd  (unset) -> /srv/api                                                              example /var/log/my-first-sheep/err.log                               [0m
+[0m[38;5;245m    err_file  (unset) -> /var/log/api/err.log                                                                                                                   [0m
+[0m[38;5;245m                                                                                          ▲ respawn  the sheep must stop and start again                        [0m
+[0m[38;5;245m  env                                                                                                                    pick the timing when you close the pane[0m
+[0m[38;5;245m   DATABASE_URL               (set)                                                                                                                             [0m
+[0m[38;5;245m   NODE_ENV                   (set)                                                       ──────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m   + add a key                                                                            VALIDATION                                                            [0m
+[0m[38;5;245m                                                                                          █ a path, relative paths follow cwd                                   [0m
+[0m[38;5;245m                                    [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m                                    [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m[7m[38;5;221m  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID                                         [0m[38;5;238m▌[0m[38;5;245m                                    [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  cwd and err_file take hold when the process starts again.                           [0m[38;5;238m▌[0m[38;5;245mle across instances without merge_l…[0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m                                    [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  R   restart now      stop, then start. The stop takes up to 1600ms.                 [0m[38;5;238m▌[0m[38;5;245m                                    [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  L   reload           the replacement starts alongside and takes over. No gap, if the[0m[38;5;238m▌[0m[38;5;245mn rule                              [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m                       app sets SO_REUSEPORT itself.                                  [0m[38;5;238m▌[0m[38;5;245mne file on purpose                  [0m
+[0m[38;5;245m  ──────────────────────────────────[0m[38;5;238m▐[0m[48;5;235m  c   continue         write them and leave it running. They wait for a respawn.      [0m[38;5;238m▌[0m[38;5;245m────────────────────────────────────[0m
+[0m[38;5;245m  = read-only, set it in the Flockfi[0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245mou, not yet written                 [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        [0m[38;5;238m▌[0m[38;5;245m                                    [0m
+[0m[38;5;245m                                    [0m[38;5;238m▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟[0m[38;5;245m                                    [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m[48;5;235mthe dialog owns the keyboard until it is answered or it expires                                                                                  control enabled[0m
+
+
+=== close_dialog_floor  (90x48) ===
+The same dialog at 90 columns, exactly the floor its border needs: 86 interior cells plus a border cell and a margin cell each side.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                              6 in the flock[0m
+                                                                                          [0m
+[0m[38;5;245m ██ api  (sheep config)  2 edits                                                          [0m
+[0m[38;5;245m   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab nex…[0m
+[0m[38;5;245m  ────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  FIELD                       VALUE                                                       [0m
+[0m[38;5;245m>  err_file                   (unset) -… FOCUSED  err_file  text                          [0m
+[0m[38;5;245m   merge_logs                 false       Where stderr goes. Defaults to a file under     [0m
+[0m[38;5;245m   out_file                   (unset)     $SHEP_HOME/logs                                 [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m  pending edits                           now     (unset)                                 [0m
+[0m[38;5;245m    cwd  (unset) -> /srv/api              default (none)                                  [0m
+[0m[38;5;245m    err_file  (unset) -> /var/log/api…    example /var/log/my-first-sheep/err.log         [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m  env                                     ▲ respawn  the sheep must stop and start again  [0m
+[0m[38;5;245m   DATABASE_URL               (set)                pick the timing when you close the pane[0m
+[0m[38;5;245m   NODE_ENV                   (set)                                                       [0m
+[0m[38;5;245m   + add a key                            ────────────────────────────────────────────────[0m
+[0m[38;5;245m                                          VALIDATION                                      [0m
+[0m[38;5;245m [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[7m[38;5;221m  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID                                         [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  cwd and err_file take hold when the process starts again.                           [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m…[0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  R   restart now      stop, then start. The stop takes up to 1600ms.                 [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  L   reload           the replacement starts alongside and takes over. No gap, if the[0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m                       app sets SO_REUSEPORT itself.                                  [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  c   continue         write them and leave it running. They wait for a respawn.      [0m[38;5;238m▌[0m[38;5;245m…[0m
+[0m[38;5;245m [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m─[0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        [0m[38;5;238m▌[0m[38;5;245m…[0m
+[0m[38;5;245m [0m[38;5;238m▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟[0m[38;5;245m [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m[48;5;235mthe dialog owns the keyboard until it is answered or it expires            control enabled[0m
+
+
+=== close_dialog_narrow  (89x48) ===
+The same dialog one column under the floor, at 89: the border is dropped and the dialog draws full width instead of clipping.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                             6 in the flock[0m
+                                                                                         [0m
+[0m[38;5;245m ██ api  (sheep config)  2 edits                                                         [0m
+[0m[38;5;245m   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab ne…[0m
+[0m[38;5;245m  ───────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  FIELD                       VALUE                                            LANDS     [0m
+[0m[38;5;245m>  err_file                   (unset) -> /var/log/api/err.log                  respawn   [0m
+[0m[38;5;245m   merge_logs                 false                                            respawn   [0m
+[0m[38;5;245m   out_file                   (unset)                                          respawn   [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m  pending edits                                                                          [0m
+[0m[38;5;245m    cwd  (unset) -> /srv/api                                                             [0m
+[0m[38;5;245m    err_file  (unset) -> /var/log/api/err.log                                            [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m  env                                                                                    [0m
+[0m[38;5;245m   DATABASE_URL               (set)                                                      [0m
+[0m[38;5;245m   NODE_ENV                   (set)                                                      [0m
+[0m[38;5;245m   + add a key                                                                           [0m
+[0m[38;5;245m  ───────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a…[0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[7m[38;5;221m  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID                                            [0m
+[0m[48;5;235m  cwd and err_file take hold when the process starts again.                              [0m
+                                                                                         [0m
+[0m[48;5;235m  R   restart now      stop, then start. The stop takes up to 1600ms.                    [0m
+[0m[48;5;235m  L   reload           the replacement starts alongside and takes over. No gap, if the   [0m
+[0m[48;5;235m                       app sets SO_REUSEPORT itself.                                     [0m
+[0m[48;5;235m  c   continue         write them and leave it running. They wait for a respawn.         [0m
+                                                                                         [0m
+[0m[48;5;235m  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████           [0m
+[0m[38;5;245m[48;5;235mthe dialog owns the keyboard until it is answered or it expires           control enabled[0m
+
+
+=== close_dialog_parked  (160x48) ===
+esc pressed with no edit of the operator's own, only listen_timeout already parked: the heading names the parked half alone.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                    6 in the flock[0m
+                                                                                                                                                                [0m
+[0m[38;5;245m ██ api  (sheep config)                                                                                                                                         [0m
+[0m[38;5;245m   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab next group   1…8 jump                                                     [0m
+[0m[38;5;245m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  FIELD                       VALUE                                           LANDS                                                                             [0m
+[0m[38;5;245m>  cwd                        (unset)                                         respawn    FOCUSED  cwd  text                                                     [0m
+[0m[38;5;245m   depends_on                 []                                              next start  Where the process runs. Without it, the daemon's own directory        [0m
+[0m[38;5;245m   fold                       (unset)                                         now                                                                               [0m
+[0m[38;5;245m   group                      (unset)                                         respawn     now     (unset)                                                       [0m
+[0m[38;5;245m = instances                  1                                               read-only   default (none)                                                        [0m
+[0m[38;5;245m   interpreter                (unset)                                         respawn     example /srv/app                                                      [0m
+[0m[38;5;245m = name                       api                                             read-only                                                                         [0m
+[0m[38;5;245m   reuse_port                 false                                           now         ▲ respawn  the sheep must stop and start again                        [0m
+[0m[38;5;245m   script                     ./api/server.js                                 respawn                                    pick the timing when you close the pane[0m
+[0m[38;5;245m   user                       (unset)                                         respawn                                                                           [0m
+[0m[38;5;245m                                                                                          ──────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  env                                                                                     VALIDATION                                                            [0m
+[0m[38;5;245m   DATABASE_URL               (set)                                                       █ an absolute or relative path, expanded from cwd                     [0m
+[0m[38;5;245m   NODE_ENV                   (set) [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m                                    [0m
+[0m[38;5;245m   + add a key                      [0m[38;5;238m▐[0m[7m[38;5;221m  1 FIELD ALREADY WAITING                                                             [0m[38;5;238m▌[0m[38;5;245mr cannot enter                      [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m                                    [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  R   restart now      stop, then start. The stop takes up to 1600ms.                 [0m[38;5;238m▌[0m[38;5;245m                                    [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  L   reload           the replacement starts alongside and takes over. No gap, if the[0m[38;5;238m▌[0m[38;5;245m                                    [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m                       app sets SO_REUSEPORT itself.                                  [0m[38;5;238m▌[0m[38;5;245m too                                [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  c   continue         write them and leave it running. They wait for a respawn.      [0m[38;5;238m▌[0m[38;5;245mre                                  [0m
+[0m[38;5;245m  ──────────────────────────────────[0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m────────────────────────────────────[0m
+[0m[38;5;245m  = read-only, set it in the Flockfi[0m[38;5;238m▐[0m[48;5;235m  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        [0m[38;5;238m▌[0m[38;5;245mou, not yet written                 [0m
+[0m[38;5;245m                                    [0m[38;5;238m▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟[0m[38;5;245m                                    [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m[48;5;235mthe dialog owns the keyboard until it is answered or it expires                                                                                  control enabled[0m
