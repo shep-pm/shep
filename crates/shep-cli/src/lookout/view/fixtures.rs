@@ -1004,6 +1004,31 @@ pub fn close_dialog_reloading(kind: ReloadKind, instances: u32) -> CloseDialog {
     CloseDialog::new(vec!["cwd".to_string()], 0, &pane, Instant::now())
 }
 
+/// A close dialog raised over a pane with `cwd` really filed (it needs a
+/// respawn), and, when `with_live` is set, `max_restarts` filed alongside
+/// it (`ApplyGroup::Live`, so the running sheep already takes it): what
+/// the "everything else you changed is already live" sentence's own tests
+/// read.
+///
+/// Driven through [`file_edit`] rather than handed synthetic names, unlike
+/// [`close_dialog_with`]: `CloseDialog::live` is not a parameter, it is
+/// read off the pane's own filed set, so the set has to be real for it to
+/// answer anything.
+pub fn close_dialog_with_live_edit(with_live: bool) -> CloseDialog {
+    let mut app = app_in_sheep_pane_with_nothing_parked();
+    file_edit(&mut app, "cwd", "/srv/app");
+    if with_live {
+        file_edit(&mut app, "max_restarts", "9");
+    }
+    let pane = app.config_pane().expect("the pane is open");
+    CloseDialog::new(
+        pane.unsent_fields_needing_a_respawn(),
+        pane.parked_count(),
+        pane,
+        Instant::now(),
+    )
+}
+
 /// The one line in `lines` starting with `prefix`, after trimming leading
 /// whitespace: what a close dialog's own option-row tests read, so a test
 /// for the reload row does not pass off the first row that merely

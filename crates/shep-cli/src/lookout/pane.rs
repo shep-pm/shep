@@ -1648,6 +1648,22 @@ impl ConfigPane {
             .collect()
     }
 
+    /// How many filed edits the running sheep already takes without a
+    /// respawn: the complement of [`Self::unsent_fields_needing_a_respawn`]
+    /// within the same set. An env key never counts, for the same reason it
+    /// always counts on the other side: `env` is `ApplyGroup::NeedsRespawn`.
+    ///
+    /// What the close dialog's "everything else you changed is already
+    /// live" sentence draws on: a filed set holding only fields a respawn
+    /// applies has nothing else to say that about.
+    #[must_use]
+    pub(super) fn live_edit_count(&self) -> usize {
+        self.edits
+            .iter()
+            .filter(|(key, _)| matches!(key, EditKey::Field(name) if reaches_running(name)))
+            .count()
+    }
+
     /// Whether a reload of this sheep overlaps its replacement or runs
     /// serially. Always [`ReloadKind::Overlap`] for a dog, which has no
     /// such fields to read.

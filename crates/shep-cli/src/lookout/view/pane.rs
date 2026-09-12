@@ -12,6 +12,8 @@
 //! A sheep pane is 40 rows plus a title, eight headers and seven blank
 //! separators: sixteen lines of chrome before a marker is paid for.
 
+use std::time::Instant;
+
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -447,17 +449,17 @@ fn close_dialog_option_line(text: String, palette: Palette, width: u16) -> Line<
 /// columns gets, and what the boxed form (a later frame) draws inside its
 /// own border.
 ///
-/// Every number here is the sheep's own but for the countdown: this
-/// function is given no clock, only the dialog, so the `esc` row states
-/// the full [`CONFIRM_EXPIRY`] rather than what is left of it. A later
-/// frame that wires a live countdown reads `dialog.at()` against the
-/// caller's own `now` to do it; nothing here is wrong for standing still,
-/// only for ticking.
+/// `now` is the caller's own clock, against which the `esc` row states
+/// what is left of [`CONFIRM_EXPIRY`] since `dialog.at()`: seconds and a
+/// ten-cell gauge, saying the same thing twice on purpose, since the
+/// design's own rule is that colour and glyph never carry anything the
+/// words do not.
 #[must_use]
 pub(super) fn close_dialog_lines(
     dialog: &CloseDialog,
     palette: Palette,
     width: u16,
+    now: Instant,
 ) -> Vec<Line<'static>> {
     let body = body_width(width);
     let mut lines = vec![Line::from(Span::styled(
@@ -467,6 +469,13 @@ pub(super) fn close_dialog_lines(
     if dialog.unsent() > 0 {
         let sentence = close_dialog_naming_sentence(dialog.unsent_fields());
         lines.push(close_dialog_option_line(sentence, palette, body));
+        if dialog.live() > 0 {
+            lines.push(close_dialog_option_line(
+                "Everything else you changed is already live.".to_owned(),
+                palette,
+                body,
+            ));
+        }
     }
     lines.push(Line::from(Span::raw("")));
     lines.push(close_dialog_option_line(
@@ -491,11 +500,17 @@ pub(super) fn close_dialog_lines(
         body,
     ));
     lines.push(Line::from(Span::raw("")));
+    let elapsed = now.saturating_duration_since(dialog.at());
+    let remaining = CONFIRM_EXPIRY.saturating_sub(elapsed);
     lines.push(close_dialog_option_line(
         format!(
             "esc  keep editing, write nothing   \u{b7}   this prompt expires in {}s {}",
-            CONFIRM_EXPIRY.as_secs(),
-            cell::gauge(10, Some(10), 10)
+            remaining.as_secs(),
+            cell::gauge(
+                u64::try_from(remaining.as_millis()).unwrap_or(u64::MAX),
+                Some(u64::try_from(CONFIRM_EXPIRY.as_millis()).unwrap_or(u64::MAX)),
+                10
+            )
         ),
         palette,
         body,
@@ -1858,7 +1873,7 @@ pub fn draw_pane(app: &App, pane: &ConfigPane, area: Rect, buffer: &mut Buffer) 
         buffer.set_line(area.x, area.y + offset, line, area.width);
     }
     if let Some(dialog) = app.close_dialog() {
-        let lines = close_dialog_lines(dialog, app.palette(), area.width);
+        let lines = close_dialog_lines(dialog, app.palette(), area.width, app.now());
         // Bottom-anchored over the field list, the rows the frame draws it
         // on. Task 4 replaces this with the boxed form above 90 columns.
         let top = area.y
@@ -1909,7 +1924,7 @@ mod tests {
     #[test]
     fn the_dialog_names_both_halves_in_its_heading() {
         let dialog = fixtures::close_dialog_with(2, 1);
-        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
         assert_eq!(
             text_of(&lines)[0].trim(),
             "2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID"
@@ -1919,7 +1934,7 @@ mod tests {
     #[test]
     fn a_serial_reload_does_not_promise_no_gap() {
         let dialog = fixtures::close_dialog_reloading(ReloadKind::Serial, 1);
-        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
         let reload = fixtures::row_starting_with(&lines, "L");
         assert!(reload.contains("slower than a restart"), "{reload}");
         assert!(!reload.contains("No gap"), "{reload}");
@@ -1928,7 +1943,7 @@ mod tests {
     #[test]
     fn an_overlapping_reload_carries_the_reuse_port_caveat() {
         let dialog = fixtures::close_dialog_reloading(ReloadKind::Overlap, 1);
-        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
         let reload = fixtures::row_starting_with(&lines, "L");
         assert!(
             reload.contains("if the app sets SO_REUSEPORT itself"),
@@ -1943,7 +1958,7 @@ mod tests {
         for kind in [ReloadKind::Overlap, ReloadKind::Serial] {
             for instances in [1, 3] {
                 let dialog = fixtures::close_dialog_reloading(kind, instances);
-                let lines = close_dialog_lines(&dialog, fixtures::plain(), 120);
+                let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
                 for row in text_of(&lines) {
                     assert!(!row.contains("lamb"), "{row}");
                 }
@@ -1954,9 +1969,60 @@ mod tests {
     #[test]
     fn the_restart_row_states_the_sheeps_own_kill_timeout() {
         let dialog = fixtures::close_dialog_with(1, 0);
-        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
         let restart = fixtures::row_starting_with(&lines, "R");
         assert!(restart.contains("5s"), "{restart}");
+    }
+
+    /// The sentence draws when the filed set holds a live field alongside
+    /// the one that needs a respawn, so an operator reading the dialog is
+    /// not left thinking nothing else they changed took effect.
+    #[test]
+    fn everything_else_is_already_live_draws_beside_a_live_edit() {
+        let dialog = fixtures::close_dialog_with_live_edit(true);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+        assert!(
+            text_of(&lines)
+                .iter()
+                .any(|line| line.contains("Everything else you changed is already live")),
+            "{:?}",
+            text_of(&lines)
+        );
+    }
+
+    /// The other direction: a filed set that is entirely `cwd` (needs a
+    /// respawn, nothing else) draws no such claim. A sentence that always
+    /// draws would pass the test above without saying anything.
+    #[test]
+    fn everything_else_is_already_live_does_not_draw_with_nothing_else_filed() {
+        let dialog = fixtures::close_dialog_with_live_edit(false);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+        assert!(
+            !text_of(&lines)
+                .iter()
+                .any(|line| line.contains("Everything else you changed is already live")),
+            "{:?}",
+            text_of(&lines)
+        );
+    }
+
+    /// The countdown is redundant on purpose: the seconds and the gauge say
+    /// the same thing twice, so both have to move together as `now`
+    /// advances toward `CONFIRM_EXPIRY`.
+    #[test]
+    fn the_gauge_shortens_as_now_advances() {
+        let dialog = fixtures::close_dialog_with(1, 0);
+        let fresh = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+        let fresh_row = fixtures::row_starting_with(&fresh, "esc");
+        let fresh_filled = fresh_row.matches('\u{2588}').count();
+
+        let halfway = dialog.at() + CONFIRM_EXPIRY / 2;
+        let later = close_dialog_lines(&dialog, fixtures::plain(), 120, halfway);
+        let later_row = fixtures::row_starting_with(&later, "esc");
+        let later_filled = later_row.matches('\u{2588}').count();
+
+        assert_eq!(fresh_filled, 10, "{fresh_row}");
+        assert_eq!(later_filled, 5, "{later_row}");
     }
 
     /// The whole pane at a comfortable width, unbounded. The snapshot is the

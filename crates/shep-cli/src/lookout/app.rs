@@ -1378,11 +1378,12 @@ struct Action {
 /// the pane when the dialog goes up, and `parked` is the shepherd's own
 /// answer from the last fetch.
 ///
-/// `Debug` is derived (IR-41): two counts, a reload mode, a name, a time.
+/// `Debug` is derived (IR-41): three counts, a reload mode, a name, a time.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CloseDialog {
     unsent: Vec<String>,
     parked: usize,
+    live: usize,
     reload: ReloadKind,
     instances: u32,
     kill_timeout: String,
@@ -1395,7 +1396,8 @@ pub struct CloseDialog {
 impl CloseDialog {
     /// One, over `unsent` filed edits and `parked` fields, reading
     /// everything else off `pane`: which reload it would get, its own
-    /// `kill_timeout` and `graceful_timeout`, and its name.
+    /// `kill_timeout` and `graceful_timeout`, its name, and how many other
+    /// filed edits (`live`) the running sheep already takes without one.
     ///
     /// `pid` is always [`None`] here: a [`ConfigPane`] carries no OS pid,
     /// only the flock map does, and nothing this frame draws needs one.
@@ -1404,6 +1406,7 @@ impl CloseDialog {
         Self {
             unsent,
             parked,
+            live: pane.live_edit_count(),
             reload: pane.reload_kind(),
             instances: pane.value("instances").parse().unwrap_or(1),
             kill_timeout: pane.display_value("kill_timeout"),
@@ -1439,6 +1442,14 @@ impl CloseDialog {
     #[must_use]
     pub const fn parked(&self) -> usize {
         self.parked
+    }
+
+    /// How many other filed edits the running sheep already takes without
+    /// a respawn. What "everything else you changed is already live" draws
+    /// on: zero when the whole filed set needs one.
+    #[must_use]
+    pub const fn live(&self) -> usize {
+        self.live
     }
 
     /// Which reload this sheep would get, so `L`'s row can name its cost.
