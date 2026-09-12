@@ -88,10 +88,12 @@ const DEFAULT_HOME_DIR: &str = ".shep";
 /// `None` only when nothing names a `$SHEP_HOME` and `home_dir` is `None`
 /// too, which is the same condition that leaves a `~/` path unexpandable.
 ///
-/// Unlike [`user_home`], an empty `$SHEP_HOME` is honoured rather than read
-/// as unset: [`ShepPaths::resolve`] has always taken the variable at its
-/// word, and the `{{SHEP_HOME}}` template token resolves through here to the
-/// same directory the layout was built from.
+/// Unlike [`user_home`], an empty `$SHEP_HOME` is taken at its word rather
+/// than read as unset, which is what [`ShepPaths::resolve`] has always done.
+/// No operator reaches that: the CLI refuses an empty `--home` or
+/// `$SHEP_HOME` before either function runs. It matters to a library caller
+/// passing its own lookup, who gets one answer from here and from the
+/// layout rather than two.
 #[must_use]
 pub fn shep_home(env: &dyn Fn(&str) -> Option<String>, home_dir: Option<&Path>) -> Option<PathBuf> {
     env("SHEP_HOME")

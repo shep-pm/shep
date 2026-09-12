@@ -424,10 +424,13 @@ out_file = "{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log"
 Z_WORKER_ID = "z-{{instance}}"
 Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
     <p>
-      That <code>out_file</code> line is the default written out, so it
-      changes nothing. <code>shep init --all</code> scaffolds it, and a path
-      built on <code>{'{{SHEP_HOME}}'}</code> moves with the shepherd rather
-      than pinning the Flockfile to one machine's layout.{" "}
+      That <code>out_file</code> line is the default written out, so
+      uncommenting it changes nothing. Pair it with <code>merge_logs</code>{" "}
+      and it does: an explicit path spelling <code>{'{{instance}}'}</code>{" "}
+      keeps the instances in separate files anyway.{" "}
+      <code>shep init --all</code> scaffolds the line, and a path built on{" "}
+      <code>{'{{SHEP_HOME}}'}</code> moves with the shepherd rather than
+      pinning the Flockfile to one machine's layout.{" "}
       <code>{'{{SHEP_HOME}}'}</code> is <code>$SHEP_HOME</code> when that is
       set and <code>~/.shep</code> when it is not. It renders absolute, so
       unlike a relative path it is never joined onto <code>cwd</code>, and it
