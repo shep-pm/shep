@@ -119,7 +119,7 @@ pub struct AppConfig {
         "blurb": "The script that shep should use to launch your app",
         "accepts": ["an absolute or relative path, expanded from cwd",
                     "~ expands, $VARS do not",
-                    "a script or interpreter shep cannot yet resolve: warned rather than refused, since a deploy may still place it before the next restart"],
+                    "a script shep cannot resolve yet: warned"],
         "neighbours": [{"field": "cwd",         "note": "resolved against this cwd"},
                        {"field": "interpreter", "note": "picks what runs this script"}]
     })))]
@@ -140,7 +140,7 @@ pub struct AppConfig {
         "blurb": "Where the process runs. Without it, the daemon's own directory",
         "accepts": ["an absolute or relative path, expanded from cwd",
                     "~ expands, $VARS do not",
-                    "a directory that does not exist yet: warned rather than refused, since a deploy may still create it before the next restart"],
+                    "a directory that does not exist yet: warned"],
         "neighbours": [{"field": "script",        "note": "resolved against this cwd"},
                        {"field": "out_file",      "note": "relative paths follow it too"},
                        {"field": "watch_options", "note": "globs are rooted here"}]
@@ -419,7 +419,7 @@ pub struct AppConfig {
         "blurb": "Where stdout goes. Defaults to a file under $SHEP_HOME/logs",
         "accepts": ["a path, relative paths follow cwd",
                     "{{instance}} and {{name}} expand",
-                    "a parent directory that does not exist yet: warned rather than refused, since a deploy may still create it before the next restart"],
+                    "a parent that does not exist yet: warned"],
         "refuses": ["a {{secret:...}} token",
                     "the same path as err_file across instances without merge_logs"],
         "neighbours": [{"field": "err_file",   "note": "shares the same collision rule"},
@@ -433,7 +433,7 @@ pub struct AppConfig {
         "blurb": "Where stderr goes. Defaults to a file under $SHEP_HOME/logs",
         "accepts": ["a path, relative paths follow cwd",
                     "{{instance}} and {{name}} expand",
-                    "a parent directory that does not exist yet: warned rather than refused, since a deploy may still create it before the next restart"],
+                    "a parent that does not exist yet: warned"],
         "refuses": ["a {{secret:...}} token",
                     "the same path as out_file across instances without merge_logs"],
         "neighbours": [{"field": "out_file",   "note": "shares the same collision rule"},

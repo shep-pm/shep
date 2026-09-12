@@ -157,7 +157,7 @@
             "accepts": [
               "an absolute or relative path, expanded from cwd",
               "~ expands, $VARS do not",
-              "a directory that does not exist yet: warned rather than refused, since a deploy may still create it before the next restart"
+              "a directory that does not exist yet: warned"
             ],
             "blurb": "Where the process runs. Without it, the daemon's own directory",
             "example": "/srv/app",
@@ -274,7 +274,7 @@
             "accepts": [
               "a path, relative paths follow cwd",
               "{{instance}} and {{name}} expand",
-              "a parent directory that does not exist yet: warned rather than refused, since a deploy may still create it before the next restart"
+              "a parent that does not exist yet: warned"
             ],
             "blurb": "Where stderr goes. Defaults to a file under $SHEP_HOME/logs",
             "example": "/var/log/my-first-sheep/err.log",
@@ -567,7 +567,7 @@
             "accepts": [
               "a path, relative paths follow cwd",
               "{{instance}} and {{name}} expand",
-              "a parent directory that does not exist yet: warned rather than refused, since a deploy may still create it before the next restart"
+              "a parent that does not exist yet: warned"
             ],
             "blurb": "Where stdout goes. Defaults to a file under $SHEP_HOME/logs",
             "example": "/var/log/my-first-sheep/out.log",
@@ -660,7 +660,7 @@
             "accepts": [
               "an absolute or relative path, expanded from cwd",
               "~ expands, $VARS do not",
-              "a script or interpreter shep cannot yet resolve: warned rather than refused, since a deploy may still place it before the next restart"
+              "a script shep cannot resolve yet: warned"
             ],
             "blurb": "The script that shep should use to launch your app",
             "example": "./index.js",
