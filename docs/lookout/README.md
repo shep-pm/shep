@@ -220,3 +220,30 @@ debt.
 - **The `no fold` header is not selectable.** The wire has no way to name
   "everything with no fold" in one selector, so there is nothing an action
   there could send.
+
+## What 1e settled
+
+- **Nothing reaches the shepherd until the config pane closes.** An edit,
+  a cycle, an array change: each files into a change set the pane carries,
+  and `esc` writes the whole set in one pass when it closes the pane.
+- **`u` undoes the newest unsent edit**, one at a time. It files nothing
+  itself, so it never needs the control gate.
+- **`tab` walks the pane's eight groups; `1` through `8` jump straight to
+  one.** Both reset the cursor to the group's first field. A dog's pane has
+  no groups to move between, since its schema declares none.
+- **Env keys moved into the main field list**, under whichever group is on
+  screen, and out of their own sub-screen. No key ever shows its value,
+  before or after the move: the shepherd never sends one.
+- **Read-only refuses the first keystroke that would file an edit**, not
+  the close. The pane stays open and unchanged; nothing is left to refuse
+  when `esc` writes.
+- **A right-hand explanation panel describes the focused field**: its help
+  text, its current value, its default, an example, what it accepts and
+  refuses, and which other fields it interacts with. Below 90 columns
+  there's no room for it and the cost column carries every row's cost
+  alone; from 90 the panel draws and the cost column gives way to it; from
+  160 both draw together.
+- **Dogs take the same batched write and the same panel** a sheep's pane
+  does: edits file into one change set, `u` undoes them, and `esc` sends
+  the whole `dogs.toml` section in one request, however many fields
+  changed.
