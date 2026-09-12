@@ -136,6 +136,13 @@ struct Syntax {
     trailing_sep: bool,
     /// Whether field names are quoted.
     quoted_keys: bool,
+    /// Whether a field's value is rendered by `toml::Value`'s `Display`
+    /// rather than by `serde_json`.
+    ///
+    /// TOML is the only format that needs it, and it is asked here rather
+    /// than inferred from another field: reading it off `separator` made a
+    /// cosmetic choice decide which serializer runs.
+    toml_literals: bool,
 }
 
 impl Syntax {
@@ -153,6 +160,7 @@ impl Syntax {
                 member_sep: "",
                 trailing_sep: false,
                 quoted_keys: false,
+                toml_literals: true,
             },
             // The lone `-` works because a sequence item whose value is a
             // block mapping on the following lines is valid YAML, so the
@@ -167,6 +175,7 @@ impl Syntax {
                 member_sep: "",
                 trailing_sep: false,
                 quoted_keys: false,
+                toml_literals: false,
             },
             FlockFormat::Json5 => Self {
                 marker: Some("//"),
@@ -178,6 +187,7 @@ impl Syntax {
                 member_sep: ",",
                 trailing_sep: true,
                 quoted_keys: false,
+                toml_literals: false,
             },
             FlockFormat::Json => Self {
                 marker: None,
@@ -189,6 +199,7 @@ impl Syntax {
                 member_sep: ",",
                 trailing_sep: false,
                 quoted_keys: true,
+                toml_literals: false,
             },
         }
     }
@@ -232,10 +243,15 @@ impl Scaffold {
     /// The field names this scaffold shows, in the order it shows them.
     fn field_names(self) -> Vec<String> {
         match self.depth {
-            Depth::Curated => CURATED.iter().map(|name| (*name).to_owned()).collect(),
+            Depth::Curated => curated_names(),
             Depth::All => grouped_order(),
         }
     }
+}
+
+/// [`CURATED`] as owned strings, the form both callers below want.
+fn curated_names() -> Vec<String> {
+    CURATED.iter().map(|name| (*name).to_owned()).collect()
 }
 
 /// Every field name: the curated four first, then the rest by
@@ -269,7 +285,7 @@ fn grouped_order() -> Vec<String> {
         .collect();
     rest.sort_by_key(|name| rank(name));
 
-    let mut names: Vec<String> = CURATED.iter().map(|name| (*name).to_owned()).collect();
+    let mut names: Vec<String> = curated_names();
     names.extend(rest);
     names
 }
@@ -419,7 +435,7 @@ fn literal(syntax: &Syntax, field: &serde_json::Value) -> String {
     // rendering serves three of the four formats. TOML is the odd one:
     // `toml::Value`'s Display is what knows to write an array inline and a
     // string with TOML's own escaping.
-    if syntax.separator == " = " {
+    if syntax.toml_literals {
         toml::Value::try_from(&value)
             .expect("a schema example must be representable as TOML")
             .to_string()
