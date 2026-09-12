@@ -1525,6 +1525,23 @@ pub struct ActionState<'a> {
 /// fat finger by a slower route. Rides `Msg::Tick`, so it needs no timer.
 pub const CONFIRM_EXPIRY: Duration = Duration::from_secs(10);
 
+/// A verb the close dialog chose, waiting on the writes it must follow.
+///
+/// `outstanding` counts replies not yet in, and `landed` is whether any of
+/// them was accepted. The action goes on the last reply, and only if
+/// something landed: a batch refused in full leaves nothing for a respawn
+/// to apply.
+///
+/// `Debug` is derived (IR-41): a verb, two counts, a name, a time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HeldAction {
+    verb: ActionVerb,
+    name: String,
+    outstanding: usize,
+    landed: bool,
+    at: Instant,
+}
+
 /// The sentence `r` and the action keys both give when the link is gone.
 const LINK_GONE: &str = "the shepherd is gone: nothing left to ask";
 
@@ -2064,6 +2081,12 @@ pub struct App {
     /// not taken, and it owns the keyboard while it is up. Cleared with the
     /// pane, so no dialog can outlive the edits it counted.
     close_dialog: Option<CloseDialog>,
+    /// The verb the close dialog chose, waiting on its own writes to answer.
+    ///
+    /// Set by [`Self::answer_close`] alongside the batch that must land
+    /// first, and cleared on the reply that finishes it or on
+    /// [`CONFIRM_EXPIRY`], the same as the dialog it followed from.
+    held: Option<HeldAction>,
     /// The resolved style level and which layer chose it. Defaulted here and
     /// overridden through [`Self::set_style`], so the STYLE LEVEL row reads the
     /// same answer the rest of the CLI does.
@@ -2173,6 +2196,7 @@ impl App {
             config_for: None,
             dog_target: None,
             close_dialog: None,
+            held: None,
             style: (StyleLevel::Full, StyleSource::Default),
             cpu_history: HashMap::new(),
             flock_cpu: VecDeque::new(),
@@ -2259,6 +2283,14 @@ impl App {
                     });
                     if stale {
                         self.close_dialog = None;
+                    }
+                    // A reply that never comes cannot strand the verb: it
+                    // rides the same clock as the dialog it followed from.
+                    let stale_held = self.held.as_ref().is_some_and(|held| {
+                        now.saturating_duration_since(held.at) >= CONFIRM_EXPIRY
+                    });
+                    if stale_held {
+                        self.held = None;
                     }
                 }
                 // The tick's own `now` again, for the same reason: how long
@@ -2359,10 +2391,19 @@ impl App {
                 Sent::SetDogSection { name, .. } => self.on_dog_section_set(&name, result),
                 Sent::ApplyField {
                     name, key, value, ..
-                } => self.on_field_applied(&name, &key, &value, result),
+                } => {
+                    let landed = result.is_ok();
+                    let effect = self.on_field_applied(&name, &key, &value, result);
+                    self.resolve_held_write(landed).unwrap_or(effect)
+                }
                 Sent::SetEnv {
                     name, key, value, ..
-                } => self.on_env_set(&name, &key, value.is_some(), result),
+                } => {
+                    let landed = result.is_ok();
+                    let was_set = value.is_some();
+                    let effect = self.on_env_set(&name, &key, was_set, result);
+                    self.resolve_held_write(landed).unwrap_or(effect)
+                }
             },
             Msg::Unsent { sent } => match sent {
                 Sent::Action { verb, target, name } => {
@@ -5051,15 +5092,92 @@ impl App {
     /// Writes the pane's filed set and closes both the dialog and the
     /// pane, for `R`, `L` and `c` alike.
     ///
-    /// A stub: `verb` is not read yet. The three keys sending the same
-    /// effect here is deliberate, not a bug: a later frame makes `R` and
-    /// `L` hold `verb` and send it once every write is answered, per
-    /// "write, then act" in the design; this frame only builds the
-    /// question and its `esc`/expiry, not the reply state machine.
-    fn answer_close(&mut self, _verb: Option<ActionVerb>) -> Effect {
+    /// `c` (`verb` is [`None`]) just sends the batch. `R`/`L` hold the verb
+    /// on [`Self::held`] until every write in the batch is answered, per
+    /// "write, then act" in the design: sending it alongside the writes
+    /// risks the shepherd answering the action before a write it depended
+    /// on, which respawns into the config the pane was just fixing. A batch
+    /// with nothing to wait for (parked fields only, nothing filed) sends
+    /// the verb at once instead; there is nothing for it to outrun.
+    fn answer_close(&mut self, verb: Option<ActionVerb>) -> Effect {
+        let name = self
+            .close_dialog
+            .as_ref()
+            .map(|dialog| dialog.target_name().to_owned());
         let writes = self.take_pane_writes();
         self.close_pane();
+        let (Some(verb), Some(name)) = (verb, name) else {
+            return Effect::SendAll(writes);
+        };
+        if writes.is_empty() {
+            return self.send_held_action(verb, name);
+        }
+        self.held = Some(HeldAction {
+            verb,
+            name,
+            outstanding: writes.len(),
+            landed: false,
+            at: self.now,
+        });
         Effect::SendAll(writes)
+    }
+
+    /// One pane write's answer, while a verb is held on it.
+    ///
+    /// `None` when nothing is held, so the caller's own effect (whatever
+    /// the per-field reply handler returned) stands unchanged. `Some`
+    /// overrides it: a batch still waiting on other writes yields
+    /// [`Effect::None`], since the pane closed with the write and nothing
+    /// downstream needs its own chained re-read; the last write yields the
+    /// verb, sent through [`Self::send_held_action`], or a notice when
+    /// every write in the batch was refused.
+    fn resolve_held_write(&mut self, landed: bool) -> Option<Effect> {
+        let outstanding = {
+            let held = self.held.as_mut()?;
+            held.landed |= landed;
+            held.outstanding -= 1;
+            held.outstanding
+        };
+        if outstanding > 0 {
+            return Some(Effect::None);
+        }
+        let held = self.held.take().expect("checked Some above");
+        if !held.landed {
+            self.notice = Some(Notice {
+                text: format!(
+                    "{}: every write was refused, so {} did not go out",
+                    held.name,
+                    held.verb.label()
+                ),
+                grave: true,
+            });
+            return Some(Effect::None);
+        }
+        Some(self.send_held_action(held.verb, held.name))
+    }
+
+    /// Sends `verb` at `name`, the same lookup and bookkeeping
+    /// [`Self::confirm`] uses once an action is already past its question:
+    /// pinned as [`Stage::Sent`] so the in-flight gate still sees it, and
+    /// silent (no send) with a notice if the sheep left the flock while its
+    /// writes were in flight.
+    fn send_held_action(&mut self, verb: ActionVerb, name: String) -> Effect {
+        let Some((target, count)) = self.flock_target(&name) else {
+            self.notice = Some(Notice {
+                text: format!("{name}: it is no longer in the flock"),
+                grave: true,
+            });
+            return Effect::None;
+        };
+        self.action = Some(Action {
+            verb,
+            target: target.clone(),
+            name: name.clone(),
+            count,
+            at: self.now,
+            stage: Stage::Sent,
+        });
+        Effect::Send(Sent::Action { verb, target, name })
     }
 
     /// The row key `name` reaches, and how many processes that is.
@@ -5067,16 +5185,6 @@ impl App {
     /// A name rather than [`Self::selected`]: a pane is opened per name and
     /// survives the table underneath it changing. [`None`] when the flock
     /// has no such sheep left.
-    ///
-    /// `apply_parked` was this frame's only caller and is gone with the
-    /// menu it belonged to: [`Self::answer_close`] does not send a verb
-    /// yet. Kept for the reply state machine a later frame builds, which
-    /// needs the same lookup to send `Sent::Action` once every write is
-    /// answered.
-    #[allow(
-        dead_code,
-        reason = "a later frame's reply state machine reads this; not built yet"
-    )]
     fn flock_target(&self, name: &str) -> Option<(RowKey, usize)> {
         let ids: Vec<u32> = self
             .flock
@@ -7136,6 +7244,14 @@ impl App {
     #[must_use]
     pub fn close_dialog(&self) -> Option<&CloseDialog> {
         self.close_dialog.as_ref()
+    }
+
+    /// The verb a close dialog's `R` or `L` chose, waiting on its own
+    /// writes to answer, or `None` once it has fired, been dropped or
+    /// expired.
+    #[cfg(test)]
+    fn held_action(&self) -> Option<&HeldAction> {
+        self.held.as_ref()
     }
 
     /// The resolved style level and which layer chose it, which the STYLE LEVEL
@@ -13298,18 +13414,219 @@ mod tests {
         assert!(app.config_pane().is_none());
     }
 
-    /// `R`, `L` and `c` all just write and close in this frame: the reply
-    /// state machine that makes `R` and `L` hold their verb is a later
-    /// frame's job. Proof it is a write and not an action: the request is
-    /// `ApplyField`, never `Restart`.
+    /// A parked field alone (nothing filed to write) has nothing for `R` to
+    /// wait on, so the restart goes at once rather than holding for a batch
+    /// that is empty.
     #[test]
-    fn r_from_the_dialog_writes_and_closes_like_c_does_in_this_frame() {
+    fn r_over_a_parked_field_alone_sends_the_restart_at_once() {
         let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
         let _ = app.update(Msg::Key(KeyPress::Escape));
         let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
-        assert!(matches!(effect, Effect::SendAll(_)), "got {effect:?}");
+        assert!(
+            matches!(
+                effect,
+                Effect::Send(Sent::Action {
+                    verb: ActionVerb::Restart,
+                    ..
+                })
+            ),
+            "got {effect:?}"
+        );
         assert!(app.config_pane().is_none());
         assert!(app.close_dialog().is_none());
+    }
+
+    /// Order is the whole point: a restart sent before the write lands
+    /// respawns into the old config.
+    #[test]
+    fn r_sends_every_write_before_the_restart() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        let Effect::SendAll(batch) = effect else {
+            panic!("expected a batch, got {effect:?}");
+        };
+        assert_eq!(batch.len(), 2, "the two writes and no action yet");
+        assert!(
+            batch
+                .iter()
+                .all(|sent| !matches!(sent, Sent::Action { .. }))
+        );
+    }
+
+    #[test]
+    fn the_restart_goes_once_the_last_write_is_answered() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let Effect::SendAll(batch) = app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)))
+        else {
+            panic!("expected a batch");
+        };
+        let first = app.update(Msg::Replied {
+            sent: batch[0].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "cwd".to_string(),
+                pending: false,
+            }),
+        });
+        assert!(matches!(first, Effect::None), "not yet: {first:?}");
+        let second = app.update(Msg::Replied {
+            sent: batch[1].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "max_memory".to_string(),
+                pending: false,
+            }),
+        });
+        assert!(
+            matches!(
+                second,
+                Effect::Send(Sent::Action {
+                    verb: ActionVerb::Restart,
+                    ..
+                })
+            ),
+            "got {second:?}"
+        );
+    }
+
+    /// A refused field alongside an accepted one still needs the restart the
+    /// accepted one was waiting for.
+    #[test]
+    fn a_partly_refused_batch_still_restarts() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let Effect::SendAll(batch) = app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)))
+        else {
+            panic!("expected a batch");
+        };
+        app.update(Msg::Replied {
+            sent: batch[0].clone(),
+            result: Err(fixtures::invalid_config()),
+        });
+        let last = app.update(Msg::Replied {
+            sent: batch[1].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "max_memory".to_string(),
+                pending: false,
+            }),
+        });
+        assert!(
+            matches!(last, Effect::Send(Sent::Action { .. })),
+            "got {last:?}"
+        );
+    }
+
+    /// Bouncing a healthy process to apply nothing is the one outcome with
+    /// a cost and no benefit.
+    #[test]
+    fn a_wholly_refused_batch_does_not_restart() {
+        let mut app = fixtures::app_in_sheep_pane_with_one_edit();
+        app.update(Msg::Key(KeyPress::Escape));
+        let Effect::SendAll(batch) = app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)))
+        else {
+            panic!("expected a batch");
+        };
+        let last = app.update(Msg::Replied {
+            sent: batch[0].clone(),
+            result: Err(fixtures::invalid_config()),
+        });
+        assert!(matches!(last, Effect::None), "got {last:?}");
+        assert!(app.notice().is_some(), "and it says why");
+    }
+
+    /// `L` takes the same wait-for-the-writes path as `R`, and must reach
+    /// the shepherd as its own verb rather than `Restart`'s: no test drove
+    /// this key from inside the dialog before this task.
+    #[test]
+    fn l_sends_reload_and_not_restart_once_the_writes_land() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let Effect::SendAll(batch) = app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload)))
+        else {
+            panic!("expected a batch");
+        };
+        let first = app.update(Msg::Replied {
+            sent: batch[0].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "cwd".to_string(),
+                pending: false,
+            }),
+        });
+        assert!(matches!(first, Effect::None), "not yet: {first:?}");
+        let second = app.update(Msg::Replied {
+            sent: batch[1].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "max_memory".to_string(),
+                pending: false,
+            }),
+        });
+        assert!(
+            matches!(
+                second,
+                Effect::Send(Sent::Action {
+                    verb: ActionVerb::Reload,
+                    ..
+                })
+            ),
+            "got {second:?}, expected Reload and not Restart"
+        );
+    }
+
+    /// `c` never holds a verb, so its writes' own replies are unaffected by
+    /// anything this task adds: whatever the per-field reply handler
+    /// returns stands, and it is never `Sent::Action`.
+    #[test]
+    fn c_writes_and_sends_no_action() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let effect = app.update(Msg::Key(KeyPress::Continue));
+        assert!(matches!(effect, Effect::SendAll(_)), "got {effect:?}");
+        assert!(app.config_pane().is_none(), "the pane closed");
+        assert!(app.held_action().is_none(), "`c` never holds a verb");
+        let Effect::SendAll(batch) = effect else {
+            unreachable!()
+        };
+        let done = app.update(Msg::Replied {
+            sent: batch[batch.len() - 1].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "max_memory".to_string(),
+                pending: false,
+            }),
+        });
+        assert!(
+            !matches!(done, Effect::Send(Sent::Action { .. })),
+            "no action follows a c: {done:?}"
+        );
+    }
+
+    /// The parked half has no writes to wait for, so the action goes at once.
+    #[test]
+    fn r_over_parked_fields_alone_sends_the_action_immediately() {
+        let mut app = fixtures::app_in_sheep_pane();
+        app.set_control_for_tests(Control::Allowed);
+        app.update(Msg::Key(KeyPress::Escape));
+        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        assert!(
+            matches!(effect, Effect::Send(Sent::Action { .. })),
+            "got {effect:?}"
+        );
+    }
+
+    /// A reply that never comes cannot strand the verb.
+    #[test]
+    fn a_held_verb_expires() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        let later = app.now() + CONFIRM_EXPIRY;
+        app.update(Msg::Tick { now: later });
+        assert!(app.held_action().is_none(), "it expired");
     }
 
     /// `TextAbandon` drops the env editor and leaves the pane exactly as

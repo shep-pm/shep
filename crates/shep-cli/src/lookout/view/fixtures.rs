@@ -10,7 +10,9 @@ use ratatui::buffer::Buffer;
 use ratatui::text::Line;
 use shep_client::RequestError;
 use shep_core::config::{AppConfig, ProbeConfig, ProbeKind};
-use shep_core::protocol::{BusEvent, DogSource, Lamb, ProcessInfo, Response, SheepConfigView};
+use shep_core::protocol::{
+    BusEvent, DogSource, Lamb, ProcessInfo, Response, RpcError, RpcErrorCode, SheepConfigView,
+};
 use shep_core::status::ProcStatus;
 use shep_core::values::UpDuration;
 
@@ -1912,6 +1914,29 @@ pub fn app_in_sheep_pane_with_two_edits() -> App {
         "the fixture files two edits"
     );
     app
+}
+
+/// [`app_in_sheep_pane_with_nothing_parked`] with `cwd` alone filed: one
+/// write, so a whole-batch refusal has exactly one ticket to refuse.
+pub fn app_in_sheep_pane_with_one_edit() -> App {
+    let mut app = app_in_sheep_pane_with_nothing_parked();
+    file_edit(&mut app, "cwd", "/srv/web");
+    assert_eq!(
+        app.config_pane().expect("the pane is open").edits().len(),
+        1,
+        "the fixture files one edit"
+    );
+    app
+}
+
+/// The daemon's refusal for a write that fails config validation: what a
+/// `cwd` the shepherd's user cannot enter comes back as.
+pub fn invalid_config() -> RequestError {
+    RequestError::Rpc(RpcError {
+        code: RpcErrorCode::InvalidConfig,
+        message: "cwd: no such directory".to_string(),
+        daemon_version: None,
+    })
 }
 
 /// The active group's own field rows, as their key names: a bounded slice
