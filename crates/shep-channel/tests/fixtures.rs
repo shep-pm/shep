@@ -9,34 +9,33 @@
 //!
 //! Regenerate with `SHEP_CHANNEL_BLESS=1 cargo test -p shep-channel --test fixtures`.
 
-use std::fs;
+use std::fmt::Debug;
 use std::path::PathBuf;
 
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 use shep_channel::{ChildMessage, ShepherdMessage};
+
+mod common;
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures")
 }
 
-fn check(name: &str, encoded: String) {
-    let path = fixtures_dir().join(format!("{name}.json"));
-    if std::env::var_os("SHEP_CHANNEL_BLESS").is_some() {
-        fs::create_dir_all(fixtures_dir()).expect("create fixtures dir");
-        fs::write(&path, &encoded).expect("write fixture");
-        return;
-    }
-    let committed = fs::read_to_string(&path).unwrap_or_else(|error| {
-        panic!(
-            "{}: {error}. Run with SHEP_CHANNEL_BLESS=1 to create it.",
-            path.display()
-        )
-    });
-    assert_eq!(
-        committed,
-        encoded,
-        "{} is stale. Three other libraries are written against these bytes.",
-        path.display()
+/// Holds one case against its committed file and against itself.
+///
+/// Generic over the message type so both corpora run the same check: a
+/// round trip that passes for one enum and not the other would otherwise
+/// depend on which of the two loops someone remembered to update.
+fn check<T: Serialize + DeserializeOwned + PartialEq + Debug>(name: &str, value: &T) {
+    let encoded = serde_json::to_string(value).expect("encode");
+    common::bless_or_compare(
+        &fixtures_dir().join(format!("{name}.json")),
+        &encoded,
+        "Three other libraries are written against these bytes.",
     );
+    let decoded: T = serde_json::from_str(&encoded).expect("decode");
+    assert_eq!(&decoded, value, "{name} does not survive a round trip");
 }
 
 #[test]
@@ -75,10 +74,7 @@ fn child_messages_match_their_fixtures() {
         ),
     ];
     for (name, value) in cases {
-        let encoded = serde_json::to_string(&value).expect("encode");
-        check(name, encoded.clone());
-        let decoded: ChildMessage = serde_json::from_str(&encoded).expect("decode");
-        assert_eq!(decoded, value, "{name} does not survive a round trip");
+        check(name, &value);
     }
 }
 
@@ -104,10 +100,7 @@ fn shepherd_messages_match_their_fixtures() {
         ),
     ];
     for (name, value) in cases {
-        let encoded = serde_json::to_string(&value).expect("encode");
-        check(name, encoded.clone());
-        let decoded: ShepherdMessage = serde_json::from_str(&encoded).expect("decode");
-        assert_eq!(decoded, value, "{name} does not survive a round trip");
+        check(name, &value);
     }
 }
 
