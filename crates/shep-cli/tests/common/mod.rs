@@ -22,7 +22,9 @@ use std::time::{Duration, Instant};
 pub fn wait_bounded(child: &mut Child, timeout: Duration, what: &str) -> ExitStatus {
     let deadline = Instant::now() + timeout;
     loop {
-        if let Some(status) = child.try_wait().unwrap_or_else(|error| panic!("poll {what}: {error}"))
+        if let Some(status) = child
+            .try_wait()
+            .unwrap_or_else(|error| panic!("poll {what}: {error}"))
         {
             return status;
         }

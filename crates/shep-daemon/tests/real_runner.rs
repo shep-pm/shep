@@ -16,8 +16,8 @@ use shep_core::signals::OperatorSignal;
 use shep_daemon::channel::{ChildMessage, ShepherdMessage};
 use shep_daemon::privilege::Credentials;
 use shep_daemon::runner::{
-    AdoptSpec, AdoptedReaper, LogLine, ProcIo, ProcessRunner, RunningProcess, SpawnSpec, StdinWrite,
-    StopSignal,
+    AdoptSpec, AdoptedReaper, LogLine, ProcIo, ProcessRunner, RunningProcess, SpawnSpec,
+    StdinWrite, StopSignal,
 };
 use shep_daemon::tokio_runner::TokioRunner;
 
@@ -200,7 +200,12 @@ async fn a_reopen_moves_a_real_childs_output_onto_the_recreated_path() {
     // it is written leaves a real process behind for the rest of the run.
     let _reaper = Reaper(vec![i32::try_from(proc.pid()).unwrap()]);
 
-    let line = recv_log(&mut io, LOG_WRITE_DEADLINE, "the child's first line must arrive").await;
+    let line = recv_log(
+        &mut io,
+        LOG_WRITE_DEADLINE,
+        "the child's first line must arrive",
+    )
+    .await;
     assert_eq!(line.line, "before");
     await_file_contents(&out_file, "before\n").await;
 
@@ -231,7 +236,12 @@ async fn a_reopen_moves_a_real_childs_output_onto_the_recreated_path() {
     assert_eq!(unstamped_file(&archive), "before\n");
 
     fs::write(&marker, "").unwrap();
-    let line = recv_log(&mut io, LOG_WRITE_DEADLINE, "the child's second line must arrive").await;
+    let line = recv_log(
+        &mut io,
+        LOG_WRITE_DEADLINE,
+        "the child's second line must arrive",
+    )
+    .await;
     assert_eq!(line.line, "after");
 
     await_file_contents(&out_file, "after\n").await;
@@ -307,12 +317,22 @@ async fn a_process_signal_reaches_the_sheep_and_not_its_lamb() {
     let (mut proc, mut io) = runner.spawn(&spec).unwrap();
     let _reaper = Reaper(vec![i32::try_from(proc.pid()).unwrap()]);
 
-    let ready = recv_log(&mut io, LONG_DEADLINE, "the lamb did not announce itself within 10s").await;
+    let ready = recv_log(
+        &mut io,
+        LONG_DEADLINE,
+        "the lamb did not announce itself within 10s",
+    )
+    .await;
     assert_eq!(ready.line, "lamb-ready");
 
     proc.signal_process(OperatorSignal::Usr1).unwrap();
 
-    let answer = recv_log(&mut io, LONG_DEADLINE, "nothing answered the signal within 10s").await;
+    let answer = recv_log(
+        &mut io,
+        LONG_DEADLINE,
+        "nothing answered the signal within 10s",
+    )
+    .await;
     assert_eq!(answer.line, "sheep-got-it");
 
     // And nothing else follows it. A group delivery would put `lamb-got-it` on
@@ -411,7 +431,12 @@ async fn a_graceful_stop_reaches_a_forked_grandchild() {
 
     // The wrapper prints `$!` only after forking, so receiving this line
     // proves the grandchild already exists.
-    let line = recv_log(&mut io, LOG_WRITE_DEADLINE, "the wrapper must report its forked child's pid").await;
+    let line = recv_log(
+        &mut io,
+        LOG_WRITE_DEADLINE,
+        "the wrapper must report its forked child's pid",
+    )
+    .await;
     let grandchild: i32 = line.line.trim().parse().expect("`echo $!` prints a pid");
     reaper.0.push(grandchild);
     assert_ne!(grandchild, leader, "sanity: `&` really forked");
@@ -695,7 +720,12 @@ async fn a_dropped_child_runs_as_the_requested_user() {
     assert_eq!(uid_line.line.trim(), target.uid.as_raw().to_string());
     assert!(!uid_line.err);
 
-    let groups_line = recv_log(&mut io, LOG_WRITE_DEADLINE, "the child must print its group list").await;
+    let groups_line = recv_log(
+        &mut io,
+        LOG_WRITE_DEADLINE,
+        "the child must print its group list",
+    )
+    .await;
     let groups: Vec<&str> = groups_line.line.split_whitespace().collect();
     assert_eq!(
         groups,
@@ -806,7 +836,12 @@ async fn a_bare_interpreter_resolves_via_the_seeded_path() {
 
     let runner = TokioRunner::new();
     let (mut proc, mut io) = runner.spawn(&spec).unwrap();
-    let line = recv_log(&mut io, LOG_WRITE_DEADLINE, "the shim must resolve via the seeded PATH and produce output").await;
+    let line = recv_log(
+        &mut io,
+        LOG_WRITE_DEADLINE,
+        "the shim must resolve via the seeded PATH and produce output",
+    )
+    .await;
     assert_eq!(line.line, "shim-exec-ok");
     assert!(!line.err);
     let outcome = proc.wait().await;
@@ -1014,7 +1049,12 @@ async fn an_adopted_pump_appends_the_carried_pipes_lines_through_the_carried_han
         .adopt(spec)
         .expect("the real runner must be able to adopt");
 
-    let line = recv_log(&mut io, LONG_DEADLINE, "the carried pipe must still be pumped").await;
+    let line = recv_log(
+        &mut io,
+        LONG_DEADLINE,
+        "the carried pipe must still be pumped",
+    )
+    .await;
     assert_eq!(line.line, "after-the-handover");
     await_file_contents(&out_file, "before-the-handover\nafter-the-handover\n").await;
 

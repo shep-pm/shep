@@ -27,7 +27,10 @@ pub fn bless_or_compare(path: &Path, produced: &str, stale_hint: &str) {
         return;
     }
     let committed = fs::read_to_string(path).unwrap_or_else(|error| {
-        panic!("{}: {error}. Run with {BLESS}=1 to create it.", path.display())
+        panic!(
+            "{}: {error}. Run with {BLESS}=1 to create it.",
+            path.display()
+        )
     });
     assert_eq!(
         committed,
