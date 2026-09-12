@@ -9,15 +9,17 @@ use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::text::Line;
 use shep_client::RequestError;
-use shep_core::config::AppConfig;
+use shep_core::config::{AppConfig, ProbeConfig, ProbeKind};
 use shep_core::protocol::{BusEvent, DogSource, Lamb, ProcessInfo, Response, SheepConfigView};
 use shep_core::status::ProcStatus;
+use shep_core::values::UpDuration;
 
 use super::super::app::{
-    ActionVerb, App, Body, Control, Effect, KeyPress, LambWalk, Msg, RevealedValue, RowKey, Sent,
-    SettingsRow,
+    ActionVerb, App, Body, CloseDialog, Control, Effect, KeyPress, LambWalk, Msg, RevealedValue,
+    RowKey, Sent, SettingsRow,
 };
 use super::super::level::Level;
+use super::super::pane::{ConfigPane, ReloadKind};
 use super::super::secrets::{SecretRow, SecretsModel, Source};
 use super::super::source::HostSample;
 use super::super::tail::{Stream, Tail, TailLine};
@@ -947,6 +949,79 @@ fn sheep_config_view_parking(pending: Vec<String>) -> SheepConfigView {
     )
 }
 
+/// A [`ConfigPane`] over `web`, with `kill_timeout` and `graceful_timeout`
+/// set to round numbers a close dialog's own copy names literally, `5s`
+/// and `10s`: the sheep's own values a test can assert on verbatim, rather
+/// than a millisecond count `resolved_display` would leave bare.
+fn close_dialog_pane(
+    wait_ready: bool,
+    has_probe: bool,
+    reuse_port: bool,
+    instances: u32,
+) -> ConfigPane {
+    let config = AppConfig {
+        name: "web".to_string(),
+        kill_timeout: UpDuration::from_millis(5_000),
+        graceful_timeout: UpDuration::from_millis(10_000),
+        wait_ready,
+        reuse_port,
+        instances,
+        readiness_probe: has_probe.then(|| ProbeConfig {
+            kind: ProbeKind::Tcp,
+            target: "127.0.0.1:8080".into(),
+            interval: UpDuration::from_millis(10_000),
+            timeout: UpDuration::from_millis(5_000),
+            failure_threshold: 3,
+        }),
+        ..AppConfig::default()
+    };
+    ConfigPane::sheep(SheepConfigView::new(config, Vec::new(), Vec::new()))
+}
+
+/// A close dialog naming `unsent` filed edits and `parked` shepherd
+/// fields, over a plain overlapping-reload sheep: what
+/// [`close_dialog_lines`](crate::lookout::view::pane::close_dialog_lines)'s
+/// own heading and naming-sentence tests read, without driving a real key
+/// sequence to raise one.
+pub fn close_dialog_with(unsent: usize, parked: usize) -> CloseDialog {
+    let pane = close_dialog_pane(true, false, false, 1);
+    let unsent_fields = (0..unsent).map(|i| format!("field{i}")).collect();
+    CloseDialog::new(unsent_fields, parked, &pane, Instant::now())
+}
+
+/// A close dialog over a sheep whose reload takes `kind` and reaches
+/// `instances` of it: what the reload row's own tests read. One unsent
+/// field and nothing parked, since the reload row draws the same either
+/// way and a test on it should not have to explain the heading too.
+pub fn close_dialog_reloading(kind: ReloadKind, instances: u32) -> CloseDialog {
+    let (wait_ready, has_probe, reuse_port) = match kind {
+        // `reload_mode`'s own rule: `!wait_ready && has_probe && !reuse_port`
+        // is `Serial`, anything else is `Overlap`.
+        ReloadKind::Overlap => (true, false, false),
+        ReloadKind::Serial => (false, true, false),
+    };
+    let pane = close_dialog_pane(wait_ready, has_probe, reuse_port, instances);
+    CloseDialog::new(vec!["cwd".to_string()], 0, &pane, Instant::now())
+}
+
+/// The one line in `lines` starting with `prefix`, after trimming leading
+/// whitespace: what a close dialog's own option-row tests read, so a test
+/// for the reload row does not pass off the first row that merely
+/// contains the letter somewhere in its sentence.
+///
+/// # Panics
+///
+/// Panics if no line starts with `prefix`, which is a fixture bug rather
+/// than a failure the test is about.
+#[track_caller]
+pub fn row_starting_with(lines: &[Line<'static>], prefix: &str) -> String {
+    lines
+        .iter()
+        .map(rendered)
+        .find(|line| line.trim_start().starts_with(prefix))
+        .unwrap_or_else(|| panic!("no row starts with {prefix:?}"))
+}
+
 /// The bark dog's `[bark]` section as `Request::DogConfig` would answer it:
 /// a comment, two scalars, and a sink holding a webhook credential.
 ///
@@ -1151,6 +1226,11 @@ fn app_in_sheep_pane_parking(pending: Vec<String>) -> App {
 
 /// A dashboard with `web` selected and its config pane open, opened the way
 /// the event loop opens it: `e`, then the shepherd's own reply.
+///
+/// Read-only by default, since nothing here calls
+/// `set_control_for_tests(Control::Allowed)`: the tests this fixture backs
+/// are about reading and about the closed gate. [`file_edit`] opens the
+/// gate itself for the tests that need to file an edit here.
 pub fn app_in_sheep_pane() -> App {
     let mut app = with_selection(
         ProcessInfo::builder(9, "web", ProcStatus::Online)
@@ -1165,6 +1245,54 @@ pub fn app_in_sheep_pane() -> App {
         result: Ok(Response::SheepConfig(Box::new(sheep_config_view()))),
     });
     app
+}
+
+/// [`app_in_sheep_pane`], explicit about the gate rather than reading it
+/// off that fixture's own default: a read-only pane is the one fact a test
+/// on this cares about, and this name says so without depending on
+/// `app_in_sheep_pane`'s default staying what it is today.
+pub fn app_in_sheep_pane_read_only() -> App {
+    let mut app = app_in_sheep_pane();
+    app.set_control_for_tests(Control::ReadOnly);
+    app
+}
+
+/// [`app_in_sheep_pane`], over a sheep the shepherd reports stopped: nothing
+/// holds the old config, so the close dialog's `R`/`L` half has nothing to
+/// offer and `esc` never asks about a respawn. Nothing parked either, since
+/// a stopped sheep has no running process for the shepherd to have parked
+/// a write against.
+pub fn app_in_sheep_pane_on_a_stopped_sheep() -> App {
+    let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Stopped).build());
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::Edit));
+    app.update(Msg::Replied {
+        sent: Sent::SheepConfig {
+            name: "web".to_string(),
+        },
+        result: Ok(Response::SheepConfig(Box::new(sheep_config_view_parking(
+            Vec::new(),
+        )))),
+    });
+    app
+}
+
+/// Files an edit for `key` through the real keys an operator would press:
+/// select it, open the editor, replace the buffer with `value`, apply.
+///
+/// Grants control first: filing an edit is not what a read-only test is
+/// about, and every caller of this fixture wants the edit to land.
+pub fn file_edit(app: &mut App, key: &str, value: &str) {
+    app.set_control_for_tests(Control::Allowed);
+    select_field(app, key);
+    app.update(Msg::Key(KeyPress::Confirm));
+    for _ in 0..64 {
+        app.update(Msg::Key(KeyPress::TextBackspace));
+    }
+    for character in value.chars() {
+        app.update(Msg::Key(KeyPress::TextChar(character)));
+    }
+    app.update(Msg::Key(KeyPress::TextApply));
 }
 
 /// A frame already drawn, at `width` x `height`: every secrets-pane test
@@ -1772,19 +1900,15 @@ pub fn config_pane_field_rows_for_tests(app: &App) -> Vec<String> {
 /// has fields called `user` and `env`.
 ///
 /// Takes a `ConfigPane` directly rather than an `App`, since some of this
-/// pane's own tests build one without a dashboard around it. `menu` mirrors
-/// [`crate::lookout::view::pane::pane_lines`]'s own parameter.
+/// pane's own tests build one without a dashboard around it.
 ///
 /// # Panics
 ///
 /// Panics if it draws no row for a key or for `+ add a key`, which is a
 /// fixture bug rather than a failure the test is about.
 #[track_caller]
-pub fn config_pane_env_rows_for_tests(
-    pane: &crate::lookout::pane::ConfigPane,
-    menu: Option<&super::super::app::PaneMenu>,
-) -> Vec<String> {
-    let lines = crate::lookout::view::pane::pane_lines(pane, menu, plain(), 160, 0);
+pub fn config_pane_env_rows_for_tests(pane: &crate::lookout::pane::ConfigPane) -> Vec<String> {
+    let lines = crate::lookout::view::pane::pane_lines(pane, plain(), 160, 0);
     let rendered_lines: Vec<String> = lines.iter().map(rendered).collect();
     // The `env` section header is the bound. Everything above it is a field
     // row or chrome, and a prefix match over the whole frame would hand back
@@ -1858,8 +1982,7 @@ pub fn config_pane_pending_rows_for_tests(app: &App) -> Vec<String> {
 #[track_caller]
 pub fn config_pane_row_for_tests(app: &App, key: &str) -> String {
     let pane = app.config_pane().expect("the pane is open");
-    let lines =
-        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), 160, 0);
+    let lines = crate::lookout::view::pane::pane_lines(pane, plain(), 160, 0);
     lines
         .iter()
         .map(rendered)
@@ -1880,8 +2003,7 @@ pub fn config_pane_row_for_tests(app: &App, key: &str) -> String {
 #[track_caller]
 pub fn config_pane_title_band_for_tests(app: &App, width: u16) -> String {
     let pane = app.config_pane().expect("the pane is open");
-    let lines =
-        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), width, 0);
+    let lines = crate::lookout::view::pane::pane_lines(pane, plain(), width, 0);
     rendered(&lines[0])
 }
 
@@ -1896,8 +2018,7 @@ pub fn config_pane_title_band_for_tests(app: &App, width: u16) -> String {
 #[track_caller]
 pub fn config_pane_tab_row_for_tests(app: &App, width: u16) -> String {
     let pane = app.config_pane().expect("the pane is open");
-    let lines =
-        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), width, 0);
+    let lines = crate::lookout::view::pane::pane_lines(pane, plain(), width, 0);
     lines
         .iter()
         .map(rendered)
@@ -1911,8 +2032,7 @@ pub fn config_pane_tab_row_for_tests(app: &App, width: u16) -> String {
 /// absence rather than reading its content.
 pub fn config_pane_draws_a_tab_row(app: &App, width: u16) -> bool {
     let pane = app.config_pane().expect("the pane is open");
-    let lines =
-        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), width, 0);
+    let lines = crate::lookout::view::pane::pane_lines(pane, plain(), width, 0);
     lines
         .iter()
         .map(rendered)
@@ -1927,8 +2047,7 @@ pub fn config_pane_draws_a_tab_row(app: &App, width: u16) -> bool {
 /// show it at all.
 pub fn config_pane_draws_a_panel(app: &App, width: u16) -> bool {
     let pane = app.config_pane().expect("the pane is open");
-    let lines =
-        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), width, 0);
+    let lines = crate::lookout::view::pane::pane_lines(pane, plain(), width, 0);
     lines
         .iter()
         .map(rendered)

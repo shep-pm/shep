@@ -57,6 +57,7 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Tab => Some(KeyPress::NextGroup),
         KeyCode::Char(digit @ '1'..='8') => Some(KeyPress::Group(digit as u8 - b'0')),
         KeyCode::Char('u') => Some(KeyPress::Undo),
+        KeyCode::Char('c') => Some(KeyPress::Continue),
         KeyCode::Char('j') | KeyCode::Down => Some(KeyPress::SelectDown),
         KeyCode::Char('k') | KeyCode::Up => Some(KeyPress::SelectUp),
         KeyCode::Char('g') | KeyCode::Home => Some(KeyPress::SelectFirst),
@@ -326,7 +327,13 @@ mod tests {
     fn ctrl_c_quits_because_raw_mode_swallows_the_signal() {
         let event = Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
         assert_eq!(map_key(&event, InputMode::Normal), Some(KeyPress::Quit));
-        assert_eq!(map_key(&key(KeyCode::Char('c')), InputMode::Normal), None);
+        // A bare `c` is `Continue`, distinct from `ctrl-c`: the CONTROL
+        // branch above is checked first and returns before the bare match
+        // below is ever reached.
+        assert_eq!(
+            map_key(&key(KeyCode::Char('c')), InputMode::Normal),
+            Some(KeyPress::Continue)
+        );
     }
 
     #[test]
@@ -473,6 +480,11 @@ mod tests {
         assert_eq!(press(KeyCode::Char('u')), Some(KeyPress::Undo));
         let ctrl_u = Event::Key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
         assert_eq!(map_key(&ctrl_u, InputMode::Normal), Some(KeyPress::PageUp));
+    }
+
+    #[test]
+    fn bare_c_continues() {
+        assert_eq!(press(KeyCode::Char('c')), Some(KeyPress::Continue));
     }
 
     /// A digit typed into a text box is text, not a group jump.

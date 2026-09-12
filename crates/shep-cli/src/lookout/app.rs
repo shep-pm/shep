@@ -201,6 +201,10 @@ pub enum KeyPress {
     Group(u8),
     /// `u`: undoes the config pane's last change.
     Undo,
+    /// `c` in the close dialog: write the set and leave the sheep running.
+    /// Bound nowhere else, the way [`Self::Undo`] is read only by the
+    /// config pane.
+    Continue,
 }
 
 /// Everything that can change the dashboard.
@@ -1364,45 +1368,128 @@ struct Action {
     stage: Stage,
 }
 
-/// The offer a pane makes on its way out when the running sheep has not
-/// taken every field yet.
+/// The question `esc` asks when a pane closes over changes the running
+/// child has not taken.
 ///
-/// Nothing is at risk while it is up: a pane edit reaches the override
-/// store on the keystroke that makes it, so leaving costs nothing and the
-/// menu says so. What it buys is the operator not walking away from parked
-/// config without knowing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PaneMenu {
+/// Raised by [`App::close_offer`], answered by [`App::on_close_dialog_key`],
+/// and expired by the same [`CONFIRM_EXPIRY`] every other prompt gets.
+///
+/// Both counts are carried rather than recomputed: the set is taken from
+/// the pane when the dialog goes up, and `parked` is the shepherd's own
+/// answer from the last fetch.
+///
+/// `Debug` is derived (IR-41): two counts, a reload mode, a name, a time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloseDialog {
+    unsent: Vec<String>,
     parked: usize,
     reload: ReloadKind,
+    instances: u32,
+    kill_timeout: String,
+    graceful_timeout: String,
+    name: String,
+    pid: Option<u32>,
     at: Instant,
 }
 
-impl PaneMenu {
-    /// One, over `parked` fields and the reload `reload`.
+impl CloseDialog {
+    /// One, over `unsent` filed edits and `parked` fields, reading
+    /// everything else off `pane`: which reload it would get, its own
+    /// `kill_timeout` and `graceful_timeout`, and its name.
+    ///
+    /// `pid` is always [`None`] here: a [`ConfigPane`] carries no OS pid,
+    /// only the flock map does, and nothing this frame draws needs one.
     #[must_use]
-    pub(super) const fn new(parked: usize, reload: ReloadKind, at: Instant) -> Self {
-        Self { parked, reload, at }
+    pub(super) fn new(unsent: Vec<String>, parked: usize, pane: &ConfigPane, at: Instant) -> Self {
+        Self {
+            unsent,
+            parked,
+            reload: pane.reload_kind(),
+            instances: pane.value("instances").parse().unwrap_or(1),
+            kill_timeout: pane.display_value("kill_timeout"),
+            graceful_timeout: pane.display_value("graceful_timeout"),
+            name: pane.target().name().to_owned(),
+            pid: None,
+            at,
+        }
     }
 
-    /// When it opened. A menu that outlives `CONFIRM_EXPIRY` is dropped by
-    /// the tick, so a later keypress cannot answer a question nobody is
+    /// When it opened. A dialog that outlives `CONFIRM_EXPIRY` is dropped
+    /// by the tick, so a later keypress cannot answer a question nobody is
     /// still looking at.
     #[must_use]
-    pub const fn at(self) -> Instant {
+    pub const fn at(&self) -> Instant {
         self.at
     }
 
-    /// How many fields the running sheep has not taken yet.
+    /// How many filed edits a respawn is what applies. The heading's own
+    /// number; [`Self::unsent_fields`] is the sentence underneath it.
     #[must_use]
-    pub const fn parked(self) -> usize {
+    pub fn unsent(&self) -> usize {
+        self.unsent.len()
+    }
+
+    /// Those edits' own field names, in the set's key order.
+    #[must_use]
+    pub fn unsent_fields(&self) -> &[String] {
+        &self.unsent
+    }
+
+    /// How many fields the shepherd already parked, from the last fetch.
+    #[must_use]
+    pub const fn parked(&self) -> usize {
         self.parked
     }
 
-    /// Which reload this sheep would get, so `L` can name its cost.
+    /// Which reload this sheep would get, so `L`'s row can name its cost.
     #[must_use]
-    pub const fn reload(self) -> ReloadKind {
+    pub const fn reload(&self) -> ReloadKind {
         self.reload
+    }
+
+    /// How many instances a reload or restart would reach.
+    #[must_use]
+    pub const fn instances(&self) -> u32 {
+        self.instances
+    }
+
+    /// The sheep's own `kill_timeout`, resolved for display: what `R`'s row
+    /// names as the stop's own grace before SIGKILL.
+    #[must_use]
+    pub fn kill_timeout(&self) -> &str {
+        &self.kill_timeout
+    }
+
+    /// The sheep's own `graceful_timeout`, resolved the same way: the drain
+    /// window a serial reload gets.
+    #[must_use]
+    pub fn graceful_timeout(&self) -> &str {
+        &self.graceful_timeout
+    }
+
+    /// The sheep this dialog is asking about.
+    ///
+    /// Unread by this frame's own render: `close_dialog_lines` names no
+    /// target, only what changed. Kept for a later frame's title band.
+    #[allow(
+        dead_code,
+        reason = "task 4's boxed form reads this; that frame is not built yet"
+    )]
+    #[must_use]
+    pub fn target_name(&self) -> &str {
+        &self.name
+    }
+
+    /// The OS pid this sheep runs under, when there is exactly one to name.
+    ///
+    /// Always [`None`] in this frame: see [`Self::new`]'s own doc for why.
+    #[allow(
+        dead_code,
+        reason = "task 4's boxed form reads this; that frame is not built yet"
+    )]
+    #[must_use]
+    pub const fn pid(&self) -> Option<u32> {
+        self.pid
     }
 }
 
@@ -1960,12 +2047,12 @@ pub struct App {
     /// probed once at open and reused on every re-read, so `r` never
     /// respawns the dog's binary. Cleared alongside `config_target`.
     dog_target: Option<DogProbe>,
-    /// The apply offer over the open pane, or `None`.
+    /// The close dialog over the open pane, or `None`.
     ///
-    /// Opened by `Escape` on a pane with parked fields and the gate open,
-    /// and it owns the keyboard while it is up. Cleared with the pane, so
-    /// no menu can outlive the fields it counted.
-    pane_menu: Option<PaneMenu>,
+    /// Raised by `Escape` on a pane carrying changes the running child has
+    /// not taken, and it owns the keyboard while it is up. Cleared with the
+    /// pane, so no dialog can outlive the edits it counted.
+    close_dialog: Option<CloseDialog>,
     /// The resolved style level and which layer chose it. Defaulted here and
     /// overridden through [`Self::set_style`], so the STYLE LEVEL row reads the
     /// same answer the rest of the CLI does.
@@ -2074,7 +2161,7 @@ impl App {
             config_target: None,
             config_for: None,
             dog_target: None,
-            pane_menu: None,
+            close_dialog: None,
             style: (StyleLevel::Full, StyleSource::Default),
             cpu_history: HashMap::new(),
             flock_cpu: VecDeque::new(),
@@ -2156,11 +2243,11 @@ impl App {
                     if expired {
                         self.action = None;
                     }
-                    let stale = self.pane_menu.as_ref().is_some_and(|menu| {
-                        now.saturating_duration_since(menu.at()) >= CONFIRM_EXPIRY
+                    let stale = self.close_dialog.as_ref().is_some_and(|dialog| {
+                        now.saturating_duration_since(dialog.at()) >= CONFIRM_EXPIRY
                     });
                     if stale {
-                        self.pane_menu = None;
+                        self.close_dialog = None;
                     }
                 }
                 // The tick's own `now` again, for the same reason: how long
@@ -2355,7 +2442,7 @@ impl App {
                     // settings and this reply is the stale one. Adopting it
                     // would replace the pane with a settings screen the
                     // operator has moved on from, and leave `config_target`
-                    // and `pane_menu` describing a screen that is no longer
+                    // and `close_dialog` describing a screen that is no longer
                     // up. The `Body` enum stops the two coexisting; it does
                     // not stop this handler overwriting one with the other,
                     // which is the same race `on_sheep_config` had in the
@@ -3260,7 +3347,8 @@ impl App {
             | KeyPress::StepDown
             | KeyPress::NextGroup
             | KeyPress::Group(_)
-            | KeyPress::Undo => Effect::None,
+            | KeyPress::Undo
+            | KeyPress::Continue => Effect::None,
             // The read, not the open: the screen opens only once
             // `Msg::Settings` lands.
             KeyPress::Settings => Effect::LoadSettings,
@@ -3506,7 +3594,8 @@ impl App {
             // has neither a group to walk nor an edit set to take back.
             | KeyPress::NextGroup
             | KeyPress::Group(_)
-            | KeyPress::Undo => Effect::None,
+            | KeyPress::Undo
+            | KeyPress::Continue => Effect::None,
         }
     }
 
@@ -4073,7 +4162,8 @@ impl App {
             // group to switch to and nothing filed to take back.
             | KeyPress::NextGroup
             | KeyPress::Group(_)
-            | KeyPress::Undo => Effect::None,
+            | KeyPress::Undo
+            | KeyPress::Continue => Effect::None,
         }
     }
 
@@ -4252,11 +4342,13 @@ impl App {
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::SecretDelete => Effect::None,
-            // `NextGroup`/`Group`/`Undo` belong to the config pane: no other
-            // screen has groups to walk or a filed edit set to undo.
+            // `NextGroup`/`Group`/`Undo`/`Continue` belong to the config
+            // pane: no other screen has groups to walk, a filed edit set
+            // to undo, or a close dialog to answer.
             | KeyPress::NextGroup
             | KeyPress::Group(_)
-            | KeyPress::Undo => Effect::None,
+            | KeyPress::Undo
+            | KeyPress::Continue => Effect::None,
         }
     }
 
@@ -4440,11 +4532,13 @@ impl App {
             | KeyPress::MatchNext
             | KeyPress::MatchPrev
             | KeyPress::Bleats
-            // `NextGroup`/`Group`/`Undo` belong to the config pane: no other
-            // screen has groups to walk or a filed edit set to undo.
+            // `NextGroup`/`Group`/`Undo`/`Continue` belong to the config
+            // pane: no other screen has groups to walk, a filed edit set
+            // to undo, or a close dialog to answer.
             | KeyPress::NextGroup
             | KeyPress::Group(_)
-            | KeyPress::Undo => {}
+            | KeyPress::Undo
+            | KeyPress::Continue => {}
         }
         Effect::None
     }
@@ -4562,17 +4656,18 @@ impl App {
     /// Movement walks fields, `r` re-reads, `space` cycles the row under
     /// the cursor, `Enter` or `e` edits it, `u` undoes the newest edit,
     /// `h` toggles the selected field's own help text, and `Escape`
-    /// closes help if it is open, else writes everything filed and
-    /// leaves. Everything else is named rather than wildcarded, so a
-    /// stray variant cannot fall silently into an arm that ignores it.
+    /// closes help if it is open, else asks the close dialog's question if
+    /// there is one to ask, else writes everything filed and leaves.
+    /// Everything else is named rather than wildcarded, so a stray variant
+    /// cannot fall silently into an arm that ignores it.
     ///
     /// Nothing is armed here and no key is eaten. A keystroke that edits
     /// files into the pane's own set and sends nothing, so a stray one
     /// costs an `u` rather than a write to a running sheep.
     fn on_pane_key(&mut self, key: KeyPress) -> Effect {
         self.notice = None;
-        if self.pane_menu.is_some() {
-            return self.on_pane_menu_key(key);
+        if self.close_dialog.is_some() {
+            return self.on_close_dialog_key(key);
         }
         if self.config_pane().is_some_and(|pane| pane.list().is_some()) {
             return self.on_list_key(key);
@@ -4583,15 +4678,15 @@ impl App {
         match key {
             KeyPress::Quit => return Effect::Quit,
             // Backs out one level at a time: help first, if it is open,
-            // else the pane. `Escape` closes rather than cascading to a
-            // filter clear or a quit, exactly as it does on the settings
-            // screen.
+            // else the close dialog's own question, else the pane.
+            // `Escape` closes rather than cascading to a filter clear or a
+            // quit, exactly as it does on the settings screen.
             //
-            // This is the one door a config edit leaves by. The set goes
-            // out whether the pane leaves the screen on this keypress or
-            // stops to offer the parked-field menu, because the operator
-            // asked to write on this key and a menu about the shepherd's
-            // own parked fields is a separate question.
+            // The dialog is asked before anything is taken: `esc` used to
+            // write first and ask second, which missed the very edit that
+            // made this pane's `Escape` worth asking about. Now nothing
+            // leaves the pane until the question is answered, one way or
+            // another.
             KeyPress::Escape => {
                 let help_open = self.config_pane().is_some_and(ConfigPane::help_open);
                 if help_open {
@@ -4600,12 +4695,12 @@ impl App {
                     }
                     return Effect::None;
                 }
-                let writes = self.take_pane_writes();
-                if let Some(menu) = self.apply_offer() {
-                    self.pane_menu = Some(menu);
-                } else {
-                    self.close_pane();
+                if let Some(dialog) = self.close_offer() {
+                    self.close_dialog = Some(dialog);
+                    return Effect::None;
                 }
+                let writes = self.take_pane_writes();
+                self.close_pane();
                 if !writes.is_empty() {
                     return Effect::SendAll(writes);
                 }
@@ -4659,7 +4754,10 @@ impl App {
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::SecretDelete
-            | KeyPress::Collapse => {}
+            | KeyPress::Collapse
+            // Bound only in the close dialog; with none up, `c` is a stray
+            // key the same way an action key is.
+            | KeyPress::Continue => {}
             KeyPress::StreamCycle
             | KeyPress::LevelCycle
             | KeyPress::PageDown
@@ -4829,41 +4927,70 @@ impl App {
     /// ever one screen to close to, and it is this one.
     fn close_pane(&mut self) {
         self.body = Body::FlockTable;
-        self.pane_menu = None;
+        self.close_dialog = None;
         self.config_target = None;
         self.config_for = None;
         self.dog_target = None;
         self.release_text_mode_if_unowned();
     }
 
-    /// The offer this pane's `Escape` makes, or [`None`] when it just leaves.
+    /// The question this pane's `Escape` asks, or [`None`] when it just
+    /// writes and leaves.
     ///
-    /// Silent with nothing parked, so reading a pane never costs a
-    /// keystroke, and silent behind a closed gate, where the two keys it
-    /// offers would be refused anyway.
-    fn apply_offer(&self) -> Option<PaneMenu> {
+    /// Silent behind a closed gate, where every key it offers would be
+    /// refused; silent on a dog, which has no apply table to classify an
+    /// edit with; and silent on a sheep that is not running, where nothing
+    /// holds the old config and `R` would start it rather than replace it.
+    fn close_offer(&self) -> Option<CloseDialog> {
         if self.control == Control::ReadOnly {
             return None;
         }
         let pane = self.config_pane()?;
+        let PaneTarget::Sheep { name } = pane.target() else {
+            return None;
+        };
+        if !self.sheep_is_running(name) {
+            return None;
+        }
+        let unsent = pane.unsent_fields_needing_a_respawn();
         let parked = pane.parked_count();
-        (parked > 0).then(|| PaneMenu::new(parked, pane.reload_kind(), self.now))
+        if unsent.is_empty() && parked == 0 {
+            return None;
+        }
+        Some(CloseDialog::new(unsent, parked, pane, self.now))
     }
 
-    /// The menu's own keymap: `L` reloads, `R` restarts, and anything else
-    /// that backs out leaves the fields parked.
+    /// Whether `name` has an instance the flock reports running.
     ///
-    /// `Escape` closes the pane rather than only the menu: it is the second
-    /// press of the two the operator meant as "leave", and a menu that ate
-    /// it would need a third.
-    fn on_pane_menu_key(&mut self, key: KeyPress) -> Effect {
+    /// `Stopping` does not count: the drainee and its replacement hold the
+    /// same slot ([`crate::lookout::pane::ReloadKind`]'s own reasoning), and
+    /// a sheep with every instance stopping holds no config a respawn would
+    /// replace.
+    fn sheep_is_running(&self, name: &str) -> bool {
+        self.flock.values().any(|row| {
+            row.info.name == name
+                && matches!(
+                    row.info.status,
+                    ProcStatus::Online | ProcStatus::Starting | ProcStatus::WaitingRestart
+                )
+        })
+    }
+
+    /// The dialog's own keymap: `R` and `L` write and close, the same as
+    /// `c` does in this frame; a later frame makes them hold the verb until
+    /// the write is answered. `Escape` closes the dialog and not the pane,
+    /// which is the difference from the menu this replaces: `esc` here
+    /// means keep editing, so the filed set stays filed and nothing is
+    /// written.
+    fn on_close_dialog_key(&mut self, key: KeyPress) -> Effect {
         match key {
             KeyPress::Quit => Effect::Quit,
             KeyPress::Action(verb @ (ActionVerb::Reload | ActionVerb::Restart)) => {
-                self.apply_parked(verb)
+                self.answer_close(Some(verb))
             }
+            KeyPress::Continue => self.answer_close(None),
             KeyPress::Escape => {
-                self.close_pane();
+                self.close_dialog = None;
                 Effect::None
             }
             KeyPress::Action(ActionVerb::Stop)
@@ -4902,66 +5029,26 @@ impl App {
             | KeyPress::MatchNext
             | KeyPress::MatchPrev
             | KeyPress::Bleats
-            // `NextGroup`/`Group`/`Undo` belong to the config pane: no other
-            // screen has groups to walk or a filed edit set to undo.
+            // `NextGroup`/`Group`/`Undo` belong to the config pane: no
+            // other screen has groups to walk or a filed edit set to undo.
             | KeyPress::NextGroup
             | KeyPress::Group(_)
             | KeyPress::Undo => Effect::None,
         }
     }
 
-    /// Sends the menu's chosen verb against the pane's own sheep and closes
-    /// the pane behind it.
+    /// Writes the pane's filed set and closes both the dialog and the
+    /// pane, for `R`, `L` and `c` alike.
     ///
-    /// The same [`Sent::Action`] the dashboard's `arm` and `confirm` build,
-    /// so [`Self::on_action_reply`] answers it unchanged. The menu is the
-    /// confirm, so there is no second one.
-    fn apply_parked(&mut self, verb: ActionVerb) -> Effect {
-        // Read rather than left to `apply_offer`: the gate is one write to
-        // `pane_menu` away from not covering this, and a send is not the
-        // place to find that out.
-        if self.control == Control::ReadOnly {
-            self.notice = Some(Notice {
-                text: READ_ONLY_REFUSAL.to_string(),
-                grave: true,
-            });
-            return Effect::None;
-        }
-        if let Some(text) = self.link_refusal() {
-            self.notice = Some(Notice { text, grave: true });
-            return Effect::None;
-        }
-        if self.action.is_some() {
-            self.notice = Some(Notice {
-                text: "one action is already in flight".to_string(),
-                grave: true,
-            });
-            return Effect::None;
-        }
-        let Some(name) = self
-            .config_pane()
-            .map(|pane| pane.target().name().to_owned())
-        else {
-            return Effect::None;
-        };
-        let Some((target, count)) = self.flock_target(&name) else {
-            self.notice = Some(Notice {
-                text: format!("{name}: it is no longer in the flock"),
-                grave: true,
-            });
-            self.close_pane();
-            return Effect::None;
-        };
-        self.action = Some(Action {
-            verb,
-            target: target.clone(),
-            name: name.clone(),
-            count,
-            at: self.now,
-            stage: Stage::Sent,
-        });
+    /// A stub: `verb` is not read yet. The three keys sending the same
+    /// effect here is deliberate, not a bug — a later frame makes `R` and
+    /// `L` hold `verb` and send it once every write is answered, per
+    /// "write, then act" in the design; this frame only builds the
+    /// question and its `esc`/expiry, not the reply state machine.
+    fn answer_close(&mut self, _verb: Option<ActionVerb>) -> Effect {
+        let writes = self.take_pane_writes();
         self.close_pane();
-        Effect::Send(Sent::Action { verb, target, name })
+        Effect::SendAll(writes)
     }
 
     /// The row key `name` reaches, and how many processes that is.
@@ -4969,6 +5056,16 @@ impl App {
     /// A name rather than [`Self::selected`]: a pane is opened per name and
     /// survives the table underneath it changing. [`None`] when the flock
     /// has no such sheep left.
+    ///
+    /// `apply_parked` was this frame's only caller and is gone with the
+    /// menu it belonged to: [`Self::answer_close`] does not send a verb
+    /// yet. Kept for the reply state machine a later frame builds, which
+    /// needs the same lookup to send `Sent::Action` once every write is
+    /// answered.
+    #[allow(
+        dead_code,
+        reason = "a later frame's reply state machine reads this; not built yet"
+    )]
     fn flock_target(&self, name: &str) -> Option<(RowKey, usize)> {
         let ids: Vec<u32> = self
             .flock
@@ -5229,7 +5326,10 @@ impl App {
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::SecretDelete
-            | KeyPress::Collapse => {}
+            | KeyPress::Collapse
+            // Bound only in the close dialog; with none up on a list
+            // sub-screen, `c` is a stray key the same way an action key is.
+            | KeyPress::Continue => {}
             KeyPress::StreamCycle
             | KeyPress::LevelCycle
             | KeyPress::PageDown
@@ -7021,10 +7121,10 @@ impl App {
         self.sheep_pane_mut().map(SheepPane::feed_mut)
     }
 
-    /// The apply offer over the open pane, or `None`.
+    /// The close dialog over the open pane, or `None`.
     #[must_use]
-    pub fn pane_menu(&self) -> Option<PaneMenu> {
-        self.pane_menu
+    pub fn close_dialog(&self) -> Option<&CloseDialog> {
+        self.close_dialog.as_ref()
     }
 
     /// The resolved style level and which layer chose it, which the STYLE LEVEL
@@ -12153,7 +12253,7 @@ mod tests {
     /// the operator two actions past caring about it. `Msg::Settings` wrote
     /// `body` unconditionally, so the reply replaced the pane, reset the
     /// cursor as if opening, and forced `InputMode::Normal` while
-    /// `config_target` and `pane_menu` went on describing a pane that was
+    /// `config_target` and `close_dialog` went on describing a pane that was
     /// no longer on screen.
     #[test]
     fn a_settings_read_landing_after_a_config_pane_leaves_the_pane_up() {
@@ -13025,10 +13125,8 @@ mod tests {
     #[test]
     fn every_env_value_renders_as_set_and_never_as_itself() {
         let app = fixtures::app_in_sheep_pane_with_env(&[("NODE_ENV", "production")]);
-        let rows = fixtures::config_pane_env_rows_for_tests(
-            app.config_pane().expect("the pane is open"),
-            app.pane_menu().as_ref(),
-        );
+        let rows =
+            fixtures::config_pane_env_rows_for_tests(app.config_pane().expect("the pane is open"));
         assert!(rows.iter().any(|row| row.contains("NODE_ENV")), "{rows:?}");
         assert!(
             rows.iter().all(|row| !row.contains("production")),
@@ -13134,89 +13232,81 @@ mod tests {
         let _ = app.update(Msg::Key(KeyPress::Escape));
         assert!(
             app.config_pane().is_none(),
-            "no menu when nothing is parked"
+            "no dialog when nothing is parked"
         );
-        assert!(app.pane_menu().is_none());
+        assert!(app.close_dialog().is_none());
     }
 
     #[test]
-    fn escape_on_a_parked_pane_offers_the_menu_and_escape_again_leaves() {
+    fn escape_on_a_parked_pane_asks_and_escape_again_keeps_the_pane() {
         let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
         let _ = app.update(Msg::Key(KeyPress::Escape));
         assert!(
             app.config_pane().is_some(),
-            "the pane stays up behind the menu"
+            "the pane stays up behind the dialog"
         );
-        assert!(app.pane_menu().is_some(), "the menu is open");
+        assert!(app.close_dialog().is_some(), "the dialog is open");
 
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.config_pane().is_none(), "escape twice leaves");
-        assert!(app.pane_menu().is_none());
+        assert!(
+            app.config_pane().is_some(),
+            "escape twice keeps the pane: the second esc answers the dialog, not the pane"
+        );
+        assert!(app.close_dialog().is_none());
     }
 
     #[test]
-    fn the_menu_counts_the_parked_fields_once() {
+    fn the_dialog_counts_the_parked_fields_once() {
         let mut app = fixtures::app_in_sheep_pane_with_two_parked_fields();
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert_eq!(app.pane_menu().expect("the menu is open").parked(), 2);
+        assert_eq!(app.close_dialog().expect("the dialog is open").parked(), 2);
         assert_eq!(
             app.config_pane().expect("a pane").parked_count(),
             2,
-            "the pane and the menu agree"
+            "the pane and the dialog agree"
         );
     }
 
     #[test]
-    fn the_menu_reads_which_reload_this_sheep_would_get() {
+    fn the_dialog_reads_which_reload_this_sheep_would_get() {
         let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
         let _ = app.update(Msg::Key(KeyPress::Escape));
         assert_eq!(
-            app.pane_menu().expect("the menu is open").reload(),
+            app.close_dialog().expect("the dialog is open").reload(),
             ReloadKind::Overlap,
             "the fixture sets no readiness probe"
         );
     }
 
     #[test]
-    fn the_menu_never_opens_while_the_gate_is_closed() {
+    fn the_dialog_never_opens_while_the_gate_is_closed() {
         let mut app = fixtures::app_in_sheep_pane();
         assert!(app.config_pane().expect("a pane").parked_count() > 0);
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.pane_menu().is_none(), "read-only can apply nothing");
+        assert!(app.close_dialog().is_none(), "read-only can apply nothing");
         assert!(app.config_pane().is_none());
     }
 
+    /// `R`, `L` and `c` all just write and close in this frame: the reply
+    /// state machine that makes `R` and `L` hold their verb is a later
+    /// frame's job. Proof it is a write and not an action: the request is
+    /// `ApplyField`, never `Restart`.
     #[test]
-    fn l_from_the_menu_reloads_the_sheep_and_leaves() {
+    fn r_from_the_dialog_writes_and_closes_like_c_does_in_this_frame() {
         let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        let request = wire(app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload))));
-        assert!(
-            matches!(request, Request::Reload { .. }),
-            "expected Reload, got {request:?}"
-        );
+        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        assert!(matches!(effect, Effect::SendAll(_)), "got {effect:?}");
         assert!(app.config_pane().is_none());
-        assert!(app.pane_menu().is_none());
-    }
-
-    #[test]
-    fn r_from_the_menu_restarts_the_sheep_and_leaves() {
-        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
-        let _ = app.update(Msg::Key(KeyPress::Escape));
-        let request = wire(app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart))));
-        assert!(
-            matches!(request, Request::Restart { .. }),
-            "expected Restart, got {request:?}"
-        );
-        assert!(app.config_pane().is_none());
+        assert!(app.close_dialog().is_none());
     }
 
     /// `TextAbandon` drops the env editor and leaves the pane exactly as
     /// `Escape` leaves the field editor: open, on the same row, nothing
-    /// filed. `Escape` from there walks the menu then the pane, the same
-    /// as it does for any other row.
+    /// filed. `Escape` from there asks the dialog's question, and a second
+    /// `Escape` answers it by closing the dialog, not the pane.
     #[test]
-    fn abandoning_the_env_editor_leaves_the_pane_then_escape_walks_the_menu_then_the_pane() {
+    fn abandoning_the_env_editor_leaves_the_pane_then_escape_asks_the_dialog() {
         let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
         let _ = app.update(Msg::Key(KeyPress::SelectLast));
         assert_eq!(app.config_pane().unwrap().cursor(), Some(PaneRow::AddEnv));
@@ -13226,22 +13316,136 @@ mod tests {
         assert_eq!(app.mode(), InputMode::Normal);
         assert!(app.config_pane().is_some(), "the pane stays open");
         assert!(app.config_pane().unwrap().edits().is_empty());
-        assert!(app.pane_menu().is_none());
+        assert!(app.close_dialog().is_none());
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.pane_menu().is_some());
+        assert!(app.close_dialog().is_some());
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.config_pane().is_none());
+        assert!(app.config_pane().is_some(), "the second esc keeps the pane");
+        assert!(app.close_dialog().is_none());
     }
 
-    /// Help is dismissed before the menu is offered, so `h` then `esc`
+    /// Help is dismissed before the dialog is asked, so `h` then `esc`
     /// still puts the operator back on the field list.
     #[test]
-    fn escape_dismisses_help_before_it_offers_the_menu() {
+    fn escape_dismisses_help_before_it_asks_the_dialog() {
         let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
         let _ = app.update(Msg::Key(KeyPress::Help));
         let _ = app.update(Msg::Key(KeyPress::Escape));
         assert!(!app.config_pane().unwrap().help_open());
-        assert!(app.pane_menu().is_none());
+        assert!(app.close_dialog().is_none());
+    }
+
+    /// The case the old menu missed: an edit made in this pane, on a sheep
+    /// with nothing parked before it opened.
+    #[test]
+    fn esc_with_a_respawn_edit_asks_before_it_writes() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.close_dialog().is_some(), "the dialog is up");
+        assert!(
+            matches!(effect, Effect::None),
+            "nothing is written until the dialog is answered, got {effect:?}"
+        );
+        assert!(app.config_pane().is_some(), "the pane is still open");
+    }
+
+    #[test]
+    fn esc_with_only_live_edits_writes_and_closes_with_no_dialog() {
+        // `app_in_sheep_pane` parks `kill_signal` unconditionally
+        // (`sheep_config_view`'s own default), which alone would raise the
+        // dialog regardless of what is filed. This test is about the
+        // unsent half alone, so it needs a pane starting with nothing
+        // parked.
+        let mut app = fixtures::app_in_sheep_pane_with_nothing_parked();
+        // `max_restarts` is `ApplyGroup::Live`.
+        fixtures::file_edit(&mut app, "max_restarts", "9");
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.close_dialog().is_none());
+        assert!(app.config_pane().is_none(), "the pane closed");
+        assert!(matches!(effect, Effect::SendAll(_)), "got {effect:?}");
+    }
+
+    /// Nothing holds the old config, so there is nothing to respawn, and `R`
+    /// on a stopped sheep would start it.
+    #[test]
+    fn no_dialog_for_a_stopped_sheep() {
+        let mut app = fixtures::app_in_sheep_pane_on_a_stopped_sheep();
+        fixtures::file_edit(&mut app, "cwd", "/srv/app");
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        assert!(
+            app.close_dialog().is_none(),
+            "a stopped sheep is not asked about"
+        );
+        assert!(matches!(effect, Effect::SendAll(_)), "got {effect:?}");
+    }
+
+    #[test]
+    fn no_dialog_for_a_dog() {
+        let mut app = fixtures::app_in_dog_pane();
+        fixtures::file_edit(&mut app, "poll", "45s");
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.close_dialog().is_none());
+        assert!(matches!(effect, Effect::SendAll(_)), "got {effect:?}");
+    }
+
+    /// The parked half: no edit of the operator's own, fields the shepherd
+    /// is already holding.
+    #[test]
+    fn esc_over_parked_fields_alone_still_asks() {
+        // `app_in_sheep_pane` is read-only by default, and a closed gate
+        // is a separate reason for no dialog (`read_only_is_never_asked`).
+        // This test is about the parked half alone, so it needs the gate
+        // open and nothing filed.
+        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        let dialog = app.close_dialog().expect("one field is parked");
+        assert_eq!(dialog.unsent(), 0);
+        assert_eq!(dialog.parked(), 1);
+        assert!(matches!(effect, Effect::None), "got {effect:?}");
+    }
+
+    #[test]
+    fn read_only_is_never_asked() {
+        let mut app = fixtures::app_in_sheep_pane_read_only();
+        app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.close_dialog().is_none());
+        assert!(app.config_pane().is_none(), "read-only still closes");
+    }
+
+    #[test]
+    fn esc_from_the_dialog_writes_nothing_and_keeps_the_pane() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.close_dialog().is_none(), "the dialog closed");
+        assert!(app.config_pane().is_some(), "the pane did not");
+        assert!(matches!(effect, Effect::None), "got {effect:?}");
+    }
+
+    /// The edits survive it: `esc` is `keep editing`, not `discard`.
+    #[test]
+    fn esc_from_the_dialog_leaves_the_edits_filed() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        app.update(Msg::Key(KeyPress::Escape));
+        app.update(Msg::Key(KeyPress::Escape));
+        assert!(
+            app.close_dialog().is_some(),
+            "the second esc found the same two edits still filed"
+        );
+    }
+
+    /// An expiry is an `esc`, never a `c`. A dialog nobody answered is not
+    /// consent to write.
+    #[test]
+    fn the_dialog_expires_without_writing() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let later = app.now() + CONFIRM_EXPIRY;
+        let effect = app.update(Msg::Tick { now: later });
+        assert!(app.close_dialog().is_none(), "it expired");
+        assert!(app.config_pane().is_some(), "the pane is still open");
+        assert!(matches!(effect, Effect::None), "got {effect:?}");
     }
 
     #[test]
@@ -13412,6 +13616,25 @@ mod tests {
         });
     }
 
+    /// `esc`, and `c` right behind it if that raised the close dialog
+    /// instead of writing outright.
+    ///
+    /// What every write-on-close test in this module wants now: every
+    /// sheep fixture here parks `kill_signal` unconditionally
+    /// (`sheep_config_view`'s own default), so a bare `esc` only asks. `c`
+    /// is what actually gets the write onto the wire, the same as an
+    /// operator continuing past the dialog would; harmless when nothing
+    /// asked, since [`App::close_dialog`] is `None` and this returns
+    /// `esc`'s own effect unchanged.
+    fn close_writing(app: &mut App) -> Effect {
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        if app.close_dialog().is_some() {
+            app.update(Msg::Key(KeyPress::Continue))
+        } else {
+            effect
+        }
+    }
+
     /// The request an effect would put on the wire, or a panic naming what
     /// came back instead. The seam this test module cares about: the
     /// reducer's own `Sent` is an echo tag, and `Sent::request` is what the
@@ -13467,7 +13690,7 @@ mod tests {
                 1,
                 "{key}: space files an edit and sends nothing"
             );
-            let request = one_wire(app.update(Msg::Key(KeyPress::Escape)));
+            let request = one_wire(close_writing(&mut app));
             let Request::SetSheepField {
                 name,
                 key: sent,
@@ -13503,7 +13726,7 @@ mod tests {
             }
             let _ = app.update(Msg::Key(KeyPress::TextApply));
             assert_eq!(app.mode(), InputMode::Normal, "{key}: the editor closes");
-            let request = one_wire(app.update(Msg::Key(KeyPress::Escape)));
+            let request = one_wire(close_writing(&mut app));
             let Request::SetSheepField {
                 key: sent, value, ..
             } = request
@@ -13545,7 +13768,7 @@ mod tests {
         let _ = app.update(Msg::Key(KeyPress::TextApply));
 
         // Both leave together, on the `Escape` that closes the pane.
-        let requests = wire_all(app.update(Msg::Key(KeyPress::Escape)));
+        let requests = wire_all(close_writing(&mut app));
         assert_eq!(
             requests,
             vec![
@@ -13608,7 +13831,7 @@ mod tests {
         let mut app = fixtures::app_in_sheep_pane_with_control();
         pane_to(&mut app, "autorestart");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
-        let mut batch = wire_batch(app.update(Msg::Key(KeyPress::Escape)));
+        let mut batch = wire_batch(close_writing(&mut app));
         let sent = batch.remove(0);
         // The pane is reopened and the operator starts typing while the
         // first write is still out.
@@ -13697,7 +13920,7 @@ mod tests {
         assert_eq!(app.config_pane().unwrap().edits().len(), 1);
         assert_eq!(filed_value(&app, "max_restarts"), serde_json::json!(16));
 
-        let request = one_wire(app.update(Msg::Key(KeyPress::Escape)));
+        let request = one_wire(close_writing(&mut app));
         let Request::SetSheepField { key, value, .. } = request else {
             panic!("expected SetSheepField, got {request:?}");
         };
@@ -13817,7 +14040,7 @@ mod tests {
     #[test]
     fn escape_sends_every_filed_edit_at_once() {
         let mut app = fixtures::app_in_sheep_pane_with_two_edits();
-        let effect = app.update(Msg::Key(KeyPress::Escape));
+        let effect = close_writing(&mut app);
         let Effect::SendAll(sent) = effect else {
             panic!("wanted a batch, got {effect:?}");
         };
@@ -13857,7 +14080,7 @@ mod tests {
     #[test]
     fn a_refused_write_notices_after_the_pane_has_closed() {
         let mut app = fixtures::app_in_sheep_pane_with_two_edits();
-        let Effect::SendAll(mut sent) = app.update(Msg::Key(KeyPress::Escape)) else {
+        let Effect::SendAll(mut sent) = close_writing(&mut app) else {
             panic!("wanted a batch");
         };
         let first = sent.remove(0);
@@ -13919,7 +14142,7 @@ mod tests {
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         pane_to(&mut app, "watch");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
-        let requests = wire_all(app.update(Msg::Key(KeyPress::Escape)));
+        let requests = wire_all(close_writing(&mut app));
         let named: Vec<String> = requests
             .iter()
             .map(|request| match request {
@@ -14078,7 +14301,7 @@ mod tests {
         pane_to(&mut app, "watch");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let _ = app.update(Msg::Key(KeyPress::Undo));
-        let requests = wire_all(app.update(Msg::Key(KeyPress::Escape)));
+        let requests = wire_all(close_writing(&mut app));
         let named: Vec<String> = requests
             .iter()
             .map(|request| match request {
@@ -14098,7 +14321,7 @@ mod tests {
             let mut app = fixtures::app_in_sheep_pane_with_control();
             pane_to(&mut app, "autorestart");
             let _ = app.update(Msg::Key(KeyPress::Cycle));
-            let mut batch = wire_batch(app.update(Msg::Key(KeyPress::Escape)));
+            let mut batch = wire_batch(close_writing(&mut app));
             let effect = app.update(Msg::Replied {
                 sent: batch.remove(0),
                 result: Ok(Response::SheepFieldSet {
@@ -14128,7 +14351,7 @@ mod tests {
         let mut app = fixtures::app_in_sheep_pane_with_control();
         pane_to(&mut app, "autorestart");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
-        let mut batch = wire_batch(app.update(Msg::Key(KeyPress::Escape)));
+        let mut batch = wire_batch(close_writing(&mut app));
         let effect = app.update(Msg::Replied {
             sent: batch.remove(0),
             result: Err(fixtures::a_refusal()),
@@ -14156,7 +14379,7 @@ mod tests {
             let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
         }
         let _ = app.update(Msg::Key(KeyPress::TextApply));
-        let field = app.update(Msg::Key(KeyPress::Escape));
+        let field = close_writing(&mut app);
         assert_eq!(
             format!("{field:?}"),
             "SendAll([ApplyField { name: \"web\", ticket: 0, key: \"cwd\", \
@@ -14176,9 +14399,9 @@ mod tests {
         }
         let _ = app.update(Msg::Key(KeyPress::TextApply));
         // One `Escape`, not two: there is no sub-screen level to back out
-        // of any more, so the write goes out on the same keypress that
-        // closes the field list (or offers its menu).
-        let env = app.update(Msg::Key(KeyPress::Escape));
+        // of any more, so the write goes out once the close dialog it
+        // raises (this fixture parks `kill_signal`) is answered.
+        let env = close_writing(&mut app);
         assert_eq!(
             format!("{env:?}"),
             "SendAll([SetEnv { name: \"web\", ticket: 0, key: \"DB_HOST\", \
@@ -14197,7 +14420,7 @@ mod tests {
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         pane_to(&mut app, "watch");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
-        let first = wire_batch(app.update(Msg::Key(KeyPress::Escape)));
+        let first = wire_batch(close_writing(&mut app));
         assert_ne!(first[0], first[1], "two entries are two tickets");
 
         // The same lookout, a second pane. `app_in_sheep_pane_with_control`
@@ -14215,7 +14438,7 @@ mod tests {
         });
         pane_to(&mut app, "autorestart");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
-        let second = wire_batch(app.update(Msg::Key(KeyPress::Escape)));
+        let second = wire_batch(close_writing(&mut app));
         assert_ne!(
             first[0], second[0],
             "a second close does not reuse the first's tickets"
@@ -14235,42 +14458,27 @@ mod tests {
             1,
             "the edit survives the rebuild"
         );
-        let request = one_wire(app.update(Msg::Key(KeyPress::Escape)));
+        let request = one_wire(close_writing(&mut app));
         let Request::SetSheepField { key, .. } = request else {
             panic!("{request:?}");
         };
         assert_eq!(key, "autorestart");
     }
 
-    /// A menu nobody answered is a question nobody is still looking at, and
-    /// `L` an hour later must not reload a sheep.
+    /// A dialog nobody answered is not consent to write, and `L` an hour
+    /// later must not reload a sheep.
     #[test]
-    fn the_apply_menu_expires_like_every_other_armed_thing() {
+    fn the_close_dialog_expires_like_every_other_armed_thing() {
         let mut app = fixtures::app_in_sheep_pane_with_control();
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.pane_menu().is_some(), "the menu opened");
+        assert!(app.close_dialog().is_some(), "the dialog opened");
 
         let later = Instant::now() + CONFIRM_EXPIRY;
         let _ = app.update(Msg::Tick { now: later });
-        assert!(app.pane_menu().is_none(), "it did not expire");
+        assert!(app.close_dialog().is_none(), "it did not expire");
 
         let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload)));
         assert_eq!(effect, Effect::None, "a stale L reloads nothing");
-    }
-
-    #[test]
-    fn the_apply_menu_refuses_on_a_dead_link_like_every_other_action() {
-        let mut app = fixtures::app_in_sheep_pane_with_control();
-        let _ = app.update(Msg::Retrying { attempt: 3 });
-        let _ = app.update(Msg::Key(KeyPress::Escape));
-        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload)));
-        assert_eq!(
-            effect,
-            Effect::None,
-            "nothing goes to a shepherd that is gone"
-        );
-        let said = app.notice().map(ToString::to_string).unwrap_or_default();
-        assert!(said.contains("attempt 3"), "{said}");
     }
 
     /// The pane-level test reaches `begin_typing` directly, so it passes
@@ -14535,7 +14743,7 @@ mod tests {
             app.update(Msg::Key(KeyPress::TextChar(typed)));
         }
         app.update(Msg::Key(KeyPress::TextApply));
-        let batch = wire_batch(app.update(Msg::Key(KeyPress::Escape)));
+        let batch = wire_batch(close_writing(&mut app));
         let [Sent::SetDogSection { name, toml, .. }] = batch.as_slice() else {
             panic!("closing the pane sends the section: {batch:?}");
         };
@@ -14719,7 +14927,7 @@ mod tests {
         // One field, one entry, however many keystrokes reached it, and
         // every one of them is in the array the wire carries.
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        let request = one_wire(app.update(Msg::Key(KeyPress::Escape)));
+        let request = one_wire(close_writing(&mut app));
         let Request::SetSheepField { key, value, .. } = request else {
             panic!("expected SetSheepField, got {request:?}");
         };

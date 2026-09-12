@@ -18,10 +18,10 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use shep_core::config::{ApplyGroup, GROUP_ORDER};
 
-use super::super::app::{App, PaneMenu};
+use super::super::app::{App, CONFIRM_EXPIRY, CloseDialog};
 use super::super::field::{Field, FieldKind, ValueKind};
 use super::super::pane::{
-    ConfigPane, EnvTyping, ListPane, ListRow, Lock, PaneEdit, PaneRow, PaneTarget,
+    ConfigPane, EnvTyping, ListPane, ListRow, Lock, PaneEdit, PaneRow, PaneTarget, ReloadKind,
 };
 use super::super::theme::Palette;
 use super::super::validation;
@@ -349,42 +349,14 @@ fn field_line(
     Line::from(spans)
 }
 
-/// The apply menu's own sentence.
+/// The one line the field list reserves under its title: the selected
+/// field's own help text while `h` has it open. [`None`] otherwise.
 ///
-/// Says "saved" in its first three words on purpose. Every one of these
-/// fields is already in the override store, so this is not a save prompt
-/// and must not read as one: leaving costs nothing, and the last clause
-/// says that too.
-fn menu_text(menu: PaneMenu) -> String {
-    let reload = menu.reload().label();
-    match menu.parked() {
-        1 => format!(
-            "1 saved field waits on the running sheep: L reload ({reload}), R restart, esc leave it parked"
-        ),
-        parked => format!(
-            "{parked} saved fields wait on the running sheep: L reload ({reload}), R restart, esc leave them parked"
-        ),
-    }
-}
-
-/// The one line the field list reserves under its title: the apply menu
-/// while it is up, else the selected field's own help text while `h` has
-/// it open. [`None`] when neither applies.
-///
-/// The menu outranks help: it is what the operator's next keystroke
-/// answers, and help is dismissed by a keystroke of the operator's own
-/// choosing, so it can wait for the slot back.
-///
-/// One line, and one already counted, so a menu costs the field list
-/// nothing: [`super::scroll`]'s walk sees the same budget either way.
-fn top_line(
-    pane: &ConfigPane,
-    menu: Option<&PaneMenu>,
-    palette: Palette,
-) -> Option<(String, Style)> {
-    if let Some(menu) = menu {
-        return Some((menu_text(*menu), palette.attention()));
-    }
+/// The close dialog used to draw here too, as the apply menu this pane
+/// replaced. It draws over the whole field list instead now
+/// ([`draw_pane`]), since it answers a question about the pane's own
+/// close rather than a per-field one.
+fn top_line(pane: &ConfigPane, palette: Palette) -> Option<(String, Style)> {
     if pane.help_open()
         && let Some(PaneRow::Field(index)) = pane.cursor()
         && let Some(field) = pane.fields().fields().get(index)
@@ -392,6 +364,143 @@ fn top_line(
         return Some((field.help.clone(), palette.muted()));
     }
     None
+}
+
+/// `""` for one, `"S"` for every other count: the plural suffix
+/// [`close_dialog_heading`] and [`close_dialog_naming_sentence`] both
+/// append to a bare noun.
+const fn plural(count: usize) -> &'static str {
+    if count == 1 { "" } else { "S" }
+}
+
+/// The dialog's own heading, one of three depending on which half of the
+/// question fired.
+fn close_dialog_heading(dialog: &CloseDialog) -> String {
+    match (dialog.unsent(), dialog.parked()) {
+        (0, parked) => format!("{parked} FIELD{} ALREADY WAITING", plural(parked)),
+        (unsent, 0) => format!("{unsent} EDIT{} NEED A RESPAWN", plural(unsent)),
+        (unsent, parked) => format!(
+            "{unsent} EDIT{} NEED A RESPAWN, {parked} FIELD{} ALREADY DID",
+            plural(unsent),
+            plural(parked)
+        ),
+    }
+}
+
+/// The unsent fields, named in a sentence and truncated past three:
+/// `cwd and err_file take hold when the process starts again.` or `cwd,
+/// err_file and 3 more take hold when the process starts again.`
+fn close_dialog_naming_sentence(fields: &[String]) -> String {
+    let list = match fields {
+        [] => String::new(),
+        [one] => one.clone(),
+        [first, second] => format!("{first} and {second}"),
+        [first, second, third] => format!("{first}, {second} and {third}"),
+        [first, second, rest @ ..] => {
+            format!("{first}, {second} and {} more", rest.len())
+        }
+    };
+    let verb = if fields.len() == 1 { "takes" } else { "take" };
+    format!("{list} {verb} hold when the process starts again.")
+}
+
+/// The reload row's own sentence, one of four off `dialog.reload()` and
+/// `dialog.instances()`.
+///
+/// The `SO_REUSEPORT` caveat rides on both overlap lines: an app with no
+/// readiness probe overlaps either way, and needs it exactly as much as a
+/// `reuse_port` app does if it binds an address.
+fn close_dialog_reload_sentence(dialog: &CloseDialog) -> String {
+    let graceful = dialog.graceful_timeout();
+    match (dialog.reload(), dialog.instances()) {
+        (ReloadKind::Overlap, 1) => {
+            "the replacement starts alongside and takes over. No gap, if the app sets \
+             SO_REUSEPORT itself."
+                .to_owned()
+        }
+        (ReloadKind::Overlap, _) => {
+            "one instance at a time, each replacement alongside the one it replaces. No gap, \
+             if the app sets SO_REUSEPORT itself."
+                .to_owned()
+        }
+        (ReloadKind::Serial, 1) => format!(
+            "drains it, then starts the replacement. Up to {graceful}, so slower than a \
+             restart for the same gap."
+        ),
+        (ReloadKind::Serial, n) => format!(
+            "one instance at a time, each drained before its replacement starts. Up to \
+             {graceful} each, 1 of {n} down at a time."
+        ),
+    }
+}
+
+/// One option row, indented and styled the way every other pane line in
+/// this file is.
+fn close_dialog_option_line(text: String, palette: Palette, width: u16) -> Line<'static> {
+    Line::from(Span::styled(
+        format!("  {}", fit(&text, width)),
+        palette.ground(),
+    ))
+}
+
+/// The dialog's rows, in its borderless form: what a terminal under 90
+/// columns gets, and what the boxed form (a later frame) draws inside its
+/// own border.
+///
+/// Every number here is the sheep's own but for the countdown: this
+/// function is given no clock, only the dialog, so the `esc` row states
+/// the full [`CONFIRM_EXPIRY`] rather than what is left of it. A later
+/// frame that wires a live countdown reads `dialog.at()` against the
+/// caller's own `now` to do it; nothing here is wrong for standing still,
+/// only for ticking.
+#[must_use]
+pub(super) fn close_dialog_lines(
+    dialog: &CloseDialog,
+    palette: Palette,
+    width: u16,
+) -> Vec<Line<'static>> {
+    let body = body_width(width);
+    let mut lines = vec![Line::from(Span::styled(
+        format!("  {}", fit(&close_dialog_heading(dialog), body)),
+        palette.attention(),
+    ))];
+    if dialog.unsent() > 0 {
+        let sentence = close_dialog_naming_sentence(dialog.unsent_fields());
+        lines.push(close_dialog_option_line(sentence, palette, body));
+    }
+    lines.push(Line::from(Span::raw("")));
+    lines.push(close_dialog_option_line(
+        format!(
+            "R   restart now      stop, then start. The stop takes up to {}.",
+            dialog.kill_timeout()
+        ),
+        palette,
+        body,
+    ));
+    lines.push(close_dialog_option_line(
+        format!(
+            "L   reload           {}",
+            close_dialog_reload_sentence(dialog)
+        ),
+        palette,
+        body,
+    ));
+    lines.push(close_dialog_option_line(
+        "c   continue         write them and leave it running. They wait for a respawn.".to_owned(),
+        palette,
+        body,
+    ));
+    lines.push(Line::from(Span::raw("")));
+    lines.push(close_dialog_option_line(
+        format!(
+            "esc  keep editing, write nothing   \u{b7}   this prompt expires in {}s {}",
+            CONFIRM_EXPIRY.as_secs(),
+            cell::gauge(10, Some(10), 10)
+        ),
+        palette,
+        body,
+    ));
+    lines
 }
 
 /// The list sub-screen: one array field's elements, and a row to add one on.
@@ -659,9 +768,9 @@ fn column_header_line(palette: Palette, width: u16, show_lands: bool) -> Line<'s
 /// (`docs/lookout/design-files/README.md`, the 1e frame's row 45) to the
 /// four the pane actually draws (see [`field_line`]).
 ///
-/// Names no key: `status.rs`'s `esc write & close` is the one place that
-/// wording lives, and a second copy here would only need to be kept in
-/// sync with it.
+/// Names no key: `status.rs`'s `esc close` is the one place that wording
+/// lives, and a second copy here would only need to be kept in sync with
+/// it.
 ///
 /// `* yours` rather than `* overridden`, because the status bar has said
 /// `* yours` on every screen that draws the glyph since before this pane
@@ -971,12 +1080,11 @@ fn grouped_body_lines(
 /// hairline, and the legend.
 fn grouped_pane_lines(
     pane: &ConfigPane,
-    menu: Option<&PaneMenu>,
     palette: Palette,
     width: u16,
     budget: usize,
 ) -> Vec<Line<'static>> {
-    grouped_pane_lines_with_panel(pane, menu, palette, width, budget, None)
+    grouped_pane_lines_with_panel(pane, palette, width, budget, None)
 }
 
 /// [`grouped_pane_lines`], with the cursor's own field's [`panel_lines`]
@@ -996,14 +1104,13 @@ fn grouped_pane_lines(
 /// never calls this and keeps today's single column.
 fn grouped_pane_with_panel_lines(
     pane: &ConfigPane,
-    menu: Option<&PaneMenu>,
     palette: Palette,
     width: u16,
     panel_w: u16,
     budget: usize,
 ) -> Vec<Line<'static>> {
     let panel = panel_lines(pane, palette, panel_w);
-    grouped_pane_lines_with_panel(pane, menu, palette, width, budget, Some((panel, panel_w)))
+    grouped_pane_lines_with_panel(pane, palette, width, budget, Some((panel, panel_w)))
 }
 
 /// The body shared by [`grouped_pane_lines`] and
@@ -1014,7 +1121,6 @@ fn grouped_pane_with_panel_lines(
 /// is the one region tall enough and narrow enough to hold both.
 fn grouped_pane_lines_with_panel(
     pane: &ConfigPane,
-    menu: Option<&PaneMenu>,
     palette: Palette,
     width: u16,
     budget: usize,
@@ -1045,7 +1151,7 @@ fn grouped_pane_lines_with_panel(
         remaining -= 1;
     }
     if remaining > 1 {
-        if let Some((text, style)) = top_line(pane, menu, palette) {
+        if let Some((text, style)) = top_line(pane, palette) {
             lines.push(Line::from(Span::styled(
                 format!("  {}", fit(&text, body_width(width))),
                 style,
@@ -1180,12 +1286,12 @@ fn push_footer_line(
 /// [`super::scroll`] for why the viewport's offset is a starting point
 /// here, not an answer.
 ///
-/// `menu` is the apply offer, which takes the one line under the title
-/// rather than a line of its own.
+/// The close dialog is not drawn here: it overlays the whole field list
+/// (`draw_pane`), rather than taking the one line under the title the
+/// apply menu this pane replaced used to.
 #[must_use]
 pub fn pane_lines(
     pane: &ConfigPane,
-    menu: Option<&PaneMenu>,
     palette: Palette,
     width: u16,
     height: u16,
@@ -1203,12 +1309,12 @@ pub fn pane_lines(
     }
     if has_groups(pane) {
         if let Some(panel_w) = panel_width(width) {
-            return grouped_pane_with_panel_lines(pane, menu, palette, width, panel_w, budget);
+            return grouped_pane_with_panel_lines(pane, palette, width, panel_w, budget);
         }
-        return grouped_pane_lines(pane, menu, palette, width, budget);
+        return grouped_pane_lines(pane, palette, width, budget);
     }
     let panel = panel_width(width).map(|panel_w| (panel_lines(pane, palette, panel_w), panel_w));
-    ungrouped_pane_lines_with_panel(pane, menu, palette, width, budget, panel)
+    ungrouped_pane_lines_with_panel(pane, palette, width, budget, panel)
 }
 
 /// The body [`pane_lines`] draws for a pane with no groups, which is a
@@ -1226,7 +1332,6 @@ pub fn pane_lines(
 /// reserved out of the budget before the body claims what is left.
 fn ungrouped_pane_lines_with_panel(
     pane: &ConfigPane,
-    menu: Option<&PaneMenu>,
     palette: Palette,
     width: u16,
     budget: usize,
@@ -1242,10 +1347,10 @@ fn ungrouped_pane_lines_with_panel(
     // is a committed file with 40 properties, but a dog answers `--schema`
     // for itself) leaves the title as the whole pane.
     let mut body_budget = budget - 1;
-    // The apply menu, or `h`'s help text, on the line under the title.
-    // Subtracted from the budget rather than appended, per `body_from`'s
-    // own doc on markers. See `top_line`.
-    if let Some((text, style)) = top_line(pane, menu, palette)
+    // `h`'s help text, on the line under the title. Subtracted from the
+    // budget rather than appended, per `body_from`'s own doc on markers.
+    // See `top_line`.
+    if let Some((text, style)) = top_line(pane, palette)
         && body_budget > 0
     {
         lines.push(Line::from(Span::styled(
@@ -1747,23 +1852,28 @@ pub fn draw_pane(app: &App, pane: &ConfigPane, area: Rect, buffer: &mut Buffer) 
     if area.width == 0 || area.height == 0 {
         return;
     }
-    let lines = pane_lines(
-        pane,
-        app.pane_menu().as_ref(),
-        app.palette(),
-        area.width,
-        area.height,
-    );
+    let lines = pane_lines(pane, app.palette(), area.width, area.height);
     for (offset, line) in lines.iter().enumerate().take(usize::from(area.height)) {
         let offset = u16::try_from(offset).unwrap_or(0);
         buffer.set_line(area.x, area.y + offset, line, area.width);
+    }
+    if let Some(dialog) = app.close_dialog() {
+        let lines = close_dialog_lines(dialog, app.palette(), area.width);
+        // Bottom-anchored over the field list, the rows the frame draws it
+        // on. Task 4 replaces this with the boxed form above 90 columns.
+        let top = area.y
+            + area
+                .height
+                .saturating_sub(u16::try_from(lines.len()).unwrap_or(0));
+        for (offset, line) in lines.iter().enumerate() {
+            let offset = u16::try_from(offset).unwrap_or(0);
+            buffer.set_line(area.x, top + offset, line, area.width);
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
-
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
@@ -1772,7 +1882,6 @@ mod tests {
     use super::*;
     use crate::lookout::app::{Effect, KeyPress, Msg};
     use crate::lookout::frames::render_text;
-    use crate::lookout::pane::ReloadKind;
     use crate::output::width::visible_width;
 
     /// The pane the rest of this module renders: `web`, with two overridden
@@ -1794,12 +1903,68 @@ mod tests {
             .collect()
     }
 
+    /// Bounded on purpose. A frame-wide `contains("respawn")` passes off
+    /// 1e's own legend row, which is drawn underneath this dialog and says
+    /// the word. Assert on the dialog's rows, never on the frame.
+    #[test]
+    fn the_dialog_names_both_halves_in_its_heading() {
+        let dialog = fixtures::close_dialog_with(2, 1);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120);
+        assert_eq!(
+            text_of(&lines)[0].trim(),
+            "2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID"
+        );
+    }
+
+    #[test]
+    fn a_serial_reload_does_not_promise_no_gap() {
+        let dialog = fixtures::close_dialog_reloading(ReloadKind::Serial, 1);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120);
+        let reload = fixtures::row_starting_with(&lines, "L");
+        assert!(reload.contains("slower than a restart"), "{reload}");
+        assert!(!reload.contains("No gap"), "{reload}");
+    }
+
+    #[test]
+    fn an_overlapping_reload_carries_the_reuse_port_caveat() {
+        let dialog = fixtures::close_dialog_reloading(ReloadKind::Overlap, 1);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120);
+        let reload = fixtures::row_starting_with(&lines, "L");
+        assert!(
+            reload.contains("if the app sets SO_REUSEPORT itself"),
+            "{reload}"
+        );
+    }
+
+    /// `docs/terminology.md:20`. The frame calls instances lambs; four
+    /// places in the bundle do.
+    #[test]
+    fn no_line_calls_an_instance_a_lamb() {
+        for kind in [ReloadKind::Overlap, ReloadKind::Serial] {
+            for instances in [1, 3] {
+                let dialog = fixtures::close_dialog_reloading(kind, instances);
+                let lines = close_dialog_lines(&dialog, fixtures::plain(), 120);
+                for row in text_of(&lines) {
+                    assert!(!row.contains("lamb"), "{row}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_restart_row_states_the_sheeps_own_kill_timeout() {
+        let dialog = fixtures::close_dialog_with(1, 0);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120);
+        let restart = fixtures::row_starting_with(&lines, "R");
+        assert!(restart.contains("5s"), "{restart}");
+    }
+
     /// The whole pane at a comfortable width, unbounded. The snapshot is the
     /// assertion: it pins the title, the four section headers in order, all
     /// 40 rows, the two flags and the cost cell beside each one.
     #[test]
     fn a_sheep_pane_at_a_comfortable_width() {
-        let lines = pane_lines(&web_pane(), None, fixtures::plain(), 120, 0);
+        let lines = pane_lines(&web_pane(), fixtures::plain(), 120, 0);
         insta::assert_snapshot!("sheep_pane_wide", text_of(&lines).join("\n"));
     }
 
@@ -1814,7 +1979,7 @@ mod tests {
         // field. `move_to_key` reaches `user`, `process`'s own last field,
         // directly.
         pane.move_to_key("user");
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 9));
+        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 9));
         assert!(text.len() <= 9, "{text:?}");
         assert!(text.iter().any(|line| line.contains("above")), "{text:?}");
         assert!(
@@ -1830,7 +1995,7 @@ mod tests {
     fn every_pane_line_fits_the_width_it_was_drawn_for() {
         let pane = web_pane();
         for width in super::super::MIN_TERM_WIDTH..=200 {
-            for line in text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0)) {
+            for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
                 assert!(
                     visible_width(&line) <= usize::from(width),
                     "width {width} drew {}: {line:?}",
@@ -1888,7 +2053,7 @@ mod tests {
         let mut pane = web_pane();
         let mut lines = Vec::new();
         for _ in 0..GROUP_ORDER.len() {
-            lines.extend(pane_lines(&pane, None, palette, 89, 0));
+            lines.extend(pane_lines(&pane, palette, 89, 0));
             pane.next_group();
         }
         lines
@@ -2003,7 +2168,7 @@ mod tests {
         let mut all_text = Vec::new();
         for _ in 0..GROUP_ORDER.len() {
             pane.move_to_last();
-            let text = text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0));
+            let text = text_of(&pane_lines(&pane, fixtures::plain(), width, 0));
             rows.extend(rows_of(&text));
             all_text.extend(text);
             pane.next_group();
@@ -2102,7 +2267,7 @@ mod tests {
             for cursor in [0usize, 7, 20, 38] {
                 pane.move_to_first();
                 pane.move_by(isize::try_from(cursor).unwrap());
-                let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, height));
+                let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
                 assert!(
                     text.len() <= usize::from(height),
                     "height {height}, cursor {cursor}: {text:?}"
@@ -2119,7 +2284,7 @@ mod tests {
         let mut pane = web_pane();
         pane.move_to_key("autorestart");
         pane.cycle();
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
         assert!(
             !text.iter().any(|line| line.contains("enter confirms")),
             "{text:?}"
@@ -2137,7 +2302,7 @@ mod tests {
         let mut pane = web_pane();
         pane.move_to_key("max_memory");
         pane.toggle_help();
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
         assert!(
             text.iter()
                 .any(|line| line.contains("Restart the app if it climbs above this much memory")),
@@ -2155,7 +2320,7 @@ mod tests {
         pane.move_to_key("max_memory");
         pane.toggle_help();
         pane.toggle_help();
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 89, 0));
+        let text = text_of(&pane_lines(&pane, fixtures::plain(), 89, 0));
         assert!(
             !text.iter().any(|line| line.contains("Restart the app")),
             "{text:?}"
@@ -2171,7 +2336,7 @@ mod tests {
         pane.move_to_key("autorestart");
         pane.toggle_help();
         pane.cycle();
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
         assert!(
             text.iter()
                 .any(|line| line.contains("Restarts the process automatically")),
@@ -2189,7 +2354,7 @@ mod tests {
         pane.move_to_key("max_memory");
         pane.toggle_help();
         for width in super::super::MIN_TERM_WIDTH..=200 {
-            for line in text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0)) {
+            for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
                 assert!(
                     visible_width(&line) <= usize::from(width),
                     "width {width}: {line:?}"
@@ -2197,110 +2362,12 @@ mod tests {
             }
         }
         for height in 1..=30u16 {
-            let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, height));
+            let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
             assert!(
                 text.len() <= usize::from(height),
                 "height {height}: {text:?}"
             );
         }
-    }
-
-    /// The menu, opened the way an operator opens it: `esc` on a pane the
-    /// running sheep has not caught up with.
-    fn app_at_the_menu() -> crate::lookout::app::App {
-        let mut app = fixtures::app_in_sheep_pane_with_two_parked_fields();
-        app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.pane_menu().is_some(), "esc offered the menu");
-        app
-    }
-
-    #[test]
-    fn the_menu_takes_the_line_under_the_title_and_names_all_three_keys() {
-        let mut app = app_at_the_menu();
-        let text = screen_at(&mut app, 30);
-        let line = text
-            .lines()
-            .find(|line| line.contains("saved fields"))
-            .expect("the menu is drawn");
-        assert!(line.contains("2 saved fields wait"), "{line:?}");
-        for clause in [
-            "L reload (overlapping)",
-            "R restart",
-            "esc leave them parked",
-        ] {
-            assert!(line.contains(clause), "{clause} missing from {line:?}");
-        }
-    }
-
-    #[test]
-    fn one_parked_field_reads_in_the_singular() {
-        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
-        app.update(Msg::Key(KeyPress::Escape));
-        let text = screen_at(&mut app, 30);
-        assert!(text.contains("1 saved field waits"), "{text}");
-        assert!(text.contains("esc leave it parked"), "{text}");
-    }
-
-    /// The menu must not read as a save prompt: every field it counts is
-    /// already in the override store.
-    #[test]
-    fn the_menu_never_says_anything_is_at_risk() {
-        let mut app = app_at_the_menu();
-        let screen = screen_at(&mut app, 30);
-        let line = screen
-            .lines()
-            .find(|line| line.contains("saved fields"))
-            .expect("the menu is drawn")
-            .to_lowercase();
-        for word in ["discard", "unsaved", "are you sure", "lose"] {
-            assert!(!line.contains(word), "{word} has no business in {line:?}");
-        }
-    }
-
-    /// The menu shares the slot the confirm and the help text already
-    /// share, so the field list is laid out against the same budget with
-    /// it open as without.
-    #[test]
-    fn the_menu_costs_the_field_list_no_line() {
-        let mut open = fixtures::app_in_sheep_pane_with_two_parked_fields();
-        let mut closed = fixtures::app_in_sheep_pane_with_two_parked_fields();
-        open.update(Msg::Key(KeyPress::Escape));
-        for height in [super::super::flock::MIN_HEIGHT, 7, 8, 12, 20, 30] {
-            let with = screen_at(&mut open, height);
-            let without = screen_at(&mut closed, height);
-            assert_eq!(
-                with.lines().count(),
-                without.lines().count(),
-                "height {height}"
-            );
-            assert_eq!(marked(&with), 1, "height {height}:\n{with}");
-        }
-    }
-
-    #[test]
-    fn the_menu_line_fits_every_width_the_pane_claims_to_support() {
-        let mut app = app_at_the_menu();
-        for width in super::super::MIN_TERM_WIDTH..=200 {
-            let area = Rect::new(0, 0, width, 30);
-            app.note_body_rows(super::super::body_rows(area));
-            let mut terminal = Terminal::new(TestBackend::new(width, 30)).unwrap();
-            terminal
-                .draw(|frame| super::super::draw(&app, frame))
-                .unwrap();
-            for line in render_text(terminal.backend().buffer()).lines() {
-                assert!(
-                    visible_width(line) <= usize::from(width),
-                    "width {width}: {line:?}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn a_sheep_pane_with_the_apply_menu_open() {
-        let menu = PaneMenu::new(2, ReloadKind::Serial, Instant::now());
-        let lines = pane_lines(&web_pane(), Some(&menu), fixtures::plain(), 120, 0);
-        insta::assert_snapshot!("sheep_pane_apply_menu", text_of(&lines).join("\n"));
     }
 
     /// The pane's cursor, walked onto `key` the way an operator walks it.
@@ -2330,7 +2397,6 @@ mod tests {
             // COST cell, which is exactly what this test reads.
             let text = text_of(&pane_lines(
                 app.config_pane().unwrap(),
-                None,
                 fixtures::plain(),
                 89,
                 0,
@@ -2353,7 +2419,16 @@ mod tests {
             assert!(row.contains(column), "{key}: {row:?}");
 
             app.update(Msg::Key(KeyPress::Cycle));
-            let Effect::SendAll(mut batch) = app.update(Msg::Key(KeyPress::Escape)) else {
+            // `app_in_sheep_pane_with_control` parks `kill_signal`
+            // unconditionally, so `esc` only asks; `c` is what actually
+            // gets the write onto the wire.
+            let _ = app.update(Msg::Key(KeyPress::Escape));
+            let effect = if app.close_dialog().is_some() {
+                app.update(Msg::Key(KeyPress::Continue))
+            } else {
+                Effect::None
+            };
+            let Effect::SendAll(mut batch) = effect else {
                 panic!("{key}: closing the pane sends");
             };
             app.update(Msg::Replied {
@@ -2379,7 +2454,7 @@ mod tests {
         for typed in "/srv".chars() {
             pane.type_char(typed);
         }
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
         let row = text
             .iter()
             .find(|line| line.contains(" cwd"))
@@ -2413,7 +2488,7 @@ mod tests {
     /// contract exists to prevent.
     #[test]
     fn a_dog_pane_at_a_comfortable_width() {
-        let text = text_of(&pane_lines(&bark_pane(), None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&bark_pane(), fixtures::plain(), 120, 0));
         assert!(
             !text.iter().any(|line| line.contains("hooks.example")),
             "a secret is never rendered: {text:?}"
@@ -2435,7 +2510,7 @@ mod tests {
             for cursor in [0usize, 2, 4] {
                 pane.move_to_first();
                 pane.move_by(isize::try_from(cursor).unwrap());
-                let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, height));
+                let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
                 assert!(
                     text.len() <= usize::from(height),
                     "height {height}, cursor {cursor}: {text:?}"
@@ -2450,7 +2525,7 @@ mod tests {
     fn every_dog_pane_line_fits_the_width_it_was_drawn_for() {
         let pane = bark_pane();
         for width in super::super::MIN_TERM_WIDTH..=200 {
-            for line in text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0)) {
+            for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
                 assert!(
                     visible_width(&line) <= usize::from(width),
                     "width {width} drew {}: {line:?}",
@@ -2471,7 +2546,7 @@ mod tests {
     #[test]
     fn the_env_rows_draw_at_a_comfortable_width() {
         let pane = web_pane();
-        let rows = fixtures::config_pane_env_rows_for_tests(&pane, None);
+        let rows = fixtures::config_pane_env_rows_for_tests(&pane);
         assert!(rows.iter().any(|row| row.contains("DB_HOST")), "{rows:?}");
         assert!(rows.iter().any(|row| row.contains("LOG_LEVEL")), "{rows:?}");
         assert!(
@@ -2497,7 +2572,7 @@ mod tests {
             pane.type_env_char(typed);
         }
         pane.apply_env_typing();
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
         assert!(!text.join("\n").contains("hunter2"), "{text:?}");
     }
 
@@ -2522,7 +2597,7 @@ mod tests {
                 .insert("DB_PASSWORD".to_string(), "hunter2".to_string());
             shep_core::protocol::SheepConfigView::new(config, Vec::new(), Vec::new())
         });
-        let rows = fixtures::config_pane_env_rows_for_tests(&pane, None);
+        let rows = fixtures::config_pane_env_rows_for_tests(&pane);
         assert!(
             rows.iter().any(|row| row.contains("DB_PASSWORD")),
             "{rows:?}"
@@ -2544,7 +2619,7 @@ mod tests {
             pane.type_env_char(typed);
         }
         for width in super::super::MIN_TERM_WIDTH..=200 {
-            for line in text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0)) {
+            for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
                 assert!(
                     visible_width(&line) <= usize::from(width),
                     "width {width} drew {}: {line:?}",
@@ -2556,7 +2631,7 @@ mod tests {
 
     #[test]
     fn the_title_names_the_target_and_no_longer_calls_it_read_only() {
-        let text = text_of(&pane_lines(&web_pane(), None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&web_pane(), fixtures::plain(), 120, 0));
         // Named once, on the title band: `title_line` no longer draws a
         // second row repeating it (see `title_band_line`'s own doc).
         assert!(text[0].contains("web"), "{:?}", text[0]);
@@ -2581,7 +2656,7 @@ mod tests {
         let mut pane = pane.clone();
         pane.move_to_key("args");
         pane.open_list();
-        text_of(&pane_lines(&pane, None, fixtures::plain(), width, height))
+        text_of(&pane_lines(&pane, fixtures::plain(), width, height))
     }
 
     /// The dashboard with `web` selected and its list sub-screen open on
@@ -2703,7 +2778,7 @@ mod tests {
     #[test]
     fn the_field_row_masks_both_halves_of_a_secrets_edited_value() {
         let pane = secret_dog_pane_with_an_edit();
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
         let row = text
             .iter()
             .find(|line| line.contains(" token"))
@@ -2748,7 +2823,6 @@ mod tests {
     fn the_list_screen_masks_a_secret_arrays_elements() {
         let text = text_of(&pane_lines(
             &secret_list_dog_pane(),
-            None,
             fixtures::plain(),
             120,
             0,
@@ -2794,7 +2868,7 @@ mod tests {
                 .unwrap()
                 .set_rows(usize::from(height.saturating_sub(1)));
             for step in 0..=total {
-                let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, height));
+                let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
                 assert!(
                     text.len() <= usize::from(height),
                     "height {height}, step {step}: {text:?}"
@@ -2803,7 +2877,7 @@ mod tests {
             }
         }
         for width in super::super::MIN_TERM_WIDTH..=200 {
-            for line in text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0)) {
+            for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
                 assert!(
                     visible_width(&line) <= usize::from(width),
                     "width {width} drew {}: {line:?}",
@@ -3076,12 +3150,12 @@ mod tests {
     fn the_panel_draws_beside_the_field_list_at_the_design_target() {
         let app = fixtures::app_in_sheep_pane();
         let pane = app.config_pane().expect("the pane is open");
-        let at_target = text_of(&pane_lines(pane, None, fixtures::plain(), 160, 48));
+        let at_target = text_of(&pane_lines(pane, fixtures::plain(), 160, 48));
         assert!(
             at_target.iter().any(|line| line.contains("FOCUSED")),
             "the panel never drew at the design target: {at_target:?}"
         );
-        let below_floor = text_of(&pane_lines(pane, None, fixtures::plain(), 89, 48));
+        let below_floor = text_of(&pane_lines(pane, fixtures::plain(), 89, 48));
         assert!(
             !below_floor.iter().any(|line| line.contains("FOCUSED")),
             "the panel must not draw below its own floor: {below_floor:?}"
@@ -3098,7 +3172,7 @@ mod tests {
         let app = fixtures::app_in_sheep_pane();
         let pane = app.config_pane().expect("the pane is open");
         for width in [160, 200] {
-            for line in pane_lines(pane, None, fixtures::plain(), width, 48) {
+            for line in pane_lines(pane, fixtures::plain(), width, 48) {
                 let cols = line_columns(&line);
                 assert!(
                     cols <= usize::from(width),
@@ -3172,7 +3246,7 @@ mod tests {
     /// [`fixtures::draw_lines`], which draws the bleats pane instead.
     fn config_pane_lines_for_tests(app: &App, width: u16, height: u16) -> Vec<Line<'static>> {
         let pane = app.config_pane().expect("the pane is open");
-        pane_lines(pane, None, fixtures::plain(), width, height)
+        pane_lines(pane, fixtures::plain(), width, height)
     }
 
     /// The drop order the whole ladder rests on: where both the panel and

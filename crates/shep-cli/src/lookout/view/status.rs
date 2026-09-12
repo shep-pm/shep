@@ -190,6 +190,17 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // overlay anywhere in this module, and one rule under the header
         // beats a full border for a pane somebody reads at 3am.
         (text, palette.attention())
+    } else if app.close_dialog().is_some() {
+        // Ahead of the config pane's own hint below: the dialog owns the
+        // keyboard while it is up, the same way an armed action outranks
+        // the dashboard's hint above, and a bar naming `space cycle` under
+        // a screen that answers to `R`/`L`/`c`/`esc` instead would be the
+        // asterisk this file's standing rule forbids.
+        //
+        // Muted, not butter: this is not a key hint naming what to press,
+        // only a statement that the dialog itself is where every key goes;
+        // its own rows say what each one does.
+        (CLOSE_DIALOG_HINT.to_string(), palette.muted())
     } else if let Some(pane) = app.config_pane() {
         // The pane owns the keyboard, so neither the filter line nor
         // either dashboard hint is true while it is up. Its own form: a
@@ -389,6 +400,12 @@ fn secrets_armed(app: &App) -> Option<&str> {
 const BLEATS_HINT: &str = "esc back   j/k line   ctrl-d/u page   G end   \
     / search   n/N match   f follow   w wrap   o out/err/both   m level";
 
+/// While the close dialog is up, the whole bar reduces to this: the
+/// dialog's own rows already say what `R`, `L`, `c` and `esc` do, so
+/// repeating them here would only be a second copy to keep in step with
+/// the first.
+const CLOSE_DIALOG_HINT: &str = "the dialog owns the keyboard until it is answered or it expires";
+
 /// The secrets pane's own key hint.
 ///
 /// `\u{21b5} set a value` and `D delete` name keys gated on
@@ -424,25 +441,24 @@ fn secrets_hint(control: Control) -> String {
 /// ([`super::pane::field_line`]); the flock table's `CFG` column carries the
 /// same two with no legend of its own.
 ///
-/// `Control::Allowed` at [`PaneScreen::Fields`] says `esc write & close`, not
-/// `esc close`: `esc` there sends every filed edit before it closes the
-/// pane, which is the whole of how a pane's edits reach the shepherd. The design doc for this pane (see the crate's own
-/// `docs/brainstorming/specs/`) does spell it `esc close`, because a later
-/// frame adds a confirmation dialog that intercepts the close and asks
-/// first; once that dialog exists, `esc` stops writing on its own and this
-/// line should revert. Until then, do not "simplify" this back to match the
-/// design doc: the design doc describes a frame that is not built yet.
+/// `Control::Allowed` at [`PaneScreen::Fields`] said `esc write & close`,
+/// not `esc close`, until frame 1g landed: `esc` used to send every filed
+/// edit before it closed the pane, with no question asked first. The close
+/// dialog is that question now, so `esc` alone only asks or, with nothing
+/// to ask about, closes; either way it does not write on its own anymore,
+/// and the hint reverted to what the design doc always said.
 ///
 /// Said unconditionally, whether or not anything is filed, rather than
-/// keyed on the edit count: `esc` writes zero edits the same way it writes
-/// three, so the sentence is true either way and this stays a `const fn`.
+/// keyed on the edit count: `esc` behaves the same way over zero edits as
+/// over three, so the sentence is true either way and this stays a
+/// `const fn`.
 const fn pane_hint(control: Control, screen: PaneScreen) -> &'static str {
     match (control, screen) {
         (Control::ReadOnly, PaneScreen::Fields) => {
             "esc close   j/k select   g/G first/last   r refresh   h help   * yours   ! parked   q quit"
         }
         (Control::Allowed, PaneScreen::Fields) => {
-            "esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked   q quit"
+            "esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked   q quit"
         }
         (Control::ReadOnly, PaneScreen::List) => {
             "esc back   j/k select   g/G first/last   r refresh   q quit"
@@ -940,8 +956,8 @@ mod tests {
         }
         assert!(closed.contains("esc close"), "got {closed:?}");
         assert!(
-            open.contains("esc write & close"),
-            "the gate is open, so esc can write: {open:?}"
+            open.contains("esc close"),
+            "the gate is open, but esc only asks or closes now: {open:?}"
         );
         for both in [&closed, &open] {
             assert!(both.contains("h help"), "got {both:?}");
@@ -953,8 +969,8 @@ mod tests {
     }
 
     /// An env row is on the same screen as every field, so it carries the
-    /// field list's own hint: `esc write & close`, not a sub-screen's `esc
-    /// back`, and `e edit` since `begin_env_typing` is the same door
+    /// field list's own hint: `esc close`, not a sub-screen's `esc back`,
+    /// and `e edit` since `begin_env_typing` is the same door
     /// `confirm_field` already opens for a typed field.
     #[test]
     fn an_env_rows_status_bar_hint_is_the_field_lists_own() {
@@ -965,7 +981,7 @@ mod tests {
             Some(crate::lookout::pane::PaneRow::Env(_) | crate::lookout::pane::PaneRow::AddEnv)
         ));
         let bar = rendered(&status_line(&app, 200));
-        assert!(bar.contains("esc write & close"), "got {bar:?}");
+        assert!(bar.contains("esc close"), "got {bar:?}");
         assert!(bar.contains("e edit"), "got {bar:?}");
     }
 
@@ -1034,7 +1050,7 @@ mod tests {
         let bar = rendered(&status_line(&app, 200));
         assert!(!bar.contains("enter confirms"), "got {bar:?}");
         assert!(!bar.contains("sent, waiting"), "got {bar:?}");
-        assert!(bar.contains("esc write & close"), "got {bar:?}");
+        assert!(bar.contains("esc close"), "got {bar:?}");
     }
 
     #[test]

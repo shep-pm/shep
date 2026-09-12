@@ -11,7 +11,9 @@
 use std::path::PathBuf;
 
 use serde_json::{Map, Value};
-use shep_core::config::{AppConfig, ApplyGroup, GROUP_ORDER, apply_group, flockfile_schema_json};
+use shep_core::config::{
+    AppConfig, ApplyGroup, GROUP_ORDER, apply_group, flockfile_schema_json, reaches_running,
+};
 use shep_core::protocol::{EnvValue, SheepConfigView};
 use shep_core::values::{MemSize, UpDuration};
 
@@ -1629,6 +1631,23 @@ impl ConfigPane {
         self.pending.len()
     }
 
+    /// The filed edits a respawn is what applies, by field name, in the
+    /// set's own key order.
+    ///
+    /// An env key counts: `env` is `ApplyGroup::NeedsRespawn` and every
+    /// value is baked into the child at exec.
+    #[must_use]
+    pub(super) fn unsent_fields_needing_a_respawn(&self) -> Vec<String> {
+        self.edits
+            .iter()
+            .filter_map(|(key, _)| match key {
+                EditKey::Field(name) if !reaches_running(name) => Some(name.clone()),
+                EditKey::Env(name) => Some(format!("env {name}")),
+                EditKey::Field(_) => None,
+            })
+            .collect()
+    }
+
     /// Whether a reload of this sheep overlaps its replacement or runs
     /// serially. Always [`ReloadKind::Overlap`] for a dog, which has no
     /// such fields to read.
@@ -1836,17 +1855,6 @@ pub enum ReloadKind {
     /// The instance being replaced is drained first, so the app is down for
     /// the length of the drain.
     Serial,
-}
-
-impl ReloadKind {
-    /// The word the pane's own menu prints for it.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Overlap => "overlapping",
-            Self::Serial => "serial",
-        }
-    }
 }
 
 /// Whether a reload of this app overlaps or runs serially.
