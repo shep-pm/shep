@@ -183,12 +183,19 @@ mod tests {
     /// fails if any AppConfig field is missing from the table. A field added
     /// to the struct without a group would route as its default and either
     /// apply live when it cannot, or need a restart when it does not.
-    #[test]
-    fn every_appconfig_field_has_a_group() {
+    /// The field names `AppConfig` serializes, which is what both tests
+    /// below mean by "every field".
+    fn appconfig_fields() -> serde_json::Map<String, serde_json::Value> {
         let serde_json::Value::Object(fields) = serde_json::to_value(AppConfig::default()).unwrap()
         else {
             panic!("AppConfig must serialize as an object");
         };
+        fields
+    }
+
+    #[test]
+    fn every_appconfig_field_has_a_group() {
+        let fields = appconfig_fields();
         let missing: Vec<&String> = fields.keys().filter(|k| !is_classified(k)).collect();
         assert!(
             missing.is_empty(),
@@ -223,10 +230,7 @@ mod tests {
     /// fails if the split drifts from what the spec recorded.
     #[test]
     fn the_split_is_nineteen_five_fifteen_three() {
-        let serde_json::Value::Object(fields) = serde_json::to_value(AppConfig::default()).unwrap()
-        else {
-            panic!("AppConfig must serialize as an object");
-        };
+        let fields = appconfig_fields();
         let count = |want: ApplyGroup| fields.keys().filter(|k| apply_group(k) == want).count();
         assert_eq!(count(ApplyGroup::Live), 19, "Live");
         assert_eq!(count(ApplyGroup::NextSpawn), 5, "NextSpawn");

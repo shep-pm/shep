@@ -1,0 +1,52 @@
+---
+source: crates/shep-cli/src/lookout/frames.rs
+expression: render_text(&buffer)
+---
+shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
+                                                                                                                                                                
+ ██ api  (sheep config)  2 edits                                                                                                                                
+   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab next group   1…8 jump                                                     
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS                                                                             
+   autorestart                true                                            now        FOCUSED  max_memory  memory size                                       
+   autostart                  true                                            next start  Restart the app if it climbs above this much memory                   
+   exp_backoff_restart_delay  100ms                                           now                                                                               
+>  max_memory                 (unset) -> 256 B                                now         now     (unset)                                                       
+   max_restarts               32                                              now         default (none)                                                        
+   min_uptime                 1s                                              now         example 512M                                                          
+   restart_delay              (unset)                                         now                                                                               
+   stop_exit_codes            []                                              now         ● now  the running sheep picks it up without stopping                 
+                                                                                                                         pick the timing when you close the pane
+  pending edits                                                                                                                                                 
+    cwd  (unset) -> /srv/api                                                              ──────────────────────────────────────────────────────────────────────
+    max_memory  (unset) -> 256 B                                                          VALIDATION                                                            
+                                                                                          █ 512M, 2G                                                            
+  env                                                                                     █ a bare number is bytes                                              
+   DATABASE_URL               (set)                                                                                                                             
+   NODE_ENV                   (set)                                                                                                                             
+   + add a key                                                                                                                                                  
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked  … control enabled

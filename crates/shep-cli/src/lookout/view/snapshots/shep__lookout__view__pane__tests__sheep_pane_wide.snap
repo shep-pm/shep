@@ -1,62 +1,31 @@
 ---
 source: crates/shep-cli/src/lookout/view/pane.rs
-assertion_line: 860
 expression: "text_of(&lines).join(\"\\n\")"
 ---
-  web  (sheep config)                                                                                                   
-  process
->  cwd                        (unset)                                                                         respawn   
-   depends_on                 []                                                                              next start
-   fold                       (unset)                                                                         now       
-   group                      (unset)                                                                         respawn   
- = instances                  3                                                                               read-only 
-   interpreter                (unset)                                                                         respawn   
- = name                       web                                                                             read-only 
-  *reuse_port                 false                                                                           now       
-   script                     ./srv                                                                           respawn   
-   user                       (unset)                                                                         respawn   
-
-  logging
-   err_file                   (unset)                                                                         respawn   
-   merge_logs                 false                                                                           respawn   
-   out_file                   (unset)                                                                         respawn   
-
-  inputs
-   args                       ["--port","8080"]                                                               respawn   
-   channel                    false                                                                           respawn   
-   env                        2 keys                                                                          respawn   
-   environment                (unset)                                                                         respawn   
-   stdin                      false                                                                           respawn   
-
-  restart
-   autorestart                true                                                                            now       
-   autostart                  true                                                                            next start
-   exp_backoff_restart_delay  100ms                                                                           now       
-   max_memory                 (unset)                                                                         now       
-  *max_restarts               32                                                                              now       
-   min_uptime                 1s                                                                              now       
-   restart_delay              (unset)                                                                         now       
-   stop_exit_codes            []                                                                              now       
-
-  readiness
-   listen_timeout             3s                                                                              next start
- ~ liveness_probe             (unset)                                                                         now       
- ~ readiness_probe            (unset)                                                                         next start
-   wait_ready                 false                                                                           respawn   
-
-  shutdown
-   action_timeout             3s                                                                              now       
-   graceful_timeout           8s                                                                              now       
-  !kill_signal                (unset)                                                                         next start
-   kill_timeout               1600ms                                                                          now       
-   shutdown_with_message      false                                                                           respawn   
-
-  watch
-   ignore_watch               []                                                                              now       
-   watch                      false                                                                           now       
-   watch_delay                (unset)                                                                         now       
-   watch_options              []                                                                              now       
-
-  cron
-   cron_restart               (unset)                                                                         now       
-   cron_timezone              (unset)                                                                         now
+ ██ web  (sheep config)                                                                                                 
+   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab next group   1…8 jump             
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                               
+>  cwd                        (unset)                              FOCUSED  cwd  text
+   depends_on                 []                                    Where the process runs. Without it, the daemon's own
+   fold                       (unset)                               directory
+   group                      (unset)                             
+ = instances                  3                                     now     (unset)
+   interpreter                (unset)                               default (none)
+ = name                       web                                   example /srv/app
+  *reuse_port                 false                               
+   script                     ./srv                                 ▲ respawn  the sheep must stop and start again
+   user                       (unset)                                            pick the timing when you close the pane
+                                                                  
+  env                                                               ────────────────────────────────────────────────────
+   DB_HOST                    (set)                                 VALIDATION
+   LOG_LEVEL                  (set)                                 █ an absolute or relative path, expanded from cwd
+   + add a key                                                      █ ~ expands, $VARS do not
+                                                                    █ refused: a path the daemon's user cannot enter
+                                                                  
+                                                                    NEIGHBOURS
+                                                                    script  resolved against this cwd
+                                                                    out_file  relative paths follow it too
+                                                                    watch_options  globs are rooted here
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed…

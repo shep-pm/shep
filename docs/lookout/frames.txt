@@ -7,9 +7,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all forty-two scenes through the same coloured
+frames.ansi renders all forty-six scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same forty-two scenes through the flattened NO_COLOR palette
+renders the same forty-six scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -32,11 +32,17 @@ it read and dropped are counted exactly; bytes below its 64 KiB window were
 never read at all, so those are reported in bytes, because nothing counted the
 lines in them and guessing would be worse than saying so.
 
-The last six frames are the full-screen bleats pane, `b` from the
-dashboard, then the secrets pane, `S`, then the four sheep-pane scenes,
-`↵` on a sheep. The seven before them are the settings screen, `s`
-from the dashboard. It owns
-the whole body between the title and the status bar rather than sharing it
+The last four frames are the editing pane, `e` from the dashboard, on a
+sheep's own row: fresh at the 160x48 design target, the same pane with two
+edits filed (one of them needing a respawn), and the same fresh pane at 120
+and at 88 columns, where the explanation panel and the LANDS column trade
+places as the width falls.
+
+Before those are the four sheep-pane scenes, `↵` on a sheep, then the
+secrets pane, `S`, and before them the full-screen bleats pane, `b` from
+the dashboard. The seven before
+that are the settings screen, `s` from the dashboard. It owns the whole body
+between the title and the status bar rather than sharing it
 with the flock table, so a fresh $SHEP_HOME, some scalars declared, an armed
 confirm, the socket editor mid-type, the dogs table's own drift, the same
 screen at 45 columns and the same screen too short to hold every row each get
@@ -1072,7 +1078,7 @@ shep lookout   /home/ada/.shep                                                  
 store $SHEP_HOME/secrets.json · not encrypted · never printed to a log, never carried in a bleat · read at spawn, not now                                       
 reveal  [secrets] allow_read = true in shep.toml · change  lookout.allow_control = true                                                                         
 READ BY as of the roll, read 3m 4s ago                                                                                                                          
-all  ci  [production]                                                                                                  3 environments in this store · ←/→ or tab
+all  ci  [production]                                                                                                         3 environments in this store · ←/→
   KEY                         VALUE                         IN FORCE      SET IN                READ BY               LANDS                                     
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   ▾ operator ×2 · you set these                                                                                                                                 
@@ -1299,3 +1305,211 @@ rss 30.0M of 64.0M █████░░░░░
 process                                                                     │out  GET /v1/orders 200 44ms                                                       
 cwd                         (unset)                                         │out  POST /v1/orders 201 88ms                                                      
 esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                                      control enabled
+
+=== edit_pane  (160x48) ===
+The redrawn editing pane on api, fresh: no edits filed, at 160x48. The tab row names all eight groups with only the active one chipped, the header reads FIELD / VALUE / LANDS, the explanation panel sits beside the field list naming the field under the cursor, and every env value reads (set) rather than the value itself.
+
+shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
+                                                                                                                                                                
+ ██ api  (sheep config)                                                                                                                                         
+   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab next group   1…8 jump                                                     
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS                                                                             
+>  cwd                        (unset)                                         respawn    FOCUSED  cwd  text                                                     
+   depends_on                 []                                              next start  Where the process runs. Without it, the daemon's own directory        
+   fold                       (unset)                                         now                                                                               
+   group                      (unset)                                         respawn     now     (unset)                                                       
+ = instances                  1                                               read-only   default (none)                                                        
+   interpreter                (unset)                                         respawn     example /srv/app                                                      
+ = name                       api                                             read-only                                                                         
+   reuse_port                 false                                           now         ▲ respawn  the sheep must stop and start again                        
+   script                     ./api/server.js                                 respawn                                    pick the timing when you close the pane
+   user                       (unset)                                         respawn                                                                           
+                                                                                          ──────────────────────────────────────────────────────────────────────
+  env                                                                                     VALIDATION                                                            
+   DATABASE_URL               (set)                                                       █ an absolute or relative path, expanded from cwd                     
+   NODE_ENV                   (set)                                                       █ ~ expands, $VARS do not                                             
+   + add a key                                                                            █ refused: a path the daemon's user cannot enter                      
+                                                                                                                                                                
+                                                                                          NEIGHBOURS                                                            
+                                                                                          script  resolved against this cwd                                     
+                                                                                          out_file  relative paths follow it too                                
+                                                                                          watch_options  globs are rooted here                                  
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked  … control enabled
+
+=== edit_pane_edited  (160x48) ===
+The same pane with two edits filed: cwd, which needs a respawn, and max_memory, which lands at once. The pending edits section lists both under the active group's own fields, and the title band reads 2 edits.
+
+shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
+                                                                                                                                                                
+ ██ api  (sheep config)  2 edits                                                                                                                                
+   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab next group   1…8 jump                                                     
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS                                                                             
+   autorestart                true                                            now        FOCUSED  max_memory  memory size                                       
+   autostart                  true                                            next start  Restart the app if it climbs above this much memory                   
+   exp_backoff_restart_delay  100ms                                           now                                                                               
+>  max_memory                 (unset) -> 256 B                                now         now     (unset)                                                       
+   max_restarts               32                                              now         default (none)                                                        
+   min_uptime                 1s                                              now         example 512M                                                          
+   restart_delay              (unset)                                         now                                                                               
+   stop_exit_codes            []                                              now         ● now  the running sheep picks it up without stopping                 
+                                                                                                                         pick the timing when you close the pane
+  pending edits                                                                                                                                                 
+    cwd  (unset) -> /srv/api                                                              ──────────────────────────────────────────────────────────────────────
+    max_memory  (unset) -> 256 B                                                          VALIDATION                                                            
+                                                                                          █ 512M, 2G                                                            
+  env                                                                                     █ a bare number is bytes                                              
+   DATABASE_URL               (set)                                                                                                                             
+   NODE_ENV                   (set)                                                                                                                             
+   + add a key                                                                                                                                                  
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked  … control enabled
+
+=== edit_pane_squeezed  (120x48) ===
+The same fresh pane at 120 columns: narrow enough that LANDS gives way to the explanation panel, which still names the focused field's own cost in words.
+
+shep lookout   /home/ada/.shep                                                                            6 in the flock
+                                                                                                                        
+ ██ api  (sheep config)                                                                                                 
+   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab next group   1…8 jump             
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                                                                     
+>  cwd                        (unset)                              FOCUSED  cwd  text                                   
+   depends_on                 []                                    Where the process runs. Without it, the daemon's own
+   fold                       (unset)                               directory                                           
+   group                      (unset)                                                                                   
+ = instances                  1                                     now     (unset)                                     
+   interpreter                (unset)                               default (none)                                      
+ = name                       api                                   example /srv/app                                    
+   reuse_port                 false                                                                                     
+   script                     ./api/server.js                       ▲ respawn  the sheep must stop and start again      
+   user                       (unset)                                            pick the timing when you close the pane
+                                                                                                                        
+  env                                                               ────────────────────────────────────────────────────
+   DATABASE_URL               (set)                                 VALIDATION                                          
+   NODE_ENV                   (set)                                 █ an absolute or relative path, expanded from cwd   
+   + add a key                                                      █ ~ expands, $VARS do not                           
+                                                                    █ refused: a path the daemon's user cannot enter    
+                                                                                                                        
+                                                                    NEIGHBOURS                                          
+                                                                    script  resolved against this cwd                   
+                                                                    out_file  relative paths follow it too              
+                                                                    watch_options  globs are rooted here                
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed…
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default … control enabled
+
+=== edit_pane_narrow  (88x48) ===
+The same fresh pane at 88 columns: narrow enough that the explanation panel is gone, so LANDS is back, since nothing else on screen carries cost.
+
+shep lookout   /home/ada/.shep                                            6 in the flock
+                                                                                        
+ ██ api  (sheep config)                                                                 
+   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab n…
+  ──────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS     
+>  cwd                        (unset)                                         respawn   
+   depends_on                 []                                              next start
+   fold                       (unset)                                         now       
+   group                      (unset)                                         respawn   
+ = instances                  1                                               read-only 
+   interpreter                (unset)                                         respawn   
+ = name                       api                                             read-only 
+   reuse_port                 false                                           now       
+   script                     ./api/server.js                                 respawn   
+   user                       (unset)                                         respawn   
+                                                                                        
+  env                                                                                   
+   DATABASE_URL               (set)                                                     
+   NODE_ENV                   (set)                                                     
+   + add a key                                                                          
+  ──────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits …
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+esc write & close   j/k select   g/G first/last   r refresh   space cyc… control enabled

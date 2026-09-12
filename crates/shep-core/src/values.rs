@@ -11,6 +11,13 @@ const KIB: u64 = 1024;
 const MIB: u64 = 1024 * KIB;
 const GIB: u64 = 1024 * MIB;
 
+// Milliseconds per unit of the Flockfile grammar `^\d+(ms|h|m|s)?$`, the
+// same way the binary units above are written: a definition each, so the
+// parser and the formatter cannot drift apart on one of them.
+const MS_PER_S: u64 = 1_000;
+const MS_PER_MIN: u64 = 60 * MS_PER_S;
+const MS_PER_H: u64 = 60 * MS_PER_MIN;
+
 /// A memory quantity in bytes, used for memory-limit thresholds
 ///
 /// Parses the Flockfile grammar `^\d+(G|M|K)?$` (binary units; plain digits
@@ -250,9 +257,9 @@ impl FromStr for UpDuration {
             (rest, 1)
         } else {
             match s.as_bytes()[s.len() - 1] {
-                b'h' => (&s[..s.len() - 1], 3_600_000),
-                b'm' => (&s[..s.len() - 1], 60_000),
-                b's' => (&s[..s.len() - 1], 1_000),
+                b'h' => (&s[..s.len() - 1], MS_PER_H),
+                b'm' => (&s[..s.len() - 1], MS_PER_MIN),
+                b's' => (&s[..s.len() - 1], MS_PER_S),
                 _ => (s, 1),
             }
         };
@@ -276,9 +283,9 @@ impl fmt::Display for UpDuration {
         let ms = self.as_millis();
         match ms {
             0 => f.write_str("0"),
-            v if v % 3_600_000 == 0 => write!(f, "{}h", v / 3_600_000),
-            v if v % 60_000 == 0 => write!(f, "{}m", v / 60_000),
-            v if v % 1_000 == 0 => write!(f, "{}s", v / 1_000),
+            v if v % MS_PER_H == 0 => write!(f, "{}h", v / MS_PER_H),
+            v if v % MS_PER_MIN == 0 => write!(f, "{}m", v / MS_PER_MIN),
+            v if v % MS_PER_S == 0 => write!(f, "{}s", v / MS_PER_S),
             v => write!(f, "{v}"),
         }
     }

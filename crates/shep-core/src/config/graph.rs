@@ -637,6 +637,23 @@ mod tests {
         assert_eq!(out.stages, vec![vec!["a", "b"], vec!["x"], vec!["y"]]);
     }
 
+    /// Every stage is non-empty and internally sorted, the shape both
+    /// proptests below check before going on to their own invariant.
+    ///
+    /// Returns rather than asserts: `prop_assert!` expands to an early
+    /// return of a `TestCaseError`, which is what lets a failure shrink.
+    fn stages_are_well_formed(
+        stages: &[Vec<String>],
+    ) -> Result<(), proptest::test_runner::TestCaseError> {
+        for stage in stages {
+            proptest::prop_assert!(!stage.is_empty(), "an empty stage: {:?}", stages);
+            let mut sorted = stage.clone();
+            sorted.sort();
+            proptest::prop_assert_eq!(stage, &sorted, "an unsorted stage: {:?}", stages);
+        }
+        Ok(())
+    }
+
     proptest::proptest! {
         #[test]
         fn every_edge_is_respected_in_the_planned_order(
@@ -660,12 +677,7 @@ mod tests {
                 .collect();
             let out = plan(&nodes);
             proptest::prop_assert!(out.cycles.is_empty());
-            for stage in &out.stages {
-                proptest::prop_assert!(!stage.is_empty(), "an empty stage: {:?}", out.stages);
-                let mut sorted = stage.clone();
-                sorted.sort();
-                proptest::prop_assert_eq!(stage, &sorted, "an unsorted stage: {:?}", out.stages);
-            }
+            stages_are_well_formed(&out.stages)?;
             let mut stage_of = std::collections::BTreeMap::new();
             for (index, stage) in out.stages.iter().enumerate() {
                 for name in stage {
@@ -720,12 +732,7 @@ mod tests {
                 .collect();
             let out = plan(&nodes);
 
-            for stage in &out.stages {
-                proptest::prop_assert!(!stage.is_empty(), "an empty stage: {:?}", out.stages);
-                let mut sorted = stage.clone();
-                sorted.sort();
-                proptest::prop_assert_eq!(stage, &sorted, "an unsorted stage: {:?}", out.stages);
-            }
+            stages_are_well_formed(&out.stages)?;
 
             // Determinism against input order: planning the same nodes in a
             // different order must produce the identical plan. The reorder

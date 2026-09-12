@@ -467,8 +467,7 @@ fn tab_line(pane: &SecretsPane, palette: Palette, width: u16) -> Line<'static> {
         })
         .collect();
     let environment_count = labels.len();
-    let suffix =
-        format!("{environment_count} environments in this store \u{b7} \u{2190}/\u{2192} or tab");
+    let suffix = format!("{environment_count} environments in this store \u{b7} \u{2190}/\u{2192}");
 
     // The suffix is this row's own denominator (design rule 2) and gives
     // way to nothing: the count is how an operator knows there are tabs
@@ -1348,7 +1347,7 @@ mod tests {
                     );
                     assert!(
                         line.trim_end().ends_with(&format!(
-                            "{count} environments in this store \u{b7} \u{2190}/\u{2192} or tab"
+                            "{count} environments in this store \u{b7} \u{2190}/\u{2192}"
                         )),
                         "the count survives whole: {count} tabs at {width}: {line:?}"
                     );

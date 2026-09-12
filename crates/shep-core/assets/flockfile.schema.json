@@ -47,8 +47,16 @@
           "type": "array",
           "default": [],
           "init": {
+            "accepts": [
+              "a list of strings, one argument each",
+              "{{instance}}, {{name}}, and {{secret:key}} expand"
+            ],
             "blurb": "Arguments passed to the script, as a list",
-            "group": "inputs"
+            "group": "inputs",
+            "refuses": [
+              "an unclosed {{ token",
+              "a token shep does not define"
+            ]
           },
           "items": {
             "type": "string"
@@ -89,9 +97,22 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "a five field cron pattern, croner's dialect"
+            ],
             "blurb": "Restart on a schedule, written as a cron pattern",
             "example": "* * * * *",
             "group": "cron",
+            "neighbours": [
+              {
+                "field": "cron_timezone",
+                "note": "sets which zone this pattern reads in"
+              }
+            ],
+            "refuses": [
+              "a field outside its valid range",
+              "a pattern croner cannot parse"
+            ],
             "suggest": [
               "*/5 * * * *",
               "0 * * * *",
@@ -108,9 +129,21 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "an IANA zone name, like US/Eastern"
+            ],
             "blurb": "Which timezone cron_restart is read in, as an IANA name",
             "example": "US/Eastern",
-            "group": "cron"
+            "group": "cron",
+            "neighbours": [
+              {
+                "field": "cron_restart",
+                "note": "the pattern this zone is read against"
+              }
+            ],
+            "refuses": [
+              "a name outside the IANA database"
+            ]
           }
         },
         "cwd": {
@@ -121,9 +154,30 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "an absolute or relative path, expanded from cwd",
+              "~ expands, $VARS do not"
+            ],
             "blurb": "Where the process runs. Without it, the daemon's own directory",
             "example": "/srv/app",
-            "group": "process"
+            "group": "process",
+            "neighbours": [
+              {
+                "field": "script",
+                "note": "resolved against this cwd"
+              },
+              {
+                "field": "out_file",
+                "note": "relative paths follow it too"
+              },
+              {
+                "field": "watch_options",
+                "note": "globs are rooted here"
+              }
+            ],
+            "refuses": [
+              "a path the daemon's user cannot enter"
+            ]
           }
         },
         "depends_on": {
@@ -131,9 +185,16 @@
           "type": "array",
           "default": [],
           "init": {
+            "accepts": [
+              "a list of sheep or dog names"
+            ],
             "blurb": "Other sheep or dogs that must be up before this one starts",
             "example": "[\"db\", \"cache\"]",
-            "group": "process"
+            "group": "process",
+            "refuses": [
+              "this sheep's own name",
+              "a name:slot instance reference"
+            ]
           },
           "items": {
             "type": "string"
@@ -157,9 +218,25 @@
           },
           "default": {},
           "init": {
+            "accepts": [
+              "a table of KEY = value pairs",
+              "a bare true or 8080, which arrives as text",
+              "{{instance}}, {{name}}, and {{secret:key}} expand in a value"
+            ],
             "blurb": "Environment variables for this app, layered over the daemon's own",
             "example": "{ NODE_ENV = 'production' }",
-            "group": "inputs"
+            "group": "inputs",
+            "neighbours": [
+              {
+                "field": "environment",
+                "note": "which environment {{secret:...}} reads from"
+              }
+            ],
+            "refuses": [
+              "a float, since 1.10 would arrive as 1.1",
+              "SHEP_INSTANCE, SHEP_NAME, or SHEP_ENVIRONMENT, which shep sets itself",
+              "an unclosed {{ token"
+            ]
           }
         },
         "environment": {
@@ -170,9 +247,22 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "a name from the secrets store"
+            ],
             "blurb": "Which environment this app resolves secrets in",
             "example": "staging",
-            "group": "inputs"
+            "group": "inputs",
+            "neighbours": [
+              {
+                "field": "env",
+                "note": "sets which environment its {{secret:...}} reads from"
+              }
+            ],
+            "refuses": [
+              "all, the store's every-environment slot",
+              "a name outside letters, digits, dot, underscore, or dash"
+            ]
           }
         },
         "err_file": {
@@ -183,9 +273,27 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "a path, relative paths follow cwd",
+              "{{instance}} and {{name}} expand"
+            ],
             "blurb": "Where stderr goes. Defaults to a file under $SHEP_HOME/logs",
             "example": "/var/log/my-first-sheep/err.log",
-            "group": "logging"
+            "group": "logging",
+            "neighbours": [
+              {
+                "field": "out_file",
+                "note": "shares the same collision rule"
+              },
+              {
+                "field": "merge_logs",
+                "note": "lets instances share one file on purpose"
+              }
+            ],
+            "refuses": [
+              "a {{secret:...}} token",
+              "the same path as out_file across instances without merge_logs"
+            ]
           }
         },
         "exp_backoff_restart_delay": {
@@ -235,9 +343,21 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "a unix group name"
+            ],
             "blurb": "Run as this group, on unix",
             "example": "www-data",
-            "group": "process"
+            "group": "process",
+            "neighbours": [
+              {
+                "field": "user",
+                "note": "resolved together at spawn"
+              }
+            ],
+            "refuses": [
+              "a name with no group entry"
+            ]
           }
         },
         "ignore_watch": {
@@ -245,8 +365,24 @@
           "type": "array",
           "default": [],
           "init": {
+            "accepts": [
+              "a list of glob patterns"
+            ],
             "blurb": "Paths watch should skip, on top of dotfiles and node_modules",
-            "group": "watch"
+            "group": "watch",
+            "neighbours": [
+              {
+                "field": "cwd",
+                "note": "globs are rooted here"
+              },
+              {
+                "field": "watch_options",
+                "note": "removed from what this matches"
+              }
+            ],
+            "refuses": [
+              "a pattern globset cannot compile"
+            ]
           },
           "items": {
             "type": "string"
@@ -271,6 +407,10 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "a command name found on PATH",
+              "none, to exec the script directly"
+            ],
             "blurb": "What runs the script. Set it to none to exec the file directly",
             "example": "none",
             "group": "process"
@@ -284,9 +424,16 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "SIGTERM, SIGINT, SIGQUIT, or SIGUSR2",
+              "the SIG prefix and case are both optional"
+            ],
             "blurb": "Which signal shep sends first when stopping this app",
             "example": "SIGTERM",
             "group": "shutdown",
+            "refuses": [
+              "a signal outside that list"
+            ],
             "suggest": [
               "SIGTERM",
               "SIGINT",
@@ -325,12 +472,26 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "kind: http, tcp, or exec",
+              "a target matching the kind: a url, host:port, or command"
+            ],
             "blurb": "A health check that triggers a restart when it keeps failing",
             "example": {
               "kind": "http",
               "target": "http://127.0.0.1:8080/healthz"
             },
-            "group": "readiness"
+            "group": "readiness",
+            "neighbours": [
+              {
+                "field": "readiness_probe",
+                "note": "uses a different interval floor"
+              }
+            ],
+            "refuses": [
+              "a failure_threshold of 0",
+              "an interval below its own floor"
+            ]
           }
         },
         "max_memory": {
@@ -384,9 +545,16 @@
           "type": "string",
           "default": "",
           "init": {
+            "accepts": [
+              "letters, digits, and most punctuation"
+            ],
             "blurb": "A convenient and unique name for shep to display",
             "example": "my-first-sheep",
-            "group": "process"
+            "group": "process",
+            "refuses": [
+              "a path separator or a colon",
+              "a bare . or .."
+            ]
           }
         },
         "out_file": {
@@ -397,9 +565,27 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "a path, relative paths follow cwd",
+              "{{instance}} and {{name}} expand"
+            ],
             "blurb": "Where stdout goes. Defaults to a file under $SHEP_HOME/logs",
             "example": "/var/log/my-first-sheep/out.log",
-            "group": "logging"
+            "group": "logging",
+            "neighbours": [
+              {
+                "field": "err_file",
+                "note": "shares the same collision rule"
+              },
+              {
+                "field": "merge_logs",
+                "note": "lets instances share one file on purpose"
+              }
+            ],
+            "refuses": [
+              "a {{secret:...}} token",
+              "the same path as err_file across instances without merge_logs"
+            ]
           }
         },
         "readiness_probe": {
@@ -414,12 +600,30 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "kind: http, tcp, or exec",
+              "a target matching the kind: a url, host:port, or command"
+            ],
             "blurb": "A health check shep waits on before it treats a reload as finished",
             "example": {
               "kind": "http",
               "target": "http://127.0.0.1:8080/ready"
             },
-            "group": "readiness"
+            "group": "readiness",
+            "neighbours": [
+              {
+                "field": "liveness_probe",
+                "note": "uses a different interval floor"
+              },
+              {
+                "field": "reuse_port",
+                "note": "governs whether reload overlaps it"
+              }
+            ],
+            "refuses": [
+              "a failure_threshold of 0",
+              "an interval below its own floor"
+            ]
           }
         },
         "restart_delay": {
@@ -453,9 +657,26 @@
           "type": "string",
           "default": "",
           "init": {
+            "accepts": [
+              "an absolute or relative path, expanded from cwd",
+              "~ expands, $VARS do not"
+            ],
             "blurb": "The script that shep should use to launch your app",
             "example": "./index.js",
-            "group": "process"
+            "group": "process",
+            "neighbours": [
+              {
+                "field": "cwd",
+                "note": "resolved against this cwd"
+              },
+              {
+                "field": "interpreter",
+                "note": "picks what runs this script"
+              }
+            ],
+            "refuses": [
+              "a path the daemon's user cannot enter"
+            ]
           }
         },
         "shutdown_with_message": {
@@ -481,6 +702,9 @@
           "type": "array",
           "default": [],
           "init": {
+            "accepts": [
+              "a list of exit codes"
+            ],
             "blurb": "Exit codes that mean a clean stop, so shep will not restart",
             "group": "restart"
           },
@@ -497,9 +721,21 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "a unix user name"
+            ],
             "blurb": "Run as this user, on unix",
             "example": "www-data",
-            "group": "process"
+            "group": "process",
+            "neighbours": [
+              {
+                "field": "group",
+                "note": "resolved together at spawn"
+              }
+            ],
+            "refuses": [
+              "a name with no passwd entry"
+            ]
           }
         },
         "wait_ready": {
@@ -542,8 +778,29 @@
           "type": "array",
           "default": [],
           "init": {
+            "accepts": [
+              "a list of glob patterns",
+              "empty watches the whole cwd"
+            ],
             "blurb": "Which paths to watch. Empty means the working directory",
-            "group": "watch"
+            "group": "watch",
+            "neighbours": [
+              {
+                "field": "cwd",
+                "note": "globs are rooted here"
+              },
+              {
+                "field": "watch",
+                "note": "has no effect unless watch is on"
+              },
+              {
+                "field": "ignore_watch",
+                "note": "skipped even when matched here"
+              }
+            ],
+            "refuses": [
+              "a pattern globset cannot compile"
+            ]
           },
           "items": {
             "type": "string"

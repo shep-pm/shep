@@ -217,19 +217,9 @@ impl Flockfile {
     /// - [`FlockfileError::NoApps`]: parsed fine but declared no apps.
     /// - [`FlockfileError::UnknownKeys`]: named a key no field claims.
     pub fn parse(source: &str, format: FlockFormat) -> Result<Self, FlockfileError> {
-        let raw = parse_raw_denying_unknown(source, format)?;
-        let RawFlockfile {
-            schema: _schema,
-            // Discarded by name. Whatever a dog wrote under `[dog]` is that
-            // dog's to read out of the file itself; shep only had to stop
-            // refusing the document for containing it.
-            dog: _dog,
-            apps,
-        } = raw;
-        if apps.is_empty() {
-            return Err(FlockfileError::NoApps);
-        }
-        Ok(Self { apps })
+        Ok(Self {
+            apps: parse_nonempty_apps(source, format)?,
+        })
     }
 
     /// Parses `text` and reports, per app, which keys the document wrote.
@@ -249,15 +239,7 @@ impl Flockfile {
         // Same reasoning as `Flockfile::parse`: this reads a Flockfile off
         // disk (the reload/muster path in shep-cli), not a value off the
         // wire, so a typo here must still be loud.
-        let raw = parse_raw_denying_unknown(text, format)?;
-        let RawFlockfile {
-            schema: _schema,
-            dog: _dog,
-            apps,
-        } = raw;
-        if apps.is_empty() {
-            return Err(FlockfileError::NoApps);
-        }
+        let apps = parse_nonempty_apps(text, format)?;
 
         // A document that reached this point already parsed successfully
         // into `RawFlockfile` above, so the same source deserializing into a
@@ -291,6 +273,31 @@ impl Flockfile {
             })
             .collect())
     }
+}
+
+/// The apps a Flockfile declares, refusing a document that declares none.
+///
+/// Both public entry points start here. The top-level fields that are not
+/// apps are discarded by name, so the next one to arrive — `$schema` and
+/// `dog` both came in this way, and `deny_unknown_fields` means the next one
+/// must too — is a change to `RawFlockfile` and to this destructure, rather
+/// than to two callers that have to stay in step.
+fn parse_nonempty_apps(
+    source: &str,
+    format: FlockFormat,
+) -> Result<Vec<AppConfig>, FlockfileError> {
+    let RawFlockfile {
+        schema: _schema,
+        // Discarded by name. Whatever a dog wrote under `[dog]` is that
+        // dog's to read out of the file itself; shep only had to stop
+        // refusing the document for containing it.
+        dog: _dog,
+        apps,
+    } = parse_raw_denying_unknown(source, format)?;
+    if apps.is_empty() {
+        return Err(FlockfileError::NoApps);
+    }
+    Ok(apps)
 }
 
 // Shared by `Flockfile::parse` and `parse_declared`: both read a Flockfile

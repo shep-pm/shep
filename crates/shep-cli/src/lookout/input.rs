@@ -54,6 +54,9 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char('q') => Some(KeyPress::Quit),
         KeyCode::Esc => Some(KeyPress::Escape),
         KeyCode::Char('/') => Some(KeyPress::FilterStart),
+        KeyCode::Tab => Some(KeyPress::NextGroup),
+        KeyCode::Char(digit @ '1'..='8') => Some(KeyPress::Group(digit as u8 - b'0')),
+        KeyCode::Char('u') => Some(KeyPress::Undo),
         KeyCode::Char('j') | KeyCode::Down => Some(KeyPress::SelectDown),
         KeyCode::Char('k') | KeyCode::Up => Some(KeyPress::SelectUp),
         KeyCode::Char('g') | KeyCode::Home => Some(KeyPress::SelectFirst),
@@ -68,16 +71,10 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char('y') => Some(KeyPress::Copy),
         KeyCode::Left => Some(KeyPress::TabPrev),
         KeyCode::Right => Some(KeyPress::TabNext),
-        // The secrets pane's tab row names these two in so many words.
-        // Nothing else in either keymap binds them, so they cost nothing
-        // elsewhere: on the dashboard a tab move means nothing and lands on
-        // `Effect::None`. Crossterm delivers shift-tab as its own `BackTab`.
-        KeyCode::Tab => Some(KeyPress::TabNext),
-        KeyCode::BackTab => Some(KeyPress::TabPrev),
         KeyCode::Char('e') => Some(KeyPress::Edit),
         KeyCode::Char('h') => Some(KeyPress::Help),
         KeyCode::Char(' ') => Some(KeyPress::Cycle),
-        KeyCode::Char('d') => Some(KeyPress::ListRemove),
+        KeyCode::Char('d') => Some(KeyPress::Remove),
         KeyCode::Char('D') => Some(KeyPress::SecretDelete),
         KeyCode::Char('K') => Some(KeyPress::StepUp),
         KeyCode::Char('J') => Some(KeyPress::StepDown),
@@ -102,6 +99,10 @@ mod tests {
 
     fn key(code: KeyCode) -> Event {
         Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
+    }
+
+    fn press(code: KeyCode) -> Option<KeyPress> {
+        map_key(&key(code), InputMode::Normal)
     }
 
     #[test]
@@ -177,7 +178,7 @@ mod tests {
         );
         assert_eq!(
             map_key(&key(KeyCode::Char('d')), InputMode::Normal),
-            Some(KeyPress::ListRemove)
+            Some(KeyPress::Remove)
         );
         assert_eq!(
             map_key(&key(KeyCode::Char('D')), InputMode::Normal),
@@ -296,21 +297,23 @@ mod tests {
         );
     }
 
-    /// The secrets pane's tab row reads `<-/-> or tab`, and a caption that
-    /// names a key nothing binds is a caption that lies.
+    /// `Tab` belongs to the config pane's group cycling, so the secrets
+    /// pane's tab row names `<-/->` and nothing else. It used to name a
+    /// tab alias as well, which #206 took: a caption naming a key that
+    /// lands somewhere else is worse than one key short.
     #[test]
-    fn tab_and_shift_tab_move_the_environment_tab_the_caption_names_them() {
+    fn tab_walks_the_config_pane_groups_and_the_tab_row_does_not_claim_it() {
         assert_eq!(
             map_key(&key(KeyCode::Tab), InputMode::Normal),
-            Some(KeyPress::TabNext)
+            Some(KeyPress::NextGroup)
         );
         assert_eq!(
             map_key(
                 &Event::Key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT)),
                 InputMode::Normal
             ),
-            Some(KeyPress::TabPrev),
-            "crossterm delivers shift-tab as `BackTab`, with SHIFT set"
+            None,
+            "shift-tab went with it rather than leaving half a pair bound"
         );
         assert_eq!(
             map_key(&key(KeyCode::Tab), InputMode::Text),
@@ -444,6 +447,47 @@ mod tests {
             map_key(&key(KeyCode::Char('N')), InputMode::Normal),
             Some(KeyPress::MatchPrev)
         );
+    }
+
+    #[test]
+    fn tab_asks_for_the_next_group() {
+        assert_eq!(press(KeyCode::Tab), Some(KeyPress::NextGroup));
+    }
+
+    #[test]
+    fn the_digits_one_through_eight_jump_to_a_group() {
+        for (typed, wanted) in [('1', 1_u8), ('4', 4), ('8', 8)] {
+            assert_eq!(press(KeyCode::Char(typed)), Some(KeyPress::Group(wanted)));
+        }
+    }
+
+    /// Eight groups, so nine and zero are not group keys and stay free.
+    #[test]
+    fn nine_and_zero_are_unbound() {
+        assert_eq!(press(KeyCode::Char('9')), None);
+        assert_eq!(press(KeyCode::Char('0')), None);
+    }
+
+    #[test]
+    fn bare_u_undoes_and_ctrl_u_still_pages() {
+        assert_eq!(press(KeyCode::Char('u')), Some(KeyPress::Undo));
+        let ctrl_u = Event::Key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        assert_eq!(map_key(&ctrl_u, InputMode::Normal), Some(KeyPress::PageUp));
+    }
+
+    /// A digit typed into a text box is text, not a group jump.
+    #[test]
+    fn a_digit_in_text_mode_is_typed() {
+        let one = Event::Key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+        assert_eq!(
+            map_key(&one, InputMode::Text),
+            Some(KeyPress::TextChar('1'))
+        );
+    }
+
+    #[test]
+    fn d_removes() {
+        assert_eq!(press(KeyCode::Char('d')), Some(KeyPress::Remove));
     }
 
     /// Named for the key, not for one pane's use of it. `map_key` dispatches

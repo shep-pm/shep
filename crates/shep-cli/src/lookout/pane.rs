@@ -1,21 +1,22 @@
 //! An open config pane: what it is editing, its fields, and its cursor.
 //!
 //! The pane is a [`FieldSet`] over one target, plus the values that target
-//! currently holds and a [`Viewport`] over the rows. It writes too: a
-//! [`PaneEdit`] arms as a [`PanePending`], and leaves as a
+//! currently holds and a [`Viewport`] over the rows. It writes too, and it
+//! writes once: every keystroke files a [`PaneEdit`] into [`Edits`], and
+//! the whole set leaves together when the pane closes, each entry as a
 //! `Request::SetSheepField` or, for `env`, a `Request::SetSheepEnv`. Both
 //! write an operator override for one key; neither pretends to be a
 //! template. See [`PaneEdit`] for why not `Request::ApplyConfig`.
 
 use std::path::PathBuf;
-use std::time::Instant;
 
 use serde_json::{Map, Value};
 use shep_core::config::{AppConfig, ApplyGroup, GROUP_ORDER, apply_group, flockfile_schema_json};
 use shep_core::protocol::{EnvValue, SheepConfigView};
 use shep_core::values::{MemSize, UpDuration};
 
-use super::field::{FieldKind, FieldSet, ListItem, ValueKind};
+use super::edits::{EditKey, Edits};
+use super::field::{Field, FieldKind, FieldSet, ListItem, ValueKind};
 use super::viewport::Viewport;
 
 /// Which thing the pane is editing.
@@ -82,18 +83,21 @@ pub enum Lock {
 
 /// One row of the pane.
 ///
-/// One variant, and it stays one: the env sub-screen went a different way
-/// and got [`EnvRow`] of its own, because its `+ new` row is not an index
-/// into anything and would have made this enum answer for two screens.
-/// Named rather than left as a bare index anyway, a `usize` travelling
-/// between [`ConfigPane::rows`], the viewport and the renderer says nothing
-/// about what it indexes, and this one says.
+/// Three variants, not one: the env sub-screen is gone, and its keys now
+/// walk the same cursor as every field, so this enum has to name a row in
+/// either territory. Named rather than left as a bare index anyway, a
+/// `usize` travelling between [`ConfigPane::rows`], the viewport and the
+/// renderer says nothing about what it indexes, and this one says.
 ///
-/// `Debug` is derived (IR-41): an index.
+/// `Debug` is derived (IR-41): an index, or a bare variant name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaneRow {
     /// Index into [`ConfigPane::fields`].
     Field(usize),
+    /// Index into [`ConfigPane::env_key_names`].
+    Env(usize),
+    /// The row that adds a new env key.
+    AddEnv,
 }
 
 /// One config field's new value, on its way out of the pane.
@@ -123,6 +127,23 @@ impl FieldValue {
     #[must_use]
     pub fn as_value(&self) -> &Value {
         &self.0
+    }
+
+    /// The value, printed, when printing it cannot leak anything: a bool or
+    /// a number can never hold a secret, a token or a home directory
+    /// (IR-41). Every other kind stays [`None`], for the same reason
+    /// [`Debug`](core::fmt::Debug) above never prints one either.
+    ///
+    /// Exists so a notice that reports a field being set can say which way
+    /// it moved (`reuse_port set to true` versus `false`) without touching
+    /// the kinds this type exists to guard.
+    #[must_use]
+    pub fn safe_summary(&self) -> Option<String> {
+        match &self.0 {
+            Value::Bool(value) => Some(value.to_string()),
+            Value::Number(value) => Some(value.to_string()),
+            Value::Null | Value::String(_) | Value::Array(_) | Value::Object(_) => None,
+        }
     }
 }
 
@@ -182,305 +203,86 @@ pub enum PaneEdit {
     },
 }
 
-impl PaneEdit {
-    /// Which field or env key this edit moves.
-    #[must_use]
-    pub fn key(&self) -> &str {
-        match self {
-            Self::Set { key, .. } | Self::SetEnv { key, .. } => key,
-        }
-    }
-}
-
-/// The pane's one in-flight edit.
+/// The pane's open text editor: which field, and what has been typed.
 ///
-/// One field on [`ConfigPane`] rather than several [`Option`]s, for the
-/// reason the settings screen's own `Pending` gives: typing, armed and sent
-/// cannot overlap, and saying so in the type beats saying so in a guard.
+/// A struct rather than the three-variant enum this was. Nothing arms and
+/// nothing is in flight any more: a keystroke files straight into
+/// [`Edits`], and the whole set leaves when the pane closes. Typing is the
+/// one state left, so an enum named for a lifecycle would name two states
+/// that no longer exist.
 ///
-/// Shared by the field list and the env sub-screen. Both arm, and neither
-/// needed a mechanism of its own: `view::status` renders whatever is here,
-/// `Msg::Tick` expires whatever is armed, and the only thing that differs
-/// is the [`PaneEdit`] variant inside.
+/// A field's key always exists before its edit starts, which is what keeps
+/// this a bare `key: String` rather than the [`Option`] [`EnvTyping`] needs
+/// for its `+ add a key` row.
 ///
-/// `Debug` is manual and redacted (IR-41), exact-string-tested below. Two
-/// of the three variants would otherwise print a value: `Typing`'s buffer
-/// is what the operator is halfway through typing, which on the env screen
-/// is a secret, and `Armed`/`Sent`'s `text` is a rendered sentence that
-/// quotes a config value verbatim. The env sentence deliberately does not
-/// quote its own value ([`ConfigPane::confirm_text`]), but the field
-/// sentence does, so the whole field is withheld rather than one arm of it.
+/// `Debug` is manual and redacted (IR-41), exact-string-tested below. The
+/// buffer is what the operator is halfway through typing.
 #[derive(Clone, PartialEq, Eq)]
-pub enum PanePending {
-    /// A text edit under construction. Owns [`super::app::InputMode::Text`]
-    /// for as long as it exists.
-    Typing {
-        /// Which field.
-        key: String,
-        /// What has been typed so far.
-        buffer: String,
-    },
-    /// Waiting for `Enter`. Nothing has gone out.
-    Armed {
-        /// The candidate.
-        edit: PaneEdit,
-        /// The question it reads as, rendered once at arm time.
-        text: String,
-        /// When it was armed. Only an armed edit expires.
-        at: Instant,
-    },
-    /// Gone out, awaiting the shepherd's reply.
-    ///
-    /// `ticket` is what a landing reply is matched against
-    /// ([`ConfigPane::settle`]). A key would still confuse two writes to
-    /// the same field in flight at once; a ticket, minted fresh per send,
-    /// cannot.
-    Sent {
-        /// The write this is waiting on. Minted by `App` per send, so no
-        /// two are ever equal.
-        ticket: u64,
-        /// Which field or env key is in flight. Not what a reply is
-        /// matched against (see `ticket`), but what a `{:?}` names.
-        key: String,
-        /// The rendered question, so the prompt line does not change
-        /// wording between the question and its own answer.
-        text: String,
-    },
+pub struct PaneTyping {
+    /// Which field. Owns [`super::app::InputMode::Text`] for as long as
+    /// this exists.
+    pub key: String,
+    /// What has been typed so far.
+    pub buffer: String,
 }
 
-/// Prints the key and never a buffer or a rendered sentence. See the type
-/// doc for why. Exact-string-tested below
-/// (`debug_names_no_value_on_a_pane_pending`).
-impl core::fmt::Debug for PanePending {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::Typing { key, buffer } => write!(
-                f,
-                "PanePending::Typing {{ key: {key:?}, buffer: <{} chars> }}",
-                buffer.chars().count()
-            ),
-            Self::Armed { edit, .. } => write!(f, "PanePending::Armed {{ edit: {edit:?} }}"),
-            Self::Sent { ticket, key, .. } => {
-                write!(f, "PanePending::Sent {{ ticket: {ticket}, key: {key:?} }}")
-            }
-        }
-    }
-}
-
-/// One row of the env sub-screen.
-///
-/// `Debug` is derived (IR-41): an index, or a marker for the row that adds
-/// a key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EnvRow {
-    /// Index into [`EnvPane::keys`].
-    Key(usize),
-    /// The `+ new` row.
-    New,
-}
-
-/// The env sub-screen: key names, and a write-only editor over them.
-///
-/// Write-only, not a shortcut: `Request::SheepConfig` answers with the
-/// env keys and no values, so this screen has nothing to seed an editor
-/// with and never asks for one. A value goes out through
-/// `Request::SetSheepEnv`, one key at a time.
-///
-/// `Debug` is manual and redacted (IR-41), exact-string-tested below. Key
-/// names are withheld for the reason [`ConfigPane`]'s own `Debug`
-/// withholds `env_keys`; the buffer is withheld because on this screen it
-/// is the secret itself, the whole of `DB_PASSWORD=hunter2` in one
-/// string.
-#[derive(Clone, PartialEq, Eq)]
-pub struct EnvPane {
-    keys: Vec<String>,
-    view: Viewport,
-    /// `Some((None, buffer))` on the `+ new` row, where the buffer is
-    /// `KEY=value`; `Some((Some(key), buffer))` on an existing key, where
-    /// it is the value alone.
-    typing: Option<(Option<String>, String)>,
-}
-
-/// Prints counts and never a key or a buffer. See the type doc for why.
-/// Exact-string-tested below (`an_env_panes_debug_names_no_key_and_no_value`).
-impl core::fmt::Debug for EnvPane {
+/// Prints the key and never the buffer. See the type doc for why.
+/// Exact-string-tested below (`debug_names_no_value_on_a_pane_typing`).
+impl core::fmt::Debug for PaneTyping {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "EnvPane {{ keys: {}, cursor: {}, typing: {} }}",
-            self.keys.len(),
-            self.view.cursor(),
-            self.typing.is_some()
+            "PaneTyping {{ key: {:?}, buffer: <{} chars> }}",
+            self.key,
+            self.buffer.chars().count()
         )
     }
 }
 
-impl EnvPane {
-    /// A sub-screen over `keys`, cursor at the top and nothing being typed.
+/// The pane's open env editor: which key, and what has been typed.
+///
+/// `key` is [`None`] on the `+ add a key` row, where the buffer is the
+/// whole `KEY=value` rather than a value alone: an env edit's key does not
+/// exist yet on that row, and forcing it through [`PaneTyping`]'s bare
+/// `key: String` would need an empty string as a sentinel, which is itself
+/// a legal env key name.
+///
+/// `Debug` is manual and redacted (IR-41), exact-string-tested below. The
+/// buffer is the secret itself, the whole of `DB_PASSWORD=hunter2` in one
+/// string on the `+ add a key` row.
+#[derive(Clone, PartialEq, Eq)]
+pub struct EnvTyping {
+    key: Option<String>,
+    buffer: String,
+}
+
+/// Prints whether a key is under edit and never the key or the buffer.
+/// See the type doc for why. Exact-string-tested below
+/// (`debug_names_no_key_and_no_value_on_an_env_typing`).
+impl core::fmt::Debug for EnvTyping {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "EnvTyping {{ key: {}, buffer: <{} chars> }}",
+            self.key.is_some(),
+            self.buffer.chars().count()
+        )
+    }
+}
+
+impl EnvTyping {
+    /// Which key is under edit, or [`None`] on the `+ add a key` row,
+    /// where [`Self::buffer`] is the whole `KEY=value` rather than a
+    /// value alone.
     #[must_use]
-    pub fn new(keys: Vec<String>) -> Self {
-        Self {
-            keys,
-            view: Viewport::new(),
-            typing: None,
-        }
+    pub fn key(&self) -> Option<&str> {
+        self.key.as_deref()
     }
 
-    /// One row per key, then the `+ new` row.
+    /// What has been typed so far.
     #[must_use]
-    pub fn rows(&self) -> Vec<EnvRow> {
-        let mut rows: Vec<EnvRow> = (0..self.keys.len()).map(EnvRow::Key).collect();
-        rows.push(EnvRow::New);
-        rows
-    }
-
-    /// The row under the cursor. Never [`None`]: [`Self::rows`] always ends
-    /// with [`EnvRow::New`], so there is always at least one row.
-    #[must_use]
-    pub fn cursor(&self) -> Option<EnvRow> {
-        let rows = self.rows();
-        rows.get(self.view.cursor()).copied()
-    }
-
-    /// The key names, in display order.
-    #[must_use]
-    pub fn keys(&self) -> &[String] {
-        &self.keys
-    }
-
-    /// The key the cursor is on, or [`None`] on the `+ new` row.
-    ///
-    /// What a refresh carries across instead of the cursor's index. A
-    /// removal shortens the list, so an index that survived would name a
-    /// different key afterwards and a reflexive second `Enter` would arm a
-    /// write against the neighbour.
-    #[must_use]
-    pub fn cursor_key(&self) -> Option<&str> {
-        match self.cursor()? {
-            EnvRow::Key(index) => self.keys.get(index).map(String::as_str),
-            EnvRow::New => None,
-        }
-    }
-
-    /// The cursor and offset.
-    #[must_use]
-    pub fn view(&self) -> &Viewport {
-        &self.view
-    }
-
-    /// What is being typed: which key it is for (`None` on the `+ new`
-    /// row, where the buffer is the whole `KEY=value`) and the buffer.
-    /// [`None`] while no editor is open.
-    #[must_use]
-    pub fn typing(&self) -> Option<(Option<&str>, &str)> {
-        self.typing
-            .as_ref()
-            .map(|(key, buffer)| (key.as_deref(), buffer.as_str()))
-    }
-
-    /// Records the terminal's height, in rows of data.
-    pub fn set_rows(&mut self, rows: usize) {
-        let len = self.rows().len();
-        self.view.set_rows(rows, len);
-    }
-
-    pub(super) fn move_by(&mut self, delta: isize) {
-        let len = self.rows().len();
-        self.view.move_by(delta, len);
-    }
-
-    pub(super) fn move_to_first(&mut self) {
-        let len = self.rows().len();
-        self.view.move_to(0, len);
-    }
-
-    pub(super) fn move_to_last(&mut self) {
-        let len = self.rows().len();
-        self.view.move_to(len.saturating_sub(1), len);
-    }
-
-    /// Adopts a previous sub-screen's offset, and puts the cursor back on
-    /// `cursor_key` by name.
-    ///
-    /// A set re-reads the whole config, so without this the operator
-    /// would be thrown back to the first key by their own keystroke.
-    /// Carrying the cursor's index instead is worse: a removal shortens
-    /// the list, so the same index names the next key down and a
-    /// reflexive second `Enter` arms a write against a neighbour nobody
-    /// chose.
-    ///
-    /// A key that is gone puts the cursor on the `+ new` row instead of
-    /// whatever took its place, since that is the one row where `Enter`
-    /// destroys nothing.
-    pub(super) fn adopt_view(&mut self, view: Viewport, cursor_key: Option<&str>) {
-        self.view = view;
-        let len = self.rows().len();
-        let index = match cursor_key {
-            Some(key) => self
-                .keys
-                .iter()
-                .position(|name| name == key)
-                .unwrap_or(len - 1),
-            None => len - 1,
-        };
-        self.view.move_to(index, len);
-    }
-
-    /// Opens the editor on the row under the cursor.
-    ///
-    /// On a key: an empty buffer, because the value is never read back and
-    /// seeding one would mean this screen had been told a secret it is
-    /// built not to hear. On `+ new`: also empty, and the operator types
-    /// `KEY=value`.
-    pub fn begin_typing(&mut self) {
-        self.typing = match self.cursor() {
-            Some(EnvRow::Key(index)) => Some((Some(self.keys[index].clone()), String::new())),
-            Some(EnvRow::New) => Some((None, String::new())),
-            None => None,
-        };
-    }
-
-    /// Appends one typed character.
-    pub fn type_char(&mut self, typed: char) {
-        if let Some((_, buffer)) = self.typing.as_mut() {
-            buffer.push(typed);
-        }
-    }
-
-    /// Removes the last typed character.
-    pub fn type_backspace(&mut self) {
-        if let Some((_, buffer)) = self.typing.as_mut() {
-            buffer.pop();
-        }
-    }
-
-    /// Drops the editor, leaving the sub-screen open.
-    pub fn abandon_typing(&mut self) {
-        self.typing = None;
-    }
-
-    /// Closes the editor and reads what it holds.
-    ///
-    /// `(key, Some(value))` sets, `(key, None)` removes. [`None`] when
-    /// nothing was being typed, and for a `+ new` buffer with no `=` or an
-    /// empty key: neither names a key, and a screen that guessed one would
-    /// be inventing the operator's intent.
-    pub fn apply_typing(&mut self) -> Option<(String, Option<String>)> {
-        let (key, buffer) = self.typing.take()?;
-        match key {
-            // An existing key with an empty buffer is a removal. There is
-            // no separate unset key on this screen, and no widget for one
-            // either: an empty value and no value are the same keystroke
-            // here, and removing is the one of the two shep can express.
-            Some(key) => Some((key, (!buffer.is_empty()).then_some(buffer))),
-            None => {
-                let (key, value) = buffer.split_once('=')?;
-                if key.is_empty() {
-                    return None;
-                }
-                Some((key.to_owned(), Some(value.to_owned())))
-            }
-        }
+    pub fn buffer(&self) -> &str {
+        &self.buffer
     }
 }
 
@@ -499,7 +301,7 @@ pub enum ListRow {
 /// The list sub-screen: one array field's elements, and an editor over
 /// them.
 ///
-/// Values are drawn, unlike [`EnvPane`]: an array arrives with the
+/// Values are drawn, unlike an env row: an array arrives with the
 /// config, so hiding an element would leave the cursor unable to say
 /// which one it holds. `Debug` is manual and redacted (IR-41),
 /// exact-string-tested below, for the same reason as [`ConfigPane`]'s:
@@ -607,12 +409,25 @@ impl ListPane {
     /// Adopts a previous sub-screen's cursor and offset, clamped to this
     /// one's own row count.
     ///
-    /// By index rather than by name, unlike [`EnvPane::adopt_view`]: an
-    /// element has no name, and its position is the only thing that
+    /// By index rather than by name, unlike [`ConfigPane::adopt_env_cursor`]:
+    /// an element has no name, and its position is the only thing that
     /// identifies it. A cursor past the end lands on the `+ new` row,
     /// which is the one row where `Enter` destroys nothing.
     pub(super) fn adopt_view(&mut self, view: Viewport) {
         self.view = view;
+        let len = self.rows().len();
+        self.view.clamp(len);
+    }
+
+    /// Replaces the elements with the ones an edit has just filed, keeping
+    /// the cursor where it is and clamping it to the new row count.
+    ///
+    /// By index, for [`Self::adopt_view`]'s own reason: an element has no
+    /// name. A removal shortens the array under a cursor that stays put, so
+    /// the cursor lands on whatever took the removed element's place, which
+    /// is where an operator removing a run of elements wants it.
+    pub(super) fn set_elements(&mut self, elements: Vec<String>) {
+        self.elements = elements;
         let len = self.rows().len();
         self.view.clamp(len);
     }
@@ -706,6 +521,22 @@ impl ListPane {
     }
 }
 
+/// A JSON value's elements as one string each, empty for anything that is
+/// not an array. A non-scalar element renders as compact JSON, which is
+/// what an editor would have to type back.
+fn array_elements(value: &Value) -> Vec<String> {
+    let Value::Array(values) = value else {
+        return Vec::new();
+    };
+    values
+        .iter()
+        .map(|value| match value {
+            Value::String(text) => text.clone(),
+            other => other.to_string(),
+        })
+        .collect()
+}
+
 /// The whole array as JSON, ready for `Request::SetSheepField`.
 ///
 /// An integer element that does not parse travels as the string it is, so
@@ -720,6 +551,23 @@ fn list_value(item: ListItem, elements: &[String]) -> Value {
             .map_or_else(|_| Value::String(text.clone()), Value::from),
     };
     Value::Array(elements.iter().map(element).collect())
+}
+
+/// A JSON value rendered the way a config row draws it: a scalar shows
+/// bare, `null` shows `(unset)`, anything else shows compact JSON.
+///
+/// Shared by [`ConfigPane::value`], reading the stored value, and
+/// [`ConfigPane::edited_value`], reading a filed one, so the two sides of
+/// an `old -> new` cell are rendered by one rule rather than two that can
+/// drift.
+fn render_json(value: &Value) -> String {
+    match value {
+        Value::Null => "(unset)".to_owned(),
+        Value::String(text) => text.clone(),
+        Value::Bool(flag) => flag.to_string(),
+        Value::Number(number) => number.to_string(),
+        other => other.to_string(),
+    }
 }
 
 /// The state of an open pane.
@@ -738,16 +586,27 @@ pub struct ConfigPane {
     env_keys: Vec<String>,
     overridden: Vec<String>,
     /// Field names parked until the next respawn, as the shepherd reported
-    /// them. Nothing to do with [`Self::pending_edit`], which is this
-    /// pane's own one in-flight edit; the two words come from opposite
-    /// ends and the collision is the shepherd's.
+    /// them. Nothing to do with [`Self::edits`], which is this pane's own
+    /// set of unwritten changes; the two words come from opposite ends and
+    /// the collision is the shepherd's.
     pending: Vec<String>,
+    /// Index into [`GROUP_ORDER`]: which group's fields the field list
+    /// draws. Meaningless for a dog pane, whose fields carry no group and
+    /// so are visible under any of them; see [`Self::rows`].
+    group: usize,
     view: Viewport,
-    pending_edit: Option<PanePending>,
-    env: Option<EnvPane>,
-    /// The open list sub-screen. Never open at the same time as
-    /// [`Self::env`]: each opens on a field of its own kind, and `Escape`
+    /// The open text editor, or [`None`].
+    typing: Option<PaneTyping>,
+    /// Everything the operator has changed and nothing has written yet.
+    /// Emptied by [`Self::close`], which is the only door out.
+    edits: Edits,
+    /// The open env editor, or [`None`]. Never open at the same time as
+    /// [`Self::list`]: each opens on a row of its own kind, and `Escape`
     /// closes whichever is up before the pane.
+    env_typing: Option<EnvTyping>,
+    /// The open list sub-screen. Never open at the same time as
+    /// [`Self::env_typing`]: each opens on a row of its own kind, and
+    /// `Escape` closes whichever is up before the pane.
     list: Option<ListPane>,
     /// Whether `h` is showing the selected field's own help text.
     help_open: bool,
@@ -758,7 +617,7 @@ pub struct ConfigPane {
     /// and this is what a write edits. `Request::SetDogConfig` replaces the
     /// whole section, so an edit that re-rendered it from `values` would
     /// throw away every comment the operator wrote. See
-    /// [`Self::edited_section`].
+    /// [`Self::edited_section_with`].
     section: Option<String>,
 }
 
@@ -892,9 +751,11 @@ impl ConfigPane {
             env_keys: view.env_keys,
             overridden: view.overridden,
             pending: view.pending,
+            group: 0,
             view: Viewport::new(),
-            pending_edit: None,
-            env: None,
+            typing: None,
+            edits: Edits::default(),
+            env_typing: None,
             list: None,
             help_open: false,
             section: None,
@@ -955,76 +816,254 @@ impl ConfigPane {
             env_keys: Vec::new(),
             overridden: Vec::new(),
             pending: Vec::new(),
+            group: 0,
             view: Viewport::new(),
-            pending_edit: None,
-            env: None,
+            typing: None,
+            edits: Edits::default(),
+            env_typing: None,
             list: None,
             help_open: false,
             section: Some(section),
         }
     }
 
-    /// The section with `edit` applied, comments and key order intact, ready
-    /// for `Request::SetDogConfig`. [`None`] for a sheep pane, for an env
-    /// edit, and for a section that does not parse.
+    /// The section with every field edit in `edits` applied, in key order,
+    /// comments and key order intact, ready for `Request::SetDogConfig`.
     ///
     /// `toml_edit` rather than a re-render of [`Self::values`], and that is
     /// the whole reason this method exists: the request replaces the section
     /// wholesale, so a re-render would delete every comment in it on the
     /// operator's own keystroke.
     ///
+    /// This is what a close actually sends: the request replaces the table,
+    /// so a batch of edits to one dog is one write, not one per entry. Each
+    /// is applied to the document the previous one produced, walked in
+    /// [`Edits::iter`]'s own key order.
+    ///
+    /// An [`EditKey::Env`] entry has no home in a dog's section, a dog
+    /// having no env store, and is skipped rather than becoming a key in
+    /// it.
+    ///
     /// A `null` value removes the key, which is how the pane's empty buffer
     /// unsets one, and is what puts the dog back on its own default.
+    ///
+    /// [`None`] for a sheep pane, for a set holding no field edit, and for
+    /// a section that does not parse, raised by any one entry: a partial
+    /// section is worse than none, since the request would replace the
+    /// table with it.
     #[must_use]
-    pub fn edited_section(&self, edit: &PaneEdit) -> Option<String> {
+    pub fn edited_section_with(&self, edits: &Edits) -> Option<String> {
         let section = self.section.as_deref()?;
-        let PaneEdit::Set { key, value } = edit else {
-            return None;
-        };
         let mut doc: toml_edit::DocumentMut = section.parse().ok()?;
-        match value.as_value() {
-            Value::Null => {
-                doc.remove(key);
+        let mut wrote = false;
+        for (key, edit) in edits.iter() {
+            let EditKey::Field(name) = key else {
+                continue;
+            };
+            let PaneEdit::Set { value, .. } = edit.edit() else {
+                continue;
+            };
+            match value.as_value() {
+                Value::Null => {
+                    doc.remove(name.as_str());
+                }
+                Value::Bool(flag) => doc[name.as_str()] = toml_edit::value(*flag),
+                // A number that is neither an i64 nor an f64 is not
+                // something TOML can hold, so the edit is refused rather
+                // than rounded.
+                Value::Number(number) => match (number.as_i64(), number.as_f64()) {
+                    (Some(int), _) => doc[name.as_str()] = toml_edit::value(int),
+                    (None, Some(float)) => doc[name.as_str()] = toml_edit::value(float),
+                    (None, None) => return None,
+                },
+                Value::String(text) => doc[name.as_str()] = toml_edit::value(text.as_str()),
+                other => doc[name.as_str()] = toml_edit::value(other.to_string()),
             }
-            Value::Bool(flag) => doc[key] = toml_edit::value(*flag),
-            // A number that is neither an i64 nor an f64 is not something
-            // TOML can hold, so the edit is refused rather than rounded.
-            Value::Number(number) => match (number.as_i64(), number.as_f64()) {
-                (Some(int), _) => doc[key] = toml_edit::value(int),
-                (None, Some(float)) => doc[key] = toml_edit::value(float),
-                (None, None) => return None,
-            },
-            Value::String(text) => doc[key] = toml_edit::value(text.as_str()),
-            other => doc[key] = toml_edit::value(other.to_string()),
+            wrote = true;
         }
-        Some(doc.to_string())
+        wrote.then(|| doc.to_string())
     }
 
-    /// The one in-flight edit, or [`None`].
+    /// The open text editor, or [`None`].
     #[must_use]
-    pub fn pending_edit(&self) -> Option<&PanePending> {
-        self.pending_edit.as_ref()
+    pub fn typing(&self) -> Option<&PaneTyping> {
+        self.typing.as_ref()
     }
 
-    /// The open env sub-screen, or [`None`] when the field list is what is
-    /// on screen.
+    /// Everything the operator has changed and nothing has written yet.
     #[must_use]
-    pub fn env(&self) -> Option<&EnvPane> {
-        self.env.as_ref()
+    pub fn edits(&self) -> &Edits {
+        &self.edits
     }
 
-    pub(super) fn env_mut(&mut self) -> Option<&mut EnvPane> {
-        self.env.as_mut()
+    /// Hands the pending set out, leaving the pane holding nothing.
+    ///
+    /// Takes `&mut self` rather than consuming, which is where this
+    /// departs from the pane's own story about closing: `Escape` can
+    /// leave the pane on screen, because it offers the parked-field menu
+    /// first and that menu reads the pane it is offering about. The write
+    /// still goes out on that keypress, so the set has to leave whether
+    /// the screen does or not.
+    ///
+    /// `#[must_use]`: this is the only door the filed set leaves through.
+    /// A caller that drops the return value drops every edit with it,
+    /// silently, since the pane already holds nothing once this returns.
+    #[must_use]
+    pub(super) fn close(&mut self) -> Edits {
+        core::mem::take(&mut self.edits)
     }
 
-    /// Opens the env sub-screen over this sheep's key names.
-    pub(super) fn open_env(&mut self) {
-        self.env = Some(EnvPane::new(self.env_keys.clone()));
+    /// Drops the most recently filed edit and names it, for `u`.
+    ///
+    /// An open list sub-screen is re-read from what is filed afterwards, so
+    /// `u` inside one shows the array it just restored rather than the one
+    /// it has undone. One entry is one field, so a `u` there takes the
+    /// whole field back to the shepherd's array rather than one keystroke
+    /// of it.
+    pub(super) fn undo_edit(&mut self) -> Option<EditKey> {
+        let undone = self.edits.undo();
+        if let Some(key) = self.list.as_ref().map(|list| list.key().to_owned()) {
+            let elements = self.filed_elements_of(&key);
+            if let Some(list) = self.list.as_mut() {
+                list.set_elements(elements);
+            }
+        }
+        undone
     }
 
-    /// Closes it, leaving the field list up.
-    pub(super) fn close_env(&mut self) {
-        self.env = None;
+    /// The sheep's own env key names. Empty for a dog, which reads its own
+    /// section rather than this list (see [`Self::dog`]).
+    ///
+    /// What [`Self::rows`]'s trailing [`PaneRow::Env`] rows index into.
+    #[must_use]
+    pub fn env_key_names(&self) -> &[String] {
+        &self.env_keys
+    }
+
+    /// The open env editor, or [`None`].
+    #[must_use]
+    pub fn env_typing(&self) -> Option<&EnvTyping> {
+        self.env_typing.as_ref()
+    }
+
+    /// Opens the env editor on the row under the cursor. Does nothing
+    /// unless the cursor is on [`PaneRow::Env`] or [`PaneRow::AddEnv`].
+    ///
+    /// Seeded empty always, on an existing key too: `Request::SheepConfig`
+    /// answers with the env key names alone, so there is no value to seed
+    /// an editor with, and seeding one would mean this pane had been told
+    /// a secret it never holds.
+    pub(super) fn begin_env_typing(&mut self) {
+        self.env_typing = match self.cursor() {
+            Some(PaneRow::Env(index)) => Some(EnvTyping {
+                key: self.env_keys.get(index).cloned(),
+                buffer: String::new(),
+            }),
+            Some(PaneRow::AddEnv) => Some(EnvTyping {
+                key: None,
+                buffer: String::new(),
+            }),
+            Some(PaneRow::Field(_)) | None => None,
+        };
+    }
+
+    /// Appends one typed character.
+    pub fn type_env_char(&mut self, typed: char) {
+        if let Some(typing) = self.env_typing.as_mut() {
+            typing.buffer.push(typed);
+        }
+    }
+
+    /// Removes the last typed character.
+    pub fn type_env_backspace(&mut self) {
+        if let Some(typing) = self.env_typing.as_mut() {
+            typing.buffer.pop();
+        }
+    }
+
+    /// Drops an editor under construction, leaving the pane open.
+    pub fn abandon_env_typing(&mut self) {
+        self.env_typing = None;
+    }
+
+    /// Closes the editor, reads what it holds, and files it.
+    ///
+    /// An existing key with an empty buffer removes it: there is no
+    /// separate unset key for env, and no widget for one either, so an
+    /// empty value and no value are the same keystroke here. On
+    /// `+ add a key` a buffer with no `=` or an empty key names nothing
+    /// and nothing is filed, since guessing a key would be inventing the
+    /// operator's intent.
+    pub fn apply_env_typing(&mut self) {
+        let Some(EnvTyping { key, buffer }) = self.env_typing.take() else {
+            return;
+        };
+        let (key, value) = match key {
+            Some(key) => (key, (!buffer.is_empty()).then_some(buffer)),
+            None => {
+                let Some((key, value)) = buffer.split_once('=') else {
+                    return;
+                };
+                if key.is_empty() {
+                    return;
+                }
+                (key.to_owned(), Some(value.to_owned()))
+            }
+        };
+        self.file_env(key, value.map(EnvValue::from));
+    }
+
+    /// The env key the cursor sits on, when it is on an env row:
+    /// `Some(Some(key))` on [`PaneRow::Env`], `Some(None)` on
+    /// [`PaneRow::AddEnv`], [`None`] when the cursor is on a field.
+    ///
+    /// What a refresh carries instead of the cursor's own index: adding or
+    /// removing an env key shifts every row after it, and an index that
+    /// survived would name a different key. See [`Self::adopt_env_cursor`].
+    #[must_use]
+    pub(super) fn cursor_env_key(&self) -> Option<Option<String>> {
+        match self.cursor()? {
+            PaneRow::Env(index) => Some(self.env_keys.get(index).cloned()),
+            PaneRow::AddEnv => Some(None),
+            PaneRow::Field(_) => None,
+        }
+    }
+
+    /// Puts the cursor back on `key`'s own row after a refresh, or on
+    /// `+ add a key` when `key` is [`None`] or is no longer among
+    /// [`Self::env_key_names`].
+    ///
+    /// Called only when [`Self::cursor_env_key`] read on the previous pane
+    /// reported the cursor was on an env row; every other case is a plain
+    /// [`Self::adopt_view`], index-clamped.
+    pub(super) fn adopt_env_cursor(&mut self, key: Option<&str>) {
+        let rows = self.rows();
+        let index = key
+            .and_then(|key| {
+                rows.iter().position(|row| match row {
+                    PaneRow::Env(env_index) => {
+                        self.env_keys.get(*env_index).map(String::as_str) == Some(key)
+                    }
+                    PaneRow::Field(_) | PaneRow::AddEnv => false,
+                })
+            })
+            .unwrap_or_else(|| rows.len().saturating_sub(1));
+        let len = rows.len();
+        self.view.move_to(index, len);
+    }
+
+    /// The key name of the env row the cursor is on, or [`None`] when the
+    /// cursor is on `+ add a key` or on a field. What
+    /// `the_env_cursor_is_carried_by_key_and_not_by_index_across_a_refresh`
+    /// reads directly, the way an assertion on `EnvPane::cursor_key` used
+    /// to before the sub-screen it belonged to folded into this list.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn cursor_env_key_name(&self) -> Option<&str> {
+        match self.cursor()? {
+            PaneRow::Env(index) => self.env_keys.get(index).map(String::as_str),
+            PaneRow::Field(_) | PaneRow::AddEnv => None,
+        }
     }
 
     /// The open list sub-screen, or [`None`] when the field list is what is
@@ -1051,7 +1090,7 @@ impl ConfigPane {
             return;
         };
         let key = field.key.clone();
-        let elements = self.elements_of(&key);
+        let elements = self.filed_elements_of(&key);
         self.list = Some(ListPane::new(key, item, elements));
     }
 
@@ -1060,65 +1099,87 @@ impl ConfigPane {
         self.list = None;
     }
 
-    /// `key`'s array as one string per element, empty when the field holds
-    /// no array. A non-scalar element renders as compact JSON, which is
-    /// what an editor would have to type back.
+    /// `key`'s stored array as one string per element, empty when the
+    /// field holds no array. What the shepherd last sent, which is only
+    /// the right seed for a field nothing is filed for: see
+    /// [`Self::filed_elements_of`].
     fn elements_of(&self, key: &str) -> Vec<String> {
-        let Some(Value::Array(values)) = self.values.get(key) else {
-            return Vec::new();
-        };
-        values
-            .iter()
-            .map(|value| match value {
-                Value::String(text) => text.clone(),
-                other => other.to_string(),
-            })
-            .collect()
+        self.values.get(key).map(array_elements).unwrap_or_default()
     }
 
-    /// Arms the whole array with `text` written at the sub-screen's cursor,
-    /// appended when the cursor is on `+ new`.
+    /// `key`'s array as the operator has it: the elements of whatever is
+    /// filed for the field, and the shepherd's own array when nothing is.
+    ///
+    /// The filed entry is the source of truth, not the stored value, and
+    /// this is what makes a sub-screen compose. Nothing writes until the
+    /// pane closes, so the stored value stays as the shepherd sent it for
+    /// as long as the operator is editing: seeding from it would show an
+    /// operator who leaves the array and comes back none of their own
+    /// work, and would recompute the next keystroke from an array they
+    /// have already changed.
+    fn filed_elements_of(&self, key: &str) -> Vec<String> {
+        let filed = match self.edits.get(&EditKey::Field(key.to_owned())) {
+            Some(entry) => match entry.edit() {
+                PaneEdit::Set { value, .. } => Some(value.as_value()),
+                PaneEdit::SetEnv { .. } => None,
+            },
+            None => None,
+        };
+        match filed {
+            Some(value) => array_elements(value),
+            None => self.elements_of(key),
+        }
+    }
+
+    /// Files the whole array with `text` written at the sub-screen's
+    /// cursor, appended when the cursor is on `+ new`.
     ///
     /// The whole array travels as one value: `Request::SetSheepField`
     /// carries one field, so an element is not a thing the wire can name.
-    pub(super) fn arm_list_element(&mut self, text: String, now: Instant) {
+    pub(super) fn file_list_element(&mut self, text: String) {
         let Some(elements) = self.list.as_ref().and_then(|list| list.with_element(text)) else {
             return;
         };
-        self.arm_list(elements, now);
+        self.file_list(elements);
     }
 
-    /// Arms the whole array without the element under the cursor.
-    pub(super) fn arm_list_removal(&mut self, now: Instant) {
+    /// Files the whole array without the element under the cursor.
+    pub(super) fn file_list_removal(&mut self) {
         let Some(elements) = self.list.as_ref().and_then(ListPane::without_element) else {
             return;
         };
-        self.arm_list(elements, now);
+        self.file_list(elements);
     }
 
-    /// Arms the whole array with the element under the cursor moved `delta`
-    /// places. Does nothing at either end, where there is nowhere to move.
-    pub(super) fn arm_list_reorder(&mut self, delta: isize, now: Instant) {
+    /// Files the whole array with the element under the cursor moved
+    /// `delta` places. Does nothing at either end, where there is nowhere
+    /// to move.
+    pub(super) fn file_list_reorder(&mut self, delta: isize) {
         let Some(elements) = self.list.as_ref().and_then(|list| list.reordered(delta)) else {
             return;
         };
-        self.arm_list(elements, now);
+        self.file_list(elements);
     }
 
-    fn arm_list(&mut self, elements: Vec<String>, now: Instant) {
+    /// Files `elements` as the field's whole value, then makes the open
+    /// sub-screen show them.
+    ///
+    /// The second half is what stops a keystroke being lost. Every filing
+    /// door here rebuilds the whole array from the sub-screen's own
+    /// elements, so a sub-screen left showing the shepherd's array would
+    /// recompute the next keystroke from it and file an array missing this
+    /// one. The write that used to refresh the screen is gone: the pane
+    /// files and writes once, when it closes.
+    fn file_list(&mut self, elements: Vec<String>) {
         let Some(list) = self.list.as_ref() else {
             return;
         };
-        let edit = PaneEdit::Set {
-            key: list.key().to_owned(),
-            value: list_value(list.item(), &elements).into(),
-        };
-        let text = self.confirm_text(&edit);
-        self.pending_edit = Some(PanePending::Armed {
-            edit,
-            text,
-            at: now,
-        });
+        let key = list.key().to_owned();
+        let value = list_value(list.item(), &elements);
+        self.file_field(key, value);
+        if let Some(list) = self.list.as_mut() {
+            list.set_elements(elements);
+        }
     }
 
     /// Whether `h` is showing the selected field's own help text.
@@ -1153,24 +1214,28 @@ impl ConfigPane {
     /// than for a generic third.
     #[must_use]
     pub fn cursor_lock(&self) -> Option<(&str, Lock)> {
-        let PaneRow::Field(index) = self.cursor()?;
+        let PaneRow::Field(index) = self.cursor()? else {
+            return None;
+        };
         let field = self.fields.fields().get(index)?;
         self.lock(&field.key).map(|lock| (field.key.as_str(), lock))
     }
 
     /// The kind of widget the row under the cursor wants, or [`None`] for
-    /// no row at all.
+    /// no row at all, or for one on an env row, which has no [`FieldKind`].
     #[must_use]
     pub fn cursor_kind(&self) -> Option<&FieldKind> {
-        let PaneRow::Field(index) = self.cursor()?;
+        let PaneRow::Field(index) = self.cursor()? else {
+            return None;
+        };
         self.fields.fields().get(index).map(|field| &field.kind)
     }
 
-    /// Arms the opposite of what a bool holds, or the next name in a
+    /// Files the opposite of what a bool holds, or the next name in a
     /// choice. Does nothing for a locked field, or for one no keystroke
     /// cycles ([`FieldKind::Text`], [`FieldKind::Integer`],
     /// [`FieldKind::Map`], [`FieldKind::Opaque`]).
-    pub fn cycle(&mut self, now: Instant) {
+    pub fn cycle(&mut self) {
         let Some(PaneRow::Field(index)) = self.cursor() else {
             return;
         };
@@ -1180,18 +1245,18 @@ impl ConfigPane {
         if self.lock(&field.key).is_some() {
             return;
         }
-        // The base is whatever is already armed for this field, so a
+        // The base is whatever is already filed for this field, so a
         // second `space` walks the cycle instead of re-deriving the
-        // stored value. An arm for a different field is not a base: the
-        // cursor moved, so this starts fresh from the stored value.
-        let armed_here = match &self.pending_edit {
-            Some(PanePending::Armed {
-                edit: PaneEdit::Set { key, value },
-                ..
-            }) if *key == field.key => Some(value.as_value()),
-            _ => None,
+        // stored value. Nothing filed for this key starts from the stored
+        // value, which is what the row is showing.
+        let filed_here = match self.edits.get(&EditKey::Field(field.key.clone())) {
+            Some(entry) => match entry.edit() {
+                PaneEdit::Set { value, .. } => Some(value.as_value()),
+                PaneEdit::SetEnv { .. } => None,
+            },
+            None => None,
         };
-        let current = armed_here.or_else(|| self.values.get(&field.key));
+        let current = filed_here.or_else(|| self.values.get(&field.key));
         let next = match &field.kind {
             FieldKind::Bool => Value::Bool(!current.and_then(Value::as_bool).unwrap_or(false)),
             FieldKind::Choice(names) | FieldKind::Suggested(names) if !names.is_empty() => {
@@ -1209,16 +1274,139 @@ impl ConfigPane {
             | FieldKind::List(_)
             | FieldKind::Opaque => return,
         };
-        let edit = PaneEdit::Set {
-            key: field.key.clone(),
-            value: next.into(),
+        let key = field.key.clone();
+        self.file_field(key, next);
+    }
+
+    /// Files one config field, or drops whatever was filed for it when the
+    /// new value is the one the target already holds.
+    ///
+    /// The comparison is what stops a round trip counting: two `space`
+    /// presses on a bool leave the row exactly as the shepherd has it, and
+    /// an entry for it would still be counted by the title band, still be
+    /// asked about on close, and still be written.
+    ///
+    /// The one door every config edit files through, which is what makes
+    /// [`Edits::worst_impact`]'s claim about [`ApplyGroup::Structural`]
+    /// checkable: every caller has already refused a locked row, and
+    /// [`Self::lock`] locks exactly the Structural ones.
+    fn file_field(&mut self, key: String, value: Value) {
+        if self.stored_value_is(&key, &value) {
+            self.edits.remove(&EditKey::Field(key));
+            return;
+        }
+        let impact = self.cost(&key);
+        self.edits.set(
+            PaneEdit::Set {
+                key,
+                value: value.into(),
+            },
+            impact,
+        );
+    }
+
+    /// Whether `value` is what the target already holds for `key`.
+    ///
+    /// An absent key and a `null` are the same fact here: the pane renders
+    /// both as `(unset)`, so unsetting a field that is already unset is
+    /// not a change.
+    fn stored_value_is(&self, key: &str, value: &Value) -> bool {
+        match self.values.get(key) {
+            Some(stored) => stored == value,
+            None => value.is_null(),
+        }
+    }
+
+    /// `d` on the field list: restores the field under the cursor to its
+    /// default.
+    ///
+    /// What gets filed depends on which door the write leaves through, not
+    /// on the field's kind:
+    ///
+    /// - A sheep's write is `Request::SetSheepField`, which re-validates
+    ///   the value against `AppConfig`'s own type for the key, and `null`
+    ///   only deserializes into an `Option<T>`. So the value filed is
+    ///   [`Field::default_value`] when the schema names one, else
+    ///   [`Value::Null`]: a bool, a plain `Vec`, or a non-optional scalar
+    ///   needs its schema default filed to actually clear, while an
+    ///   `Option<T>` field with no default (`cwd` and its like) keeps
+    ///   unsetting the way it always has. See [`Field::default_value`]'s
+    ///   own doc for why the two `None` cases collapse to the same value.
+    /// - A dog's write patches the section's own TOML text (see
+    ///   [`Self::edited_section_with`]), where `null` already means
+    ///   "remove this key" rather than a value handed to a deserializer.
+    ///   Removing the key is exactly a restore: the dog reads its own
+    ///   compiled default for whatever is absent. Filing the schema
+    ///   default there instead would hard-code the value into the section
+    ///   rather than restoring it, so a dog always files [`Value::Null`],
+    ///   regardless of the field's default.
+    ///
+    /// Either way, filed through the same [`Self::file_field`] every other
+    /// edit goes through, so a re-edit back to the stored value still drops
+    /// the entry rather than counting a no-op.
+    ///
+    /// Files nothing when the row is already showing its default: see
+    /// [`Self::field_shows_default`]. A locked row is refused the same way
+    /// [`Self::cycle`] refuses one, since a key that reaches here has
+    /// already been refused once, by the caller's own lock check, and this
+    /// is the defense behind it.
+    pub(super) fn file_default(&mut self) {
+        let Some(PaneRow::Field(index)) = self.cursor() else {
+            return;
         };
-        let text = self.confirm_text(&edit);
-        self.pending_edit = Some(PanePending::Armed {
-            edit,
-            text,
-            at: now,
-        });
+        let Some(field) = self.fields.fields().get(index) else {
+            return;
+        };
+        if self.lock(&field.key).is_some() {
+            return;
+        }
+        let key = field.key.clone();
+        if self.field_shows_default(&key) {
+            return;
+        }
+        let value = self.default_for(field);
+        self.file_field(key, value);
+    }
+
+    /// The value that restores `field` to its default, matching whichever
+    /// door the write leaves through. Shared by [`Self::file_default`] (`d`)
+    /// and [`Self::apply_typing`]'s empty-buffer case, which is the same
+    /// intent from a different key: clearing the field back to nothing.
+    ///
+    /// - A sheep's write is `Request::SetSheepField`, which re-validates
+    ///   against `AppConfig`'s own type for the key, and `null` only
+    ///   deserializes into an `Option<T>`. So this files
+    ///   [`Field::default_value`] when the schema names one, else
+    ///   [`Value::Null`].
+    /// - A dog's write patches the section's own TOML text, where `null`
+    ///   already means "remove this key" and removing it restores the dog's
+    ///   own compiled default. Filing the schema default there instead
+    ///   would hard-code it into the section rather than restoring it, so a
+    ///   dog always gets [`Value::Null`], regardless of the field's default.
+    fn default_for(&self, field: &Field) -> Value {
+        match &self.target {
+            PaneTarget::Sheep { .. } => field.default_value.clone().unwrap_or(Value::Null),
+            PaneTarget::Dog { .. } => Value::Null,
+        }
+    }
+
+    /// Whether `key`'s row is already showing its stored default, with
+    /// nothing filed for it in this session either.
+    ///
+    /// A sheep's `values` is the effective config, defaults merged in, so a
+    /// bool field's default is never `null` and [`Self::stored_value_is`]
+    /// cannot answer this for it; [`Self::is_overridden`] is the fact that
+    /// can. A dog's `values` is the raw section text with no defaults
+    /// merged in, so an absent or `null` key already means default there,
+    /// which is exactly what [`Self::stored_value_is`] checks.
+    fn field_shows_default(&self, key: &str) -> bool {
+        if self.edits.get(&EditKey::Field(key.to_owned())).is_some() {
+            return false;
+        }
+        match &self.target {
+            PaneTarget::Sheep { .. } => !self.is_overridden(key),
+            PaneTarget::Dog { .. } => self.stored_value_is(key, &Value::Null),
+        }
     }
 
     /// Opens the text editor on the row under the cursor. Does nothing for
@@ -1250,7 +1438,7 @@ impl ConfigPane {
                 value => value,
             }
         };
-        self.pending_edit = Some(PanePending::Typing {
+        self.typing = Some(PaneTyping {
             key: field.key.clone(),
             buffer: seed,
         });
@@ -1258,197 +1446,68 @@ impl ConfigPane {
 
     /// Appends one typed character.
     pub fn type_char(&mut self, typed: char) {
-        if let Some(PanePending::Typing { buffer, .. }) = self.pending_edit.as_mut() {
-            buffer.push(typed);
+        if let Some(typing) = self.typing.as_mut() {
+            typing.buffer.push(typed);
         }
     }
 
     /// Removes the last typed character.
     pub fn type_backspace(&mut self) {
-        if let Some(PanePending::Typing { buffer, .. }) = self.pending_edit.as_mut() {
-            buffer.pop();
+        if let Some(typing) = self.typing.as_mut() {
+            typing.buffer.pop();
         }
     }
 
-    /// Turns the buffer into an armed edit, typed to the field's kind.
+    /// Files the buffer as an edit, typed to the field's kind.
     ///
-    /// An empty buffer is `null`, which is how a nullable field is unset.
-    /// An integer field whose buffer does not parse keeps the editor open
-    /// rather than arming a string the daemon would refuse: the operator is
-    /// mid-word, not wrong.
-    pub fn apply_typing(&mut self, now: Instant) {
-        let Some(PanePending::Typing { key, buffer }) = self.pending_edit.take() else {
+    /// An empty buffer restores the field's default, through
+    /// [`Self::default_for`] — the same value `d` files, and the same
+    /// reasoning: `Enter` is an explicit apply, not an ambient one, so a
+    /// buffer the operator has cleared all the way and then committed reads
+    /// as "put this back," not as a typo. That is a different keypress from
+    /// the one below it: an integer field whose buffer does not parse keeps
+    /// the editor open rather than filing a string the daemon would refuse,
+    /// because *non-empty, unparseable* text is the operator still mid-word.
+    /// An empty buffer has nothing left to finish typing, so there is no
+    /// "mid-word" reading available for it, only "unset" or "wrong sheep"
+    /// — and `Enter` picks unset. Validation runs here, on the way in, so
+    /// every entry in the set is one the pane is willing to send.
+    pub fn apply_typing(&mut self) {
+        let Some(PaneTyping { key, buffer }) = self.typing.take() else {
             return;
         };
-        let kind = self.fields.by_key(&key).map(|field| field.kind.clone());
+        let field = self.fields.by_key(&key).cloned();
+        let kind = field.as_ref().map(|field| field.kind.clone());
         let value = match (kind, buffer.as_str()) {
-            (_, "") => Value::Null,
+            (_, "") => field
+                .as_ref()
+                .map_or(Value::Null, |field| self.default_for(field)),
             (Some(FieldKind::Integer), text) => match text.parse::<i64>() {
                 Ok(number) => Value::from(number),
                 Err(_) => {
-                    self.pending_edit = Some(PanePending::Typing { key, buffer });
+                    self.typing = Some(PaneTyping { key, buffer });
                     return;
                 }
             },
             (_, text) => Value::String(text.to_owned()),
         };
-        let edit = PaneEdit::Set {
-            key,
-            value: value.into(),
-        };
-        let text = self.confirm_text(&edit);
-        self.pending_edit = Some(PanePending::Armed {
-            edit,
-            text,
-            at: now,
-        });
+        self.file_field(key, value);
     }
 
     /// Drops an editor under construction, leaving the pane open.
     pub fn abandon_typing(&mut self) {
-        if matches!(self.pending_edit, Some(PanePending::Typing { .. })) {
-            self.pending_edit = None;
-        }
+        self.typing = None;
     }
 
-    /// Drops an armed edit. A request already sent is not cancellable by a
-    /// keypress, the same rule every other confirm in lookout follows.
-    pub fn cancel(&mut self) {
-        if matches!(self.pending_edit, Some(PanePending::Armed { .. })) {
-            self.pending_edit = None;
-        }
-    }
-
-    /// Whether an edit is armed, the one state a stray key has to eat
-    /// rather than also doing its ordinary job.
-    #[must_use]
-    pub fn is_armed(&self) -> bool {
-        matches!(self.pending_edit, Some(PanePending::Armed { .. }))
-    }
-
-    /// When the armed edit was armed, for the expiry the tick runs.
-    #[must_use]
-    pub fn armed_at(&self) -> Option<Instant> {
-        match self.pending_edit {
-            Some(PanePending::Armed { at, .. }) => Some(at),
-            _ => None,
-        }
-    }
-
-    /// Takes the armed edit out and marks it sent under `ticket`. [`None`]
-    /// when nothing is armed, and the pane is left exactly as it was.
+    /// Files an env write from the sub-screen's own editor.
     ///
-    /// The ticket is the caller's, because the caller is what mints one per
-    /// send and puts the same value on the request. See
-    /// [`PanePending::Sent`].
-    pub fn take_armed(&mut self, ticket: u64) -> Option<PaneEdit> {
-        match self.pending_edit.take() {
-            Some(PanePending::Armed { edit, text, .. }) => {
-                self.pending_edit = Some(PanePending::Sent {
-                    ticket,
-                    key: edit.key().to_owned(),
-                    text,
-                });
-                Some(edit)
-            }
-            other => {
-                self.pending_edit = other;
-                None
-            }
-        }
-    }
-
-    /// Clears the in-flight line for `ticket`, once the shepherd has
-    /// answered that write and not another.
-    ///
-    /// Only clears [`PanePending::Sent`], the way [`Self::cancel`] only
-    /// clears `Armed`: a reply landing while an editor is open must not
-    /// throw the buffer away, since on the env screen that buffer is a
-    /// secret the operator cannot read back.
-    ///
-    /// Only clears a `Sent` whose own ticket matches, since two writes
-    /// can be in flight on the same field at once. Each request names
-    /// its own key, so the values can never cross, but without a ticket
-    /// match the wrong one's "sent, waiting" line would clear early.
-    pub fn settle(&mut self, ticket: u64) {
-        if matches!(&self.pending_edit, Some(PanePending::Sent { ticket: sent, .. }) if *sent == ticket)
-        {
-            self.pending_edit = None;
-        }
-    }
-
-    /// Arms an env write from the sub-screen's own editor.
-    ///
-    /// Env arms like everything else: the daemon writes the override
-    /// store on the same call, so the old value is gone the moment the
-    /// reply lands, whether it takes effect at the next spawn or not.
-    /// Under a write-only screen an overwrite is exactly as unrecoverable
-    /// as a deletion, so a set arms too, not only a removal.
-    pub(super) fn arm_env(&mut self, key: String, value: Option<EnvValue>, now: Instant) {
-        let edit = PaneEdit::SetEnv { key, value };
-        let text = self.confirm_text(&edit);
-        self.pending_edit = Some(PanePending::Armed {
-            edit,
-            text,
-            at: now,
-        });
-    }
-
-    /// The question an armed edit reads as.
-    ///
-    /// It names the field's class, not what this write will do: only the
-    /// shepherd knows whether a given write reaches the running child, so
-    /// a class-based promise can be wrong. `NeedsRespawn` gets the same
-    /// treatment, naming the reload it waits for rather than a restart it
-    /// may not perform.
-    ///
-    /// Three things speak, and only this one is a prediction: the status
-    /// bar after the reply reports what the shepherd actually did, and
-    /// the row's `!` flag is the durable answer, read off the shepherd's
-    /// parked-field list on every refresh.
-    ///
-    /// An env sentence names its key and never its value, unlike a field
-    /// sentence, which quotes what it is setting: echoing a value just
-    /// typed tells the operator nothing new, and would put a secret into
-    /// a string that outlives the editor. A field marked
-    /// `x-shep-secret` gets the same protection, rendered as `<set>`
-    /// rather than a quoted credential.
-    fn confirm_text(&self, edit: &PaneEdit) -> String {
-        let name = self.target.name();
-        let (key, value) = match edit {
-            PaneEdit::SetEnv {
-                key,
-                value: Some(_),
-            } => {
-                return format!("set env {key}? {key} waits for `shep reload {name}`");
-            }
-            PaneEdit::SetEnv { key, value: None } => {
-                return format!(
-                    "remove env {key}? it waits for `shep reload {name}`, and lookout cannot \
-                     read the value back to put it there again"
-                );
-            }
-            PaneEdit::Set { key, value } => (key, value),
-        };
-        let secret = self.fields.by_key(key).is_some_and(|field| field.secret);
-        let shown = match value.as_value() {
-            Value::Null => "(unset)".to_owned(),
-            _ if secret => "<set>".to_owned(),
-            Value::String(text) => resolved_display(&self.fields, key, text),
-            other => other.to_string(),
-        };
-        // `ApplyGroup` is `#[non_exhaustive]`, so the wildcard is required
-        // rather than chosen; it answers the way `view::pane::cost_label`
-        // does, a conservative promise of a restart rather than a silent
-        // claim that the change applied. `Structural` cannot reach here.
-        match self.cost(key) {
-            Some(ApplyGroup::Live) => format!("set {key} = {shown}? {key} is a live setting"),
-            Some(ApplyGroup::NextSpawn) => {
-                format!("set {key} = {shown}? {key} is read when {name} spawns")
-            }
-            Some(_) => format!("set {key} = {shown}? {key} waits for `shep reload {name}`"),
-            None => format!("set {key} = {shown}? {name} is told, and decides what to reload"),
-        }
+    /// Env files like everything else, and unlike everything else it is
+    /// never compared against a stored value: `Request::SheepConfig`
+    /// answers with the key names alone, so the pane has nothing to
+    /// compare against and cannot tell a round trip from a change.
+    pub(super) fn file_env(&mut self, key: String, value: Option<EnvValue>) {
+        let impact = self.cost("env");
+        self.edits.set(PaneEdit::SetEnv { key, value }, impact);
     }
 
     /// What is being edited.
@@ -1488,13 +1547,23 @@ impl ConfigPane {
                 count => format!("{count} keys"),
             };
         }
-        match self.values.get(key) {
-            None | Some(Value::Null) => "(unset)".to_owned(),
-            Some(Value::String(text)) => text.clone(),
-            Some(Value::Bool(flag)) => flag.to_string(),
-            Some(Value::Number(number)) => number.to_string(),
-            Some(other) => other.to_string(),
-        }
+        self.values
+            .get(key)
+            .map_or_else(|| render_json(&Value::Null), render_json)
+    }
+
+    /// The value a filed edit holds for `key`, rendered the way
+    /// [`Self::value`] renders a stored one, or [`None`] when nothing is
+    /// filed for it. Only ever answers for a config field: an env edit has
+    /// no field key to be filed under.
+    #[must_use]
+    pub fn edited_value(&self, key: &str) -> Option<String> {
+        let PaneEdit::Set { value, .. } = self.edits.get(&EditKey::Field(key.to_owned()))?.edit()
+        else {
+            return None;
+        };
+        let raw = render_json(value.as_value());
+        Some(resolved_display(&self.fields, key, &raw))
     }
 
     /// [`Self::value`], resolved through its own grammar for a
@@ -1590,10 +1659,83 @@ impl ConfigPane {
         self.view.set_rows(rows, len);
     }
 
-    /// One row per field, in display order.
+    /// The active group's name, one of the eight in [`GROUP_ORDER`],
+    /// defaulting to the first.
+    ///
+    /// Meaningless for a dog pane in the sense that nothing filters on it:
+    /// a dog's schema carries no `init.group`, so every one of its fields
+    /// is visible under any name this returns. See [`Self::rows`].
+    #[must_use]
+    pub fn group(&self) -> &'static str {
+        GROUP_ORDER
+            .get(self.group)
+            .copied()
+            .unwrap_or(GROUP_ORDER[0])
+    }
+
+    /// Walks to the next group, wrapping from the last back to the first.
+    pub fn next_group(&mut self) {
+        self.group = (self.group + 1) % GROUP_ORDER.len();
+    }
+
+    /// Jumps to the `digit`th group, one-based, the way `1`..`8` name them
+    /// on the tab row. A digit past [`GROUP_ORDER`]'s length is ignored, so
+    /// a ninth group added later needs a key of its own before it is
+    /// reachable.
+    pub fn set_group(&mut self, digit: u8) {
+        let Some(index) = usize::from(digit).checked_sub(1) else {
+            return;
+        };
+        if index < GROUP_ORDER.len() {
+            self.group = index;
+        }
+    }
+
+    /// One row per field of the active group, in display order, then this
+    /// sheep's own env keys and the row that adds one. A field carrying no
+    /// group at all (every field on a dog pane, whose schema declares
+    /// none) is visible regardless of which group is active, which is
+    /// what keeps a dog's flat list undisturbed by a control meant for a
+    /// sheep's eight.
+    ///
+    /// The `env` field itself is left out of the field portion for a
+    /// sheep: its own [`PaneRow::Env`] rows are what replaced the sub-screen
+    /// it used to open, and a row that still showed the field's own "N
+    /// keys" summary beside them would be the same fact said twice. A
+    /// dog's schema is somebody else's and can declare a field named
+    /// `env` of its own, which stays.
     #[must_use]
     pub fn rows(&self) -> Vec<PaneRow> {
-        (0..self.fields.len()).map(PaneRow::Field).collect()
+        let group = self.group();
+        let is_sheep = matches!(self.target, PaneTarget::Sheep { .. });
+        let mut rows: Vec<PaneRow> = self
+            .fields
+            .fields()
+            .iter()
+            .enumerate()
+            .filter(|(_, field)| !is_sheep || field.key != "env")
+            .filter(|(_, field)| field.group.as_deref().is_none_or(|g| g == group))
+            .map(|(index, _)| PaneRow::Field(index))
+            .collect();
+        if is_sheep {
+            rows.extend((0..self.env_keys.len()).map(PaneRow::Env));
+            rows.push(PaneRow::AddEnv);
+        }
+        rows
+    }
+
+    /// [`Self::rows`]'s own [`PaneRow::Field`] entries, alone: what the
+    /// field body's own scroll walk lays out. [`Self::rows`] is the
+    /// cursor's whole walk, env rows included; this is the narrower list
+    /// the renderer needs to lay the field portion out on its own, since
+    /// [`super::view::scroll::to_cursor`] has to know how many rows exist
+    /// in the body it is walking, not in the cursor's wider one.
+    #[must_use]
+    pub(super) fn field_rows(&self) -> Vec<PaneRow> {
+        self.rows()
+            .into_iter()
+            .filter(|row| matches!(row, PaneRow::Field(_)))
+            .collect()
     }
 
     /// The row under the cursor, or `None` for an empty form.
@@ -1618,20 +1760,20 @@ impl ConfigPane {
         self.view.move_to(len.saturating_sub(1), len);
     }
 
-    /// Adopts a previous pane's in-flight edit, so a refresh does not
-    /// silently drop a question the operator has not answered or a write
-    /// they are still waiting on.
+    /// Adopts a previous pane's pending set, so a refresh does not
+    /// silently drop changes the operator has not written yet.
     ///
-    /// [`PanePending::Typing`] is deliberately not carried: its buffer was
-    /// seeded from a value this refresh may have just changed, so keeping
-    /// it would put the operator halfway through editing something that is
-    /// no longer there. `App::release_text_mode_if_unowned` is what puts
-    /// the keyboard back when that happens.
-    pub(super) fn adopt_pending_edit(&mut self, previous: Option<PanePending>) {
-        self.pending_edit = match previous {
-            Some(carried @ (PanePending::Armed { .. } | PanePending::Sent { .. })) => Some(carried),
-            Some(PanePending::Typing { .. }) | None => None,
-        };
+    /// The set is the operator's and the values are the shepherd's: a
+    /// re-read replaces every value on screen and keeps every edit filed
+    /// over them.
+    ///
+    /// An open editor is deliberately not carried: its buffer was seeded
+    /// from a value this refresh may have just changed, so keeping it
+    /// would put the operator halfway through editing something that is no
+    /// longer there. `App::release_text_mode_if_unowned` is what puts the
+    /// keyboard back when that happens.
+    pub(super) fn adopt_edits(&mut self, previous: Edits) {
+        self.edits = previous;
     }
 
     /// Adopts a previous pane's cursor and offset, clamped to this one's
@@ -1643,20 +1785,14 @@ impl ConfigPane {
         self.view.clamp(len);
     }
 
-    /// Re-opens the env sub-screen on the refreshed key list, at the cursor
-    /// and offset it had. Setting a key re-reads the whole config, and
-    /// without this the sub-screen would slam shut on the operator's own
-    /// keystroke, on the one screen where the keystroke adds a row.
-    pub(super) fn adopt_env_view(&mut self, view: Viewport, cursor_key: Option<&str>) {
-        let mut env = EnvPane::new(self.env_keys.clone());
-        env.adopt_view(view, cursor_key);
-        self.env = Some(env);
-    }
-
     /// Re-opens the list sub-screen on the refreshed array, at the cursor
-    /// and offset it had. Setting an element re-reads the whole config,
-    /// and without this the sub-screen would slam shut on the operator's
-    /// own keystroke.
+    /// and offset it had, so `r` does not slam the sub-screen shut on the
+    /// operator.
+    ///
+    /// Seeded from [`Self::filed_elements_of`], not from the config that
+    /// has just arrived: a refresh replaces the shepherd's values and keeps
+    /// the operator's filed set, and the sub-screen has to keep showing the
+    /// set.
     pub(super) fn adopt_list_view(&mut self, key: &str, view: Viewport) {
         let Some(item) = self.fields.by_key(key).and_then(|field| match field.kind {
             FieldKind::List(item) => Some(item),
@@ -1664,21 +1800,30 @@ impl ConfigPane {
         }) else {
             return;
         };
-        let mut list = ListPane::new(key.to_owned(), item, self.elements_of(key));
+        let mut list = ListPane::new(key.to_owned(), item, self.filed_elements_of(key));
         list.adopt_view(view);
         self.list = Some(list);
     }
 
+    /// Switches to `key`'s own group, then walks the cursor onto it, the
+    /// way an operator reaches a field in a different group than the one
+    /// the pane opened on. A no-op for a name no field carries.
     #[cfg(test)]
     pub(crate) fn move_to_key(&mut self, key: &str) {
-        if let Some(index) = self
-            .fields
-            .fields()
-            .iter()
-            .position(|field| field.key == key)
+        let Some(field) = self.fields.by_key(key) else {
+            return;
+        };
+        if let Some(group) = field.group.clone()
+            && let Some(index) = GROUP_ORDER.iter().position(|known| *known == group)
         {
+            self.group = index;
+        }
+        if let Some(row_index) = self.rows().iter().position(|row| match row {
+            PaneRow::Field(field_index) => self.fields.fields()[*field_index].key == key,
+            PaneRow::Env(_) | PaneRow::AddEnv => false,
+        }) {
             let len = self.rows().len();
-            self.view.move_to(index, len);
+            self.view.move_to(row_index, len);
         }
     }
 }
@@ -1733,6 +1878,20 @@ mod tests {
             .env
             .insert("DB_HOST".into(), "{{shared:DB_HOST}}".into());
         SheepConfigView::new(config, vec!["max_restarts".into()], vec!["env".into()])
+    }
+
+    /// The value the pane has filed for the config field `key`, or
+    /// [`None`] when nothing is filed for it.
+    fn filed(pane: &ConfigPane, key: &str) -> Option<Value> {
+        match pane.edits().get(&EditKey::Field(key.to_owned()))?.edit() {
+            PaneEdit::Set { value, .. } => Some(value.as_value().clone()),
+            PaneEdit::SetEnv { .. } => None,
+        }
+    }
+
+    /// What the pane recorded that filed edit as costing.
+    fn filed_impact(pane: &ConfigPane, key: &str) -> Option<ApplyGroup> {
+        pane.edits().get(&EditKey::Field(key.to_owned()))?.impact()
     }
 
     fn web_with_args(args: &[&str]) -> SheepConfigView {
@@ -1866,11 +2025,14 @@ mod tests {
         pane.move_by(-5);
         assert_eq!(pane.cursor(), Some(PaneRow::Field(0)));
         pane.move_to_last();
-        assert_eq!(pane.cursor(), Some(PaneRow::Field(40)));
+        // `process`, the group a fresh pane opens on, has ten fields, at
+        // indices `0..10` since it sorts first, then `web`'s own one env
+        // key and the row that adds another.
+        assert_eq!(pane.cursor(), Some(PaneRow::AddEnv));
         assert_eq!(
-            pane.fields().fields()[40].key,
-            "cron_timezone",
-            "the last row is the last field"
+            pane.fields().fields()[9].key,
+            "user",
+            "the last field is process's own last one"
         );
         pane.move_to_first();
         assert_eq!(pane.cursor(), Some(PaneRow::Field(0)));
@@ -1884,152 +2046,197 @@ mod tests {
         let carried = pane.view().clone();
         let mut fresh = ConfigPane::sheep(web());
         fresh.adopt_view(carried);
-        assert_eq!(fresh.cursor(), Some(PaneRow::Field(40)));
+        assert_eq!(fresh.cursor(), Some(PaneRow::AddEnv));
     }
 
     #[test]
-    fn cycling_a_bool_arms_a_set_with_the_flipped_value() {
+    fn cycling_a_bool_files_a_set_with_the_flipped_value() {
         let mut pane = ConfigPane::sheep(web());
         pane.move_to_key("autorestart");
-        pane.cycle(Instant::now());
-        let Some(PanePending::Armed {
-            edit: PaneEdit::Set { key, value },
-            text,
-            ..
-        }) = pane.pending_edit()
-        else {
-            panic!("{:?}", pane.pending_edit());
-        };
-        assert_eq!(key, "autorestart");
-        assert_eq!(value.as_value(), &serde_json::json!(false));
-        assert!(text.contains("autorestart"), "{text}");
+        pane.cycle();
+        assert_eq!(filed(&pane, "autorestart"), Some(serde_json::json!(false)));
+        assert_eq!(pane.edits().len(), 1, "one key, one entry");
+    }
+
+    /// A round trip is not a change, so the entry goes rather than being
+    /// filed as the value the sheep already holds: an entry that changes
+    /// nothing would still be written and still be counted.
+    #[test]
+    fn cycling_a_bool_back_to_the_stored_value_unfiles_it() {
+        let mut pane = ConfigPane::sheep(web());
+        pane.move_to_key("autorestart");
+        pane.cycle();
+        pane.cycle();
+        assert_eq!(filed(&pane, "autorestart"), None);
+        assert!(pane.edits().is_empty());
     }
 
     #[test]
     fn space_cycles_a_suggested_field_and_e_still_opens_the_editor() {
         let mut pane = ConfigPane::sheep(web());
         pane.move_to_key("kill_signal");
-        pane.cycle(Instant::now());
-        assert!(pane.pending_edit().is_some(), "space arms a suggestion");
-        pane.cancel();
-        pane.begin_typing();
+        pane.cycle();
         assert!(
-            matches!(pane.pending_edit(), Some(PanePending::Typing { .. })),
-            "e still opens a free-text editor"
+            filed(&pane, "kill_signal").is_some(),
+            "space files a suggestion"
         );
-    }
-
-    /// `apply_group` is a fact about the field; a write's fate is a fact
-    /// about the flock, which only the shepherd knows. `watch` is `Live`
-    /// but parks whenever its config subset cannot normalize alone, so a
-    /// blanket promise can be wrong. The sentence names the class instead.
-    #[test]
-    fn a_live_confirm_names_the_class_and_promises_no_outcome() {
-        for key in ["autorestart", "watch"] {
-            let mut pane = ConfigPane::sheep(web());
-            pane.move_to_key(key);
-            pane.cycle(Instant::now());
-            let Some(PanePending::Armed { text, .. }) = pane.pending_edit() else {
-                panic!("{:?}", pane.pending_edit());
-            };
-            assert_eq!(
-                pane.cost(key),
-                Some(ApplyGroup::Live),
-                "the fixture must keep {key} Live or the test means nothing"
-            );
-            assert!(text.contains("is a live setting"), "{text}");
-            assert!(!text.contains("takes it now"), "{text}");
-            assert!(!text.contains("respawn"), "{text}");
-            assert!(!text.contains("next start"), "{text}");
-        }
-    }
-
-    /// `autostart` is in force the moment it lands, because the daemon
-    /// reads it at muster.
-    #[test]
-    fn a_next_spawn_confirm_names_when_the_field_is_read() {
-        let mut pane = ConfigPane::sheep(web());
-        pane.move_to_key("autostart");
-        pane.cycle(Instant::now());
-        let Some(PanePending::Armed { text, .. }) = pane.pending_edit() else {
-            panic!("{:?}", pane.pending_edit());
-        };
-        assert_eq!(pane.cost("autostart"), Some(ApplyGroup::NextSpawn));
-        assert!(text.contains("is read when web spawns"), "{text}");
-        assert!(!text.contains("respawn"), "{text}");
-    }
-
-    /// The daemon parks such a field and waits, the same fact the status
-    /// line states one keystroke later.
-    #[test]
-    fn a_respawn_field_arms_a_confirm_that_names_the_reload_it_waits_for() {
-        for key in ["merge_logs", "shutdown_with_message"] {
-            let mut pane = ConfigPane::sheep(web());
-            pane.move_to_key(key);
-            pane.cycle(Instant::now());
-            let Some(PanePending::Armed { text, .. }) = pane.pending_edit() else {
-                panic!("{:?}", pane.pending_edit());
-            };
-            assert_eq!(
-                pane.cost(key),
-                Some(ApplyGroup::NeedsRespawn),
-                "the fixture must keep {key} NeedsRespawn or the test means nothing"
-            );
-            assert!(text.contains("waits for `shep reload web`"), "{text}");
-            assert!(!text.contains("is respawned"), "{text}");
-        }
-    }
-
-    /// Env is `NeedsRespawn` in every case, against the same status line
-    /// the field arm answers to.
-    #[test]
-    fn an_env_confirm_names_the_reload_it_waits_for_and_never_the_value() {
-        for value in [Some("hunter2".to_owned().into()), None] {
-            let pane = ConfigPane::sheep(web());
-            let text = pane.confirm_text(&PaneEdit::SetEnv {
-                key: "DB_PASSWORD".into(),
-                value,
-            });
-            assert!(text.contains("waits for `shep reload web`"), "{text}");
-            assert!(!text.contains("respawn"), "{text}");
-            assert!(!text.contains("hunter2"), "{text}");
-        }
-    }
-
-    #[test]
-    fn a_read_only_field_does_not_arm() {
-        let mut pane = ConfigPane::sheep(web());
-        pane.move_to_key("instances");
-        pane.cycle(Instant::now());
-        assert!(pane.pending_edit().is_none());
         pane.begin_typing();
-        assert!(pane.pending_edit().is_none());
+        assert!(pane.typing().is_some(), "e still opens a free-text editor");
+    }
+
+    /// The set records what each edit costs, per entry, so the close
+    /// dialog can read the heaviest one without re-deriving anything.
+    /// `apply_group` is a fact about the field; a write's fate is a fact
+    /// about the flock, which only the shepherd knows.
+    #[test]
+    fn a_filed_edit_carries_the_fields_own_apply_group() {
+        for (key, want) in [
+            ("autorestart", ApplyGroup::Live),
+            ("watch", ApplyGroup::Live),
+            ("autostart", ApplyGroup::NextSpawn),
+            ("merge_logs", ApplyGroup::NeedsRespawn),
+            ("shutdown_with_message", ApplyGroup::NeedsRespawn),
+        ] {
+            let mut pane = ConfigPane::sheep(web());
+            pane.move_to_key(key);
+            pane.cycle();
+            assert_eq!(
+                pane.cost(key),
+                Some(want),
+                "the fixture must keep {key} {want:?} or the test means nothing"
+            );
+            assert_eq!(filed_impact(&pane, key), Some(want), "{key}");
+        }
+    }
+
+    /// A dog's section belongs to the dog, so shep records no cost for it.
+    #[test]
+    fn a_dogs_filed_edit_carries_no_apply_group() {
+        let mut pane = bark_pane();
+        pane.move_to_key("history_bytes");
+        pane.begin_typing();
+        for _ in 0..8 {
+            pane.type_backspace();
+        }
+        for typed in "8192".chars() {
+            pane.type_char(typed);
+        }
+        pane.apply_typing();
+        assert_eq!(filed(&pane, "history_bytes"), Some(serde_json::json!(8192)));
+        assert_eq!(filed_impact(&pane, "history_bytes"), None);
+    }
+
+    /// Env is `NeedsRespawn` in every case, and the set records that
+    /// rather than the key's own name, which is not a config field.
+    #[test]
+    fn a_filed_env_edit_carries_envs_own_apply_group() {
+        for value in [Some("hunter2".to_owned().into()), None] {
+            let mut pane = ConfigPane::sheep(web());
+            pane.file_env("DB_PASSWORD".into(), value);
+            let entry = pane
+                .edits()
+                .get(&EditKey::Env("DB_PASSWORD".into()))
+                .expect("filed under its env key");
+            assert_eq!(entry.impact(), Some(ApplyGroup::NeedsRespawn));
+            assert!(
+                pane.edits()
+                    .get(&EditKey::Field("DB_PASSWORD".into()))
+                    .is_none(),
+                "an env key is not a config field"
+            );
+        }
+    }
+
+    /// The invariant [`Edits::worst_impact`]'s own doc rests on: nothing a
+    /// keystroke can do files a `Structural` edit, because
+    /// [`ConfigPane::sheep`] marks those fields not editable and every
+    /// filing door checks [`ConfigPane::lock`] first.
+    #[test]
+    fn no_key_files_an_edit_for_a_structural_field() {
+        let structural: Vec<String> = ConfigPane::sheep(web())
+            .fields()
+            .fields()
+            .iter()
+            .filter(|field| apply_group(&field.key) == ApplyGroup::Structural)
+            .map(|field| field.key.clone())
+            .collect();
+        assert_eq!(
+            structural,
+            vec!["instances".to_owned(), "name".to_owned()],
+            "the schema must still carry the two Structural fields"
+        );
+        for key in structural {
+            let mut pane = ConfigPane::sheep(web());
+            pane.move_to_key(&key);
+            assert_eq!(pane.lock(&key), Some(Lock::Refused), "{key}");
+            pane.cycle();
+            pane.begin_typing();
+            pane.type_char('x');
+            pane.apply_typing();
+            assert!(pane.edits().is_empty(), "{key} reached the set");
+        }
     }
 
     /// A string here would be refused by `AppConfig`'s own deserializer.
     #[test]
-    fn typing_into_an_integer_and_applying_arms_a_number_not_a_string() {
+    fn typing_into_an_integer_and_applying_files_a_number_not_a_string() {
         let mut pane = ConfigPane::sheep(web());
         pane.move_to_key("max_restarts");
         pane.begin_typing();
-        let Some(PanePending::Typing { buffer, .. }) = pane.pending_edit() else {
-            panic!("{:?}", pane.pending_edit());
-        };
-        assert_eq!(buffer, "32", "the editor opens on what is on screen");
+        let typing = pane.typing().expect("the editor is open");
+        assert_eq!(typing.buffer, "32", "the editor opens on what is on screen");
         pane.type_backspace();
         pane.type_backspace();
         for c in "40".chars() {
             pane.type_char(c);
         }
-        pane.apply_typing(Instant::now());
-        let Some(PanePending::Armed {
-            edit: PaneEdit::Set { value, .. },
-            ..
-        }) = pane.pending_edit()
-        else {
-            panic!("{:?}", pane.pending_edit());
+        pane.apply_typing();
+        assert_eq!(filed(&pane, "max_restarts"), Some(serde_json::json!(40)));
+    }
+
+    /// The sibling of `d`'s own defect: emptying an integer field's buffer
+    /// used to file `Value::Null` regardless of the field's type, and
+    /// `max_restarts` is `u32`, not `Option<u32>`, so the daemon would have
+    /// refused it the same way it refused a bare `d` before that fix. An
+    /// emptied buffer now files the schema default through the same
+    /// [`ConfigPane::default_for`] `d` uses, not `null`.
+    #[test]
+    fn emptying_an_integer_field_and_applying_files_its_default_not_null() {
+        let mut pane = ConfigPane::sheep(web());
+        pane.move_to_key("max_restarts");
+        pane.begin_typing();
+        for _ in 0..10 {
+            pane.type_backspace();
+        }
+        assert_eq!(pane.typing().expect("still open").buffer, "");
+        pane.apply_typing();
+        assert_eq!(filed(&pane, "max_restarts"), Some(serde_json::json!(16)));
+    }
+
+    /// An `Option<T>` field with no schema default still unsets to `null`
+    /// through the emptied-buffer door: [`ConfigPane::default_for`] falls
+    /// back to [`Value::Null`] when [`Field::default_value`] is `None`,
+    /// which is exactly `cwd`'s case, so this path is unchanged for it.
+    #[test]
+    fn emptying_a_field_with_no_schema_default_still_unsets_to_null() {
+        let config = AppConfig {
+            name: "web".into(),
+            cwd: Some("/srv/web".into()),
+            ..AppConfig::default()
         };
-        assert_eq!(value.as_value(), &serde_json::json!(40));
+        let mut pane = ConfigPane::sheep(SheepConfigView::new(config, vec!["cwd".into()], vec![]));
+        pane.move_to_key("cwd");
+        pane.begin_typing();
+        assert_eq!(
+            pane.typing().expect("the editor is open").buffer,
+            "/srv/web",
+            "the editor opens on what is on screen"
+        );
+        for _ in 0..8 {
+            pane.type_backspace();
+        }
+        pane.apply_typing();
+        assert_eq!(filed(&pane, "cwd"), Some(serde_json::Value::Null));
     }
 
     /// The request names one key and one JSON value; the daemon
@@ -2045,15 +2252,35 @@ mod tests {
         for c in "40".chars() {
             pane.type_char(c);
         }
-        pane.apply_typing(Instant::now());
-        let Some(PaneEdit::Set { key, value }) = pane.take_armed(7) else {
-            panic!("{:?}", pane.pending_edit());
+        pane.apply_typing();
+        let writes = pane.close().into_writes();
+        let [PaneEdit::Set { key, value }] = writes.as_slice() else {
+            panic!("{writes:?}");
         };
         assert_eq!(key, "max_restarts");
         assert_eq!(value.as_value(), &serde_json::json!(40));
         assert!(
             !matches!(value.as_value(), serde_json::Value::String(_)),
             "an integer field must not travel as a string"
+        );
+    }
+
+    /// The set is what closing hands out, and closing empties it: a set
+    /// that has been written is not still pending.
+    #[test]
+    fn closing_hands_out_every_filed_edit_and_leaves_the_pane_empty() {
+        let mut pane = ConfigPane::sheep(web());
+        pane.move_to_key("autorestart");
+        pane.cycle();
+        pane.move_to_key("autostart");
+        pane.cycle();
+        assert_eq!(pane.edits().len(), 2);
+        let writes = pane.close().into_writes();
+        assert_eq!(writes.len(), 2, "{writes:?}");
+        assert!(pane.edits().is_empty(), "the pane keeps nothing back");
+        assert!(
+            pane.close().into_writes().is_empty(),
+            "a second close writes nothing twice"
         );
     }
 
@@ -2116,36 +2343,27 @@ mod tests {
     /// The confirm sentence quotes what a write would actually mean, not
     /// the digits the operator typed: this is the moment the maintainer's
     /// own report says nothing warned them.
+    /// A unit field files the buffer verbatim, resolved unit or not: the
+    /// daemon parses `MemSize`, so a pane that rewrote `64` as `64 B`
+    /// would be a second grammar to keep in step with it. The resolving
+    /// happens on the way to the screen, in `display_value`, and nowhere
+    /// else.
     #[test]
-    fn arming_a_bare_number_on_a_mem_size_field_confirms_the_resolved_value() {
-        let mut pane = ConfigPane::sheep(web());
-        pane.move_to_key("max_memory");
-        pane.begin_typing();
-        for c in "64".chars() {
-            pane.type_char(c);
+    fn a_unit_field_files_the_buffer_and_never_a_resolved_form() {
+        for typed in ["64", "banana"] {
+            let mut pane = ConfigPane::sheep(web());
+            pane.move_to_key("max_memory");
+            pane.begin_typing();
+            for c in typed.chars() {
+                pane.type_char(c);
+            }
+            pane.apply_typing();
+            assert_eq!(
+                filed(&pane, "max_memory"),
+                Some(serde_json::json!(typed)),
+                "{typed}"
+            );
         }
-        pane.apply_typing(Instant::now());
-        let Some(PanePending::Armed { text, .. }) = pane.pending_edit() else {
-            panic!("{:?}", pane.pending_edit());
-        };
-        assert!(text.contains("set max_memory = 64 B?"), "{text}");
-    }
-
-    /// A buffer that does not parse renders as typed rather than guessed
-    /// at or hidden: shep is the one that gets to refuse it.
-    #[test]
-    fn an_unparseable_buffer_on_a_unit_field_confirms_as_typed() {
-        let mut pane = ConfigPane::sheep(web());
-        pane.move_to_key("max_memory");
-        pane.begin_typing();
-        for c in "banana".chars() {
-            pane.type_char(c);
-        }
-        pane.apply_typing(Instant::now());
-        let Some(PanePending::Armed { text, .. }) = pane.pending_edit() else {
-            panic!("{:?}", pane.pending_edit());
-        };
-        assert!(text.contains("set max_memory = banana?"), "{text}");
     }
 
     #[test]
@@ -2166,22 +2384,43 @@ mod tests {
         );
     }
 
+    /// `web()` carries one env key, `DB_HOST`, so its rows are one
+    /// [`PaneRow::Env`] and the trailing [`PaneRow::AddEnv`].
     #[test]
-    fn the_env_pane_lists_keys_and_a_new_row_and_an_empty_apply_means_unset() {
-        let mut env = EnvPane::new(vec!["A".into(), "B".into()]);
-        assert_eq!(env.rows().len(), 3, "two keys and a + new row");
-        env.move_to_last();
-        env.begin_typing();
-        for c in "C=3".chars() {
-            env.type_char(c);
+    fn the_env_rows_list_keys_and_add_a_key_and_an_empty_apply_means_unset() {
+        let mut pane = ConfigPane::sheep(web());
+        let env_row_count = pane
+            .rows()
+            .into_iter()
+            .filter(|row| matches!(row, PaneRow::Env(_) | PaneRow::AddEnv))
+            .count();
+        assert_eq!(env_row_count, 2, "one key and a + add a key row");
+
+        pane.move_to_last();
+        assert_eq!(pane.cursor(), Some(PaneRow::AddEnv));
+        pane.begin_env_typing();
+        for c in "NEW_KEY=value".chars() {
+            pane.type_env_char(c);
         }
-        assert_eq!(
-            env.apply_typing(),
-            Some(("C".to_owned(), Some("3".to_owned())))
-        );
-        env.move_to_first();
-        env.begin_typing();
-        assert_eq!(env.apply_typing(), Some(("A".to_owned(), None)));
+        pane.apply_env_typing();
+        let entry = pane
+            .edits()
+            .get(&EditKey::Env("NEW_KEY".to_owned()))
+            .expect("NEW_KEY was filed");
+        assert!(matches!(entry.edit(), PaneEdit::SetEnv { key, .. } if key == "NEW_KEY"));
+
+        pane.move_by(-1);
+        assert_eq!(pane.cursor(), Some(PaneRow::Env(0)));
+        pane.begin_env_typing();
+        pane.apply_env_typing();
+        let removal = pane
+            .edits()
+            .get(&EditKey::Env("DB_HOST".to_owned()))
+            .expect("DB_HOST was filed");
+        assert!(matches!(
+            removal.edit(),
+            PaneEdit::SetEnv { key, value: None } if key == "DB_HOST"
+        ));
     }
 
     /// The bark section every dog test below reads: a comment, a scalar,
@@ -2241,8 +2480,8 @@ mod tests {
 
     /// A dog whose schema declares one secret string. No built-in has one:
     /// bark's only secret is a map, and a map has no editor to type a
-    /// secret into, so the leak the confirm sentence could carry was not
-    /// reachable from any fixture the pane already had.
+    /// secret into, so a typed secret is not reachable from any fixture
+    /// the pane already had.
     fn secret_dog_pane() -> ConfigPane {
         let schema = serde_json::json!({
             "properties": {
@@ -2255,6 +2494,33 @@ mod tests {
             schema,
             "webhook = \"https://hook/OLD\"\n".to_owned(),
         )
+    }
+
+    /// The one editor a secret can be typed into, and `secret_dog_pane` is
+    /// the only fixture that reaches it. Seeded empty rather than with what
+    /// the section holds: the screen draws `<set>` for a secret and the
+    /// pane must not hand the old credential back for a backspace to edit.
+    #[test]
+    fn a_dogs_secret_field_seeds_its_editor_empty_and_files_what_was_typed() {
+        let mut pane = secret_dog_pane();
+        pane.move_to_key("webhook");
+        pane.begin_typing();
+        assert_eq!(
+            pane.typing().expect("the editor is open").buffer,
+            "",
+            "a secret seeds empty, however much the section holds"
+        );
+        for typed in "https://hook/NEW".chars() {
+            pane.type_char(typed);
+        }
+        pane.apply_typing();
+        assert_eq!(
+            filed(&pane, "webhook"),
+            Some(serde_json::json!("https://hook/NEW"))
+        );
+        let debug = format!("{pane:?}");
+        assert!(!debug.contains("OLD"), "{debug}");
+        assert!(!debug.contains("NEW"), "{debug}");
     }
 
     /// `ConfigPane::dog` always leaves `env_keys` empty, so an `env` field
@@ -2277,30 +2543,17 @@ mod tests {
         assert_eq!(pane.value("env"), "staging");
         pane.move_to_key("env");
         pane.begin_typing();
-        let Some(PanePending::Typing { buffer, .. }) = pane.pending_edit() else {
-            panic!("{:?}", pane.pending_edit());
-        };
-        assert_eq!(buffer, "staging");
+        let typing = pane.typing().expect("the editor is open");
+        assert_eq!(typing.buffer, "staging");
     }
 
-    /// The pane renders `<set>` for a secret and seeds its editor empty.
-    /// The sentence outlives both: it sits in `PanePending`, prints on
-    /// the status bar, and survives `take_armed` for the whole round
-    /// trip.
-    #[test]
-    fn a_secret_fields_confirm_never_quotes_what_was_typed() {
-        let mut pane = secret_dog_pane();
-        pane.move_to_key("webhook");
-        pane.begin_typing();
-        for typed in "https://hook/T0PS3CRET".chars() {
-            pane.type_char(typed);
+    /// A field edit, filed the way [`Edits::set`] wants it, for the tests
+    /// below that build a batch by hand rather than by keystroke.
+    fn field(key: &str, value: serde_json::Value) -> PaneEdit {
+        PaneEdit::Set {
+            key: key.to_owned(),
+            value: value.into(),
         }
-        pane.apply_typing(Instant::now());
-        let Some(PanePending::Armed { text, .. }) = pane.pending_edit() else {
-            panic!("{:?}", pane.pending_edit());
-        };
-        assert!(!text.contains("T0PS3CRET"), "{text}");
-        assert!(text.contains("set webhook = <set>?"), "{text}");
     }
 
     /// Re-rendering from parsed values would delete every comment in a
@@ -2308,11 +2561,10 @@ mod tests {
     #[test]
     fn an_edited_section_keeps_its_comments_and_changes_one_key() {
         let pane = bark_pane();
+        let mut edits = Edits::default();
+        edits.set(field("poll", serde_json::json!("30s")), None);
         let out = pane
-            .edited_section(&PaneEdit::Set {
-                key: "poll".into(),
-                value: serde_json::json!("30s").into(),
-            })
+            .edited_section_with(&edits)
             .expect("the fixture section parses");
         assert!(out.contains("# how often"), "{out}");
         assert!(out.contains("poll = \"30s\""), "{out}");
@@ -2325,14 +2577,95 @@ mod tests {
     #[test]
     fn a_null_edit_removes_the_key_from_the_section() {
         let pane = bark_pane();
+        let mut edits = Edits::default();
+        edits.set(field("history_bytes", serde_json::Value::Null), None);
         let out = pane
-            .edited_section(&PaneEdit::Set {
-                key: "history_bytes".into(),
-                value: serde_json::Value::Null.into(),
-            })
+            .edited_section_with(&edits)
             .expect("the fixture section parses");
         assert!(!out.contains("history_bytes"), "{out}");
         assert!(out.contains("# how often"), "{out}");
+    }
+
+    /// A dog's write patches its section's own TOML text rather than going
+    /// through `Request::SetSheepField`'s deserializer, so `null` already
+    /// means "remove this key" there, not a value refused for the wrong
+    /// type. `d` must keep filing `Value::Null` for a dog even when its
+    /// schema names a non-null default, or it would hard-code the default
+    /// into the section instead of restoring it.
+    #[test]
+    fn d_on_a_dog_field_files_null_even_with_a_schema_default() {
+        let schema = serde_json::json!({
+            "properties": {
+                "merge_logs": { "type": "boolean", "default": true },
+            },
+        });
+        let mut pane = ConfigPane::dog("bark".into(), None, schema, "merge_logs = false\n".into());
+        pane.move_to_key("merge_logs");
+        pane.file_default();
+        assert_eq!(
+            filed(&pane, "merge_logs"),
+            Some(Value::Null),
+            "a dog restores by removing the key, not by filing its default"
+        );
+        let out = pane
+            .edited_section_with(pane.edits())
+            .expect("the fixture section parses");
+        assert!(!out.contains("merge_logs"), "{out}");
+    }
+
+    /// A dog section takes every filed edit in one write rather than one
+    /// write per edit.
+    #[test]
+    fn a_dog_section_takes_every_filed_edit_in_one_write() {
+        let pane = bark_pane();
+        let mut edits = Edits::default();
+        edits.set(field("url", serde_json::json!("http://a")), None);
+        edits.set(field("timeout", serde_json::json!(30)), None);
+        let section = pane
+            .edited_section_with(&edits)
+            .expect("the fixture parses");
+        assert!(section.contains("http://a"), "{section}");
+        assert!(section.contains("30"), "{section}");
+    }
+
+    /// An env edit has no home in a dog's section and must not silently
+    /// become a key in it.
+    #[test]
+    fn an_env_edit_is_ignored_by_a_dog_section() {
+        let pane = bark_pane();
+        let mut edits = Edits::default();
+        edits.set(
+            PaneEdit::SetEnv {
+                key: "SECRET".to_owned(),
+                value: None,
+            },
+            None,
+        );
+        assert_eq!(pane.edited_section_with(&edits), None);
+    }
+
+    /// A stray env edit in a set that also carries a field edit must not
+    /// revive the old "one bad entry aborts the whole batch" bug: skipping
+    /// the env edit and an early return on any non-field entry both leave
+    /// `an_env_edit_is_ignored_by_a_dog_section` green, since an env-only
+    /// set returns `None` either way. Only a mixed set tells them apart.
+    #[test]
+    fn a_field_edit_lands_even_when_the_same_batch_carries_an_env_edit() {
+        let pane = bark_pane();
+        let mut edits = Edits::default();
+        edits.set(field("poll", serde_json::json!("30s")), None);
+        edits.set(
+            PaneEdit::SetEnv {
+                key: "SECRET".to_owned(),
+                value: None,
+            },
+            None,
+        );
+        let out = pane
+            .edited_section_with(&edits)
+            .expect("the field edit alone should still write");
+        assert!(out.contains("poll = \"30s\""), "{out}");
+        assert!(!out.contains("SECRET"), "{out}");
     }
 
     /// A section here would send a sheep's config out through a dog's
@@ -2340,13 +2673,9 @@ mod tests {
     #[test]
     fn a_sheep_pane_has_no_section_to_edit() {
         let pane = ConfigPane::sheep(web());
-        assert_eq!(
-            pane.edited_section(&PaneEdit::Set {
-                key: "cwd".into(),
-                value: serde_json::json!("/srv").into(),
-            }),
-            None
-        );
+        let mut edits = Edits::default();
+        edits.set(field("cwd", serde_json::json!("/srv")), None);
+        assert_eq!(pane.edited_section_with(&edits), None);
     }
 
     /// `cwd` and `script` routinely hold a home directory and `args`
@@ -2392,54 +2721,38 @@ mod tests {
     }
 
     /// The buffer is what the operator is halfway through typing, and on
-    /// the env screen that is the secret itself; the question quotes the
-    /// value a field edit is setting (IR-41).
+    /// the env screen that is the secret itself (IR-41).
     #[test]
-    fn debug_names_no_value_on_a_pane_pending() {
-        let typing = PanePending::Typing {
+    fn debug_names_no_value_on_a_pane_typing() {
+        let typing = PaneTyping {
             key: "cwd".into(),
             buffer: "/home/ada/secret-project".into(),
         };
         assert_eq!(
             format!("{typing:?}"),
-            r#"PanePending::Typing { key: "cwd", buffer: <24 chars> }"#
-        );
-        let armed = PanePending::Armed {
-            edit: PaneEdit::Set {
-                key: "cwd".into(),
-                value: serde_json::json!("/home/ada/secret-project").into(),
-            },
-            text: "set cwd = /home/ada/secret-project? web takes it now".into(),
-            at: Instant::now(),
-        };
-        assert_eq!(
-            format!("{armed:?}"),
-            r#"PanePending::Armed { edit: Set { key: "cwd", value: FieldValue(<string>) } }"#
-        );
-        let sent = PanePending::Sent {
-            ticket: 7,
-            key: "cwd".into(),
-            text: "set cwd = /home/ada/secret-project? web takes it now".into(),
-        };
-        assert_eq!(
-            format!("{sent:?}"),
-            r#"PanePending::Sent { ticket: 7, key: "cwd" }"#
+            r#"PaneTyping { key: "cwd", buffer: <24 chars> }"#
         );
     }
 
-    /// The buffer on the `+ new` row is the whole `KEY=value`, secret
+    /// The buffer on `+ add a key` is the whole `KEY=value`, secret
     /// included (IR-41).
     #[test]
-    fn an_env_panes_debug_names_no_key_and_no_value() {
-        let mut env = EnvPane::new(vec!["DB_PASSWORD".into(), "API_TOKEN".into()]);
-        env.move_to_last();
-        env.begin_typing();
-        for typed in "STRIPE_KEY=sk_live_1".chars() {
-            env.type_char(typed);
+    fn debug_names_no_key_and_no_value_on_an_env_typing() {
+        let mut pane = ConfigPane::sheep(web());
+        pane.move_to_last();
+        assert_eq!(pane.cursor(), Some(PaneRow::AddEnv));
+        pane.begin_env_typing();
+        let typed = "STRIPE_KEY=sk_live_1";
+        for typed in typed.chars() {
+            pane.type_env_char(typed);
         }
+        let typing = pane.env_typing().expect("the editor is open");
         assert_eq!(
-            format!("{env:?}"),
-            "EnvPane { keys: 2, cursor: 2, typing: true }"
+            format!("{typing:?}"),
+            format!(
+                "EnvTyping {{ key: false, buffer: <{} chars> }}",
+                typed.chars().count()
+            )
         );
     }
 
@@ -2482,12 +2795,11 @@ mod tests {
         pane.move_to_key("args");
         pane.open_list();
         pane.list_mut().expect("open").move_to(1);
-        pane.arm_list_element("9090".into(), Instant::now());
-        let Some(PaneEdit::Set { key, value }) = pane.take_armed(1) else {
-            panic!("expected a set");
-        };
-        assert_eq!(key, "args");
-        assert_eq!(value.as_value(), &serde_json::json!(["--port", "9090"]));
+        pane.file_list_element("9090".into());
+        assert_eq!(
+            filed(&pane, "args"),
+            Some(serde_json::json!(["--port", "9090"]))
+        );
     }
 
     /// Derived, unlike every other type in this file that touches a value.
@@ -2508,8 +2820,8 @@ mod tests {
     }
 
     /// The operator is mid-word, not wrong, so the editor stays open and
-    /// nothing arms. The same rule `ConfigPane::apply_typing` follows for
-    /// an integer field.
+    /// nothing is filed. The same rule `ConfigPane::apply_typing` follows
+    /// for an integer field.
     #[test]
     fn an_integer_element_that_does_not_parse_keeps_the_editor_open() {
         let mut pane = ConfigPane::sheep(web_with_args(&[]));
@@ -2526,54 +2838,90 @@ mod tests {
     }
 
     /// The whole array goes out, so a removal and a reorder are the same
-    /// kind of write an element edit is.
+    /// kind of write an element edit is, and the reorder acts on what the
+    /// removal left rather than on the array the shepherd sent.
     #[test]
-    fn removing_and_reordering_arm_the_whole_array_too() {
+    fn removing_and_reordering_file_the_whole_array_too() {
         let mut pane = ConfigPane::sheep(web_with_args(&["a", "b", "c"]));
         pane.move_to_key("args");
         pane.open_list();
         pane.list_mut().expect("open").move_to(1);
-        pane.arm_list_removal(Instant::now());
-        let Some(PaneEdit::Set { value, .. }) = pane.take_armed(1) else {
-            panic!("expected a set");
-        };
-        assert_eq!(value.as_value(), &serde_json::json!(["a", "c"]));
+        pane.file_list_removal();
+        assert_eq!(filed(&pane, "args"), Some(serde_json::json!(["a", "c"])));
 
-        pane.arm_list_reorder(-1, Instant::now());
-        let Some(PaneEdit::Set { value, .. }) = pane.take_armed(2) else {
-            panic!("expected a set");
-        };
-        assert_eq!(value.as_value(), &serde_json::json!(["b", "a", "c"]));
+        pane.file_list_reorder(-1);
+        assert_eq!(
+            filed(&pane, "args"),
+            Some(serde_json::json!(["c", "a"])),
+            "the cursor is on `c` now, and moving it up files one entry, not two"
+        );
+        assert_eq!(pane.edits().len(), 1, "one field, one entry");
+    }
+
+    /// Two keystrokes in one sub-screen compose. The set holds one entry
+    /// per field, so the second action has to build on the array the first
+    /// one filed; recomputing from what the shepherd sent would throw the
+    /// first keystroke away.
+    #[test]
+    fn a_second_list_keystroke_builds_on_the_first() {
+        let mut pane = ConfigPane::sheep(web_with_args(&[]));
+        pane.move_to_key("args");
+        pane.open_list();
+        pane.list_mut().expect("open").move_to_last();
+        pane.file_list_element("abc".into());
+        pane.list_mut().expect("open").move_to_last();
+        pane.file_list_element("def".into());
+        assert_eq!(
+            filed(&pane, "args"),
+            Some(serde_json::json!(["abc", "def"]))
+        );
+        assert_eq!(pane.edits().len(), 1, "one field, one entry");
+    }
+
+    /// The sub-screen draws what is filed, not what the shepherd last
+    /// sent: nothing writes until the pane closes, so an operator who
+    /// leaves the array and comes back has to find their own work in it.
+    #[test]
+    fn re_opening_the_sub_screen_shows_what_was_filed() {
+        let mut pane = ConfigPane::sheep(web_with_args(&["a", "b"]));
+        pane.move_to_key("args");
+        pane.open_list();
+        pane.list_mut().expect("open").move_to(0);
+        pane.file_list_removal();
+        assert_eq!(pane.list().expect("open").elements(), ["b"]);
+        pane.close_list();
+        pane.open_list();
+        assert_eq!(pane.list().expect("re-opened").elements(), ["b"]);
     }
 
     /// `J`'s direction. Only `-1` is exercised above, and the two share
-    /// one arm in `arm_list_reorder`.
+    /// one arm in `file_list_reorder`.
     #[test]
-    fn moving_an_element_down_arms_the_whole_array() {
+    fn moving_an_element_down_files_the_whole_array() {
         let mut pane = ConfigPane::sheep(web_with_args(&["a", "b", "c"]));
         pane.move_to_key("args");
         pane.open_list();
         pane.list_mut().expect("open").move_to(0);
-        pane.arm_list_reorder(1, Instant::now());
-        let Some(PaneEdit::Set { value, .. }) = pane.take_armed(1) else {
-            panic!("expected a set");
-        };
-        assert_eq!(value.as_value(), &serde_json::json!(["b", "a", "c"]));
+        pane.file_list_reorder(1);
+        assert_eq!(
+            filed(&pane, "args"),
+            Some(serde_json::json!(["b", "a", "c"]))
+        );
     }
 
     /// The `+ new` row holds no element, and neither end has anywhere to
-    /// move to, so neither keystroke arms anything at all.
+    /// move to, so neither keystroke files anything at all.
     #[test]
-    fn a_removal_or_a_move_with_nothing_to_act_on_arms_nothing() {
+    fn a_removal_or_a_move_with_nothing_to_act_on_files_nothing() {
         let mut pane = ConfigPane::sheep(web_with_args(&["a", "b"]));
         pane.move_to_key("args");
         pane.open_list();
         pane.list_mut().expect("open").move_to_last();
-        pane.arm_list_removal(Instant::now());
-        assert!(!pane.is_armed(), "the `+ new` row holds no element");
+        pane.file_list_removal();
+        assert!(pane.edits().is_empty(), "the `+ new` row holds no element");
         pane.list_mut().expect("open").move_to_first();
-        pane.arm_list_reorder(-1, Instant::now());
-        assert!(!pane.is_armed(), "the first element cannot move up");
+        pane.file_list_reorder(-1);
+        assert!(pane.edits().is_empty(), "the first element cannot move up");
     }
 
     /// An integer array's elements render as digits and travel back as
@@ -2585,16 +2933,15 @@ mod tests {
         pane.open_list();
         assert_eq!(pane.list().expect("open").elements(), ["0", "143"]);
         pane.list_mut().expect("open").move_to(0);
-        pane.arm_list_element("2".into(), Instant::now());
-        let Some(PaneEdit::Set { key, value }) = pane.take_armed(1) else {
-            panic!("expected a set");
-        };
-        assert_eq!(key, "stop_exit_codes");
-        assert_eq!(value.as_value(), &serde_json::json!([2, 143]));
+        pane.file_list_element("2".into());
+        assert_eq!(
+            filed(&pane, "stop_exit_codes"),
+            Some(serde_json::json!([2, 143]))
+        );
     }
 
-    /// A dog's write replaces its whole section, and `edited_section` has
-    /// no rendering for an array, so the pane offers no editor for one.
+    /// A dog's write replaces its whole section, and `edited_section_with`
+    /// has no rendering for an array, so the pane offers no editor for one.
     #[test]
     fn a_dogs_array_field_has_no_widget_here() {
         let schema = serde_json::json!({

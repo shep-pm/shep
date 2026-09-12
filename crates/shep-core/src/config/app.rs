@@ -107,34 +107,51 @@ pub struct AppConfig {
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "my-first-sheep",
         "group": "process",
-        "blurb": "A convenient and unique name for shep to display"
+        "blurb": "A convenient and unique name for shep to display",
+        "accepts": ["letters, digits, and most punctuation"],
+        "refuses": ["a path separator or a colon", "a bare . or .."]
     })))]
     pub name: String,
     /// Executable or script path (required)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "./index.js",
         "group": "process",
-        "blurb": "The script that shep should use to launch your app"
+        "blurb": "The script that shep should use to launch your app",
+        "accepts": ["an absolute or relative path, expanded from cwd",
+                    "~ expands, $VARS do not"],
+        "refuses": ["a path the daemon's user cannot enter"],
+        "neighbours": [{"field": "cwd",         "note": "resolved against this cwd"},
+                       {"field": "interpreter", "note": "picks what runs this script"}]
     })))]
     pub script: String,
     /// Arguments passed to the script
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "group": "inputs",
-        "blurb": "Arguments passed to the script, as a list"
+        "blurb": "Arguments passed to the script, as a list",
+        "accepts": ["a list of strings, one argument each",
+                    "{{instance}}, {{name}}, and {{secret:key}} expand"],
+        "refuses": ["an unclosed {{ token", "a token shep does not define"]
     })))]
     pub args: Vec<String>,
     /// Working directory (default: daemon's cwd at spawn registration)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "/srv/app",
         "group": "process",
-        "blurb": "Where the process runs. Without it, the daemon's own directory"
+        "blurb": "Where the process runs. Without it, the daemon's own directory",
+        "accepts": ["an absolute or relative path, expanded from cwd",
+                    "~ expands, $VARS do not"],
+        "refuses": ["a path the daemon's user cannot enter"],
+        "neighbours": [{"field": "script",        "note": "resolved against this cwd"},
+                       {"field": "out_file",      "note": "relative paths follow it too"},
+                       {"field": "watch_options", "note": "globs are rooted here"}]
     })))]
     pub cwd: Option<String>,
     /// Interpreter override (`"none"` = run script directly)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "none",
         "group": "process",
-        "blurb": "What runs the script. Set it to none to exec the file directly"
+        "blurb": "What runs the script. Set it to none to exec the file directly",
+        "accepts": ["a command name found on PATH", "none, to exec the script directly"]
     })))]
     pub interpreter: Option<String>,
     /// Environment for the sheep (merged over the daemon's filtered env).
@@ -151,7 +168,14 @@ pub struct AppConfig {
             "init" = {
                 "example": "{ NODE_ENV = 'production' }",
                 "group": "inputs",
-                "blurb": "Environment variables for this app, layered over the daemon's own"
+                "blurb": "Environment variables for this app, layered over the daemon's own",
+                "accepts": ["a table of KEY = value pairs",
+                            "a bare true or 8080, which arrives as text",
+                            "{{instance}}, {{name}}, and {{secret:key}} expand in a value"],
+                "refuses": ["a float, since 1.10 would arrive as 1.1",
+                            "SHEP_INSTANCE, SHEP_NAME, or SHEP_ENVIRONMENT, which shep sets itself",
+                            "an unclosed {{ token"],
+                "neighbours": [{"field": "environment", "note": "which environment {{secret:...}} reads from"}]
             },
             "additionalProperties" = {
                 "anyOf": [{ "type": "string" }, { "type": "boolean" }, { "type": "integer" }]
@@ -168,7 +192,11 @@ pub struct AppConfig {
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "staging",
         "group": "inputs",
-        "blurb": "Which environment this app resolves secrets in"
+        "blurb": "Which environment this app resolves secrets in",
+        "accepts": ["a name from the secrets store"],
+        "refuses": ["all, the store's every-environment slot",
+                    "a name outside letters, digits, dot, underscore, or dash"],
+        "neighbours": [{"field": "env", "note": "sets which environment its {{secret:...}} reads from"}]
     })))]
     pub environment: Option<String>,
     /// Instance count ("cluster" = N fork instances; spec §4)
@@ -192,7 +220,8 @@ pub struct AppConfig {
     /// Exit codes treated as clean stop (no restart)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "group": "restart",
-        "blurb": "Exit codes that mean a clean stop, so shep will not restart"
+        "blurb": "Exit codes that mean a clean stop, so shep will not restart",
+        "accepts": ["a list of exit codes"]
     })))]
     pub stop_exit_codes: Vec<i32>,
     /// Uptime below this marks an exit as unstable
@@ -246,7 +275,10 @@ pub struct AppConfig {
         "example": "SIGTERM",
         "group": "shutdown",
         "blurb": "Which signal shep sends first when stopping this app",
-        "suggest": ["SIGTERM", "SIGINT", "SIGQUIT", "SIGUSR2"]
+        "suggest": ["SIGTERM", "SIGINT", "SIGQUIT", "SIGUSR2"],
+        "accepts": ["SIGTERM, SIGINT, SIGQUIT, or SIGUSR2",
+                    "the SIG prefix and case are both optional"],
+        "refuses": ["a signal outside that list"]
     })))]
     pub kill_signal: Option<String>,
     /// Grace period between stop signal and SIGKILL
@@ -311,7 +343,11 @@ pub struct AppConfig {
     /// Watch ignore globs (defaults added daemon-side: dot-entries, node_modules)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "group": "watch",
-        "blurb": "Paths watch should skip, on top of dotfiles and node_modules"
+        "blurb": "Paths watch should skip, on top of dotfiles and node_modules",
+        "accepts": ["a list of glob patterns"],
+        "refuses": ["a pattern globset cannot compile"],
+        "neighbours": [{"field": "cwd",           "note": "globs are rooted here"},
+                       {"field": "watch_options", "note": "removed from what this matches"}]
     })))]
     pub ignore_watch: Vec<String>,
     /// Watch debounce window (default 500ms, applied daemon-side)
@@ -326,7 +362,10 @@ pub struct AppConfig {
         "example": "* * * * *",
         "group": "cron",
         "blurb": "Restart on a schedule, written as a cron pattern",
-        "suggest": ["*/5 * * * *", "0 * * * *", "0 0 * * *", "0 0 * * 0"]
+        "suggest": ["*/5 * * * *", "0 * * * *", "0 0 * * *", "0 0 * * 0"],
+        "accepts": ["a five field cron pattern, croner's dialect"],
+        "refuses": ["a field outside its valid range", "a pattern croner cannot parse"],
+        "neighbours": [{"field": "cron_timezone", "note": "sets which zone this pattern reads in"}]
     })))]
     pub cron_restart: Option<String>,
     /// Fold (group) this sheep belongs to
@@ -348,35 +387,55 @@ pub struct AppConfig {
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "[\"db\", \"cache\"]",
         "group": "process",
-        "blurb": "Other sheep or dogs that must be up before this one starts"
+        "blurb": "Other sheep or dogs that must be up before this one starts",
+        "accepts": ["a list of sheep or dog names"],
+        "refuses": ["this sheep's own name", "a name:slot instance reference"]
     })))]
     pub depends_on: Vec<String>,
     /// Run as this user (unix)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "www-data",
         "group": "process",
-        "blurb": "Run as this user, on unix"
+        "blurb": "Run as this user, on unix",
+        "accepts": ["a unix user name"],
+        "refuses": ["a name with no passwd entry"],
+        "neighbours": [{"field": "group", "note": "resolved together at spawn"}]
     })))]
     pub user: Option<String>,
     /// Run as this group (unix)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "www-data",
         "group": "process",
-        "blurb": "Run as this group, on unix"
+        "blurb": "Run as this group, on unix",
+        "accepts": ["a unix group name"],
+        "refuses": ["a name with no group entry"],
+        "neighbours": [{"field": "user", "note": "resolved together at spawn"}]
     })))]
     pub group: Option<String>,
     /// Stdout log file (default: `$SHEP_HOME/logs/<name>-<instance>-out.log`; `merge_logs` collapses to `<name>-out.log`)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "/var/log/my-first-sheep/out.log",
         "group": "logging",
-        "blurb": "Where stdout goes. Defaults to a file under $SHEP_HOME/logs"
+        "blurb": "Where stdout goes. Defaults to a file under $SHEP_HOME/logs",
+        "accepts": ["a path, relative paths follow cwd",
+                    "{{instance}} and {{name}} expand"],
+        "refuses": ["a {{secret:...}} token",
+                    "the same path as err_file across instances without merge_logs"],
+        "neighbours": [{"field": "err_file",   "note": "shares the same collision rule"},
+                       {"field": "merge_logs", "note": "lets instances share one file on purpose"}]
     })))]
     pub out_file: Option<String>,
     /// Stderr log file (default: `$SHEP_HOME/logs/<name>-<instance>-err.log`; `merge_logs` collapses to `<name>-err.log`)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "/var/log/my-first-sheep/err.log",
         "group": "logging",
-        "blurb": "Where stderr goes. Defaults to a file under $SHEP_HOME/logs"
+        "blurb": "Where stderr goes. Defaults to a file under $SHEP_HOME/logs",
+        "accepts": ["a path, relative paths follow cwd",
+                    "{{instance}} and {{name}} expand"],
+        "refuses": ["a {{secret:...}} token",
+                    "the same path as out_file across instances without merge_logs"],
+        "neighbours": [{"field": "out_file",   "note": "shares the same collision rule"},
+                       {"field": "merge_logs", "note": "lets instances share one file on purpose"}]
     })))]
     pub err_file: Option<String>,
     /// Merge instance logs into one file pair
@@ -476,27 +535,44 @@ pub struct AppConfig {
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": { "kind": "http", "target": "http://127.0.0.1:8080/ready" },
         "group": "readiness",
-        "blurb": "A health check shep waits on before it treats a reload as finished"
+        "blurb": "A health check shep waits on before it treats a reload as finished",
+        "accepts": ["kind: http, tcp, or exec",
+                    "a target matching the kind: a url, host:port, or command"],
+        "refuses": ["a failure_threshold of 0", "an interval below its own floor"],
+        "neighbours": [{"field": "liveness_probe", "note": "uses a different interval floor"},
+                       {"field": "reuse_port",     "note": "governs whether reload overlaps it"}]
     })))]
     pub readiness_probe: Option<ProbeConfig>,
     /// Liveness probe — failures feed the restart policy (spec §7)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": { "kind": "http", "target": "http://127.0.0.1:8080/healthz" },
         "group": "readiness",
-        "blurb": "A health check that triggers a restart when it keeps failing"
+        "blurb": "A health check that triggers a restart when it keeps failing",
+        "accepts": ["kind: http, tcp, or exec",
+                    "a target matching the kind: a url, host:port, or command"],
+        "refuses": ["a failure_threshold of 0", "an interval below its own floor"],
+        "neighbours": [{"field": "readiness_probe", "note": "uses a different interval floor"}]
     })))]
     pub liveness_probe: Option<ProbeConfig>,
     /// Watch include globs (empty = watch cwd)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "group": "watch",
-        "blurb": "Which paths to watch. Empty means the working directory"
+        "blurb": "Which paths to watch. Empty means the working directory",
+        "accepts": ["a list of glob patterns", "empty watches the whole cwd"],
+        "refuses": ["a pattern globset cannot compile"],
+        "neighbours": [{"field": "cwd",          "note": "globs are rooted here"},
+                       {"field": "watch",        "note": "has no effect unless watch is on"},
+                       {"field": "ignore_watch", "note": "skipped even when matched here"}]
     })))]
     pub watch_options: Vec<String>,
     /// Timezone for `cron_restart` (IANA name)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "US/Eastern",
         "group": "cron",
-        "blurb": "Which timezone cron_restart is read in, as an IANA name"
+        "blurb": "Which timezone cron_restart is read in, as an IANA name",
+        "accepts": ["an IANA zone name, like US/Eastern"],
+        "refuses": ["a name outside the IANA database"],
+        "neighbours": [{"field": "cron_restart", "note": "the pattern this zone is read against"}]
     })))]
     pub cron_timezone: Option<String>,
     /// Removed. Set your own variable to `{{instance}}` in `env` instead.
@@ -1027,5 +1103,48 @@ target = "http://127.0.0.1:8080/healthz"
             stored.drifted_fields(&edited),
             vec!["instances".to_string()]
         );
+    }
+
+    /// The path fields are the ones an operator gets wrong, and the ones the
+    /// type table cannot describe. Each states what it takes.
+    #[test]
+    fn the_path_fields_state_what_they_accept() {
+        let schema = crate::config::flockfile_schema_json().to_value();
+        let props = schema
+            .pointer("/$defs/AppConfig/properties")
+            .and_then(serde_json::Value::as_object)
+            .expect("app config properties must exist");
+        for name in ["cwd", "script", "out_file", "err_file"] {
+            let accepts = props[name]["init"]["accepts"].as_array();
+            assert!(
+                accepts.is_some_and(|forms| !forms.is_empty()),
+                "{name} carries no accepted forms"
+            );
+        }
+    }
+
+    /// Every entry carries both halves, so nothing renders half a line.
+    #[test]
+    fn every_neighbour_entry_carries_a_field_and_a_note() {
+        let schema = crate::config::flockfile_schema_json().to_value();
+        let props = schema
+            .pointer("/$defs/AppConfig/properties")
+            .and_then(serde_json::Value::as_object)
+            .expect("app config properties must exist");
+        for (name, prop) in props {
+            let Some(entries) = prop["init"]["neighbours"].as_array() else {
+                continue;
+            };
+            for entry in entries {
+                assert!(
+                    entry["field"].is_string(),
+                    "{name} has a neighbour with no field"
+                );
+                assert!(
+                    entry["note"].is_string(),
+                    "{name} has a neighbour with no note"
+                );
+            }
+        }
     }
 }
