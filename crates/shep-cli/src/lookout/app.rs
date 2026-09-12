@@ -795,6 +795,27 @@ impl Sent {
             },
         }
     }
+
+    /// The ticket a pane write minted itself with, or [`None`] for a
+    /// variant no pane ever produces.
+    ///
+    /// What [`App::resolve_held_write`] matches a reply against, rather
+    /// than trusting whatever a counter says is outstanding: two writes in
+    /// flight from two different close-dialog answers are otherwise
+    /// indistinguishable to a count, and a reply belonging to neither
+    /// [`App::held`] batch must never be read as belonging to it.
+    fn ticket(&self) -> Option<u64> {
+        match self {
+            Self::ApplyField { ticket, .. }
+            | Self::SetDogSection { ticket, .. }
+            | Self::SetEnv { ticket, .. } => Some(*ticket),
+            Self::Lambs { .. }
+            | Self::Action { .. }
+            | Self::Dog { .. }
+            | Self::SheepConfig { .. }
+            | Self::DogSection { .. } => None,
+        }
+    }
 }
 
 /// One dog toggle, ready for the file half: [`Effect::WriteDog`] carries one
@@ -1524,17 +1545,23 @@ pub const CONFIRM_EXPIRY: Duration = Duration::from_secs(10);
 
 /// A verb the close dialog chose, waiting on the writes it must follow.
 ///
-/// `outstanding` counts replies not yet in, and `landed` is whether any of
-/// them was accepted. The action goes on the last reply, and only if
-/// something landed: a batch refused in full leaves nothing for a respawn
-/// to apply.
+/// `tickets` names the writes still outstanding, by the same [`u64`]
+/// [`Sent::ticket`] mints them with, rather than merely counting them: two
+/// close-dialog answers can each have a batch in flight at once (a second
+/// `R`/`L` is refused, but its writes still go, per
+/// [`App::answer_close`]'s own doc), and a bare count cannot tell a reply
+/// from the other session apart from one of this session's own. `landed`
+/// is whether any ticket in this set was accepted. The action goes once
+/// the set is empty, and only if something landed: a batch refused in
+/// full leaves nothing for a respawn to apply.
 ///
-/// `Debug` is derived (IR-41): a verb, two counts, a name, a time.
+/// `Debug` is derived (IR-41): a verb, a ticket set, a bool, a name, a
+/// time.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct HeldAction {
     verb: ActionVerb,
     name: String,
-    outstanding: usize,
+    tickets: HashSet<u64>,
     landed: bool,
     at: Instant,
 }
@@ -2387,19 +2414,27 @@ impl App {
                 Sent::DogSection { name } => self.on_dog_section(&name, result),
                 Sent::SetDogSection { name, .. } => self.on_dog_section_set(&name, result),
                 Sent::ApplyField {
-                    name, key, value, ..
+                    name,
+                    ticket,
+                    key,
+                    value,
+                    ..
                 } => {
                     let landed = result.is_ok();
                     let effect = self.on_field_applied(&name, &key, &value, result);
-                    self.resolve_held_write(landed).unwrap_or(effect)
+                    self.resolve_held_write(ticket, landed).unwrap_or(effect)
                 }
                 Sent::SetEnv {
-                    name, key, value, ..
+                    name,
+                    ticket,
+                    key,
+                    value,
+                    ..
                 } => {
                     let landed = result.is_ok();
                     let was_set = value.is_some();
                     let effect = self.on_env_set(&name, &key, was_set, result);
-                    self.resolve_held_write(landed).unwrap_or(effect)
+                    self.resolve_held_write(ticket, landed).unwrap_or(effect)
                 }
             },
             Msg::Unsent { sent } => match sent {
@@ -5125,33 +5160,40 @@ impl App {
         if writes.is_empty() {
             return self.send_held_action(verb, name);
         }
+        let tickets = writes.iter().filter_map(Sent::ticket).collect();
         self.held = Some(HeldAction {
             verb,
             name,
-            outstanding: writes.len(),
+            tickets,
             landed: false,
             at: self.now,
         });
         Effect::SendAll(writes)
     }
 
-    /// One pane write's answer, while a verb is held on it.
+    /// One pane write's answer, matched against the held batch by its own
+    /// ticket rather than merely counted off it.
     ///
-    /// `None` when nothing is held, so the caller's own effect (whatever
-    /// the per-field reply handler returned) stands unchanged. `Some`
-    /// overrides it: a batch still waiting on other writes yields
+    /// `None` when nothing is held, or when this reply's ticket names no
+    /// write the held batch went out with (the second half of
+    /// [`Self::answer_close`]'s refusal: a second session's writes still
+    /// go, unheld, so their replies must never be read as this session's
+    /// own). Either way the caller's own effect stands unchanged. `Some`
+    /// overrides it: a batch still waiting on other tickets yields
     /// [`Effect::None`], since the pane closed with the write and nothing
-    /// downstream needs its own chained re-read; the last write yields the
-    /// verb, sent through [`Self::send_held_action`], or a notice when
+    /// downstream needs its own chained re-read; the last ticket yields
+    /// the verb, sent through [`Self::send_held_action`], or a notice when
     /// every write in the batch was refused.
-    fn resolve_held_write(&mut self, landed: bool) -> Option<Effect> {
-        let outstanding = {
+    fn resolve_held_write(&mut self, ticket: u64, landed: bool) -> Option<Effect> {
+        let still_waiting = {
             let held = self.held.as_mut()?;
+            if !held.tickets.remove(&ticket) {
+                return None;
+            }
             held.landed |= landed;
-            held.outstanding -= 1;
-            held.outstanding
+            !held.tickets.is_empty()
         };
-        if outstanding > 0 {
+        if still_waiting {
             return Some(Effect::None);
         }
         let held = self.held.take().expect("checked Some above");
@@ -13734,6 +13776,97 @@ mod tests {
                 })
             ),
             "got {second_reply:?}"
+        );
+    }
+
+    /// The reopened door into the same bug: the refused session's own
+    /// write still goes out (per `answer_close`'s own doc, edits are never
+    /// held back), and its reply must not count toward the held session's
+    /// batch just because it is the only thing held at the time. A bare
+    /// counter cannot tell the two apart; a ticket can.
+    #[test]
+    fn a_refused_sessions_reply_does_not_count_toward_the_held_batch() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let Effect::SendAll(first_batch) =
+            app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)))
+        else {
+            panic!("expected the first batch");
+        };
+        assert_eq!(first_batch.len(), 2, "session A holds on two writes");
+
+        app.update(Msg::Key(KeyPress::Edit));
+        app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "web".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(
+                fixtures::sheep_config_view(),
+            ))),
+        });
+        fixtures::file_edit(&mut app, "cwd", "/srv/second");
+        app.update(Msg::Key(KeyPress::Escape));
+        let Effect::SendAll(second_batch) =
+            app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)))
+        else {
+            panic!("expected session B's write to still go out");
+        };
+        assert_eq!(
+            second_batch.len(),
+            1,
+            "session B holds on nothing, but writes"
+        );
+
+        // Session B's own reply lands first. It must be entirely inert:
+        // not held, so it cannot bring session A's batch any closer to
+        // done.
+        let after_b = app.update(Msg::Replied {
+            sent: second_batch[0].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "cwd".to_string(),
+                pending: false,
+            }),
+        });
+        assert!(
+            !matches!(after_b, Effect::Send(Sent::Action { .. })),
+            "session B holds no verb to send: {after_b:?}"
+        );
+
+        // Only one of session A's own two writes has answered. Nothing
+        // must have gone out yet, from either session.
+        let after_a_first = app.update(Msg::Replied {
+            sent: first_batch[0].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "cwd".to_string(),
+                pending: false,
+            }),
+        });
+        assert!(
+            matches!(after_a_first, Effect::None),
+            "session A's own batch still has one outstanding: {after_a_first:?}"
+        );
+
+        // Session A's second and last write answers. Now, and only now,
+        // its restart goes.
+        let after_a_second = app.update(Msg::Replied {
+            sent: first_batch[1].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "max_memory".to_string(),
+                pending: false,
+            }),
+        });
+        assert!(
+            matches!(
+                after_a_second,
+                Effect::Send(Sent::Action {
+                    verb: ActionVerb::Restart,
+                    ..
+                })
+            ),
+            "got {after_a_second:?}"
         );
     }
 
