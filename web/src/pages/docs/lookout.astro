@@ -718,11 +718,13 @@ esc/s close   j/k select   g… control enabled`;
       instead, in both states, because the flag would not have helped it.
     </p>
     <p>
-      Nothing reaches the shepherd until the pane closes. An edit is filed
+      No edit reaches the shepherd until the pane closes. An edit is filed
       into a change set the pane carries, not sent, and <code>Esc</code>{" "}
       writes the whole set at once when it closes the pane. <code>u</code>{" "}
       undoes the most recently filed edit, one at a time, and files nothing
-      itself.
+      itself. <code>r</code> is not an edit: it re-reads the pane's config
+      from the shepherd while the pane is still open, same as any other
+      request.
     </p>
     <p class="fine">
       A field whose grammar accepts a bare number, such as{" "}

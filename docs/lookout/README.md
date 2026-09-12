@@ -223,9 +223,11 @@ debt.
 
 ## What 1e settled
 
-- **Nothing reaches the shepherd until the config pane closes.** An edit,
+- **No edit reaches the shepherd until the config pane closes.** An edit,
   a cycle, an array change: each files into a change set the pane carries,
-  and `esc` writes the whole set in one pass when it closes the pane.
+  and `esc` writes the whole set in one pass when it closes the pane. `r`
+  is not an edit: it re-reads the pane's config from the shepherd while
+  the pane is still open, same as any other request.
 - **`u` undoes the newest unsent edit**, one at a time. It files nothing
   itself, so it never needs the control gate.
 - **`tab` walks the pane's eight groups; `1` through `8` jump straight to
