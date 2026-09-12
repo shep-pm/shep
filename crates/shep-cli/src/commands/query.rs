@@ -9,7 +9,7 @@
 //! [`HelloAck`](shep_core::protocol::HelloAck) [`Client::daemon`] holds. It
 //! still issues `Request::Ping` as the liveness check.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use shep_client::Client;
 use shep_core::paths::ShepPaths;
@@ -22,7 +22,6 @@ use shep_daemon::snapshot::FlockSnapshot;
 
 use crate::cli::{DogsArgs, FoldArgs, Format, SelectorArgs};
 use crate::commands::rpc::{client_error, request_and_render, unexpected_response};
-use crate::commands::secret::daemon_config;
 use crate::commands::selector::parse_selector_spec;
 use crate::dog_index::{self, AvailableDog, DogSourceKind};
 use crate::exit::ExitCode;
@@ -136,48 +135,24 @@ fn gather_secrets(
     paths: &ShepPaths,
     procs: &[ProcessInfo],
 ) -> (Vec<DescribedSecret>, Option<secrets::SecretError>) {
-    let roll = read_roll(paths);
     let (store, unreadable) = match secrets::all(&paths.secrets) {
         Ok(store) => (store, None),
         Err(error) => (BTreeMap::new(), Some(error)),
     };
     let providers = secrets::provider_cache_on_disk(&paths.secrets_cache);
-    let host_environment = daemon_config(paths).daemon.environment;
 
     let mut json = Vec::new();
-    let mut seen: BTreeSet<&str> = BTreeSet::new();
-    for proc in procs {
-        if !seen.insert(proc.name.as_str()) {
-            continue;
-        }
-        let Some(config) = roll
-            .as_ref()
-            .and_then(|roll| roll.apps.iter().find(|app| app.app.name == proc.name))
-            .map(|app| &app.app)
-        else {
-            continue;
-        };
-        let refs = secrets::references(config);
-        if refs.is_empty() {
-            continue;
-        }
-        let environment = config
-            .environment
-            .clone()
-            .unwrap_or_else(|| host_environment.clone());
-        let view = SecretView::new(environment.clone(), store.clone(), providers.clone());
-
-        for reference in &refs {
+    for namer in crate::secret_readers::namers(paths, procs) {
+        let view = SecretView::new(namer.environment.clone(), store.clone(), providers.clone());
+        for reference in &namer.references {
             let Some(parsed) = SecretRef::parse(reference) else {
                 continue;
             };
-            let resolution = view.resolve(&parsed);
-            let status = SecretStatus::from_resolution(&resolution);
             json.push(DescribedSecret {
-                name: proc.name.clone(),
+                name: namer.name.clone(),
                 reference: reference.clone(),
-                environment: environment.clone(),
-                status,
+                environment: namer.environment.clone(),
+                status: SecretStatus::from_resolution(&view.resolve(&parsed)),
             });
         }
     }
@@ -196,7 +171,7 @@ const SECRET_STORE_UNREADABLE_NOTICE: &str = "secret_store_unreadable";
 /// muster roll as the best local answer to "what does this app's config
 /// look like right now", tolerant of a file this daemon has never written
 /// or has fallen behind the live registry by a debounce window.
-fn read_roll(paths: &ShepPaths) -> Option<FlockSnapshot> {
+pub(crate) fn read_roll(paths: &ShepPaths) -> Option<FlockSnapshot> {
     std::fs::read(&paths.snapshot)
         .ok()
         .and_then(|bytes| serde_json::from_slice::<FlockSnapshot>(&bytes).ok())

@@ -26,7 +26,10 @@ use shep_core::protocol::{
 };
 use shep_core::status::ProcStatus;
 
-use super::app::{ActionVerb, App, Control, KeyPress, Msg, RowKey, Sent, SettingsRow};
+use super::app::{
+    ActionVerb, App, Control, KeyPress, Msg, RevealedValue, RowKey, Sent, SettingsRow,
+};
+use super::secrets::{SecretRow, SecretsModel, Source};
 use super::source::HostSample;
 use super::tail::{Stream, Tail, TailLine};
 use super::theme::Palette;
@@ -36,6 +39,7 @@ use crate::commands::settings::{
     DogView, ScalarView, SettingField, SettingsSnapshot, load_settings,
 };
 use crate::commands::shep_toml::ShepToml;
+use crate::secret_readers::Reader;
 use crate::style::{StyleLevel, StyleSource};
 
 /// One rendered buffer as plain text: one line per row, trailing spaces
@@ -258,6 +262,11 @@ pub enum Scene {
     /// stream, a minimum level and a regex, wrapping turned on so the one
     /// surviving line's full text is on screen rather than truncated.
     Bleats,
+    /// `S` pressed: the secrets pane, with `DB_PASSWORD` revealed, a
+    /// `vercel` provider group and `ELSEWHERE_ONLY` sitting unresolved for
+    /// this environment, tall enough to draw both the FOCUSED and WHO
+    /// READS IT panels.
+    Secrets,
     /// The sheep pane at its design size, 160x48: both charts, the config
     /// and env column, and the embedded feed, all up at once.
     SheepPane,
@@ -330,6 +339,7 @@ impl Scene {
             Self::SettingsNarrow => "settings_narrow",
             Self::SettingsShort => "settings_short",
             Self::Bleats => "bleats",
+            Self::Secrets => "secrets",
             Self::SheepPane => "sheep_pane",
             Self::SheepPaneCpuOnly => "sheep_pane_cpu_only",
             Self::SheepPaneSparklines => "sheep_pane_sparklines",
@@ -460,6 +470,9 @@ impl Scene {
             Self::Bleats => {
                 "The full-screen bleats pane, pinned to api, with a stream, a minimum level and a regex all stacked: only out, only warn and above, only a line mentioning retrying or jitter. The filter row states the composition and counts one surviving line out of sixteen, and that one line is also the longest in the fixture, so wrapping is on and its full text runs onto a second row instead of an ellipsis."
             }
+            Self::Secrets => {
+                "The secrets pane, opened with `S`. DB_PASSWORD is revealed and named by one reader; vercel/API_TOKEN sits in its own read-only provider group; ELSEWHERE_ONLY has a slot in ci but not here, so it reads unresolved for this tab. The frame is tall enough to carry both the FOCUSED panel and WHO READS IT below the table."
+            }
             Self::SheepPane => {
                 "The sheep pane on web, at its design size: 160 = 8 gutter + 140 body + 12 margin for each chart, and 160 = 76 config + 1 divider + 83 feed across the row below them. Both charts draw their full body, the config and env column lists web's own fields, and the embedded feed carries its own lines, all on one screen. web's cpu_ms counter is differenced across several two-second polls, rising by varying deltas, so both charts draw a shape rather than a single repeated bar."
             }
@@ -579,6 +592,10 @@ impl Scene {
             // this scene exists for. `the_title_names_the_window_and_what_
             // fell_below_it` covers the figures at a width that fits them.
             Self::Bleats => (100, 14),
+            // Tall enough that `content_bottom` leaves room for both
+            // `draw_panels`' FOCUSED and WHO READS IT rows below the table,
+            // the frame this scene exists to show.
+            Self::Secrets => (160, 48),
             // 160 = 8 gutter + 140 body + 12 margin for each chart, and
             // 160 = 76 config + 1 divider + 83 feed: the sheep pane's own
             // design size, wide enough for every column at once.
@@ -1541,10 +1558,71 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
         _ => {}
     }
 
-    // Applied last, for the same reason: `SettingsConfirm` arms a
-    // candidate that expires on the same `CONFIRM_EXPIRY`, so it must be
-    // armed after the tick at `age`.
+    // Applied last, for the same reason: `SettingsConfirm` and `Secrets`
+    // each arm a candidate that expires (on `CONFIRM_EXPIRY` or
+    // `REVEAL_HOLDS`), so both must be armed after the tick at `age`.
     match which {
+        Scene::Secrets => {
+            // Opens the secrets pane on `production`: an operator row
+            // revealed, a provider group, and a row with a slot
+            // elsewhere but not here. `Msg::Revealed` is handed the
+            // value directly; the reducer only checks the gate below.
+            app.update(Msg::Key(KeyPress::Secrets));
+            app.update(Msg::Secrets {
+                environment: "production".to_string(),
+                result: Ok(Box::new(SecretsModel {
+                    environments: vec![
+                        "all".to_string(),
+                        "ci".to_string(),
+                        "production".to_string(),
+                    ],
+                    rows: vec![
+                        SecretRow {
+                            key: "DB_PASSWORD".to_string(),
+                            source: Source::Operator,
+                            in_force: Some("production".to_string()),
+                            set_in: vec!["production".to_string()],
+                            byte_len: Some("hunter2-not-really".len()),
+                            readers: vec![Reader {
+                                name: "catcher".to_string(),
+                                environment: "production".to_string(),
+                                online: true,
+                            }],
+                        },
+                        SecretRow {
+                            key: "ELSEWHERE_ONLY".to_string(),
+                            source: Source::Operator,
+                            in_force: None,
+                            set_in: vec!["ci".to_string()],
+                            byte_len: None,
+                            readers: Vec::new(),
+                        },
+                        SecretRow {
+                            key: "vercel/API_TOKEN".to_string(),
+                            source: Source::Namespace("vercel".to_string()),
+                            in_force: Some("production".to_string()),
+                            set_in: vec!["production".to_string()],
+                            byte_len: Some(6),
+                            readers: Vec::new(),
+                        },
+                    ],
+                    // Every row's `readers` comes off the muster roll, and
+                    // so does this: a model carrying one without the other
+                    // is a state `secrets::model` cannot produce, and the
+                    // frame would name a reader under a line saying no roll
+                    // was ever written.
+                    roll_age: Some(Duration::from_secs(184)),
+                    allow_read: true,
+                    ..SecretsModel::default()
+                })),
+            });
+            app.update(Msg::Key(KeyPress::Reveal));
+            app.update(Msg::Revealed {
+                key: "DB_PASSWORD".to_string(),
+                environment: "production".to_string(),
+                value: Some(RevealedValue("hunter2-not-really".to_string())),
+            });
+        }
         Scene::SettingsFresh => {
             // A fresh document, not a hand-edited snapshot: first run
             // leaves only `[interpreters]`, and `load_settings` is the
@@ -2118,9 +2196,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all forty-five scenes through the same coloured
+frames.ansi renders all forty-six scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same forty-five scenes through the flattened NO_COLOR palette
+renders the same forty-six scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -2149,8 +2227,9 @@ edits filed (one of them needing a respawn), and the same fresh pane at 120
 and at 88 columns, where the explanation panel and the LANDS column trade
 places as the width falls.
 
-Before those are the four sheep-pane scenes, `↵` on a sheep, and before
-them the full-screen bleats pane, `b` from the dashboard. The seven before
+Before those are the four sheep-pane scenes, `↵` on a sheep, then the
+secrets pane, `S`, and before them the full-screen bleats pane, `b` from
+the dashboard. The seven before
 that are the settings screen, `s` from the dashboard. It owns the whole body
 between the title and the status bar rather than sharing it
 with the flock table, so a fresh $SHEP_HOME, some scalars declared, an armed
@@ -2300,7 +2379,7 @@ mod tests {
     /// which is the form a reader sees.
     #[test]
     fn the_gallery_preamble_counts_the_scenes_it_has() {
-        const NUMBERS: [(usize, &str); 12] = [
+        const NUMBERS: [(usize, &str); 13] = [
             (34, "thirty-four"),
             (35, "thirty-five"),
             (36, "thirty-six"),
@@ -2313,6 +2392,7 @@ mod tests {
             (43, "forty-three"),
             (44, "forty-four"),
             (45, "forty-five"),
+            (46, "forty-six"),
         ];
         let spelled = NUMBERS
             .iter()
@@ -3163,7 +3243,8 @@ mod tests {
             Scene::SettingsDogs => Some(Scene::SettingsNarrow),
             Scene::SettingsNarrow => Some(Scene::SettingsShort),
             Scene::SettingsShort => Some(Scene::Bleats),
-            Scene::Bleats => Some(Scene::SheepPane),
+            Scene::Bleats => Some(Scene::Secrets),
+            Scene::Secrets => Some(Scene::SheepPane),
             Scene::SheepPane => Some(Scene::SheepPaneCpuOnly),
             Scene::SheepPaneCpuOnly => Some(Scene::SheepPaneSparklines),
             Scene::SheepPaneSparklines => Some(Scene::SheepPaneShort),
@@ -3366,6 +3447,60 @@ mod tests {
             let (label, buffer) = scene(*which);
             insta::assert_snapshot!(label, render_text(&buffer));
         }
+    }
+
+    /// `Scene::Secrets` claims a revealed row in its own doc, caption and
+    /// the hand-copied frame in `web/`. Assert the frame actually shows
+    /// the plaintext and a countdown, not a mask: a snapshot alone would
+    /// pass on an expired reveal, since nothing names what "revealed"
+    /// means.
+    #[test]
+    fn the_secrets_scene_shows_a_revealed_row_not_a_mask() {
+        let text = render_text(&scene(Scene::Secrets).1);
+        let revealed = text
+            .lines()
+            .find(|line| line.contains("DB_PASSWORD"))
+            .expect("the secrets scene draws a DB_PASSWORD row");
+
+        assert!(
+            revealed.contains("hunter2-not-really"),
+            "DB_PASSWORD's row should show the revealed plaintext, not a mask: {revealed:?}"
+        );
+        assert!(
+            !revealed.contains("bytes"),
+            "the VALUE cell should show plaintext, not a masked byte count: {revealed:?}"
+        );
+        assert!(
+            revealed.contains("visible"),
+            "a revealed row should show a countdown, not the unrevealed dash: {revealed:?}"
+        );
+    }
+
+    /// `secrets::model` reads `readers` and `roll_age` off the same muster
+    /// roll, so a frame naming a reader and then saying no roll exists is a
+    /// state the loader cannot produce. The snapshot pins the frame against
+    /// its own committed copy, so the contradiction stays green there and
+    /// reaches `docs/lookout/` and the published page.
+    #[test]
+    fn the_secrets_scene_does_not_deny_the_roll_its_readers_came_from() {
+        let text = render_text(&scene(Scene::Secrets).1);
+        let read_by = text
+            .lines()
+            .find(|line| line.contains("DB_PASSWORD"))
+            .expect("the secrets scene draws a DB_PASSWORD row");
+
+        assert!(
+            read_by.contains("1 (1 online)"),
+            "the scene's own row names a reader: {read_by:?}"
+        );
+        assert!(
+            !text.contains("no muster roll yet"),
+            "and so cannot also say the roll it came from was never written"
+        );
+        assert!(
+            text.contains("READ BY as of the roll"),
+            "it says how old the roll is instead"
+        );
     }
 
     /// The two gallery files' text: plain, then ANSI.

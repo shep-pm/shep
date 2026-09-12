@@ -14,6 +14,7 @@ pub mod host;
 pub mod link_panel;
 pub mod pane;
 pub mod scroll;
+pub mod secrets;
 pub mod settings;
 pub mod sheep;
 pub mod status;
@@ -168,14 +169,31 @@ pub fn panes_for(height: u16) -> Panes {
 /// never scrolls rather than an underflowed height.
 ///
 /// `run_ui` calls this before each draw, so [`App::note_body_rows`] always
-/// reflects the terminal about to be drawn to.
+/// reflects the terminal about to be drawn to. `draw` builds the same four
+/// full-screen panes' own `Rect`s off [`title_gap_rows`], so a body that did
+/// not know about the rows spent there would get a `Rect` taller than the
+/// space actually left before the status bar, and its last row would be
+/// drawn only to be overwritten.
 #[must_use]
 pub fn body_rows(area: Rect) -> u16 {
     if area.width < MIN_TERM_WIDTH || area.height < MIN_HEIGHT {
         return 0;
     }
-    // One row for the title, one for the status bar.
-    area.height - 2
+    // The status bar's own row, plus everything `title_gap_rows` spends
+    // before a full-screen pane's body starts.
+    area.height - 1 - title_gap_rows(area.height)
+}
+
+/// Rows `draw` spends between the top of the frame and a full-screen pane's
+/// body: the title band, plus a blank row under it on a roomy terminal
+/// ([`ROOMY_HEIGHT`]).
+///
+/// The one function both `draw` and [`body_rows`] call for this, so the two
+/// can't drift the way they once did: a row added here reaches both without
+/// a second edit.
+#[must_use]
+fn title_gap_rows(height: u16) -> u16 {
+    1 + u16::from(height >= ROOMY_HEIGHT)
 }
 
 /// Real caller: `super::mod`'s `run_ui`, once per frame.
@@ -211,33 +229,32 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     let buffer = frame.buffer_mut();
 
     buffer.set_line(area.x, y, &title_band(app, width), width);
-    y += 1;
-
     // The sheep pane owns the whole body between the title and the status
-    // bar too, the same as the three below, but row 1 is its own identity
+    // bar too, the same as the four below, but row 1 is its own identity
     // band rather than blank chrome, so it is checked here, ahead of the
-    // roomy blank row the other three are paid in: a tall terminal must not
-    // push the band down to row 2 the way it pushes their body down.
+    // roomy blank row the others are paid in: a tall terminal must not
+    // push the band down to row 2 the way it pushes their body down. Its
+    // own row, `y + 1`, rather than `title_gap_rows`, which is exactly the
+    // gap it is skipping.
     if let Body::Sheep(pane) = app.body() {
+        let top = y + 1;
         let body = Rect {
             x: area.x,
-            y,
+            y: top,
             width,
-            height: bottom.saturating_sub(y),
+            height: bottom.saturating_sub(top),
         };
         sheep::draw(app, pane, body, buffer);
         buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
         return;
     }
 
-    // A blank row under the title, and another under the rule further down.
-    // Both come from the design's own row allocation, and both are spent
-    // only where there is height to spare: on a short terminal every row
-    // belongs to the table.
+    // `title_gap_rows` also covers the blank row under the title on a
+    // roomy terminal; the rule further down spends a second one of its
+    // own, both from the design's own row allocation. One function, read
+    // by `body_rows` too, so the two cannot drift.
+    y += title_gap_rows(height);
     let roomy = height >= ROOMY_HEIGHT;
-    if roomy {
-        y += 1;
-    }
     // Read four times below: the column header's own wording, and the three
     // panes the bottom stack chooses between.
     let frozen = matches!(app.link(), Link::Lost { .. });
@@ -278,6 +295,17 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
                 height: body_rows(area),
             };
             bleats_full::draw(app, pane, body, buffer);
+            buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
+            return;
+        }
+        Body::Secrets(pane) => {
+            let body = Rect {
+                x: area.x,
+                y,
+                width,
+                height: body_rows(area),
+            };
+            secrets::draw(app, pane, body, buffer);
             buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
             return;
         }

@@ -7,7 +7,8 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use super::super::app::{
-    ActionState, App, Control, Grouping, InputMode, Link, RowKey, Settings, retrying_sentence,
+    ActionState, App, Body, Control, Grouping, InputMode, Link, RowKey, Settings, TypingWhat,
+    retrying_sentence,
 };
 use super::super::pane::ConfigPane;
 use super::super::pane_bleats::BleatsPane;
@@ -140,6 +141,23 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             ),
             palette.attention(),
         )
+    } else if let Some((label, buffer)) = secrets_typing(app) {
+        // Ahead of the filter-box branch below, for the reason the config
+        // pane's own free-text branch above gives: this shares
+        // `InputMode::Text` with `App::filter` too.
+        (
+            format!("{label}  {buffer}\u{258f}   enter applies   esc cancels"),
+            palette.attention(),
+        )
+    } else if let Some(key) = secrets_armed(app) {
+        // Ranked with the dashboard's own confirm above, for the same
+        // reason: an armed delete is a question awaiting an answer, and it
+        // must outrank `secrets_hint`, which still reads `enter sets a
+        // value` while an arm is live.
+        (
+            format!("delete {key}? enter confirms, any other key cancels"),
+            palette.attention(),
+        )
     } else if app.mode() == InputMode::Text {
         // Above the notice: bus events arrive with no keypress and
         // `on_text_key` never clears them, so ranking the notice higher
@@ -193,11 +211,15 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // it at all, so it is appended rather than inserted, the same rule
         // `hint_for`'s own doc gives for its dashboard forms.
         (BLEATS_HINT.to_string(), palette.attention())
+    } else if matches!(app.body(), Body::Secrets(_)) {
+        // The pane owns the keyboard here too, same reasoning as the config
+        // pane's own branch above: `x stop`/`R restart`/`L reload`/`F folds`
+        // belong to the dashboard underneath and do nothing on this screen.
+        (secrets_hint(app.control()), palette.attention())
     } else if app.sheep_pane().is_some() {
         // Checked below the bleats pane's own branch, the same as the
-        // config pane's above it: the four full-screen panes cannot be
-        // open at once, so their order here is documentation, not
-        // correctness.
+        // config pane's above it: the full-screen panes cannot be open at
+        // once, so their order here is documentation, not correctness.
         (
             sheep_pane_hint(app.control()).to_string(),
             palette.attention(),
@@ -337,6 +359,28 @@ fn pane_editor(pane: &ConfigPane) -> Option<(String, &str)> {
     Some((format!("editing {}", typing.key), typing.buffer.as_str()))
 }
 
+/// The secrets pane's open input, labelled by which step it is: the
+/// `+ new key` row's name, or a key's value.
+fn secrets_typing(app: &App) -> Option<(String, &str)> {
+    let Body::Secrets(pane) = app.body() else {
+        return None;
+    };
+    let typing = pane.typing.as_ref()?;
+    let label = match &typing.what {
+        TypingWhat::NewKey => "new key".to_string(),
+        TypingWhat::ValueFor(key) => format!("value for {key}"),
+    };
+    Some((label, typing.buffer.as_str()))
+}
+
+/// The key an armed `D` would delete, or `None`.
+fn secrets_armed(app: &App) -> Option<&str> {
+    let Body::Secrets(pane) = app.body() else {
+        return None;
+    };
+    pane.armed.as_ref().map(|a| a.key.as_str())
+}
+
 /// The bleats pane's key hint: the design's own status-bar line, plus `m`
 /// for the minimum-level axis. The design names a key for every other axis
 /// (`o` for the stream) but none for this one, so `m` is this crate's own
@@ -344,6 +388,30 @@ fn pane_editor(pane: &ConfigPane) -> Option<(String, &str)> {
 /// it.
 const BLEATS_HINT: &str = "esc back   j/k line   ctrl-d/u page   G end   \
     / search   n/N match   f follow   w wrap   o out/err/both   m level";
+
+/// The secrets pane's own key hint.
+///
+/// `\u{21b5} set a value` and `D delete` name keys gated on
+/// [`Control::Allowed`], mirroring [`hint_for`]'s own split: a hint naming
+/// a key that always refuses teaches the operator the key is broken. `D`
+/// sits beside `\u{21b5}` because both write; `y` sits outside that split
+/// because copying an already-revealed value writes nothing. `v` and `y`
+/// name no gate of their own, which the pane's own gates row two lines
+/// above the table already states.
+fn secrets_hint(control: Control) -> String {
+    match control {
+        Control::ReadOnly => {
+            "esc/S close   \u{2190}/\u{2192} tab   z collapse   v reveal for 10s   \
+             y copy   q quit"
+                .to_string()
+        }
+        Control::Allowed => {
+            "esc/S close   \u{2190}/\u{2192} tab   z collapse   v reveal for 10s   \
+             \u{21b5} set a value   D delete   y copy   q quit"
+                .to_string()
+        }
+    }
+}
 
 /// The config pane's own key hint.
 ///
@@ -493,9 +561,9 @@ mod tests {
     use shep_core::protocol::BusEvent;
 
     use super::super::fixtures::{
-        acting_app, allowed_app, app_in_settings, app_in_settings_on, app_in_settings_with_control,
-        armed_app, armed_app_with_a_filter_and_a_notice, editing_app, filtered_app, rendered,
-        with_selection,
+        acting_app, allowed_app, app_armed_to_delete_a_secret, app_in_settings, app_in_settings_on,
+        app_in_settings_with_control, armed_app, armed_app_with_a_filter_and_a_notice, editing_app,
+        filtered_app, rendered, with_selection,
     };
     use super::*;
     use crate::commands::settings::SettingField;
@@ -706,6 +774,31 @@ mod tests {
         assert!(
             bar.contains("enter confirms, any other key cancels"),
             "got {bar:?}"
+        );
+    }
+
+    /// The secrets pane's own destructive arm gets the same sentence the
+    /// dashboard's does: which key, and how to answer.
+    #[test]
+    fn an_armed_secret_delete_names_the_key_and_the_answer() {
+        let app = app_armed_to_delete_a_secret();
+        let bar = rendered(&status_line(&app, 120));
+        assert!(bar.contains("delete DB_PASSWORD"), "got {bar:?}");
+        assert!(
+            bar.contains("enter confirms, any other key cancels"),
+            "got {bar:?}"
+        );
+    }
+
+    /// Armed, `Enter` deletes rather than opening the value input, so the
+    /// bar must stop claiming the older job.
+    #[test]
+    fn an_armed_secret_delete_stops_advertising_set_a_value() {
+        let app = app_armed_to_delete_a_secret();
+        let bar = rendered(&status_line(&app, 120));
+        assert!(
+            !bar.contains("set a value"),
+            "the arm changes what enter does: {bar:?}"
         );
     }
 

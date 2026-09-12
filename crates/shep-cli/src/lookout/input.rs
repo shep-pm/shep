@@ -66,10 +66,16 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char('R') => Some(KeyPress::Action(ActionVerb::Restart)),
         KeyCode::Char('L') => Some(KeyPress::Action(ActionVerb::Reload)),
         KeyCode::Char('s') => Some(KeyPress::Settings),
+        KeyCode::Char('S') => Some(KeyPress::Secrets),
+        KeyCode::Char('v') => Some(KeyPress::Reveal),
+        KeyCode::Char('y') => Some(KeyPress::Copy),
+        KeyCode::Left => Some(KeyPress::TabPrev),
+        KeyCode::Right => Some(KeyPress::TabNext),
         KeyCode::Char('e') => Some(KeyPress::Edit),
         KeyCode::Char('h') => Some(KeyPress::Help),
         KeyCode::Char(' ') => Some(KeyPress::Cycle),
         KeyCode::Char('d') => Some(KeyPress::Remove),
+        KeyCode::Char('D') => Some(KeyPress::SecretDelete),
         KeyCode::Char('K') => Some(KeyPress::StepUp),
         KeyCode::Char('J') => Some(KeyPress::StepDown),
         KeyCode::Char('F') => Some(KeyPress::FoldView),
@@ -175,6 +181,10 @@ mod tests {
             Some(KeyPress::Remove)
         );
         assert_eq!(
+            map_key(&key(KeyCode::Char('D')), InputMode::Normal),
+            Some(KeyPress::SecretDelete)
+        );
+        assert_eq!(
             map_key(&key(KeyCode::Char('K')), InputMode::Normal),
             Some(KeyPress::StepUp)
         );
@@ -236,6 +246,79 @@ mod tests {
         assert_eq!(
             map_key(&key(KeyCode::End), InputMode::Normal),
             Some(KeyPress::SelectLast)
+        );
+    }
+
+    #[test]
+    fn capital_s_opens_the_secrets_pane_and_lower_s_still_opens_settings() {
+        assert_eq!(
+            map_key(&key(KeyCode::Char('S')), InputMode::Normal),
+            Some(KeyPress::Secrets)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('s')), InputMode::Normal),
+            Some(KeyPress::Settings),
+            "the settings screen keeps its own key"
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('g')), InputMode::Normal),
+            Some(KeyPress::SelectFirst),
+            "the frame wanted `g` for secrets; `g` is still SelectFirst"
+        );
+    }
+
+    #[test]
+    fn lower_v_is_the_reveal() {
+        assert_eq!(
+            map_key(&key(KeyCode::Char('v')), InputMode::Normal),
+            Some(KeyPress::Reveal)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('V')), InputMode::Normal),
+            None,
+            "one key puts a value on screen, and it is not a shifted one"
+        );
+    }
+
+    #[test]
+    fn the_arrow_keys_move_the_environment_tab() {
+        assert_eq!(
+            map_key(&key(KeyCode::Left), InputMode::Normal),
+            Some(KeyPress::TabPrev)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Right), InputMode::Normal),
+            Some(KeyPress::TabNext)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Up), InputMode::Normal),
+            Some(KeyPress::SelectUp),
+            "the vertical arrows keep the meaning they already have"
+        );
+    }
+
+    /// `Tab` belongs to the config pane's group cycling, so the secrets
+    /// pane's tab row names `<-/->` and nothing else. It used to name a
+    /// tab alias as well, which #206 took: a caption naming a key that
+    /// lands somewhere else is worse than one key short.
+    #[test]
+    fn tab_walks_the_config_pane_groups_and_the_tab_row_does_not_claim_it() {
+        assert_eq!(
+            map_key(&key(KeyCode::Tab), InputMode::Normal),
+            Some(KeyPress::NextGroup)
+        );
+        assert_eq!(
+            map_key(
+                &Event::Key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT)),
+                InputMode::Normal
+            ),
+            None,
+            "shift-tab went with it rather than leaving half a pair bound"
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Tab), InputMode::Text),
+            None,
+            "and neither reaches an open input, where a tab is not a character"
         );
     }
 

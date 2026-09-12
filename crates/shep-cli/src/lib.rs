@@ -20,6 +20,7 @@ mod http;
 mod launch;
 mod lookout;
 mod output;
+mod secret_readers;
 mod serve;
 mod shutdown;
 mod status;

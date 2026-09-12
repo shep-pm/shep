@@ -354,6 +354,29 @@ const settingsNarrow = `shep lookout   /home/ada/.shep 2 in the flock
   ledger             yes      not running
   bark               yes      silent
 esc/s close   j/k select   g… control enabled`;
+
+const secretsFrame = `shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
+
+ ██ SECRETS   flock-wide values a Flockfile refers to and never carries
+store $SHEP_HOME/secrets.json · not encrypted · never printed to a log, never carried in a bleat · read at spawn, not now
+reveal  [secrets] allow_read = true in shep.toml · change  lookout.allow_control = true
+READ BY as of the roll, read 3m 4s ago
+all  ci  [production]                                                                                                  3 environments in this store · ←/→
+  KEY                         VALUE                         IN FORCE      SET IN                READ BY               LANDS
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ▾ operator ×2 · you set these
+> DB_PASSWORD                 hunter2-not-really            production    1 of 3 · production   1 (1 online)          visible 10s ██████████
+  ELSEWHERE_ONLY              not set here                  -             1 of 3 · ci           -                     -
+  + new key
+  ▾ vercel (dog) ×1 · pushed by a provider · read-only here
+  vercel/API_TOKEN            ██████ 6 bytes                production    1 of 3 · production   -                     -
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+FOCUSED  DB_PASSWORD                                                                    WHO READS IT  DB_PASSWORD
+the value leaves the screen after 10s. nothing records that you looked.                 █ catcher   online, was given a value at spawn
+the store is 0600: anyone who can reveal can also delete a log.
+the system clipboard is readable by every process on the desktop.
+set in production · length 18 bytes · named by 1 of the flock                           named in env, args, out_file or err_file
+esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D delete   y copy   q quit                                               control enabled`;
 ---
 
 <DocsLayout
@@ -649,6 +672,13 @@ esc/s close   j/k select   g… control enabled`;
       the terminal it's warning about:
     </p>
     <CodeBlock label="28×8">{tooNarrow}</CodeBlock>
+    <p>
+      The secrets pane has a floor of its own, at 74 columns. Its narrowest
+      tier is <code>KEY</code>, <code>VALUE</code> and <code>IN FORCE</code>,
+      and a key with no value and no scope answers nothing, so there is
+      nothing narrower to fall back to. Below 74 the pane says so, and the
+      rest of lookout still draws at 33.
+    </p>
 
     <h2>If the shepherd goes away</h2>
     <p>
@@ -812,6 +842,76 @@ esc/s close   j/k select   g… control enabled`;
       else. The confirm itself renders in the status bar, the same fixed row
       the dashboard's <code>x</code>/<code>R</code>/<code>L</code> confirm
       uses.
+    </p>
+    <h2>Secrets</h2>
+    <p>
+      <code>S</code>, <code>s</code>'s neighbour, opens a full-screen view
+      over the store <a href="/docs/secrets">the secrets page</a> covers:
+      the operator's own keys from <code>secrets.json</code> and each
+      provider's from <code>secrets-cache.json</code>, one tab per
+      environment. <code>Esc</code> or <code>S</code> again closes it.
+    </p>
+    <CodeBlock label="160×48">{secretsFrame}</CodeBlock>
+    <p>
+      Two gates, and neither implies the other. Revealing a value needs{" "}
+      <code>[secrets] allow_read = true</code> in <code>shep.toml</code>,
+      off by default; changing anything (setting a key, deleting one, or
+      adding a new one) needs the same{" "}
+      <code>lookout.allow_control</code> gate the dashboard's action keys
+      do, covered above. A read-only lookout with the reveal gate on can
+      look but not touch; a controlling lookout without it can rotate a
+      key it can never read back.
+    </p>
+    <ul>
+      <li><code>S</code> opens the pane, and closes it again</li>
+      <li>
+        <code>&larr;</code>/<code>&rarr;</code>, or <code>Tab</code>/{" "}
+        <code>Shift-Tab</code>, move the environment tab
+      </li>
+      <li><code>j</code>/<code>k</code>, <code>g</code>/<code>G</code> move the cursor</li>
+      <li><code>z</code> collapses the group under the cursor, hiding its members</li>
+      <li>
+        <code>v</code> reveals the selected row's value for ten seconds,
+        gated on <code>allow_read</code>
+      </li>
+      <li>
+        <code>Enter</code> opens a value input on an operator row, or
+        confirms an armed delete
+      </li>
+      <li>
+        <code>D</code> arms deleting the selected key; like every other
+        armed key in lookout, it expires after ten seconds unanswered,{" "}
+        <code>Enter</code> is what actually confirms it, and any other key
+        cancels it
+      </li>
+      <li>
+        <code>y</code> sends an already-revealed value to the terminal over
+        OSC 52
+      </li>
+      <li><code>r</code> reloads the store</li>
+      <li><code>q</code> quits lookout</li>
+    </ul>
+    <p class="fine">
+      A reveal clears on far more than its own timeout: moving the
+      selection, changing tabs, pressing <code>Esc</code>, reloading with{" "}
+      <code>r</code>, closing the pane, quitting, or a write landing all
+      drop it early, so a value never sits on screen describing a row it
+      no longer belongs to.
+    </p>
+    <p class="fine">
+      <code>y</code> only says the value was sent to the terminal, never
+      that it arrived: OSC 52 has no acknowledgement, and the system
+      clipboard is readable by whatever else is running on the desktop, a
+      wider exposure than the screen it just left. A provider row refuses
+      both <code>Enter</code> and <code>D</code> outright; it's a cache of
+      what a dog pushed, not something lookout can write back.
+    </p>
+    <p class="fine">
+      A row taking its value from the <code>all</code> slot refuses{" "}
+      <code>D</code> on a named tab: removing that slot changes every
+      environment at once, so the <code>all</code> tab is where you do it
+      deliberately. A delete that finds no value to remove says so rather
+      than reporting a success it did not have.
     </p>
     <h2>The config pane</h2>
     <p>

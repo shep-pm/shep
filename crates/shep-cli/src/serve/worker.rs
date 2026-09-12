@@ -688,7 +688,7 @@ mod tests {
             addr,
             &format!(
                 "GET {target} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic {}\r\n\r\n",
-                base64_encode(TEST_USER)
+                base64(TEST_USER)
             ),
         )
         .await
@@ -702,30 +702,10 @@ mod tests {
         .await
     }
 
-    /// Standard base64 (RFC 4648), test-only: production code here only
-    /// ever answers a header, never builds one.
-    fn base64_encode(input: &str) -> String {
-        const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        let bytes = input.as_bytes();
-        let mut out = String::new();
-        for chunk in bytes.chunks(3) {
-            let b0 = chunk[0];
-            let b1 = chunk.get(1).copied();
-            let b2 = chunk.get(2).copied();
-            out.push(ALPHABET[(b0 >> 2) as usize] as char);
-            out.push(ALPHABET[(((b0 << 4) | (b1.unwrap_or(0) >> 4)) & 0x3f) as usize] as char);
-            out.push(match b1 {
-                Some(b1) => {
-                    ALPHABET[(((b1 << 2) | (b2.unwrap_or(0) >> 6)) & 0x3f) as usize] as char
-                }
-                None => '=',
-            });
-            out.push(match b2 {
-                Some(b2) => ALPHABET[(b2 & 0x3f) as usize] as char,
-                None => '=',
-            });
-        }
-        out
+    /// [`auth::base64_encode`], through a `&str` for the header this test
+    /// module builds by hand.
+    fn base64(input: &str) -> String {
+        auth::base64_encode(input.as_bytes())
     }
 
     /// The traversal table again, end to end over a real socket, so it

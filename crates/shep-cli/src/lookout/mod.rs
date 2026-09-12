@@ -24,6 +24,7 @@ pub mod link;
 pub mod pane;
 pub mod pane_bleats;
 pub mod pane_sheep;
+pub(crate) mod secrets;
 pub mod source;
 pub mod tail;
 pub mod term;
@@ -45,7 +46,7 @@ use ratatui::layout::Rect;
 use shep_core::paths::ShepPaths;
 use tokio::sync::mpsc;
 
-use self::app::{App, Control, Effect, Msg, RowKey, Sent};
+use self::app::{App, Body, Control, Effect, Msg, RevealedValue, RowKey, Sent};
 use self::source::Shepherd;
 use self::theme::Palette;
 use crate::cli::LookoutArgs;
@@ -185,6 +186,7 @@ pub async fn lookout(
         msg_rx,
         poll_tx,
         request_tx,
+        paths.clone(),
         paths.home.clone(),
         paths.daemon_config.clone(),
         paths.socket.clone(),
@@ -223,7 +225,7 @@ pub fn resolve_control(read_only: bool, kv: &Path) -> Control {
 /// forever, so every arm above the heartbeat is disabled once it runs dry;
 /// arm 4's is live, since an empty `FuturesUnordered` fills again. The redraw
 /// runs after the `select!`, gated on `dirty` and [`MIN_REDRAW`]; the feed
-/// and the lamb fetch ride that same gate. Nine arguments, hence the
+/// and the lamb fetch ride that same gate. Ten arguments, hence the
 /// `#[allow]`.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_ui<B: Backend, S, L>(
@@ -233,6 +235,8 @@ pub async fn run_ui<B: Backend, S, L>(
     mut msgs: mpsc::Receiver<Msg>,
     polls: mpsc::Sender<()>,
     requests: mpsc::Sender<self::app::Sent>,
+    // The resolved layout, read only by `Effect::LoadSecrets`.
+    paths: ShepPaths,
     // `$SHEP_HOME` as this invocation resolved it. Only `Effect::LoadDogPane`
     // reads it: `commands::dogs::ask` sets `SHEP_HOME` for the probed
     // candidate, so a home other than `--home`'s could point a schema probe
@@ -455,6 +459,77 @@ where
                 }));
                 dirty = true;
             }
+            // Off this task for the same reason `Effect::WriteSetting` is:
+            // the store's own lock (`ShepToml::try_edit`'s cousin over
+            // `secrets.json`) acquires with no deadline.
+            //
+            // The environment is the current tab's, once there is one;
+            // before the first load lands there is no tab yet, so this reads
+            // the daemon's own configured default instead, and `Msg::Secrets`
+            // echoes back whichever it used so the reducer can find that
+            // environment's tab once the model arrives.
+            Effect::LoadSecrets => {
+                let paths = paths.clone();
+                // `all_rows`, not the filtered `rows`: READ BY has to name
+                // every sheep that reads a key, not just the ones a dashboard
+                // name filter left on screen.
+                let procs = app
+                    .all_rows()
+                    .into_iter()
+                    .map(|row| row.info.clone())
+                    .collect::<Vec<_>>();
+                let environment = match app.body() {
+                    Body::Secrets(pane) => pane.environment().map(str::to_string),
+                    _ => None,
+                }
+                .unwrap_or_else(|| {
+                    crate::commands::secret::daemon_config(&paths)
+                        .daemon
+                        .environment
+                });
+                let for_msg = environment.clone();
+                let handle = tokio::task::spawn_blocking(move || {
+                    crate::lookout::secrets::model(&paths, &procs, &environment)
+                });
+                inflight.push(Box::pin(async move {
+                    let result = handle.await.map(Box::new).map_err(|err| err.to_string());
+                    Msg::Secrets {
+                        environment: for_msg,
+                        result,
+                    }
+                }));
+                dirty = true;
+            }
+            // Off this task for `Effect::LoadSettings`'s reason: a read that
+            // takes no lock still stalls the redraw, the tick and the bus
+            // drain while it opens and parses a file.
+            //
+            // The row and the environment ride back out on the `Msg`, which
+            // is where the pane decides whether the answer is still the one
+            // it asked for.
+            Effect::RevealSecret {
+                store,
+                provider_cache,
+                row,
+                environment,
+            } => {
+                let key = row.key.clone();
+                let handle = tokio::task::spawn_blocking(move || {
+                    crate::lookout::secrets::stored_value(&store, &provider_cache, &row)
+                });
+                inflight.push(Box::pin(async move {
+                    Msg::Revealed {
+                        key,
+                        environment,
+                        // A join failure reads as no value, the same as a
+                        // slot that has gone: there is nothing to show
+                        // either way, and a notice would name a panic the
+                        // operator cannot act on.
+                        value: handle.await.ok().flatten().map(RevealedValue),
+                    }
+                }));
+                dirty = true;
+            }
             // `apply_setting` takes `ShepToml::try_edit`'s lock, which blocks
             // with no deadline, so the handle goes into `inflight` rather than
             // being awaited here. `_authority` is a proof carried by the
@@ -555,6 +630,40 @@ where
                 }));
                 dirty = true;
             }
+            // `secrets::set`/`secrets::unset` take `secrets.json.lock`,
+            // which acquires with no deadline, for `Effect::WriteSetting`'s
+            // reason. `_authority` is dropped as it is there.
+            Effect::WriteSecret(edit, _authority) => {
+                let store = paths.secrets.clone();
+                // The `bool` is `unset`'s own answer: `false` means there was
+                // no slot to remove. It reaches `Msg::SecretWritten` rather
+                // than being dropped, so a delete that removed nothing
+                // cannot arrive looking like a delete that worked. A `set`
+                // always changed the store, so it says `true`.
+                let handle = tokio::task::spawn_blocking(move || match edit.value {
+                    Some(value) => {
+                        shep_core::secrets::set(&store, &edit.key, &edit.environment, &value)
+                            .map(|()| true)
+                    }
+                    None => shep_core::secrets::unset(&store, &edit.key, &edit.environment),
+                });
+                inflight.push(Box::pin(async move {
+                    let result = handle
+                        .await
+                        .map_err(|err| err.to_string())
+                        .and_then(|inner| inner.map_err(|err| err.to_string()));
+                    Msg::SecretWritten { result }
+                }));
+                dirty = true;
+            }
+            // Straight to `io::stdout()` through `term`, not `terminal`
+            // (`ratatui::Terminal`): a `TestBackend` verifies nothing here.
+            // Ignored on failure: nothing sensible to do with a broken
+            // pipe, and the pane's wording already says sent, not arrived.
+            Effect::CopyToClipboard(value) => {
+                let _ = term::copy_to_clipboard(&value.0);
+                dirty = true;
+            }
             Effect::None => dirty = true,
         }
     }
@@ -614,6 +723,14 @@ mod tests {
     use crate::lookout::tail::Tail;
     use crate::lookout::theme::Palette;
 
+    /// The resolved layout for a given `home`, matching how the literal
+    /// `home`/`daemon_config`/`socket_default` triples below were derived by
+    /// hand: `SHEP_HOME` is `home` itself, so `resolve` appends no `.shep`.
+    fn test_paths(home: &Path) -> ShepPaths {
+        let home_str = home.to_string_lossy().into_owned();
+        ShepPaths::resolve(&|key| (key == "SHEP_HOME").then(|| home_str.clone()), home)
+    }
+
     /// A `Local` that touches no disk: a fixed sample, a fixed tail, and a
     /// count of each call. `Arc`, since `run_ui` takes the reader by value.
     #[derive(Clone, Default)]
@@ -667,6 +784,7 @@ mod tests {
                 msg_rx,
                 poll_tx,
                 request_tx,
+                test_paths(Path::new("/tmp/shep-lookout-tests")),
                 PathBuf::from("/tmp/shep-lookout-tests"),
                 PathBuf::from("/tmp/shep-lookout-tests/shep.toml"),
                 PathBuf::from("/tmp/shep-lookout-tests/run/shep.sock"),
@@ -713,6 +831,7 @@ mod tests {
                 msg_rx,
                 poll_tx,
                 request_tx,
+                test_paths(Path::new("/tmp/shep-lookout-tests")),
                 PathBuf::from("/tmp/shep-lookout-tests"),
                 PathBuf::from("/tmp/shep-lookout-tests/shep.toml"),
                 PathBuf::from("/tmp/shep-lookout-tests/run/shep.sock"),
@@ -789,6 +908,7 @@ mod tests {
                 msg_rx,
                 poll_tx,
                 request_tx,
+                test_paths(Path::new("/tmp/shep-lookout-tests")),
                 PathBuf::from("/tmp/shep-lookout-tests"),
                 PathBuf::from("/tmp/shep-lookout-tests/shep.toml"),
                 PathBuf::from("/tmp/shep-lookout-tests/run/shep.sock"),
@@ -850,6 +970,7 @@ mod tests {
                 msg_rx,
                 poll_tx,
                 request_tx,
+                test_paths(Path::new("/tmp/shep-lookout-tests")),
                 PathBuf::from("/tmp/shep-lookout-tests"),
                 PathBuf::from("/tmp/shep-lookout-tests/shep.toml"),
                 PathBuf::from("/tmp/shep-lookout-tests/run/shep.sock"),
@@ -932,6 +1053,7 @@ mod tests {
                 msg_rx,
                 poll_tx,
                 request_tx,
+                test_paths(Path::new("/tmp/shep-lookout-tests")),
                 PathBuf::from("/tmp/shep-lookout-tests"),
                 PathBuf::from("/tmp/shep-lookout-tests/shep.toml"),
                 PathBuf::from("/tmp/shep-lookout-tests/run/shep.sock"),
@@ -999,6 +1121,7 @@ mod tests {
                 msg_rx,
                 poll_tx,
                 request_tx,
+                test_paths(Path::new("/tmp/shep-lookout-tests")),
                 PathBuf::from("/tmp/shep-lookout-tests"),
                 PathBuf::from("/tmp/shep-lookout-tests/shep.toml"),
                 PathBuf::from("/tmp/shep-lookout-tests/run/shep.sock"),
@@ -1064,6 +1187,7 @@ mod tests {
                 msg_rx,
                 poll_tx,
                 request_tx,
+                test_paths(Path::new("/tmp/shep-lookout-tests")),
                 PathBuf::from("/tmp/shep-lookout-tests"),
                 PathBuf::from("/tmp/shep-lookout-tests/shep.toml"),
                 PathBuf::from("/tmp/shep-lookout-tests/run/shep.sock"),
@@ -1153,6 +1277,7 @@ mod tests {
                 msg_rx,
                 poll_tx,
                 request_tx,
+                test_paths(dir.path()),
                 dir.path().to_path_buf(),
                 config.clone(),
                 socket_default,
@@ -1181,6 +1306,186 @@ mod tests {
             std::thread::sleep(WRITE_POLL);
         }
         assert!(written, "the write that was in flight still landed");
+    }
+
+    /// Drives `Effect::LoadSecrets` end to end, the only test that does: every
+    /// other secrets-pane test calls `App::update` directly and inspects the
+    /// `Effect` it returns as a value, so nothing ever runs the arm that
+    /// reads `paths.secrets` and gathers who reads each key.
+    ///
+    /// `reader-app` is filtered off the dashboard (`App::rows()`) by name
+    /// before `S` opens the pane, but it still names `API_KEY` in the muster
+    /// roll. `Effect::LoadSecrets` has to gather readers off
+    /// `App::all_rows()`, not `App::rows()`, or a name filter would make
+    /// `READ BY` lie about who reads a key.
+    #[tokio::test]
+    async fn load_secrets_counts_a_reader_the_dashboard_filter_has_hidden() {
+        // Short, not the default `$TMPDIR`: a long `$SHEP_HOME` overflows
+        // `SUN_LEN` for the control socket path this builds, even though
+        // this test never dials it.
+        let dir = tempfile::Builder::new().prefix("s").tempdir().unwrap();
+        let paths = crate::secret_readers::test_support::paths_under(dir.path());
+        shep_core::secrets::set(&paths.secrets, "API_KEY", "production", "hunter2").unwrap();
+
+        let mut reader_app = shep_core::config::AppConfig::minimal("reader-app", "./srv");
+        reader_app
+            .env
+            .insert("A".to_string(), "{{secret:API_KEY}}".to_string());
+        crate::secret_readers::test_support::write_roll(&paths, &[reader_app]);
+
+        let mut app = App::new(
+            Palette::detect(None, None, None),
+            Control::ReadOnly,
+            dir.path().display().to_string(),
+            Instant::now(),
+        );
+        app.update(Msg::Snapshot {
+            rows: vec![
+                ProcessInfo::builder(1, "keeper", ProcStatus::Online).build(),
+                ProcessInfo::builder(2, "reader-app", ProcStatus::Online).build(),
+            ],
+            at: Instant::now(),
+        });
+        app.set_filter_for_tests("keeper");
+        assert!(
+            app.rows().iter().all(|row| row.info.name != "reader-app"),
+            "the filter must actually hide reader-app, or this test proves nothing"
+        );
+
+        let (msg_tx, msg_rx) = mpsc::channel(16);
+        let (poll_tx, _poll_rx) = mpsc::channel(4);
+        let (request_tx, _request_rx) = mpsc::channel(2);
+        msg_tx.send(Msg::Key(KeyPress::Secrets)).await.unwrap();
+        // The sleep, not an immediate `Quit`: `Effect::LoadSecrets` answers
+        // off `spawn_blocking`, and `Msg::Secrets` is dropped once it lands
+        // if `self.body` has already left `Body::Secrets`: quitting before
+        // the read comes back would draw the pane still empty.
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(2000)).await;
+            let _ = msg_tx.send(Msg::Key(KeyPress::Quit)).await;
+        });
+
+        let terminal = Terminal::new(TestBackend::new(160, 48)).unwrap();
+        let terminal = tokio::time::timeout(
+            Duration::from_secs(10),
+            run_ui(
+                app,
+                terminal,
+                stream::empty(),
+                msg_rx,
+                poll_tx,
+                request_tx,
+                paths.clone(),
+                dir.path().to_path_buf(),
+                paths.daemon_config.clone(),
+                paths.socket.clone(),
+                FakeLocal::default(),
+            ),
+        )
+        .await
+        .expect("the loop left within ten seconds");
+
+        let frame = crate::lookout::frames::render_text(terminal.backend().buffer());
+        assert!(
+            frame.contains("API_KEY"),
+            "the seeded key is drawn: {frame}"
+        );
+        let row = frame
+            .lines()
+            .find(|line| line.contains("API_KEY"))
+            .expect("API_KEY's own row");
+        assert!(
+            row.contains("1 (1 online)"),
+            "reader-app must still be counted in READ BY: {row:?}"
+        );
+    }
+
+    /// Drives the `Effect::LoadSecrets` arm itself, the only test that does
+    /// for this bug: every other secrets-pane regression lives in
+    /// `app::tests` and calls `App::update` directly, so nothing else runs
+    /// this loop's own read of `pane.tab`.
+    ///
+    /// `TabNext`'s own clamp (`(tab + 1).min(last)`) re-derives the index
+    /// from whatever list is current, so it cannot go stale no matter how
+    /// far the environments list has shrunk. `TabPrev` only subtracts one
+    /// from `tab`, with no such re-derivation, so it takes two dropped
+    /// environments, not one, before it can be handed a `tab` further past
+    /// the end than a lone subtraction can walk back: three environments
+    /// down to one, sitting on the last tab, `TabPrev` once. Three down to
+    /// two self-corrects either direction, which is why the narrower
+    /// `app::tests::a_shrinking_environment_list_leaves_the_tab_somewhere_valid`
+    /// cannot exercise this arm, since it is the reducer-level half of this
+    /// same bug, not this one.
+    #[tokio::test]
+    async fn a_tab_past_a_shrunk_environment_list_does_not_panic_the_loop() {
+        let dir = tempfile::Builder::new().prefix("s").tempdir().unwrap();
+        let paths = crate::secret_readers::test_support::paths_under(dir.path());
+
+        let mut app = App::new(
+            Palette::detect(None, None, None),
+            Control::ReadOnly,
+            dir.path().display().to_string(),
+            Instant::now(),
+        );
+        // Built with plain `App::update` calls, off `run_ui` entirely: none
+        // of this touches disk, so nothing here races the real read below.
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".to_string(),
+            result: Ok(Box::new(crate::lookout::secrets::SecretsModel {
+                environments: vec!["dev".to_string(), "staging".to_string(), "prod".to_string()],
+                ..crate::lookout::secrets::SecretsModel::default()
+            })),
+        });
+        let _ = app.update(Msg::Key(KeyPress::TabNext));
+        let _ = app.update(Msg::Key(KeyPress::TabNext));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(pane.tab, 2, "sitting on the rightmost tab, `prod`");
+        // The environments this pane knows about collapse to one, the way
+        // `secrets::model`'s union does once every operator key naming
+        // `staging` and `prod` has been unset out from under it.
+        let _ = app.update(Msg::Secrets {
+            environment: "prod".to_string(),
+            result: Ok(Box::new(crate::lookout::secrets::SecretsModel {
+                environments: vec!["dev".to_string()],
+                ..crate::lookout::secrets::SecretsModel::default()
+            })),
+        });
+
+        let (msg_tx, msg_rx) = mpsc::channel(4);
+        let (poll_tx, _poll_rx) = mpsc::channel(1);
+        let (request_tx, _request_rx) = mpsc::channel(2);
+        // `TabPrev` is the reload that would have indexed the stale `tab`
+        // straight into the gap; `Quit` right behind it so the loop leaves
+        // on its own once that arm has run.
+        msg_tx.send(Msg::Key(KeyPress::TabPrev)).await.unwrap();
+        msg_tx.send(Msg::Key(KeyPress::Quit)).await.unwrap();
+
+        let terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        let done = tokio::time::timeout(
+            Duration::from_secs(10),
+            run_ui(
+                app,
+                terminal,
+                stream::empty(),
+                msg_rx,
+                poll_tx,
+                request_tx,
+                paths.clone(),
+                dir.path().to_path_buf(),
+                paths.daemon_config.clone(),
+                paths.socket.clone(),
+                FakeLocal::default(),
+            ),
+        )
+        .await;
+
+        assert!(
+            done.is_ok(),
+            "the loop must reach `Quit` rather than panic on a dangling tab"
+        );
     }
 
     /// The regression this exists for: a batch bigger than the request

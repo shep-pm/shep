@@ -7,9 +7,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all forty-five scenes through the same coloured
+frames.ansi renders all forty-six scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same forty-five scenes through the flattened NO_COLOR palette
+renders the same forty-six scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -38,8 +38,9 @@ edits filed (one of them needing a respawn), and the same fresh pane at 120
 and at 88 columns, where the explanation panel and the LANDS column trade
 places as the width falls.
 
-Before those are the four sheep-pane scenes, `↵` on a sheep, and before
-them the full-screen bleats pane, `b` from the dashboard. The seven before
+Before those are the four sheep-pane scenes, `↵` on a sheep, then the
+secrets pane, `S`, and before them the full-screen bleats pane, `b` from
+the dashboard. The seven before
 that are the settings screen, `s` from the dashboard. It owns the whole body
 between the title and the status bar rather than sharing it
 with the flock table, so a fresh $SHEP_HOME, some scalars declared, an armed
@@ -1067,6 +1068,58 @@ out  WARN retrying upstream payment gateway after a timeout, backing off 500ms b
                                                                                                     
                                                                                                     
 esc back   j/k line   ctrl-d/u page   G end   / search   n/N match   f follow   w wrap … █ following
+
+=== secrets  (160x48) ===
+The secrets pane, opened with `S`. DB_PASSWORD is revealed and named by one reader; vercel/API_TOKEN sits in its own read-only provider group; ELSEWHERE_ONLY has a slot in ci but not here, so it reads unresolved for this tab. The frame is tall enough to carry both the FOCUSED panel and WHO READS IT below the table.
+
+shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
+                                                                                                                                                                
+ ██ SECRETS   flock-wide values a Flockfile refers to and never carries                                                                                         
+store $SHEP_HOME/secrets.json · not encrypted · never printed to a log, never carried in a bleat · read at spawn, not now                                       
+reveal  [secrets] allow_read = true in shep.toml · change  lookout.allow_control = true                                                                         
+READ BY as of the roll, read 3m 4s ago                                                                                                                          
+all  ci  [production]                                                                                                         3 environments in this store · ←/→
+  KEY                         VALUE                         IN FORCE      SET IN                READ BY               LANDS                                     
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ▾ operator ×2 · you set these                                                                                                                                 
+> DB_PASSWORD                 hunter2-not-really            production    1 of 3 · production   1 (1 online)          visible 10s ██████████                    
+  ELSEWHERE_ONLY              not set here                  -             1 of 3 · ci           -                     -                                         
+  + new key                                                                                                                                                     
+  ▾ vercel (dog) ×1 · pushed by a provider · read-only here                                                                                                     
+  vercel/API_TOKEN            ██████ 6 bytes                production    1 of 3 · production   -                     -                                         
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+FOCUSED  DB_PASSWORD                                                                    WHO READS IT  DB_PASSWORD                                               
+the value leaves the screen after 10s. nothing records that you looked.                 █ catcher   online, was given a value at spawn                          
+the store is 0600: anyone who can reveal can also delete a log.                                                                                                 
+the system clipboard is readable by every process on the desktop.                                                                                               
+set in production · length 18 bytes · named by 1 of the flock                           named in env, args, out_file or err_file                                
+esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D delete   y copy   q quit                                               control enabled
 
 === sheep_pane  (160x48) ===
 The sheep pane on web, at its design size: 160 = 8 gutter + 140 body + 12 margin for each chart, and 160 = 76 config + 1 divider + 83 feed across the row below them. Both charts draw their full body, the config and env column lists web's own fields, and the embedded feed carries its own lines, all on one screen. web's cpu_ms counter is differenced across several two-second polls, rising by varying deltas, so both charts draw a shape rather than a single repeated bar.

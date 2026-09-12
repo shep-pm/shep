@@ -18,6 +18,8 @@ use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 
+use crate::serve::auth::base64_encode;
+
 /// Puts the terminal back the way it was found.
 ///
 /// Every step ignores its own failure: this runs from a panic hook, where
@@ -124,9 +126,46 @@ impl Drop for RestoreGuard {
     }
 }
 
+/// The OSC 52 sequence that offers `value` to the terminal's clipboard.
+///
+/// Write-only: the terminal sends nothing back, and many refuse the
+/// sequence by default, so no caller can report success. The pane's own
+/// wording says the copy was sent rather than that it arrived.
+fn osc52(value: &str) -> String {
+    format!("\x1b]52;c;{}\x07", base64_encode(value.as_bytes()))
+}
+
+/// Sends `value` to the terminal's clipboard over OSC 52.
+///
+/// Written straight to `io::stdout()`, the same handle [`enter`] and
+/// [`restore`] use, and never through `ratatui`'s `Terminal`: a test drives
+/// the dashboard with a `TestBackend` and no real terminal behind it, so a
+/// write routed through there would compile and verify nothing. Never
+/// through `tracing` either: the whole point of this function is that the
+/// value does not reach a log.
+///
+/// # Errors
+/// Whatever writing to stdout could not do.
+pub fn copy_to_clipboard(value: &str) -> io::Result<()> {
+    let mut out = io::stdout();
+    out.write_all(osc52(value).as_bytes())?;
+    out.flush()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_osc_52_sequence_carries_the_encoded_value_and_nothing_else() {
+        let sequence = super::osc52("hunter2");
+
+        assert_eq!(sequence, "\x1b]52;c;aHVudGVyMg==\x07");
+        assert!(
+            !sequence.contains("hunter2"),
+            "the plaintext must not ride along"
+        );
+    }
 
     /// Both the panic hook and the guard's `Drop` fire on a panic, so the
     /// second call is the ordinary path through a crash, not an edge case.

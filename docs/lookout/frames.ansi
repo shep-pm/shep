@@ -7,9 +7,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all forty-five scenes through the same coloured
+frames.ansi renders all forty-six scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same forty-five scenes through the flattened NO_COLOR palette
+renders the same forty-six scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -38,8 +38,9 @@ edits filed (one of them needing a respawn), and the same fresh pane at 120
 and at 88 columns, where the explanation panel and the LANDS column trade
 places as the width falls.
 
-Before those are the four sheep-pane scenes, `↵` on a sheep, and before
-them the full-screen bleats pane, `b` from the dashboard. The seven before
+Before those are the four sheep-pane scenes, `↵` on a sheep, then the
+secrets pane, `S`, and before them the full-screen bleats pane, `b` from
+the dashboard. The seven before
 that are the settings screen, `s` from the dashboard. It owns the whole body
 between the title and the status bar rather than sharing it
 with the flock table, so a fresh $SHEP_HOME, some scalars declared, an armed
@@ -1103,6 +1104,59 @@ The full-screen bleats pane, pinned to api, with a stream, a minimum level and a
                                                                                                     [0m
                                                                                                     [0m
 [0m[38;5;221m[48;5;235mesc back   j/k line   ctrl-d/u page   G end   / search   n/N match   f follow   w wrap …[0m[38;5;245m[48;5;235m █ following[0m
+
+
+=== secrets  (160x48) ===
+The secrets pane, opened with `S`. DB_PASSWORD is revealed and named by one reader; vercel/API_TOKEN sits in its own read-only provider group; ELSEWHERE_ONLY has a slot in ci but not here, so it reads unresolved for this tab. The frame is tall enough to carry both the FOCUSED panel and WHO READS IT below the table.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                    6 in the flock[0m
+                                                                                                                                                                [0m
+[0m[7m[38;5;221m ██ SECRETS   flock-wide values a Flockfile refers to and never carries                                                                                         [0m
+[0m[38;5;245mstore $SHEP_HOME/secrets.json · not encrypted · never printed to a log, never carried in a bleat · read at spawn, not now[0m                                       [0m
+[0m[38;5;245mreveal  [secrets] allow_read = true in shep.toml · change  lookout.allow_control = true[0m                                                                         [0m
+[0m[38;5;245mREAD BY as of the roll, read 3m 4s ago[0m                                                                                                                          [0m
+[0m[38;5;245mall[0m  [0m[38;5;245mci[0m  [0m[38;5;221m[production][0m                                                                                                         [0m[38;5;245m3 environments in this store · ←/→[0m
+  [0m[38;5;245mKEY                         VALUE                         IN FORCE      SET IN                READ BY               LANDS                                     [0m
+[0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;245m▾ operator ×2 · you set these                                                                                                                                 [0m
+[0m[48;5;235m [0m [0m[48;5;235mDB_PASSWORD                 hunter2-not-really            production    1 of 3 · production   1 (1 online)          visible 10s ██████████                    [0m
+  ELSEWHERE_ONLY              not set here                  -             1 of 3 · ci           -                     -                                         [0m
+  + new key                                                                                                                                                     [0m
+  [0m[38;5;245m▾ vercel (dog) ×1 · pushed by a provider · read-only here                                                                                                     [0m
+  vercel/API_TOKEN            ██████ 6 bytes                production    1 of 3 · production   -                     -                                         [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+[0m[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245mFOCUSED  DB_PASSWORD                                                                    WHO READS IT  DB_PASSWORD                                               [0m
+the value leaves the screen after 10s. nothing records that you looked.                 █ catcher   online, was given a value at spawn                          [0m
+the store is 0600: anyone who can reveal can also delete a log.                                                                                                 [0m
+the system clipboard is readable by every process on the desktop.                                                                                               [0m
+set in production · length 18 bytes · named by 1 of the flock                           named in env, args, out_file or err_file                                [0m
+[0m[38;5;221m[48;5;235mesc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D delete   y copy   q quit                                              [0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === sheep_pane  (160x48) ===

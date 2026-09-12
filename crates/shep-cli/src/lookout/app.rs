@@ -20,6 +20,7 @@ use shep_core::protocol::{
     BusEvent, DogSectionToml, DogSource, EnvValue, Lamb, ProcessEventKind, ProcessInfo, Request,
     Response, SelectorSpec, SheepConfigView, SheepRefusal,
 };
+use shep_core::secrets::ALL_ENVIRONMENTS;
 use shep_core::status::ProcStatus;
 
 use super::field::{FieldKind, FieldSet};
@@ -27,6 +28,7 @@ use super::level::Level;
 use super::pane::{ConfigPane, FieldValue, Lock, PaneEdit, PaneRow, PaneTarget, ReloadKind};
 use super::pane_bleats::BleatsPane;
 use super::pane_sheep::SheepPane;
+use super::secrets::{SecretRow, SecretsModel, Source};
 use super::tail::Stream;
 use super::theme::Palette;
 use super::viewport::Viewport;
@@ -97,6 +99,28 @@ pub enum KeyPress {
     TextAbandon,
     /// `s`: opens the settings screen, or closes it from inside.
     Settings,
+    /// `S`: opens the secrets pane, or closes it from inside.
+    ///
+    /// Picked rather than found. The design named `g`, which is
+    /// [`Self::SelectFirst`]; `s` is the settings screen and `S` is its
+    /// neighbour, both change-screens over the shepherd's own
+    /// configuration.
+    Secrets,
+    /// `v`: shows the selected secret's value for [`REVEAL_HOLDS`], in the
+    /// secrets pane. Refuses when `[secrets] allow_read` is off, naming the
+    /// gate. Ignored on every other screen.
+    Reveal,
+    /// `y`: sends the already-revealed value to the terminal's clipboard
+    /// over OSC 52, in the secrets pane. A reveal by another route, so it
+    /// takes [`Self::Reveal`]'s own `[secrets] allow_read` gate rather than
+    /// a second one, and copies what [`Reveal`] already holds on screen
+    /// rather than reading the store afresh. Ignored on every other screen.
+    Copy,
+    /// `Left`: the previous environment tab, in the secrets pane. Stops at
+    /// the first rather than wrapping. Ignored elsewhere.
+    TabPrev,
+    /// `Right`: the next one, stopping at the last.
+    TabNext,
     /// `space`: cycles the value under the settings screen's cursor. Nothing on
     /// the dashboard; refuses like an action key when the gate is closed.
     Cycle,
@@ -163,6 +187,13 @@ pub enum KeyPress {
     /// `N`: the same, toward the oldest matching line. Ignored on the
     /// dashboard.
     MatchPrev,
+    /// `D`: arms the removal of the selected key's value in the current
+    /// tab's environment, in the secrets pane. `Enter` confirms.
+    ///
+    /// Capital, and `d` is left alone: `d` is already
+    /// [`Self::ListRemove`], and `map_key` dispatches on mode rather than
+    /// pane, so the two cannot share a key.
+    SecretDelete,
     /// `Tab`: moves the config pane's focus to the next group.
     NextGroup,
     /// `1` through `8`: jumps the config pane's focus straight to that
@@ -298,6 +329,51 @@ pub enum Msg {
         /// not.
         result: Result<DogSource, String>,
     },
+    /// An [`Effect::LoadSecrets`] has answered.
+    ///
+    /// `Result<_, String>`, like [`Self::Settings`]: `secrets::model` cannot
+    /// fail, but the `spawn_blocking` it runs on can. Dropped when no pane
+    /// is open, the way a late config reply is.
+    ///
+    /// `environment` is the tab this read was built for, echoed back
+    /// because the pane's model is empty on the very first load and has no
+    /// tab to read it from; every later load already knows it from
+    /// [`SecretsPane::tab`], but carrying it here keeps this arm's rule
+    /// (find the requested environment in the fresh model, or fall back to
+    /// 0) the same on every load rather than only the first.
+    Secrets {
+        /// The environment [`crate::lookout::secrets::model`] was built for.
+        environment: String,
+        /// The model, boxed: it is much larger than every other variant.
+        result: Result<Box<SecretsModel>, String>,
+    },
+    /// An [`Effect::RevealSecret`]'s read has answered.
+    ///
+    /// Nothing here reaches the screen on its own: the pane draws the value
+    /// only while every reason it was asked for still holds, which is what
+    /// the two echoes are for.
+    Revealed {
+        /// The key that was read, echoed back: the selection can have moved
+        /// to another row while the read was in flight.
+        key: String,
+        /// The environment tab it was read for, echoed back for
+        /// [`Self::Secrets`]'s reason.
+        environment: String,
+        /// The value, or `None` when the slot no longer resolves or the
+        /// store would not read.
+        value: Option<RevealedValue>,
+    },
+    /// An [`Effect::WriteSecret`] has landed.
+    SecretWritten {
+        /// What the write returned, its error already rendered: a
+        /// `SecretError` names a key, never a value, but the pane has no
+        /// use for the type.
+        ///
+        /// `Ok(true)` means the store changed. `Ok(false)` is `secrets::unset`
+        /// reporting that there was no slot to remove, which a delete must
+        /// say out loud rather than report as a success.
+        result: Result<bool, String>,
+    },
 }
 
 /// The one gate on writing `shep.toml` from the settings screen.
@@ -399,6 +475,53 @@ pub enum Effect {
     /// shepherd ([`Sent::Dog`]) where a scalar write ends in a notice.
     /// `spawn_blocking`, for [`Self::WriteSetting`]'s reason.
     WriteDog(DogEdit, WriteAuthority),
+    /// Read the secret store, the provider cache and the roll; the result
+    /// lands as [`Msg::Secrets`].
+    ///
+    /// Runs on `spawn_blocking` for [`Self::WriteSetting`]'s reason: the
+    /// store's own lock acquires with no deadline.
+    LoadSecrets,
+    /// Read the one value behind `row`; the answer lands as
+    /// [`Msg::Revealed`].
+    ///
+    /// Runs on `spawn_blocking` for [`Self::LoadSettings`]'s reason: the
+    /// read takes no lock, and a synchronous file read on the UI task stalls
+    /// the redraw, the tick and the bus drain together.
+    ///
+    /// No [`WriteAuthority`]: the gate on this one is
+    /// `[secrets] allow_read`, checked when it is raised and again when the
+    /// answer lands.
+    RevealSecret {
+        /// The operator store to read an [`crate::lookout::secrets::Source::Operator`] row from.
+        store: PathBuf,
+        /// The provider cache to read a namespaced row from.
+        provider_cache: PathBuf,
+        /// The row, which names the key, the store and the slot.
+        row: SecretRow,
+        /// The environment tab it is being read for, echoed back by
+        /// [`Msg::Revealed`].
+        environment: String,
+    },
+    /// Apply one change to `secrets.json`; the result lands as
+    /// [`Msg::SecretWritten`].
+    ///
+    /// Runs on `spawn_blocking` for [`Self::WriteSetting`]'s reason: the
+    /// store's lock acquires with no deadline, and the UI task's redraw,
+    /// tick and bus drain would block with the write.
+    ///
+    /// The [`WriteAuthority`] is not decoration: this variant cannot be
+    /// named without having passed the gate.
+    WriteSecret(SecretEdit, WriteAuthority),
+    /// Sends the carried value to the terminal's clipboard over OSC 52, by
+    /// [`KeyPress::Copy`]. `super::run_ui` writes it straight to the same
+    /// stdout handle `super::term` uses, never through `Terminal<B>` (a
+    /// `TestBackend` has none) and never through `tracing`: the value must
+    /// not reach a log.
+    ///
+    /// No [`WriteAuthority`]: this never touches `shep.toml`, and the value
+    /// it carries is one [`App::update`] already read off `pane.reveal`,
+    /// past the same `[secrets] allow_read` gate a reveal takes.
+    CopyToClipboard(ClipboardValue),
 }
 
 /// The connection's state, as the dashboard reports it.
@@ -1317,6 +1440,49 @@ pub(super) fn retrying_sentence(attempt: u32) -> String {
 /// The sentence every closed-gate refusal gives, dashboard and settings alike.
 const READ_ONLY_REFUSAL: &str = "read-only: from --read-only or lookout.allow_control";
 
+/// `Enter`'s refusal on a provider row: pushed by a dog, so nothing here is
+/// this operator's to set.
+const PROVIDER_ROW_REFUSAL: &str = "read-only: pushed by a dog, not set here";
+
+/// `D`'s refusal on a row whose value comes from the `all` slot while a
+/// named environment's tab is open.
+///
+/// Refuses rather than retargets, both ways round. Unsetting the tab's own
+/// environment would remove nothing and report success, and unsetting `all`
+/// from here would change every environment at once, which is not what a row
+/// reading `all` under `IN FORCE` invites anyone to expect.
+const ALL_SLOT_REFUSAL: &str = "this value comes from the `all` slot: removing it \
+     affects every environment, so switch to the `all` tab to mean it";
+
+/// [`Msg::SecretWritten`]'s answer to an unset that found no slot, whether
+/// the store changed under the pane or the row never resolved in this tab.
+const NOTHING_REMOVED: &str = "nothing to remove: this key holds no value in this environment";
+
+/// Whether deleting `row` from the tab named `environment` would have to
+/// remove the `all` slot, which only the `all` tab may do.
+fn deletes_the_all_slot(row: &SecretRow, environment: &str) -> bool {
+    row.in_force.as_deref() == Some(ALL_ENVIRONMENTS) && environment != ALL_ENVIRONMENTS
+}
+
+/// The grammar a new key's name is checked against, matching `shep secret`'s
+/// own `--help` wording (`cli.rs`) rather than a second copy of it.
+const NEW_KEY_GRAMMAR: &str =
+    "letters, digits, `.`, `_` and `-`, up to 128 bytes, not starting with a dot";
+
+/// `y`'s notice on a successful copy.
+///
+/// Says the value was sent, never that it arrived: OSC 52 is write-only, the
+/// terminal never replies, and many terminals refuse the sequence by
+/// default, so no caller can confirm anything landed. Names the system
+/// clipboard's own reach in the same breath, since sending a value there is
+/// handing it to every process on the desktop, not just the terminal.
+const COPY_SENT_NOTICE: &str = "sent to the terminal's clipboard over OSC 52 \u{b7} readable there by every process on the desktop";
+
+/// How long a revealed value stays on screen.
+///
+/// The pane prints this number, so the two cannot drift.
+pub(crate) const REVEAL_HOLDS: Duration = Duration::from_secs(10);
+
 /// The widest window any pane draws, in samples.
 ///
 /// The landing pane's sparkline needs ten. 1d's charts want six minutes,
@@ -1367,8 +1533,330 @@ pub(crate) enum Body {
     /// The bleats feed given the whole screen, opened by
     /// [`KeyPress::Bleats`].
     Bleats(BleatsPane),
+    /// The secrets pane, opened by [`KeyPress::Secrets`].
+    Secrets(SecretsPane),
     /// One sheep given the whole screen, opened by [`KeyPress::Confirm`].
     Sheep(Box<SheepPane>),
+}
+
+/// The secrets pane's state.
+///
+/// `Debug` is manual (IR-41): [`Self::reveal`] and [`Self::typing`] carry
+/// an operator's plaintext.
+pub(crate) struct SecretsPane {
+    /// Everything drawn, rebuilt by every load.
+    pub model: Box<SecretsModel>,
+    /// Which environment tab is showing, an index into
+    /// [`SecretsModel::environments`].
+    pub tab: usize,
+    /// Which row the panels describe, an index into
+    /// [`SecretsModel::rows`].
+    pub selected: usize,
+    /// Namespace groups `z` has collapsed, mirroring the flock table's own
+    /// collapsed-fold set for this pane's rows.
+    pub collapsed: HashSet<String>,
+    /// The value on screen and when it leaves, or `None`.
+    pub reveal: Option<Reveal>,
+    /// The key an [`Effect::RevealSecret`] is reading for, or `None`. The
+    /// answer is drawn only while this still names its key, so every
+    /// trigger that clears a reveal also drops one in flight.
+    pub pending_reveal: Option<String>,
+    /// The armed delete, or `None`. While this is set, `Enter` confirms the
+    /// delete rather than opening the value input.
+    pub armed: Option<ArmedDelete>,
+    /// The open text input, or `None`.
+    pub typing: Option<Typing>,
+}
+
+/// A delete armed on the secrets pane: the key and when it armed, one value
+/// rather than two so a caller cannot set one without the other, the same
+/// pairing [`PanePending::Armed`] keeps for the config pane.
+#[derive(Debug, Clone)]
+pub(crate) struct ArmedDelete {
+    /// The key waiting on `Enter` to confirm the delete.
+    pub key: String,
+    /// When it armed, for the expiry the tick runs.
+    pub at: Instant,
+}
+
+impl SecretsPane {
+    /// Takes the value off the screen, and abandons a read still in flight
+    /// so its answer cannot put one back.
+    ///
+    /// One method rather than an assignment at each trigger: a trigger added
+    /// later has one thing to call, and the ones that exist cannot drift
+    /// apart.
+    pub(crate) fn hide(&mut self) {
+        self.reveal = None;
+        self.pending_reveal = None;
+    }
+
+    /// The environment tab showing, or `None` before the first load.
+    pub(crate) fn environment(&self) -> Option<&str> {
+        self.model.environments.get(self.tab).map(String::as_str)
+    }
+
+    /// Whether `source`'s rows are folded away: only a provider namespace
+    /// can be, mirroring `on_secrets_key`'s `Collapse` arm.
+    ///
+    /// `pub(crate)` so `view::secrets::draw` reads the same answer this
+    /// pane's own cursor does, rather than a second copy of the match.
+    pub(crate) fn is_collapsed(&self, source: &Source) -> bool {
+        match source {
+            Source::Operator => false,
+            Source::Namespace(namespace) => self.collapsed.contains(namespace),
+        }
+    }
+
+    /// Every index into `model.rows` this pane currently draws: a
+    /// collapsed namespace's members contribute none, the same rows
+    /// `view::secrets::draw` skips on screen. Never the `+ new key` row,
+    /// which is not a `model.rows` index: [`Self::reveal_selected`] reads
+    /// this to decide whether anything real is even on screen, so it stays
+    /// real-rows-only rather than growing the affordance into it.
+    fn visible_row_indices(&self) -> Vec<usize> {
+        self.model
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| !self.is_collapsed(&row.source))
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    /// Whether `selected` names the `+ new key` row rather than a real one:
+    /// one past every index [`Self::visible_row_indices`] can ever hand
+    /// back.
+    pub(crate) fn selected_is_new_key_row(&self) -> bool {
+        self.selected == self.model.rows.len()
+    }
+
+    /// The `model.rows` index the `+ new key` affordance sits after: the
+    /// highest-index operator row, or `None` when the store holds none, in
+    /// which case the affordance is first on screen instead.
+    ///
+    /// The single source of truth for where the affordance goes.
+    /// [`Self::screen_slots`] (the cursor) and [`view::secrets::draw`] (the
+    /// render) both derive their placement from this rather than each
+    /// running its own scan, so the two cannot disagree about which line
+    /// the affordance is on.
+    pub(crate) fn new_key_anchor(&self) -> Option<usize> {
+        self.model
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.source == Source::Operator)
+            .map(|(index, _)| index)
+            .max()
+    }
+
+    /// Every screen slot `j`/`k`/`g`/`G` can land the cursor on, in the
+    /// order [`view::secrets::draw`] draws them: `None` is the `+ new key`
+    /// affordance, placed right after [`Self::new_key_anchor`], or first on
+    /// screen when there is none, matching `view::secrets::draw`'s own
+    /// placement.
+    ///
+    /// Real rows never move relative to each other here, so a row hidden by
+    /// a fold is simply absent, the same as [`Self::visible_row_indices`].
+    fn screen_slots(&self) -> Vec<Option<usize>> {
+        let anchor = self.new_key_anchor();
+        let visible = self.visible_row_indices();
+        let insert_at = match anchor {
+            Some(anchor) => visible
+                .iter()
+                .position(|&index| index > anchor)
+                .unwrap_or(visible.len()),
+            None => 0,
+        };
+        let mut slots: Vec<Option<usize>> = visible.into_iter().map(Some).collect();
+        slots.insert(insert_at, None);
+        slots
+    }
+
+    /// Moves `selected` by `delta` positions over [`Self::screen_slots`],
+    /// clamped rather than wrapping: the same rule the flock table and every
+    /// other pane's cursor follows. A no-op with nothing on screen (there is
+    /// always at least the affordance, so this is unreachable in practice).
+    ///
+    /// A selection `z` just folded away is not itself in [`Self::screen_slots`]:
+    /// rather than guess where inside it the old position belonged, this
+    /// lands on the nearest surviving *real* row in the direction `delta`
+    /// points, over [`Self::visible_row_indices`] alone (never the
+    /// affordance), so a reload or a fold can never strand the cursor on it
+    /// by accident.
+    pub(crate) fn move_by(&mut self, delta: isize) {
+        let slots = self.screen_slots();
+        if slots.is_empty() {
+            return;
+        }
+        let current = (!self.selected_is_new_key_row()).then_some(self.selected);
+        if let Some(position) = slots.iter().position(|&slot| slot == current) {
+            let next = position.saturating_add_signed(delta).min(slots.len() - 1);
+            self.selected = slots[next].unwrap_or(self.model.rows.len());
+            return;
+        }
+        // The selection itself just went hidden (`z` folded its own group
+        // away, or a reload's clamp landed on a row a standing fold hides):
+        // land on the nearest visible neighbour in the direction requested,
+        // rather than guessing a position inside a list the old selection
+        // is not part of. `j`/`k` reach this arm with `delta` of 1 or -1;
+        // the `Collapse` arm and the `Msg::Secrets` clamp call with `delta`
+        // 0 to reuse the same landing logic without moving the selection
+        // themselves.
+        let visible = self.visible_row_indices();
+        if visible.is_empty() {
+            return;
+        }
+        let boundary = visible.partition_point(|&index| index < self.selected);
+        self.selected = if delta < 0 {
+            visible[boundary.saturating_sub(1).min(visible.len() - 1)]
+        } else {
+            visible[boundary.min(visible.len() - 1)]
+        };
+    }
+
+    /// Jumps `selected` to the first screen slot, `g`'s effect: a real row
+    /// unless the operator store holds none, in which case the affordance
+    /// itself is first on screen.
+    pub(crate) fn move_to_first(&mut self) {
+        if let Some(&slot) = self.screen_slots().first() {
+            self.selected = slot.unwrap_or(self.model.rows.len());
+        }
+    }
+
+    /// Jumps `selected` to the last screen slot, `G`'s effect: the
+    /// affordance itself when no namespace group follows the operator rows,
+    /// otherwise the last namespace row, exactly what is last on screen.
+    pub(crate) fn move_to_last(&mut self) {
+        if let Some(&slot) = self.screen_slots().last() {
+            self.selected = slot.unwrap_or(self.model.rows.len());
+        }
+    }
+}
+
+/// Redacted (IR-41): `reveal` and `typing` hold a plaintext value.
+impl fmt::Debug for SecretsPane {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SecretsPane")
+            .field("rows", &self.model.rows.len())
+            .field("tab", &self.tab)
+            .field("selected", &self.selected)
+            .field("collapsed", &self.collapsed.len())
+            .field("revealing", &self.reveal.is_some())
+            .field("pending_reveal", &self.pending_reveal)
+            .field("armed", &self.armed.as_ref().map(|a| &a.key))
+            .field("typing", &self.typing.is_some())
+            .finish()
+    }
+}
+
+/// A value on screen, and the instant it leaves.
+pub(crate) struct Reveal {
+    /// The key it belongs to.
+    pub key: String,
+    /// The plaintext.
+    pub value: String,
+    /// When it clears, [`REVEAL_HOLDS`] after the keypress.
+    pub until: Instant,
+}
+
+/// Redacted (IR-41): `value` is the secret.
+impl fmt::Debug for Reveal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Reveal")
+            .field("key", &self.key)
+            .field("value", &format_args!("<{} bytes>", self.value.len()))
+            .finish_non_exhaustive()
+    }
+}
+
+/// A plaintext value on its way from the store to the pane, in
+/// [`Msg::Revealed`].
+///
+/// A type of its own rather than a `String` field: [`Msg`] derives `Debug`,
+/// so the redaction has to travel with the value (IR-41).
+#[derive(Clone)]
+pub struct RevealedValue(pub(crate) String);
+
+/// Redacted (IR-41): the field is the secret.
+impl fmt::Debug for RevealedValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "RevealedValue(<{} bytes>)", self.0.len())
+    }
+}
+
+/// A plaintext value on its way to the terminal's clipboard, in
+/// [`Effect::CopyToClipboard`].
+///
+/// A type of its own rather than a bare `String`: [`Effect`] derives
+/// `Debug`, so the redaction has to travel with the value, the same reason
+/// [`RevealedValue`] exists (IR-41).
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct ClipboardValue(pub(crate) String);
+
+/// Redacted (IR-41): the field is the secret.
+impl fmt::Debug for ClipboardValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ClipboardValue(<{} bytes>)", self.0.len())
+    }
+}
+
+/// One change to the operator's store, carried by [`Effect::WriteSecret`].
+///
+/// `Debug` is manual (IR-41): `value` is the operator's plaintext.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct SecretEdit {
+    /// The key.
+    pub key: String,
+    /// Which environment's slot moves.
+    pub environment: String,
+    /// The new value, or `None` to remove the slot. Task 8's door: nothing
+    /// in this task builds `None`.
+    pub value: Option<String>,
+}
+
+/// Redacted (IR-41), matching `SecretCommand::Set`: a length, never a
+/// value.
+impl fmt::Debug for SecretEdit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = self.value.as_ref().map_or_else(
+            || "None".to_string(),
+            |v| format!("Some(<{} bytes>)", v.len()),
+        );
+        f.debug_struct("SecretEdit")
+            .field("key", &self.key)
+            .field("environment", &self.environment)
+            .field("value", &format_args!("{value}"))
+            .finish()
+    }
+}
+
+/// An open text input in the secrets pane: the `+ new key` row's name step,
+/// or a key's value step.
+pub(crate) struct Typing {
+    /// What is being typed: a new key's name, or a value for a key.
+    pub what: TypingWhat,
+    /// The buffer.
+    pub buffer: String,
+}
+
+/// Redacted (IR-41): a value buffer is the secret being typed.
+impl fmt::Debug for Typing {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Typing")
+            .field("what", &self.what)
+            .field("buffer", &format_args!("<{} bytes>", self.buffer.len()))
+            .finish()
+    }
+}
+
+/// Which of the pane's two inputs is open.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TypingWhat {
+    /// The `+ new key` row's name input.
+    NewKey,
+    /// A value for the named key, in the current tab's environment.
+    ValueFor(String),
 }
 
 /// Which screen asked for a sheep's config.
@@ -1698,6 +2186,29 @@ impl App {
                 // nothing on it is a question waiting for an answer. Its
                 // edits sit until the operator writes them or undoes them,
                 // and a set that timed out would throw work away silently.
+                // Outside the link guard for the same reason, and one more:
+                // `until` was set off `self.now`, which a dead link stops
+                // advancing, so the tick's own `now` is what expires a
+                // reveal at all once the link has gone.
+                if let Some(pane) = self.secrets_pane_mut()
+                    && pane
+                        .reveal
+                        .as_ref()
+                        .is_some_and(|reveal| now >= reveal.until)
+                {
+                    pane.hide();
+                }
+                // Outside the link guard for the same reason as the reveal
+                // above: an armed delete that can never be sent is no less
+                // stale for the shepherd being gone. `now`, not `self.now`.
+                if let Some(pane) = self.secrets_pane_mut()
+                    && pane
+                        .armed
+                        .as_ref()
+                        .is_some_and(|a| now.saturating_duration_since(a.at) >= CONFIRM_EXPIRY)
+                {
+                    pane.armed = None;
+                }
                 // Neither full-screen feed has a timer of its own; each
                 // rides every tick instead of the dashboard's own cadence,
                 // which is fixed for the connection's lifetime (see
@@ -1960,6 +2471,111 @@ impl App {
                     if let Some(settings) = self.settings_mut() {
                         settings.pending = None;
                     }
+                    self.notice = Some(Notice {
+                        text: message,
+                        grave: true,
+                    });
+                    Effect::None
+                }
+            },
+            // Dropped when the pane has since closed, the way a settings
+            // read that outraced a config pane is: adopting it would reopen
+            // a screen the operator has already left.
+            Msg::Secrets {
+                environment,
+                result,
+            } => {
+                if let Body::Secrets(pane) = &mut self.body {
+                    match result {
+                        Ok(model) => {
+                            // A fresh read describes the store as it is now;
+                            // an arm from before it landed named a row this
+                            // model may no longer even have.
+                            pane.armed = None;
+                            // Only on the very first load, where the pane's
+                            // model is still the empty default and so has no
+                            // tab yet: the daemon's own default environment
+                            // wins the tab it lands on.
+                            let first_load = pane.model.environments.is_empty();
+                            if first_load {
+                                pane.tab = model
+                                    .environments
+                                    .iter()
+                                    .position(|candidate| candidate == &environment)
+                                    .unwrap_or(0);
+                            }
+                            // The environments list is a union recomputed on
+                            // every load and can shrink, so clamp a tab past
+                            // the new end onto the last surviving one
+                            // instead of dangling.
+                            pane.tab = pane.tab.min(model.environments.len().saturating_sub(1));
+                            // A selection on the trailing `+ new key`
+                            // sentinel stays on it under the fresh model's
+                            // own row count, rather than the ordinary clamp
+                            // below, which would otherwise land it on the
+                            // new model's last real row. Excludes the first
+                            // load, whose own empty model reads `selected`
+                            // (`0`) as that same sentinel by coincidence,
+                            // having no rows yet either.
+                            pane.selected = if !first_load && pane.selected_is_new_key_row() {
+                                model.rows.len()
+                            } else {
+                                pane.selected.min(model.rows.len().saturating_sub(1))
+                            };
+                            pane.model = model;
+                            // The row count clamp above says nothing about
+                            // collapse state, and `collapsed` survives a
+                            // reload: the surviving index can still name a
+                            // row a still-folded namespace hides. Same
+                            // fallback the `Collapse` arm uses.
+                            if pane
+                                .model
+                                .rows
+                                .get(pane.selected)
+                                .is_some_and(|row| pane.is_collapsed(&row.source))
+                            {
+                                pane.move_by(0);
+                            }
+                        }
+                        Err(message) => {
+                            self.notice = Some(Notice {
+                                text: message,
+                                grave: true,
+                            });
+                        }
+                    }
+                }
+                Effect::None
+            }
+            Msg::Revealed {
+                key,
+                environment,
+                value,
+            } => {
+                self.on_revealed(&key, &environment, value);
+                Effect::None
+            }
+            // `Ok` re-reads (like `Msg::SettingWritten`) so the table shows
+            // the file's new contents rather than what was typed, and clears
+            // any revealed value, which belonged to the prior store. `Err`
+            // raises no reload, so the table keeps its last known-good read.
+            Msg::SecretWritten { result } => match result {
+                Ok(true) => {
+                    self.hide_revealed();
+                    Effect::LoadSecrets
+                }
+                // `secrets::unset` found no slot. Nothing changed, so
+                // nothing is re-read, and the operator hears about it: a
+                // destructive action reporting success over a no-op is the
+                // one answer this pane must never give.
+                Ok(false) => {
+                    self.notice = Some(Notice {
+                        text: NOTHING_REMOVED.to_string(),
+                        grave: true,
+                    });
+                    Effect::None
+                }
+                Err(message) => {
                     self.notice = Some(Notice {
                         text: message,
                         grave: true,
@@ -2558,6 +3174,10 @@ impl App {
         if self.bleats_pane().is_some() {
             return self.on_bleats_key(key);
         }
+        // The secrets pane, the same as the three panes above.
+        if matches!(self.body, Body::Secrets(_)) {
+            return self.on_secrets_key(key);
+        }
         // The sheep pane owns the keyboard while it is open, the same as
         // the three full-screen panes above. `Body` holds only one at a
         // time, so this ordering is documentation, not correctness, the
@@ -2644,6 +3264,32 @@ impl App {
             // The read, not the open: the screen opens only once
             // `Msg::Settings` lands.
             KeyPress::Settings => Effect::LoadSettings,
+            // Opens with an empty model; `Msg::Secrets` fills it once the
+            // read lands. Closing again is `on_secrets_key`'s job, reached
+            // only once `self.body` is already `Body::Secrets`, the same
+            // split `KeyPress::Settings`/`on_settings_key` uses.
+            KeyPress::Secrets => {
+                self.body = Body::Secrets(SecretsPane {
+                    model: Box::default(),
+                    tab: 0,
+                    selected: 0,
+                    collapsed: HashSet::new(),
+                    reveal: None,
+                    pending_reveal: None,
+                    armed: None,
+                    typing: None,
+                });
+                Effect::LoadSecrets
+            }
+            // Meaningful only inside the secrets pane, which owns the
+            // keyboard while `self.body` is `Body::Secrets`; reached here
+            // only from the dashboard, where there is no tab to move and no
+            // secret selected to show.
+            KeyPress::TabPrev
+            | KeyPress::TabNext
+            | KeyPress::Reveal
+            | KeyPress::Copy
+            | KeyPress::SecretDelete => Effect::None,
             // Also the read, not the open: the pane shows the shepherd's
             // answer or nothing. `selected_row` is `None` for a group too,
             // but a group's name is what `Request::SheepConfig` wants, so
@@ -2703,6 +3349,446 @@ impl App {
             | KeyPress::WrapToggle
             | KeyPress::MatchNext
             | KeyPress::MatchPrev => Effect::None,
+        }
+    }
+
+    /// The secrets pane's own match box, in force while `self.body` is
+    /// `Body::Secrets`.
+    ///
+    /// `S` and `Escape` both close it: `S` toggles, the way `s` toggles the
+    /// settings screen, and `Escape` is the uniform "leave whatever is
+    /// open" key every other pane answers to. A tab move reloads, because
+    /// `in_force`, the value and the byte length on every row belong to one
+    /// environment. `z` toggles the selected row's namespace rather than a
+    /// fold, since the flock table is not what is on screen.
+    fn on_secrets_key(&mut self, key: KeyPress) -> Effect {
+        // `view::status`'s armed prompt promises "enter confirms, any other
+        // key cancels", so every other key cancels here, the way the
+        // dashboard's own armed confirm already does. Unlike the dashboard
+        // the key is not also swallowed: a cursor move that disarms still
+        // moves, which is what the pane has always done.
+        //
+        // `Quit` is the exception the dashboard makes too: an operator whose
+        // ctrl-c does nothing reaches for `kill -9`.
+        let was_armed =
+            !matches!(key, KeyPress::Confirm | KeyPress::Quit) && self.disarm_secret_delete();
+        match key {
+            // Mirrors `on_bleats_key`'s own arm: every full-screen pane
+            // answers `q`/`ctrl-c`, the one key a cancelling armed action
+            // does not swallow either (`on_key`'s own comment on that).
+            // The `hide` here buys nothing on screen, since nothing is drawn
+            // after this: it drops the plaintext a moment before the whole
+            // `App` goes.
+            KeyPress::Quit => {
+                self.hide_revealed();
+                Effect::Quit
+            }
+            KeyPress::Secrets => {
+                self.hide_revealed();
+                self.body = Body::FlockTable;
+                Effect::None
+            }
+            // An armed delete eats the first `Escape` rather than also
+            // closing the pane: a delete waiting on a confirm is a state
+            // the operator should see cleared before anything else moves.
+            KeyPress::Escape => {
+                if was_armed {
+                    return Effect::None;
+                }
+                self.hide_revealed();
+                self.body = Body::FlockTable;
+                Effect::None
+            }
+            KeyPress::Reveal => self.reveal_selected(),
+            KeyPress::Copy => self.copy_revealed(),
+            KeyPress::TabPrev | KeyPress::TabNext => {
+                self.hide_revealed();
+                let Some(pane) = self.secrets_pane_mut() else {
+                    return Effect::None;
+                };
+                let last = pane.model.environments.len().saturating_sub(1);
+                pane.tab = if key == KeyPress::TabPrev {
+                    pane.tab.saturating_sub(1)
+                } else {
+                    (pane.tab + 1).min(last)
+                };
+                Effect::LoadSecrets
+            }
+            KeyPress::Collapse => {
+                if let Some(pane) = self.secrets_pane_mut()
+                    && let Some(row) = pane.model.rows.get(pane.selected)
+                    && let Source::Namespace(namespace) = &row.source
+                {
+                    let namespace = namespace.clone();
+                    if !pane.collapsed.remove(&namespace) {
+                        pane.collapsed.insert(namespace);
+                        // Folding away the group `selected` sits in leaves
+                        // no marked row on screen, and a `v` past this
+                        // point would reveal a value nobody can see. Reuse
+                        // `move_by`'s hidden-selection fallback rather than
+                        // duplicate the boundary search here.
+                        pane.move_by(0);
+                    }
+                }
+                Effect::None
+            }
+            // `j`/`k`/`g`/`G` move over the pane's visible rows
+            // ([`SecretsPane::move_by`] and friends), the same clamped
+            // rule every other pane's cursor follows. The value on screen
+            // belongs to the row it was revealed from, so every one of
+            // these clears it first, the way a tab move already does.
+            KeyPress::SelectUp
+            | KeyPress::SelectDown
+            | KeyPress::SelectFirst
+            | KeyPress::SelectLast => {
+                self.hide_revealed();
+                if let Some(pane) = self.secrets_pane_mut() {
+                    match key {
+                        KeyPress::SelectUp => pane.move_by(-1),
+                        KeyPress::SelectDown => pane.move_by(1),
+                        KeyPress::SelectFirst => pane.move_to_first(),
+                        KeyPress::SelectLast => pane.move_to_last(),
+                        _ => unreachable!(),
+                    }
+                }
+                Effect::None
+            }
+            // `r`: re-reads the store, the provider cache and the roll,
+            // the same effect a tab move already returns and for the same
+            // reason: `in_force`, the value and the byte length are read
+            // off disk, not derived from what is already on screen.
+            KeyPress::Refresh => {
+                self.hide_revealed();
+                Effect::LoadSecrets
+            }
+            // `Enter` means two things here: armed, it confirms the delete;
+            // otherwise, it opens an input. Armed wins, or a delete waiting
+            // on a confirm would silently reopen the value box instead.
+            KeyPress::Confirm => {
+                if self
+                    .secrets_pane_mut()
+                    .is_some_and(|pane| pane.armed.is_some())
+                {
+                    self.confirm_secret_delete()
+                } else {
+                    self.secrets_confirm()
+                }
+            }
+            KeyPress::SecretDelete => self.arm_secret_delete(),
+            // Nothing else means anything here. Listed rather than a
+            // wildcard, so a new `KeyPress` variant cannot fall silently
+            // into an arm that ignores it.
+            KeyPress::Action(_)
+            | KeyPress::FilterStart
+            | KeyPress::TextChar(_)
+            | KeyPress::TextBackspace
+            | KeyPress::TextApply
+            | KeyPress::TextAbandon
+            | KeyPress::Settings
+            | KeyPress::Cycle
+            | KeyPress::Edit
+            | KeyPress::Help
+            | KeyPress::Remove
+            | KeyPress::StepUp
+            | KeyPress::StepDown
+            | KeyPress::FoldView
+            | KeyPress::Bleats
+            | KeyPress::StreamCycle
+            | KeyPress::LevelCycle
+            | KeyPress::PageDown
+            | KeyPress::PageUp
+            | KeyPress::FollowToggle
+            | KeyPress::WrapToggle
+            | KeyPress::MatchNext
+            | KeyPress::MatchPrev
+            // The config pane's own three. This pane groups its rows by
+            // source rather than by a field group, files nothing, and so
+            // has neither a group to walk nor an edit set to take back.
+            | KeyPress::NextGroup
+            | KeyPress::Group(_)
+            | KeyPress::Undo => Effect::None,
+        }
+    }
+
+    /// `Enter` on the secrets pane while nothing is armed: opens the
+    /// `+ new key` row's name input, or the selected key's value input.
+    /// Refuses a provider row (read-only here) and a read-only lookout,
+    /// each with its own reason, through [`Self::authorize_write`] for the
+    /// second.
+    ///
+    /// The gate is checked before the input opens, not just before the
+    /// write: a refusal that arrived only once a whole value was typed
+    /// would waste every one of those keystrokes for nothing.
+    fn secrets_confirm(&mut self) -> Effect {
+        // `environments` empty is the placeholder model `KeyPress::Secrets`
+        // opens with, before the first `Msg::Secrets` lands: `selected` (0)
+        // and `model.rows.len()` (also 0) coincide there by having no rows
+        // yet either, the same trap `Msg::Secrets`'s own clamp guards
+        // against. A real load never has an empty `environments`: the model
+        // always carries `all`, even over an empty store.
+        let is_new_key_row = matches!(
+            &self.body,
+            Body::Secrets(pane)
+                if !pane.model.environments.is_empty() && pane.selected_is_new_key_row()
+        );
+        if is_new_key_row {
+            if self.authorize_write().is_none() {
+                return Effect::None;
+            }
+            let Some(pane) = self.secrets_pane_mut() else {
+                return Effect::None;
+            };
+            pane.typing = Some(Typing {
+                what: TypingWhat::NewKey,
+                buffer: String::new(),
+            });
+            self.mode = InputMode::Text;
+            return Effect::None;
+        }
+        let Some(row) = (match &self.body {
+            Body::Secrets(pane) => pane.model.rows.get(pane.selected).cloned(),
+            Body::FlockTable
+            | Body::Settings(_)
+            | Body::ConfigPane(_)
+            | Body::Bleats(_)
+            | Body::Sheep(_) => None,
+        }) else {
+            return Effect::None;
+        };
+        if matches!(row.source, Source::Namespace(_)) {
+            self.notice = Some(Notice {
+                text: PROVIDER_ROW_REFUSAL.to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
+        if self.authorize_write().is_none() {
+            return Effect::None;
+        }
+        let Some(pane) = self.secrets_pane_mut() else {
+            return Effect::None;
+        };
+        // Seeded empty, never with the stored value: showing it here would
+        // put a secret on screen with none of the reveal gate's ten-second
+        // limit or its own `[secrets] allow_read` check.
+        pane.typing = Some(Typing {
+            what: TypingWhat::ValueFor(row.key),
+            buffer: String::new(),
+        });
+        self.mode = InputMode::Text;
+        Effect::None
+    }
+
+    /// `D`: arms the removal of the selected key's value in the current
+    /// tab's environment. Refuses a provider row and a read-only lookout,
+    /// mirroring [`Self::secrets_confirm`]'s own two checks, and refuses
+    /// silently on the `+ new key` affordance and on a selection folded out
+    /// of view: neither names a real, visible key to delete, the same gate
+    /// [`Self::reveal_selected`] applies before a read.
+    ///
+    /// A row taking its value from the `all` slot refuses too
+    /// ([`ALL_SLOT_REFUSAL`]), before it arms rather than after the write.
+    fn arm_secret_delete(&mut self) -> Effect {
+        let Some(pane) = self.secrets_pane_mut() else {
+            return Effect::None;
+        };
+        if !pane.visible_row_indices().contains(&pane.selected) {
+            return Effect::None;
+        }
+        let Some(row) = pane.model.rows.get(pane.selected).cloned() else {
+            return Effect::None;
+        };
+        let environment = pane.environment().map(str::to_string);
+        if matches!(row.source, Source::Namespace(_)) {
+            self.notice = Some(Notice {
+                text: PROVIDER_ROW_REFUSAL.to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
+        if environment.is_some_and(|tab| deletes_the_all_slot(&row, &tab)) {
+            self.notice = Some(Notice {
+                text: ALL_SLOT_REFUSAL.to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
+        if self.authorize_write().is_none() {
+            return Effect::None;
+        }
+        let now = self.now;
+        let Some(pane) = self.secrets_pane_mut() else {
+            return Effect::None;
+        };
+        pane.armed = Some(ArmedDelete {
+            key: row.key,
+            at: now,
+        });
+        Effect::None
+    }
+
+    /// `Enter` on the secrets pane while [`SecretsPane::armed`] holds a key:
+    /// sends the delete and disarms.
+    fn confirm_secret_delete(&mut self) -> Effect {
+        let Some(pane) = self.secrets_pane_mut() else {
+            return Effect::None;
+        };
+        let Some(ArmedDelete { key, .. }) = pane.armed.take() else {
+            return Effect::None;
+        };
+        let Some(environment) = pane.environment().map(str::to_string) else {
+            return Effect::None;
+        };
+        // The same refusal the arm already made, taken again on the last
+        // step before an unrecoverable write. No keypress reaches here with
+        // an `all` row armed today, since a tab move and a reload both
+        // disarm, so this is depth rather than a live path.
+        let refuses = pane
+            .model
+            .rows
+            .iter()
+            .find(|row| row.key == key)
+            .is_some_and(|row| deletes_the_all_slot(row, &environment));
+        if refuses {
+            self.notice = Some(Notice {
+                text: ALL_SLOT_REFUSAL.to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
+        let Some(authority) = self.authorize_write() else {
+            return Effect::None;
+        };
+        Effect::WriteSecret(
+            SecretEdit {
+                key,
+                environment,
+                value: None,
+            },
+            authority,
+        )
+    }
+
+    /// Clears an armed delete, and says whether one was there.
+    ///
+    /// Called once per keypress, from [`Self::on_secrets_key`]'s own head,
+    /// so every key but the confirm and the quit cancels. Its answer is
+    /// `Escape`'s cue not to also close the pane on the same press.
+    fn disarm_secret_delete(&mut self) -> bool {
+        self.secrets_pane_mut()
+            .is_some_and(|pane| pane.armed.take().is_some())
+    }
+
+    /// The secrets pane's own text keymap, in force while
+    /// [`SecretsPane::typing`] owns [`InputMode::Text`].
+    fn on_secrets_text_key(&mut self, key: KeyPress) -> Effect {
+        match key {
+            KeyPress::Quit => return Effect::Quit,
+            KeyPress::TextChar(typed) => {
+                if let Some(typing) = self
+                    .secrets_pane_mut()
+                    .and_then(|pane| pane.typing.as_mut())
+                {
+                    typing.buffer.push(typed);
+                }
+            }
+            KeyPress::TextBackspace => {
+                if let Some(typing) = self
+                    .secrets_pane_mut()
+                    .and_then(|pane| pane.typing.as_mut())
+                {
+                    typing.buffer.pop();
+                }
+            }
+            KeyPress::TextApply => return self.apply_secrets_text(),
+            KeyPress::TextAbandon => {
+                if let Some(pane) = self.secrets_pane_mut() {
+                    pane.typing = None;
+                }
+                self.mode = InputMode::Normal;
+            }
+            _ => {}
+        }
+        Effect::None
+    }
+
+    /// `TextApply` on the secrets pane's own input.
+    ///
+    /// The name step hands straight to the value step rather than writing
+    /// anything on its own. The value step validates against the store's
+    /// own rules ([`shep_core::secrets::is_name`],
+    /// [`shep_core::secrets::MAX_VALUE_BYTES`]) rather than a second copy of
+    /// either, and raises [`Effect::WriteSecret`] only once both the
+    /// grammar and the control gate hold; a refusal reopens the same input
+    /// with what was typed still in it, so neither costs a retype.
+    fn apply_secrets_text(&mut self) -> Effect {
+        let Some(typing) = self.secrets_pane_mut().and_then(|pane| pane.typing.take()) else {
+            return Effect::None;
+        };
+        match typing.what {
+            TypingWhat::NewKey => {
+                let name = typing.buffer;
+                if shep_core::secrets::is_name(&name) {
+                    if let Some(pane) = self.secrets_pane_mut() {
+                        pane.typing = Some(Typing {
+                            what: TypingWhat::ValueFor(name),
+                            buffer: String::new(),
+                        });
+                    }
+                    return Effect::None;
+                }
+                self.notice = Some(Notice {
+                    text: format!("{name:?} is not a valid key: {NEW_KEY_GRAMMAR}"),
+                    grave: true,
+                });
+                if let Some(pane) = self.secrets_pane_mut() {
+                    pane.typing = Some(Typing {
+                        what: TypingWhat::NewKey,
+                        buffer: name,
+                    });
+                }
+                Effect::None
+            }
+            TypingWhat::ValueFor(key) => {
+                let value = typing.buffer;
+                if value.len() > shep_core::secrets::MAX_VALUE_BYTES {
+                    self.notice = Some(Notice {
+                        text: format!(
+                            "value is {} bytes, over the {}-byte limit",
+                            value.len(),
+                            shep_core::secrets::MAX_VALUE_BYTES
+                        ),
+                        grave: true,
+                    });
+                    if let Some(pane) = self.secrets_pane_mut() {
+                        pane.typing = Some(Typing {
+                            what: TypingWhat::ValueFor(key),
+                            buffer: value,
+                        });
+                    }
+                    return Effect::None;
+                }
+                let environment = match &self.body {
+                    Body::Secrets(pane) => pane.environment().unwrap_or_default().to_string(),
+                    Body::FlockTable
+                    | Body::Settings(_)
+                    | Body::ConfigPane(_)
+                    | Body::Bleats(_)
+                    | Body::Sheep(_) => return Effect::None,
+                };
+                let Some(authority) = self.authorize_write() else {
+                    return Effect::None;
+                };
+                self.mode = InputMode::Normal;
+                Effect::WriteSecret(
+                    SecretEdit {
+                        key,
+                        environment,
+                        value: Some(value),
+                    },
+                    authority,
+                )
+            }
         }
     }
 
@@ -2973,6 +4059,15 @@ impl App {
             | KeyPress::Collapse
             | KeyPress::PageDown
             | KeyPress::PageUp
+            // The secrets pane's own six. `S` opens that pane from the
+            // dashboard, not from here, and the other five mean nothing
+            // outside it.
+            | KeyPress::Secrets
+            | KeyPress::Reveal
+            | KeyPress::Copy
+            | KeyPress::TabPrev
+            | KeyPress::TabNext
+            | KeyPress::SecretDelete => Effect::None,
             // The groups and the filed edit set belong to the config pane.
             // This pane lists a sheep's fields read-only, so it has no
             // group to switch to and nothing filed to take back.
@@ -3149,6 +4244,14 @@ impl App {
             | KeyPress::FoldView
             | KeyPress::Collapse
             | KeyPress::Bleats
+            // The secrets pane's own keys; nothing to move or reload while
+            // the bleats pane owns the screen instead.
+            | KeyPress::Secrets
+            | KeyPress::Reveal
+            | KeyPress::Copy
+            | KeyPress::TabPrev
+            | KeyPress::TabNext
+            | KeyPress::SecretDelete => Effect::None,
             // `NextGroup`/`Group`/`Undo` belong to the config pane: no other
             // screen has groups to walk or a filed edit set to undo.
             | KeyPress::NextGroup
@@ -3321,6 +4424,12 @@ impl App {
             | KeyPress::StepUp
             | KeyPress::StepDown
             | KeyPress::FoldView
+            | KeyPress::Secrets
+            | KeyPress::Reveal
+            | KeyPress::Copy
+            | KeyPress::TabPrev
+            | KeyPress::TabNext
+            | KeyPress::SecretDelete
             | KeyPress::Collapse => {}
             KeyPress::StreamCycle
             | KeyPress::LevelCycle
@@ -3544,6 +4653,12 @@ impl App {
             | KeyPress::StepUp
             | KeyPress::StepDown
             | KeyPress::FoldView
+            | KeyPress::Secrets
+            | KeyPress::Reveal
+            | KeyPress::Copy
+            | KeyPress::TabPrev
+            | KeyPress::TabNext
+            | KeyPress::SecretDelete
             | KeyPress::Collapse => {}
             KeyPress::StreamCycle
             | KeyPress::LevelCycle
@@ -3607,7 +4722,11 @@ impl App {
         // scope.
         let Some(pane) = (match &mut self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) | Body::Sheep(_) => None,
+            Body::FlockTable
+            | Body::Settings(_)
+            | Body::Bleats(_)
+            | Body::Secrets(_)
+            | Body::Sheep(_) => None,
         }) else {
             return Vec::new();
         };
@@ -3767,6 +4886,12 @@ impl App {
             | KeyPress::StepUp
             | KeyPress::StepDown
             | KeyPress::FoldView
+            | KeyPress::Secrets
+            | KeyPress::Reveal
+            | KeyPress::Copy
+            | KeyPress::TabPrev
+            | KeyPress::TabNext
+            | KeyPress::SecretDelete
             | KeyPress::Collapse => Effect::None,
             KeyPress::StreamCycle
             | KeyPress::LevelCycle
@@ -4098,6 +5223,12 @@ impl App {
             | KeyPress::TextAbandon
             | KeyPress::Help
             | KeyPress::FoldView
+            | KeyPress::Secrets
+            | KeyPress::Reveal
+            | KeyPress::Copy
+            | KeyPress::TabPrev
+            | KeyPress::TabNext
+            | KeyPress::SecretDelete
             | KeyPress::Collapse => {}
             KeyPress::StreamCycle
             | KeyPress::LevelCycle
@@ -4184,7 +5315,11 @@ impl App {
         // reachable below.
         let Some(pane) = (match &mut self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) | Body::Sheep(_) => None,
+            Body::FlockTable
+            | Body::Settings(_)
+            | Body::Bleats(_)
+            | Body::Secrets(_)
+            | Body::Sheep(_) => None,
         }) else {
             return Effect::None;
         };
@@ -4225,7 +5360,11 @@ impl App {
         // reachable below.
         let Some(pane) = (match &mut self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) | Body::Sheep(_) => None,
+            Body::FlockTable
+            | Body::Settings(_)
+            | Body::Bleats(_)
+            | Body::Secrets(_)
+            | Body::Sheep(_) => None,
         }) else {
             return Effect::None;
         };
@@ -4285,7 +5424,11 @@ impl App {
         // below.
         let Some(settings) = (match &mut self.body {
             Body::Settings(settings) => Some(settings),
-            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) | Body::Sheep(_) => None,
+            Body::FlockTable
+            | Body::ConfigPane(_)
+            | Body::Bleats(_)
+            | Body::Secrets(_)
+            | Body::Sheep(_) => None,
         }) else {
             return Effect::None;
         };
@@ -4320,7 +5463,11 @@ impl App {
         // below.
         let Some(settings) = (match &mut self.body {
             Body::Settings(settings) => Some(settings),
-            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) | Body::Sheep(_) => None,
+            Body::FlockTable
+            | Body::ConfigPane(_)
+            | Body::Bleats(_)
+            | Body::Secrets(_)
+            | Body::Sheep(_) => None,
         }) else {
             return Effect::None;
         };
@@ -4772,10 +5919,11 @@ impl App {
     /// closed, [`Self::on_settings_text_key`]'s editor while it is open. The
     /// two never both own [`InputMode::Text`].
     fn on_text_key(&mut self, key: KeyPress) -> Effect {
-        // Five now, and the split is still total: the config pane, the
-        // settings screen, the bleats pane and the sheep pane cannot coexist
-        // with each other (`e` and `s` reach the dashboard only from the
-        // dashboard, and `b`/`↵` only from there too), and none of them
+        // Six now, and the split is still total: the config pane, the
+        // settings screen, the bleats pane, the secrets pane and the sheep
+        // pane cannot coexist with each other (`e`, `s` and `S` reach the
+        // dashboard only from the dashboard, and `b`/`↵` only from there
+        // too), and none of them
         // coexist with the dashboard's own filter box, which `Msg::Settings`'s
         // own arm closed the window on.
         if self.config_pane().is_some() {
@@ -4786,6 +5934,9 @@ impl App {
         }
         if self.bleats_pane().is_some() {
             return self.on_bleats_text_key(key);
+        }
+        if matches!(self.body, Body::Secrets(_)) {
+            return self.on_secrets_text_key(key);
         }
         if self.sheep_pane().is_some() {
             return self.on_sheep_feed_text_key(key);
@@ -5402,6 +6553,12 @@ impl App {
         &self.link
     }
 
+    /// The clock the view reads: the last [`Msg::Tick`]'s instant, or the
+    /// one the link froze at.
+    pub(crate) fn now(&self) -> Instant {
+        self.now
+    }
+
     /// How long the link has been [`Link::Lost`], as of the last
     /// [`Msg::Tick`]. Zero while it is up.
     #[must_use]
@@ -5538,7 +6695,11 @@ impl App {
     pub fn settings(&self) -> Option<&Settings> {
         match &self.body {
             Body::Settings(settings) => Some(settings),
-            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) | Body::Sheep(_) => None,
+            Body::FlockTable
+            | Body::ConfigPane(_)
+            | Body::Bleats(_)
+            | Body::Secrets(_)
+            | Body::Sheep(_) => None,
         }
     }
 
@@ -5547,7 +6708,11 @@ impl App {
     fn settings_mut(&mut self) -> Option<&mut Settings> {
         match &mut self.body {
             Body::Settings(settings) => Some(settings),
-            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) | Body::Sheep(_) => None,
+            Body::FlockTable
+            | Body::ConfigPane(_)
+            | Body::Bleats(_)
+            | Body::Secrets(_)
+            | Body::Sheep(_) => None,
         }
     }
 
@@ -5605,7 +6770,11 @@ impl App {
     pub fn config_pane(&self) -> Option<&ConfigPane> {
         match &self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) | Body::Sheep(_) => None,
+            Body::FlockTable
+            | Body::Settings(_)
+            | Body::Bleats(_)
+            | Body::Secrets(_)
+            | Body::Sheep(_) => None,
         }
     }
 
@@ -5614,7 +6783,11 @@ impl App {
     fn config_pane_mut(&mut self) -> Option<&mut ConfigPane> {
         match &mut self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) | Body::Sheep(_) => None,
+            Body::FlockTable
+            | Body::Settings(_)
+            | Body::Bleats(_)
+            | Body::Secrets(_)
+            | Body::Sheep(_) => None,
         }
     }
 
@@ -5623,7 +6796,11 @@ impl App {
     pub fn bleats_pane(&self) -> Option<&BleatsPane> {
         match &self.body {
             Body::Bleats(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) | Body::Sheep(_) => None,
+            Body::FlockTable
+            | Body::Settings(_)
+            | Body::ConfigPane(_)
+            | Body::Secrets(_)
+            | Body::Sheep(_) => None,
         }
     }
 
@@ -5633,8 +6810,152 @@ impl App {
     fn bleats_pane_mut(&mut self) -> Option<&mut BleatsPane> {
         match &mut self.body {
             Body::Bleats(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) | Body::Sheep(_) => None,
+            Body::FlockTable
+            | Body::Settings(_)
+            | Body::ConfigPane(_)
+            | Body::Secrets(_)
+            | Body::Sheep(_) => None,
         }
+    }
+
+    /// The open secrets pane, or `None` on any other screen, for
+    /// `on_secrets_key`'s handlers.
+    fn secrets_pane_mut(&mut self) -> Option<&mut SecretsPane> {
+        match &mut self.body {
+            Body::Secrets(pane) => Some(pane),
+            Body::FlockTable
+            | Body::Settings(_)
+            | Body::ConfigPane(_)
+            | Body::Bleats(_)
+            | Body::Sheep(_) => None,
+        }
+    }
+
+    /// Takes any revealed value off the screen, on any screen: every
+    /// trigger calls this rather than reaching for [`SecretsPane::hide`]
+    /// through a pane it first has to find.
+    fn hide_revealed(&mut self) {
+        if let Some(pane) = self.secrets_pane_mut() {
+            pane.hide();
+        }
+    }
+
+    /// Whether `[secrets] allow_read` lets this pane show a value.
+    ///
+    /// Read off the model the last [`Effect::LoadSecrets`] built, so the
+    /// answer is the one `shep.toml` gave when the rows were gathered and
+    /// the pane never opens that file itself. Fails closed everywhere it
+    /// cannot be answered: a missing key, an unreadable file
+    /// (`super::secrets::model`) and no open pane all read as `false`.
+    pub(crate) fn reveal_gate_open(&self) -> bool {
+        matches!(&self.body, Body::Secrets(pane) if pane.model.allow_read)
+    }
+
+    /// `v`'s answer: a read of the selected row's stored value, or a refusal
+    /// naming the gate and the file.
+    ///
+    /// The value is not on screen when this returns. [`Self::on_revealed`]
+    /// puts it there once the read lands.
+    ///
+    /// A visibility check on `pane.selected` here, because `move_by` cannot
+    /// keep it inside the visible set when that set is empty: every group
+    /// folded away and no operator row standing leaves `selected` naming a
+    /// hidden row, and nothing else writes it back. Refused silently,
+    /// the same answer every other `v` press against a pane that is not
+    /// open gives.
+    fn reveal_selected(&mut self) -> Effect {
+        if !self.reveal_gate_open() {
+            self.notice = Some(Notice {
+                text: crate::commands::secret::HOW_TO_ALLOW_READ.to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
+        let Some(pane) = self.secrets_pane_mut() else {
+            return Effect::None;
+        };
+        if !pane.visible_row_indices().contains(&pane.selected) {
+            return Effect::None;
+        }
+        let (Some(row), Some(environment)) = (
+            pane.model.rows.get(pane.selected).cloned(),
+            pane.environment().map(str::to_string),
+        ) else {
+            return Effect::None;
+        };
+        // Through `hide`, so a value already on screen goes now rather than
+        // sitting there under a read that answers for another key.
+        pane.hide();
+        pane.pending_reveal = Some(row.key.clone());
+        Effect::RevealSecret {
+            store: pane.model.store.clone(),
+            provider_cache: pane.model.provider_cache.clone(),
+            row,
+            environment,
+        }
+    }
+
+    /// `y`'s answer: the already-revealed value, on its way to
+    /// [`Effect::CopyToClipboard`], or the `allow_read` refusal.
+    ///
+    /// A reveal by another route, so it takes [`Self::reveal_gate_open`]'s
+    /// own gate rather than a second one, and it copies what
+    /// [`SecretsPane::reveal`] already holds on screen rather than reading
+    /// the store afresh: a fresh read would let `y` show a value the
+    /// operator never asked [`KeyPress::Reveal`] to put on screen, past the
+    /// same gate a reveal takes.
+    ///
+    /// Silent, not the `allow_read` refusal, when the gate is open but
+    /// nothing is revealed: the gate is not what is missing there, the same
+    /// silence [`Self::reveal_selected`] falls back to for an unrelated
+    /// selection.
+    fn copy_revealed(&mut self) -> Effect {
+        if !self.reveal_gate_open() {
+            self.notice = Some(Notice {
+                text: crate::commands::secret::HOW_TO_ALLOW_READ.to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
+        let Some(value) = self
+            .secrets_pane_mut()
+            .and_then(|pane| pane.reveal.as_ref())
+            .map(|reveal| reveal.value.clone())
+        else {
+            return Effect::None;
+        };
+        self.notice = Some(Notice {
+            text: COPY_SENT_NOTICE.to_string(),
+            grave: false,
+        });
+        Effect::CopyToClipboard(ClipboardValue(value))
+    }
+
+    /// An [`Effect::RevealSecret`] has landed.
+    ///
+    /// Drawn only when the reveal is still the one that was asked for: the
+    /// gate can have shut under a fresh model, the tab can have moved, and
+    /// every clear trigger drops the pending key. A value that reached the
+    /// screen past any of those would be a value nobody asked for, which
+    /// for a shut gate is the failure the gate exists to stop.
+    fn on_revealed(&mut self, key: &str, environment: &str, value: Option<RevealedValue>) {
+        let gate_open = self.reveal_gate_open();
+        let until = self.now + REVEAL_HOLDS;
+        let Some(pane) = self.secrets_pane_mut() else {
+            return;
+        };
+        if pane.pending_reveal.as_deref() != Some(key) || pane.environment() != Some(environment) {
+            return;
+        }
+        pane.pending_reveal = None;
+        let Some(RevealedValue(value)) = value.filter(|_| gate_open) else {
+            return;
+        };
+        pane.reveal = Some(Reveal {
+            key: key.to_string(),
+            value,
+            until,
+        });
     }
 
     /// [`Self::bleats_pane_mut`], exposed past this module so a fixture can
@@ -5650,7 +6971,11 @@ impl App {
     pub fn sheep_pane(&self) -> Option<&SheepPane> {
         match &self.body {
             Body::Sheep(pane) => Some(pane.as_ref()),
-            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) | Body::Bleats(_) => None,
+            Body::FlockTable
+            | Body::Settings(_)
+            | Body::ConfigPane(_)
+            | Body::Bleats(_)
+            | Body::Secrets(_) => None,
         }
     }
 
@@ -5678,7 +7003,11 @@ impl App {
     fn sheep_pane_mut(&mut self) -> Option<&mut SheepPane> {
         match &mut self.body {
             Body::Sheep(pane) => Some(pane.as_mut()),
-            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) | Body::Bleats(_) => None,
+            Body::FlockTable
+            | Body::Settings(_)
+            | Body::ConfigPane(_)
+            | Body::Bleats(_)
+            | Body::Secrets(_) => None,
         }
     }
 
@@ -5773,6 +7102,7 @@ mod tests {
     use super::super::edits::EditKey;
     use super::*;
     use crate::lookout::pane::ListRow;
+    use crate::lookout::secrets::{SecretRow, Source};
     use shep_core::protocol::{ProcessEventKind, RpcError, RpcErrorCode};
 
     use super::super::view::fixtures;
@@ -8398,6 +9728,1403 @@ mod tests {
         let mut app = fixtures::app_in_settings();
         assert_eq!(app.update(Msg::Key(KeyPress::Escape)), Effect::None);
         assert!(app.settings().is_none());
+    }
+
+    /// A model whose only interesting field is `environments`, in the order
+    /// given: enough for every test below that only cares about the tab
+    /// row, not what is on it.
+    fn model_with_environments(envs: &[&str]) -> SecretsModel {
+        SecretsModel {
+            environments: envs.iter().map(|env| (*env).to_string()).collect(),
+            ..SecretsModel::default()
+        }
+    }
+
+    #[test]
+    fn capital_s_opens_the_pane_and_pressing_it_again_closes_it() {
+        let mut app = fixtures::full_app();
+
+        let effect = app.update(Msg::Key(KeyPress::Secrets));
+
+        assert!(matches!(effect, Effect::LoadSecrets));
+        assert!(matches!(app.body(), Body::Secrets(_)), "pane is open");
+
+        let effect = app.update(Msg::Key(KeyPress::Secrets));
+
+        assert!(matches!(effect, Effect::None));
+        assert!(matches!(app.body(), Body::FlockTable), "pane is closed");
+    }
+
+    #[test]
+    fn escape_closes_the_secrets_pane_too() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+
+        assert!(matches!(app.body(), Body::FlockTable));
+    }
+
+    #[test]
+    fn the_tab_moves_and_stops_at_both_ends() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(model_with_environments(&[
+                "dev", "staging", "prod",
+            ]))),
+        });
+
+        let _ = app.update(Msg::Key(KeyPress::TabPrev));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(pane.tab, 0, "the first tab does not wrap");
+
+        for _ in 0..6 {
+            let _ = app.update(Msg::Key(KeyPress::TabNext));
+        }
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(pane.tab, 2, "the last of three does not wrap");
+    }
+
+    #[test]
+    fn a_tab_move_reloads_because_in_force_is_per_environment() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(model_with_environments(&[
+                "dev", "staging", "prod",
+            ]))),
+        });
+
+        let effect = app.update(Msg::Key(KeyPress::TabNext));
+
+        assert!(
+            matches!(effect, Effect::LoadSecrets),
+            "every row's IN FORCE, VALUE and byte length belong to one \
+             environment, so the tab cannot move without rebuilding them"
+        );
+    }
+
+    /// Unsetting the last key in an environment drops it from the union
+    /// `secrets::model` recomputes on every load, so a tab sitting on the
+    /// rightmost entry can be left pointing past the end of a shorter
+    /// list. This pins `tab` staying in range and `environment()` still
+    /// naming a real entry once that happens.
+    #[test]
+    fn a_shrinking_environment_list_leaves_the_tab_somewhere_valid() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(model_with_environments(&[
+                "dev", "staging", "prod",
+            ]))),
+        });
+        for _ in 0..2 {
+            let _ = app.update(Msg::Key(KeyPress::TabNext));
+        }
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(pane.tab, 2, "sitting on the rightmost tab, `prod`");
+
+        let _ = app.update(Msg::Secrets {
+            environment: "prod".into(),
+            result: Ok(Box::new(model_with_environments(&["dev", "staging"]))),
+        });
+
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert!(
+            pane.tab < pane.model.environments.len(),
+            "tab {} is past the end of {:?}",
+            pane.tab,
+            pane.model.environments
+        );
+        assert_eq!(
+            pane.environment(),
+            Some("staging"),
+            "a subsequent load asks for a real environment, not a dangling one"
+        );
+    }
+
+    #[test]
+    fn z_collapses_a_namespace_group_and_leaves_its_header() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        // The only row, so it is `pane.selected`'s default (0) with no
+        // navigation key needed.
+        let row = SecretRow {
+            key: "vercel/API_TOKEN".to_string(),
+            source: Source::Namespace("vercel".to_string()),
+            in_force: None,
+            set_in: Vec::new(),
+            byte_len: None,
+            readers: Vec::new(),
+        };
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                rows: vec![row],
+                ..SecretsModel::default()
+            })),
+        });
+
+        let _ = app.update(Msg::Key(KeyPress::Collapse));
+
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert!(pane.collapsed.contains("vercel"), "the group is collapsed");
+
+        let _ = app.update(Msg::Key(KeyPress::Collapse));
+
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert!(
+            pane.collapsed.is_empty(),
+            "and pressing it again undoes that"
+        );
+    }
+
+    /// A row for [`SecretsModel::rows`] carrying no value: every field
+    /// besides `key` and `source` is irrelevant to where the cursor lands.
+    fn plain_row(key: &str, source: Source) -> SecretRow {
+        SecretRow {
+            key: key.to_string(),
+            source,
+            in_force: None,
+            set_in: Vec::new(),
+            byte_len: None,
+            readers: Vec::new(),
+        }
+    }
+
+    /// Three operator rows and nothing else: the `+ new key` affordance has
+    /// no namespace group to sit in front of, so it is the true last thing
+    /// on screen, and a plain `j`/`G` from the last real row reaches it,
+    /// the fix this pane's own reachability bug needed. `k` off the
+    /// affordance lands back on that real row.
+    #[test]
+    fn j_k_g_and_shift_g_move_the_selection_over_the_pane_s_rows() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let rows = ["FIRST", "SECOND", "THIRD"]
+            .into_iter()
+            .map(|key| plain_row(key, Source::Operator))
+            .collect();
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                rows,
+                ..SecretsModel::default()
+            })),
+        });
+
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(pane.selected, 1, "j moves one row down");
+
+        for _ in 0..5 {
+            let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        }
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert!(
+            pane.selected_is_new_key_row(),
+            "clamped at the new-key affordance, one past THIRD, not wrapping"
+        );
+
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(
+            pane.selected, 2,
+            "k leaves the affordance upward, back onto THIRD"
+        );
+
+        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(pane.selected, 0, "g jumps to the first row");
+
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert!(
+            pane.selected_is_new_key_row(),
+            "G reaches the affordance directly: nothing follows the operator group here"
+        );
+    }
+
+    /// A namespace group following the one operator row: `j` from that row
+    /// reaches the affordance in a single press rather than needing a second
+    /// `G` nothing on screen ever hinted at, and a further `j` carries on
+    /// into the namespace group beyond it.
+    #[test]
+    fn j_from_the_last_operator_row_reaches_the_new_key_row() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                rows: vec![
+                    plain_row("FIRST", Source::Operator),
+                    plain_row("vercel/A", Source::Namespace("vercel".to_string())),
+                ],
+                ..SecretsModel::default()
+            })),
+        });
+
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert!(
+            pane.selected_is_new_key_row(),
+            "one `j` from the only operator row reaches the affordance"
+        );
+
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(
+            pane.model.rows[pane.selected].key, "vercel/A",
+            "a further `j` carries on into the namespace group past it"
+        );
+
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert!(
+            pane.selected_is_new_key_row(),
+            "`k` off the namespace row lands back on the affordance"
+        );
+    }
+
+    /// `Enter` pressed before the first `Msg::Secrets` load lands: `Secrets`
+    /// opens against a placeholder model with no rows, where `selected` (0)
+    /// and `model.rows.len()` (also 0) coincide, so `selected_is_new_key_row`
+    /// reads true over data that never resolved. Deterministic and needs no
+    /// async round trip: `KeyPress::Secrets` sets the placeholder
+    /// synchronously, and this drives `Confirm` before any `Msg::Secrets`
+    /// ever arrives.
+    #[test]
+    fn confirm_before_the_first_load_lands_does_not_open_the_new_key_input() {
+        let mut app = fixtures::full_app();
+        app.set_control_for_tests(Control::Allowed);
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+
+        let effect = app.update(Msg::Key(KeyPress::Confirm));
+
+        assert_eq!(effect, Effect::None);
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert!(
+            pane.typing.is_none(),
+            "the placeholder model must not open the value input"
+        );
+    }
+
+    /// A cursor that stepped over `model.rows` itself, one index at a
+    /// time, would land inside a namespace `z` just folded away: the two
+    /// hidden rows between `FIRST` and `LAST` are exactly wide enough that
+    /// a blind `+1` cannot reach `LAST` by accident. Only a `move_by` that
+    /// walks [`SecretsPane::visible_row_indices`] does.
+    #[test]
+    fn selecting_down_skips_a_namespace_z_has_collapsed() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                rows: vec![
+                    plain_row("FIRST", Source::Operator),
+                    plain_row("vercel/A", Source::Namespace("vercel".to_string())),
+                    plain_row("vercel/B", Source::Namespace("vercel".to_string())),
+                    plain_row("LAST", Source::Operator),
+                ],
+                ..SecretsModel::default()
+            })),
+        });
+
+        // Select a member of the group before folding it: `Collapse` acts
+        // on the selected row's own source.
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let _ = app.update(Msg::Key(KeyPress::Collapse));
+        // Back to `FIRST`, a row `visible_row_indices` never hid, so the
+        // step below tests `move_by`'s ordinary case rather than its
+        // hidden-selection fallback.
+        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
+
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(
+            pane.model.rows[pane.selected].key, "LAST",
+            "the two collapsed rows in between are not a landing row"
+        );
+    }
+
+    /// Collapsing the very group `selected` sits in must not leave it
+    /// naming a hidden row: `view::secrets::draw` skips a row its source
+    /// is collapsed, so an untouched `selected` there would mark nothing
+    /// on screen at all. Asserted through [`SecretsPane::is_collapsed`],
+    /// the same predicate the view calls before drawing a gutter marker,
+    /// rather than a raw index, so this fails the way the view would fail
+    /// rather than the way an internal counter would.
+    #[test]
+    fn collapsing_the_selected_group_lands_on_a_still_visible_row() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                rows: vec![
+                    plain_row("FIRST", Source::Operator),
+                    plain_row("vercel/A", Source::Namespace("vercel".to_string())),
+                    plain_row("vercel/B", Source::Namespace("vercel".to_string())),
+                    plain_row("LAST", Source::Operator),
+                ],
+                ..SecretsModel::default()
+            })),
+        });
+
+        // Land on a member of the group before folding it.
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let _ = app.update(Msg::Key(KeyPress::Collapse));
+
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        let row = &pane.model.rows[pane.selected];
+        assert!(
+            !pane.is_collapsed(&row.source),
+            "selected still names a row the fold it sat in just hid"
+        );
+    }
+
+    /// `move_by` cannot land `selected` inside the visible set when that
+    /// set is empty (every row here belongs to the one namespace being
+    /// folded), so `selected` is left naming a hidden row. `v` has to
+    /// check for itself rather than trust the invariant `move_by` cannot
+    /// keep.
+    #[test]
+    fn reveal_over_an_empty_visible_set_does_nothing() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                environments: vec!["dev".to_string()],
+                rows: vec![
+                    plain_row("vercel/A", Source::Namespace("vercel".to_string())),
+                    plain_row("vercel/B", Source::Namespace("vercel".to_string())),
+                ],
+                allow_read: true,
+                ..SecretsModel::default()
+            })),
+        });
+        let _ = app.update(Msg::Key(KeyPress::Collapse));
+
+        let effect = app.update(Msg::Key(KeyPress::Reveal));
+
+        assert_eq!(
+            effect,
+            Effect::None,
+            "nothing on screen names a row to read"
+        );
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert!(
+            pane.visible_row_indices().is_empty(),
+            "the fold hid everything"
+        );
+        assert_eq!(
+            pane.pending_reveal, None,
+            "no read was asked for, so nothing is pending one"
+        );
+    }
+
+    /// `collapsed` outlives a reload; row order does not. This pins the
+    /// `Msg::Secrets` clamp against exactly that gap: the row count clamp
+    /// alone would leave `selected` at the same numeric index, which the
+    /// fresh model happens to give to a member of the still-folded
+    /// `vercel` namespace, hiding it just as surely as a `Collapse` this
+    /// reload never asked for.
+    #[test]
+    fn reloading_cannot_leave_selected_on_a_row_a_standing_fold_hides() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                rows: vec![
+                    plain_row("FIRST", Source::Operator),
+                    plain_row("vercel/A", Source::Namespace("vercel".to_string())),
+                    plain_row("vercel/B", Source::Namespace("vercel".to_string())),
+                    plain_row("LAST", Source::Operator),
+                ],
+                ..SecretsModel::default()
+            })),
+        });
+        // Fold `vercel` while sitting on one of its rows: the `Collapse`
+        // fix carries `selected` forward to `LAST`, index 3.
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let _ = app.update(Msg::Key(KeyPress::Collapse));
+
+        // A reload whose row order gives index 3 to a `vercel` row rather
+        // than to `LAST`. `collapsed` is untouched by this message, so
+        // `vercel` is still folded.
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                rows: vec![
+                    plain_row("FIRST", Source::Operator),
+                    plain_row("SECOND", Source::Operator),
+                    plain_row("vercel/C", Source::Namespace("vercel".to_string())),
+                    plain_row("vercel/D", Source::Namespace("vercel".to_string())),
+                ],
+                ..SecretsModel::default()
+            })),
+        });
+
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        let row = &pane.model.rows[pane.selected];
+        assert!(
+            !pane.is_collapsed(&row.source),
+            "a reload left selected on a row its own standing fold hides"
+        );
+    }
+
+    /// The clear itself is pinned by `a_reveal_clears_on_every_one_of_its_
+    /// triggers_that_exists_yet`, which reveals a value before every one
+    /// of the ten triggers including this one. Nothing here reveals
+    /// anything, so this test pins only the effect `r` returns.
+    #[test]
+    fn r_requests_a_reload() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::new(SecretsModel {
+                rows: vec![plain_row("KEY", Source::Operator)],
+                ..SecretsModel::default()
+            })),
+        });
+
+        let effect = app.update(Msg::Key(KeyPress::Refresh));
+
+        assert_eq!(
+            effect,
+            Effect::LoadSecrets,
+            "`r` re-reads the store, the provider cache and the roll"
+        );
+    }
+
+    #[test]
+    fn a_late_model_for_a_closed_pane_does_not_reopen_it() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+
+        let _ = app.update(Msg::Secrets {
+            environment: "dev".into(),
+            result: Ok(Box::default()),
+        });
+
+        assert!(
+            matches!(app.body(), Body::FlockTable),
+            "a reply that outlived its pane must be dropped"
+        );
+    }
+
+    /// The mutation this pins: `unwrap_or(0)` alone would make the tab
+    /// index always 0, and it would still pass every test above, because
+    /// `dev` is index 0 in each of their environment lists. `prod` here is
+    /// not, and is also not first alphabetically, so a fixture that quietly
+    /// switched to always-0 or always-sorted-first both fail this one.
+    #[test]
+    fn the_first_load_lands_on_the_requested_environments_tab() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+
+        let _ = app.update(Msg::Secrets {
+            environment: "prod".into(),
+            result: Ok(Box::new(model_with_environments(&["all", "dev", "prod"]))),
+        });
+
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(pane.tab, 2, "prod is the third tab, not the first");
+    }
+
+    /// Falls back to 0 rather than panicking or leaving the previous tab in
+    /// place, when the requested environment is not in the fresh model
+    /// (an operator who deleted it between the request and the reply).
+    #[test]
+    fn a_first_load_for_a_since_removed_environment_falls_back_to_tab_zero() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Secrets));
+
+        let _ = app.update(Msg::Secrets {
+            environment: "gone".into(),
+            result: Ok(Box::new(model_with_environments(&["all", "dev"]))),
+        });
+
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is open");
+        };
+        assert_eq!(pane.tab, 0);
+    }
+
+    /// Exact-string, so restoring a derived `Debug` fails this test rather
+    /// than silently reopening the leak (IR-41).
+    #[test]
+    fn the_pane_debug_never_prints_a_revealed_value() {
+        let pane = SecretsPane {
+            model: Box::default(),
+            tab: 0,
+            selected: 0,
+            collapsed: HashSet::new(),
+            reveal: Some(Reveal {
+                key: "K".into(),
+                value: "hunter2".into(),
+                until: Instant::now(),
+            }),
+            pending_reveal: None,
+            armed: None,
+            typing: Some(Typing {
+                what: TypingWhat::ValueFor("K".into()),
+                buffer: "hunter2".into(),
+            }),
+        };
+
+        let printed = format!("{pane:?}");
+
+        assert_eq!(
+            printed,
+            "SecretsPane { rows: 0, tab: 0, selected: 0, collapsed: 0, \
+             revealing: true, pending_reveal: None, armed: None, typing: true }"
+        );
+        assert!(!format!("{:?}", pane.reveal).contains("hunter2"));
+        assert!(!format!("{:?}", pane.typing).contains("hunter2"));
+    }
+
+    /// The value on screen, or `None`. Reads the pane rather than the
+    /// rendered frame: these tests are about when a value is held, and the
+    /// drawing of it has its own tests in `view::secrets`.
+    fn reveal_of(app: &App) -> Option<&Reveal> {
+        match app.body() {
+            Body::Secrets(pane) => pane.reveal.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// The pane's own open input, or `None`.
+    fn typing_of(app: &App) -> Option<&Typing> {
+        match app.body() {
+            Body::Secrets(pane) => pane.typing.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// The status bar's current line, rendered, or `None`.
+    fn notice_of(app: &App) -> Option<String> {
+        app.notice().map(ToString::to_string)
+    }
+
+    /// The key an armed delete names, or `None`.
+    fn armed_of(app: &App) -> Option<String> {
+        match app.body() {
+            Body::Secrets(pane) => pane.armed.as_ref().map(|a| a.key.clone()),
+            _ => None,
+        }
+    }
+
+    /// Walks [`fixtures::app_with_secrets`]'s cursor onto `SET_EVERYWHERE`,
+    /// whose only slot is `all` while the tab names `production`.
+    ///
+    /// # Panics
+    /// If the cursor did not land on a row taking its value from `all`.
+    #[track_caller]
+    fn select_the_all_slot_row(app: &mut App) {
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is not open");
+        };
+        let row = &pane.model.rows[pane.selected];
+        assert_eq!(row.key, "SET_EVERYWHERE");
+        assert_eq!(row.in_force.as_deref(), Some("all"));
+        assert_eq!(pane.environment(), Some("production"));
+    }
+
+    /// How many rows the table currently holds, for the test proving a
+    /// failed write redraws nothing.
+    fn row_count(app: &App) -> usize {
+        match app.body() {
+            Body::Secrets(pane) => pane.model.rows.len(),
+            _ => 0,
+        }
+    }
+
+    /// The environment the pane's own tab currently names.
+    ///
+    /// # Panics
+    /// If the pane is not open.
+    #[track_caller]
+    fn second_tab_of(app: &App) -> String {
+        let Body::Secrets(pane) = app.body() else {
+            panic!("pane is not open");
+        };
+        pane.model.environments[pane.tab].clone()
+    }
+
+    /// `G`: the pane's own cursor scheme already lands on the trailing
+    /// `+ new key` row, so this is `SelectLast` rather than a second way to
+    /// reach it.
+    fn select_new_key_row(app: &mut App) {
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+    }
+
+    #[test]
+    fn enter_opens_the_value_input_seeded_empty() {
+        let mut app = fixtures::app_with_secrets_and_control();
+
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+
+        let typing = typing_of(&app).expect("the input is open");
+        assert_eq!(typing.what, TypingWhat::ValueFor("DB_PASSWORD".into()));
+        assert_eq!(
+            typing.buffer, "",
+            "seeding it with the stored value would put a secret on screen \
+             that `v` and its gate exist to control"
+        );
+    }
+
+    #[test]
+    fn a_write_refuses_without_the_control_gate() {
+        let mut app = fixtures::app_with_secrets_read_only();
+
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+
+        assert!(typing_of(&app).is_none());
+        assert!(
+            notice_of(&app).is_some_and(|n| n.contains("read-only")),
+            "the existing refusal, not a second one"
+        );
+    }
+
+    #[test]
+    fn a_value_over_the_cap_is_refused_at_the_input_not_at_the_file() {
+        let mut app = fixtures::app_typing_a_value();
+        for _ in 0..=shep_core::secrets::MAX_VALUE_BYTES {
+            let _ = app.update(Msg::Key(KeyPress::TextChar('x')));
+        }
+
+        let effect = app.update(Msg::Key(KeyPress::TextApply));
+
+        assert!(matches!(effect, Effect::None), "nothing reached the file");
+        assert!(notice_of(&app).is_some_and(|n| n.contains("4096")));
+    }
+
+    #[test]
+    fn a_key_outside_the_grammar_is_refused_with_the_grammar() {
+        let mut app = fixtures::app_typing_a_new_key();
+        for c in ".bad".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(c)));
+        }
+
+        let effect = app.update(Msg::Key(KeyPress::TextApply));
+
+        assert!(matches!(effect, Effect::None));
+        assert!(
+            notice_of(&app).is_some_and(|n| n.contains("not starting with a dot")),
+            "the refusal states the rule, not just that it failed"
+        );
+    }
+
+    #[test]
+    fn a_value_lands_in_the_tabs_own_environment() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::TabNext));
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        for c in "s3cret".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(c)));
+        }
+
+        let effect = app.update(Msg::Key(KeyPress::TextApply));
+
+        let Effect::WriteSecret(edit, _) = effect else {
+            panic!("expected a write, got {effect:?}");
+        };
+        assert_eq!(edit.environment, second_tab_of(&app));
+        assert_eq!(edit.value.as_deref(), Some("s3cret"));
+    }
+
+    #[test]
+    fn a_successful_write_takes_a_revealed_value_off_the_screen() {
+        let mut app = fixtures::app_revealing_with_control();
+
+        let _ = app.update(Msg::SecretWritten { result: Ok(true) });
+
+        assert!(
+            reveal_of(&app).is_none(),
+            "the value on screen belonged to what the store held before the write"
+        );
+    }
+
+    #[test]
+    fn a_failed_write_says_why_and_leaves_the_table_alone() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let before = row_count(&app);
+
+        let _ = app.update(Msg::SecretWritten {
+            result: Err("permission denied (os error 13)".to_string()),
+        });
+
+        assert!(
+            notice_of(&app).is_some_and(|n| n.contains("permission denied")),
+            "the operator gets the reason, not a silent no-op"
+        );
+        assert_eq!(row_count(&app), before, "and nothing is redrawn as changed");
+    }
+
+    #[test]
+    fn the_new_key_row_opens_a_name_input_and_then_a_value_input() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        select_new_key_row(&mut app);
+
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert_eq!(
+            typing_of(&app).map(|t| t.what.clone()),
+            Some(TypingWhat::NewKey)
+        );
+
+        for c in "NEW_KEY".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(c)));
+        }
+        let effect = app.update(Msg::Key(KeyPress::TextApply));
+
+        assert!(
+            matches!(effect, Effect::None),
+            "naming a key writes nothing on its own"
+        );
+        assert_eq!(
+            typing_of(&app).map(|t| t.what.clone()),
+            Some(TypingWhat::ValueFor("NEW_KEY".into())),
+            "the name input hands straight over to the value input"
+        );
+    }
+
+    #[test]
+    fn a_provider_row_refuses_a_write() {
+        let mut app = fixtures::app_with_a_pushed_secret_selected_and_control();
+
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+
+        assert!(typing_of(&app).is_none());
+        assert!(
+            notice_of(&app).is_some_and(|n| n.contains("pushed by a dog")),
+            "and it says why rather than doing nothing"
+        );
+    }
+
+    #[test]
+    fn enter_sets_when_nothing_is_armed_and_confirms_when_something_is() {
+        let mut idle = fixtures::app_with_secrets_and_control();
+
+        let _ = idle.update(Msg::Key(KeyPress::Confirm));
+
+        assert!(
+            typing_of(&idle).is_some(),
+            "unarmed Enter opens the value input"
+        );
+
+        let mut armed = fixtures::app_with_secrets_and_control();
+        let _ = armed.update(Msg::Key(KeyPress::SecretDelete));
+
+        let effect = armed.update(Msg::Key(KeyPress::Confirm));
+
+        assert!(
+            typing_of(&armed).is_none(),
+            "armed Enter must not also open the input"
+        );
+        let Effect::WriteSecret(edit, _) = effect else {
+            panic!("expected the delete, got {effect:?}");
+        };
+        assert_eq!(edit.key, "DB_PASSWORD");
+        assert_eq!(edit.value, None, "None is what removes the slot");
+    }
+
+    #[test]
+    fn escape_disarms_before_it_closes_the_pane() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+
+        assert!(
+            matches!(app.body(), Body::Secrets(_)),
+            "the pane stays open"
+        );
+        assert!(armed_of(&app).is_none(), "and the arm is gone");
+
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+
+        assert!(
+            matches!(app.body(), Body::FlockTable),
+            "a second Escape closes it"
+        );
+    }
+
+    #[test]
+    fn moving_the_selection_disarms() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+
+        assert!(
+            armed_of(&app).is_none(),
+            "an arm must not follow the cursor onto another key"
+        );
+    }
+
+    /// The armed prompt says "enter confirms, any other key cancels", so
+    /// every key but the confirm and the quit has to cancel. `v`, `y` and
+    /// `z` are the three that used to leave the arm standing under the
+    /// sentence promising they would not.
+    #[test]
+    fn any_key_but_the_confirm_and_the_quit_disarms() {
+        for key in [
+            KeyPress::Reveal,
+            KeyPress::Copy,
+            KeyPress::Collapse,
+            KeyPress::Refresh,
+            KeyPress::Help,
+            KeyPress::Settings,
+            KeyPress::Bleats,
+        ] {
+            let mut app = fixtures::app_armed_to_delete_a_secret();
+
+            let _ = app.update(Msg::Key(key));
+
+            assert!(
+                armed_of(&app).is_none(),
+                "{key:?} left the delete armed while the bar promised it cancelled"
+            );
+        }
+    }
+
+    #[test]
+    fn quit_still_quits_while_a_delete_is_armed() {
+        let mut app = fixtures::app_armed_to_delete_a_secret();
+
+        let effect = app.update(Msg::Key(KeyPress::Quit));
+
+        assert!(matches!(effect, Effect::Quit));
+    }
+
+    #[test]
+    fn moving_the_tab_disarms() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+
+        let _ = app.update(Msg::Key(KeyPress::TabNext));
+
+        assert!(
+            armed_of(&app).is_none(),
+            "an arm must not follow a tab move onto another environment"
+        );
+    }
+
+    #[test]
+    fn a_reload_disarms() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        assert!(armed_of(&app).is_some(), "the delete armed");
+
+        let _ = app.update(Msg::Secrets {
+            environment: "all".to_string(),
+            result: Ok(Box::default()),
+        });
+
+        assert!(
+            armed_of(&app).is_none(),
+            "a fresh read describes the store as it is now, not the arm"
+        );
+    }
+
+    /// An armed delete is the fourth armed thing in this module the tick
+    /// expires, mirroring the config pane's own `armed_at` at
+    /// `app.rs:1999-2005`.
+    #[test]
+    fn an_armed_delete_expires_like_every_other_armed_thing() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        assert!(armed_of(&app).is_some(), "the delete armed");
+
+        let later = Instant::now() + CONFIRM_EXPIRY;
+        let _ = app.update(Msg::Tick { now: later });
+
+        assert!(armed_of(&app).is_none(), "it did not expire");
+    }
+
+    #[test]
+    fn an_armed_delete_survives_a_tick_just_before_the_deadline() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        assert!(armed_of(&app).is_some(), "the delete armed");
+
+        let almost = Instant::now() + CONFIRM_EXPIRY - Duration::from_secs(1);
+        let _ = app.update(Msg::Tick { now: almost });
+
+        assert!(armed_of(&app).is_some(), "not yet ten seconds");
+    }
+
+    #[test]
+    fn a_delete_refuses_without_the_control_gate() {
+        let mut app = fixtures::app_with_secrets_read_only();
+
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+
+        assert!(armed_of(&app).is_none());
+        assert!(notice_of(&app).is_some_and(|n| n.contains("read-only")));
+    }
+
+    #[test]
+    fn a_provider_row_refuses_a_delete() {
+        let mut app = fixtures::app_with_a_pushed_secret_selected_and_control();
+
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+
+        assert!(armed_of(&app).is_none());
+        assert!(notice_of(&app).is_some_and(|n| n.contains("pushed by a dog")));
+    }
+
+    /// The row's value comes from the `all` slot, so an unset against the
+    /// tab's own environment would remove nothing and report success, and an
+    /// unset against `all` would change every environment at once.
+    #[test]
+    fn a_value_that_comes_from_the_all_slot_refuses_a_delete_on_a_named_tab() {
+        let mut app = fixtures::app_with_secrets_on_a_named_tab_and_control();
+        select_the_all_slot_row(&mut app);
+
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+
+        assert!(armed_of(&app).is_none(), "it must refuse before it arms");
+        assert!(
+            notice_of(&app).is_some_and(|n| n.contains("`all` slot")
+                && n.contains("every environment")
+                && n.contains("`all` tab")),
+            "the notice says where the value lives, what removing it costs, \
+             and how to do it deliberately"
+        );
+    }
+
+    #[test]
+    fn the_all_tab_still_deletes_an_all_slot() {
+        let mut app = fixtures::app_with_secrets_and_control();
+
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        let effect = app.update(Msg::Key(KeyPress::Confirm));
+
+        let Effect::WriteSecret(edit, _) = effect else {
+            panic!("expected a write, got {effect:?}");
+        };
+        assert_eq!(edit.key, "DB_PASSWORD");
+        assert_eq!(edit.environment, "all");
+        assert!(edit.value.is_none(), "a delete sends no value");
+    }
+
+    #[test]
+    fn an_unset_that_removed_nothing_says_so_rather_than_reporting_success() {
+        let mut app = fixtures::app_with_secrets_and_control();
+
+        let effect = app.update(Msg::SecretWritten { result: Ok(false) });
+
+        assert!(
+            matches!(effect, Effect::None),
+            "nothing changed, so nothing is re-read"
+        );
+        assert!(
+            notice_of(&app).is_some_and(|n| n.contains("nothing to remove")),
+            "a delete that removed nothing must not read as a delete that worked"
+        );
+    }
+
+    #[test]
+    fn a_write_that_changed_the_store_re_reads_it() {
+        let mut app = fixtures::app_with_secrets_and_control();
+
+        let effect = app.update(Msg::SecretWritten { result: Ok(true) });
+
+        assert!(matches!(effect, Effect::LoadSecrets));
+        assert!(notice_of(&app).is_none(), "and says nothing about it");
+    }
+
+    #[test]
+    fn d_does_not_arm_the_new_key_row() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        assert!(
+            matches!(app.body(), Body::Secrets(pane) if pane.selected_is_new_key_row()),
+            "sanity: `G` landed on the affordance"
+        );
+
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+
+        assert!(
+            armed_of(&app).is_none(),
+            "there is no value there to delete"
+        );
+    }
+
+    #[test]
+    fn a_secret_edit_debug_prints_a_length_and_never_the_value() {
+        let edit = SecretEdit {
+            key: "DB_PASSWORD".into(),
+            environment: "production".into(),
+            value: Some("hunter2".into()),
+        };
+
+        assert_eq!(
+            format!("{edit:?}"),
+            "SecretEdit { key: \"DB_PASSWORD\", environment: \"production\", \
+             value: Some(<7 bytes>) }"
+        );
+    }
+
+    /// Exact-string, so restoring a derived `Debug` fails this test rather
+    /// than silently reopening the leak (IR-41). [`Msg`]'s own `Debug` is
+    /// derived, so the redaction has to live in the field's type.
+    #[test]
+    fn the_msg_debug_never_prints_a_revealed_value() {
+        let landed = Msg::Revealed {
+            key: "K".to_string(),
+            environment: "production".to_string(),
+            value: Some(RevealedValue("hunter2".to_string())),
+        };
+
+        let printed = format!("{landed:?}");
+
+        assert_eq!(
+            printed,
+            "Revealed { key: \"K\", environment: \"production\", \
+             value: Some(RevealedValue(<7 bytes>)) }"
+        );
+    }
+
+    /// Exact-string, [`the_msg_debug_never_prints_a_revealed_value`]'s own
+    /// reason: [`Effect`]'s own `Debug` is derived, so the redaction has to
+    /// live in [`ClipboardValue`] itself (IR-41).
+    #[test]
+    fn the_effect_debug_never_prints_a_copied_value() {
+        let effect = Effect::CopyToClipboard(ClipboardValue("hunter2".to_string()));
+
+        assert_eq!(
+            format!("{effect:?}"),
+            "CopyToClipboard(ClipboardValue(<7 bytes>))"
+        );
+    }
+
+    /// The gate is why the round trip needs a guard at all: a value drawn
+    /// after `allow_read` went false is the failure the gate exists to
+    /// stop, and nothing hides a reveal when a fresh model arrives.
+    #[test]
+    fn a_reveal_that_lands_after_the_gate_closed_shows_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = fixtures::app_with_secrets_and_reads(dir.path(), true);
+        let answer = fixtures::ask_to_reveal(&mut app);
+        let mut shut = fixtures::secrets_model(dir.path(), false);
+        shut.environments = vec!["all".to_string(), "production".to_string()];
+        let _ = app.update(Msg::Secrets {
+            environment: "production".to_string(),
+            result: Ok(Box::new(shut)),
+        });
+
+        let _ = app.update(answer);
+
+        assert!(reveal_of(&app).is_none(), "the gate shut while it was read");
+    }
+
+    /// A selection move or a tab move, each hiding through
+    /// [`SecretsPane::hide`]: the pane is still on screen, still pending
+    /// nothing, and a late answer has to find that out rather than land on
+    /// a row or a tab the operator has moved past.
+    #[test]
+    fn a_reveal_that_lands_after_its_reason_went_away_shows_nothing() {
+        for (name, press) in [
+            ("selection", KeyPress::SelectDown),
+            ("tab", KeyPress::TabNext),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut app = fixtures::app_with_secrets_and_reads(dir.path(), true);
+            let answer = fixtures::ask_to_reveal(&mut app);
+            let _ = app.update(Msg::Key(press));
+
+            let _ = app.update(answer);
+
+            assert!(
+                reveal_of(&app).is_none(),
+                "{name} moved on and the answer put the value back"
+            );
+        }
+    }
+
+    /// `close` and `escape` do not leave `SecretsPane` in place the way a
+    /// selection or a tab move does: they replace `self.body` with
+    /// `Body::FlockTable` outright, so a late answer landing there has
+    /// nowhere to write and would show nothing whether or not the guard
+    /// works. Reopening the pane before delivering it puts a real
+    /// `SecretsPane` back on screen, one with no pending reveal of its
+    /// own, so the guard actually has something to refuse.
+    #[test]
+    fn a_reveal_that_lands_after_the_pane_closed_and_reopened_shows_nothing() {
+        for (name, press) in [("close", KeyPress::Secrets), ("escape", KeyPress::Escape)] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut app = fixtures::app_with_secrets_and_reads(dir.path(), true);
+            let answer = fixtures::ask_to_reveal(&mut app);
+            let _ = app.update(Msg::Key(press));
+
+            let _ = app.update(Msg::Key(KeyPress::Secrets));
+            let _ = app.update(Msg::Secrets {
+                environment: "production".to_string(),
+                result: Ok(Box::new(fixtures::secrets_model(dir.path(), true))),
+            });
+            let _ = app.update(answer);
+
+            assert!(
+                reveal_of(&app).is_none(),
+                "{name} reopened a pane the stale answer names no pending read for"
+            );
+        }
+    }
+
+    /// A tab change reloads, so the answer can arrive against a pane whose
+    /// rows are a different environment's: the echo, not the key alone,
+    /// says whether it is still the answer that was asked for.
+    #[test]
+    fn a_reveal_that_lands_for_another_environment_shows_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = fixtures::app_with_secrets_and_reads(dir.path(), true);
+        let Msg::Revealed { key, value, .. } = fixtures::ask_to_reveal(&mut app) else {
+            panic!("a reveal answers with a value");
+        };
+
+        let _ = app.update(Msg::Revealed {
+            key,
+            environment: "ci".to_string(),
+            value,
+        });
+
+        assert!(reveal_of(&app).is_none(), "that is another tab's value");
+    }
+
+    #[test]
+    fn v_reveals_only_when_allow_read_is_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut shut = fixtures::app_with_secrets_and_reads(dir.path(), false);
+
+        let effect = shut.update(Msg::Key(KeyPress::Reveal));
+
+        assert_eq!(effect, Effect::None, "a shut gate does not read the store");
+        assert!(reveal_of(&shut).is_none(), "the gate is shut");
+        assert!(
+            shut.notice()
+                .is_some_and(|notice| notice.to_string().contains("allow_read")),
+            "and it says which gate and where"
+        );
+
+        let mut open = fixtures::app_with_secrets_and_reads(dir.path(), true);
+        let answer = fixtures::ask_to_reveal(&mut open);
+
+        let _ = open.update(answer);
+
+        assert_eq!(
+            reveal_of(&open).map(|reveal| reveal.key.as_str()),
+            Some("DB_PASSWORD")
+        );
+        assert_eq!(
+            reveal_of(&open).map(|reveal| reveal.value.as_str()),
+            Some(fixtures::REVEALED_VALUE),
+            "the value comes off the store, not out of the model"
+        );
+    }
+
+    #[test]
+    fn copying_says_it_was_sent_rather_than_that_it_arrived() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = fixtures::app_revealing(dir.path());
+
+        let _ = app.update(Msg::Key(KeyPress::Copy));
+
+        let notice = notice_of(&app).expect("a notice");
+        assert!(notice.contains("sent to the terminal"), "got {notice:?}");
+        assert!(
+            !notice.contains("copied"),
+            "OSC 52 is write-only and many terminals refuse it, so claiming \
+             success is a claim nothing can check: {notice:?}"
+        );
+    }
+
+    #[test]
+    fn copy_needs_a_revealed_value_rather_than_reading_the_store_behind_the_gate() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = fixtures::app_with_secrets_and_reads(dir.path(), false);
+
+        let _ = app.update(Msg::Key(KeyPress::Copy));
+
+        assert!(
+            notice_of(&app).is_some_and(|n| n.contains("allow_read")),
+            "copy is a reveal by another route and takes the same gate"
+        );
+    }
+
+    #[test]
+    fn copy_carries_the_revealed_value_to_the_effect() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = fixtures::app_revealing(dir.path());
+
+        let Effect::CopyToClipboard(value) = app.update(Msg::Key(KeyPress::Copy)) else {
+            panic!("an open gate over a revealed value copies it");
+        };
+
+        assert_eq!(value.0, fixtures::REVEALED_VALUE);
+    }
+
+    #[test]
+    fn a_reveal_clears_on_every_one_of_its_triggers_that_exists_yet() {
+        for (name, press) in [
+            ("k", KeyPress::SelectUp),
+            ("j", KeyPress::SelectDown),
+            ("g", KeyPress::SelectFirst),
+            ("G", KeyPress::SelectLast),
+            ("shift-tab", KeyPress::TabPrev),
+            ("tab", KeyPress::TabNext),
+            ("escape", KeyPress::Escape),
+            ("close", KeyPress::Secrets),
+            ("refresh", KeyPress::Refresh),
+            ("quit", KeyPress::Quit),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut app = fixtures::app_revealing(dir.path());
+
+            let _ = app.update(Msg::Key(press));
+
+            assert!(reveal_of(&app).is_none(), "{name} left the value on screen");
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let mut timed = fixtures::app_revealing(dir.path());
+        let start = timed.now();
+
+        let _ = timed.update(Msg::Tick {
+            now: start + REVEAL_HOLDS,
+        });
+
+        assert!(
+            reveal_of(&timed).is_none(),
+            "the tenth second is the last one, so the value is gone by it"
+        );
+    }
+
+    /// Stops a clear-on-every-tick implementation passing the test above for
+    /// the wrong reason.
+    #[test]
+    fn a_reveal_survives_the_tick_before_it_expires() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = fixtures::app_revealing(dir.path());
+        let start = app.now();
+
+        let _ = app.update(Msg::Tick {
+            now: start + REVEAL_HOLDS - Duration::from_millis(1),
+        });
+
+        assert!(
+            reveal_of(&app).is_some(),
+            "clearing early makes the countdown a lie"
+        );
+    }
+
+    /// The expiry rides the tick's own clock, not `self.now`, which stops
+    /// advancing on a dead link. A value that outlived a link failure would
+    /// sit on screen until the operator pressed something.
+    #[test]
+    fn a_frozen_link_does_not_hold_a_value_on_screen() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = fixtures::app_revealing(dir.path());
+        let start = app.now();
+        let _ = app.update(Msg::Frozen {
+            at_local: "12:00:00".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
+        });
+
+        let _ = app.update(Msg::Tick {
+            now: start + REVEAL_HOLDS,
+        });
+
+        assert!(reveal_of(&app).is_none());
+    }
+
+    #[test]
+    fn a_key_with_no_value_in_this_tab_reveals_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("secrets.json");
+        let mut app = fixtures::app_with_secrets_and_reads(dir.path(), true);
+        // The same key, set only in an environment this tab is not showing:
+        // `secrets::get` would find a value under `ci` and must not be asked
+        // for one.
+        let _ = app.update(Msg::Secrets {
+            environment: "production".to_string(),
+            result: Ok(Box::new(SecretsModel {
+                environments: vec!["all".to_string(), "production".to_string()],
+                rows: vec![SecretRow {
+                    key: "DB_PASSWORD".to_string(),
+                    source: Source::Operator,
+                    in_force: None,
+                    set_in: vec!["ci".to_string()],
+                    byte_len: None,
+                    readers: Vec::new(),
+                }],
+                allow_read: true,
+                store,
+                ..SecretsModel::default()
+            })),
+        });
+
+        let answer = fixtures::ask_to_reveal(&mut app);
+        let _ = app.update(answer);
+
+        assert!(
+            reveal_of(&app).is_none(),
+            "nothing resolves here, so there is nothing to show"
+        );
     }
 
     #[test]
