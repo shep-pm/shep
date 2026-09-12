@@ -34,7 +34,7 @@ pub(crate) fn visible_width(s: &str) -> usize {
             // the sequence's own end.
             if chars.next() == Some('[') {
                 for c in chars.by_ref() {
-                    if ('\u{40}'..='\u{7e}').contains(&c) {
+                    if is_csi_final(c) {
                         break;
                     }
                 }
@@ -44,6 +44,16 @@ pub(crate) fn visible_width(s: &str) -> usize {
         }
     }
     width
+}
+
+/// Whether `c` ends a CSI sequence: the final byte is the one in
+/// `\u{40}..=\u{7e}`, and every byte before it is the sequence's body.
+///
+/// One spelling of the range, read by [`visible_width`], which discards the
+/// body it scans past, and by [`sanitize`], which collects it to decide
+/// whether to write the sequence out.
+fn is_csi_final(c: char) -> bool {
+    ('\u{40}'..='\u{7e}').contains(&c)
 }
 
 /// A cell, with every control character escaped or stripped so it cannot
@@ -82,7 +92,7 @@ fn sanitize(s: &str, keep_ansi: bool) -> String {
                 let mut closed = false;
                 for c in chars.by_ref() {
                     seq.push(c);
-                    if ('\u{40}'..='\u{7e}').contains(&c) {
+                    if is_csi_final(c) {
                         closed = true;
                         break;
                     }
