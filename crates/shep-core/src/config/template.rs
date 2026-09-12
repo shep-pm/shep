@@ -298,6 +298,21 @@ pub(crate) fn validate(value: &str) -> Result<(), TemplateError> {
     }
 }
 
+/// The text a token that both renderers resolve identically expands to, or
+/// `None` for a token neither knows positionally.
+///
+/// The two positional tokens live here rather than in each renderer's match:
+/// a third one added to only one of them would make a value render one way
+/// under `render_positional` and another under `render`, which is not a
+/// difference either caller could see coming.
+fn positional<'a>(token: &str, name: &'a str, slot: &'a str) -> Option<&'a str> {
+    match token {
+        "instance" => Some(slot),
+        "name" => Some(name),
+        _ => None,
+    }
+}
+
 /// Substitutes `{{instance}}` and `{{name}}` only, leaving every other
 /// token, `{{secret:...}}` included, exactly as written.
 ///
@@ -314,9 +329,10 @@ pub fn render_positional(value: &str, name: &str, instance: u32) -> String {
     let _: Result<Completion, Infallible> = walk(value, |segment| {
         match segment {
             Segment::Literal(literal) => out.push_str(literal),
-            Segment::Token("instance") => out.push_str(&slot),
-            Segment::Token("name") => out.push_str(name),
-            Segment::Token(token) => push_token(&mut out, token),
+            Segment::Token(token) => match positional(token, name, &slot) {
+                Some(text) => out.push_str(text),
+                None => push_token(&mut out, token),
+            },
         }
         Ok(())
     });
@@ -348,11 +364,12 @@ pub fn render(
     walk(value, |segment| {
         match segment {
             Segment::Literal(literal) => out.push_str(literal),
-            Segment::Token("instance") => out.push_str(&slot),
-            Segment::Token("name") => out.push_str(name),
-            Segment::Token(token) => match secret_reference(token) {
-                Some(reference) => out.push_str(resolve_secret(&reference, secrets)?),
-                None => push_token(&mut out, token),
+            Segment::Token(token) => match positional(token, name, &slot) {
+                Some(text) => out.push_str(text),
+                None => match secret_reference(token) {
+                    Some(reference) => out.push_str(resolve_secret(&reference, secrets)?),
+                    None => push_token(&mut out, token),
+                },
             },
         }
         Ok(())

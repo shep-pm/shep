@@ -240,6 +240,22 @@ impl Listener {
         self.listener.as_raw_fd()
     }
 
+    /// A fresh idle instance on this listener's pipe name.
+    ///
+    /// `first_pipe_instance` stays unset, unlike at `bind`: setting it again
+    /// would refuse to recreate this listener's own instance. Both of
+    /// [`Self::accept`]'s creations want exactly this instance and differ
+    /// only in what they do with a failure, so the options are written once.
+    ///
+    /// # Errors
+    /// Whatever `CreateNamedPipe` says.
+    #[cfg(windows)]
+    fn create_instance(&self) -> io::Result<tokio::net::windows::named_pipe::NamedPipeServer> {
+        tokio::net::windows::named_pipe::ServerOptions::new()
+            .reject_remote_clients(true)
+            .create(&self.addr)
+    }
+
     /// Waits for the next peer and returns its connected stream.
     ///
     /// # Errors
@@ -259,17 +275,12 @@ impl Listener {
         }
         #[cfg(windows)]
         {
-            use tokio::net::windows::named_pipe::ServerOptions;
             // The slot is empty only if a previous accept could not create
             // a replacement. Make one now rather than at that failure, so a
             // transient `create` error costs one accept instead of the
             // daemon's whole ability to serve.
             if self.server.is_none() {
-                self.server = Some(
-                    ServerOptions::new()
-                        .reject_remote_clients(true)
-                        .create(&self.addr)?,
-                );
+                self.server = Some(self.create_instance()?);
             }
             // Resolves when a client attaches to the instance we hold.
             let Some(server) = self.server.as_ref() else {
@@ -283,14 +294,9 @@ impl Listener {
                 .server
                 .take()
                 .unwrap_or_else(|| unreachable!("the slot was just filled"));
-            // `first_pipe_instance` stays unset here: set once at `bind`,
-            // setting it again would refuse to recreate this listener's
-            // own instance. A failure here leaves the slot empty (peer
-            // already handed over); the next accept retries creation.
-            self.server = ServerOptions::new()
-                .reject_remote_clients(true)
-                .create(&self.addr)
-                .ok();
+            // A failure here leaves the slot empty (the peer is already
+            // handed over); the next accept retries the creation.
+            self.server = self.create_instance().ok();
             Ok(connected)
         }
     }

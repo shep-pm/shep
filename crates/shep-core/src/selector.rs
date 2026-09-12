@@ -60,6 +60,20 @@ fn glob_to_regex(input: &str) -> Result<String, SelectorError> {
         .map_or(source.clone(), ToString::to_string))
 }
 
+/// `s` as a `u32`, if every byte of it is an ASCII digit.
+///
+/// The digit check is not redundant beside `parse`: `u32::from_str` accepts
+/// a leading `+`, so `"+5"` would otherwise be an id and `"web:+2"` an
+/// instance slot. Both of the places this grammar reads a number want the
+/// same answer, and `None` means "not a number here", which lets each caller
+/// fall through to the form it tries next.
+fn parse_u32_digits(s: &str) -> Option<u32> {
+    if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    s.parse().ok()
+}
+
 impl ProcessSelector {
     /// Parses CLI selector syntax
     ///
@@ -90,9 +104,7 @@ impl ProcessSelector {
                 .map(Self::Regex)
                 .map_err(|e| SelectorError::BadRegex(e.to_string()));
         }
-        if input.bytes().all(|b| b.is_ascii_digit())
-            && let Ok(id) = input.parse()
-        {
+        if let Some(id) = parse_u32_digits(input) {
             return Ok(Self::Id(id));
         }
         if is_glob(input) {
@@ -107,9 +119,7 @@ impl ProcessSelector {
         // cannot cut a name in half.
         if let Some((name, slot)) = input.rsplit_once(':')
             && !name.is_empty()
-            && !slot.is_empty()
-            && slot.bytes().all(|b| b.is_ascii_digit())
-            && let Ok(slot) = slot.parse()
+            && let Some(slot) = parse_u32_digits(slot)
         {
             return Ok(Self::Instance {
                 name: name.to_string(),
@@ -392,6 +402,21 @@ mod tests {
         assert!(matches!(
             ProcessSelector::parse("42").unwrap(),
             ProcessSelector::Id(42)
+        ));
+    }
+
+    #[test]
+    fn a_signed_number_is_a_name_at_both_sites_that_read_one() {
+        // `u32::from_str` accepts a leading `+`, so without the digit check
+        // in `parse_u32_digits` these would be an id and an instance slot.
+        // Both readers share that check, so both stay names.
+        assert!(matches!(
+            ProcessSelector::parse("+5").unwrap(),
+            ProcessSelector::Name(name) if name == "+5"
+        ));
+        assert!(matches!(
+            ProcessSelector::parse("web:+2").unwrap(),
+            ProcessSelector::Name(name) if name == "web:+2"
         ));
     }
 
