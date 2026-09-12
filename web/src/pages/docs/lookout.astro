@@ -817,13 +817,22 @@ esc/s close   j/k select   g… control enabled`;
     <p>
       <code>e</code> on a selected sheep opens its config over the dashboard:
       every Flockfile field, the value in force, and what changing it would
-      cost. Fields sit under eight headers: process, logging, inputs,
+      cost. Fields sit under eight groups: process, logging, inputs,
       restart, readiness, shutdown, watch, cron. It writes as well, behind
       the same gate. Under{" "}
-      <code>--read-only</code> the edit keys refuse the same way{" "}
-      <code>x</code> does. A row
-      marked <code>=</code> or <code>~</code> gives its own reason instead,
-      in both states, because the flag would not have helped it.
+      <code>--read-only</code> the first key that would file an edit refuses
+      the same way <code>x</code> does; the pane stays open and unchanged. A
+      row marked <code>=</code> or <code>~</code> gives its own reason
+      instead, in both states, because the flag would not have helped it.
+    </p>
+    <p>
+      No edit reaches the shepherd until the pane closes. An edit is filed
+      into a change set the pane carries, not sent, and <code>Esc</code>{" "}
+      writes the whole set at once when it closes the pane. <code>u</code>{" "}
+      undoes the most recently filed edit, one at a time, and files nothing
+      itself. <code>r</code> is not an edit: it re-reads the pane's config
+      from the shepherd while the pane is still open, same as any other
+      request.
     </p>
     <p class="fine">
       A field whose grammar accepts a bare number, such as{" "}
@@ -893,6 +902,24 @@ esc/s close   j/k select   g… control enabled`;
       write is the one that reports what actually happened, and the{" "}
       <code>!</code> flag on the row carries it afterwards.
     </p>
+    <p>
+      A tab row above the fields names all eight groups. <code>Tab</code>{" "}
+      walks to the next one, and <code>1</code> through <code>8</code> jump
+      straight to a group by its position in that row. Either resets the
+      cursor to the group's first field.
+    </p>
+    <p>
+      A panel to the right of a wide enough pane explains whichever field
+      the cursor is on: its help text, its current value, its default, an
+      example, what it accepts and refuses, and which other fields it
+      interacts with. <code>h</code> still shows the same field's help text
+      inline for a narrower terminal, since the panel needs room the field
+      list doesn't. Below 90 columns there's no room for it and the cost
+      column carries every row's cost alone. From 90 up the panel draws and
+      the cost column gives way to it, since the panel already names the
+      focused field's own cost. From 160 up the pane is wide enough for
+      both at once.
+    </p>
     <p>Keys, local to the pane while it's open:</p>
     <ul>
       <li><code>e</code> opens the pane from the dashboard</li>
@@ -902,25 +929,42 @@ esc/s close   j/k select   g… control enabled`;
         <code>r</code> re-reads the config and leaves the cursor where it was
       </li>
       <li>
-        <code>space</code> proposes the other value for a bool, the next one
+        <code>space</code> files the other value for a bool, the next one
         for a choice, or the next suggestion for <code>kill_signal</code>{" "}
-        and <code>cron_restart</code>. Press it again to walk another step.
-        A suggestion is not a closed list: <code>e</code> still types
-        anything else.
+        and <code>cron_restart</code>, straight into the change set. Press it
+        again to walk another step. A suggestion is not a closed list:{" "}
+        <code>e</code> still types anything else.
       </li>
       <li>
         <code>e</code> or <code>Enter</code> opens the editor on a text or
-        number field, and sends whatever is armed. Two keystrokes to change
-        a field, never one. Inside the pane the two keys do exactly the
-        same thing, so learning either is enough.
+        number field; a second <code>e</code>/<code>Enter</code> files
+        whatever was typed. Two keystrokes to change a field, never one.
+        Inside the pane the two keys do exactly the same thing, so learning
+        either is enough.
       </li>
       <li>
         <code>e</code> or <code>Enter</code> on an array field opens a list
         sub-screen instead: <code>d</code> removes the selected element,{" "}
         <code>K</code>/<code>J</code> move it, and <code>e</code>/
         <code>Enter</code> edits it, or adds one from the{" "}
-        <code>+ new</code> row. Each arms the whole array, same as a
-        scalar; a second <code>e</code>/<code>Enter</code> sends it.
+        <code>+ new</code> row. Each of those files the whole array on the
+        spot; there's no second key to send it. They build on each other,
+        and the rows show what you have filed rather than what the shepherd
+        sent, so you can remove two elements or add several before leaving.
+        <code>u</code> in here drops the array's whole entry and puts the
+        shepherd's own back.
+      </li>
+      <li>
+        <code>d</code> on the field list restores the selected field to its
+        default, filing that too rather than sending it. A field already at
+        its default, or one shep refuses to write, files nothing.
+      </li>
+      <li>
+        <code>u</code> undoes the most recently filed edit, one at a time.
+      </li>
+      <li>
+        <code>Tab</code> moves to the next group; <code>1</code> through{" "}
+        <code>8</code> jump straight to one.
       </li>
       <li>
         <code>h</code> shows the selected field's own help text under the
@@ -929,13 +973,13 @@ esc/s close   j/k select   g… control enabled`;
       <li>
         <code>Esc</code> closes whatever is innermost: a sub-screen back to
         the field list, then help if it's open, then an offer to reload or
-        restart when something is parked, and last the pane itself. It
-        never quits lookout.
+        restart when something is parked, and last the pane itself, writing
+        the whole change set as it closes. It never quits lookout.
       </li>
     </ul>
     <p>
-      One edit changes one field, and it is recorded as yours: the key picks
-      up the <code>*</code> marker here and in <code>shep flock</code>'s{" "}
+      Every filed edit is recorded as yours once it's sent: the key picks up
+      the <code>*</code> marker here and in <code>shep flock</code>'s{" "}
       <code>CFG</code> column, and a later <code>shep start</code> of the
       app's Flockfile leaves it alone. Nothing else in the config moves,{" "}
       <code>instances</code> included.
@@ -953,20 +997,21 @@ esc/s close   j/k select   g… control enabled`;
       after.
     </p>
     <p>
-      <code>e</code> or <code>Enter</code> on the <code>env</code> row opens
-      a sub-screen of that sheep's env key names. No value ever appears
-      there, because the shepherd never sends one: every key reads{" "}
-      <code>&lt;set&gt;</code>. <code>e</code> or <code>Enter</code> on a
-      key types a new value for it, and applying an empty one removes the
+      A sheep's env keys sit in the field list itself, beneath whichever
+      group is on screen, rather than behind their own row. No value ever
+      appears there, because the shepherd never sends one: every key reads
+      {" "}
+      <code>(set)</code>. <code>e</code> or <code>Enter</code> on a
+      key types a new value for it, and filing an empty one removes the
       key. Either on the <code>+ new</code> row takes{" "}
-      <code>KEY=value</code>. <code>Esc</code> goes back to the field list;
-      a second <code>Esc</code> from there closes the pane.
+      <code>KEY=value</code>.
     </p>
     <p>
-      Env writes arm and confirm like every other one, a set as much as a
-      removal. The old value is overwritten in the store as soon as the
-      shepherd answers, and this screen cannot read a value back to put it
-      there again, so an overwrite loses as much as a delete does.
+      An env write files the same way a field does, a set as much as a
+      removal, and waits with everything else for the pane to close. The
+      old value is overwritten in the store as soon as the write lands, and
+      this screen cannot read a value back to put it there again, so an
+      overwrite loses as much as a delete does.
     </p>
     <p class="fine">
       env is spawn-time in every case, so nothing set here reaches the running
@@ -1021,12 +1066,22 @@ esc/s close   j/k select   g… control enabled`;
       <code>args</code> gets and for the same reason.
     </p>
     <p>
-      A write sends the section whole, so the comments and key order in{" "}
-      <code>dogs.toml</code> survive it. Applying an empty value removes the
-      key, which puts the dog back on its own default. Neither{" "}
-      <code>*</code> nor <code>!</code> appears: a dog has no Flockfile to
-      differ from, and <code>dogs.toml</code> is the one copy of its
-      settings.
+      Edits file into the same change set a sheep's pane uses, and{" "}
+      <code>u</code> undoes them the same way; nothing reaches the dog's
+      section until <code>Esc</code> closes the pane. However many fields
+      changed, the write sends the section whole, in one request, so the
+      comments and key order in <code>dogs.toml</code> survive it. Applying
+      an empty value removes the key, which puts the dog back on its own
+      default. Neither <code>*</code> nor <code>!</code> appears: a dog has
+      no Flockfile to differ from, and <code>dogs.toml</code> is the one
+      copy of its settings.
+    </p>
+    <p>
+      The explanation panel draws here too, at the same widths, with the
+      dog's own help text, current value, default and example; only the
+      impact sentence is missing, since shep doesn't know what a dog's
+      field costs. There's no tab row: a dog's schema carries no groups to
+      move between.
     </p>
     <p class="fine">
       <code>r</code> re-reads the section and not the schema, so a keystroke

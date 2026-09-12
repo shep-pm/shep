@@ -1609,8 +1609,13 @@ mod tests {
             kind: FieldKind::Text,
             value_kind: None,
             default: None,
+            default_value: None,
             secret: true,
             editable: true,
+            example: None,
+            accepts: Vec::new(),
+            refuses: Vec::new(),
+            neighbours: Vec::new(),
         };
         let fields = FieldSet::from_fields(vec![field.clone()], &[]);
         let mut values = Map::new();

@@ -3,9 +3,14 @@ source: crates/shep-cli/src/lookout/view/pane.rs
 expression: "text.join(\"\\n\")"
 ---
   bark  (dog config)                                                                                                    
->  history_bytes              4096                                                                                      
-   poll                       60s                                                                                       
- ~ rules                      (unset)                                                                                   
-   sink_timeout               (unset)                                                                                   
- ~ sinks                      <set>                                                                                     
+>  history_bytes              4096                                 FOCUSED  history_bytes  integer
+   poll                       60s                                   Cap on `barks.jsonl`.
+ ~ rules                      (unset)                             
+   sink_timeout               (unset)                               now     4096
+ ~ sinks                      <set>                                 default 1048576
+                                                                    example (none)
+                                                                  
+                                                                    ────────────────────────────────────────────────────
+                                                                    VALIDATION
+                                                                    █ a whole number
   shep publishes the change; bark decides what to reload

@@ -986,6 +986,105 @@ pub fn app_in_dog_pane() -> App {
     app
 }
 
+/// [`app_in_dog_pane`] with two edits filed, driven by real key presses:
+/// `poll` typed, then `history_bytes` typed.
+///
+/// Two, and not one, because a batch of one cannot tell a loop from a
+/// `take(1)`. What `closing_a_dog_pane_sends_one_write_for_two_edits`
+/// needs: proof that a dog's batch is one `Sent::SetDogSection`, not two.
+pub fn app_in_dog_pane_with_two_edits() -> App {
+    let mut app = app_in_dog_pane();
+    for (key, typed) in [("poll", "45s"), ("history_bytes", "8192")] {
+        select_field(&mut app, key);
+        app.update(Msg::Key(KeyPress::Confirm));
+        for _ in 0..64 {
+            app.update(Msg::Key(KeyPress::TextBackspace));
+        }
+        for character in typed.chars() {
+            app.update(Msg::Key(KeyPress::TextChar(character)));
+        }
+        app.update(Msg::Key(KeyPress::TextApply));
+    }
+    assert_eq!(
+        app.config_pane().expect("the pane is open").edits().len(),
+        2,
+        "the fixture files two edits"
+    );
+    app
+}
+
+/// A sheep pane, control open, with exactly the env keys named. Values are
+/// what the fixture's own caller reads to know what it asked for; no value
+/// for any key ever reaches the pane itself, since `SheepConfigView::new`
+/// strips them before the struct is built.
+pub fn app_in_sheep_pane_with_env(env: &[(&str, &str)]) -> App {
+    let mut app = with_selection(
+        ProcessInfo::builder(9, "web", ProcStatus::Online)
+            .pid(Some(48_000))
+            .build(),
+    );
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::Edit));
+    let mut config = AppConfig {
+        name: "web".to_string(),
+        ..AppConfig::default()
+    };
+    for (key, value) in env {
+        config.env.insert((*key).to_string(), (*value).to_string());
+    }
+    app.update(Msg::Replied {
+        sent: Sent::SheepConfig {
+            name: "web".to_string(),
+        },
+        result: Ok(Response::SheepConfig(Box::new(SheepConfigView::new(
+            config,
+            Vec::new(),
+            Vec::new(),
+        )))),
+    });
+    app
+}
+
+/// Walks an open config pane's cursor onto the env row named `key`, the
+/// way [`select_field`] walks it onto a field: no fixture reaches into the
+/// pane to place it.
+///
+/// # Panics
+///
+/// Panics if the pane is closed or has no env key by that name, which is a
+/// fixture bug rather than a failure the test is about.
+#[track_caller]
+pub fn select_env_key(app: &mut App, key: &str) {
+    let pane = app.config_pane().expect("the pane is open");
+    let index = pane
+        .rows()
+        .iter()
+        .position(|row| match row {
+            crate::lookout::pane::PaneRow::Env(env_index) => {
+                pane.env_key_names().get(*env_index).map(String::as_str) == Some(key)
+            }
+            crate::lookout::pane::PaneRow::Field(_) | crate::lookout::pane::PaneRow::AddEnv => {
+                false
+            }
+        })
+        .unwrap_or_else(|| panic!("no env key named {key}"));
+    app.update(Msg::Key(KeyPress::SelectFirst));
+    for _ in 0..index {
+        app.update(Msg::Key(KeyPress::SelectDown));
+    }
+}
+
+/// Opens the editor on whatever row the cursor is already on, types
+/// `text`, and applies it: `Confirm` then a character at a time then
+/// `TextApply`, the way an operator drives either editor this pane opens.
+pub fn type_into_the_open_editor(app: &mut App, text: &str) {
+    app.update(Msg::Key(KeyPress::Confirm));
+    for character in text.chars() {
+        app.update(Msg::Key(KeyPress::TextChar(character)));
+    }
+    app.update(Msg::Key(KeyPress::TextApply));
+}
+
 /// [`app_in_sheep_pane`] with the control gate open: the pane can write.
 ///
 /// The gate is set BEFORE the pane opens, so nothing about how it opened
@@ -1060,4 +1159,327 @@ pub fn app_in_sheep_pane() -> App {
         result: Ok(Response::SheepConfig(Box::new(sheep_config_view()))),
     });
     app
+}
+
+/// Walks an open config pane's cursor onto `key`, the way an operator
+/// walks it: `tab`/a digit onto `key`'s own group first, when it carries
+/// one, then down the filtered list onto the row itself. No fixture
+/// reaches into the pane to place it.
+///
+/// Panics if the pane is closed or has no field by that name, which is a
+/// fixture bug rather than a failure the test is about.
+pub fn select_field(app: &mut App, key: &str) {
+    let pane = app.config_pane().expect("the pane is open");
+    let group = pane
+        .fields()
+        .by_key(key)
+        .unwrap_or_else(|| panic!("no field named {key}"))
+        .group
+        .clone();
+    if let Some(group) = group
+        && let Some(position) = shep_core::config::GROUP_ORDER
+            .iter()
+            .position(|known| *known == group)
+    {
+        let digit = u8::try_from(position + 1).expect("eight groups fit a u8");
+        app.update(Msg::Key(KeyPress::Group(digit)));
+    }
+    let pane = app.config_pane().expect("the pane is open");
+    let index = pane
+        .rows()
+        .iter()
+        .position(|row| match row {
+            crate::lookout::pane::PaneRow::Field(field_index) => {
+                pane.fields().fields()[*field_index].key == key
+            }
+            crate::lookout::pane::PaneRow::Env(_) | crate::lookout::pane::PaneRow::AddEnv => false,
+        })
+        .unwrap_or_else(|| panic!("{key} is not in the active group's rows"));
+    app.update(Msg::Key(KeyPress::SelectFirst));
+    for _ in 0..index {
+        app.update(Msg::Key(KeyPress::SelectDown));
+    }
+}
+
+/// [`app_in_sheep_pane_with_nothing_parked`] with two edits filed, driven
+/// by real key presses: `cwd` typed, and `max_memory` typed.
+///
+/// Two, and not one, because a batch of one cannot tell a loop from a
+/// `take(1)`. Two different fields rather than two shapes of edit, since
+/// the set is keyed by field and a second edit to one key replaces it.
+/// The two also carry different groups on purpose (`cwd` is `process`,
+/// `max_memory` is `restart`), which is what the pending-edits section's
+/// own tests need: a group's own field list only ever shows one group at
+/// a time, so a test that an edit from elsewhere still turns up has to
+/// file one there.
+///
+/// Nothing parked, so `Escape` writes and leaves rather than stopping to
+/// offer the apply menu.
+pub fn app_in_sheep_pane_with_two_edits() -> App {
+    let mut app = app_in_sheep_pane_with_nothing_parked();
+    for (key, typed) in [("cwd", "/srv/web"), ("max_memory", "40")] {
+        select_field(&mut app, key);
+        app.update(Msg::Key(KeyPress::Confirm));
+        for _ in 0..64 {
+            app.update(Msg::Key(KeyPress::TextBackspace));
+        }
+        for character in typed.chars() {
+            app.update(Msg::Key(KeyPress::TextChar(character)));
+        }
+        app.update(Msg::Key(KeyPress::TextApply));
+    }
+    assert_eq!(
+        app.config_pane().expect("the pane is open").edits().len(),
+        2,
+        "the fixture files two edits"
+    );
+    app
+}
+
+/// The active group's own field rows, as their key names: a bounded slice
+/// of the config pane's state rather than a search over the rendered
+/// frame, which is what keeps a test on this from passing off a match in
+/// the legend or another section.
+///
+/// # Panics
+///
+/// Panics if the pane is closed, which is a fixture bug rather than a
+/// failure the test is about.
+#[track_caller]
+pub fn config_pane_field_rows_for_tests(app: &App) -> Vec<String> {
+    let pane = app.config_pane().expect("the pane is open");
+    pane.rows()
+        .into_iter()
+        .filter_map(|row| match row {
+            crate::lookout::pane::PaneRow::Field(index) => {
+                Some(pane.fields().fields()[index].key.clone())
+            }
+            crate::lookout::pane::PaneRow::Env(_) | crate::lookout::pane::PaneRow::AddEnv => None,
+        })
+        .collect()
+}
+
+/// The active group's own env rows: one entry per env key, then
+/// `+ add a key`. Searched below the `env` section header and nowhere else,
+/// so a test on this cannot pass off a match from the field list above it:
+/// the keys and the field names share one namespace on screen, and a sheep
+/// has fields called `user` and `env`.
+///
+/// Takes a `ConfigPane` directly rather than an `App`, since some of this
+/// pane's own tests build one without a dashboard around it. `menu` mirrors
+/// [`crate::lookout::view::pane::pane_lines`]'s own parameter.
+///
+/// # Panics
+///
+/// Panics if it draws no row for a key or for `+ add a key`, which is a
+/// fixture bug rather than a failure the test is about.
+#[track_caller]
+pub fn config_pane_env_rows_for_tests(
+    pane: &crate::lookout::pane::ConfigPane,
+    menu: Option<&super::super::app::PaneMenu>,
+) -> Vec<String> {
+    let lines = crate::lookout::view::pane::pane_lines(pane, menu, plain(), 160, 0);
+    let rendered_lines: Vec<String> = lines.iter().map(rendered).collect();
+    // The `env` section header is the bound. Everything above it is a field
+    // row or chrome, and a prefix match over the whole frame would hand back
+    // the `user` field's row for an env key named `user`.
+    //
+    // The header sits at column 2 and every row under it at column 3, which
+    // is what tells the header apart from a field called `env`. It is not
+    // matched whole because the explanation panel is merged to the right of
+    // it at this width, so the line carries the panel's own row too.
+    let header = rendered_lines
+        .iter()
+        .position(|line| {
+            line.strip_prefix("  env")
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with(' '))
+        })
+        .expect("the pane draws an env section header");
+    let env_rows = &rendered_lines[header + 1..];
+    let mut rows: Vec<String> = pane
+        .env_key_names()
+        .iter()
+        .map(|name| {
+            env_rows
+                .iter()
+                .find(|line| {
+                    line.trim_start_matches(['>', ' '])
+                        .starts_with(name.as_str())
+                })
+                .unwrap_or_else(|| panic!("no row for env key {name}"))
+                .clone()
+        })
+        .collect();
+    rows.push(
+        env_rows
+            .iter()
+            .find(|line| line.contains("add a key"))
+            .expect("the pane draws a + add a key row")
+            .clone(),
+    );
+    rows
+}
+
+/// Every filed edit's own key, as [`config_pane_field_rows_for_tests`] does
+/// for the active group's own fields: a bounded slice of the pane's own
+/// edit set, never a search over the rendered frame.
+///
+/// # Panics
+///
+/// Panics if the pane is closed.
+#[track_caller]
+pub fn config_pane_pending_rows_for_tests(app: &App) -> Vec<String> {
+    let pane = app.config_pane().expect("the pane is open");
+    pane.edits()
+        .iter()
+        .map(|(key, _)| match key {
+            crate::lookout::edits::EditKey::Field(name) => name.clone(),
+            crate::lookout::edits::EditKey::Env(name) => format!("env.{name}"),
+        })
+        .collect()
+}
+
+/// The one rendered line naming `key`, wherever it draws: the active
+/// group's own field row, or the pending-edits section when `key` belongs
+/// to a group not on screen. Bounded to that single row by stripping the
+/// mark, lock and flag columns and requiring what is left to start with
+/// `key`, which is what keeps this from matching a longer key or the
+/// legend.
+///
+/// # Panics
+///
+/// Panics if the pane is closed or draws no row for `key`.
+#[track_caller]
+pub fn config_pane_row_for_tests(app: &App, key: &str) -> String {
+    let pane = app.config_pane().expect("the pane is open");
+    let lines =
+        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), 160, 0);
+    lines
+        .iter()
+        .map(rendered)
+        .find(|line| {
+            line.trim_start_matches(['>', ' ', '=', '~', '!', '*'])
+                .starts_with(key)
+        })
+        .unwrap_or_else(|| panic!("no row for {key}"))
+}
+
+/// The pane's own title band, alone: line zero of the rendered frame, the
+/// one line [`crate::lookout::view::pane::pane_lines`] ever puts the edit
+/// count in.
+///
+/// # Panics
+///
+/// Panics if the pane is closed.
+#[track_caller]
+pub fn config_pane_title_band_for_tests(app: &App, width: u16) -> String {
+    let pane = app.config_pane().expect("the pane is open");
+    let lines =
+        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), width, 0);
+    rendered(&lines[0])
+}
+
+/// The pane's own tab row, alone: the one line naming every group in
+/// [`shep_core::config::GROUP_ORDER`], found by its own `tab next group`
+/// phrase rather than by a fixed index, so a chrome line gained or lost
+/// above it does not silently move which row this reads.
+///
+/// # Panics
+///
+/// Panics if the pane is closed or draws no tab row at `width`.
+#[track_caller]
+pub fn config_pane_tab_row_for_tests(app: &App, width: u16) -> String {
+    let pane = app.config_pane().expect("the pane is open");
+    let lines =
+        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), width, 0);
+    lines
+        .iter()
+        .map(rendered)
+        .find(|line| line.contains("tab next group"))
+        .expect("the pane draws a tab row at this width")
+}
+
+/// Whether the pane draws a tab row at `width`, without panicking when it
+/// does not: the non-panicking half of [`config_pane_tab_row_for_tests`],
+/// for a caller (a dog pane, which has no groups) asserting the row's
+/// absence rather than reading its content.
+pub fn config_pane_draws_a_tab_row(app: &App, width: u16) -> bool {
+    let pane = app.config_pane().expect("the pane is open");
+    let lines =
+        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), width, 0);
+    lines
+        .iter()
+        .map(rendered)
+        .any(|line| line.contains("tab next group"))
+}
+
+/// Whether the pane's own merged frame includes the explanation panel at
+/// `width`: the wiring question `pane_lines` answers by width alone, which
+/// [`config_pane_panel_for_tests`] cannot: that helper calls `panel_lines`
+/// directly, and `panel_lines` draws unconditionally, carrying none of
+/// `pane_lines`' own decision about whether the terminal is wide enough to
+/// show it at all.
+pub fn config_pane_draws_a_panel(app: &App, width: u16) -> bool {
+    let pane = app.config_pane().expect("the pane is open");
+    let lines =
+        crate::lookout::view::pane::pane_lines(pane, app.pane_menu().as_ref(), plain(), width, 0);
+    lines
+        .iter()
+        .map(rendered)
+        .any(|line| line.contains("FOCUSED"))
+}
+
+/// [`app_in_sheep_pane`], named for the one test that cares the palette
+/// carries no colour. [`app_in_sheep_pane`] already builds on [`plain`], so
+/// this alias adds no behaviour; it exists to make that guarantee visible
+/// at the call site rather than left implicit in a fixture named for
+/// something else.
+pub fn app_with_plain_palette_in_sheep_pane() -> App {
+    app_in_sheep_pane()
+}
+
+/// The explanation panel for whichever field the pane's own cursor is on,
+/// as plain rows: what [`crate::lookout::view::pane::panel_lines`] draws,
+/// styles dropped, at the app's own palette.
+///
+/// # Panics
+///
+/// Panics if the pane is closed.
+#[track_caller]
+pub fn config_pane_panel_for_tests(app: &App, width: u16) -> Vec<String> {
+    let pane = app.config_pane().expect("the pane is open");
+    crate::lookout::view::pane::panel_lines(pane, app.palette(), width)
+        .iter()
+        .map(rendered)
+        .collect()
+}
+
+/// The explanation panel for the field named `key`, regardless of where the
+/// pane's own cursor sits: a bounded look at one field's own panel content
+/// rather than a walk that would first have to move the cursor there.
+///
+/// # Panics
+///
+/// Panics if the pane is closed or has no field named `key`.
+#[track_caller]
+pub fn config_pane_panel_focused_on(app: &App, key: &str, width: u16) -> Vec<String> {
+    let pane = app.config_pane().expect("the pane is open");
+    let field = pane
+        .fields()
+        .by_key(key)
+        .unwrap_or_else(|| panic!("no field named {key}"));
+    crate::lookout::view::pane::panel_for_field(field, pane, app.palette(), width)
+        .iter()
+        .map(rendered)
+        .collect()
+}
+
+/// The shepherd's refusal of one write, for the tests about what a reply
+/// says once the pane that asked for it has gone.
+pub fn a_refusal() -> RequestError {
+    RequestError::Rpc(shep_core::protocol::RpcError {
+        code: shep_core::protocol::RpcErrorCode::InvalidConfig,
+        message: "the store is locked by another shep".to_owned(),
+        daemon_version: None,
+    })
 }

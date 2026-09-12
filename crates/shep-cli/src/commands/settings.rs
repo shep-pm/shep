@@ -106,8 +106,13 @@ pub fn settings_field_set() -> crate::lookout::field::FieldSet {
         kind,
         value_kind: None,
         default: None,
+        default_value: None,
         secret: false,
         editable: true,
+        example: None,
+        accepts: Vec::new(),
+        refuses: Vec::new(),
+        neighbours: Vec::new(),
     };
     let log_levels = FieldKind::Choice(
         LOG_LEVEL_ORDER

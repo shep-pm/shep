@@ -1,0 +1,53 @@
+---
+source: crates/shep-cli/src/lookout/frames.rs
+assertion_line: 2900
+expression: render_text(&buffer)
+---
+shep lookout   /home/ada/.shep                                            6 in the flock
+                                                                                        
+ ██ api  (sheep config)                                                                 
+   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab n…
+  ──────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS     
+>  cwd                        (unset)                                         respawn   
+   depends_on                 []                                              next start
+   fold                       (unset)                                         now       
+   group                      (unset)                                         respawn   
+ = instances                  1                                               read-only 
+   interpreter                (unset)                                         respawn   
+ = name                       api                                             read-only 
+   reuse_port                 false                                           now       
+   script                     ./api/server.js                                 respawn   
+   user                       (unset)                                         respawn   
+                                                                                        
+  env                                                                                   
+   DATABASE_URL               (set)                                                     
+   NODE_ENV                   (set)                                                     
+   + add a key                                                                          
+  ──────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits …
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+                                                                                        
+esc write & close   j/k select   g/G first/last   r refresh   space cyc… control enabled

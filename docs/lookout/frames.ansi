@@ -7,9 +7,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all forty-one scenes through the same coloured
+frames.ansi renders all forty-five scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same forty-one scenes through the flattened NO_COLOR palette
+renders the same forty-five scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -32,10 +32,16 @@ it read and dropped are counted exactly; bytes below its 64 KiB window were
 never read at all, so those are reported in bytes, because nothing counted the
 lines in them and guessing would be worse than saying so.
 
-The last five frames are the full-screen bleats pane, `b` from the
-dashboard, then the four sheep-pane scenes, `↵` on a sheep. The
-seven before it are the settings screen, `s` from the dashboard. It owns
-the whole body between the title and the status bar rather than sharing it
+The last four frames are the editing pane, `e` from the dashboard, on a
+sheep's own row: fresh at the 160x48 design target, the same pane with two
+edits filed (one of them needing a respawn), and the same fresh pane at 120
+and at 88 columns, where the explanation panel and the LANDS column trade
+places as the width falls.
+
+Before those are the four sheep-pane scenes, `↵` on a sheep, and before
+them the full-screen bleats pane, `b` from the dashboard. The seven before
+that are the settings screen, `s` from the dashboard. It owns the whole body
+between the title and the status bar rather than sharing it
 with the flock table, so a fresh $SHEP_HOME, some scalars declared, an armed
 confirm, the socket editor mid-type, the dogs table's own drift, the same
 screen at 45 columns and the same screen too short to hold every row each get
@@ -1286,3 +1292,215 @@ rss 30.0M of 64.0M █████░░░░░                               
 [0m[38;5;245mprocess[0m                                                                     [0m[38;5;245m│out  [0mGET /v1/orders 200 44ms                                                       [0m
 [0m[38;5;245mcwd                       [0m  [0m[38;5;245m(unset)                                         │out  [0mPOST /v1/orders 201 88ms                                                      [0m
 [0m[38;5;221m[48;5;235mesc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                                     [0m[38;5;245m[48;5;235m control enabled[0m
+
+
+=== edit_pane  (160x48) ===
+The redrawn editing pane on api, fresh: no edits filed, at 160x48. The tab row names all eight groups with only the active one chipped, the header reads FIELD / VALUE / LANDS, the explanation panel sits beside the field list naming the field under the cursor, and every env value reads (set) rather than the value itself.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                    6 in the flock[0m
+                                                                                                                                                                [0m
+[0m[7m[38;5;221m ██ api  (sheep config)                                                                                                                                         [0m
+  [0m[48;5;235m process [0m[38;5;245m  logging   inputs   restart   readiness   shutdown   watch   cron     tab next group   1…8 jump                                                     [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  FIELD                       VALUE                                           LANDS     [0m                                                                        [0m
+[0m[38;5;221m[48;5;235m>[0m[48;5;235m  cwd                        (unset)                                         respawn   [0m[7m[38;5;221m FOCUSED [0m cwd[0m[38;5;245m  text[0m                                                     [0m
+   depends_on                 []                                              next start  Where the process runs. Without it, the daemon's own directory        [0m
+   fold                       (unset)                                         now                                                                               [0m
+   group                      (unset)                                         respawn   [0m[38;5;245m  now     [0m(unset)                                                       [0m
+ [0m[38;5;245m= instances                  1                                               read-only   default [0m(none)                                                        [0m
+   interpreter                (unset)                                         respawn   [0m[38;5;245m  example [0m/srv/app                                                      [0m
+ [0m[38;5;245m= name                       api                                             read-only [0m                                                                        [0m
+   reuse_port                 false                                           now         ▲ respawn  the sheep must stop and start again                        [0m
+   script                     ./api/server.js                                 respawn                                    pick the timing when you close the pane[0m
+   user                       (unset)                                         respawn                                                                           [0m
+                                                                                        [0m[38;5;238m  ──────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  env[0m                                                                                   [0m[38;5;245m  VALIDATION[0m                                                            [0m
+   DATABASE_URL               (set)                                                     [0m[7m[38;5;29m  █ [0man absolute or relative path, expanded from cwd                     [0m
+   NODE_ENV                   (set)                                                     [0m[7m[38;5;29m  █ [0m~ expands, $VARS do not                                             [0m
+ [0m[38;5;245m  + add a key              [0m                                                            [0m[7m[38;5;166m  █ [0mrefused: a path the daemon's user cannot enter                      [0m
+                                                                                                                                                                [0m
+                                                                                        [0m[38;5;245m  NEIGHBOURS[0m                                                            [0m
+                                                                                          script  resolved against this cwd                                     [0m
+                                                                                          out_file  relative paths follow it too                                [0m
+                                                                                          watch_options  globs are rooted here                                  [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+[0m[38;5;221m[48;5;235mesc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked  …[0m[38;5;245m[48;5;235m control enabled[0m
+
+
+=== edit_pane_edited  (160x48) ===
+The same pane with two edits filed: cwd, which needs a respawn, and max_memory, which lands at once. The pending edits section lists both under the active group's own fields, and the title band reads 2 edits.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                    6 in the flock[0m
+                                                                                                                                                                [0m
+[0m[7m[38;5;221m ██ api  (sheep config)  2 edits                                                                                                                                [0m
+  [0m[38;5;245m process   logging   inputs  [0m[48;5;235m restart [0m[38;5;245m  readiness   shutdown   watch   cron     tab next group   1…8 jump                                                     [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  FIELD                       VALUE                                           LANDS     [0m                                                                        [0m
+   autorestart                true                                            now       [0m[7m[38;5;221m FOCUSED [0m max_memory[0m[38;5;245m  memory size[0m                                       [0m
+   autostart                  true                                            next start  Restart the app if it climbs above this much memory                   [0m
+   exp_backoff_restart_delay  100ms                                           now                                                                               [0m
+[0m[38;5;221m[48;5;235m>[0m[48;5;235m  max_memory                 [0m[38;5;221m[48;5;235m(unset) -> 256 B                              [0m[48;5;235m  now       [0m[38;5;245m  now     [0m(unset)                                                       [0m
+   max_restarts               32                                              now       [0m[38;5;245m  default [0m(none)                                                        [0m
+   min_uptime                 1s                                              now       [0m[38;5;245m  example [0m512M                                                          [0m
+   restart_delay              (unset)                                         now                                                                               [0m
+   stop_exit_codes            []                                              now         ● now  the running sheep picks it up without stopping                 [0m
+                                                                                                                         pick the timing when you close the pane[0m
+[0m[38;5;245m  pending edits[0m                                                                                                                                                 [0m
+[0m[38;5;221m    cwd  (unset) -> /srv/api                                                          [0m  [0m[38;5;238m  ──────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;221m    max_memory  (unset) -> 256 B                                                      [0m  [0m[38;5;245m  VALIDATION[0m                                                            [0m
+                                                                                        [0m[7m[38;5;29m  █ [0m512M, 2G                                                            [0m
+[0m[38;5;245m  env[0m                                                                                   [0m[7m[38;5;29m  █ [0ma bare number is bytes                                              [0m
+   DATABASE_URL               (set)                                                                                                                             [0m
+   NODE_ENV                   (set)                                                                                                                             [0m
+ [0m[38;5;245m  + add a key              [0m                                                                                                                                    [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+[0m[38;5;221m[48;5;235mesc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked  …[0m[38;5;245m[48;5;235m control enabled[0m
+
+
+=== edit_pane_squeezed  (120x48) ===
+The same fresh pane at 120 columns: narrow enough that LANDS gives way to the explanation panel, which still names the focused field's own cost in words.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
+                                                                                                                        [0m
+[0m[7m[38;5;221m ██ api  (sheep config)                                                                                                 [0m
+  [0m[48;5;235m process [0m[38;5;245m  logging   inputs   restart   readiness   shutdown   watch   cron     tab next group   1…8 jump             [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  FIELD                       VALUE                               [0m                                                      [0m
+[0m[38;5;221m[48;5;235m>[0m[48;5;235m  cwd                        (unset)                             [0m[7m[38;5;221m FOCUSED [0m cwd[0m[38;5;245m  text[0m                                   [0m
+   depends_on                 []                                    Where the process runs. Without it, the daemon's own[0m
+   fold                       (unset)                               directory                                           [0m
+   group                      (unset)                                                                                   [0m
+ [0m[38;5;245m= instances                  1                                     now     [0m(unset)                                     [0m
+   interpreter                (unset)                             [0m[38;5;245m  default [0m(none)                                      [0m
+ [0m[38;5;245m= name                       api                                   example [0m/srv/app                                    [0m
+   reuse_port                 false                                                                                     [0m
+   script                     ./api/server.js                       ▲ respawn  the sheep must stop and start again      [0m
+   user                       (unset)                                            pick the timing when you close the pane[0m
+                                                                                                                        [0m
+[0m[38;5;245m  env[0m                                                             [0m[38;5;238m  ────────────────────────────────────────────────────[0m
+   DATABASE_URL               (set)                               [0m[38;5;245m  VALIDATION[0m                                          [0m
+   NODE_ENV                   (set)                               [0m[7m[38;5;29m  █ [0man absolute or relative path, expanded from cwd   [0m
+ [0m[38;5;245m  + add a key              [0m                                      [0m[7m[38;5;29m  █ [0m~ expands, $VARS do not                           [0m
+                                                                  [0m[7m[38;5;166m  █ [0mrefused: a path the daemon's user cannot enter    [0m
+                                                                                                                        [0m
+                                                                  [0m[38;5;245m  NEIGHBOURS[0m                                          [0m
+                                                                    script  resolved against this cwd                   [0m
+                                                                    out_file  relative paths follow it too              [0m
+                                                                    watch_options  globs are rooted here                [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed…[0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+                                                                                                                        [0m
+[0m[38;5;221m[48;5;235mesc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default …[0m[38;5;245m[48;5;235m control enabled[0m
+
+
+=== edit_pane_narrow  (88x48) ===
+The same fresh pane at 88 columns: narrow enough that the explanation panel is gone, so LANDS is back, since nothing else on screen carries cost.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                            6 in the flock[0m
+                                                                                        [0m
+[0m[7m[38;5;221m ██ api  (sheep config)                                                                 [0m
+  [0m[48;5;235m process [0m[38;5;245m  logging   inputs   restart   readiness   shutdown   watch   cron     tab n…[0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  FIELD                       VALUE                                           LANDS     [0m
+[0m[38;5;221m[48;5;235m>[0m[48;5;235m  cwd                        (unset)                                         respawn   [0m
+   depends_on                 []                                              next start[0m
+   fold                       (unset)                                         now       [0m
+   group                      (unset)                                         respawn   [0m
+ [0m[38;5;245m= instances                  1                                               read-only [0m
+   interpreter                (unset)                                         respawn   [0m
+ [0m[38;5;245m= name                       api                                             read-only [0m
+   reuse_port                 false                                           now       [0m
+   script                     ./api/server.js                                 respawn   [0m
+   user                       (unset)                                         respawn   [0m
+                                                                                        [0m
+[0m[38;5;245m  env[0m                                                                                   [0m
+   DATABASE_URL               (set)                                                     [0m
+   NODE_ENV                   (set)                                                     [0m
+ [0m[38;5;245m  + add a key              [0m                                                            [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits …[0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+                                                                                        [0m
+[0m[38;5;221m[48;5;235mesc write & close   j/k select   g/G first/last   r refresh   space cyc…[0m[38;5;245m[48;5;235m control enabled[0m

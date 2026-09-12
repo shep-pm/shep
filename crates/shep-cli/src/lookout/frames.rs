@@ -30,6 +30,7 @@ use super::app::{ActionVerb, App, Control, KeyPress, Msg, RowKey, Sent, Settings
 use super::source::HostSample;
 use super::tail::{Stream, Tail, TailLine};
 use super::theme::Palette;
+use super::view::fixtures::select_field;
 use super::view::{body_rows, draw};
 use crate::commands::settings::{
     DogView, ScalarView, SettingField, SettingsSnapshot, load_settings,
@@ -270,6 +271,20 @@ pub enum Scene {
     /// height. The memory chart is gone; the config and feed columns,
     /// which give ground last, are still up.
     SheepPaneShort,
+    /// The redrawn editing pane, fresh: no edits filed, at the design
+    /// target of 160x48, where the explanation panel and the `LANDS`
+    /// column both draw.
+    EditPane,
+    /// The same pane with two edits filed: one that lands at once and one
+    /// that needs a respawn, so the pending section and the title's own
+    /// count both appear.
+    EditPaneEdited,
+    /// The fresh pane at 120 columns: the panel still draws, `LANDS`
+    /// gives way to it.
+    EditPaneSqueezed,
+    /// The fresh pane at 88 columns: the panel is gone, so `LANDS` is
+    /// back, since nothing else on screen carries cost.
+    EditPaneNarrow,
 }
 }
 
@@ -319,6 +334,10 @@ impl Scene {
             Self::SheepPaneCpuOnly => "sheep_pane_cpu_only",
             Self::SheepPaneSparklines => "sheep_pane_sparklines",
             Self::SheepPaneShort => "sheep_pane_short",
+            Self::EditPane => "edit_pane",
+            Self::EditPaneEdited => "edit_pane_edited",
+            Self::EditPaneSqueezed => "edit_pane_squeezed",
+            Self::EditPaneNarrow => "edit_pane_narrow",
         }
     }
 
@@ -453,6 +472,18 @@ impl Scene {
             Self::SheepPaneShort => {
                 "160 columns, 25 rows: the charts hold their design width but not their design height. Under 26 rows the memory chart goes; the CPU chart and the config and env column, which give ground last, are still up."
             }
+            Self::EditPane => {
+                "The redrawn editing pane on api, fresh: no edits filed, at 160x48. The tab row names all eight groups with only the active one chipped, the header reads FIELD / VALUE / LANDS, the explanation panel sits beside the field list naming the field under the cursor, and every env value reads (set) rather than the value itself."
+            }
+            Self::EditPaneEdited => {
+                "The same pane with two edits filed: cwd, which needs a respawn, and max_memory, which lands at once. The pending edits section lists both under the active group's own fields, and the title band reads 2 edits."
+            }
+            Self::EditPaneSqueezed => {
+                "The same fresh pane at 120 columns: narrow enough that LANDS gives way to the explanation panel, which still names the focused field's own cost in words."
+            }
+            Self::EditPaneNarrow => {
+                "The same fresh pane at 88 columns: narrow enough that the explanation panel is gone, so LANDS is back, since nothing else on screen carries cost."
+            }
         }
     }
 
@@ -562,6 +593,16 @@ impl Scene {
             // memory chart drops while the CPU chart, the config column and
             // the feed all still fit.
             Self::SheepPaneShort => (160, 25),
+            // The design target: 45% of 160 is 72, so both the panel and
+            // `LANDS` draw at their widest.
+            Self::EditPane | Self::EditPaneEdited => (160, 48),
+            // 120: past `panel_width`'s `LEFT_MIN` floor, so the panel
+            // still draws, but short of `LANDS_WITH_PANEL_MIN` (160), so
+            // `LANDS` gives way to it.
+            Self::EditPaneSqueezed => (120, 48),
+            // 88: short of `panel_width`'s `LEFT_MIN` floor (`88 - 50 <
+            // 40`), so the panel does not draw at all and `LANDS` returns.
+            Self::EditPaneNarrow => (88, 48),
             // HealthyWide, Errored, Grouped, WithDogs, Retrying, Refused,
             // FeedGap, FeedMissing, HostUnknown, Lambs, LambsUnknown: every
             // scene that carries all three optional panes at their ordinary
@@ -1567,6 +1608,34 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
             // reach without scrolling.
             app.update(Msg::Key(KeyPress::SelectLast));
         }
+        Scene::EditPane
+        | Scene::EditPaneEdited
+        | Scene::EditPaneSqueezed
+        | Scene::EditPaneNarrow => {
+            // `e` on the selected row (`api`, id 2), the way `ask_for_config`
+            // reaches it, then the shepherd's own reply.
+            app.update(Msg::Key(KeyPress::Edit));
+            app.update(Msg::Replied {
+                sent: Sent::SheepConfig {
+                    name: "api".to_string(),
+                },
+                result: Ok(Response::SheepConfig(Box::new(edit_pane_config_view()))),
+            });
+            // Two edits, driven by real key presses the way
+            // `select_field` always is: `cwd`, which needs a respawn, and
+            // `max_memory`, which lands at once, so the pending section
+            // and the title's own count both have something to show.
+            if which == Scene::EditPaneEdited {
+                for (key, typed) in [("cwd", "/srv/api"), ("max_memory", "256")] {
+                    select_field(&mut app, key);
+                    app.update(Msg::Key(KeyPress::Confirm));
+                    for character in typed.chars() {
+                        app.update(Msg::Key(KeyPress::TextChar(character)));
+                    }
+                    app.update(Msg::Key(KeyPress::TextApply));
+                }
+            }
+        }
         _ => {}
     }
 
@@ -2012,6 +2081,29 @@ fn settings_snapshot_with_dog_drift() -> SettingsSnapshot {
     }
 }
 
+/// `api`'s config as the shepherd would answer it, for the four
+/// editing-pane scenes: two env keys whose values never reach the view (the
+/// pane's own `(set)` rendering is what a scene checks, not a real secret),
+/// and no edits, overrides or pending fields of its own. [`Scene::EditPane`]
+/// draws it fresh; [`Scene::EditPaneEdited`] files two edits on top of it.
+fn edit_pane_config_view() -> SheepConfigView {
+    let mut config = AppConfig {
+        name: "api".to_string(),
+        script: "./api/server.js".to_string(),
+        args: vec!["--port".to_string(), "8080".to_string()],
+        max_restarts: 32,
+        instances: 1,
+        ..AppConfig::default()
+    };
+    config
+        .env
+        .insert("NODE_ENV".to_string(), "production".to_string());
+    config
+        .env
+        .insert("DATABASE_URL".to_string(), "postgres://db/api".to_string());
+    SheepConfigView::new(config, Vec::new(), Vec::new())
+}
+
 /// The header both gallery files open with.
 ///
 /// Not a doc comment on the test: this text is read by a person opening
@@ -2026,9 +2118,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all forty-one scenes through the same coloured
+frames.ansi renders all forty-five scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same forty-one scenes through the flattened NO_COLOR palette
+renders the same forty-five scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -2051,10 +2143,16 @@ it read and dropped are counted exactly; bytes below its 64 KiB window were
 never read at all, so those are reported in bytes, because nothing counted the
 lines in them and guessing would be worse than saying so.
 
-The last five frames are the full-screen bleats pane, `b` from the
-dashboard, then the four sheep-pane scenes, `↵` on a sheep. The
-seven before it are the settings screen, `s` from the dashboard. It owns
-the whole body between the title and the status bar rather than sharing it
+The last four frames are the editing pane, `e` from the dashboard, on a
+sheep's own row: fresh at the 160x48 design target, the same pane with two
+edits filed (one of them needing a respawn), and the same fresh pane at 120
+and at 88 columns, where the explanation panel and the LANDS column trade
+places as the width falls.
+
+Before those are the four sheep-pane scenes, `↵` on a sheep, and before
+them the full-screen bleats pane, `b` from the dashboard. The seven before
+that are the settings screen, `s` from the dashboard. It owns the whole body
+between the title and the status bar rather than sharing it
 with the flock table, so a fresh $SHEP_HOME, some scalars declared, an armed
 confirm, the socket editor mid-type, the dogs table's own drift, the same
 screen at 45 columns and the same screen too short to hold every row each get
@@ -2202,7 +2300,7 @@ mod tests {
     /// which is the form a reader sees.
     #[test]
     fn the_gallery_preamble_counts_the_scenes_it_has() {
-        const NUMBERS: [(usize, &str); 8] = [
+        const NUMBERS: [(usize, &str); 12] = [
             (34, "thirty-four"),
             (35, "thirty-five"),
             (36, "thirty-six"),
@@ -2211,6 +2309,10 @@ mod tests {
             (39, "thirty-nine"),
             (40, "forty"),
             (41, "forty-one"),
+            (42, "forty-two"),
+            (43, "forty-three"),
+            (44, "forty-four"),
+            (45, "forty-five"),
         ];
         let spelled = NUMBERS
             .iter()
@@ -3065,7 +3167,11 @@ mod tests {
             Scene::SheepPane => Some(Scene::SheepPaneCpuOnly),
             Scene::SheepPaneCpuOnly => Some(Scene::SheepPaneSparklines),
             Scene::SheepPaneSparklines => Some(Scene::SheepPaneShort),
-            Scene::SheepPaneShort => None,
+            Scene::SheepPaneShort => Some(Scene::EditPane),
+            Scene::EditPane => Some(Scene::EditPaneEdited),
+            Scene::EditPaneEdited => Some(Scene::EditPaneSqueezed),
+            Scene::EditPaneSqueezed => Some(Scene::EditPaneNarrow),
+            Scene::EditPaneNarrow => None,
         }
     }
 
