@@ -661,11 +661,26 @@ fn draw_panels(pane: &SecretsPane, palette: Palette, area: Rect, buffer: &mut Bu
     }
 }
 
+/// Rows [`draw`] spends before the first group header: this pane's own
+/// band, the store's terms, the two gates, the roll's status, the tab row,
+/// the heading row and the hairline. `the_chrome_is_the_rows_it_claims`
+/// reads the count back off a render, so the two cannot drift.
+const CHROME_ROWS: u16 = 7;
+
+/// The shortest `area` with room for the chrome, one row of content and
+/// both panels.
+const PANELS_MIN_ROWS: u16 = CHROME_ROWS + 1 + PANEL_ROWS;
+
 /// `area`'s own bottom, short by [`PANEL_ROWS`] whenever there is room for
 /// the two panels below it, so no data row ever draws underneath them.
+///
+/// Room counts the chrome, not the panels alone. Measuring the panels by
+/// themselves reserved six rows at every height from `PANEL_ROWS + 1` up,
+/// and `draw`'s own chrome guards reached that boundary first: the panels
+/// were skipped and their rows stayed blank.
 fn content_bottom(area: Rect) -> u16 {
     let bottom = area.y + area.height;
-    if area.height > PANEL_ROWS {
+    if area.height >= PANELS_MIN_ROWS {
         bottom - PANEL_ROWS
     } else {
         bottom
@@ -938,6 +953,112 @@ mod tests {
             .and_then(|prefix| prefix.split_whitespace().next_back())
             .and_then(|number| number.parse().ok())
             .unwrap_or_else(|| panic!("no leading number in {line:?}"))
+    }
+
+    /// The whole rendered frame as text, for the assertions below that
+    /// have to say a thing is *not* drawn: [`row_of`] panics instead.
+    fn frame_text(buffer: &Buffer) -> String {
+        (0..buffer.area.height)
+            .map(|y| {
+                let line: String = (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect();
+                format!("{}\n", line.trim_end())
+            })
+            .collect()
+    }
+
+    /// [`CHROME_ROWS`] is read by [`content_bottom`], so a row added to
+    /// `draw`'s own chrome without a matching bump here would go back to
+    /// reserving the panels over the top of it. Counted off a render
+    /// rather than off the source, band through hairline inclusive.
+    #[test]
+    fn the_chrome_is_the_rows_it_claims() {
+        let app = fixtures::app_with_secrets();
+        let buffer = fixtures::render(&app, 160, 48);
+
+        let band = row_of(&buffer, "SECRETS   flock-wide");
+        let hairline = row_of(&buffer, "\u{2500}\u{2500}\u{2500}");
+
+        assert_eq!(hairline - band + 1, CHROME_ROWS, "{}", frame_text(&buffer));
+    }
+
+    /// The regression: `content_bottom` measured room by the panels alone,
+    /// so every height from `PANEL_ROWS + 1` up reserved six rows that
+    /// `draw` never reached, and the pane below the heading row was blank.
+    #[test]
+    fn a_terminal_too_short_for_both_spends_the_panel_rows_on_the_table() {
+        let app = fixtures::app_with_secrets();
+        let buffer = fixtures::render(&app, 160, 14);
+        let text = frame_text(&buffer);
+
+        assert!(
+            !text.contains("FOCUSED"),
+            "no room for the panels at this height: {text}"
+        );
+        assert!(
+            text.contains("DB_PASSWORD"),
+            "their rows go to the table instead: {text}"
+        );
+        assert!(
+            text.contains("operator \u{d7}"),
+            "the group header is drawn too: {text}"
+        );
+    }
+
+    /// The boundary, both sides of it. One row short of
+    /// [`PANELS_MIN_ROWS`] the panels would have nothing above them but
+    /// chrome, which is the height they are not worth.
+    #[test]
+    fn the_panels_arrive_with_the_row_that_makes_room_for_them() {
+        let app = fixtures::app_with_secrets();
+        let short = usize::from(PANELS_MIN_ROWS - 1);
+        let exact = usize::from(PANELS_MIN_ROWS);
+
+        // `body_rows` spends the title band and the status bar, so a body
+        // of N rows wants a terminal of N + 2.
+        let below = frame_text(&fixtures::render(
+            &app,
+            160,
+            u16::try_from(short + 2).unwrap(),
+        ));
+        let at = frame_text(&fixtures::render(
+            &app,
+            160,
+            u16::try_from(exact + 2).unwrap(),
+        ));
+
+        assert!(!below.contains("FOCUSED"), "one row short: {below}");
+        assert!(at.contains("FOCUSED"), "exactly enough: {at}");
+        assert!(at.contains("WHO READS IT"), "both panels or neither: {at}");
+        assert!(
+            at.contains("operator \u{d7}"),
+            "and a content row above them: {at}"
+        );
+    }
+
+    /// Swept rather than sampled: the defect was invisible at every height
+    /// the other tests render at, and showed only between
+    /// [`PANEL_ROWS`] and [`PANELS_MIN_ROWS`].
+    #[test]
+    fn no_supported_height_reserves_panel_rows_it_never_draws() {
+        let app = fixtures::app_with_secrets();
+        for height in crate::lookout::view::flock::MIN_HEIGHT..=40 {
+            let buffer = fixtures::render(&app, 160, height);
+            let area = Rect::new(0, 0, 160, crate::lookout::view::body_rows(buffer.area));
+            let text = frame_text(&buffer);
+            if content_bottom(area) < area.y + area.height {
+                assert!(
+                    text.contains("FOCUSED"),
+                    "{height} rows reserved the panels: {text}"
+                );
+            } else {
+                assert!(
+                    !text.contains("FOCUSED"),
+                    "{height} rows reserved nothing for them: {text}"
+                );
+            }
+        }
     }
 
     #[test]
