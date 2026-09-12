@@ -103,7 +103,7 @@ impl LevelMatcher {
     /// # Errors
     /// - [`LevelRuleError::EmptyPattern`] if a rule's pattern is empty.
     /// - [`LevelRuleError::BadPattern`] if a pattern does not compile, or
-    ///   compiles to a program over [`PATTERN_SIZE_LIMIT`].
+    ///   compiles to a program over this crate's 1 MiB bound.
     pub fn compile(rules: &[LevelRule]) -> Result<Self, LevelRuleError> {
         let mut compiled = Vec::with_capacity(rules.len());
         for rule in rules {
