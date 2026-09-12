@@ -64,9 +64,13 @@ impl Terminate {
 
     /// Resolves when the OS asks this process to stop.
     ///
-    /// `Option<()>` rather than `()`, so the unix arm passes through
-    /// `Signal::recv`'s own `None` unchanged, keeping every call site's
-    /// `while ... .is_some()` unchanged too.
+    /// `Option<()>` rather than `()`, because that is what
+    /// `tokio::signal::unix::Signal::recv` answers and the unix arm is a
+    /// straight pass-through of it. Every call site ignores the value: each
+    /// one is a `select!` arm binding `_`, or an awaited `recv()` whose
+    /// result is discarded. So the type is tokio's shape surviving rather
+    /// than anything a caller reads, and narrowing it to `()` would be
+    /// correct at every call site today.
     ///
     /// # Cancellation safety
     /// Safe on both platforms: each underlying stream is documented
