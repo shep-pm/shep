@@ -364,7 +364,7 @@ impl Scene {
                 "The shepherd stopped answering. Five attempts over about eight seconds before this becomes the next frame. Every pane below the table keeps describing the selected sheep from the last listing."
             }
             Self::Frozen => {
-                "The ladder ran out. Last known values stay, the uptime clock has stopped, and so has the host strip: one line ticking over on a frozen screen is a contradiction on the same frame."
+                "The ladder ran out. The band says so in bark, the whole table and the host strip go to one muted ink so no cell reads as live, and UPTIME becomes FROZEN over a duration that has stopped advancing. The detail band and the feed give their rows to the link panel: they describe a shepherd that is gone, and it describes what happened."
             }
             Self::Refused => {
                 "`x` with actions gated off. The refusal is literal, nothing about damage gets charming, and the panes below carry on."
@@ -496,6 +496,26 @@ impl Scene {
             // is exactly `FOLD_ALL`'s threshold: the one scene that needs the
             // full column set, SHARE and NOTES included.
             Self::Folds => (160, 30),
+            // The design target, and comfortably past the floor this
+            // scene actually needs. `columns_for` runs on `width - GUTTER`,
+            // and `ALL`'s own threshold is the sum of what it draws:
+            //
+            //   ALL's fixed widths        = 112
+            //   13 two-cell separators    =  26
+            //   NAME at its floor         =   8  (NAME_MIN)
+            //   112 + 26 + 8              = 146, `TIERS`'s widest entry
+            //
+            // So 148 columns is the floor and 160 leaves NAME 20 cells,
+            // which is what the frame drew. `the_frozen_scene_draws_every_
+            // column` pins the floor; the extra twelve are the design's.
+            //
+            // At the 120 this used to inherit from the default arm, the
+            // table renders the NO_SPARK tier: no CPU sparkline and no
+            // MEM/CEIL gauge, which is two of the cells the frame exists to
+            // show frozen. 30 rows, not the design's 48: the link panel is
+            // six rows where the two panes it replaces were twelve, so
+            // nothing here needs the taller frame.
+            Self::Frozen => (160, 30),
             Self::Confirm
             | Self::Acting
             | Self::ActionRefused
@@ -542,10 +562,10 @@ impl Scene {
             // memory chart drops while the CPU chart, the config column and
             // the feed all still fit.
             Self::SheepPaneShort => (160, 25),
-            // HealthyWide, Errored, Grouped, WithDogs, Retrying, Frozen,
-            // Refused, FeedGap, FeedMissing, HostUnknown, Lambs, LambsUnknown:
-            // every scene that carries all three optional panes at their
-            // ordinary rows.
+            // HealthyWide, Errored, Grouped, WithDogs, Retrying, Refused,
+            // FeedGap, FeedMissing, HostUnknown, Lambs, LambsUnknown: every
+            // scene that carries all three optional panes at their ordinary
+            // rows.
             _ => (120, 30),
         }
     }
@@ -1401,6 +1421,7 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
         Scene::Frozen => {
             app.update(Msg::Frozen {
                 at_local: "2026-08-14 14:32:07".to_string(),
+                why: super::view::fixtures::FROZEN_WHY.to_string(),
             });
             // Sent after `Msg::Frozen`, with a load average that varies
             // with `age`: the guard's refusal keeps
@@ -2506,12 +2527,38 @@ mod tests {
         );
         assert!(retrying.contains("host  load"), "and so is the strip");
 
-        // Frozen: last known values stay, nothing keeps ticking.
+        // Frozen: last known values stay, nothing keeps ticking, and the
+        // panel that replaced the two lower panes says what happened.
         let frozen = render_text(&scene(Scene::Frozen).1);
-        assert!(frozen.contains("the shepherd has died"));
+        assert!(frozen.contains("THE SHEPHERD HAS DIED"));
         assert!(
             frozen.contains("host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores"),
             "the strip kept its LAST values rather than blanking"
+        );
+        assert!(
+            frozen.contains("FROZEN"),
+            "UPTIME renamed over a column that stopped advancing"
+        );
+        assert!(
+            frozen.contains(
+                "refused   the shepherd did not answer: could not connect to `/home/ada/.shep/run/shep.sock`: Connection refused (os error 61)"
+            ),
+            "the link panel quotes the last dial's own error, whole"
+        );
+        assert!(
+            frozen.contains("█ 250ms  █ 500ms  █ 1s  █ 2s  █ 4s"),
+            "and draws every rung the ladder climbed"
+        );
+        // The design's own copy offers `r` in both places. `r` is refused
+        // once the link is lost, and `run_link` has already returned, so
+        // the frame must not name it anywhere.
+        assert!(
+            frozen.contains("shep muster, from another shell"),
+            "the panel sends the operator somewhere that works"
+        );
+        assert!(
+            !frozen.contains("dials again") && !frozen.contains("retry the link"),
+            "and offers no key a freeze has already refused"
         );
 
         // Errored: selection parked on the errored sheep.
@@ -3073,12 +3120,70 @@ mod tests {
         }
     }
 
+    /// A pinned width whose own arithmetic no longer holds drops a column
+    /// in silence, and this is the scene whose whole point is what the
+    /// columns look like once the shepherd is gone.
+    ///
+    /// The floor is `ALL`'s own tier threshold plus the gutter, not the
+    /// design's 160: the frame is drawn twelve columns wider than it has
+    /// to be, and pinning the wider number would fail for a scene that was
+    /// still drawing everything.
+    #[test]
+    fn the_frozen_scene_draws_every_column() {
+        use super::super::view::flock::{GUTTER, columns_for};
+
+        let (width, _) = Scene::Frozen.size();
+        assert_eq!(
+            columns_for(width - GUTTER).len(),
+            columns_for(u16::MAX).len(),
+            "the frozen scene is {width} columns, which drops a column from the widest set"
+        );
+    }
+
+    /// Rule 3 of the design system: strip every colour and the frame still
+    /// reads. Its corollary on this one frame is stronger — no cell above
+    /// the link panel may carry a colour at all, since a meadow `online`
+    /// two seconds after the shepherd died is the one lie this screen can
+    /// tell.
+    #[test]
+    fn no_cell_above_the_link_panel_is_painted_live() {
+        let palette = coloured_palette();
+        let buffer = scene(Scene::Frozen).1;
+        let muted = palette.muted().fg;
+        let line = palette.line().fg;
+        // Row 0 is the band, which is bark and says so; the link panel
+        // below carries the ladder's own bark blocks and a butter `r`.
+        let panel_at = render_text(&buffer)
+            .lines()
+            .position(|row| row.contains("THE LINK"))
+            .expect("the link panel is on a frozen frame");
+        let panel_at = u16::try_from(panel_at).expect("a row index fits");
+        for y in 1..panel_at {
+            for x in 0..buffer.area.width {
+                let cell = &buffer[(buffer.area.x + x, buffer.area.y + y)];
+                assert!(
+                    cell.fg == Color::Reset || Some(cell.fg) == muted || Some(cell.fg) == line,
+                    "a live-looking cell at {x},{y}: {:?} in {:?}",
+                    cell.symbol(),
+                    cell.fg
+                );
+            }
+        }
+    }
+
     /// Rendered twice at two different ages and compared to each other,
     /// not to the healthy scene, since a live-versus-frozen diff would
     /// pass either way. The live pair at the bottom catches a renderer
     /// that drops the uptime column entirely.
+    ///
+    /// Split at the link panel's own chip rather than at a row index. Every
+    /// value above it came from the shepherd and stopped when the shepherd
+    /// did; the panel below it describes the link, and how long ago the
+    /// link died is a fact about now. One half must not move and the other
+    /// must, so the test asserts both rather than narrowing to the half
+    /// that is easier to pin.
     #[test]
-    fn the_frozen_frame_does_not_move_however_long_the_link_stays_gone() {
+    fn a_frozen_frame_moves_only_in_the_link_panel() {
         let ten_minutes = render_text(&scene_with(
             Scene::Frozen,
             Duration::from_secs(600),
@@ -3089,13 +3194,38 @@ mod tests {
             Duration::from_secs(60_000),
             coloured_palette(),
         ));
+        let above_the_panel = |frame: &str| {
+            frame
+                .split("THE LINK")
+                .next()
+                .expect("split yields at least one part")
+                .to_string()
+        };
         assert_eq!(
-            ten_minutes, sixteen_hours,
+            above_the_panel(&ten_minutes),
+            above_the_panel(&sixteen_hours),
             "the frozen frame's uptime column advanced after the link was lost"
         );
+        assert_ne!(
+            ten_minutes, sixteen_hours,
+            "the link panel's age is the one number a frozen frame still counts"
+        );
+        // Seven seconds short of each age, and deliberately: `scene_with`
+        // ticks the clock forward by that much before it freezes anything,
+        // so the freeze happens at `t0 + 7s` and the panel counts from
+        // there. `9m 53s`, not `593s` — the same two-unit shape every other
+        // duration on the screen uses.
         assert!(
-            ten_minutes.lines().any(|line| line.starts_with("lambs  ")),
-            "the frozen frame has a lamb line for the comparison above to cover"
+            ten_minutes.contains("2026-08-14 14:32:07, 9m 53s ago"),
+            "and it counts in the same words every other duration uses"
+        );
+        assert!(
+            sixteen_hours.contains("2026-08-14 14:32:07, 16h 39m ago"),
+            "at both ends of the sweep"
+        );
+        assert!(
+            above_the_panel(&ten_minutes).contains("1h 18m"),
+            "the frozen frame has an uptime cell for the comparison above to cover"
         );
 
         let live_ten = render_text(&scene_with(

@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-09-12
+
+### Added
+
+- Flexible flockfile env deserializing
+
+### Fixed
+
+- Preserve whole numbers beyond i64::MAX in env
+- Redact env values from Debug, never print them
+- Yaml bool and float parsing was dishonst
+
+
 ## [0.7.3] - 2026-09-08
 
 

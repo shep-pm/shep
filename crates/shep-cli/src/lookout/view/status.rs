@@ -18,11 +18,15 @@ use super::settings::field_label;
 
 /// The banner, when there is one. `None` while the link is live.
 ///
-/// The frozen sentence names what happened and when the values stopped
-/// being current, so an operator reading `online` knows how much to trust
-/// it.
+///
+/// What happened and when the values stopped being current, so an operator
+/// reading `online` knows how much to trust it. The frozen row says neither:
+/// once the link is lost, `view::title_band` carries the death sentence in
+/// bark across the whole row above, and this row picks up the `$SHEP_HOME`
+/// the title band no longer has space for, plus the two things an operator
+/// staring at a dead dashboard actually needs told.
 #[must_use]
-pub fn banner_line(app: &App) -> Option<Line<'static>> {
+pub fn banner_line(app: &App, width: u16) -> Option<Line<'static>> {
     let palette = app.palette();
     match app.link() {
         Link::Live => None,
@@ -30,12 +34,36 @@ pub fn banner_line(app: &App) -> Option<Line<'static>> {
             retrying_sentence(*attempt),
             palette.attention(),
         ))),
-        Link::Lost { at_local } => Some(Line::from(Span::styled(
-            format!("the shepherd has died: these values are frozen as of {at_local}"),
-            palette.alarm(),
+        // Through `fit`, unlike the retrying sentence above, which is
+        // short enough that no terminal cuts it. Three clauses and a
+        // `$SHEP_HOME` do not fit 90 columns, and `Buffer::set_line` cuts
+        // what does not fit in silence: a sentence ending mid-word beside
+        // five other lines that all mark their own truncation reads as a
+        // rendering fault rather than as a narrow terminal.
+        Link::Lost { .. } => Some(Line::from(Span::styled(
+            fit(
+                &format!(
+                    " shep lookout   {}  ·  the dashboard stays up so you can read what it had  ·  it will not exit on its own",
+                    app.home()
+                ),
+                width,
+            ),
+            palette.muted(),
         ))),
     }
 }
+
+/// The key hint once the link is [`Link::Lost`].
+///
+/// Two keys, because two keys still do something: `q` leaves, and `j`/`k`
+/// move a cursor over values that are already history. `r` is not among
+/// them, whatever the design's own copy says: it is refused like the rest
+/// (`App::on_key`), and `super::super::link::run_link` has already returned
+/// by the time a freeze lands, so no task survives to answer a redial. The
+/// last clause is the whole rest of the keymap, said once rather than
+/// discovered a keypress at a time.
+const FROZEN_HINT: &str =
+    "q quit   j/k still moves   every other key is refused while the link is down";
 
 /// The bottom line: eight slots, highest priority first: the settings
 /// screen's armed or in-flight edit, a dashboard confirm, the settings
@@ -191,6 +219,13 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             format!("filter \"{}\"   / edit   esc clear", app.filter()),
             palette.muted(),
         )
+    } else if matches!(app.link(), Link::Lost { .. }) {
+        // Only this branch, not the pane hints above: a pane opened before
+        // the freeze keeps naming its own keys, and this line is the flock
+        // table's. Every action key `hint_for` would name is refused once
+        // the link is gone, so naming them would teach the operator three
+        // keys that do nothing.
+        (FROZEN_HINT.to_string(), palette.attention())
     } else {
         // Butter: the keys, same rule as the pane's own hint above.
         (
@@ -204,7 +239,12 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
     // tail: control state means nothing on a screen with no action keys of
     // its own, and whether the view is pinned to the newest line is the
     // fact this screen's own operator needs a keystroke away from.
-    let right = if app.bleats_pane().is_some_and(BleatsPane::following) {
+    let right = if matches!(app.link(), Link::Lost { .. }) {
+        // Ahead of both: whether this dashboard is reading a live shepherd
+        // outranks whether a pane is pinned to the newest line, and it
+        // outranks a control state that no longer decides anything.
+        "\u{2588} frozen"
+    } else if app.bleats_pane().is_some_and(BleatsPane::following) {
         "\u{2588} following"
     } else {
         match app.control() {

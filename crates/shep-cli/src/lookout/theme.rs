@@ -141,7 +141,31 @@ impl Palette {
         Self::fg(self.ink3)
     }
 
-    /// Damage that has happened: the frozen banner, a failed poll.
+    /// Every semantic colour collapsed onto [`Self::muted`]'s one ink.
+    ///
+    /// What a frozen dashboard renders its data through, so no cell can be
+    /// mistaken for live: an `online` in meadow two seconds after the
+    /// shepherd died is the one lie this screen can tell.
+    ///
+    /// [`Self::line`] and [`Self::ground`] keep their colours. Both are
+    /// chrome rather than a reading: a rule separates regions and the
+    /// ground carries the cursor, and `j`/`k` still move while the link is
+    /// down.
+    #[must_use]
+    pub fn frozen(self) -> Self {
+        Self {
+            meadow: self.ink3,
+            bark: self.ink3,
+            butter: self.ink3,
+            ink3: self.ink3,
+            sky: self.ink3,
+            gauge_rest: self.ink3,
+            line: self.line,
+            paper2: self.paper2,
+        }
+    }
+
+    /// Damage that has happened: a spent reconnect ladder, a failed poll.
     #[must_use]
     pub fn alarm(self) -> Style {
         Self::fg(self.bark)

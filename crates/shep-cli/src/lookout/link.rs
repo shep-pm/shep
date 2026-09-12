@@ -98,15 +98,17 @@ pub async fn run_link<S: Shepherd>(
             None => match shepherd.link().await {
                 Ok(pair) => pair,
                 Err(err) => {
-                    // Not surfaced as its own Msg: the reducer's `Retrying`
-                    // state is what the banner reads, and a per-attempt error
-                    // string would change the sentence every 250ms.
-                    let _ = err;
+                    // Kept for the freeze below and nothing else: the
+                    // reducer's `Retrying` state is what the banner reads,
+                    // and a per-attempt error string would change that
+                    // sentence every 250ms. The frozen link panel quotes one
+                    // error that never changes again, so it gets the words.
                     attempt += 1;
                     if attempt > RECONNECT_ATTEMPTS {
                         let _ = msgs
                             .send(Msg::Frozen {
                                 at_local: local_now(),
+                                why: err.to_string(),
                             })
                             .await;
                         return;
