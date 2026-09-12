@@ -394,30 +394,13 @@ mod tests {
         ] {
             let event = BusEvent::Process {
                 event: kind,
-                info: ProcessInfo {
-                    id: 3,
-                    name: "web".to_string(),
-                    status: ProcStatus::Stopping,
-                    pid: Some(4242),
-                    restarts: 0,
-                    uptime_ms: 0,
-                    fold: None,
-                    depends_on: Vec::new(),
-                    out_file: None,
-                    err_file: None,
-                    cpu_percent: None,
-                    memory_bytes: None,
-                    dog: None,
-                    lambs: None,
-                    last_exit: None,
-                    smit: None,
-                    instance: None,
-                    handshook: None,
-                    dog_stale: None,
-                    pending: None,
-                    overridden: None,
-                    max_memory: None,
-                },
+                // Scaffolding: `topic()` reads only `event`, and nothing
+                // here is asserted. The builder says so; the exhaustive
+                // literal in `bus_event_wire_snapshots` says the opposite
+                // about its own row, deliberately.
+                info: ProcessInfo::builder(3, "web", ProcStatus::Stopping)
+                    .pid(Some(4242))
+                    .build(),
                 manually: true,
                 at_ms: 0,
             };
