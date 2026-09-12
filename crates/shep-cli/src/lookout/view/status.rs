@@ -188,7 +188,9 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // `attention`, the same butter the non-grave notice uses. Not a
         // modal, not a box, not a `ratatui::widgets::Clear`: there is no
         // overlay anywhere in this module, and one rule under the header
-        // beats a full border for a pane somebody reads at 3am.
+        // beats a full border for a pane somebody reads at 3am. The close
+        // dialog is lookout's one overlay, and it is `pane`'s box over
+        // `pane`'s own field list, not this bar over anything.
         (text, palette.attention())
     } else if app.close_dialog().is_some() {
         // Ahead of the config pane's own hint below: the dialog owns the

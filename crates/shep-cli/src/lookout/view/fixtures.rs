@@ -7,6 +7,8 @@ use std::time::{Duration, Instant};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
+use ratatui::style::Style;
 use ratatui::text::Line;
 use shep_client::RequestError;
 use shep_core::config::{AppConfig, ProbeConfig, ProbeKind};
@@ -1047,6 +1049,93 @@ pub fn row_starting_with(lines: &[Line<'static>], prefix: &str) -> String {
         .map(rendered)
         .find(|line| line.trim_start().starts_with(prefix))
         .unwrap_or_else(|| panic!("no row starts with {prefix:?}"))
+}
+
+/// The sheep pane, `cwd` filed and the close dialog raised the way `esc`
+/// raises it for real (`App::close_offer`, rather than a synthetic
+/// `CloseDialog::new`): what this task's own box, borderless and mute-pass
+/// tests draw a frame from.
+fn app_with_close_dialog_and_palette(palette: Palette) -> App {
+    let mut app = with_selection_and_palette(
+        ProcessInfo::builder(9, "web", ProcStatus::Online)
+            .pid(Some(48_000))
+            .build(),
+        palette,
+    );
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::Edit));
+    app.update(Msg::Replied {
+        sent: Sent::SheepConfig {
+            name: "web".to_string(),
+        },
+        result: Ok(Response::SheepConfig(Box::new(sheep_config_view_parking(
+            Vec::new(),
+        )))),
+    });
+    file_edit(&mut app, "cwd", "/srv/app");
+    app.update(Msg::Key(KeyPress::Escape));
+    assert!(
+        app.close_dialog().is_some(),
+        "close_offer refused to raise a dialog"
+    );
+    app
+}
+
+/// The same, at [`plain`].
+pub fn app_with_close_dialog() -> App {
+    app_with_close_dialog_and_palette(plain())
+}
+
+/// A frame with the close dialog open, drawn at `width` x `height`: what
+/// the box and borderless width tests read the dialog's own margin
+/// arithmetic against.
+pub fn render_dialog(width: u16, height: u16) -> Buffer {
+    render(&app_with_close_dialog(), width, height)
+}
+
+/// The row in `buffer` containing `needle`.
+///
+/// # Panics
+///
+/// Panics if no row contains `needle`, a fixture bug rather than a failure
+/// the test is about.
+#[track_caller]
+pub fn row_containing(buffer: &Buffer, needle: &str) -> String {
+    rows_of(buffer)
+        .into_iter()
+        .find(|row| row.contains(needle))
+        .unwrap_or_else(|| panic!("no row contains {needle:?}"))
+}
+
+/// [`super::pane::draw_pane`] alone, straight into a fresh buffer at
+/// `width` x `height`, with the close dialog raised: what the mute-pass
+/// test reads a cell from, since [`render`] draws the whole frame and the
+/// config pane does not start at the buffer's own origin there.
+pub fn draw_pane_with_dialog(width: u16, height: u16) -> Buffer {
+    draw_pane_with_dialog_and_palette(width, height, plain())
+}
+
+/// The same, at `palette`: what the `NO_COLOR` mute-pass test reads.
+pub fn draw_pane_with_dialog_and_palette(width: u16, height: u16, palette: Palette) -> Buffer {
+    let app = app_with_close_dialog_and_palette(palette);
+    let area = Rect::new(0, 0, width, height);
+    let mut buffer = Buffer::empty(area);
+    let pane = app.config_pane().expect("the pane is open");
+    super::pane::draw_pane(&app, pane, area, &mut buffer);
+    buffer
+}
+
+/// The palette `NO_COLOR` selects: no ink anywhere, so the mute pass's own
+/// second call (`palette.muted()`) is a no-op.
+pub fn no_color() -> Palette {
+    Palette::detect(Some(OsStr::new("1")), None, None)
+}
+
+/// The style [`plain`]'s ink leaves a cell in once the mute pass has run:
+/// the pane's own reset-then-muted sequence, replayed here so a fixture
+/// never has to agree with a colour literal in `theme.rs` by coincidence.
+pub fn plain_dimmed() -> Style {
+    Style::reset().patch(plain().muted())
 }
 
 /// The bark dog's `[bark]` section as `Request::DogConfig` would answer it:

@@ -39,6 +39,41 @@ use crate::vocabulary::Role;
 /// every line overruns.
 const GUTTER: u16 = 2;
 
+/// The close dialog's own interior width, once it is boxed: what
+/// [`close_dialog_lines`] lays its rows out to when [`draw_close_dialog`]
+/// draws the boxed form.
+const BOX_WIDTH: u16 = 86;
+
+/// 86 interior plus a border cell each side is 88, plus a margin cell each
+/// side is 90. One column narrower and the border would have to clip, which
+/// `docs/lookout/design-files/rulings.md` refuses, so 89 draws the
+/// borderless form instead.
+const BOX_FLOOR: u16 = BOX_WIDTH + 4;
+
+/// The border's four corners, checked against `unicodedata.east_asian_width`
+/// and found Neutral, same as [`BOX_LEFT`].
+const BOX_TOP_LEFT: char = '▛';
+const BOX_TOP_RIGHT: char = '▜';
+const BOX_BOTTOM_LEFT: char = '▙';
+const BOX_BOTTOM_RIGHT: char = '▟';
+
+/// The left edge. Neutral, unlike the other three edge glyphs below.
+const BOX_LEFT: char = '▐';
+
+/// The top, bottom and right edges. All three are East-Asian Ambiguous,
+/// checked the same way the rulings ask `▌` to be. Kept anyway: `─` already
+/// draws every hairline rule in this pane at full width and `█░` fill every
+/// gauge, both Ambiguous too, so "no Ambiguous glyph" was never this
+/// codebase's bar. The right edge is the one with real exposure, since no
+/// Neutral right-half block exists to swap `▌` for and a terminal that
+/// doubles it shifts every interior row;
+/// `the_border_vocabulary_is_the_one_that_was_checked` pins the set so a
+/// later glyph change gets the same check rather than inheriting this
+/// answer.
+const BOX_TOP: char = '▀';
+const BOX_BOTTOM: char = '▄';
+const BOX_RIGHT: char = '▌';
+
 /// The KEY cell at its full width, flag character included. Twenty-six is
 /// `exp_backoff_restart_delay` plus its flag, the longest key the Flockfile
 /// schema declares, so no field name is truncated at a width that can
@@ -1873,18 +1908,127 @@ pub fn draw_pane(app: &App, pane: &ConfigPane, area: Rect, buffer: &mut Buffer) 
         buffer.set_line(area.x, area.y + offset, line, area.width);
     }
     if let Some(dialog) = app.close_dialog() {
-        let lines = close_dialog_lines(dialog, app.palette(), area.width, app.now());
-        // Bottom-anchored over the field list, the rows the frame draws it
-        // on. Task 4 replaces this with the boxed form above 90 columns.
-        let top = area.y
-            + area
-                .height
-                .saturating_sub(u16::try_from(lines.len()).unwrap_or(0));
-        for (offset, line) in lines.iter().enumerate() {
-            let offset = u16::try_from(offset).unwrap_or(0);
-            buffer.set_line(area.x, top + offset, line, area.width);
-        }
+        // The pane draws first and is then muted whole, so 1e's own render
+        // is untouched and its four pinned snapshots do not move.
+        //
+        // Two calls, not one: `Buffer::set_style` (ratatui-core 0.1.2,
+        // `buffer/buffer.rs:405`) patches a cell rather than replacing it,
+        // so a single `palette.muted()` call would leave the title band's
+        // reverse video and the selected row's own ground sitting under the
+        // new ink. `Style::reset()` clears both back to the terminal's own
+        // default first; `palette.muted()` then repaints the one ink the
+        // dialog leaves the pane in. Under `NO_COLOR` the second call is a
+        // no-op (`Palette::muted` has no colour to give), so only the reset
+        // runs and the pane behind goes completely flat, which is the right
+        // outcome there: the border and the reverse-video heading are what
+        // carry the separation on their own.
+        buffer.set_style(area, Style::reset());
+        buffer.set_style(area, app.palette().muted());
+        draw_close_dialog(dialog, app.palette(), app.now(), area, buffer);
     }
+}
+
+/// Whether a dialog `width` columns wide draws boxed, or gives way to the
+/// borderless form.
+const fn dialog_is_boxed(width: u16) -> bool {
+    width >= BOX_FLOOR
+}
+
+/// The dialog on top of the muted pane: boxed at [`BOX_FLOOR`] and above,
+/// full width with no border below it.
+fn draw_close_dialog(
+    dialog: &CloseDialog,
+    palette: Palette,
+    now: Instant,
+    area: Rect,
+    buffer: &mut Buffer,
+) {
+    if dialog_is_boxed(area.width) {
+        draw_boxed_close_dialog(dialog, palette, now, area, buffer);
+    } else {
+        draw_borderless_close_dialog(dialog, palette, now, area, buffer);
+    }
+}
+
+/// The full-width, borderless form: bottom-anchored over the field list,
+/// the same rows a terminal under [`BOX_FLOOR`] always drew before this
+/// task, so a gallery scene one column below the floor still gets the form
+/// it exists to show rather than a clipped box.
+fn draw_borderless_close_dialog(
+    dialog: &CloseDialog,
+    palette: Palette,
+    now: Instant,
+    area: Rect,
+    buffer: &mut Buffer,
+) {
+    let lines = close_dialog_lines(dialog, palette, area.width, now);
+    let top = area.y
+        + area
+            .height
+            .saturating_sub(u16::try_from(lines.len()).unwrap_or(0));
+    for (offset, line) in lines.iter().enumerate() {
+        let offset = u16::try_from(offset).unwrap_or(0);
+        blank_row(buffer, area.x, top + offset, area.width);
+        buffer.set_line(area.x, top + offset, line, area.width);
+    }
+}
+
+/// The boxed form: [`BOX_WIDTH`] cells wide, centred in `area`, its rows
+/// vertically centred too.
+fn draw_boxed_close_dialog(
+    dialog: &CloseDialog,
+    palette: Palette,
+    now: Instant,
+    area: Rect,
+    buffer: &mut Buffer,
+) {
+    let lines = close_dialog_lines(dialog, palette, BOX_WIDTH, now);
+    let rows = u16::try_from(lines.len()).unwrap_or(0);
+    let box_height = rows + 2;
+    let margin = area.width.saturating_sub(BOX_WIDTH + 2) / 2;
+    let box_x = area.x + margin;
+    let box_y = area.y + area.height.saturating_sub(box_height) / 2;
+    let line_style = palette.line();
+
+    buffer.set_string(
+        box_x,
+        box_y,
+        format!(
+            "{BOX_TOP_LEFT}{}{BOX_TOP_RIGHT}",
+            BOX_TOP.to_string().repeat(usize::from(BOX_WIDTH))
+        ),
+        line_style,
+    );
+    for (offset, line) in lines.iter().enumerate() {
+        let offset = u16::try_from(offset).unwrap_or(0);
+        let y = box_y + 1 + offset;
+        buffer.set_string(box_x, y, BOX_LEFT.to_string(), line_style);
+        blank_row(buffer, box_x + 1, y, BOX_WIDTH);
+        buffer.set_line(box_x + 1, y, line, BOX_WIDTH);
+        buffer.set_string(box_x + 1 + BOX_WIDTH, y, BOX_RIGHT.to_string(), line_style);
+    }
+    buffer.set_string(
+        box_x,
+        box_y + 1 + rows,
+        format!(
+            "{BOX_BOTTOM_LEFT}{}{BOX_BOTTOM_RIGHT}",
+            BOX_BOTTOM.to_string().repeat(usize::from(BOX_WIDTH))
+        ),
+        line_style,
+    );
+}
+
+/// `width` cells of plain space at `(x, y)`, reset back to the terminal's
+/// own default: the dialog itself is never muted, only the pane behind it.
+///
+/// [`Buffer::set_line`] only ever writes as many cells as its `Line` carries
+/// content for, so a blank separator row (`Line::from(Span::raw(""))`,
+/// [`close_dialog_lines`]'s own two of them) writes nothing and would leave
+/// whatever the field list drew there showing through, muted, in the
+/// middle of what is meant to read as a solid dialog. Called ahead of every
+/// row this module draws the dialog's own lines into, boxed or not.
+fn blank_row(buffer: &mut Buffer, x: u16, y: u16, width: u16) {
+    buffer.set_string(x, y, " ".repeat(usize::from(width)), Style::reset());
 }
 
 #[cfg(test)]
@@ -2023,6 +2167,61 @@ mod tests {
 
         assert_eq!(fresh_filled, 10, "{fresh_row}");
         assert_eq!(later_filled, 5, "{later_row}");
+    }
+
+    #[test]
+    fn the_box_draws_at_its_floor_and_not_one_column_below() {
+        assert!(dialog_is_boxed(BOX_FLOOR));
+        assert!(!dialog_is_boxed(BOX_FLOOR - 1));
+    }
+
+    #[test]
+    fn the_borderless_form_spans_the_whole_width_and_never_clips() {
+        let rendered = fixtures::render_dialog(89, 48);
+        let heading = fixtures::row_containing(&rendered, "NEED A RESPAWN");
+        assert!(
+            !heading.contains('▐'),
+            "no border below the floor: {heading}"
+        );
+        assert!(
+            visible_width(&heading) <= 89,
+            "clipped or overran: {heading}"
+        );
+    }
+
+    /// Dimming changes style and leaves every character alone, so a test
+    /// that asserts text here is asserting nothing.
+    #[test]
+    fn the_pane_behind_the_dialog_is_muted() {
+        let buffer = fixtures::draw_pane_with_dialog(160, 48);
+        let behind = buffer[(2, 4)].style();
+        assert_eq!(behind.fg, fixtures::plain_dimmed().fg);
+    }
+
+    /// Muting is a colour operation: under `NO_COLOR` there is no ink to
+    /// dim with, so only the reset half of the mute pass does anything and
+    /// the pane behind goes completely flat, no reverse video and no
+    /// background, rather than staying lit. The border and the
+    /// reverse-video heading carry the separation on their own then.
+    #[test]
+    fn no_color_flattens_the_pane_behind_instead_of_leaving_it_lit() {
+        let buffer = fixtures::draw_pane_with_dialog_and_palette(160, 48, fixtures::no_color());
+        // The title band: `title_band_line` styles its whole row
+        // `REVERSED`, the one modifier the mute pass has to clear even
+        // when there is no colour to dim with.
+        let title_band = buffer[(2, 0)].style();
+        assert_eq!(title_band.add_modifier, ratatui::style::Modifier::empty());
+    }
+
+    /// The three the check found. `▐` is Neutral and the four corners are
+    /// too; `▀`, `▄` and `▌` are East-Asian Ambiguous, and a terminal that
+    /// doubles the right edge shifts every interior row. Recorded rather
+    /// than fixed, since no Neutral right-half block exists to swap in.
+    #[test]
+    fn the_border_vocabulary_is_the_one_that_was_checked() {
+        for glyph in ['▛', '▜', '▙', '▟', '▐', '▀', '▄', '▌'] {
+            assert_eq!(char_columns(glyph), 1, "{glyph}");
+        }
     }
 
     /// The whole pane at a comfortable width, unbounded. The snapshot is the

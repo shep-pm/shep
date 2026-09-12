@@ -263,7 +263,10 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     // between the title and the status bar: a swap, not an overlay, so
     // nothing below draws while one is up. One `match` on `App::body`
     // rather than two sequential `if let`s, since the two can never both
-    // be open at once.
+    // be open at once. Still true of these four bodies; the config pane's
+    // own close dialog is lookout's first actual overlay, and it draws
+    // inside `pane::draw_pane` rather than here, over whichever body that
+    // pane already is.
     match app.body() {
         Body::ConfigPane(pane) => {
             let body = Rect {
