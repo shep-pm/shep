@@ -385,7 +385,7 @@ pub enum Commands {
     Stock(StockArgs),
     /// List the flock.
     #[command(visible_aliases = ["list", "ls"])]
-    Flock,
+    Flock(FlockArgs),
     /// List the dogs, and nothing else. `--available` lists the community
     /// index of dogs you could adopt instead of the ones this shepherd is
     /// running.
@@ -899,6 +899,43 @@ pub struct SelectorArgs {
     /// `web.1` is the sheep called `web.1`.
     #[arg(required = true, num_args = 1..)]
     pub selectors: Vec<String>,
+}
+
+/// Arguments to `shep flock`.
+///
+/// A listing is a moment, and this moment drifts: a sheep that started
+/// after the list printed, one restarting. `--follow` keeps the moment
+/// current.
+#[derive(Debug, clap::Args)]
+pub struct FlockArgs {
+    /// Keep the listing current: redraw it in place until Ctrl+C
+    ///
+    /// One listing to start, then a fresh one every `--interval` seconds
+    /// while the shepherd stays reachable, each one painted over the last.
+    /// A summary of the machine rides above the tables. Ctrl+C leaves an
+    /// exit of zero, a stopped shepherd leaves the code its refusal
+    /// carries: an interrupted follow and a dead shepherd must not read as
+    /// the same thing.
+    ///
+    /// Needs a live shepherd: a saved roll is a single moment, and a
+    /// follow's whole reason is the moments after it. Needs a terminal
+    /// too, and refuses `--format json`, since neither has anywhere to put
+    /// a redraw.
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    pub follow: bool,
+    /// Seconds between redraws, with `--follow`
+    ///
+    /// The floor is one second, which is also the default. Below it the
+    /// listing costs the shepherd more than it tells the operator, and
+    /// `sysinfo` reports no CPU at all over a window that short.
+    #[arg(
+        long,
+        default_value_t = 1,
+        value_name = "SECONDS",
+        value_parser = clap::value_parser!(u64).range(1..),
+        requires = "follow"
+    )]
+    pub interval: u64,
 }
 
 /// Arguments to `shep stock`.
@@ -2229,9 +2266,48 @@ mod tests {
         for argv in [["shep", "flock"], ["shep", "list"], ["shep", "ls"]] {
             assert!(matches!(
                 Cli::try_parse_from(argv).unwrap().command,
-                Commands::Flock
+                Commands::Flock(_)
             ));
         }
+    }
+
+    /// Pins the three facts `flock`'s own arguments settle: a bare listing
+    /// does not follow, the interval defaults to the floor, and an interval
+    /// without a follow is a usage error rather than a silent no-op.
+    #[test]
+    fn flock_follows_only_when_asked_and_defaults_to_a_one_second_interval() {
+        use clap::Parser;
+
+        let Commands::Flock(args) = Cli::try_parse_from(["shep", "flock"]).unwrap().command else {
+            panic!("expected flock")
+        };
+        assert!(!args.follow, "a bare listing is still one moment");
+        assert_eq!(args.interval, 1);
+
+        let Commands::Flock(args) =
+            Cli::try_parse_from(["shep", "flock", "--follow", "--interval", "5"])
+                .unwrap()
+                .command
+        else {
+            panic!("expected flock")
+        };
+        assert!(args.follow);
+        assert_eq!(args.interval, 5);
+
+        assert!(
+            Cli::try_parse_from(["shep", "flock", "--interval", "5"]).is_err(),
+            "an interval with nothing to pace is a usage error"
+        );
+    }
+
+    /// fails if the floor is dropped from `--interval`. Zero would spin the
+    /// redraw against the shepherd as fast as the socket answers, and
+    /// `sysinfo` reports no CPU at all over a window under 200 ms.
+    #[test]
+    fn a_zero_interval_is_refused() {
+        use clap::Parser;
+
+        assert!(Cli::try_parse_from(["shep", "flock", "--follow", "--interval", "0"]).is_err());
     }
 
     #[test]

@@ -90,6 +90,68 @@ impl Terminate {
     }
 }
 
+/// A listener for the operator's own Ctrl+C.
+///
+/// Distinct from [`Terminate`], which is the OS asking a long-running
+/// process to stop. This is a person ending something they started at a
+/// keyboard, and a verb that has changed the terminal has to put it back
+/// before it goes.
+///
+/// Installed rather than awaited through `tokio::signal::ctrl_c()`, which
+/// registers its handler on the first poll: an interrupt arriving before
+/// that poll reaches the default disposition and kills the process outright,
+/// leaving whatever the verb did to the terminal in place.
+pub(crate) struct Interrupt {
+    #[cfg(unix)]
+    signal: tokio::signal::unix::Signal,
+    #[cfg(windows)]
+    ctrl_c: tokio::signal::windows::CtrlC,
+}
+
+impl core::fmt::Debug for Interrupt {
+    /// Hand-written for the reason [`Terminate`]'s is.
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Interrupt").finish_non_exhaustive()
+    }
+}
+
+impl Interrupt {
+    /// Installs the listener.
+    ///
+    /// # Errors
+    ///
+    /// [`io::Error`] if the OS refuses to register a handler.
+    pub(crate) fn install() -> io::Result<Self> {
+        #[cfg(unix)]
+        {
+            Ok(Self {
+                signal: tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?,
+            })
+        }
+        #[cfg(windows)]
+        {
+            Ok(Self {
+                ctrl_c: tokio::signal::windows::ctrl_c()?,
+            })
+        }
+    }
+
+    /// Resolves when the operator interrupts this process.
+    ///
+    /// # Cancellation safety
+    /// Safe on both platforms, for the reason [`Terminate::recv`] is.
+    pub(crate) async fn recv(&mut self) -> Option<()> {
+        #[cfg(unix)]
+        {
+            self.signal.recv().await
+        }
+        #[cfg(windows)]
+        {
+            self.ctrl_c.recv().await
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,5 +177,23 @@ mod tests {
             early.is_err(),
             "recv() must park until the OS actually asks us to stop"
         );
+    }
+
+    /// fails if the interrupt listener cannot be installed here. Raises no
+    /// real `SIGINT`, for the reason its `Terminate` twin raises no
+    /// `SIGTERM`.
+    #[tokio::test]
+    async fn an_interrupt_listener_installs_on_this_platform() {
+        let listener = Interrupt::install().expect("installing an interrupt listener must work");
+        assert!(format!("{listener:?}").contains("Interrupt"));
+    }
+
+    /// fails if a followed listing would exit the instant it started.
+    #[tokio::test]
+    async fn an_uninterrupted_listener_does_not_resolve() {
+        let mut listener = Interrupt::install().unwrap();
+        let early =
+            tokio::time::timeout(std::time::Duration::from_millis(150), listener.recv()).await;
+        assert!(early.is_err(), "recv() must park until Ctrl+C arrives");
     }
 }

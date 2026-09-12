@@ -10,7 +10,12 @@
 //! still issues `Request::Ping` as the liveness check.
 
 use std::collections::BTreeMap;
+use std::io::{self, Write as _};
+use std::time::Duration;
 
+use crossterm::QueueableCommand as _;
+use crossterm::cursor::{Hide, MoveTo, Show};
+use crossterm::terminal::{Clear, ClearType};
 use shep_client::Client;
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{ProcessInfo, Request, Response, SelectorSpec};
@@ -27,10 +32,14 @@ use crate::dog_index::{self, AvailableDog, DogSourceKind};
 use crate::exit::ExitCode;
 use crate::fetch;
 use crate::flourish;
+use crate::lookout::term;
+use crate::output::width;
 use crate::output::{
     AvailableDogRows, DescribedSecret, DogRows, RolledSheep, RolledSheepRows, SecretStatus,
     Streams, emit, emit_described, emit_flock, write_outcome,
 };
+use crate::shutdown::Interrupt;
+use crate::style::Presentation;
 
 /// `describe` and `fold`'s shared body: one `Request::Describe` against
 /// `selector`, rendered through [`emit_described`] as the sheep table and
@@ -284,6 +293,144 @@ fn sheep_flourish(listing: &[ProcessInfo]) -> Option<String> {
         .then(|| flourish::all_asleep(sheep.len()))
 }
 
+/// `shep flock --follow`: the same listing, painted over itself every
+/// `interval` until the operator interrupts it or the shepherd goes.
+///
+/// Each redraw is one `Request::ListFlock` rendered into a buffer and then
+/// written over the screen in a single write. Rendering before clearing is
+/// what keeps the terminal from sitting blank for the length of the round
+/// trip, which is what a clear issued ahead of the request would do.
+///
+/// The main screen, not the alternate one: a follow that took the alternate
+/// screen would hand back a terminal with no trace of what the flock looked
+/// like, and the last frame is the thing an operator reads after stopping.
+///
+/// No flourish. It is art above an empty flock, and art redrawn every second
+/// is noise.
+///
+/// A shepherd that goes away mid-follow ends the follow carrying its
+/// refusal's own exit code; an interrupt ends it at [`ExitCode::Success`].
+/// The two must not read as the same thing.
+pub(crate) async fn flock_follow(
+    client: &Client,
+    streams: &mut Streams<'_>,
+    interval: Duration,
+) -> ExitCode {
+    let mut interrupt = match Interrupt::install() {
+        Ok(interrupt) => interrupt,
+        Err(err) => {
+            let message = format!("listening for an interrupt: {err}");
+            return streams.fail(ExitCode::Failure, &message);
+        }
+    };
+    // The hook covers a panic, the guard covers every other way out of this
+    // function, and `term::restore` is documented idempotent because a panic
+    // fires both. The guard shows the cursor and stops there: hiding it is
+    // the only change this verb makes to the terminal, where `lookout` also
+    // takes raw mode and the alternate screen.
+    term::install_panic_hook();
+    let _cursor = term::RestoreGuard::with_action(|| {
+        let _ = crossterm::execute!(io::stdout(), Show);
+    });
+    let _ = streams.out.queue(Hide);
+
+    let mut ticker = tokio::time::interval(interval);
+    // A shepherd slower to answer than the interval would otherwise bank
+    // every tick it missed and redraw them back to back the moment it
+    // answered. `Delay` measures the next interval from the redraw that just
+    // finished, so a slow shepherd slows the cadence instead of bursting it.
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {}
+            _ = interrupt.recv() => return ExitCode::Success,
+        }
+        // The request is raced too, so a shepherd that stops answering does
+        // not hold the terminal until it does.
+        let listing = tokio::select! {
+            listing = client.request(Request::ListFlock) => listing,
+            _ = interrupt.recv() => return ExitCode::Success,
+        };
+        let procs = match listing {
+            Ok(Response::Flock(procs)) => procs,
+            Ok(_unrecognised) => return unexpected_response(streams),
+            Err(err) => return client_error(streams, &err),
+        };
+        let frame = follow_frame(procs, streams.style);
+        let frame = match crossterm::terminal::size() {
+            Ok((columns, rows)) => fit_rows(&frame, columns, rows),
+            // A terminal that will not say how big it is gets the frame
+            // whole. Scrolling beats hiding a sheep.
+            Err(_unmeasured) => frame,
+        };
+        let _ = streams.out.queue(MoveTo(0, 0));
+        let _ = streams.out.queue(Clear(ClearType::FromCursorDown));
+        let _ = write!(streams.out, "{frame}");
+        let _ = streams.out.flush();
+    }
+}
+
+/// One redraw's worth of text: the tables [`flock`] would have printed.
+///
+/// Rendered into a buffer rather than straight onto the terminal, so the
+/// caller can measure the frame before painting it and so the clear and the
+/// frame reach the terminal as one write.
+fn follow_frame(listing: Vec<ProcessInfo>, style: Presentation) -> String {
+    let mut frame = Vec::new();
+    // Writing to a `Vec` cannot fail.
+    let _ = emit_flock(&mut frame, Format::Table, "flock", listing, style);
+    String::from_utf8_lossy(&frame).into_owned()
+}
+
+/// Trims `frame` to what a terminal `columns` wide and `rows` tall shows,
+/// saying how much it dropped.
+///
+/// Rows, not lines: a line wider than the terminal wraps onto more than one
+/// of them, so counting lines would overrun a narrow window and leave every
+/// redraw scrolling. One row is held back for the cursor the redraw leaves
+/// behind, and one more for the notice whenever there is a notice to print.
+///
+/// A size of nothing is not a window of nothing. A pty that has never been
+/// told how big it is reports zero, and `script(1)` hands `--follow` exactly
+/// that: measured 2026-09-12, where trimming to it printed the notice alone,
+/// every second, and no flock at all. Sizes that leave no room to trim get
+/// the frame whole, the same answer a terminal that will not measure gets.
+fn fit_rows(frame: &str, columns: u16, rows: u16) -> String {
+    let (columns, budget) = (usize::from(columns), usize::from(rows).saturating_sub(1));
+    if columns == 0 || budget == 0 {
+        return frame.to_owned();
+    }
+    let lines: Vec<&str> = frame.lines().collect();
+    let mut used = 0;
+    let mut kept = 0;
+    for line in &lines {
+        let height = line_rows(line, columns);
+        if used + height > budget {
+            break;
+        }
+        used += height;
+        kept += 1;
+    }
+    if kept == lines.len() {
+        return frame.to_owned();
+    }
+    // One kept line goes back, so the notice has a row of its own.
+    let kept = kept.saturating_sub(1);
+    let dropped = lines.len() - kept;
+    let mut fitted = lines[..kept].join("\n");
+    fitted.push_str(&format!(
+        "\n{dropped} more lines than this terminal shows\n"
+    ));
+    fitted
+}
+
+/// How many terminal rows `line` occupies once it wraps at `columns`.
+///
+/// An empty line still occupies one.
+fn line_rows(line: &str, columns: usize) -> usize {
+    width::visible_width(line).div_ceil(columns).max(1)
+}
+
 /// Lists the dogs and nothing else: the same `Request::ListFlock` [`flock`]
 /// sends, filtered to the entries carrying a `dog` marker
 ///
@@ -531,6 +678,76 @@ mod tests {
     /// Bounds every `envelopes.recv()` here: a verb that never reaches the
     /// wire must fail by assertion, not by hanging the job.
     const RECV_TIMEOUT: Duration = Duration::from_secs(5);
+
+    /// fails if a frame that fits gets trimmed anyway. Three lines in a
+    /// window with rows to spare come back byte-identical, trailing newline
+    /// and all.
+    #[test]
+    fn a_frame_that_fits_is_left_alone() {
+        let frame = "one\ntwo\nthree\n";
+
+        assert_eq!(fit_rows(frame, 80, 24), frame);
+    }
+
+    /// fails if the fit counts lines instead of rows. Four lines is four
+    /// lines, but at ten columns each of these wraps onto three, so twelve
+    /// rows of content do not go into a window of eight.
+    #[test]
+    fn a_wrapped_line_costs_more_than_one_row() {
+        let wide = "0123456789012345678901234";
+        let frame = format!("{wide}\n{wide}\n{wide}\n{wide}\n");
+
+        let fitted = fit_rows(&frame, 10, 8);
+
+        assert_eq!(
+            fitted, "0123456789012345678901234\n3 more lines than this terminal shows\n",
+            "two lines of three rows fit a budget of seven; one goes back for the notice"
+        );
+    }
+
+    /// fails if the notice steals the row of a line it is reporting, or if
+    /// the count goes wrong. Ten lines into a window six rows tall keeps
+    /// four and says so.
+    #[test]
+    fn a_frame_too_tall_says_how_much_it_dropped() {
+        let frame = (0..10)
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let fitted = fit_rows(&frame, 80, 6);
+
+        assert_eq!(
+            fitted,
+            "0\n1\n2\n3\n6 more lines than this terminal shows\n"
+        );
+    }
+
+    /// fails if a pty that has never been told its size swallows the flock.
+    /// `script(1)` reports zero rows and zero columns, and trimming to that
+    /// left nothing on screen but the notice, once a second.
+    #[test]
+    fn a_terminal_reporting_no_size_gets_the_frame_whole() {
+        let frame = "a\nb\nc\n";
+
+        assert_eq!(fit_rows(frame, 0, 0), frame, "no size at all");
+        assert_eq!(fit_rows(frame, 80, 0), frame, "no rows");
+        assert_eq!(fit_rows(frame, 0, 24), frame, "no columns");
+        assert_eq!(
+            fit_rows(frame, 80, 1),
+            frame,
+            "one row leaves nothing to trim to once the cursor has its own"
+        );
+    }
+
+    /// fails if the flourish comes back into a followed frame. It is art
+    /// above an empty flock, and a redraw every second turns it into noise.
+    #[test]
+    fn a_followed_frame_of_an_empty_flock_carries_no_flourish() {
+        let frame = follow_frame(Vec::new(), Presentation::BARE);
+
+        assert!(!frame.contains("no sheep in the flock yet"), "{frame}");
+    }
 
     #[tokio::test]
     async fn flock_asks_the_daemon_to_list_the_whole_flock() {
