@@ -20,7 +20,9 @@ pub use apply::{ApplyGroup, ResetDepth, apply_group};
 pub use cron::{CronParseError, CronSchedule, CronScheduleError};
 pub use daemon::{DaemonConfig, DaemonConfigError, DaemonOverrides, LogLevel, parse_daemon_bool};
 pub use dogs::{DogsConfig, DogsConfigError};
-pub use flockfile::{DeclaredApp, FlockFormat, Flockfile, FlockfileError, discover};
+pub use flockfile::{
+    DISCOVERY_ORDER, DeclaredApp, FlockFormat, Flockfile, FlockfileError, discover,
+};
 #[cfg(feature = "schema")]
 pub use flockfile::{flockfile_schema_json, flockfile_schema_string};
 pub use graph::{BootNode, BootPlan, NodeKind, Unresolved, plan, render_cycle};
