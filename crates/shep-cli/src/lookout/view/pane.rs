@@ -535,9 +535,31 @@ fn close_dialog_reload_lines(
         .collect()
 }
 
+/// What a row of the dialog is, so that a terminal too short for all of
+/// them sheds the ones it can afford to lose.
+///
+/// Ordered by what losing the row costs, cheapest last: [`shed_dialog_rows`]
+/// drops the greatest first. [`DialogRow::Key`] is the floor and is never
+/// dropped, since a key an operator cannot see is an answer they cannot
+/// give, and `esc` no longer writes on its own.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum DialogRow {
+    /// `R`, `L`, `c` and `esc`: the four rows that name a key.
+    Key,
+    /// The heading, naming both halves and the sheep.
+    Heading,
+    /// The sentence naming the fields a respawn is what applies.
+    Naming,
+    /// `Everything else you changed is already live.`
+    Live,
+    /// The reload sentence's own wrapped tail.
+    Continuation,
+    /// A separator.
+    Blank,
+}
+
 /// The dialog's rows, in its borderless form: what a terminal under 90
-/// columns gets, and what the boxed form (a later frame) draws inside its
-/// own border.
+/// columns gets, and what the boxed form draws inside its own border.
 ///
 /// `now` is the caller's own clock, against which the `esc` row states
 /// what is left of [`CONFIRM_EXPIRY`] since `dialog.at()`: seconds and a
@@ -551,59 +573,130 @@ pub(super) fn close_dialog_lines(
     width: u16,
     now: Instant,
 ) -> Vec<Line<'static>> {
+    close_dialog_rows(dialog, palette, width, now)
+        .into_iter()
+        .map(|(_, line)| line)
+        .collect()
+}
+
+/// [`close_dialog_lines`], each row carrying what it would cost to lose.
+fn close_dialog_rows(
+    dialog: &CloseDialog,
+    palette: Palette,
+    width: u16,
+    now: Instant,
+) -> Vec<(DialogRow, Line<'static>)> {
     let body = body_width(width);
     // `band`, not `attention`: every other band on this dashboard reverses
     // its role's colour rather than merely tinting the text, and 12a's own
     // rule is that colour is always redundant with the words, so `NO_COLOR`
     // has to lose decoration, never information. `attention` alone drops
     // both under `NO_COLOR`, since it carries no modifier at all.
-    let mut lines = vec![Line::from(Span::styled(
-        format!("  {}", fit(&close_dialog_heading(dialog), body)),
-        palette.band(Role::Butter),
-    ))];
+    let mut lines = vec![(
+        DialogRow::Heading,
+        Line::from(Span::styled(
+            format!("  {}", fit(&close_dialog_heading(dialog), body)),
+            palette.band(Role::Butter),
+        )),
+    )];
     if dialog.unsent() > 0 {
         let sentence = close_dialog_naming_sentence(dialog.unsent_fields());
-        lines.push(close_dialog_option_line(sentence, palette, body));
+        lines.push((
+            DialogRow::Naming,
+            close_dialog_option_line(sentence, palette, body),
+        ));
         if dialog.live() > 0 {
-            lines.push(close_dialog_option_line(
-                "Everything else you changed is already live.".to_owned(),
-                palette,
-                body,
+            lines.push((
+                DialogRow::Live,
+                close_dialog_option_line(
+                    "Everything else you changed is already live.".to_owned(),
+                    palette,
+                    body,
+                ),
             ));
         }
     }
-    lines.push(Line::from(Span::raw("")));
-    lines.push(close_dialog_option_line(
-        format!(
-            "R   restart now      stop, then start. The stop takes up to {}.",
-            dialog.kill_timeout()
+    lines.push((DialogRow::Blank, Line::from(Span::raw(""))));
+    lines.push((
+        DialogRow::Key,
+        close_dialog_option_line(
+            format!(
+                "R   restart now      stop, then start. The stop takes up to {}.",
+                dialog.kill_timeout()
+            ),
+            palette,
+            body,
         ),
-        palette,
-        body,
     ));
-    lines.extend(close_dialog_reload_lines(dialog, palette, body));
-    lines.push(close_dialog_option_line(
-        "c   continue         write them and leave it running. They wait for a respawn.".to_owned(),
-        palette,
-        body,
+    lines.extend(
+        close_dialog_reload_lines(dialog, palette, body)
+            .into_iter()
+            .enumerate()
+            .map(|(index, line)| {
+                let kind = if index == 0 {
+                    DialogRow::Key
+                } else {
+                    DialogRow::Continuation
+                };
+                (kind, line)
+            }),
+    );
+    lines.push((
+        DialogRow::Key,
+        close_dialog_option_line(
+            "c   continue         write them and leave it running. They wait for a respawn."
+                .to_owned(),
+            palette,
+            body,
+        ),
     ));
-    lines.push(Line::from(Span::raw("")));
+    lines.push((DialogRow::Blank, Line::from(Span::raw(""))));
     let elapsed = now.saturating_duration_since(dialog.at());
     let remaining = CONFIRM_EXPIRY.saturating_sub(elapsed);
-    lines.push(close_dialog_option_line(
-        format!(
-            "esc  keep editing, write nothing   \u{b7}   this prompt expires in {}s {}",
-            remaining.as_secs(),
-            cell::gauge(
-                u64::try_from(remaining.as_millis()).unwrap_or(u64::MAX),
-                Some(u64::try_from(CONFIRM_EXPIRY.as_millis()).unwrap_or(u64::MAX)),
-                10
-            )
+    lines.push((
+        DialogRow::Key,
+        close_dialog_option_line(
+            format!(
+                "esc  keep editing, write nothing   \u{b7}   this prompt expires in {}s {}",
+                remaining.as_secs(),
+                cell::gauge(
+                    u64::try_from(remaining.as_millis()).unwrap_or(u64::MAX),
+                    Some(u64::try_from(CONFIRM_EXPIRY.as_millis()).unwrap_or(u64::MAX)),
+                    10
+                )
+            ),
+            palette,
+            body,
         ),
-        palette,
-        body,
     ));
     lines
+}
+
+/// Drops rows from `rows` until it is no taller than `height`, cheapest
+/// first: the blank separators, then the reload sentence's wrapped tail,
+/// then the two explanatory sentences, then the heading.
+///
+/// The four [`DialogRow::Key`] rows survive every height, which is what
+/// the design means by flooring the borderless form: below six rows the
+/// field list this is drawn over cannot render either, and an operator
+/// with no key on screen has no way to answer and, since `esc` stopped
+/// writing on its own, no way to write. Shorter still than the four is a
+/// terminal `view::draw` refuses outright, but [`Buffer`] indexes with a
+/// panic rather than a clip, so the truncation at the end is the one that
+/// keeps a resize from taking the dashboard down.
+fn shed_dialog_rows(rows: &mut Vec<(DialogRow, Line<'static>)>, height: u16) {
+    let height = usize::from(height);
+    while rows.len() > height {
+        let sheddable = rows
+            .iter()
+            .enumerate()
+            .filter(|(_, (kind, _))| *kind != DialogRow::Key)
+            .max_by_key(|(index, (kind, _))| (*kind, *index))
+            .map(|(index, _)| index);
+        let Some(index) = sheddable else { break };
+        rows.remove(index);
+    }
+    rows.truncate(height);
 }
 
 /// The list sub-screen: one array field's elements, and a row to add one on.
@@ -1988,7 +2081,14 @@ const fn dialog_is_boxed(width: u16) -> bool {
 }
 
 /// The dialog on top of the muted pane: boxed at [`BOX_FLOOR`] and above,
-/// full width with no border below it.
+/// full width with no border below it, and full width with no border at
+/// any width when the box is taller than the rows there are.
+///
+/// A box cannot shed rows the way the borderless form can, since its
+/// border pair is what makes it a box, and half a box is worse than none.
+/// So a terminal too short for the whole box gives way to the borderless
+/// form, which is the same answer the width rule already gives one column
+/// under [`BOX_FLOOR`].
 fn draw_close_dialog(
     dialog: &CloseDialog,
     palette: Palette,
@@ -1997,16 +2097,26 @@ fn draw_close_dialog(
     buffer: &mut Buffer,
 ) {
     if dialog_is_boxed(area.width) {
-        draw_boxed_close_dialog(dialog, palette, now, area, buffer);
-    } else {
-        draw_borderless_close_dialog(dialog, palette, now, area, buffer);
+        let lines = close_dialog_lines(dialog, palette, BOX_WIDTH, now);
+        let box_height = u16::try_from(lines.len())
+            .unwrap_or(u16::MAX)
+            .saturating_add(2);
+        if box_height <= area.height {
+            draw_boxed_close_dialog(&lines, palette, area, buffer);
+            return;
+        }
     }
+    draw_borderless_close_dialog(dialog, palette, now, area, buffer);
 }
 
 /// The full-width, borderless form: bottom-anchored over the field list,
 /// the same rows a terminal under [`BOX_FLOOR`] always drew before this
 /// task, so a gallery scene one column below the floor still gets the form
 /// it exists to show rather than a clipped box.
+///
+/// [`shed_dialog_rows`] is what keeps this inside `area`: a narrow
+/// terminal wraps the reload sentence over more rows, so the form is
+/// tallest exactly where there is least room for it.
 fn draw_borderless_close_dialog(
     dialog: &CloseDialog,
     palette: Palette,
@@ -2014,12 +2124,13 @@ fn draw_borderless_close_dialog(
     area: Rect,
     buffer: &mut Buffer,
 ) {
-    let lines = close_dialog_lines(dialog, palette, area.width, now);
+    let mut rows = close_dialog_rows(dialog, palette, area.width, now);
+    shed_dialog_rows(&mut rows, area.height);
     let top = area.y
         + area
             .height
-            .saturating_sub(u16::try_from(lines.len()).unwrap_or(0));
-    for (offset, line) in lines.iter().enumerate() {
+            .saturating_sub(u16::try_from(rows.len()).unwrap_or(0));
+    for (offset, (_, line)) in rows.iter().enumerate() {
         let offset = u16::try_from(offset).unwrap_or(0);
         blank_row(buffer, area.x, top + offset, area.width);
         buffer.set_line(area.x, top + offset, line, area.width);
@@ -2028,14 +2139,15 @@ fn draw_borderless_close_dialog(
 
 /// The boxed form: [`BOX_WIDTH`] cells wide, centred in `area`, its rows
 /// vertically centred too.
+///
+/// `lines` comes from the caller, which has already measured them against
+/// `area.height` to decide this form fits at all.
 fn draw_boxed_close_dialog(
-    dialog: &CloseDialog,
+    lines: &[Line<'static>],
     palette: Palette,
-    now: Instant,
     area: Rect,
     buffer: &mut Buffer,
 ) {
-    let lines = close_dialog_lines(dialog, palette, BOX_WIDTH, now);
     let rows = u16::try_from(lines.len()).unwrap_or(0);
     let box_height = rows + 2;
     let margin = area.width.saturating_sub(BOX_WIDTH + 2) / 2;
@@ -2091,6 +2203,7 @@ mod tests {
 
     use super::super::MIN_TERM_WIDTH;
     use super::super::fixtures;
+    use super::super::flock::MIN_HEIGHT;
     use super::*;
     use crate::lookout::app::{Effect, KeyPress, Msg};
     use crate::lookout::frames::render_text;
@@ -2277,6 +2390,41 @@ mod tests {
             visible_width(&heading) <= 89,
             "clipped or overran: {heading}"
         );
+    }
+
+    /// Every size the dashboard claims to support, through the real
+    /// `view::draw` rather than a pane-local fixture: the fixture hands
+    /// the pane a `Rect` as tall as the terminal, and the rows the dialog
+    /// overran were the ones `draw` keeps back for the title band and the
+    /// status bar.
+    ///
+    /// [`Buffer`]'s own `Index` panics rather than clipping, so a dialog
+    /// taller than the rows it was given takes the whole dashboard down
+    /// with it. Both forms are swept: the box gives way to the borderless
+    /// form when it cannot fit, and the borderless form sheds rows.
+    ///
+    /// The four rows that name a key are what makes the answer reachable,
+    /// and `esc` no longer writes on its own, so a dialog missing one of
+    /// them leaves an operator with no way to answer and no way to write.
+    #[test]
+    fn the_dialog_fits_every_size_the_dashboard_supports_and_stays_answerable() {
+        for width in [MIN_TERM_WIDTH, 40, 51, 89, 90, 120, 160] {
+            for height in MIN_HEIGHT..=24 {
+                let rendered = render_text(&fixtures::render_dialog(width, height));
+                for needle in ["restart now", "reload", "continue", "keep editing"] {
+                    assert!(
+                        rendered.contains(needle),
+                        "{width}x{height} lost {needle:?}:\n{rendered}"
+                    );
+                }
+                // The frame above hides a one-row overrun: the status bar
+                // is drawn after the pane and repaints the row a dialog
+                // one too tall reached into. This draws the pane alone
+                // into a buffer of exactly its own rows, where the same
+                // overrun is the panic it really is.
+                let _ = fixtures::draw_pane_with_dialog(width, height);
+            }
+        }
     }
 
     /// Dimming changes style and leaves every character alone, so a test
@@ -2592,12 +2740,18 @@ mod tests {
         assert_eq!(glyph("watch"), Some(' '));
     }
 
-    /// The whole frame at `height`, through the same `note_body_rows` and
-    /// `draw` the event loop runs before each one.
+    /// The whole frame at `height`, 120 columns wide, through the same
+    /// `note_body_rows` and `draw` the event loop runs before each one.
     fn screen_at(app: &mut crate::lookout::app::App, height: u16) -> String {
-        let area = Rect::new(0, 0, 120, height);
+        screen_of(app, 120, height)
+    }
+
+    /// [`screen_at`] at a width of the caller's own choosing.
+    fn screen_of(app: &mut crate::lookout::app::App, width: u16, height: u16) -> String {
+        let area = Rect::new(0, 0, width, height);
         app.note_body_rows(super::super::body_rows(area));
-        let mut terminal = Terminal::new(TestBackend::new(120, height)).unwrap();
+        app.note_body_width(width);
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         terminal
             .draw(|frame| super::super::draw(app, frame))
             .unwrap();
