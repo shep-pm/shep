@@ -1190,7 +1190,7 @@ fn an_edited_row_shows_old_then_new_and_takes_no_marker() {
 }
 ```
 
-`config_pane_field_rows_for_tests`, `config_pane_pending_rows_for_tests` and `config_pane_row_for_tests` are new fixtures returning a bounded slice of the rendered frame. **They exist so no assertion in this plan searches a whole frame.** A frame-wide `contains("respawn")` passes off the legend row, which is how a test that pins nothing gets written.
+`config_pane_field_rows_for_tests`, `config_pane_pending_rows_for_tests` and `config_pane_row_for_tests` are new fixtures returning a bounded slice of the rendered frame. **They exist so no PRESENCE assertion searches a whole frame.** A frame-wide `contains("respawn")` passes off the legend row, which is how a test that pins nothing gets written. An ABSENCE assertion is the opposite and stays whole-frame: a secret must appear on no row, so narrowing it to the rows the author was thinking about is how a leak on another row survives. Same for the panel-versus-LANDS invariant.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
