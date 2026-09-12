@@ -191,7 +191,7 @@ pub enum KeyPress {
     /// tab's environment, in the secrets pane. `Enter` confirms.
     ///
     /// Capital, and `d` is left alone: `d` is already
-    /// [`Self::ListRemove`], and `map_key` dispatches on mode rather than
+    /// [`Self::Remove`], and `map_key` dispatches on mode rather than
     /// pane, so the two cannot share a key.
     SecretDelete,
     /// `Tab`: moves the config pane's focus to the next group.
