@@ -41,7 +41,13 @@ expression: replies
             "instance": null,
             "handshook": null,
             "dog_stale": null,
-            "max_memory": 536870912
+            "max_memory": 536870912,
+            "level_rules": [
+              {
+                "pattern": "\\[ERROR\\]",
+                "level": "error"
+              }
+            ]
           }
         ]
       }
@@ -119,7 +125,13 @@ expression: replies
             "instance": null,
             "handshook": null,
             "dog_stale": null,
-            "max_memory": 536870912
+            "max_memory": 536870912,
+            "level_rules": [
+              {
+                "pattern": "\\[ERROR\\]",
+                "level": "error"
+              }
+            ]
           }
         ]
       }
@@ -167,7 +179,13 @@ expression: replies
           "instance": null,
           "handshook": null,
           "dog_stale": null,
-          "max_memory": 536870912
+          "max_memory": 536870912,
+          "level_rules": [
+            {
+              "pattern": "\\[ERROR\\]",
+              "level": "error"
+            }
+          ]
         }
       }
     }
@@ -350,7 +368,13 @@ expression: replies
             "instance": null,
             "handshook": null,
             "dog_stale": null,
-            "max_memory": 536870912
+            "max_memory": 536870912,
+            "level_rules": [
+              {
+                "pattern": "\\[ERROR\\]",
+                "level": "error"
+              }
+            ]
           }
         ]
       }
