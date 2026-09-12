@@ -350,6 +350,9 @@ fn parse_into_ignoring<T: serde::de::DeserializeOwned>(
             on_ignored(&path.to_string());
         })
         .map_err(|e| FlockfileError::Toml(e.to_string())),
+        // Default options, so YAML 1.1 resolution stays on for the whole
+        // document: `autorestart: yes` is a bool, and an unquoted `yes` under
+        // `env` is the string "true". Quote an env value whose text matters.
         FlockFormat::Yaml => serde_saphyr::with_deserializer_from_str(source, |de| {
             serde_ignored::deserialize(de, |path| on_ignored(&path.to_string()))
         })
@@ -1035,6 +1038,21 @@ env = { DB_HOST = "", NODE_ENV = "production" }
                 "{format:?}: PORT"
             );
         }
+    }
+
+    /// YAML resolves a bare scalar before serde sees it, so an unquoted `yes`
+    /// under `env` arrives as the string "true" and `0x1F` as "31". That is
+    /// the cost of the same resolution making `autorestart: yes` a bool, and
+    /// quoting is the operator's way out. Pinned so it cannot drift unseen.
+    #[test]
+    fn yaml_resolves_a_bare_env_scalar_before_serde_sees_it() {
+        let text = "app:\n  - name: web\n    script: ./srv\n    autorestart: yes\n    env:\n      BARE: yes\n      HEX: 0x1F\n      QUOTED: 'yes'\n";
+        let flock = Flockfile::parse(text, FlockFormat::Yaml).unwrap();
+        let app = &flock.apps[0];
+        assert!(app.autorestart, "`autorestart: yes` must stay a bool");
+        assert_eq!(app.env.get("BARE").map(String::as_str), Some("true"));
+        assert_eq!(app.env.get("HEX").map(String::as_str), Some("31"));
+        assert_eq!(app.env.get("QUOTED").map(String::as_str), Some("yes"));
     }
 
     /// A typo in a Flockfile must still be loud. This is the whole reason
