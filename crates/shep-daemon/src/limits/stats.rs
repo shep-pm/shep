@@ -302,18 +302,8 @@ mod tests {
     use core::time::Duration;
 
     use super::super::MEMORY_POLL_INTERVAL;
-    use super::super::sample::ProcessRss;
     use super::*;
-    use crate::testing::{ScriptedSampler, identity};
-
-    fn rss_cpu(pid: u32, parent: Option<u32>, bytes: u64, cpu_ms: u64) -> ProcessRss {
-        ProcessRss {
-            pid,
-            parent,
-            bytes,
-            cpu_ms,
-        }
-    }
+    use crate::testing::{ScriptedSampler, identity, rss_cpu};
 
     #[tokio::test(start_paused = true)]
     async fn a_sheep_with_no_baseline_reports_no_cpu_but_still_reports_memory() {

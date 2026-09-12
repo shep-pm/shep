@@ -265,21 +265,7 @@ pub fn tree_rss(table: &[ProcessRss], root: u32) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A reading with no CPU time on it, for the memory cases.
-    fn rss(pid: u32, parent: Option<u32>, bytes: u64) -> ProcessRss {
-        rss_cpu(pid, parent, bytes, 0)
-    }
-
-    /// A reading carrying both quantities, for the CPU cases.
-    fn rss_cpu(pid: u32, parent: Option<u32>, bytes: u64, cpu_ms: u64) -> ProcessRss {
-        ProcessRss {
-            pid,
-            parent,
-            bytes,
-            cpu_ms,
-        }
-    }
+    use crate::testing::{rss, rss_cpu};
 
     #[test]
     fn lone_root_sums_its_own_bytes() {

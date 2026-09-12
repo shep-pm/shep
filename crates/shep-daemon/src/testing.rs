@@ -671,6 +671,21 @@ impl Clock for TestClock {
     }
 }
 
+/// A reading with no CPU time on it, for the memory cases.
+pub(crate) fn rss(pid: u32, parent: Option<u32>, bytes: u64) -> ProcessRss {
+    rss_cpu(pid, parent, bytes, 0)
+}
+
+/// A reading carrying both quantities, for the CPU cases.
+pub(crate) fn rss_cpu(pid: u32, parent: Option<u32>, bytes: u64, cpu_ms: u64) -> ProcessRss {
+    ProcessRss {
+        pid,
+        parent,
+        bytes,
+        cpu_ms,
+    }
+}
+
 // A scripted sequence rather than one fixed table: the polling memory-limit
 // enforcer's tests need the reading to change between polls, such as a tree
 // that crosses its limit only on the third tick.

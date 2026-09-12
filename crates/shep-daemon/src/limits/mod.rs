@@ -184,19 +184,7 @@ mod tests {
     use tokio::sync::mpsc;
 
     use super::*;
-    use crate::limits::sample::ProcessRss;
-    use crate::testing::ScriptedSampler;
-
-    /// Every case here is about the memory ceiling, so none carries CPU
-    /// time.
-    fn rss(pid: u32, parent: Option<u32>, bytes: u64) -> ProcessRss {
-        ProcessRss {
-            pid,
-            parent,
-            bytes,
-            cpu_ms: 0,
-        }
-    }
+    use crate::testing::{ScriptedSampler, rss, rss_cpu};
 
     /// Generous bound on how long a test may wait for a breach on the paused
     /// tokio clock. Costs no wall-clock time: the runtime auto-advances to
@@ -246,17 +234,6 @@ mod tests {
             Err(_) => {} // the window elapsed with nothing arriving
             Ok(Some(breach)) => panic!("unexpected breach observed: {breach:?}"),
             Ok(None) => panic!("breach channel disconnected while checking for no breach"),
-        }
-    }
-
-    /// A reading carrying CPU time, for the one case here that is about the
-    /// sampling half rather than the ceiling.
-    fn rss_cpu(pid: u32, parent: Option<u32>, bytes: u64, cpu_ms: u64) -> ProcessRss {
-        ProcessRss {
-            pid,
-            parent,
-            bytes,
-            cpu_ms,
         }
     }
 
