@@ -86,7 +86,17 @@ json5 = { version = "0.4.1", default-features = false }
 # Floor 1.9: regex 1.8's compiled-size accounting lets
 # `selector_spec_oversized_regex_is_rejected`'s huge pattern slip under the
 # 1 MiB size_limit; 1.9 rejects it.
-regex = { version = "1.9", default-features = false, features = ["std", "unicode-perl"] }
+#
+# `unicode-case` is what makes `(?i)` compile. Every regex shep accepts is one
+# an operator wrote (`level_rules`, a `/…/` selector, lookout's match box), and
+# without this feature regex 1.9 refuses `(?i)` outright while 1.13 accepts it
+# for an ASCII pattern, so which of those an operator gets would depend on what
+# their build resolved.
+regex = { version = "1.9", default-features = false, features = [
+    "std",
+    "unicode-case",
+    "unicode-perl",
+] }
 # Floor 0.4.11: `watch/mod.rs`'s `own_log_ignores` calls `globset::escape`,
 # added in 0.4.11.
 globset = { version = "0.4.11", default-features = false }
