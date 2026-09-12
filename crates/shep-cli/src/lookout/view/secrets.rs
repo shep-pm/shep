@@ -407,25 +407,55 @@ fn roll_status_line(pane: &SecretsPane, palette: Palette) -> Line<'static> {
 /// its denominator, and this one is the count of tabs drawn above it,
 /// `all` included, so the number is checkable against the row it sits under.
 fn tab_line(pane: &SecretsPane, palette: Palette, width: u16) -> Line<'static> {
-    let mut spans = Vec::with_capacity(pane.model.environments.len() * 2);
-    let mut drawn = 0usize;
-    for (index, name) in pane.model.environments.iter().enumerate() {
-        if index > 0 {
-            spans.push(Span::raw("  "));
-            drawn += 2;
-        }
-        if index == pane.tab {
-            let text = format!("[{name}]");
-            drawn += text.chars().count();
-            spans.push(Span::styled(text, palette.attention()));
-        } else {
-            drawn += name.chars().count();
-            spans.push(Span::styled(name.clone(), palette.muted()));
-        }
-    }
-    let environment_count = pane.model.environments.len();
+    let labels: Vec<String> = pane
+        .model
+        .environments
+        .iter()
+        .enumerate()
+        .map(|(index, name)| {
+            if index == pane.tab {
+                format!("[{name}]")
+            } else {
+                name.clone()
+            }
+        })
+        .collect();
+    let environment_count = labels.len();
     let suffix =
         format!("{environment_count} environments in this store \u{b7} \u{2190}/\u{2192} or tab");
+
+    // The suffix is this row's own denominator (design rule 2) and gives
+    // way to nothing: the count is how an operator knows there are tabs
+    // the row is not showing. The tabs elide around it instead.
+    let budget = usize::from(width).saturating_sub(suffix.chars().count() + TAB_GAP);
+    let anchor = if pane.tab < labels.len() { pane.tab } else { 0 };
+    let (first, last) = tab_window(&labels, anchor, budget);
+
+    let mut spans = Vec::with_capacity(labels.len() * 2 + 4);
+    let mut drawn = 0usize;
+    if first > 0 {
+        spans.push(Span::styled("\u{2026}", palette.muted()));
+        drawn += 1;
+    }
+    for (index, label) in labels.iter().enumerate().take(last + 1).skip(first) {
+        if !spans.is_empty() {
+            spans.push(Span::raw("  "));
+            drawn += TAB_GAP;
+        }
+        drawn += label.chars().count();
+        let style = if index == pane.tab {
+            palette.attention()
+        } else {
+            palette.muted()
+        };
+        spans.push(Span::styled(label.clone(), style));
+    }
+    if last + 1 < labels.len() {
+        spans.push(Span::raw("  "));
+        spans.push(Span::styled("\u{2026}", palette.muted()));
+        drawn += TAB_ELISION;
+    }
+
     let pad = usize::from(width)
         .saturating_sub(drawn)
         .saturating_sub(suffix.chars().count());
@@ -434,6 +464,48 @@ fn tab_line(pane: &SecretsPane, palette: Palette, width: u16) -> Line<'static> {
     }
     spans.push(Span::styled(suffix, palette.muted()));
     Line::from(spans)
+}
+
+/// The gap between two tabs, and between the last tab and the suffix.
+const TAB_GAP: usize = 2;
+
+/// What a run of hidden tabs costs the row: the `\u{2026}` standing in for it,
+/// plus its own gap.
+const TAB_ELISION: usize = TAB_GAP + 1;
+
+/// The widest run of labels around `active` that fits `budget`, both ends
+/// inclusive.
+///
+/// The active tab always draws, even when it alone overruns `budget`: a tab
+/// row hiding the tab you are on says less than nothing. The run grows
+/// rightwards first, so a cursor at the head of the list reads left to
+/// right, and each step pays for the `\u{2026}` its own side still owes.
+fn tab_window(labels: &[String], active: usize, budget: usize) -> (usize, usize) {
+    let (mut first, mut last) = (active, active);
+    let mut used = labels.get(active).map_or(0, |l| l.chars().count());
+    loop {
+        let owed_left = usize::from(first > 0) * TAB_ELISION;
+        let owed_right = usize::from(last + 1 < labels.len()) * TAB_ELISION;
+        if let Some(next) = labels.get(last + 1) {
+            let cost = TAB_GAP + next.chars().count();
+            let still_owed = usize::from(last + 2 < labels.len()) * TAB_ELISION;
+            if used + cost + owed_left + still_owed <= budget {
+                used += cost;
+                last += 1;
+                continue;
+            }
+        }
+        if first > 0 {
+            let cost = TAB_GAP + labels[first - 1].chars().count();
+            let still_owed = usize::from(first > 1) * TAB_ELISION;
+            if used + cost + still_owed + owed_right <= budget {
+                used += cost;
+                first -= 1;
+                continue;
+            }
+        }
+        return (first, last);
+    }
 }
 
 /// One group's header row: its label, its member count, and `read-only
@@ -947,8 +1019,11 @@ pub(super) fn cell(buffer: &Buffer, row: u16, column: Column) -> String {
 mod tests {
     use std::time::Duration;
 
+    use std::collections::HashSet;
+
     use super::*;
     use crate::lookout::app::{Body, KeyPress, Msg};
+    use crate::lookout::secrets::SecretsModel;
     use crate::lookout::view::fixtures;
 
     /// The first data row `draw` places, fixed regardless of which source
@@ -1155,6 +1230,93 @@ mod tests {
         let text = frame_text(&fixtures::render(&app, MIN_WIDTH, 24));
         assert!(text.contains("DB_PASSWORD"), "the floor tier draws: {text}");
         assert!(!text.contains("too narrow"), "{text}");
+    }
+
+    /// A pane on `tab`, with `count` environments named long enough that
+    /// the row cannot hold them all.
+    fn pane_with_environments(count: usize, tab: usize) -> SecretsPane {
+        SecretsPane {
+            model: Box::new(SecretsModel {
+                environments: (0..count).map(|n| format!("environment-{n:02}")).collect(),
+                ..SecretsModel::default()
+            }),
+            tab,
+            selected: 0,
+            collapsed: HashSet::new(),
+            reveal: None,
+            pending_reveal: None,
+            armed: None,
+            typing: None,
+        }
+    }
+
+    /// The tab row used to append its suffix whatever the tabs had spent
+    /// and let `Buffer::set_line` cut the overrun, so a store with more
+    /// environments than one row holds lost the count, lost every tab past
+    /// the edge, and cut the last visible name mid-word.
+    ///
+    /// Swept over counts and widths, and every assertion is on the whole
+    /// line: a `contains` passes on a truncated line as happily as a whole
+    /// one, which is the failure being pinned.
+    #[test]
+    fn the_tab_row_elides_its_tabs_rather_than_losing_its_own_count() {
+        let palette = Palette::detect(None, None, None);
+        for count in 1..=20usize {
+            for width in [MIN_WIDTH, 100, 160] {
+                for tab in [0, count / 2, count - 1] {
+                    let pane = pane_with_environments(count, tab);
+                    let line = fixtures::rendered(&tab_line(&pane, palette, width));
+
+                    assert!(
+                        line.chars().count() <= usize::from(width),
+                        "{count} tabs at {width}, on {tab}: {line:?}"
+                    );
+                    assert!(
+                        line.trim_end().ends_with(&format!(
+                            "{count} environments in this store \u{b7} \u{2190}/\u{2192} or tab"
+                        )),
+                        "the count survives whole: {count} tabs at {width}: {line:?}"
+                    );
+                    assert!(
+                        line.contains(&format!("[environment-{tab:02}]")),
+                        "the tab you are on is drawn: {count} tabs at {width}: {line:?}"
+                    );
+
+                    // Every name on the row is a whole name: the elision
+                    // marker is the only thing standing for what was left
+                    // out, so no `environment-0` without its second digit.
+                    for token in line.split_whitespace() {
+                        let name = token.trim_start_matches('[').trim_end_matches(']');
+                        if name.starts_with("environment-") {
+                            assert_eq!(
+                                name.len(),
+                                "environment-00".len(),
+                                "cut mid-name: {line:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The marker says which side the hidden tabs are on, so a row showing
+    /// the last tab does not look like a row showing every tab.
+    #[test]
+    fn the_elision_marker_stands_on_the_side_the_tabs_went() {
+        let palette = Palette::detect(None, None, None);
+        let head = fixtures::rendered(&tab_line(&pane_with_environments(20, 0), palette, 100));
+        let tail = fixtures::rendered(&tab_line(&pane_with_environments(20, 19), palette, 100));
+
+        assert!(
+            !head.trim_start().starts_with('\u{2026}'),
+            "nothing is hidden before the first tab: {head:?}"
+        );
+        assert!(head.contains('\u{2026}'), "and plenty after it: {head:?}");
+        assert!(
+            tail.trim_start().starts_with('\u{2026}'),
+            "hidden tabs before the last one: {tail:?}"
+        );
     }
 
     #[test]
