@@ -45,12 +45,7 @@ pub fn render_table<T: Render>(data: &T) -> String {
         );
     }
 
-    let mut widths: Vec<usize> = headers.iter().copied().map(visible_width).collect();
-    for row in &rows {
-        for (width, cell) in widths.iter_mut().zip(row) {
-            *width = (*width).max(visible_width(cell));
-        }
-    }
+    let widths = column_widths(headers, &rows);
 
     let mut out = String::new();
     write_row(&mut out, headers.iter().copied(), &widths);
@@ -219,12 +214,15 @@ pub(crate) fn render_boxed_ex(
         .collect();
     let rows = &rows;
 
+    // Measured once: dropping a column narrows the table but changes no
+    // surviving column's own width, so the drop loop below re-reads these
+    // rather than re-measuring every kept cell on each pass.
+    let all_widths = column_widths(headers, rows);
     let mut keep: Vec<usize> = (0..headers.len()).collect();
     let mut dropped: Vec<&str> = Vec::new();
 
     loop {
-        let widths = column_widths(headers, rows, &keep);
-        let total: usize = widths.iter().map(|w| w + 3).sum::<usize>() + 1;
+        let total: usize = keep.iter().map(|&col| all_widths[col] + 3).sum::<usize>() + 1;
         if total <= term_width || keep.len() <= FLOOR_COLUMNS {
             break;
         }
@@ -244,7 +242,9 @@ pub(crate) fn render_boxed_ex(
         keep.remove(at);
     }
 
-    let widths = column_widths(headers, rows, &keep);
+    // `keep` only ever loses entries from `0..headers.len()`, so every
+    // index here is one `all_widths` has.
+    let widths: Vec<usize> = keep.iter().map(|&col| all_widths[col]).collect();
     let rule = |left: &str, mid: &str, right: &str| {
         let mut line = String::from(left);
         for (i, w) in widths.iter().enumerate() {
@@ -294,22 +294,22 @@ pub(crate) fn render_boxed_ex(
     }
 }
 
-/// The visible width each kept column needs: the widest of its header and
+/// The visible width every column needs: the widest of its header and
 /// every cell in it, measured by [`crate::output::width::visible_width`]
 /// rather than by length or byte count, so a styled cell pads by what it
 /// shows.
-fn column_widths(headers: &[&str], rows: &[Vec<String>], keep: &[usize]) -> Vec<usize> {
-    keep.iter()
-        .map(|&col| {
-            let mut w = visible_width(headers[col]);
-            for row in rows {
-                if let Some(cell) = row.get(col) {
-                    w = w.max(visible_width(cell));
-                }
-            }
-            w
-        })
-        .collect()
+///
+/// One entry per header, in header order. A row shorter than the headers
+/// contributes to the columns it has and no further; a longer one's extra
+/// cells are ignored, having no header to pad against.
+fn column_widths(headers: &[&str], rows: &[Vec<String>]) -> Vec<usize> {
+    let mut widths: Vec<usize> = headers.iter().copied().map(visible_width).collect();
+    for row in rows {
+        for (width, cell) in widths.iter_mut().zip(row) {
+            *width = (*width).max(visible_width(cell));
+        }
+    }
+    widths
 }
 
 /// One `│ a │ b │` row. Padding is computed from
