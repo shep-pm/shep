@@ -19850,6 +19850,46 @@ mod tests {
         );
     }
 
+    /// The mirror case: a load parks a moved `out_file`/`err_file`, but the
+    /// child has not respawned yet and is still appending to the old path.
+    /// Reporting the parked path early would be this same bug pointed the
+    /// other way, naming a file nothing writes to yet.
+    #[tokio::test(start_paused = true)]
+    async fn a_parked_log_path_change_does_not_reach_the_listing_before_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
+        let logs = actor.paths.logs.clone();
+
+        let mut file = AppConfig::minimal("web", "./srv");
+        file.out_file = Some("/var/log/moved-out.log".to_string());
+        file.err_file = Some("/var/log/moved-err.log".to_string());
+        apply_config(
+            &mut actor,
+            vec![declared_app(
+                file,
+                &["name", "script", "out_file", "err_file"],
+            )],
+            ResetDepth::None,
+        )
+        .await;
+        assert!(
+            actor.sheep[&0].entry.pending.is_some(),
+            "the fixture must really park the change, or this case proves nothing"
+        );
+
+        let still_reported = to_info(&actor.sheep[&0].entry, &actor.smits);
+        assert_eq!(
+            still_reported.out_file.as_deref(),
+            logs.join("web-0-out.log").to_str(),
+            "the child is still writing to the old path until it respawns"
+        );
+        assert_eq!(
+            still_reported.err_file.as_deref(),
+            logs.join("web-0-err.log").to_str(),
+            "and the same for stderr"
+        );
+    }
+
     /// A pending field an operator cannot see is a silent divergence.
     #[tokio::test(start_paused = true)]
     async fn to_info_reports_the_pending_fields_names_only() {
