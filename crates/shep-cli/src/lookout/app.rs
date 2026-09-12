@@ -2674,6 +2674,19 @@ impl App {
         if let Body::Sheep(pane) = &self.body {
             self.body = Body::Bleats(pane.feed().clone());
         }
+        // The embedded feed never clamps its own offset: it draws no
+        // scrollback, so `N` can walk the stored value past anything the
+        // full screen can scroll back to. Clamping on arrival rather than
+        // leaving it is what `scroll_bleats_back` already documents, in
+        // those words: the render clamps while the stored value keeps
+        // climbing, so `j` stops appearing to work until the operator has
+        // pressed it as many times as `N` was pressed before.
+        let ceiling = self.bleats_pane().map_or(0, |pane| {
+            super::view::bleats_full::max_scroll_offset(self, pane)
+        });
+        if let Some(pane) = self.bleats_pane_mut() {
+            pane.clamp_scroll(ceiling);
+        }
         Effect::None
     }
 
@@ -2880,10 +2893,10 @@ impl App {
             // `on_bleats_key`'s own `MatchPrev` arm, this does not clamp
             // through `bleats_full::max_scroll_offset`: the embedded feed
             // draws no scrollback of its own (there is no `j`/`k` for it
-            // here, unlike the full-screen pane), so an offset past the
-            // oldest survivor only ever matters once `b` promotes the pane,
-            // and `window_range` already saturates a stale one rather than
-            // reading past the end.
+            // here, unlike the full-screen pane), and `window_range`
+            // saturates a stale offset rather than reading past the end.
+            // `promote_feed_to_full_screen` clamps on arrival, which is
+            // where an unclamped value would otherwise be felt.
             KeyPress::MatchPrev => {
                 let stepping = self
                     .sheep_pane()
@@ -6226,6 +6239,32 @@ mod tests {
             panic!("full screen")
         };
         assert_eq!(pane.match_filter(), Some("boom"));
+    }
+
+    /// Promotion clamps the offset the embedded feed never clamps itself.
+    ///
+    /// `N` walks the stored value up one line at a time and the embedded
+    /// feed draws no scrollback, so nothing bounds it there. Carried across
+    /// unclamped, the full screen renders the oldest survivor while the
+    /// stored value sits past it, and `j` does nothing visible until it has
+    /// been pressed back down through the excess.
+    #[test]
+    fn promotion_clamps_an_offset_the_embedded_feed_left_out_of_range() {
+        let mut app = fixture_with_feed();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        if let Some(feed) = app.sheep_feed_mut() {
+            feed.scroll_up(9_999);
+        }
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let Body::Bleats(pane) = app.body() else {
+            panic!("full screen")
+        };
+        let ceiling = super::super::view::bleats_full::max_scroll_offset(&app, pane);
+        assert!(
+            pane.scroll_offset() <= ceiling,
+            "offset {} should have been clamped to {ceiling}",
+            pane.scroll_offset()
+        );
     }
 
     /// Stepping to another sheep re-scopes the feed. A feed left on the
