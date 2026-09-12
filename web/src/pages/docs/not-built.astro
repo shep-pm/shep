@@ -121,9 +121,10 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       <code>shep start</code>: they're now on the short list of variables
       shep passes down to every child on Windows, same as{" "}
       <code>TEMP</code> or <code>USERPROFILE</code>, so an operator running
-      several Python apps doesn't repeat them per app. Unix needs neither,
-      since <code>LANG</code> already carries a UTF-8 locale through and
-      shep passes that one down too.
+      several Python apps doesn't repeat them per app. Unix has{" "}
+      <code>LANG</code> in that role and shep passes it down, so a shepherd
+      whose own <code>LANG</code> names a UTF-8 locale gives its children
+      one. Windows has no equivalent to pass.
     </p>
 
     <h2>Five smaller cuts, argued for rather than just missing</h2>
