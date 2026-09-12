@@ -1,27 +1,14 @@
+//! What level a log line announces: the app's own answer where it declares
+//! one, this client's reading of the line where it does not.
+
+use shep_core::config::{LevelMatcher, LevelRule};
+
 /// A log level, ordered so a minimum can be compared against.
 ///
-/// `Ord` is derived and the declaration order is the ordering: `Trace` is
-/// the lowest and `Error` the highest, so `level >= minimum` reads the way
-/// an operator setting `level >= warn` expects.
-///
-/// `Debug` is derived and is operator-facing rather than diagnostic: the
-/// bleats filter row renders the chip through `format!("{min:?}")`
-/// lowercased, so these variant names are the words on screen. Renaming one
-/// changes what an operator reads.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Level {
-    /// The lowest, and the only one an app has to opt into emitting.
-    Trace,
-    /// Below `Info`, and the usual floor for an app's own noise.
-    Debug,
-    /// The default an operator reads when nothing is filtered.
-    Info,
-    /// Something an operator should look at, without the sheep being broken.
-    Warn,
-    /// The highest. `fatal` parses to this too, since a line saying it is
-    /// fatal is not saying something milder than one saying error.
-    Error,
-}
+/// Named here under the spelling this pane has always used. The type is
+/// shep-core's, because a Flockfile declares one: see
+/// [`shep_core::config::LineLevel`].
+pub use shep_core::config::LineLevel as Level;
 
 /// The keys a `key=value` pair may announce a level under.
 ///
@@ -36,7 +23,12 @@ const LEVEL_KEYS: [&str; 3] = ["level", "lvl", "severity"];
 /// the level is the common shape. A word counts as a bare level, or as a
 /// `key=value` pair keyed by `LEVEL_KEYS`. Either way the level must be a
 /// whole word once surrounding punctuation is stripped. A touching digit
-/// blocks it, so `/error404` and `info2` announce nothing.
+/// blocks it, so `/error404` and `info2` announce nothing. `fatal` reads as
+/// `Error`, since a line saying it is fatal is not saying something milder
+/// than one saying error.
+///
+/// This is the reading an app gets when it declares no rules of its own; see
+/// [`Classifier`].
 ///
 /// `None` is the ordinary answer for app output. Callers must not treat it
 /// as "below the minimum": see the spec's decision 3.
@@ -67,6 +59,48 @@ fn level_word(word: &str) -> &str {
     match word.split_once('=') {
         Some((key, value)) if LEVEL_KEYS.iter().any(|k| k.eq_ignore_ascii_case(key)) => value,
         _ => word,
+    }
+}
+
+/// How one sheep's lines are classified.
+///
+/// Two readings, and an app picks which by declaring rules or not.
+/// Declaring any replaces [`level_of`] for that sheep rather than adding to
+/// it, so its Flockfile is the whole answer to how its lines are read.
+///
+/// Built per call rather than held, the way [`super::pane_bleats`] already
+/// builds its match regex: a compiled regex is neither `PartialEq` nor
+/// usefully `Debug`, and both the rule list and the window it reads are
+/// small.
+#[derive(Debug)]
+pub struct Classifier(Option<LevelMatcher>);
+
+impl Classifier {
+    /// Compiles `rules`, or answers with [`level_of`] when the app declares
+    /// none.
+    ///
+    /// A list that will not compile answers with [`level_of`] too.
+    /// [`shep_core::config::normalize`] refuses one before it can be stored,
+    /// so that is unreachable rather than lenient; falling back still beats
+    /// a feed that silently classifies nothing.
+    #[must_use]
+    pub fn new(rules: &[LevelRule]) -> Self {
+        if rules.is_empty() {
+            return Self(None);
+        }
+        Self(LevelMatcher::compile(rules).ok())
+    }
+
+    /// The level `line` announces, or `None` when it announces none.
+    ///
+    /// `None` is the ordinary answer either way, and never means "below the
+    /// minimum".
+    #[must_use]
+    pub fn level_of(&self, line: &str) -> Option<Level> {
+        match &self.0 {
+            Some(matcher) => matcher.level_of(line),
+            None => level_of(line),
+        }
     }
 }
 
@@ -209,6 +243,61 @@ mod tests {
     #[test]
     fn a_query_string_is_not_a_level_pair() {
         assert_eq!(level_of("GET /search?level=error 200"), None);
+    }
+
+    /// An app that declares nothing keeps the reading it has always had.
+    #[test]
+    fn no_declared_rules_falls_back_to_the_built_in_reading() {
+        let classifier = Classifier::new(&[]);
+        assert_eq!(
+            classifier.level_of("WARN pool exhausted"),
+            Some(Level::Warn)
+        );
+        assert_eq!(classifier.level_of("listening on 8080"), None);
+    }
+
+    /// The case the field exists for: a level the built-in reading cannot
+    /// see, because it is neither a bare word nor a `key=value` pair near
+    /// the start of the line.
+    #[test]
+    fn a_declared_rule_reads_a_line_the_built_in_reading_cannot() {
+        let line = r#"{"severity":"ERROR","msg":"boom"}"#;
+        assert_eq!(level_of(line), None);
+
+        let classifier = Classifier::new(&[LevelRule {
+            pattern: r#""severity":"ERROR""#.to_string(),
+            level: Level::Error,
+        }]);
+        assert_eq!(classifier.level_of(line), Some(Level::Error));
+    }
+
+    /// Declaring rules replaces the built-in reading rather than adding to
+    /// it, so a line only that reading classifies goes back to announcing
+    /// nothing.
+    #[test]
+    fn a_declared_rule_set_replaces_the_built_in_reading() {
+        let classifier = Classifier::new(&[LevelRule {
+            pattern: "^E/".to_string(),
+            level: Level::Error,
+        }]);
+        assert_eq!(level_of("WARN pool exhausted"), Some(Level::Warn));
+        assert_eq!(classifier.level_of("WARN pool exhausted"), None);
+        assert_eq!(classifier.level_of("E/tag boom"), Some(Level::Error));
+    }
+
+    /// `normalize` refuses this before it can be stored, so the arm is
+    /// unreachable in a running lookout. It still has to answer with the
+    /// built-in reading rather than with a feed that classifies nothing.
+    #[test]
+    fn a_rule_set_that_will_not_compile_falls_back_to_the_built_in_reading() {
+        let classifier = Classifier::new(&[LevelRule {
+            pattern: "[unclosed".to_string(),
+            level: Level::Error,
+        }]);
+        assert_eq!(
+            classifier.level_of("WARN pool exhausted"),
+            Some(Level::Warn)
+        );
     }
 
     #[test]

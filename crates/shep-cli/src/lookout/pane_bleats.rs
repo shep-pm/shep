@@ -4,7 +4,7 @@
 use regex::Regex;
 
 use super::app::RowKey;
-use super::level::{Level, level_of};
+use super::level::{Classifier, Level};
 use super::tail::{Stream, TailLine};
 
 /// Which filter axis was most recently turned on.
@@ -194,22 +194,25 @@ impl Filters {
     /// Each axis short-circuits the line out the moment it fails; an axis
     /// left `None` holds automatically, which is how the three compose
     /// with AND rather than needing a combinator. `matcher` is the match
-    /// axis's typed text, already parsed once by the caller
-    /// ([`Self::visible`]) rather than per line.
-    fn keeps(&self, line: &TailLine, matcher: Option<&Matcher>) -> bool {
+    /// axis's typed text, and `levels` this sheep's own reading of a level,
+    /// both built once by the caller ([`Self::visible`]) rather than per
+    /// line.
+    fn keeps(&self, line: &TailLine, matcher: Option<&Matcher>, levels: &Classifier) -> bool {
         if let Some(stream) = self.stream
             && line.stream != stream
         {
             return false;
         }
         if let Some(min) = self.min_level {
-            // A line with no detectable level always passes: `level_of`
-            // returning `None` means "unclassifiable", the ordinary case
-            // for plain app output, not "below the minimum". Treating it
-            // as a miss would make a bare `println!` line vanish the
-            // moment an operator set any floor at all, which is exactly
-            // the line the pane was opened to find.
-            if let Some(level) = level_of(&line.text)
+            // A line with no detectable level always passes: `None` means
+            // "unclassifiable", the ordinary case for plain app output, not
+            // "below the minimum". Treating it as a miss would make a bare
+            // `println!` line vanish the moment an operator set any floor at
+            // all, which is exactly the line the pane was opened to find.
+            // True of an app's declared rules as much as of shep's own
+            // reading: declaring rules narrows what gets a level, never what
+            // gets shown.
+            if let Some(level) = levels.level_of(&line.text)
                 && level < min
             {
                 return false;
@@ -384,12 +387,16 @@ impl BleatsPane {
     /// Read by [`super::view::bleats_full::draw`], both to draw only the
     /// lines that pass and to count how many did, out of how many were in
     /// the window.
+    ///
+    /// `levels` is how this sheep's lines are read, which is the sheep's own
+    /// business rather than the pane's: [`super::app::App::feed_classifier`]
+    /// builds it from the row the feed came from.
     #[must_use]
-    pub fn visible<'a>(&self, lines: &'a [TailLine]) -> Vec<&'a TailLine> {
+    pub fn visible<'a>(&self, lines: &'a [TailLine], levels: &Classifier) -> Vec<&'a TailLine> {
         let matcher = self.filters.matcher.as_deref().map(Matcher::parse);
         lines
             .iter()
-            .filter(|line| self.filters.keeps(line, matcher.as_ref()))
+            .filter(|line| self.filters.keeps(line, matcher.as_ref(), levels))
             .collect()
     }
 
@@ -561,7 +568,7 @@ mod tests {
             line(Stream::Out, "ERROR pool exhausted"),
         ];
         let kept: Vec<&str> = pane
-            .visible(&lines)
+            .visible(&lines, &Classifier::new(&[]))
             .iter()
             .map(|l| l.text.as_str())
             .collect();
@@ -580,7 +587,7 @@ mod tests {
             line(Stream::Err, "INFO pool warming"),    // below the minimum
             line(Stream::Err, "ERROR disk full"),      // no match
         ];
-        assert_eq!(pane.visible(&lines).len(), 1);
+        assert_eq!(pane.visible(&lines, &Classifier::new(&[])).len(), 1);
     }
 
     /// esc removes the newest chip rather than clearing every filter, so
@@ -651,7 +658,7 @@ mod tests {
             line(Stream::Out, "kennel"),
         ];
         let kept: Vec<&str> = pane
-            .visible(&lines)
+            .visible(&lines, &Classifier::new(&[]))
             .iter()
             .map(|l| l.text.as_str())
             .collect();
@@ -666,7 +673,7 @@ mod tests {
         let mut pane = BleatsPane::new(RowKey::Sheep(9));
         pane.set_match("/pool(/".to_string());
         let lines = vec![line(Stream::Out, "pool exhausted")];
-        assert!(pane.visible(&lines).is_empty());
+        assert!(pane.visible(&lines, &Classifier::new(&[])).is_empty());
         assert_eq!(pane.filters().match_kind(), Some(MatchKind::Invalid));
     }
 
@@ -683,7 +690,7 @@ mod tests {
             line(Stream::Out, "GET get indexXhtml 200"),
         ];
         let kept: Vec<&str> = pane
-            .visible(&lines)
+            .visible(&lines, &Classifier::new(&[]))
             .iter()
             .map(|l| l.text.as_str())
             .collect();
