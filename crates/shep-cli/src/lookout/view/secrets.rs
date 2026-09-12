@@ -795,9 +795,14 @@ fn draw_panels(pane: &SecretsPane, palette: Palette, area: Rect, buffer: &mut Bu
 /// reads the count back off a render, so the two cannot drift.
 const CHROME_ROWS: u16 = 7;
 
-/// The shortest `area` with room for the chrome, one row of content and
-/// both panels.
-const PANELS_MIN_ROWS: u16 = CHROME_ROWS + 1 + PANEL_ROWS;
+/// The shortest `area` with room for the chrome, a secret, and both
+/// panels.
+///
+/// Two rows for the secret, not one: `draw` writes a group header before
+/// the first row of each source, so a body one row shorter than this spends
+/// everything it has left on the header and shows the panels over an empty
+/// table. Captured at 100x16 before this counted the header.
+const PANELS_MIN_ROWS: u16 = CHROME_ROWS + 2 + PANEL_ROWS;
 
 /// `area`'s own bottom, short by [`PANEL_ROWS`] whenever there is room for
 /// the two panels below it, so no data row ever draws underneath them.
@@ -1117,6 +1122,16 @@ mod tests {
             .unwrap_or_else(|| panic!("no leading number in {line:?}"))
     }
 
+    /// `DB_PASSWORD`'s own `VALUE` cell, and the needle for "a data row is
+    /// on screen".
+    ///
+    /// Not the key name: both panels head themselves with the selected
+    /// key, so a frame carrying the panels over an empty table contains
+    /// `DB_PASSWORD` twice and passes a `contains` that meant to ask about
+    /// the table. The block run is drawn nowhere but a `VALUE` cell.
+    const FIRST_DATA_ROW: &str =
+        "\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588} 9 bytes";
+
     /// The whole rendered frame as text, for the assertions below that
     /// have to say a thing is *not* drawn: [`row_of`] panics instead.
     fn frame_text(buffer: &Buffer) -> String {
@@ -1159,7 +1174,7 @@ mod tests {
             "no room for the panels at this height: {text}"
         );
         assert!(
-            text.contains("DB_PASSWORD"),
+            text.contains(FIRST_DATA_ROW),
             "their rows go to the table instead: {text}"
         );
         assert!(
@@ -1195,7 +1210,11 @@ mod tests {
         assert!(at.contains("WHO READS IT"), "both panels or neither: {at}");
         assert!(
             at.contains("operator \u{d7}"),
-            "and a content row above them: {at}"
+            "and the group header above them: {at}"
+        );
+        assert!(
+            at.contains(FIRST_DATA_ROW),
+            "and a secret under it, which is the point of the pane: {at}"
         );
     }
 
@@ -1213,6 +1232,16 @@ mod tests {
                 assert!(
                     text.contains("FOCUSED"),
                     "{height} rows reserved the panels: {text}"
+                );
+                // The panels describe the selected row, so a screen
+                // carrying them and no row is six rows spent saying
+                // nothing. This is the half of the boundary that is not a
+                // judgement call: where exactly the panels start earning
+                // their rows is `PANELS_MIN_ROWS`' own doc to argue, but
+                // over an empty table they never do.
+                assert!(
+                    text.contains(FIRST_DATA_ROW),
+                    "{height} rows drew the panels over an empty table: {text}"
                 );
             } else {
                 assert!(
