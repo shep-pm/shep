@@ -69,12 +69,12 @@ const fieldGroups: FieldGroup[] = [
     fields: [
       { name: "name", type: "string", default: "required", does: "Unique sheep name. May not contain a path separator or a colon: a colon is the name:slot selector's own separator, and also illegal in a log filename on Windows." },
       { name: "script", type: "string", default: "required", does: "Executable or script path." },
-      { name: "args", type: "string[]", default: "[]", does: "Arguments passed to the script; supports {{instance}}, {{name}} and {{secret:...}}. A resolved secret in an argument is visible in ps; see Secrets." },
+      { name: "args", type: "string[]", default: "[]", does: "Arguments passed to the script; supports {{instance}}, {{name}}, {{SHEP_HOME}} and {{secret:...}}. A resolved secret in an argument is visible in ps; see Secrets." },
       { name: "cwd", type: "string?", default: "the Flockfile's own directory", does: "Working directory at spawn. Unset, an app in a Flockfile runs where that Flockfile lives, so a relative script resolves the way you would read it." },
       { name: "interpreter", type: "string?", default: "none", does: "Interpreter override; \"none\" runs the script directly." },
-      { name: "env", type: "map<string,string>", default: "{}", does: "Merged over the daemon's filtered environment; values support {{instance}}, {{name}} and {{secret:...}}. A value may be a string, a bare boolean, or a bare whole number (SOME_BOOL = true, PORT = 8080), and is read as its string either way. A float is refused, since 1.10 would reach the process as 1.1. In YAML an unquoted yes reads as \"true\" and 0x1F as \"31\", so quote a value whose text must survive. SHEP_INSTANCE, SHEP_NAME and SHEP_ENVIRONMENT are always set and may not be set here." },
+      { name: "env", type: "map<string,string>", default: "{}", does: "Merged over the daemon's filtered environment; values support {{instance}}, {{name}}, {{SHEP_HOME}} and {{secret:...}}. A value may be a string, a bare boolean, or a bare whole number (SOME_BOOL = true, PORT = 8080), and is read as its string either way. A float is refused, since 1.10 would reach the process as 1.1. In YAML an unquoted yes reads as \"true\" and 0x1F as \"31\", so quote a value whose text must survive. SHEP_INSTANCE, SHEP_NAME and SHEP_ENVIRONMENT are always set and may not be set here." },
       { name: "environment", type: "string?", default: "[daemon] environment, \"production\" by default", does: "Which environment a {{secret:...}} reference resolves against on this sheep. May not be \"all\", the secrets store's own every-environment slot; see Secrets." },
-      { name: "instances", type: "integer", default: "1", does: "How many separate copies of this app to run, each its own process; shep does not share a socket between them (see reuse_port if the app does that itself). SHEP_INSTANCE and SHEP_NAME are always set on every instance; other env values, args, out_file and err_file may use {{instance}} and {{name}} templates." },
+      { name: "instances", type: "integer", default: "1", does: "How many separate copies of this app to run, each its own process; shep does not share a socket between them (see reuse_port if the app does that itself). SHEP_INSTANCE and SHEP_NAME are always set on every instance; other env values, args, out_file and err_file may use {{instance}}, {{name}} and {{SHEP_HOME}} templates." },
       { name: "increment_var", type: "string?", default: "removed", does: "Refused at normalize with the replacement named: set env.YOUR_VAR = \"{{instance}}\" instead." },
     ],
   },
@@ -133,8 +133,8 @@ const fieldGroups: FieldGroup[] = [
   {
     title: "Logs",
     fields: [
-      { name: "out_file", type: "string?", default: "$SHEP_HOME/logs/<name>-<i>-out.log", does: "Stdout log file path override; supports {{instance}} and {{name}}, and a relative path lands under the app's cwd. With instances > 1, an explicit path needs {{instance}} or merge_logs, or it's refused: {{name}} renders the same for every instance, so a path carrying only that one still collides." },
-      { name: "err_file", type: "string?", default: "$SHEP_HOME/logs/<name>-<i>-err.log", does: "Stderr log file path override; supports {{instance}} and {{name}}, and a relative path lands under the app's cwd. With instances > 1, an explicit path needs {{instance}} or merge_logs, or it's refused: {{name}} renders the same for every instance, so a path carrying only that one still collides." },
+      { name: "out_file", type: "string?", default: "{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log", does: "Stdout log file path override; supports {{instance}}, {{name}} and {{SHEP_HOME}}. A relative path lands under the app's cwd, and a {{SHEP_HOME}} one is absolute already. With instances > 1, an explicit path needs {{instance}} or merge_logs, or it's refused: {{name}} renders the same for every instance, so a path carrying only that one still collides." },
+      { name: "err_file", type: "string?", default: "{{SHEP_HOME}}/logs/{{name}}-{{instance}}-err.log", does: "Stderr log file path override; supports {{instance}}, {{name}} and {{SHEP_HOME}}. A relative path lands under the app's cwd, and a {{SHEP_HOME}} one is absolute already. With instances > 1, an explicit path needs {{instance}} or merge_logs, or it's refused: {{name}} renders the same for every instance, so a path carrying only that one still collides." },
       { name: "merge_logs", type: "bool", default: "false", does: "Collapse every instance's logs into one file pair." },
     ],
   },
@@ -404,24 +404,50 @@ unknown field \`max_memory_restart\`, expected one of \`name\`, \`script\`, \`ar
       good answer to that.
     </p>
 
-    <h2>Templates: <code>{'{{instance}}'}</code>, <code>{'{{name}}'}</code> and <code>{'{{secret:...}}'}</code></h2>
+    <h2>Templates: <code>{'{{instance}}'}</code>, <code>{'{{name}}'}</code>, <code>{'{{SHEP_HOME}}'}</code> and <code>{'{{secret:...}}'}</code></h2>
     <p>
       <code>env</code> values, <code>args</code>, <code>out_file</code> and{" "}
-      <code>err_file</code> all accept doubled-brace tokens. Two are
-      positional, filled in at spawn time with the app's own name and the
-      instance's own slot, and every one of the four takes them:
+      <code>err_file</code> all accept doubled-brace tokens. Three are filled
+      in at spawn time: <code>{'{{instance}}'}</code> and{" "}
+      <code>{'{{name}}'}</code> from the sheep's own identity,{" "}
+      <code>{'{{SHEP_HOME}}'}</code> from the directory the shepherd keeps
+      its state in. Every one of the four fields takes all three:
     </p>
     <CodeBlock label="Flockfile.toml">{`[[app]]
 name = "z-worker"
 script = "./z-worker"
 instances = 4
 args = ["--metrics-port", "91{{instance}}"]
+out_file = "{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log"
 
 [app.env]
 Z_WORKER_ID = "z-{{instance}}"
 Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
     <p>
-      The third reads a value rather than the app's own identity:{" "}
+      That <code>out_file</code> line is the default written out, so it
+      changes nothing. <code>shep init --all</code> scaffolds it, and a path
+      built on <code>{'{{SHEP_HOME}}'}</code> moves with the shepherd rather
+      than pinning the Flockfile to one machine's layout.{" "}
+      <code>{'{{SHEP_HOME}}'}</code> is <code>$SHEP_HOME</code> when that is
+      set and <code>~/.shep</code> when it is not. It renders absolute, so
+      unlike a relative path it is never joined onto <code>cwd</code>, and it
+      renders the same for every instance, so a clustered app still needs{" "}
+      <code>{'{{instance}}'}</code> or <code>merge_logs</code> in its log
+      paths.
+    </p>
+    <h3>Casing says where a token reads from</h3>
+    <p>
+      An uppercase name is something from the environment, a lowercase one is
+      something from the config. <code>SHEP_HOME</code> is an environment
+      variable, so the token is <code>{'{{SHEP_HOME}}'}</code>;{" "}
+      <code>name</code> and <code>instance</code> are fields of the app, so
+      they stay lowercase. <code>{'{{secret:API_KEY}}'}</code> is both halves
+      at once: <code>secret:</code> names the mechanism, and the key beside it
+      is an environment-variable-shaped name. A secret key is matched as
+      written, so the uppercase there is a convention rather than a rule.
+    </p>
+    <p>
+      The fourth token reads a value rather than the app's own identity:{" "}
       <code>{'{{secret:NAME}}'}</code> looks up <code>NAME</code> in the{" "}
       <a href="/docs/secrets">secrets store</a> instead of putting a live
       value in the Flockfile at all. This one is for <code>env</code> values
@@ -436,7 +462,7 @@ DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>
       Any other <code>{'{{...}}'}</code> is refused at <code>shep start</code>,
       not left to reach the child as a literal string:
     </p>
-    <CodeBlock label="a typo'd token">{`error[invalid_config]: the daemon reported InvalidConfig: sheep \`z-worker\`, env.WORKER: \`{{instnace}}\` is not a template token: valid tokens are \`{{instance}}\`, \`{{name}}\`, \`{{secret:...}}\``}</CodeBlock>
+    <CodeBlock label="a typo'd token">{`error[invalid_config]: the daemon reported InvalidConfig: sheep \`z-worker\`, env.WORKER: \`{{instnace}}\` is not a template token: valid tokens are \`{{instance}}\`, \`{{name}}\`, \`{{SHEP_HOME}}\`, \`{{secret:...}}\``}</CodeBlock>
     <p>
       An opening <code>{'{{'}</code> that is never closed is refused the same
       way, rather than passed through as a literal:

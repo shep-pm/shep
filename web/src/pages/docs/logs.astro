@@ -88,7 +88,11 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
       <code>out_file</code> and <code>err_file</code>, or fold both streams
       into one file with <code>merge_logs</code>. A relative path in either
       lands under the app's <code>cwd</code>, so a Flockfile can keep its logs
-      beside the app it runs. A clustered app gets one pair per instance
+      beside the app it runs. A path starting with{" "}
+      <code>{"{{SHEP_HOME}}"}</code> is absolute already and stays under the
+      shepherd's home; written out that way the default is{" "}
+      <code>{"{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log"}</code>, which
+      is what <code>shep init --all</code> scaffolds. A clustered app gets one pair per instance
       unless it says otherwise, which is why an explicit{" "}
       <code>out_file</code> on a multi-instance app is refused unless it
       carries <code>{"{{instance}}"}</code> or the app sets{" "}
