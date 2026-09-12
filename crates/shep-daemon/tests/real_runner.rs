@@ -1,8 +1,8 @@
 //! Behavioral tests for [`shep_daemon::tokio_runner::TokioRunner`] against
 //! real `/bin/sh` child processes.
 //!
-// Runs on the real, unpaused clock, in a separate binary from the
-// paused-clock unit tests.
+//! Runs on the real, unpaused clock, in a separate binary from the
+//! paused-clock unit tests.
 
 #![cfg(unix)]
 
@@ -16,7 +16,7 @@ use shep_core::signals::OperatorSignal;
 use shep_daemon::channel::{ChildMessage, ShepherdMessage};
 use shep_daemon::privilege::Credentials;
 use shep_daemon::runner::{
-    AdoptSpec, AdoptedReaper, ProcIo, ProcessRunner, RunningProcess, SpawnSpec, StdinWrite,
+    AdoptSpec, AdoptedReaper, LogLine, ProcIo, ProcessRunner, RunningProcess, SpawnSpec, StdinWrite,
     StopSignal,
 };
 use shep_daemon::tokio_runner::TokioRunner;
@@ -57,6 +57,34 @@ fn spec_for(dir: &tempfile::TempDir, program: &str, args: &[&str]) -> SpawnSpec 
 /// How long a log line gets to travel from the pump's `write_all` to the
 /// file: slack for a loaded runner, not an expected duration.
 const LOG_WRITE_DEADLINE: Duration = Duration::from_secs(5);
+
+/// Twice the other budgets in this file, for the cases written with more
+/// slack.
+///
+/// Nothing distinguishes those cases. The literal arrived three separate
+/// times in three unrelated features, and one `proc.wait()` asserting
+/// "the adopted pid must be reaped within the budget" runs on
+/// [`REAP_DEADLINE`] while three others asserting the same thing run on
+/// this. Named so a slow-CI fix has one place to go, not because the
+/// difference means anything.
+const LONG_DEADLINE: Duration = Duration::from_secs(10);
+
+/// The child's next log line, or a named panic for either way there is not
+/// one: nothing arrives inside `deadline`, or the pump's channel closes.
+///
+/// `want` says what the caller was waiting for, and both panics carry it.
+/// The second `expect` this replaces had its own string at every site,
+/// seven distinct ones saying the log channel had closed.
+///
+/// # Panics
+///
+/// If no line arrives within `deadline`, or the log channel closes first.
+async fn recv_log(io: &mut ProcIo, deadline: Duration, want: &str) -> LogLine {
+    tokio::time::timeout(deadline, io.logs.recv())
+        .await
+        .unwrap_or_else(|_| panic!("{want}: nothing arrived within {deadline:?}"))
+        .unwrap_or_else(|| panic!("{want}: the log channel closed first"))
+}
 
 /// A log file's contents with the daemon's per-line timestamp stripped,
 /// so an assertion is about what the sheep wrote.
@@ -172,10 +200,7 @@ async fn a_reopen_moves_a_real_childs_output_onto_the_recreated_path() {
     // it is written leaves a real process behind for the rest of the run.
     let _reaper = Reaper(vec![i32::try_from(proc.pid()).unwrap()]);
 
-    let line = tokio::time::timeout(LOG_WRITE_DEADLINE, io.logs.recv())
-        .await
-        .expect("the child's first line must arrive")
-        .expect("logs closed before the first line");
+    let line = recv_log(&mut io, LOG_WRITE_DEADLINE, "the child's first line must arrive").await;
     assert_eq!(line.line, "before");
     await_file_contents(&out_file, "before\n").await;
 
@@ -206,10 +231,7 @@ async fn a_reopen_moves_a_real_childs_output_onto_the_recreated_path() {
     assert_eq!(unstamped_file(&archive), "before\n");
 
     fs::write(&marker, "").unwrap();
-    let line = tokio::time::timeout(LOG_WRITE_DEADLINE, io.logs.recv())
-        .await
-        .expect("the child's second line must arrive")
-        .expect("logs closed before the second line");
+    let line = recv_log(&mut io, LOG_WRITE_DEADLINE, "the child's second line must arrive").await;
     assert_eq!(line.line, "after");
 
     await_file_contents(&out_file, "after\n").await;
@@ -253,7 +275,7 @@ async fn signal_ignored_then_kill_tree_reaps() {
     );
 
     proc.kill_tree().unwrap();
-    let outcome = tokio::time::timeout(Duration::from_secs(5), proc.wait())
+    let outcome = tokio::time::timeout(REAP_DEADLINE, proc.wait())
         .await
         .expect("kill_tree should reap promptly");
     assert_eq!(outcome.signal, Some(9));
@@ -285,18 +307,12 @@ async fn a_process_signal_reaches_the_sheep_and_not_its_lamb() {
     let (mut proc, mut io) = runner.spawn(&spec).unwrap();
     let _reaper = Reaper(vec![i32::try_from(proc.pid()).unwrap()]);
 
-    let ready = tokio::time::timeout(Duration::from_secs(10), io.logs.recv())
-        .await
-        .expect("the lamb did not announce itself within 10s")
-        .expect("log channel closed");
+    let ready = recv_log(&mut io, LONG_DEADLINE, "the lamb did not announce itself within 10s").await;
     assert_eq!(ready.line, "lamb-ready");
 
     proc.signal_process(OperatorSignal::Usr1).unwrap();
 
-    let answer = tokio::time::timeout(Duration::from_secs(10), io.logs.recv())
-        .await
-        .expect("nothing answered the signal within 10s")
-        .expect("log channel closed");
+    let answer = recv_log(&mut io, LONG_DEADLINE, "nothing answered the signal within 10s").await;
     assert_eq!(answer.line, "sheep-got-it");
 
     // And nothing else follows it. A group delivery would put `lamb-got-it` on
@@ -395,16 +411,13 @@ async fn a_graceful_stop_reaches_a_forked_grandchild() {
 
     // The wrapper prints `$!` only after forking, so receiving this line
     // proves the grandchild already exists.
-    let line = tokio::time::timeout(Duration::from_secs(5), io.logs.recv())
-        .await
-        .expect("the wrapper must report its forked child's pid")
-        .expect("logs channel closed before the pid arrived");
+    let line = recv_log(&mut io, LOG_WRITE_DEADLINE, "the wrapper must report its forked child's pid").await;
     let grandchild: i32 = line.line.trim().parse().expect("`echo $!` prints a pid");
     reaper.0.push(grandchild);
     assert_ne!(grandchild, leader, "sanity: `&` really forked");
 
     proc.signal(StopSignal::Term).unwrap();
-    let outcome = tokio::time::timeout(Duration::from_secs(5), proc.wait())
+    let outcome = tokio::time::timeout(REAP_DEADLINE, proc.wait())
         .await
         .expect("the wrapper must exit on SIGTERM");
     assert_eq!(
@@ -429,7 +442,7 @@ async fn shepherd_channel_delivers_ready() {
 
     let (mut proc, mut io) = runner.spawn(&spec).unwrap();
 
-    let msg = tokio::time::timeout(Duration::from_secs(5), io.from_child.recv())
+    let msg = tokio::time::timeout(CHANNEL_DEADLINE, io.from_child.recv())
         .await
         .expect("shepherd-channel Ready should arrive promptly")
         .expect("from_child closed before Ready arrived");
@@ -439,7 +452,7 @@ async fn shepherd_channel_delivers_ready() {
     // SIGKILL, or the fork can miss the group signal entirely.
     tokio::time::sleep(Duration::from_millis(100)).await;
     proc.kill_tree().unwrap();
-    let outcome = tokio::time::timeout(Duration::from_secs(5), proc.wait())
+    let outcome = tokio::time::timeout(REAP_DEADLINE, proc.wait())
         .await
         .expect("kill_tree should reap promptly");
     assert_eq!(outcome.signal, Some(9));
@@ -678,17 +691,11 @@ async fn a_dropped_child_runs_as_the_requested_user() {
 
     let runner = TokioRunner::new();
     let (mut proc, mut io) = runner.spawn(&spec).unwrap();
-    let uid_line = tokio::time::timeout(Duration::from_secs(5), io.logs.recv())
-        .await
-        .expect("the child must print its uid")
-        .expect("the log pump must deliver the line");
+    let uid_line = recv_log(&mut io, LOG_WRITE_DEADLINE, "the child must print its uid").await;
     assert_eq!(uid_line.line.trim(), target.uid.as_raw().to_string());
     assert!(!uid_line.err);
 
-    let groups_line = tokio::time::timeout(Duration::from_secs(5), io.logs.recv())
-        .await
-        .expect("the child must print its group list")
-        .expect("the log pump must deliver the line");
+    let groups_line = recv_log(&mut io, LOG_WRITE_DEADLINE, "the child must print its group list").await;
     let groups: Vec<&str> = groups_line.line.split_whitespace().collect();
     assert_eq!(
         groups,
@@ -799,10 +806,7 @@ async fn a_bare_interpreter_resolves_via_the_seeded_path() {
 
     let runner = TokioRunner::new();
     let (mut proc, mut io) = runner.spawn(&spec).unwrap();
-    let line = tokio::time::timeout(Duration::from_secs(5), io.logs.recv())
-        .await
-        .expect("the shim must resolve via the seeded PATH and produce output")
-        .expect("logs channel closed before the line arrived");
+    let line = recv_log(&mut io, LOG_WRITE_DEADLINE, "the shim must resolve via the seeded PATH and produce output").await;
     assert_eq!(line.line, "shim-exec-ok");
     assert!(!line.err);
     let outcome = proc.wait().await;
@@ -832,10 +836,7 @@ async fn a_real_child_reads_a_line_written_to_its_stdin() {
         .unwrap();
     ack.await.unwrap().unwrap();
 
-    let line = tokio::time::timeout(Duration::from_secs(10), io.logs.recv())
-        .await
-        .expect("no stdout line within 10s")
-        .expect("log channel closed");
+    let line = recv_log(&mut io, LONG_DEADLINE, "no stdout line within 10s").await;
     assert!(!line.err);
     assert_eq!(line.line, "hello sheep");
 }
@@ -852,7 +853,7 @@ async fn a_child_that_did_not_ask_for_stdin_gets_eof_at_once() {
     let (mut proc, io) = runner.spawn(&spec).unwrap();
 
     assert!(io.to_stdin.is_closed());
-    let outcome = tokio::time::timeout(Duration::from_secs(10), proc.wait())
+    let outcome = tokio::time::timeout(LONG_DEADLINE, proc.wait())
         .await
         .expect("cat did not exit on EOF within 10s");
     assert_eq!(outcome.code, Some(0));
@@ -917,7 +918,7 @@ async fn an_adopted_proc_reports_its_real_exit() {
         "an adopted proc keeps the pid it was given"
     );
 
-    let outcome = tokio::time::timeout(Duration::from_secs(10), proc.wait())
+    let outcome = tokio::time::timeout(LONG_DEADLINE, proc.wait())
         .await
         .expect("the adopted pid must be reaped within the budget");
     assert_eq!((outcome.code, outcome.signal), (Some(3), None));
@@ -936,7 +937,7 @@ async fn a_spawned_proc_still_reports_its_real_exit() {
         .spawn(&spec_for(&dir, "/bin/sh", &["-c", "exit 4"]))
         .unwrap();
 
-    let outcome = tokio::time::timeout(Duration::from_secs(10), proc.wait())
+    let outcome = tokio::time::timeout(LONG_DEADLINE, proc.wait())
         .await
         .expect("a spawned child must be waited within the budget");
     assert_eq!((outcome.code, outcome.signal), (Some(4), None));
@@ -967,7 +968,7 @@ async fn an_adopted_proc_reports_a_signal_as_a_signal() {
     proc.signal_process(OperatorSignal::Kill)
         .expect("SIGKILL the adopted sheep");
 
-    let outcome = tokio::time::timeout(Duration::from_secs(10), proc.wait())
+    let outcome = tokio::time::timeout(LONG_DEADLINE, proc.wait())
         .await
         .expect("the adopted pid must be reaped within the budget");
     assert_eq!((outcome.code, outcome.signal), (None, Some(9)));
@@ -1013,14 +1014,11 @@ async fn an_adopted_pump_appends_the_carried_pipes_lines_through_the_carried_han
         .adopt(spec)
         .expect("the real runner must be able to adopt");
 
-    let line = tokio::time::timeout(Duration::from_secs(10), io.logs.recv())
-        .await
-        .expect("the carried pipe must still be pumped")
-        .expect("the pump must forward the line");
+    let line = recv_log(&mut io, LONG_DEADLINE, "the carried pipe must still be pumped").await;
     assert_eq!(line.line, "after-the-handover");
     await_file_contents(&out_file, "before-the-handover\nafter-the-handover\n").await;
 
-    let outcome = tokio::time::timeout(Duration::from_secs(10), proc.wait())
+    let outcome = tokio::time::timeout(LONG_DEADLINE, proc.wait())
         .await
         .expect("the adopted pid must be reaped within the budget");
     assert_eq!(outcome.code, Some(0));
