@@ -1045,6 +1045,7 @@ pub fn app_in_sheep_pane_with_env(env: &[(&str, &str)]) -> App {
 ///
 /// Panics if the pane is closed or has no env key by that name, which is a
 /// fixture bug rather than a failure the test is about.
+#[track_caller]
 pub fn select_env_key(app: &mut App, key: &str) {
     let pane = app.config_pane().expect("the pane is open");
     let index = pane
@@ -1236,6 +1237,7 @@ pub fn app_in_sheep_pane_with_two_edits() -> App {
 ///
 /// Panics if the pane is closed, which is a fixture bug rather than a
 /// failure the test is about.
+#[track_caller]
 pub fn config_pane_field_rows_for_tests(app: &App) -> Vec<String> {
     let pane = app.config_pane().expect("the pane is open");
     pane.rows()
@@ -1263,6 +1265,7 @@ pub fn config_pane_field_rows_for_tests(app: &App) -> Vec<String> {
 ///
 /// Panics if it draws no row for a key or for `+ add a key`, which is a
 /// fixture bug rather than a failure the test is about.
+#[track_caller]
 pub fn config_pane_env_rows_for_tests(
     pane: &crate::lookout::pane::ConfigPane,
     menu: Option<&super::super::app::PaneMenu>,
@@ -1316,6 +1319,7 @@ pub fn config_pane_env_rows_for_tests(
 /// # Panics
 ///
 /// Panics if the pane is closed.
+#[track_caller]
 pub fn config_pane_pending_rows_for_tests(app: &App) -> Vec<String> {
     let pane = app.config_pane().expect("the pane is open");
     pane.edits()
@@ -1337,6 +1341,7 @@ pub fn config_pane_pending_rows_for_tests(app: &App) -> Vec<String> {
 /// # Panics
 ///
 /// Panics if the pane is closed or draws no row for `key`.
+#[track_caller]
 pub fn config_pane_row_for_tests(app: &App, key: &str) -> String {
     let pane = app.config_pane().expect("the pane is open");
     let lines =
@@ -1358,6 +1363,7 @@ pub fn config_pane_row_for_tests(app: &App, key: &str) -> String {
 /// # Panics
 ///
 /// Panics if the pane is closed.
+#[track_caller]
 pub fn config_pane_title_band_for_tests(app: &App, width: u16) -> String {
     let pane = app.config_pane().expect("the pane is open");
     let lines =
@@ -1373,6 +1379,7 @@ pub fn config_pane_title_band_for_tests(app: &App, width: u16) -> String {
 /// # Panics
 ///
 /// Panics if the pane is closed or draws no tab row at `width`.
+#[track_caller]
 pub fn config_pane_tab_row_for_tests(app: &App, width: u16) -> String {
     let pane = app.config_pane().expect("the pane is open");
     let lines =
@@ -1430,6 +1437,7 @@ pub fn app_with_plain_palette_in_sheep_pane() -> App {
 /// # Panics
 ///
 /// Panics if the pane is closed.
+#[track_caller]
 pub fn config_pane_panel_for_tests(app: &App, width: u16) -> Vec<String> {
     let pane = app.config_pane().expect("the pane is open");
     crate::lookout::view::pane::panel_lines(pane, app.palette(), width)
@@ -1445,6 +1453,7 @@ pub fn config_pane_panel_for_tests(app: &App, width: u16) -> Vec<String> {
 /// # Panics
 ///
 /// Panics if the pane is closed or has no field named `key`.
+#[track_caller]
 pub fn config_pane_panel_focused_on(app: &App, key: &str, width: u16) -> Vec<String> {
     let pane = app.config_pane().expect("the pane is open");
     let field = pane
