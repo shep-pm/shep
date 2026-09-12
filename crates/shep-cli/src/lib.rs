@@ -2533,6 +2533,58 @@ mod tests {
         assert!(text.contains("no shepherd running"), "{text}");
     }
 
+    /// Both of `--follow`'s refusals carry `ExitCode::Usage`, so the code
+    /// alone cannot tell them apart: delete either guard and a test asserting
+    /// only the code still passes. Each is pinned by its own message instead.
+    ///
+    /// Neither arm needs a fixture. The `--format json` case proves the first
+    /// guard answered rather than the second, since a table-format follow
+    /// under a pipe would have refused too, with different words.
+    #[tokio::test]
+    async fn follow_refuses_json_and_a_pipe_for_different_reasons() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ShepPaths::resolve(&|_| None, dir.path());
+        let args = cli::FlockArgs {
+            follow: true,
+            interval: 1,
+        };
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = buffered_streams(&mut out, &mut err);
+            streams.fmt = Format::Json;
+            flock_command(&mut streams, &paths, VersionGuard::Enforce, &args).await
+        };
+        assert_eq!(code, ExitCode::Usage);
+        let text = String::from_utf8(err).unwrap();
+        assert!(
+            text.contains("no follow form"),
+            "the json guard answers before the terminal one: {text}"
+        );
+
+        // `cargo test` captures stdout, so the terminal guard fires on its
+        // own. Under `--nocapture` on a real terminal it cannot, and there is
+        // nothing to pin rather than something to fail.
+        if std::io::stdout().is_terminal() {
+            return;
+        }
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = buffered_streams(&mut out, &mut err);
+            flock_command(&mut streams, &paths, VersionGuard::Enforce, &args).await
+        };
+        assert_eq!(code, ExitCode::Usage);
+        let text = String::from_utf8(err).unwrap();
+        assert!(text.contains("needs a terminal"), "{text}");
+        assert!(
+            out.is_empty(),
+            "a refused follow prints no listing: {}",
+            String::from_utf8_lossy(&out)
+        );
+    }
+
     #[tokio::test]
     async fn a_matching_version_passes_without_a_word() {
         let dir = tempfile::tempdir().unwrap();
