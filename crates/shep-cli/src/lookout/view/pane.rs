@@ -772,6 +772,12 @@ fn shed_dialog_rows(rows: &mut Vec<(DialogRow, Line<'static>)>, height: u16, wid
 /// A no-op on a row that already carries one, which a row [`fit`] cut for
 /// width does: one marker says the row was cut, and two say nothing more.
 fn mark_cut(line: &mut Line<'static>, width: u16) {
+    // The loop below cannot clear at a width of zero, since popping an
+    // empty string is a no-op, and it would spin. Unreachable through the
+    // one call site, which is fed the same `area.width` `view::draw`
+    // refuses below `MIN_TERM_WIDTH`, so this says out loud what a second
+    // call site would have to keep true.
+    debug_assert!(width > 0, "mark_cut needs a column to put the marker in");
     let Some(span) = line.spans.last_mut() else {
         return;
     };
@@ -2572,16 +2578,68 @@ mod tests {
         }
     }
 
-    /// The reload sentence is one sentence however many rows it takes,
-    /// and its tail is the `SO_REUSEPORT` caveat the rulings refused the
-    /// frame's own uncaveated copy over. A continuation shed for height
-    /// ends the row mid-clause (`No gap, if the app`, captured at 90x8),
-    /// which is the same half of the sentence going missing that the
-    /// width fix already dealt with once.
+    /// The shedding order's own claim, which is a different one from the
+    /// marker's: when exactly one of the naming sentence and the reload
+    /// continuation can survive, the continuation is what survives.
     ///
-    /// Either the sentence survives whole or the cut is marked. Asserted
-    /// on the joined rows, never on a prefix: a `contains` on the first
-    /// row passes on exactly the broken output.
+    /// 90x8 is the captured case, six body rows against the seven the
+    /// dialog wants. Asserted as both halves at once, the sentence whole
+    /// AND the naming row gone, because either half alone passes with the
+    /// order flipped: a cut caveat is still marked, politely, by
+    /// [`mark_cut`].
+    ///
+    /// The tail this protects is the `SO_REUSEPORT` caveat, the condition
+    /// on the only cost claim the dialog makes, and the thing
+    /// `docs/lookout/design-files/rulings.md` refused the frame's own
+    /// `No downtime, slower` over.
+    #[test]
+    fn the_reload_caveat_outlives_the_naming_sentence() {
+        let app = fixtures::app_with_close_dialog();
+        let dialog = app.close_dialog().expect("the dialog is up");
+        let whole = close_dialog_reload_sentence(dialog);
+        let naming = close_dialog_naming_sentence(dialog.unsent_fields());
+
+        let rendered = render_text(&fixtures::render_dialog(90, 8));
+        let rows = reload_rows(&rendered);
+        let last = rows.last().expect("the reload row draws at every size");
+        assert!(
+            rows.join(" ").contains(&whole),
+            "the caveat is what survives: {rows:?}"
+        );
+        assert!(
+            !last.ends_with('\u{2026}'),
+            "nothing was cut, so nothing is marked: {rows:?}"
+        );
+        assert!(
+            !rendered.contains(&naming),
+            "the naming sentence is what went instead:\n{rendered}"
+        );
+    }
+
+    /// The marker's own claim: at a height where the continuation cannot
+    /// survive whatever the order, the row above it says so.
+    ///
+    /// 90x7 is one row shorter than the case above, so the sentence is
+    /// past saving there; 33x6 is the floor, where only the four key rows
+    /// fit at all.
+    #[test]
+    fn a_continuation_that_cannot_survive_leaves_the_cut_marked() {
+        for (width, height) in [(90u16, 7u16), (MIN_TERM_WIDTH, MIN_HEIGHT)] {
+            let rendered = render_text(&fixtures::render_dialog(width, height));
+            let rows = reload_rows(&rendered);
+            assert_eq!(rows.len(), 1, "{width}x{height}: {rows:?}");
+            let last = rows.last().expect("the reload row draws at every size");
+            assert!(
+                last.ends_with('\u{2026}'),
+                "{width}x{height}: the cut is unmarked: {rows:?}"
+            );
+        }
+    }
+
+    /// The invariant over every size, under both claims above: a cut is
+    /// never silent. Asserted on the joined rows, never on a prefix, since
+    /// a `contains` on the first row passes on exactly the broken output
+    /// this came from (`No gap, if the app`, and the sentence stops).
     #[test]
     fn a_shed_reload_continuation_leaves_the_cut_marked() {
         let app = fixtures::app_with_close_dialog();
