@@ -12,12 +12,22 @@ and refuse two of the sentences it draws.
 
 ## What already exists, and why that changes the job
 
-1e landed on 2026-09-12 (#206) and `Edits::worst_impact` is already compiled,
-tested, and carrying `expect(dead_code, reason = "frame 1g's close dialog reads
-it; that frame is not built yet")`. So the hook this frame was promised is
-there and this spec is about what reads it.
+1e landed on 2026-09-12 (#206) and the pending edit set is there, tested, with
+`Edits::worst_impact` carrying `expect(dead_code, reason = "frame 1g's close
+dialog reads it; that frame is not built yet")`.
 
-Three things the handoff does not know:
+**It turns out this frame does not read that one.** `worst_impact` answers with
+the heaviest group in the set, and the dialog names fields: `cwd and err_file
+take hold when the process starts again` is a list, not a maximum. So the half
+of the set this frame needs comes through `Edits::iter()` and `Edit::impact`,
+both of which 1e also built and one of which the COST column already reads.
+`worst_impact` and its `rank` helper have no caller and should be deleted here,
+rather than left carrying a reason that names a frame which went past them.
+Recorded because the 1e spec named `worst_impact` as 1g's hook and it is worth
+saying plainly that the coarser answer was the wrong shape, not that it was
+missed.
+
+Three more things the handoff does not know:
 
 **An offer already fires on this keypress.** `PaneMenu` (`app.rs:1375`) is a
 `Copy` struct of `{ parked, reload, at }`, raised by `apply_offer`
@@ -58,7 +68,7 @@ The last line is one predicate over two sources, not two rules:
 
 | Half | Source | Authority |
 |---|---|---|
-| unsent | `Edits::worst_impact()`, filtered by `reaches_running` | a prediction |
+| unsent | `Edits::iter()`, each key put through `reaches_running` | a prediction |
 | parked | `SheepConfigView::pending`, non-empty | the shepherd's own answer |
 
 Either half raises the dialog. Both raise one dialog, and the heading names both
