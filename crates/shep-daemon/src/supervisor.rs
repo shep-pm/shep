@@ -3934,6 +3934,12 @@ impl<R: ProcessRunner> Actor<R> {
                 slot.entry.pid = Some(pid);
                 slot.entry.started_at = Some(tokio::time::Instant::now());
                 slot.entry.restarts += 1;
+                // `out_file`/`err_file` are `ApplyGroup::NeedsRespawn`: this
+                // respawn is when they take effect. `to_info` reads these
+                // fields, not `spec`, so a moved path reaches an operator
+                // only once it moves here too.
+                slot.entry.out_file = spec.out_file;
+                slot.entry.err_file = spec.err_file;
                 // A different process under the same id, so an earlier reload's
                 // verdict about the last one does not apply to it.
                 slot.ready_failed = false;
@@ -19787,6 +19793,60 @@ mod tests {
             entry.pid,
             Some(APPLY_FIRST_PID),
             "a promotion is only reachable through a process that actually replaced the old one"
+        );
+    }
+
+    /// Without this refresh, `to_info` keeps naming a respawned child's old
+    /// log path forever: `out_file`/`err_file` are `ApplyGroup::NeedsRespawn`,
+    /// so a restart is the one moment they take effect, and every reader
+    /// built on `to_info` (`shep describe`, the muster roll) inherits it.
+    #[tokio::test(start_paused = true)]
+    async fn restart_refreshes_the_reported_log_paths_from_the_new_spec() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
+
+        let mut file = AppConfig::minimal("web", "./srv");
+        file.out_file = Some("/var/log/moved-out.log".to_string());
+        file.err_file = Some("/var/log/moved-err.log".to_string());
+        apply_config(
+            &mut actor,
+            vec![declared_app(
+                file,
+                &["name", "script", "out_file", "err_file"],
+            )],
+            ResetDepth::None,
+        )
+        .await;
+        assert!(
+            actor.sheep[&0].entry.pending.is_some(),
+            "the fixture must really park the change, or this case proves nothing"
+        );
+
+        let (reply, _answer) = oneshot::channel();
+        actor.begin_manual(
+            ProcessSelector::Name("web".to_string()),
+            ManualKind::Restart,
+            CommandOrigin::Operator,
+            ReplyKind::Info(reply),
+        );
+        actor.handle_exited(
+            0,
+            ExitOutcome {
+                code: Some(0),
+                signal: None,
+            },
+        );
+
+        let after = to_info(&actor.sheep[&0].entry, &actor.smits);
+        assert_eq!(
+            after.out_file.as_deref(),
+            Some("/var/log/moved-out.log"),
+            "the restarted child writes to the moved path; the listing must say so"
+        );
+        assert_eq!(
+            after.err_file.as_deref(),
+            Some("/var/log/moved-err.log"),
+            "and the same for stderr"
         );
     }
 
