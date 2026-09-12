@@ -104,21 +104,14 @@ async fn kill_socket_free_with_wait(
     }
     #[cfg(unix)]
     {
-        if wait_for_socket_to_disappear(&paths.socket, wait).await {
-            write_outcome(emit(
-                &mut *streams.out,
-                streams.fmt,
-                "kill",
-                KillRow {
-                    pid,
-                    socket_removed: true,
-                },
-                streams.style,
-            ))
-        } else {
-            let message = "the shepherd was signalled, but teardown is still in progress";
-            streams.fail(ExitCode::DeadlineExceeded, message)
-        }
+        report_teardown(
+            streams,
+            &paths.socket,
+            pid,
+            wait,
+            "the shepherd was signalled, but teardown is still in progress",
+        )
+        .await
     }
     // Unreachable: `signal_graceful_stop` already returned on this platform.
     #[cfg(windows)]
@@ -182,24 +175,45 @@ pub async fn kill_with_wait(client: Client, streams: &mut Streams<'_>, wait: Dur
 
     match response {
         Ok(Response::ShuttingDown) => {
-            if wait_for_socket_to_disappear(&socket, wait).await {
-                write_outcome(emit(
-                    &mut *streams.out,
-                    streams.fmt,
-                    "kill",
-                    KillRow {
-                        pid,
-                        socket_removed: true,
-                    },
-                    streams.style,
-                ))
-            } else {
-                let message = "the daemon acknowledged shutdown, but teardown is still in progress";
-                streams.fail(ExitCode::DeadlineExceeded, message)
-            }
+            report_teardown(
+                streams,
+                &socket,
+                pid,
+                wait,
+                "the daemon acknowledged shutdown, but teardown is still in progress",
+            )
+            .await
         }
         Ok(_unrecognised) => unexpected_response(streams),
         Err(err) => client_error(streams, &err),
+    }
+}
+
+/// Waits out the shepherd's teardown and reports what it found.
+///
+/// `still_going` is the sentence for the wait elapsing, and is the only
+/// thing the two callers differ on: one signalled the process, the other was
+/// told the shutdown had started.
+async fn report_teardown(
+    streams: &mut Streams<'_>,
+    socket: &Path,
+    pid: u32,
+    wait: Duration,
+    still_going: &str,
+) -> ExitCode {
+    if wait_for_socket_to_disappear(socket, wait).await {
+        write_outcome(emit(
+            &mut *streams.out,
+            streams.fmt,
+            "kill",
+            KillRow {
+                pid,
+                socket_removed: true,
+            },
+            streams.style,
+        ))
+    } else {
+        streams.fail(ExitCode::DeadlineExceeded, still_going)
     }
 }
 

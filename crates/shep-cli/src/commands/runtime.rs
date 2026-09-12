@@ -60,19 +60,16 @@ pub async fn runtime(
     // `SHEP_FORCE_INIT` is read here and nowhere else: it exists to make the
     // split reachable from a test harness. Unix only, because Windows has no
     // zombie state and no reparent-to-init rule, so there is nothing to reap.
-    #[cfg(windows)]
-    return foreground::run(streams, quiet, options).await;
-
     #[cfg(unix)]
-    let forced = std::env::var_os("SHEP_FORCE_INIT").is_some();
-    #[cfg(unix)]
-    if !reap::should_split(std::process::id(), args.supervise, forced) {
-        return foreground::run(streams, quiet, options).await;
+    {
+        let forced = std::env::var_os("SHEP_FORCE_INIT").is_some();
+        if reap::should_split(std::process::id(), args.supervise, forced) {
+            // `run_init` never returns; the empty match is how an
+            // `Infallible` is spent as a statement.
+            match reap::run_init().await {}
+        }
     }
-    // `Infallible` does not coerce to `ExitCode` as a bare tail expression,
-    // so the empty match performs it. `run_init` never returns.
-    #[cfg(unix)]
-    match reap::run_init().await {}
+    foreground::run(streams, quiet, options).await
 }
 
 /// Discovers a Flockfile in the current directory, or reports

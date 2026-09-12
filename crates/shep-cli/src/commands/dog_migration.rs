@@ -61,7 +61,7 @@ pub(crate) fn migrate_dog_sections(paths: &ShepPaths) -> Result<Vec<String>, Dog
         let incoming: BTreeMap<String, Item> = doc
             .take_dog_sections()
             .into_iter()
-            .filter(|(_, section)| !section.as_table_like().is_some_and(TableLike::is_empty))
+            .filter(|(_, section)| item_has_content(section))
             .collect();
         // `take_dog_sections` removes the whole `[dog]` table before deciding
         // what to hand back, so a count cannot see what it dropped: compare
@@ -89,11 +89,7 @@ pub(crate) fn migrate_dog_sections(paths: &ShepPaths) -> Result<Vec<String>, Dog
         // Over values on both sides: a bare `[metrics]` in `dogs.toml` is not
         // a second value, so the section carrying values wins. A destination
         // `[[metrics]]` is not table-like, so it refuses.
-        let collides = |name: &String| {
-            merged
-                .get(name)
-                .is_some_and(|item| !item.as_table_like().is_some_and(TableLike::is_empty))
-        };
+        let collides = |name: &String| merged.get(name).is_some_and(item_has_content);
         if let Some(name) = incoming.keys().find(|name| collides(name)) {
             return Err(DogMigrationError::WouldOverwrite { name: name.clone() });
         }
@@ -209,6 +205,15 @@ fn declared_dog_names(table: &toml::Table) -> BTreeSet<String> {
 ///
 /// A `[[dog.metrics]]` that carries values is not this, and still refuses:
 /// there is no one section for it to become.
+/// Whether `item` holds something, rather than being a bare table header.
+///
+/// An `Item` that is not a table at all counts as content: `dog = 3` is a
+/// section to carry over and refuse a collision on, not an empty one.
+fn item_has_content(item: &Item) -> bool {
+    !item.as_table_like().is_some_and(TableLike::is_empty)
+}
+
+/// Whether `value` declares nothing at all.
 fn declares_nothing(value: &toml::Value) -> bool {
     match value {
         toml::Value::Table(table) => table.is_empty(),
