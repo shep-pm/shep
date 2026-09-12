@@ -584,11 +584,13 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       <code>m</code> cycles a minimum level, and <code>/</code> opens a box
       for a text or regex match, with matches highlighted. A level is a
       bare word like <code>WARN</code>, or a <code>level=warn</code> pair,
-      so the filter works on logfmt output too. A line with no
-      detectable level always shows, whatever the minimum is: most app
-      output carries no level word at all, and hiding it would defeat the
-      reason the pane exists. The filter row names which axes are set and
-      counts how many lines in the current window survive them.
+      so the filter works on logfmt output too. An app that writes neither
+      can declare its own patterns, with{" "}
+      <a href="/docs/logs"><code>level_rules</code></a> in its Flockfile. A
+      line with no detectable level always shows, whatever the minimum is:
+      most app output carries no level word at all, and hiding it would
+      defeat the reason the pane exists. The filter row names which axes are
+      set and counts how many lines in the current window survive them.
     </p>
     <CodeBlock label="100×14, filtered and wrapped">{bleatsFull}</CodeBlock>
     <p>
