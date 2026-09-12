@@ -5048,8 +5048,10 @@ impl<R: ProcessRunner> Actor<R> {
         let merged = normalize(edited)
             .map_err(|err| SupervisorError::InvalidField(format!("{key}: {err}")))?;
 
-        // Advisory, never a second way to refuse the write above: the value
-        // already landed by the time this runs. `normalize` cannot make
+        // Advisory, never a second way to refuse the write above: the
+        // validation has already accepted the value. Not that the override
+        // store has been written, which happens further down; what is
+        // settled here is that nothing below will refuse. `normalize` cannot make
         // this call itself (`normalize_with_home`'s own doc gives the
         // reason: the CLI and the daemon can normalize the same config as
         // different users), and the gap between this check and the respawn
@@ -5059,6 +5061,13 @@ impl<R: ProcessRunner> Actor<R> {
         // one `preflight` call because each one's resolution already
         // depends on the other; `out_file`/`err_file` need neither `cwd`
         // nor one another.
+        //
+        // The two arms each build their own spec rather than hoisting one
+        // above the `match`, which would look tidier and cost more: most
+        // keys reach `_ => None`, and `describe` renders every template and
+        // resolves every secret reference the config carries. Duplicated
+        // lines here buy that work being skipped on every field but these
+        // four.
         let warning = match key {
             "cwd" | "script" => {
                 let view = self.secret_view(&merged);
