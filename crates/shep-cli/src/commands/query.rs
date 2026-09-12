@@ -758,7 +758,8 @@ mod tests {
 
         assert_eq!(
             fitted, "0123456789012345678901234\n3 more lines than this terminal shows\n",
-            "two lines of three rows fit a budget of seven; one goes back for the notice"
+            "the notice reserves its own four rows at ten columns, leaving three of the seven \
+             for content, which is one wrapped line"
         );
     }
 
