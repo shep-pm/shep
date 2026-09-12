@@ -114,6 +114,31 @@ pub fn apply_group(field: &str) -> ApplyGroup {
         .map_or(ApplyGroup::NeedsRespawn, |(_, group)| *group)
 }
 
+/// Whether a write to `field` reaches a child that is already running.
+///
+/// `false` for every field a respawn is what applies. The shepherd parks
+/// exactly these, and `shep lookout`'s close dialog asks about exactly
+/// these, so the two read one answer rather than each deriving its own.
+///
+/// [`ApplyGroup::NextSpawn`] splits. `kill_signal`, `listen_timeout` and
+/// `readiness_probe` come off the per-sheep task's `ResolvedApp`, moved in
+/// once at spawn. `autostart` and `depends_on` are read at a muster, a boot
+/// or an ordered walk instead, off the stored spec the moment it lands, so
+/// telling an operator to restart for either would be telling them to do
+/// nothing.
+///
+/// A group a later shep-core adds answers `false`, matching
+/// [`apply_group`]'s own conservative fallback: the safe claim is that the
+/// running process does not have the new value.
+#[must_use]
+pub fn reaches_running(field: &str) -> bool {
+    match apply_group(field) {
+        ApplyGroup::Live => true,
+        ApplyGroup::NextSpawn => matches!(field, "autostart" | "depends_on"),
+        ApplyGroup::NeedsRespawn | ApplyGroup::Structural => false,
+    }
+}
+
 /// Whether `field` is named explicitly in the table above, as opposed to
 /// reaching the conservative fallback. Test-facing.
 #[must_use]
@@ -177,7 +202,7 @@ pub enum ResetDepth {
 
 #[cfg(test)]
 mod tests {
-    use super::{ApplyGroup, apply_group, is_classified};
+    use super::{ApplyGroup, FIELDS, apply_group, is_classified, reaches_running};
     use crate::config::AppConfig;
 
     /// fails if any AppConfig field is missing from the table. A field added
@@ -236,5 +261,58 @@ mod tests {
         assert_eq!(count(ApplyGroup::NextSpawn), 5, "NextSpawn");
         assert_eq!(count(ApplyGroup::NeedsRespawn), 15, "NeedsRespawn");
         assert_eq!(count(ApplyGroup::Structural), 3, "Structural");
+    }
+
+    #[test]
+    fn a_live_field_reaches_a_running_child() {
+        assert!(reaches_running("max_restarts"));
+    }
+
+    /// The two `NextSpawn` fields nothing spawns to read: `restorable()`
+    /// reads one and `plan_for_names` the other, off the stored spec the
+    /// moment it lands.
+    #[test]
+    fn autostart_and_depends_on_reach_one_without_a_respawn() {
+        assert!(reaches_running("autostart"));
+        assert!(reaches_running("depends_on"));
+    }
+
+    /// The other three `NextSpawn` fields come off the per-sheep task's
+    /// `ResolvedApp`, so a respawn is what applies them.
+    #[test]
+    fn the_other_next_spawn_fields_do_not() {
+        assert!(!reaches_running("kill_signal"));
+        assert!(!reaches_running("listen_timeout"));
+        assert!(!reaches_running("readiness_probe"));
+    }
+
+    #[test]
+    fn a_needs_respawn_field_does_not() {
+        assert!(!reaches_running("cwd"));
+    }
+
+    /// An unknown name answers like `apply_group` does, conservatively.
+    #[test]
+    fn an_unknown_field_does_not_reach_a_running_child() {
+        assert!(!reaches_running("a_field_from_a_later_shep"));
+    }
+
+    /// The claim the hoist rests on: every field the table knows, answered
+    /// by both routes, agreeing. A field added to `FIELDS` without a thought
+    /// about which side of the line it falls on fails here.
+    #[test]
+    fn reaches_running_agrees_with_the_group_table_for_every_field() {
+        for (field, group) in FIELDS {
+            let expected = match group {
+                ApplyGroup::Live => true,
+                ApplyGroup::NextSpawn => matches!(*field, "autostart" | "depends_on"),
+                _ => false,
+            };
+            assert_eq!(
+                reaches_running(field),
+                expected,
+                "{field} is classified {group:?}"
+            );
+        }
     }
 }

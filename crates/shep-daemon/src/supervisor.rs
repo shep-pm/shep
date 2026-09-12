@@ -24,6 +24,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use shep_core::config::{
     AppConfig, ApplyGroup, DeclaredApp, ResetDepth, ResolvedApp, apply_group, normalize,
+    reaches_running,
 };
 use shep_core::overrides::{self, AppOverrides};
 use shep_core::paths::ShepPaths;
@@ -5108,14 +5109,9 @@ impl<R: ProcessRunner> Actor<R> {
             self.rearm_name(name);
         }
 
-        // In force, or waiting for a respawn. `autostart` and `depends_on`
-        // are the two `NextSpawn` fields that report as in force, because
-        // both are read at a muster, a boot or an ordered walk rather than at
-        // a spawn: `restorable()` reads one and `plan_for_names` the other,
-        // off the stored spec the moment it lands. Telling an operator to
-        // restart for either would be telling them to do nothing.
-        let in_force =
-            !park_all && (group == ApplyGroup::Live || matches!(key, "autostart" | "depends_on"));
+        // `reaches_running` owns the `autostart`/`depends_on` carve-out now,
+        // so the pane's prediction and this answer cannot drift.
+        let in_force = !park_all && reaches_running(key);
         Ok(Some(FieldSet {
             app: parked.unwrap_or_else(|| next_spec.unwrap_or(merged)),
             pending: !in_force,
