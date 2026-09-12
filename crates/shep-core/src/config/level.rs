@@ -122,13 +122,6 @@ impl LevelMatcher {
         Ok(Self { rules: compiled })
     }
 
-    /// Whether no rule was declared, so this matcher can never classify
-    /// anything.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.rules.is_empty()
-    }
-
     /// The level the first matching rule gives `line`, or `None` when none
     /// matches.
     ///
@@ -262,7 +255,6 @@ mod tests {
     #[test]
     fn no_rules_compiles_to_a_matcher_that_classifies_nothing() {
         let matcher = LevelMatcher::compile(&[]).unwrap();
-        assert!(matcher.is_empty());
         assert_eq!(matcher.level_of("ERROR everything is on fire"), None);
     }
 

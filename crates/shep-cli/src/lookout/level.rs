@@ -67,11 +67,9 @@ fn level_word(word: &str) -> &str {
 /// Two readings, and an app picks which by declaring rules or not.
 /// Declaring any replaces [`level_of`] for that sheep rather than adding to
 /// it, so its Flockfile is the whole answer to how its lines are read.
-///
-/// Built per call rather than held, the way [`super::pane_bleats`] already
-/// builds its match regex: a compiled regex is neither `PartialEq` nor
-/// usefully `Debug`, and both the rule list and the window it reads are
-/// small.
+// Built per call rather than held, as `Matcher` is in `pane_bleats`: a
+// compiled regex is neither `PartialEq` nor usefully `Debug`, and both the
+// rule list and the window it reads are small.
 #[derive(Debug)]
 pub struct Classifier(Option<LevelMatcher>);
 

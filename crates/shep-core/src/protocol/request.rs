@@ -850,13 +850,11 @@ pub struct ProcessInfo {
     ///
     /// Empty both when the sheep declares none and when the peer daemon
     /// predates the field, which read the same way: a client classifying
-    /// this sheep's lines falls back to its own reading of them.
-    ///
-    /// Here rather than behind a fetch of its own because a client reads
-    /// this every time it draws a line, and a listing it already polls
-    /// cannot go stale between polls the way a config read once at open
-    /// would. Skipped when empty, so a sheep declaring no rules costs the
-    /// wire nothing.
+    /// this sheep's lines falls back to its own reading of them. The key is
+    /// absent from the payload entirely when the list is empty.
+    // On the listing rather than behind a fetch of its own: a client reads
+    // this on every line it draws, and a listing it already polls cannot go
+    // stale between polls.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub level_rules: Vec<LevelRule>,
 }
