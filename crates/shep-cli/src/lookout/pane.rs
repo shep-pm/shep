@@ -1288,10 +1288,13 @@ impl ConfigPane {
     /// an entry for it would still be counted by the title band, still be
     /// asked about on close, and still be written.
     ///
-    /// The one door every config edit files through, which is what makes
-    /// [`Edits::worst_impact`]'s claim about [`ApplyGroup::Structural`]
-    /// checkable: every caller has already refused a locked row, and
-    /// [`Self::lock`] locks exactly the Structural ones.
+    /// The one door every config edit files through, which is what keeps
+    /// [`ApplyGroup::Structural`] out of the set at all: every caller has
+    /// already refused a locked row, and [`Self::lock`] locks exactly the
+    /// Structural ones. [`super::app::App::close_offer`]'s own walk over
+    /// [`Edits::iter`], which is what decides whether the close dialog
+    /// appears, rests on that: it never has to ask what a Structural
+    /// edit would cost, because one can never be in the set to ask about.
     fn file_field(&mut self, key: String, value: Value) {
         if self.stored_value_is(&key, &value) {
             self.edits.remove(&EditKey::Field(key));
@@ -2171,10 +2174,11 @@ mod tests {
         }
     }
 
-    /// The invariant [`Edits::worst_impact`]'s own doc rests on: nothing a
-    /// keystroke can do files a `Structural` edit, because
-    /// [`ConfigPane::sheep`] marks those fields not editable and every
-    /// filing door checks [`ConfigPane::lock`] first.
+    /// The invariant [`super::app::App::close_offer`]'s own walk over
+    /// [`Edits::iter`] rests on: nothing a keystroke can do files a
+    /// `Structural` edit, because [`ConfigPane::sheep`] marks those fields
+    /// not editable and every filing door checks [`ConfigPane::lock`]
+    /// first.
     #[test]
     fn no_key_files_an_edit_for_a_structural_field() {
         let structural: Vec<String> = ConfigPane::sheep(web())

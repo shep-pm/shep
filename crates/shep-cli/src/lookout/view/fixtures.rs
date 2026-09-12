@@ -1302,6 +1302,25 @@ pub fn app_in_sheep_pane_on_a_stopped_sheep() -> App {
     app
 }
 
+/// [`app_in_sheep_pane`], over a sheep the shepherd reports `Stopping`: its
+/// drainee is going away and is not a restart target
+/// ([`ProcStatus::Stopping`]'s own doc), so this is the other half of
+/// "not running" `App::sheep_is_running` excludes, alongside `Stopped`.
+pub fn app_in_sheep_pane_on_a_draining_sheep() -> App {
+    let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Stopping).build());
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::Edit));
+    app.update(Msg::Replied {
+        sent: Sent::SheepConfig {
+            name: "web".to_string(),
+        },
+        result: Ok(Response::SheepConfig(Box::new(sheep_config_view_parking(
+            Vec::new(),
+        )))),
+    });
+    app
+}
+
 /// Files an edit for `key` through the real keys an operator would press:
 /// select it, open the editor, replace the buffer with `value`, apply.
 ///

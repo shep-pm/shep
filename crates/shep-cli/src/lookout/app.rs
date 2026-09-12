@@ -5052,7 +5052,7 @@ impl App {
     /// pane, for `R`, `L` and `c` alike.
     ///
     /// A stub: `verb` is not read yet. The three keys sending the same
-    /// effect here is deliberate, not a bug — a later frame makes `R` and
+    /// effect here is deliberate, not a bug: a later frame makes `R` and
     /// `L` hold `verb` and send it once every write is answered, per
     /// "write, then act" in the design; this frame only builds the
     /// question and its `esc`/expiry, not the reply state machine.
@@ -13386,6 +13386,23 @@ mod tests {
         assert!(
             app.close_dialog().is_none(),
             "a stopped sheep is not asked about"
+        );
+        assert!(matches!(effect, Effect::SendAll(_)), "got {effect:?}");
+    }
+
+    /// A `Stopping` sheep's drainee and its replacement hold the same
+    /// instance slot, so it is excluded from `App::sheep_is_running`
+    /// alongside `Stopped`: no live config for a respawn to replace, and
+    /// `R` would race the reload already under way rather than restart
+    /// anything.
+    #[test]
+    fn no_dialog_for_a_sheep_mid_drain() {
+        let mut app = fixtures::app_in_sheep_pane_on_a_draining_sheep();
+        fixtures::file_edit(&mut app, "cwd", "/srv/app");
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        assert!(
+            app.close_dialog().is_none(),
+            "a sheep mid-drain is not asked about"
         );
         assert!(matches!(effect, Effect::SendAll(_)), "got {effect:?}");
     }
