@@ -406,6 +406,12 @@ mod tests {
             result.0.err.is_empty(),
             "no err_file means an empty tail, not an error"
         );
+        // Both files read, so the key is still on the wire and still empty:
+        // a model told nothing and a model told nothing is wrong differ.
+        assert_eq!(
+            serde_json::to_value(&result.0).unwrap()["notes"],
+            serde_json::json!([])
+        );
 
         served.await.expect("the fake daemon task must not panic");
     }
@@ -451,6 +457,11 @@ mod tests {
             result.0.notes[0].contains("out_file is relative"),
             "the note must say why the shepherd's file is a different one: {:?}",
             result.0.notes
+        );
+        assert_eq!(
+            serde_json::to_value(&result.0).unwrap()["notes"],
+            serde_json::json!([result.0.notes[0]]),
+            "the note has to reach `structuredContent`, not just the struct"
         );
 
         served.await.expect("the fake daemon task must not panic");

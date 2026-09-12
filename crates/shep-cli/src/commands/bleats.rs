@@ -1965,7 +1965,7 @@ mod tests {
 
         let (client, daemon) = fake_client_with_push(&sock).await;
         let mut ghost = info(1, "ghost");
-        ghost.out_file = Some(missing_path);
+        ghost.out_file = Some(missing_path.clone());
         let mut real = info(2, "web");
         real.out_file = Some(real_path);
         daemon.reply_to_list(vec![ghost, real]);
@@ -1995,8 +1995,10 @@ mod tests {
         assert!(String::from_utf8(out).unwrap().contains("still-here"));
         let stderr = String::from_utf8(err).unwrap();
         assert!(
-            stderr.contains("log_missing") && stderr.contains("never-written.log"),
-            "the notice must name the file that was not there: {stderr}"
+            stderr.contains(&format!(
+                "notice[log_missing]: ghost: no out log at {missing_path} yet"
+            )),
+            "the notice must name the sheep, the stream and the file: {stderr}"
         );
     }
 
