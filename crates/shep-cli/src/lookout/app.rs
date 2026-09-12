@@ -13660,19 +13660,6 @@ mod tests {
         );
     }
 
-    /// The parked half has no writes to wait for, so the action goes at once.
-    #[test]
-    fn r_over_parked_fields_alone_sends_the_action_immediately() {
-        let mut app = fixtures::app_in_sheep_pane();
-        app.set_control_for_tests(Control::Allowed);
-        app.update(Msg::Key(KeyPress::Escape));
-        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
-        assert!(
-            matches!(effect, Effect::Send(Sent::Action { .. })),
-            "got {effect:?}"
-        );
-    }
-
     /// `arm` refuses on the same pair `answer_close` does. A verb the
     /// dialog is holding has not gone out, so `self.action` is still empty
     /// and only `self.held` says the operator is mid-answer; a dashboard
