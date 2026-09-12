@@ -5,7 +5,7 @@ use core::fmt;
 use std::collections::BTreeMap;
 
 // use schemars::generate
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::values::{MemSize, UpDuration};
 
@@ -154,17 +154,34 @@ pub struct AppConfig {
         "accepts": ["a command name found on PATH", "none, to exec the script directly"]
     })))]
     pub interpreter: Option<String>,
-    /// Environment for the sheep (merged over the daemon's filtered env)
-    #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "example": "{ NODE_ENV = 'production' }",
-        "group": "inputs",
-        "blurb": "Environment variables for this app, layered over the daemon's own",
-        "accepts": ["a table of KEY = value pairs",
-                    "{{instance}}, {{name}}, and {{secret:key}} expand in a value"],
-        "refuses": ["SHEP_INSTANCE, SHEP_NAME, or SHEP_ENVIRONMENT, which shep sets itself",
-                    "an unclosed {{ token"],
-        "neighbours": [{"field": "environment", "note": "which environment {{secret:...}} reads from"}]
-    })))]
+    /// Environment for the sheep (merged over the daemon's filtered env).
+    ///
+    /// A value may arrive as a string, a bare boolean, or a bare whole
+    /// number (`SOME_BOOL = true`, `PORT = 8080`), and leaves as a string
+    /// either way, so this field stays `BTreeMap<String, String>` and the
+    /// wire always carries strings. A float is refused: `1.10` would reach
+    /// the process as `1.1`. YAML resolves an unquoted `yes` to `"true"`
+    /// and `0x1F` to `"31"`, so quote a value whose text must survive.
+    #[serde(deserialize_with = "deserialize_env")]
+    #[cfg_attr(feature = "schema", schemars(
+        extend(
+            "init" = {
+                "example": "{ NODE_ENV = 'production' }",
+                "group": "inputs",
+                "blurb": "Environment variables for this app, layered over the daemon's own",
+                "accepts": ["a table of KEY = value pairs",
+                            "a bare true or 8080, which arrives as text",
+                            "{{instance}}, {{name}}, and {{secret:key}} expand in a value"],
+                "refuses": ["a float, since 1.10 would arrive as 1.1",
+                            "SHEP_INSTANCE, SHEP_NAME, or SHEP_ENVIRONMENT, which shep sets itself",
+                            "an unclosed {{ token"],
+                "neighbours": [{"field": "environment", "note": "which environment {{secret:...}} reads from"}]
+            },
+            "additionalProperties" = {
+                "anyOf": [{ "type": "string" }, { "type": "boolean" }, { "type": "integer" }]
+            }
+        )
+    ))]
     pub env: BTreeMap<String, String>,
     /// Which environment this sheep resolves `{{secret:...}}` in.
     ///
@@ -567,6 +584,114 @@ pub struct AppConfig {
     pub increment_var: Option<String>,
 }
 
+/// One value an `env` table may carry: a string, or a bare boolean or whole
+/// number an operator wrote without quoting.
+///
+/// Exists only to read a Flockfile, where the document is hand-written and a
+/// bare value is a plausible shortcut. It never rides the wire: [`AppConfig`]
+/// is serialized through its own impls, which see only `String`.
+///
+/// Debug does not leak an env value. A derived one would print the contents,
+/// and a `{:?}` on a config mid-parse is how a secret reaches a log.
+enum EnvValue {
+    /// A quoted value, kept verbatim
+    Str(String),
+    /// A bare `true` or `false`
+    Bool(bool),
+    /// A whole number, signed or unsigned
+    Int(i128),
+}
+
+impl fmt::Debug for EnvValue {
+    /// Prints only the shape of the value, never its contents.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Str(_) => f.write_str("<str>"),
+            Self::Bool(_) => f.write_str("<bool>"),
+            Self::Int(_) => f.write_str("<int>"),
+        }
+    }
+}
+
+impl EnvValue {
+    /// Renders the value as the string a process receives. Consuming: a borrow
+    /// would force the `Str` arm to clone.
+    #[must_use]
+    fn into_string(self) -> String {
+        match self {
+            Self::Str(s) => s,
+            Self::Bool(b) => b.to_string(),
+            Self::Int(n) => n.to_string(),
+        }
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for EnvValue {
+    /// Reads one `env` value in whatever raw form it arrives.
+    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        struct EnvValueVisitor;
+
+        impl serde::de::Visitor<'_> for EnvValueVisitor {
+            type Value = EnvValue;
+
+            fn expecting(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                f.write_str("a string, boolean, or whole number")
+            }
+
+            /// A quoted value, kept verbatim.
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<EnvValue, E> {
+                Ok(EnvValue::Str(v.to_string()))
+            }
+
+            /// A quoted value from a non-borrowed source.
+            fn visit_string<E: serde::de::Error>(self, v: String) -> Result<EnvValue, E> {
+                Ok(EnvValue::Str(v))
+            }
+
+            /// A bare `true` or `false`.
+            fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<EnvValue, E> {
+                Ok(EnvValue::Bool(v))
+            }
+
+            /// A whole signed number.
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<EnvValue, E> {
+                // i128 holds the full i64 range losslessly.
+                Ok(EnvValue::Int(i128::from(v)))
+            }
+
+            /// A whole unsigned number. Only JSON can produce one beyond
+            /// `i64::MAX`; TOML's own spec bounds integers to signed 64-bit,
+            /// so its `visit_u64` input is always within `i64::MAX` and the
+            /// wider type is invisible from a TOML Flockfile. i128 holds
+            /// whatever we receive losslessly, so no value is refused.
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<EnvValue, E> {
+                Ok(EnvValue::Int(i128::from(v)))
+            }
+
+            /// A float, refused. `f64` carries no trailing zero and no
+            /// written precision, so `1.10` would reach the process as
+            /// `1.1`. The value is left out of the message: an `env` value
+            /// never reaches a log.
+            fn visit_f64<E: serde::de::Error>(self, _v: f64) -> Result<EnvValue, E> {
+                Err(E::custom(
+                    "a float env value loses its written form, quote it",
+                ))
+            }
+        }
+
+        de.deserialize_any(EnvValueVisitor)
+    }
+}
+
+/// Reads an `env` table, rendering each [`EnvValue`] as the string a process
+/// receives. The `deserialize_with` on [`AppConfig::env`].
+fn deserialize_env<'de, D: Deserializer<'de>>(de: D) -> Result<BTreeMap<String, String>, D::Error> {
+    Ok(BTreeMap::<String, EnvValue>::deserialize(de)?
+        .into_iter()
+        .map(|(k, v)| (k, v.into_string()))
+        .collect())
+}
+
 /// Redacts `env`: only its length is printed.
 impl fmt::Debug for AppConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -765,6 +890,106 @@ env = { RUST_LOG = "info" }
         assert_eq!(app.args, vec!["job.py", "--fast"]);
     }
 
+    /// Raw TOML scalars in `env` read as their string form. `true` becomes
+    /// `"true"`, `8080` becomes `"8080"`, and quoted strings pass through.
+    /// A single test here covers the deserialization path; the
+    /// `flockfile` test that reads the same document through all four
+    /// formats covers the format dispatch.
+    #[test]
+    fn env_coerces_raw_scalars_to_their_string_form() {
+        let src = r#"
+name = "web"
+script = "./srv"
+env = { SOME_BOOL = true, PORT = 8080, NEG = -1, STR = "plain" }
+"#;
+        let app: AppConfig = toml::from_str(src).unwrap();
+        assert_eq!(app.env["SOME_BOOL"], "true");
+        assert_eq!(app.env["PORT"], "8080");
+        assert_eq!(app.env["NEG"], "-1");
+        assert_eq!(app.env["STR"], "plain");
+    }
+
+    /// A float is refused rather than coerced. `f64` carries no trailing zero
+    /// and no written precision, so accepting one hands the process a value
+    /// the operator did not write. Quoting is the way to keep the text.
+    ///
+    /// Asserted through JSON: a TOML error echoes the offending source line,
+    /// which would put the value in the message whatever serde said.
+    #[test]
+    fn env_refuses_a_float_because_its_written_form_would_not_survive() {
+        let src = r#"{ "name":"web","script":"./srv","env":{ "RATIO": 1.10 } }"#;
+        let err = serde_json::from_str::<AppConfig>(src)
+            .expect_err("a float env value must be refused, not rounded")
+            .to_string();
+        assert!(
+            err.contains("quote it"),
+            "the error must name the fix, got: {err}"
+        );
+        assert!(!err.contains("1.1"), "the error leaked the value: {err}");
+
+        let quoted = src.replace("1.10", r#""1.10""#);
+        let app: AppConfig = serde_json::from_str(&quoted).unwrap();
+        assert_eq!(app.env["RATIO"], "1.10");
+
+        assert!(
+            toml::from_str::<AppConfig>(
+                "name = \"web\"\nscript = \"./srv\"\nenv = { RATIO = 1.10 }\n"
+            )
+            .is_err(),
+            "TOML must refuse a float too"
+        );
+    }
+
+    /// A whole number larger than `i64::MAX` is valid JSON and must load.
+    /// TOML cannot reach this test: its spec bounds integers to signed 64-bit,
+    /// so only JSON exercises this path. The value stringifies to its full
+    /// positive form, not a negative wrap. Pinned to the exact string.
+    #[test]
+    fn env_reads_a_number_beyond_i64_max_without_wrapping() {
+        let beyond_i64 = u64::MAX; // 18446744073709551615
+        let src = format!(r#"{{ "name":"web","script":"./srv","env":{{ "BIG": {beyond_i64} }} }}"#);
+        let app = serde_json::from_str::<AppConfig>(&src)
+            .expect("a u64 beyond i64::MAX is valid JSON and must load");
+        assert_eq!(app.env["BIG"], "18446744073709551615");
+    }
+
+    /// Serialization is the inverse of the coercion: whatever form a value
+    /// arrived as, the wire form is a string. A `true` that deserialized
+    /// into `"true"` must serialize to the JSON string `"true"`, not the
+    /// boolean `true`.
+    #[test]
+    fn env_serialization_is_always_string_regardless_of_input_form() {
+        let src = r#"
+name = "web"
+script = "./srv"
+env = { SOME_BOOL = true, PORT = 8080, STR = "hello" }
+"#;
+        let app: AppConfig = toml::from_str(src).unwrap();
+        let wire = serde_json::to_value(&app).unwrap();
+        for (key, expected) in [("SOME_BOOL", "true"), ("PORT", "8080"), ("STR", "hello")] {
+            assert_eq!(
+                wire["env"].get(key).and_then(serde_json::Value::as_str),
+                Some(expected),
+                "wire form of {key} must be a string, not a scalar"
+            );
+        }
+    }
+
+    /// A value that is neither a string, boolean, nor number is refused, not
+    /// guessed at. An array or object under `env` is a structural mistake —
+    /// an operator meant a table or a list, and guessing a serialization is
+    /// how a wrong value hides for months.
+    #[test]
+    fn env_refuses_structural_values() {
+        for (label, inner) in [("array", r#"["a", "b"]"#), ("object", r#"{"k": "v"}"#)] {
+            let src = format!(r#"{{ "name":"web","script":"./srv","env":{{"X":{inner}}}}}"#);
+            assert!(
+                serde_json::from_str::<AppConfig>(&src).is_err(),
+                "a {label} env value must be refused"
+            );
+        }
+    }
+
     /// The wire path is the opposite of a Flockfile's: an unknown field
     /// means a newer peer, and ignoring it is what stops a new Flockfile
     /// field breaking an older client that reads a config off the wire.
@@ -810,6 +1035,21 @@ target = "http://127.0.0.1:8080/healthz"
             format!("{app:?}"),
             "AppConfig { name: \"web\", script: \"./srv\", env: <2 vars>, .. }"
         );
+    }
+
+    /// `EnvValue::Debug` prints only the kind, never the value — the exact
+    /// string is pinned so a derived `Debug` (which prints the contents) fails
+    /// here. This is the unit half of the redaction guarantee.
+    #[test]
+    fn env_value_debug_never_prints_the_value() {
+        let cases = [
+            (EnvValue::Str("postgres://secret".to_string()), "<str>"),
+            (EnvValue::Bool(true), "<bool>"),
+            (EnvValue::Int(9_223_372_036_854_775_807), "<int>"),
+        ];
+        for (value, expected) in cases {
+            assert_eq!(format!("{value:?}"), expected);
+        }
     }
 
     #[test]

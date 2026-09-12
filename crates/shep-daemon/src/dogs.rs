@@ -348,15 +348,7 @@ pub fn set_dog_section(path: &Path, name: &str, section: &str) -> Result<(), Dog
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let mut tmp = shep_core::config_lock::create_config_file(parent).map_err(DogError::Io)?;
     tmp.write_all(rendered.as_bytes()).map_err(DogError::Io)?;
-    tmp.as_file().sync_all().map_err(DogError::Io)?;
-    // `persist` is `rename(2)`. On failure the staging file comes back
-    // inside the error and its `Drop` removes it, so a failed replace
-    // leaves nothing behind in `$SHEP_HOME`.
-    tmp.persist(path).map_err(|err| DogError::Io(err.error))?;
-    // `sync_all` made the contents durable; this makes the rename that
-    // published them durable. A no-op on Windows.
-    shep_core::atomic_file::sync_dir(parent).map_err(DogError::Io)?;
-    Ok(())
+    shep_core::atomic_file::publish(tmp, path).map_err(DogError::Io)
 }
 
 /// What a refused handshake costs the dog that sent it.

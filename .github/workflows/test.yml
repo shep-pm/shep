@@ -318,6 +318,12 @@ jobs:
       # doctest broke under this feature set too, and only a test run reads it.
       - run: cargo test -p shep-client --locked --no-default-features
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.result != 'success' || github.event_name == 'workflow_dispatch' }}
+      # The other half of that pair, and the only leg where `schema` reaches
+      # `shep-core/schema` on its own: every `--workspace` step turns that
+      # feature on through shep-cli, so a forward that stopped working would
+      # fail in a dog's build and nowhere in this file.
+      - run: cargo check -p shep-client --locked
+        if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.result != 'success' || github.event_name == 'workflow_dispatch' }}
       # shep-core takes shep-channel with `default-features = false` to get
       # the wire types without the client (descriptor discovery, the reader
       # and writer threads, the handler layer). Nothing else in the

@@ -289,15 +289,7 @@ fn write_dogs_config(path: &Path, rendered: &str) -> std::io::Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let mut tmp = create_config_file(parent)?;
     tmp.write_all(rendered.as_bytes())?;
-    tmp.as_file().sync_all()?;
-    // `persist` is `rename(2)`. On failure the `NamedTempFile` comes back in
-    // the error and its `Drop` removes the staging file.
-    tmp.persist(path).map_err(|err| err.error)?;
-
-    // The `sync_all` above made the contents durable; this makes the rename
-    // that published them durable.
-    shep_core::atomic_file::sync_dir(parent)?;
-    Ok(())
+    shep_core::atomic_file::publish(tmp, path)
 }
 
 /// Why `[dog.<name>]` could not be moved into `dogs.toml`

@@ -10,6 +10,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-09-12
+
+### Added
+
+- Flexible flockfile env deserializing
+
+### Fixed
+
+- Preserve whole numbers beyond i64::MAX in env
+- Redact env values from Debug, never print them
+- Yaml bool and float parsing was dishonst
+
+
+## [0.7.3] - 2026-09-08
+
+
+## [0.7.2] - 2026-09-08
+
+### Added
+
+- Fold the durable-write sequence into shep-core
+
+### Changed
+
+- Drop a redundant test and a thrice-stated comment
+
+
 ## [0.7.1] - 2026-09-08
 
 ### Added
