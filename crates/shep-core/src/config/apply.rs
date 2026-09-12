@@ -127,9 +127,12 @@ pub fn apply_group(field: &str) -> ApplyGroup {
 /// telling an operator to restart for either would be telling them to do
 /// nothing.
 ///
-/// A group a later shep-core adds answers `false`, matching
-/// [`apply_group`]'s own conservative fallback: the safe claim is that the
-/// running process does not have the new value.
+/// The match above is exhaustive and in-crate, with no wildcard arm, so a
+/// group a later shep-core adds stops this build rather than silently
+/// inheriting an answer: the compiler forces a deliberate choice for the
+/// new variant instead. [`ApplyGroup`] is still `#[non_exhaustive]` for an
+/// out-of-crate match, which is why `shep-cli`'s `rank` and `cost_label`
+/// carry a wildcard arm that this function does not need.
 #[must_use]
 pub fn reaches_running(field: &str) -> bool {
     match apply_group(field) {
