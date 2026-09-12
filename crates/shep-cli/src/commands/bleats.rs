@@ -22,6 +22,7 @@ use shep_core::protocol::{BusEvent, ProcessInfo, Request, Response};
 use shep_core::selector::ProcessSelector;
 
 use crate::cli::{BleatsArgs, Format};
+use crate::commands::rpc::{client_error, unexpected_response};
 use crate::commands::selector::parse_selector;
 use crate::exit::ExitCode;
 use crate::output::{self, Streams, write_outcome};
@@ -61,14 +62,8 @@ async fn resolve_names(
 ) -> Result<HashMap<u32, ProcessInfo>, ExitCode> {
     match client.request(Request::ListFlock).await {
         Ok(Response::Flock(procs)) => Ok(procs.into_iter().map(|p| (p.id, p)).collect()),
-        Ok(_unrecognised) => {
-            let message = "the daemon answered with a response this client does not understand";
-            Err(streams.fail(ExitCode::Internal, message))
-        }
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            Err(streams.fail(code, &err.to_string()))
-        }
+        Ok(_unrecognised) => Err(unexpected_response(streams)),
+        Err(err) => Err(client_error(streams, &err)),
     }
 }
 

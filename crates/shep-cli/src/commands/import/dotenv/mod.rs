@@ -40,6 +40,7 @@ use shep_core::secrets;
 use plan::{Class, ImportPlan, Planned};
 
 use crate::cli::ImportEnvArgs;
+use crate::commands::rpc::{UNRECOGNISED, unexpected_response};
 use crate::commands::secret::{daemon_config, exit_code_for};
 use crate::exit::ExitCode;
 use crate::output::{ImportEnvRow, ImportEnvRows, Streams, emit, write_outcome};
@@ -156,7 +157,7 @@ pub async fn import_env(
         // so: the operator is otherwise told a batch failed and left with no
         // account of the other store.
         Ok(_) => {
-            let message = format!("{UNDERSTOOD_NOTHING}{}", already_written(written));
+            let message = format!("{UNRECOGNISED}{}", already_written(written));
             return streams.fail(ExitCode::Internal, &message);
         }
         Err(err) => {
@@ -172,10 +173,6 @@ pub async fn import_env(
     streams.aside("parked", &message);
     emit_rows(streams, &plan, &environment)
 }
-
-/// What a reply this build does not understand is reported as.
-const UNDERSTOOD_NOTHING: &str =
-    "the daemon answered with a response this client does not understand";
 
 /// The environment whose slot the secrets go in: `--env`, else the sheep's
 /// own `environment`, else `[daemon] environment`.
@@ -205,7 +202,7 @@ async fn resolve_environment(
             .environment
             .clone()
             .unwrap_or_else(|| daemon_config(paths).daemon.environment)),
-        Ok(_) => Err(streams.fail(ExitCode::Internal, UNDERSTOOD_NOTHING)),
+        Ok(_) => Err(unexpected_response(streams)),
         Err(err) => Err(streams.fail(ExitCode::from(&err), &err.to_string())),
     }
 }
@@ -259,7 +256,7 @@ async fn probe_env(
     };
     match client.request(request).await {
         Ok(Response::SheepEnvBatch { collisions, .. }) => Ok(collisions),
-        Ok(_) => Err(streams.fail(ExitCode::Internal, UNDERSTOOD_NOTHING)),
+        Ok(_) => Err(unexpected_response(streams)),
         Err(err) => Err(streams.fail(ExitCode::from(&err), &err.to_string())),
     }
 }

@@ -11,18 +11,19 @@
 //! app read them.
 
 use shep_client::Client;
-use shep_core::protocol::{Request, Response, SelectorSpec};
+use shep_core::protocol::{Request, Response};
 
 use crate::cli::WhisperArgs;
-use crate::commands::selector::parse_selector;
+use crate::commands::rpc::request_and_render;
+use crate::commands::selector::parse_selector_spec;
 use crate::exit::ExitCode;
-use crate::output::{SentLineRows, Streams, emit, write_outcome};
+use crate::output::{SentLineRows, Streams};
 
 /// Writes `args.line` to the stdin of the sheep matching `args.selector`,
 /// and renders one row per match.
 pub async fn whisper(client: &Client, streams: &mut Streams<'_>, args: &WhisperArgs) -> ExitCode {
-    let selector = match parse_selector(streams, &args.selector) {
-        Ok(selector) => SelectorSpec::from(&selector),
+    let selector = match parse_selector_spec(streams, &args.selector) {
+        Ok(selector) => selector,
         Err(code) => return code,
     };
 
@@ -38,29 +39,25 @@ pub async fn whisper(client: &Client, streams: &mut Streams<'_>, args: &WhisperA
         line: args.line.clone(),
     };
 
-    match client.request(body).await {
-        Ok(Response::SentLine(rows)) => write_outcome(emit(
-            &mut *streams.out,
-            streams.fmt,
-            "whisper",
-            SentLineRows(rows),
-            streams.style,
-        )),
-        Ok(_unrecognised) => {
-            let message = "the daemon answered with a response this client does not understand";
-            streams.fail(ExitCode::Internal, message)
-        }
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            streams.fail(code, &err.to_string())
-        }
-    }
+    request_and_render(
+        client,
+        streams,
+        "whisper",
+        body,
+        None,
+        |response| match response {
+            Response::SentLine(rows) => Some(SentLineRows(rows)),
+            _ => None,
+        },
+    )
+    .await
 }
 
 #[cfg(test)]
 mod tests {
     use shep_client::testing::{fake_client_capturing_envelopes, fake_client_replying_err};
     use shep_core::protocol::RpcErrorCode;
+    use shep_core::protocol::SelectorSpec;
 
     use super::*;
     use crate::cli::Format;

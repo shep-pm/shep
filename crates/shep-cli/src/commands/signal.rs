@@ -8,19 +8,20 @@
 //! non-`Success` only when the RPC itself failed.
 
 use shep_client::Client;
-use shep_core::protocol::{Request, Response, SelectorSpec};
+use shep_core::protocol::{Request, Response};
 use shep_core::signals::OperatorSignal;
 
 use crate::cli::SignalArgs;
-use crate::commands::selector::parse_selector;
+use crate::commands::rpc::request_and_render;
+use crate::commands::selector::parse_selector_spec;
 use crate::exit::ExitCode;
-use crate::output::{SignalledRows, Streams, emit, write_outcome};
+use crate::output::{SignalledRows, Streams};
 
 /// Sends `args.signal` to the sheep matching `args.selector`, and renders one
 /// row per match.
 pub async fn signal(client: &Client, streams: &mut Streams<'_>, args: &SignalArgs) -> ExitCode {
-    let selector = match parse_selector(streams, &args.selector) {
-        Ok(selector) => SelectorSpec::from(&selector),
+    let selector = match parse_selector_spec(streams, &args.selector) {
+        Ok(selector) => selector,
         Err(code) => return code,
     };
 
@@ -40,29 +41,25 @@ pub async fn signal(client: &Client, streams: &mut Streams<'_>, args: &SignalArg
         signal: sig.as_str().to_string(),
     };
 
-    match client.request(body).await {
-        Ok(Response::Signalled(replies)) => write_outcome(emit(
-            &mut *streams.out,
-            streams.fmt,
-            "signal",
-            SignalledRows(replies),
-            streams.style,
-        )),
-        Ok(_unrecognised) => {
-            let message = "the daemon answered with a response this client does not understand";
-            streams.fail(ExitCode::Internal, message)
-        }
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            streams.fail(code, &err.to_string())
-        }
-    }
+    request_and_render(
+        client,
+        streams,
+        "signal",
+        body,
+        None,
+        |response| match response {
+            Response::Signalled(replies) => Some(SignalledRows(replies)),
+            _ => None,
+        },
+    )
+    .await
 }
 
 #[cfg(test)]
 mod tests {
     use shep_client::testing::{fake_client_capturing_envelopes, fake_client_replying_err};
     use shep_core::protocol::RpcErrorCode;
+    use shep_core::protocol::SelectorSpec;
 
     use super::*;
     use crate::cli::Format;

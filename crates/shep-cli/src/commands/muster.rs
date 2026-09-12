@@ -2,15 +2,17 @@
 //! it on demand.
 //!
 //! Neither `Request::SaveRoll` nor `Request::Muster` carries fields: the roll
-//! always covers the whole flock, so there is no selector to parse. Two call
-//! sites, each inlining its own match rather than sharing
-//! `commands::query`'s `request_and_render`.
+//! always covers the whole flock, so there is no selector to parse. `save`
+//! renders one row and goes through [`request_and_render`]; `muster` keeps
+//! its own match, since its success arm writes a notice and a flourish
+//! around the table.
 
 use shep_client::{Client, RELOAD_DEADLINE};
 use shep_core::protocol::{Request, Response};
 use shep_core::status::ProcStatus;
 
 use crate::cli::Format;
+use crate::commands::rpc::{client_error, request_and_render, unexpected_response};
 use crate::exit::ExitCode;
 use crate::flourish;
 use crate::output::{FlockRows, SavedRollRow, Streams, emit, write_outcome};
@@ -18,23 +20,18 @@ use crate::output::{FlockRows, SavedRollRow, Streams, emit, write_outcome};
 /// Asks the daemon to write the muster roll now, and reports where it landed
 /// and how many apps it recorded. A failed save is loud, never a no-op.
 pub async fn save(client: &Client, streams: &mut Streams<'_>) -> ExitCode {
-    match client.request(Request::SaveRoll).await {
-        Ok(Response::RollSaved { path, apps }) => write_outcome(emit(
-            &mut *streams.out,
-            streams.fmt,
-            "save",
-            SavedRollRow { file: path, apps },
-            streams.style,
-        )),
-        Ok(_unrecognised) => {
-            let message = "the daemon answered with a response this client does not understand";
-            streams.fail(ExitCode::Internal, message)
-        }
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            streams.fail(code, &err.to_string())
-        }
-    }
+    request_and_render(
+        client,
+        streams,
+        "save",
+        Request::SaveRoll,
+        None,
+        |response| match response {
+            Response::RollSaved { path, apps } => Some(SavedRollRow { file: path, apps }),
+            _ => None,
+        },
+    )
+    .await
 }
 
 /// Asks the daemon to assemble the flock from the muster roll `save` wrote,
@@ -84,14 +81,8 @@ pub async fn muster(client: &Client, streams: &mut Streams<'_>) -> ExitCode {
             }
             outcome
         }
-        Ok(_unrecognised) => {
-            let message = "the daemon answered with a response this client does not understand";
-            streams.fail(ExitCode::Internal, message)
-        }
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            streams.fail(code, &err.to_string())
-        }
+        Ok(_unrecognised) => unexpected_response(streams),
+        Err(err) => client_error(streams, &err),
     }
 }
 
