@@ -136,6 +136,7 @@ const fieldGroups: FieldGroup[] = [
       { name: "out_file", type: "string?", default: "logs/<name>-<i>-out.log", does: "Stdout log file path override; supports {{instance}} and {{name}}. With instances > 1, an explicit path needs {{instance}} or merge_logs, or it's refused: {{name}} renders the same for every instance, so a path carrying only that one still collides." },
       { name: "err_file", type: "string?", default: "logs/<name>-<i>-err.log", does: "Stderr log file path override; supports {{instance}} and {{name}}. With instances > 1, an explicit path needs {{instance}} or merge_logs, or it's refused: {{name}} renders the same for every instance, so a path carrying only that one still collides." },
       { name: "merge_logs", type: "bool", default: "false", does: "Collapse every instance's logs into one file pair." },
+      { name: "level_rules", type: "{ pattern, level }[]", default: "[]", does: "How this app's own lines announce a level, for lookout's level filter. Each pattern is a regex and each level is one of trace, debug, info, warn, error; the first rule that matches a line wins, so order them. An invalid pattern is refused at load. Declared rules replace shep's built-in reading for this app rather than adding to it, which is how an app whose lines it misreads turns the guessing off. A line no rule matches carries no level and passes every filter." },
     ],
   },
   {
@@ -360,25 +361,20 @@ memory size must be ASCII digits with an optional trailing G, M, or K`}</CodeBlo
     <h2>Unknown fields are a parse error, not a shrug</h2>
     <p>
       Every Flockfile field name is checked against the real set. A typo'd
-      key is rejected at load, not ignored. This is the same guarantee spec
-      writers get from <code>#[serde(deny_unknown_fields)]</code>, surfaced
-      as a message that names the exact key and lists what would have been
-      accepted:
+      key is rejected at load, not ignored, and the message names the exact
+      key including which app it sat under:
     </p>
     <CodeBlock label="max_memory_restart is not a real field">{`$ shep start Flockfile.toml
-error[invalid_config]: invalid TOML Flockfile: TOML parse error at line 4, column 1
-  |
-4 | max_memory_restart = "1G"
-  | ^^^^^^^^^^^^^^^^^^
-unknown field \`max_memory_restart\`, expected one of \`name\`, \`script\`, \`args\`, \`cwd\`,
-\`interpreter\`, \`env\`, \`environment\`, \`instances\`, \`autorestart\`, \`autostart\`, \`stop_exit_codes\`,
-\`min_uptime\`, \`max_restarts\`, \`restart_delay\`, \`exp_backoff_restart_delay\`, \`kill_signal\`,
-\`kill_timeout\`, \`shutdown_with_message\`, \`listen_timeout\`, \`graceful_timeout\`,
-\`action_timeout\`, \`max_memory\`, \`watch\`, \`ignore_watch\`, \`watch_delay\`, \`cron_restart\`,
-\`fold\`, \`depends_on\`, \`user\`, \`group\`, \`out_file\`, \`err_file\`, \`merge_logs\`, \`channel\`, \`stdin\`,
-\`wait_ready\`, \`reuse_port\`, \`readiness_probe\`, \`liveness_probe\`, \`watch_options\`,
-\`cron_timezone\`, \`increment_var\`
+error[invalid_config]: Flockfile names unrecognized key: app.0.max_memory_restart
 `}</CodeBlock>
+    <p class="fine">
+      A key at the top level rather than inside an app is reported by the
+      parser itself, so that one does name the alternatives:{" "}
+      <code>unknown field \`apps\`, expected one of \`$schema\`, \`dog\`,
+      \`app\`</code>. The per-app set is large enough that listing it would
+      bury the key you actually mistyped, which is what the reference below
+      is for.
+    </p>
     <p class="fine">
       A parsed document with zero <code>[[app]]</code> entries is its own
       distinct error, <code>Flockfile declares no apps</code>: an empty
