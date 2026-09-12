@@ -12,9 +12,10 @@ use shep_client::{Client, TRIGGER_DEADLINE};
 use shep_core::protocol::{Request, Response, SelectorSpec};
 
 use crate::cli::TriggerArgs;
+use crate::commands::rpc::request_and_render;
 use crate::commands::selector::parse_selector;
 use crate::exit::ExitCode;
-use crate::output::{Streams, TriggeredRows, emit, write_outcome};
+use crate::output::{Streams, TriggeredRows};
 
 /// Sends `args.action` (and `args.params`, if any) to the sheep matching
 /// `args.selector`, and renders one row per match.
@@ -33,26 +34,19 @@ pub async fn trigger(client: &Client, streams: &mut Streams<'_>, args: &TriggerA
         params: args.params.clone(),
     };
 
-    match client
-        .request_with_deadline(body, Some(TRIGGER_DEADLINE))
-        .await
-    {
-        Ok(Response::Triggered(replies)) => write_outcome(emit(
-            &mut *streams.out,
-            streams.fmt,
-            "trigger",
-            TriggeredRows(replies),
-            streams.style,
-        )),
-        Ok(_unrecognised) => {
-            let message = "the daemon answered with a response this client does not understand";
-            streams.fail(ExitCode::Internal, message)
-        }
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            streams.fail(code, &err.to_string())
-        }
-    }
+    let deadline = Some(TRIGGER_DEADLINE);
+    request_and_render(
+        client,
+        streams,
+        "trigger",
+        body,
+        deadline,
+        |response| match response {
+            Response::Triggered(replies) => Some(TriggeredRows(replies)),
+            _ => None,
+        },
+    )
+    .await
 }
 
 #[cfg(test)]

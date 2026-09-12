@@ -14,6 +14,7 @@ use shep_core::paths::ShepPaths;
 use shep_core::protocol::{Request, Response};
 use shep_daemon::boot::{self, Shepherd};
 
+use crate::commands::rpc::{client_error, unexpected_response};
 use crate::exit::ExitCode;
 use crate::output::{KillRow, Streams, emit, write_outcome};
 
@@ -197,14 +198,8 @@ pub async fn kill_with_wait(client: Client, streams: &mut Streams<'_>, wait: Dur
                 streams.fail(ExitCode::DeadlineExceeded, message)
             }
         }
-        Ok(_) => {
-            let message = "the daemon answered with a response this client does not understand";
-            streams.fail(ExitCode::Internal, message)
-        }
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            streams.fail(code, &err.to_string())
-        }
+        Ok(_unrecognised) => unexpected_response(streams),
+        Err(err) => client_error(streams, &err),
     }
 }
 

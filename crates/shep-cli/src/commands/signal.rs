@@ -12,9 +12,10 @@ use shep_core::protocol::{Request, Response, SelectorSpec};
 use shep_core::signals::OperatorSignal;
 
 use crate::cli::SignalArgs;
+use crate::commands::rpc::request_and_render;
 use crate::commands::selector::parse_selector;
 use crate::exit::ExitCode;
-use crate::output::{SignalledRows, Streams, emit, write_outcome};
+use crate::output::{SignalledRows, Streams};
 
 /// Sends `args.signal` to the sheep matching `args.selector`, and renders one
 /// row per match.
@@ -40,23 +41,18 @@ pub async fn signal(client: &Client, streams: &mut Streams<'_>, args: &SignalArg
         signal: sig.as_str().to_string(),
     };
 
-    match client.request(body).await {
-        Ok(Response::Signalled(replies)) => write_outcome(emit(
-            &mut *streams.out,
-            streams.fmt,
-            "signal",
-            SignalledRows(replies),
-            streams.style,
-        )),
-        Ok(_unrecognised) => {
-            let message = "the daemon answered with a response this client does not understand";
-            streams.fail(ExitCode::Internal, message)
-        }
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            streams.fail(code, &err.to_string())
-        }
-    }
+    request_and_render(
+        client,
+        streams,
+        "signal",
+        body,
+        None,
+        |response| match response {
+            Response::Signalled(replies) => Some(SignalledRows(replies)),
+            _ => None,
+        },
+    )
+    .await
 }
 
 #[cfg(test)]

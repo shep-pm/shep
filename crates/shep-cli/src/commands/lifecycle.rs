@@ -25,6 +25,7 @@ use crate::cli::Format;
 use crate::cli::{ResetMode, SelectorArgs, StartArgs, StockArgs};
 use crate::commands::bounded::{Bounded, run_bounded};
 use crate::commands::dogs;
+use crate::commands::rpc::{client_error, request_payload, unexpected_response};
 use crate::commands::selector::parse_selector;
 use crate::exit::ExitCode;
 use crate::output::{
@@ -424,38 +425,6 @@ fn resolve_target_declared(
     }
 }
 
-/// Sends `body`, renders the answer through [`render_outcome`], and maps
-/// every failure to its exit code
-///
-/// `None` for `deadline` defers to the client's default. An answer `extract`
-/// does not recognise maps to [`ExitCode::Internal`].
-async fn request_and_render<T, F>(
-    client: &Client,
-    streams: &mut Streams<'_>,
-    command: &str,
-    body: Request,
-    deadline: Option<Duration>,
-    extract: F,
-) -> ExitCode
-where
-    T: Render,
-    F: FnOnce(Response) -> Option<T>,
-{
-    match client.request_with_deadline(body, deadline).await {
-        Ok(response) => match extract(response) {
-            Some(payload) => render_outcome(client, streams, command, payload).await,
-            None => {
-                let message = "the daemon answered with a response this client does not understand";
-                streams.fail(ExitCode::Internal, message)
-            }
-        },
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            streams.fail(code, &err.to_string())
-        }
-    }
-}
-
 /// Parses every selector the invocation named, refusing on the first bad one
 ///
 /// All-or-nothing: a typo in the third target must not be discovered after
@@ -501,16 +470,9 @@ where
         {
             Ok(response) => match extract(response) {
                 Some(mut rows) => collected.append(&mut rows),
-                None => {
-                    let message =
-                        "the daemon answered with a response this client does not understand";
-                    failure = failure.or(Some(streams.fail(ExitCode::Internal, message)));
-                }
+                None => failure = failure.or(Some(unexpected_response(streams))),
             },
-            Err(err) => {
-                let code = ExitCode::from(&err);
-                failure = failure.or(Some(streams.fail(code, &err.to_string())));
-            }
+            Err(err) => failure = failure.or(Some(client_error(streams, &err))),
         }
     }
     (collected, failure)
@@ -1823,21 +1785,26 @@ pub async fn delete(client: &Client, streams: &mut Streams<'_>, args: &SelectorA
 /// name. `START_DEADLINE` rather than the client's default, since a stock-up
 /// spawns processes.
 pub async fn stock(client: &Client, streams: &mut Streams<'_>, args: &StockArgs) -> ExitCode {
-    request_and_render(
-        client,
-        streams,
-        "stock",
-        Request::Scale {
-            name: args.name.clone(),
-            count: args.count,
-        },
-        Some(START_DEADLINE),
-        |response| match response {
-            Response::Scaled(procs) => Some(FlockRows(procs)),
-            _ => None,
-        },
-    )
-    .await
+    let body = Request::Scale {
+        name: args.name.clone(),
+        count: args.count,
+    };
+    let rows =
+        request_payload(
+            client,
+            streams,
+            body,
+            Some(START_DEADLINE),
+            |response| match response {
+                Response::Scaled(procs) => Some(FlockRows(procs)),
+                _ => None,
+            },
+        )
+        .await;
+    match rows {
+        Ok(rows) => render_outcome(client, streams, "stock", rows).await,
+        Err(code) => code,
+    }
 }
 
 #[cfg(test)]
