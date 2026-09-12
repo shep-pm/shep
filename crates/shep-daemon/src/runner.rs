@@ -824,6 +824,13 @@ fn windows_name_advisory(path: &Path) -> Option<String> {
     /// The classic `MAX_PATH` every Windows install still enforces unless an
     /// operator has opted into the long-path policy. That opt-in only
     /// widens what passes; it never refuses something this check accepts.
+    ///
+    /// `>=` rather than `>`, because the 260 counts the terminating null: a
+    /// fully qualified path may be 259 characters, so 260 is already over.
+    /// Not measurable on the reference Windows host, which has
+    /// `LongPathsEnabled` set to 1, so paths of 258 through 261 all wrote a
+    /// file there. Anyone re-checking this on that box will get four passes
+    /// and learn nothing about the boundary.
     const MAX_PATH: usize = 260;
 
     let length = path.as_os_str().len();
