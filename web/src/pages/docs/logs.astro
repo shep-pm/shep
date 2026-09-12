@@ -158,6 +158,13 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
       shep's would silently lose half the output of that redirect and make{" "}
       <code>--err</code> produce an empty file.
     </p>
+    <p>
+      A log file that is not there is named on stderr rather than read as an
+      empty tail, and the notice carries the path this command resolved. That
+      matters most when <code>out_file</code> is relative: the shepherd
+      resolves it against its own directory and <code>shep bleats</code>{" "}
+      against yours, so the two are different files.
+    </p>
     <Callout variant="note">
       <code>--no-follow</code> reads files and <code>--follow</code> reads
       the bus, and the difference shows up twice. A stopped sheep still has
