@@ -56,6 +56,10 @@ const FIELDS: &[(&str, ApplyGroup)] = &[
     // Read fresh per command.
     ("fold", ApplyGroup::Live),
     ("reuse_port", ApplyGroup::Live),
+    // Never read by a spawn at all: it rides `ProcessInfo` to whichever
+    // client is classifying this sheep's log lines, so the next listing
+    // carries it.
+    ("level_rules", ApplyGroup::Live),
     // Read fresh from the stored spec each time an action is dispatched, at
     // `supervisor.rs`'s `begin_action` (`config.action_timeout.as_duration()`),
     // not baked into the long-lived per-sheep task.
@@ -229,10 +233,10 @@ mod tests {
 
     /// fails if the split drifts from what the spec recorded.
     #[test]
-    fn the_split_is_nineteen_five_fifteen_three() {
+    fn the_split_is_twenty_five_fifteen_three() {
         let fields = appconfig_fields();
         let count = |want: ApplyGroup| fields.keys().filter(|k| apply_group(k) == want).count();
-        assert_eq!(count(ApplyGroup::Live), 19, "Live");
+        assert_eq!(count(ApplyGroup::Live), 20, "Live");
         assert_eq!(count(ApplyGroup::NextSpawn), 5, "NextSpawn");
         assert_eq!(count(ApplyGroup::NeedsRespawn), 15, "NeedsRespawn");
         assert_eq!(count(ApplyGroup::Structural), 3, "Structural");

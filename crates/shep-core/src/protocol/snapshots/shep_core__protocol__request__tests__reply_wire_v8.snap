@@ -749,6 +749,7 @@ expression: replies
             "out_file": null,
             "err_file": null,
             "merge_logs": false,
+            "level_rules": [],
             "channel": false,
             "stdin": false,
             "wait_ready": false,
