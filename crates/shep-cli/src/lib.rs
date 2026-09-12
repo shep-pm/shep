@@ -16,6 +16,7 @@ mod dog_index;
 mod exit;
 mod fetch;
 mod flourish;
+mod host;
 mod http;
 mod launch;
 mod lookout;

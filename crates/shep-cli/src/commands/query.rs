@@ -32,6 +32,7 @@ use crate::dog_index::{self, AvailableDog, DogSourceKind};
 use crate::exit::ExitCode;
 use crate::fetch;
 use crate::flourish;
+use crate::host::{HostSample, HostWatch};
 use crate::lookout::term;
 use crate::output::width;
 use crate::output::{
@@ -334,6 +335,7 @@ pub(crate) async fn flock_follow(
     });
     let _ = streams.out.queue(Hide);
 
+    let mut host = HostWatch::install();
     let mut ticker = tokio::time::interval(interval);
     // A shepherd slower to answer than the interval would otherwise bank
     // every tick it missed and redraw them back to back the moment it
@@ -356,7 +358,7 @@ pub(crate) async fn flock_follow(
             Ok(_unrecognised) => return unexpected_response(streams),
             Err(err) => return client_error(streams, &err),
         };
-        let frame = follow_frame(procs, streams.style);
+        let frame = follow_frame(procs, streams.style, host.as_mut().map(HostWatch::sample));
         let frame = match crossterm::terminal::size() {
             Ok((columns, rows)) => fit_rows(&frame, columns, rows),
             // A terminal that will not say how big it is gets the frame
@@ -370,14 +372,22 @@ pub(crate) async fn flock_follow(
     }
 }
 
-/// One redraw's worth of text: the tables [`flock`] would have printed.
+/// One redraw's worth of text: the host line, then the tables [`flock`]
+/// would have printed.
 ///
-/// Rendered into a buffer rather than straight onto the terminal, so the
-/// caller can measure the frame before painting it and so the clear and the
-/// frame reach the terminal as one write.
-fn follow_frame(listing: Vec<ProcessInfo>, style: Presentation) -> String {
+/// The host line goes above rather than below so it holds still while the
+/// tables under it change length, and so it is the last thing [`fit_rows`]
+/// gives up.
+fn follow_frame(
+    listing: Vec<ProcessInfo>,
+    style: Presentation,
+    host: Option<HostSample>,
+) -> String {
     let mut frame = Vec::new();
-    // Writing to a `Vec` cannot fail.
+    if let Some(host) = host {
+        // Writing to a `Vec` cannot fail, here or below.
+        let _ = writeln!(frame, "{}\n", host.line());
+    }
     let _ = emit_flock(&mut frame, Format::Table, "flock", listing, style);
     String::from_utf8_lossy(&frame).into_owned()
 }
@@ -740,11 +750,42 @@ mod tests {
         );
     }
 
+    /// fails if the host line stops leading the frame. It has to be first:
+    /// it holds still while the tables under it change length, and it is
+    /// what survives a window too short for the rest.
+    #[test]
+    fn a_followed_frame_leads_with_the_host_line() {
+        let host = HostSample {
+            cpu_percent: Some(11.0),
+            memory_used_bytes: 39_963_869_184,
+            memory_total_bytes: 51_539_607_552,
+            disk_bytes_per_second: Some((0, 0)),
+            network_bytes_per_second: Some((0, 0)),
+        };
+
+        let frame = follow_frame(vec![sample_info()], Presentation::BARE, Some(host));
+
+        let mut lines = frame.lines();
+        assert!(lines.next().unwrap().starts_with("host  cpu 11%"));
+        assert_eq!(lines.next().unwrap(), "");
+        assert!(frame.contains("web"), "the table still follows: {frame}");
+    }
+
+    /// fails if a target `sysinfo` cannot read starts printing a blank host
+    /// line instead of no host line.
+    #[test]
+    fn a_frame_without_a_host_sample_is_the_tables_alone() {
+        let frame = follow_frame(vec![sample_info()], Presentation::BARE, None);
+
+        assert!(!frame.contains("host  cpu"), "{frame}");
+        assert!(frame.contains("web"), "{frame}");
+    }
+
     /// fails if the flourish comes back into a followed frame. It is art
     /// above an empty flock, and a redraw every second turns it into noise.
     #[test]
     fn a_followed_frame_of_an_empty_flock_carries_no_flourish() {
-        let frame = follow_frame(Vec::new(), Presentation::BARE);
+        let frame = follow_frame(Vec::new(), Presentation::BARE, None);
 
         assert!(!frame.contains("no sheep in the flock yet"), "{frame}");
     }
