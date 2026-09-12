@@ -9,6 +9,7 @@
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
+import CodeBlock from "../../components/docs/CodeBlock.astro";
 ---
 
 <DocsLayout
@@ -96,6 +97,33 @@ import Callout from "../../components/docs/Callout.astro";
       <code>%SystemRoot%</code>), and an append-mode handle cannot be
       truncated there, which broke <code>shep start</code>'s autostart
       outright. Neither is visible to a compiler.
+    </p>
+
+    <h3>A Python app can crash on its own output</h3>
+    <p>
+      Not a shep bug, but a real operator report, so it's named here where a
+      search for the error will find it:
+    </p>
+    <CodeBlock>{`UnicodeEncodeError: 'charmap' codec can't encode characters in position 5-7: character maps to <undefined>`}</CodeBlock>
+    <p>
+      CPython on Windows picks its stdout/stderr encoding by whether a real
+      console is attached. A shepherd-managed process never has one, since
+      its output is a pipe, so CPython falls back to the legacy code page
+      (<code>cp1252</code> on a US/Western install) instead of UTF-8. The
+      app runs fine at a terminal and crashes the moment shep supervises it,
+      the first time it prints anything outside that code page.
+    </p>
+    <p>
+      Two environment variables fix it: <code>PYTHONUTF8=1</code> and{" "}
+      <code>PYTHONIOENCODING=utf-8</code>. Set them in the app's own{" "}
+      <code>env</code> to fix that one app. Or set them once in the
+      shepherd's own environment before <code>shep startup</code> or{" "}
+      <code>shep start</code>: they're now on the short list of variables
+      shep passes down to every child on Windows, same as{" "}
+      <code>TEMP</code> or <code>USERPROFILE</code>, so an operator running
+      several Python apps doesn't repeat them per app. Unix needs neither,
+      since <code>LANG</code> already carries a UTF-8 locale through and
+      shep passes that one down too.
     </p>
 
     <h2>Five smaller cuts, argued for rather than just missing</h2>
