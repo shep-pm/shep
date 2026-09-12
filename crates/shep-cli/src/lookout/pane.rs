@@ -11,7 +11,7 @@
 use std::path::PathBuf;
 
 use serde_json::{Map, Value};
-use shep_core::config::{ApplyGroup, GROUP_ORDER, apply_group, flockfile_schema_json};
+use shep_core::config::{AppConfig, ApplyGroup, GROUP_ORDER, apply_group, flockfile_schema_json};
 use shep_core::protocol::{EnvValue, SheepConfigView};
 use shep_core::values::{MemSize, UpDuration};
 
@@ -651,6 +651,89 @@ impl core::fmt::Debug for ConfigPane {
     }
 }
 
+/// The field set and the value map a sheep's config renders as.
+///
+/// Shared by [`ConfigPane::sheep`] and the sheep pane's read-only listing,
+/// so group order and the read-only marking on a `Structural` field cannot
+/// differ between the two screens. Built from the Flockfile schema rather
+/// than from a second list of names, for the reason
+/// [`ConfigPane::sheep`]'s own doc gives.
+pub(crate) fn sheep_fields(config: &AppConfig) -> (FieldSet, Map<String, Value>) {
+    let schema = flockfile_schema_json().to_value();
+    let defs = schema
+        .get("$defs")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let properties = defs
+        .get("AppConfig")
+        .and_then(|app| app.get("properties"))
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let set = FieldSet::from_properties(&properties, &defs, GROUP_ORDER);
+    // A Structural field is identity or flock shape, not a runtime knob:
+    // `name` cannot drift without becoming a different sheep, and
+    // `instances` is routed through `handle_scale` rather than through a
+    // config write at all. Read-only here, so the pane never offers an
+    // edit the daemon would refuse.
+    let fields = FieldSet::from_fields(
+        set.fields()
+            .iter()
+            .cloned()
+            .map(|mut field| {
+                if apply_group(&field.key) == ApplyGroup::Structural {
+                    field.editable = false;
+                }
+                field
+            })
+            .collect(),
+        GROUP_ORDER,
+    );
+    let values = serde_json::to_value(config)
+        .ok()
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    (fields, values)
+}
+
+/// `raw` resolved through `key`'s own grammar in `fields`, when `key` is one
+/// of shep-core's unit types: a bare number is annotated with the unit an
+/// operator would otherwise have to already know the convention for.
+///
+/// Shared by [`ConfigPane::display_value`] and the sheep pane's read-only
+/// column ([`super::view::sheep::field_value_text`]), the same move
+/// [`sheep_fields`] made for the field set itself: two rows reading the same
+/// value off two different screens and disagreeing on its units is exactly
+/// the divergence a shared function forecloses rather than a pair of tests
+/// happening to agree.
+///
+/// Display only: [`ConfigPane::value`] is what an editor still seeds and
+/// sends, so a suffix minted here never travels back out as part of a
+/// value.
+///
+/// A `raw` that fails to parse, including whatever is mid-edit, comes back
+/// unchanged: this has no business guessing at a string shep is about to
+/// refuse on its own.
+///
+/// Only a bare number is annotated. A value naming its own unit is the
+/// operator's spelling and survives as written, so a `60s` on disk is never
+/// redrawn as the `1m` its own `Display` would canonicalize it to.
+pub(crate) fn resolved_display(fields: &FieldSet, key: &str, raw: &str) -> String {
+    if raw.is_empty() || !raw.bytes().all(|byte| byte.is_ascii_digit()) {
+        return raw.to_owned();
+    }
+    match fields.by_key(key).and_then(|field| field.value_kind) {
+        Some(ValueKind::MemSize) => raw
+            .parse::<MemSize>()
+            .map_or_else(|_| raw.to_owned(), |_| format!("{raw} B")),
+        Some(ValueKind::UpDuration) => raw
+            .parse::<UpDuration>()
+            .map_or_else(|_| raw.to_owned(), |_| format!("{raw}ms")),
+        None => raw.to_owned(),
+    }
+}
+
 impl ConfigPane {
     /// A pane over one sheep's config, read off the Flockfile schema.
     ///
@@ -660,41 +743,7 @@ impl ConfigPane {
     /// in step with it.
     #[must_use]
     pub fn sheep(view: SheepConfigView) -> Self {
-        let schema = flockfile_schema_json().to_value();
-        let defs = schema
-            .get("$defs")
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_default();
-        let properties = defs
-            .get("AppConfig")
-            .and_then(|app| app.get("properties"))
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_default();
-        let set = FieldSet::from_properties(&properties, &defs, GROUP_ORDER);
-        // A Structural field is identity or flock shape, not a runtime knob:
-        // `name` cannot drift without becoming a different sheep, and
-        // `instances` is routed through `handle_scale` rather than through a
-        // config write at all. Read-only here, so the pane never offers an
-        // edit the daemon would refuse.
-        let fields = FieldSet::from_fields(
-            set.fields()
-                .iter()
-                .cloned()
-                .map(|mut field| {
-                    if apply_group(&field.key) == ApplyGroup::Structural {
-                        field.editable = false;
-                    }
-                    field
-                })
-                .collect(),
-            GROUP_ORDER,
-        );
-        let values = serde_json::to_value(&view.config)
-            .ok()
-            .and_then(|value| value.as_object().cloned())
-            .unwrap_or_default();
+        let (fields, values) = sheep_fields(&view.config);
         Self {
             target: PaneTarget::Sheep { name: view.name },
             fields,
@@ -1514,7 +1563,7 @@ impl ConfigPane {
             return None;
         };
         let raw = render_json(value.as_value());
-        Some(self.resolved_display(key, &raw))
+        Some(resolved_display(&self.fields, key, &raw))
     }
 
     /// [`Self::value`], resolved through its own grammar for a
@@ -1523,34 +1572,7 @@ impl ConfigPane {
     /// convention for.
     #[must_use]
     pub fn display_value(&self, key: &str) -> String {
-        self.resolved_display(key, &self.value(key))
-    }
-
-    /// `raw` resolved through `key`'s own grammar, when `key` is one of
-    /// shep-core's unit types. Display only: [`Self::value`] is what an
-    /// editor still seeds and sends, so a suffix minted here never travels
-    /// back out as part of a value.
-    ///
-    /// A `raw` that fails to parse, including whatever is mid-edit, comes
-    /// back unchanged: this has no business guessing at a string shep is
-    /// about to refuse on its own.
-    ///
-    /// Only a bare number is annotated. A value naming its own unit is the
-    /// operator's spelling and survives as written, so a `60s` on disk is
-    /// never redrawn as the `1m` its own `Display` would canonicalize it to.
-    fn resolved_display(&self, key: &str, raw: &str) -> String {
-        if raw.is_empty() || !raw.bytes().all(|byte| byte.is_ascii_digit()) {
-            return raw.to_owned();
-        }
-        match self.fields.by_key(key).and_then(|field| field.value_kind) {
-            Some(ValueKind::MemSize) => raw
-                .parse::<MemSize>()
-                .map_or_else(|_| raw.to_owned(), |_| format!("{raw} B")),
-            Some(ValueKind::UpDuration) => raw
-                .parse::<UpDuration>()
-                .map_or_else(|_| raw.to_owned(), |_| format!("{raw}ms")),
-            None => raw.to_owned(),
-        }
+        resolved_display(&self.fields, key, &self.value(key))
     }
 
     /// What changing `key` costs.

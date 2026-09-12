@@ -194,9 +194,8 @@ async fn handle_connection(mut stream: TcpStream, client: Arc<ReconnectingClient
     };
     let path = request
         .target
-        .split('?')
-        .next()
-        .unwrap_or(request.target.as_str());
+        .split_once('?')
+        .map_or(request.target.as_str(), |(path, _query)| path);
     if path != "/metrics" {
         let _: Result<(), HttpError> = http::write_response(
             &mut stream,

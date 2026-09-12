@@ -9,10 +9,11 @@
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
-use std::fs;
 use std::path::PathBuf;
 
 use shep_channel::{CHANNEL_VERSION, ChildMessage, ShepherdMessage};
+
+mod common;
 
 /// One Go constant for one `kind` string.
 struct Kind {
@@ -293,24 +294,10 @@ fn check_keys<'a>(samples: impl Iterator<Item = (String, &'a str)>, fields: &[Fi
 
 #[test]
 fn the_committed_go_file_is_what_the_emitter_writes() {
-    let emitted = emit();
-    let path = wire_path();
-    if std::env::var_os("SHEP_CHANNEL_BLESS").is_some() {
-        fs::create_dir_all(path.parent().expect("wire/ has a parent")).expect("create wire dir");
-        fs::write(&path, &emitted).expect("write the wire file");
-        return;
-    }
-    let committed = fs::read_to_string(&path).unwrap_or_else(|error| {
-        panic!(
-            "{}: {error}. Run with SHEP_CHANNEL_BLESS=1 to create it.",
-            path.display()
-        )
-    });
-    assert_eq!(
-        committed,
-        emitted,
-        "{} is stale. github.com/shep-pm/shep-go/channel vendors these bytes as channel/wire.go.",
-        path.display()
+    common::bless_or_compare(
+        &wire_path(),
+        &emit(),
+        "github.com/shep-pm/shep-go/channel vendors these bytes as channel/wire.go.",
     );
 }
 

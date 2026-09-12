@@ -307,20 +307,15 @@ fn substitute(template: &str, bark: &Bark) -> String {
 /// `s`, escaped for use inside a JSON string's quotes, not a JSON string
 /// literal itself: [`substitute`]'s own template already supplies the
 /// surrounding quotes.
+///
+/// serde_json's own writer rather than an escape table of our own:
+/// [`substitute`] hands its output to [`render_body`], which parses the
+/// result with serde_json, so the escaping and the parsing have to agree
+/// on every character. Going through the writer makes them agree by
+/// construction instead of by maintenance.
 fn json_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out
+    let quoted = serde_json::to_string(s).expect("a str always serializes as a JSON string");
+    quoted[1..quoted.len() - 1].to_owned()
 }
 
 /// POSTs `bark` to `sink`, bounded by `timeout`.
@@ -555,6 +550,25 @@ mod tests {
             body: Some(r#"{"text": "{message}"}"#.to_string()),
         };
         let bark = bark_for("web", r#"app "we"b" crashed"#);
+        let rendered = render_body(&sink, &bark).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(value["text"], bark.message);
+    }
+
+    /// The control characters JSON refuses raw inside a string, including
+    /// the two a `\u00XX` escape and a short escape spell differently.
+    /// What matters is that the rendered body parses back to the message
+    /// it was built from, not which of the two spellings is used.
+    #[test]
+    fn control_characters_survive_the_round_trip() {
+        let sink = Sink::Json {
+            url: "http://127.0.0.1:1/".to_string(),
+            body: Some(r#"{"text": "{message}"}"#.to_string()),
+        };
+        let bark = bark_for(
+            "web",
+            "tab\there\nnewline\u{8}backspace\u{c}formfeed\u{1}one",
+        );
         let rendered = render_body(&sink, &bark).unwrap();
         let value: serde_json::Value = serde_json::from_str(&rendered).unwrap();
         assert_eq!(value["text"], bark.message);

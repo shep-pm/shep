@@ -61,17 +61,7 @@ impl ProcScript {
     /// Exits immediately with `code`
     #[must_use]
     pub fn const_exit(code: i32) -> Self {
-        Self {
-            delay_ms: 0,
-            outcome: ExitOutcome {
-                code: Some(code),
-                signal: None,
-            },
-            obeys_signal: true,
-            obeys_kill: true,
-            lamb_holds_the_pipe: false,
-            reads_stdin: true,
-        }
+        Self::stable_then_exit(0, code)
     }
 
     /// Exits after `ms` milliseconds with `code`

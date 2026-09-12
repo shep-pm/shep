@@ -61,6 +61,7 @@ mod tests {
                 err_file: Some("/home/ada/.shep/logs/web-0-err.log".to_string()),
                 cpu_percent: None,
                 memory_bytes: None,
+                cpu_ms: None,
                 dog: None,
                 lambs: None,
                 last_exit: None,

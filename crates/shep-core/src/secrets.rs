@@ -377,16 +377,11 @@ impl fmt::Display for SecretRef<'_> {
 pub fn references(config: &AppConfig) -> BTreeSet<String> {
     let mut found = BTreeSet::new();
     let mut scan = |value: &str| {
-        let _ = template::walk::<core::convert::Infallible>(value, |segment| {
-            if let template::Segment::Token(token) = segment
-                && let Some(reference) = template::secret_reference(token)
-            {
-                found.insert(match reference.namespace {
-                    Some(namespace) => format!("{namespace}/{}", reference.key),
-                    None => reference.key.to_string(),
-                });
-            }
-            Ok(())
+        secret_references_in(value, |reference| {
+            found.insert(match reference.namespace {
+                Some(namespace) => format!("{namespace}/{}", reference.key),
+                None => reference.key.to_string(),
+            });
         });
     };
     for value in config.env.values() {
@@ -402,6 +397,48 @@ pub fn references(config: &AppConfig) -> BTreeSet<String> {
         scan(value);
     }
     found
+}
+
+/// Walks `value` for every `{{secret:...}}` reference through `template`'s
+/// own tokenizer, calling `on_reference` for each one found.
+///
+/// The one tokenizer pass [`references`] and [`sealed_keys`] both build on,
+/// so a value either function accepts as naming a secret is one the other
+/// agrees with, rather than two spellings of the same check drifting apart.
+fn secret_references_in(value: &str, mut on_reference: impl FnMut(SecretRef<'_>)) {
+    let _ = template::walk::<core::convert::Infallible>(value, |segment| {
+        if let template::Segment::Token(token) = segment
+            && let Some(reference) = template::secret_reference(token)
+        {
+            on_reference(reference);
+        }
+        Ok(())
+    });
+}
+
+/// The env keys whose value names at least one `{{secret:...}}` reference,
+/// in `env`'s own order.
+///
+/// The keys, never the references: [`references`] answers the other
+/// direction, and a pane that wants to mark a row as sealed needs this one.
+/// A value that merely embeds a reference counts, since the store is still
+/// what fills it in.
+///
+/// `env` alone. A reference in `args` or `out_file` is real and
+/// [`references`] reports it, but it is not an env row and nothing renders
+/// it as one.
+#[must_use]
+pub fn sealed_keys(config: &AppConfig) -> Vec<String> {
+    config
+        .env
+        .iter()
+        .filter(|(_, value)| {
+            let mut sealed = false;
+            secret_references_in(value, |_| sealed = true);
+            sealed
+        })
+        .map(|(key, _)| key.clone())
+        .collect()
 }
 
 /// The provider namespaces [`references`] names, derived with
@@ -818,6 +855,45 @@ mod tests {
             BTreeSet::from(["ONE".to_string(), "vercel/TWO".to_string()]),
             "deduplicated, and no positional tokens"
         );
+    }
+
+    /// The key, not the reference. `references` answers the other direction,
+    /// and a pane marking a row needs this one.
+    #[test]
+    fn a_sealed_key_is_reported_by_its_own_name() {
+        let mut config = AppConfig::minimal("web", "./srv");
+        config.env.insert("A".into(), "{{secret:ONE}}".into());
+        config.env.insert("B".into(), "literal".into());
+        assert_eq!(sealed_keys(&config), vec!["A".to_string()]);
+    }
+
+    /// A value that only embeds a reference still comes from the store.
+    #[test]
+    fn an_embedded_reference_seals_its_key() {
+        let mut config = AppConfig::minimal("web", "./srv");
+        config.env.insert(
+            "DB_URL".into(),
+            "postgres://u:{{secret:pg/PASSWORD}}@h".into(),
+        );
+        assert_eq!(sealed_keys(&config), vec!["DB_URL".to_string()]);
+    }
+
+    /// A positional token is not a secret: `{{name}}` and `{{instance}}` are
+    /// filled from the sheep, not from the store.
+    #[test]
+    fn a_positional_token_does_not_seal_a_key() {
+        let mut config = AppConfig::minimal("web", "./srv");
+        config.env.insert("LOG".into(), "{{name}}.log".into());
+        assert!(sealed_keys(&config).is_empty());
+    }
+
+    /// Only `env`. `args` and `out_file` can name a reference too, and
+    /// `references` reports those; this function is about env rows.
+    #[test]
+    fn a_reference_outside_env_seals_no_key() {
+        let mut config = AppConfig::minimal("web", "./srv");
+        config.args = vec!["--token={{secret:ONE}}".into()];
+        assert!(sealed_keys(&config).is_empty());
     }
 
     #[test]

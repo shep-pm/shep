@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use shep_core::config::discover;
+use shep_core::config::{DISCOVERY_ORDER, discover};
 use shep_core::paths::ShepPaths;
 
 use crate::cli::RuntimeArgs;
@@ -15,14 +15,6 @@ use crate::commands::lifecycle::{resolve_target, target_exit_code};
 use crate::commands::reap;
 use crate::exit::ExitCode;
 use crate::output::Streams;
-
-/// The ten filenames [`discover`] looks for, in the order it looks
-///
-/// Spelled out because `shep_core::config::flockfile::DISCOVERY_ORDER` is
-/// private.
-const DISCOVERY_NAMES: &str = "Flockfile.toml, Flockfile.yaml, Flockfile.yml, Flockfile.json, \
-     Flockfile.json5, flockfile.toml, flockfile.yaml, flockfile.yml, flockfile.json, \
-     flockfile.json5";
 
 /// Runs `shep runtime`
 ///
@@ -86,8 +78,9 @@ pub(crate) fn discovered_target(streams: &mut Streams<'_>) -> Result<String, Exi
         Some(path) => Ok(path.to_string_lossy().into_owned()),
         None => {
             let message = format!(
-                "no Flockfile found in {} (looked for {DISCOVERY_NAMES})",
-                cwd.display()
+                "no Flockfile found in {} (looked for {})",
+                cwd.display(),
+                DISCOVERY_ORDER.join(", ")
             );
             Err(streams.fail(ExitCode::Usage, &message))
         }

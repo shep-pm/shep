@@ -9,7 +9,7 @@
 //! One connection and one handshake per call, over the local control
 //! transport, is cheap between calls a model makes seconds apart.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use rmcp::model::CallToolResult;
 use shep_client::{Client, ConnectError, RequestError};
@@ -65,7 +65,7 @@ impl Shepherd {
     ) -> Result<(HelloAck, Response), CallToolResult> {
         let client = Client::connect(&self.socket)
             .await
-            .map_err(|err| connect_refusal(&self.socket, &err))?;
+            .map_err(|err| connect_refusal(&err))?;
         // `whistle` drives the daemon on every tool call, so it can never be
         // one of `RECOVERY_VERBS`.
         refuse_if_skewed(&client)?;
@@ -119,9 +119,7 @@ fn refuse_if_skewed(client: &Client) -> Result<(), CallToolResult> {
 ///
 /// `ConnectError`'s `Display` already prints the path, so this wrapper adds
 /// only the words that say what is missing rather than what failed.
-fn connect_refusal(socket: &Path, err: &ConnectError) -> CallToolResult {
-    let _ = socket; // named in the signature for call-site readability; the
-    // path itself comes out of `err`'s own Display.
+fn connect_refusal(err: &ConnectError) -> CallToolResult {
     CallToolResult::structured_error(serde_json::json!({
         "code": "no_shepherd",
         "message": format!("no shepherd is running: {err}"),
@@ -171,16 +169,8 @@ pub fn own_refusal(code: &str, message: String) -> CallToolResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::whistle::matching_ack;
     use shep_core::protocol::{RpcError, RpcErrorCode};
-
-    /// A [`HelloAck`] whose version [`refuse_if_skewed`] never refuses,
-    /// since `sample_ack`'s `"9.9.9"` always would.
-    fn matching_ack() -> HelloAck {
-        HelloAck {
-            daemon_version: env!("CARGO_PKG_VERSION").to_string(),
-            ..shep_client::testing::sample_ack()
-        }
-    }
 
     /// shep does not paraphrase the shepherd: `is_error: true` keeps the
     /// message in front of the model, where an `Err(ErrorData)` would
@@ -210,13 +200,10 @@ mod tests {
     #[test]
     fn an_unreachable_shepherd_names_the_socket_once() {
         let socket = std::path::Path::new("/nonexistent/shep/run/shep.sock");
-        let result = connect_refusal(
-            socket,
-            &ConnectError::Connect {
-                path: socket.to_path_buf(),
-                source: std::io::Error::from(std::io::ErrorKind::NotFound),
-            },
-        );
+        let result = connect_refusal(&ConnectError::Connect {
+            path: socket.to_path_buf(),
+            source: std::io::Error::from(std::io::ErrorKind::NotFound),
+        });
         assert_eq!(result.is_error, Some(true));
         let message = result.structured_content.expect("structured")["message"]
             .as_str()

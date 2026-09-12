@@ -150,6 +150,46 @@ pub fn rules_for(config: &BarkConfig) -> Result<Rules, rules::RulesError> {
     Rules::new(rule_list, &config.sinks)
 }
 
+/// Everything a delivery needs, so the five values that travel together
+/// through [`reconcile`], [`spawn_firings`] and [`deliver_and_record`]
+/// travel as one.
+///
+/// `Clone` is what [`spawn_firings`] hands each spawned task: three
+/// [`Arc`] bumps and two copies, the same clones it used to make one by
+/// one. A config reload rebinds `sinks`, `sink_timeout` and `max_bytes`
+/// in place; `append_lock` and `barks_path` outlive every reload.
+///
+/// `Debug` is safe despite `sinks` holding webhook URLs, which are bearer
+/// credentials: [`Sink`]'s own `Debug` redacts them.
+#[derive(Debug, Clone)]
+struct Delivery {
+    /// Every configured sink by name, for resolving a firing's own list.
+    sinks: Arc<BTreeMap<String, Sink>>,
+    /// Serializes this process's appends to `barks_path`.
+    append_lock: Arc<Mutex<()>>,
+    /// Where the bark trail is written.
+    barks_path: Arc<PathBuf>,
+    /// How long one sink delivery may take.
+    sink_timeout: Duration,
+    /// The trail's size ceiling.
+    max_bytes: u64,
+}
+
+/// The poll timer for `period`.
+///
+/// `interval_at`, not `interval`: a plain `interval` fires its first tick
+/// immediately, so the first poll would be attributable to the timer's
+/// startup rather than to a drop or an elapsed interval.
+///
+/// One function, not two call sites: a reload that rebuilt the timer and
+/// forgot `MissedTickBehavior::Delay` would leave a poll that ran long
+/// firing a burst of catch-up ticks.
+fn poll_timer(period: Duration) -> tokio::time::Interval {
+    let mut interval = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    interval
+}
+
 /// Bark's loop: subscribe for speed, poll for correctness. Ends on
 /// `SIGINT`/`SIGTERM` or when `events` does.
 ///
@@ -169,19 +209,22 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
     barks_path: &Path,
     config_source: C,
 ) -> impl Future<Output = ExitCode> + Send + use<E, F, C> {
-    let mut sinks = Arc::new(config.sinks.clone());
-    let mut sink_timeout = config.sink_timeout.as_duration();
-    let mut max_bytes = config.history_bytes;
-    // `interval_at`, not `interval`: a plain `interval` fires its first
-    // tick immediately, so the first poll would be attributable to the
-    // timer's startup rather than to a drop or an elapsed interval.
+    let sinks = Arc::new(config.sinks.clone());
+    let sink_timeout = config.sink_timeout.as_duration();
+    let max_bytes = config.history_bytes;
     let mut poll_period = config.poll.as_duration();
     let barks_path = Arc::new(barks_path.to_path_buf());
 
     async move {
         let mut events = events;
         let mut rules = rules;
-        let append_lock = Arc::new(Mutex::new(()));
+        let mut delivery = Delivery {
+            sinks,
+            append_lock: Arc::new(Mutex::new(())),
+            barks_path,
+            sink_timeout,
+            max_bytes,
+        };
 
         let mut sigterm = match crate::shutdown::Terminate::install() {
             Ok(sigterm) => sigterm,
@@ -191,9 +234,7 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
             }
         };
 
-        let mut poll_interval =
-            tokio::time::interval_at(tokio::time::Instant::now() + poll_period, poll_period);
-        poll_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        let mut poll_interval = poll_timer(poll_period);
 
         loop {
             tokio::select! {
@@ -214,9 +255,9 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
                                 // In place, never a restart: sinks and
                                 // rules are pure data with no OS resource
                                 // to rebind.
-                                sinks = Arc::new(next.sinks.clone());
-                                sink_timeout = next.sink_timeout.as_duration();
-                                max_bytes = next.history_bytes;
+                                delivery.sinks = Arc::new(next.sinks.clone());
+                                delivery.sink_timeout = next.sink_timeout.as_duration();
+                                delivery.max_bytes = next.history_bytes;
                                 // Rebuilt, which resets each rule's
                                 // per-subject debounce: carrying it over
                                 // a renumbered rule set would key state on
@@ -224,28 +265,24 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
                                 rules = next_rules;
                                 if next.poll.as_duration() != poll_period {
                                     poll_period = next.poll.as_duration();
-                                    poll_interval = tokio::time::interval_at(
-                                        tokio::time::Instant::now() + poll_period,
-                                        poll_period,
-                                    );
-                                    poll_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+                                    poll_interval = poll_timer(poll_period);
                                 }
                                 eprintln!("shep dog bark: reloaded [bark] from dogs.toml");
                             }
                         }
                         Some(Ok(event)) => {
                             let firings = rules.on_event(&event, now_ms());
-                            spawn_firings(firings, &sinks, &append_lock, &barks_path, sink_timeout, max_bytes);
+                            spawn_firings(firings, &delivery);
                         }
                         Some(Err(_dropped)) => {
                             // The drop says nothing about what was lost;
                             // only the shepherd can.
-                            reconcile(&flock, &mut rules, &sinks, &append_lock, &barks_path, sink_timeout, max_bytes).await;
+                            reconcile(&flock, &mut rules, &delivery).await;
                         }
                     }
                 }
                 _ = poll_interval.tick() => {
-                    reconcile(&flock, &mut rules, &sinks, &append_lock, &barks_path, sink_timeout, max_bytes).await;
+                    reconcile(&flock, &mut rules, &delivery).await;
                 }
             }
         }
@@ -298,26 +335,11 @@ async fn reloaded_config<C: ConfigSource>(source: &C) -> Option<(BarkConfig, Rul
 ///
 /// A failed poll is logged and dropped: the next bus event or interval
 /// tick tries again.
-async fn reconcile<F: FlockSource>(
-    flock: &F,
-    rules: &mut Rules,
-    sinks: &Arc<BTreeMap<String, Sink>>,
-    append_lock: &Arc<Mutex<()>>,
-    barks_path: &Arc<PathBuf>,
-    sink_timeout: Duration,
-    max_bytes: u64,
-) {
+async fn reconcile<F: FlockSource>(flock: &F, rules: &mut Rules, delivery: &Delivery) {
     match flock.flock().await {
         Ok(snapshot) => {
             let firings = rules.on_poll(&snapshot, now_ms());
-            spawn_firings(
-                firings,
-                sinks,
-                append_lock,
-                barks_path,
-                sink_timeout,
-                max_bytes,
-            );
+            spawn_firings(firings, delivery);
         }
         Err(err) => eprintln!("shep dog bark: reconciliation poll failed: {err}"),
     }
@@ -326,28 +348,11 @@ async fn reconcile<F: FlockSource>(
 /// Spawns one delivery task per firing, so [`run_loop`]'s own `select!`
 /// returns to reading the next event immediately rather than waiting on any
 /// of them.
-fn spawn_firings(
-    firings: Vec<Firing>,
-    sinks: &Arc<BTreeMap<String, Sink>>,
-    append_lock: &Arc<Mutex<()>>,
-    barks_path: &Arc<PathBuf>,
-    sink_timeout: Duration,
-    max_bytes: u64,
-) {
+fn spawn_firings(firings: Vec<Firing>, delivery: &Delivery) {
     for firing in firings {
-        let sinks = Arc::clone(sinks);
-        let append_lock = Arc::clone(append_lock);
-        let barks_path = Arc::clone(barks_path);
+        let delivery = delivery.clone();
         tokio::spawn(async move {
-            deliver_and_record(
-                firing,
-                &sinks,
-                &append_lock,
-                &barks_path,
-                sink_timeout,
-                max_bytes,
-            )
-            .await;
+            deliver_and_record(firing, &delivery).await;
         });
     }
 }
@@ -360,22 +365,15 @@ fn spawn_firings(
 /// refused it: the local trail is what an operator reads when the page
 /// never arrived.
 ///
-/// `append_lock` covers only the [`barks::append`] call, a
+/// [`Delivery::append_lock`] covers only the [`barks::append`] call, a
 /// read-modify-rename against one file that several of these run at once.
 /// It does not replace `append`'s own cross-process `flock(2)`.
-async fn deliver_and_record(
-    firing: Firing,
-    sinks: &BTreeMap<String, Sink>,
-    append_lock: &Mutex<()>,
-    barks_path: &Path,
-    sink_timeout: Duration,
-    max_bytes: u64,
-) {
+async fn deliver_and_record(firing: Firing, delivery: &Delivery) {
     let mut bark = firing.bark;
     let mut outcomes = Vec::with_capacity(firing.sinks.len());
     for name in &firing.sinks {
-        let outcome = match sinks.get(name) {
-            Some(sink) => match sinks::deliver(sink, &bark, sink_timeout).await {
+        let outcome = match delivery.sinks.get(name) {
+            Some(sink) => match sinks::deliver(sink, &bark, delivery.sink_timeout).await {
                 Ok(()) => SinkOutcome {
                     sink: name.clone(),
                     error: None,
@@ -397,8 +395,8 @@ async fn deliver_and_record(
     }
     bark.sinks = outcomes;
 
-    let _guard = append_lock.lock().await;
-    if let Err(err) = barks::append(barks_path, &bark, max_bytes) {
+    let _guard = delivery.append_lock.lock().await;
+    if let Err(err) = barks::append(&delivery.barks_path, &bark, delivery.max_bytes) {
         eprintln!("shep dog bark: could not record a fired bark: {err}");
     }
 }
@@ -598,6 +596,12 @@ mod tests {
         process_event(name, ProcessEventKind::Errored)
     }
 
+    /// A JSON sink POSTing to `url` with the default body. Every sink
+    /// these tests configure is this one.
+    fn json_sink(url: String) -> Sink {
+        Sink::Json { url, body: None }
+    }
+
     /// A cheap bus event no rule below fires on: filler for overflowing
     /// the broadcast channel's small capacity.
     fn log_event(i: u32) -> BusEvent {
@@ -617,10 +621,7 @@ mod tests {
         let mut sinks = BTreeMap::new();
         sinks.insert(
             "ops".to_owned(),
-            Sink::Json {
-                url: "http://127.0.0.1:1/hook".to_owned(),
-                body: None,
-            },
+            json_sink("http://127.0.0.1:1/hook".to_owned()),
         );
         Rules::new(
             vec![rules::Rule {
@@ -638,13 +639,7 @@ mod tests {
     /// poll that fires is attributable to the lag path.
     fn config_with_sink(addr: SocketAddr, _barks_path: &Path) -> BarkConfig {
         let mut sinks = BTreeMap::new();
-        sinks.insert(
-            "ops".to_owned(),
-            Sink::Json {
-                url: format!("http://{addr}/hook"),
-                body: None,
-            },
-        );
+        sinks.insert("ops".to_owned(), json_sink(format!("http://{addr}/hook")));
         BarkConfig {
             sinks,
             rules: Vec::new(),
@@ -741,14 +736,7 @@ mod tests {
         let barks_path = dir.path().join("barks.jsonl");
 
         let mut sinks = BTreeMap::new();
-        sinks.insert(
-            "ops".to_owned(),
-            Sink::Json {
-                url: format!("http://{addr}/hook"),
-                body: None,
-            },
-        );
-        let append_lock = Mutex::new(());
+        sinks.insert("ops".to_owned(), json_sink(format!("http://{addr}/hook")));
         let firing = Firing {
             bark: Bark {
                 at_ms: 1_000,
@@ -762,11 +750,13 @@ mod tests {
 
         deliver_and_record(
             firing,
-            &sinks,
-            &append_lock,
-            &barks_path,
-            Duration::from_secs(5),
-            barks::DEFAULT_MAX_BYTES,
+            &Delivery {
+                sinks: Arc::new(sinks),
+                append_lock: Arc::new(Mutex::new(())),
+                barks_path: Arc::new(barks_path.clone()),
+                sink_timeout: Duration::from_secs(5),
+                max_bytes: barks::DEFAULT_MAX_BYTES,
+            },
         )
         .await;
 
@@ -802,17 +792,11 @@ mod tests {
         let mut sinks = BTreeMap::new();
         sinks.insert(
             "slow".to_owned(),
-            Sink::Json {
-                url: format!("http://{slow_addr}/hook"),
-                body: None,
-            },
+            json_sink(format!("http://{slow_addr}/hook")),
         );
         sinks.insert(
             "fast".to_owned(),
-            Sink::Json {
-                url: format!("http://{fast_addr}/hook"),
-                body: None,
-            },
+            json_sink(format!("http://{fast_addr}/hook")),
         );
         let rules = Rules::new(
             vec![

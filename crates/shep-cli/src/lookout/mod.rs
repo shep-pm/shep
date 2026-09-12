@@ -23,6 +23,7 @@ pub mod level;
 pub mod link;
 pub mod pane;
 pub mod pane_bleats;
+pub mod pane_sheep;
 pub mod source;
 pub mod tail;
 pub mod term;
@@ -277,9 +278,10 @@ where
         // shows it and never on a frame that is not about to be drawn.
         let may_draw = last_draw.is_none_or(|at| at.elapsed() >= MIN_REDRAW);
         if feed_dirty && may_draw {
-            // `feed_row`, not `selected_row`: the full-screen pane pins a
-            // sheep and the selection can move out from under it, so reading
-            // the selection would draw another sheep's lines under a title
+            // `feed_row`, not `selected_row`: both the full-screen pane and
+            // the sheep pane's own embedded feed pin a sheep, and the
+            // selection can move out from under either, so reading the
+            // selection would draw another sheep's lines under a title
             // naming the pinned one.
             //
             // Nothing to read means an empty flock, or a pinned sheep that

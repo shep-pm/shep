@@ -32,13 +32,13 @@ lambs  not read yet
 out  tests/fixtures/gallery-logs/api-out.log   │   err  tests/fixtures/gallery-logs/api-err.log   2.0K on disk
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  api  … 1 earlier line not shown
+ ██ BLEATS api  … 1 earlier line not shown
 out  GET /healthz 200 3ms
 out  GET /v1/orders 200 44ms
 out  POST /v1/orders 201 88ms
 out  GET /v1/orders/8821 200 9ms
 out  connection pool: 14/50 in use
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled`;
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled`;
 
 const narrow = `shep lookout   /home/ada/.shep       6 in the flock
 host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores  …
@@ -51,14 +51,14 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores  …
   5     metrics   online           0.4%    1h 32m
   0     web       online           3.4%    1h 25m
   1     web       online           2.9%    1h 26m
-q quit   j/k select   / filter   x… control enabled`;
+q quit   j/k select   / filter   F… control enabled`;
 
 const tooNarrow = `too small
 need 33x6`;
 
 const folds = `shep lookout   /home/ada/.shep                                                                                                                   10 in the flock
 
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 20.6%        █   flock mem 928.0M …
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 20.6%       ▁█   flock mem 928.0M …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   NAME        STATUS        SHARE                   MEM         CPU        UPTIME      RESTARTS  NOTES
@@ -90,14 +90,14 @@ q quit   j/k select   / filter   F flat   z collapse   x stop   R restart   L re
 const frozen = ` THE SHEPHERD HAS DIED  ▖  these values are frozen as of 2026-08-14 14:32:07                                                 nothing here is live  ▖  q to quit
 
  shep lookout   /home/ada/.shep  ·  the dashboard stays up so you can read what it had  ·  it will not exit on its own
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     1 errored · 0 parked   flock cpu 6.7%        █   flock mem 371.0M  …
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     1 errored · 0 parked   flock cpu 6.7%       ▁█   flock mem 371.0M  …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   ID    NAME                  STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       FROZEN    FOLD        SMIT
    ██ FLOCK
-> 2     api                   errored          -        14        1          -              ▁  -       ░░░░░░░░░░  -         1h 18m    edge        -
-  3     billing-reconciliat…  waiting-restart  -        3         1          -              ▁  -       ░░░░░░░░░░  -         1h 19m    -           -
-  4     cron                  stopped          -        0         SIGTERM    -              ▁  -       ░░░░░░░░░░  -         1h 21m    -           -
+> 2     api                   errored          -        14        1          -             ▁▁  -       ░░░░░░░░░░  -         1h 18m    edge        -
+  3     billing-reconciliat…  waiting-restart  -        3         1          -             ▁▁  -       ░░░░░░░░░░  -         1h 19m    -           -
+  4     cron                  stopped          -        0         SIGTERM    -             ▁▁  -       ░░░░░░░░░░  -         1h 21m    -           -
   5     metrics               online           48240    0         -          -              ▂  0.4%    ░░░░░░░░░░  11.0M     1h 22m    -           -
   0     web                   online           48211    0         -          -              █  3.4%    ░░░░░░░░░░  182.0M    1h 15m    edge        -
   1     web                   online           48212    0         -          -              ▇  2.9%    ░░░░░░░░░░  178.0M    1h 16m    edge        -
@@ -135,7 +135,7 @@ lambs  not read yet
 out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  api  … 1 earlier line not shown
+ ██ BLEATS api  … 1 earlier line not shown
 out  GET /healthz 200 3ms
 out  GET /v1/orders 200 44ms
 out  POST /v1/orders 201 88ms
@@ -146,8 +146,8 @@ read-only: from --read-only or lookout.allow_control                            
 const startCmds = `$ shep lookout
 $ shep lookout --read-only`;
 
-const feedExcerpt = ` ██ BLEATS bleats  api  … 525 earlier lines not shown, and 3.8M before them never read
- ██ BLEATS bleats  api  out then err  from the log files, re-read with each listing
+const feedExcerpt = ` ██ BLEATS api  … 525 earlier lines not shown, and 3.8M before them never read
+ ██ BLEATS api  out then err  from the log files, re-read with each listing
 this sheep has not written a log in this $SHEP_HOME`;
 
 const lambs = `shep lookout   /home/ada/.shep                                                                            6 in the flock
@@ -167,16 +167,16 @@ lambs  3 parent-pid descendants, read 9m 53s ago   48220 node   48221 node   482
 out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ BLEATS bleats  api  … 1 earlier line not shown
+ ██ BLEATS api  … 1 earlier line not shown
 out  GET /healthz 200 3ms
 out  GET /v1/orders 200 44ms
 out  POST /v1/orders 201 88ms
 out  GET /v1/orders/8821 200 9ms
 out  connection pool: 14/50 in use
-q quit   j/k select   / filter   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled`;
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * your… control enabled`;
 
 const bleatsFull = `shep lookout   /home/ada/.shep                                                        6 in the flock
- ██ api  out /home/ada/.shep/logs/api-2-out.log  err /home/ada/.shep/logs/api-2-err.log
+ ██ api  out /home/ada/.shep/logs/api-2-out.log  err /home/ada/.shep/logs/api-2-err.log  64.0K wind…
  stream out   level ≥ warn   match /retry|jitter/ (regex)  1 of 16 lines in the window: all three m…
 out  WARN retrying upstream payment gateway after a timeout, backing off 500ms before trying again w
      ith jitter added so the whole fleet does not retry at once
@@ -209,7 +209,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME
    ██ FLOCK
-> 2     api                online           48299    2         -          7.1%    241.0M    1h 18m
+> 2     api                online           48299    2         -          -       241.0M    1h 18m
   3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m
   4     cron               online           48233    0         -          0.1%    8.0M      1h 31m
   5     metrics            online           48240    0         -          0.4%    11.0M     1h 32m
@@ -279,6 +279,60 @@ const settingsDogs = `shep lookout   /home/ada/.shep                            
   ledger                                                              yes      /opt/ledger/bin/dog       not running
   bark                                                                yes      built-in                  silent
 esc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit               control enabled`;
+
+const sheepPane = `shep lookout   /home/ada/.shep                                                                                                                    1 in the flock
+ ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 20.0%   mem 30.0M   fold edge
+██ CPU   collecting · 0m08s of 4m40s
+    50%
+      |
+    38%                                                                                                                                           ▄
+      |                                                                                                                                           █
+    25%                                                                                                                                         █ █
+      |                                                                                                                                         ████
+    12%                                                                                                                                         ████
+      0                                                                                                                                         ████
+██ MEM   rss   same window   ·   ceiling 64.0M
+ 100.0M
+  80.0M
+  64.0M ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ ceiling
+  40.0M                                                                                                                                          ▄▄▄
+      0                                                                                                                                        ▄████
+        ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────now
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+██ CONFIG & ENV   e edit                                                    │ ██ BLEATS out then err · / narrow
+                                                                            │out  listening on 0.0.0.0:8080
+────────────────────────────────────────────────────────────────────────────│out  GET /healthz 200 3ms
+process                                                                     │out  GET /v1/orders 200 44ms
+cwd                         (unset)                                         │out  POST /v1/orders 201 88ms
+depends_on                  (default)                                       │out  GET /v1/orders/8821 200 9ms
+fold                        (unset)                                         │out  connection pool: 14/50 in use
+group                       (unset)                                         │
+instances                   3                                               │
+interpreter                 (unset)                                         │
+name                        web                                             │
+reuse_port                  (default)                                       │
+script                      ./srv                                           │
+user                        (unset)                                         │
+                                                                            │
+────────────────────────────────────────────────────────────────────────────│
+logging                                                                     │
+err_file                    (unset)                                         │
+merge_logs                  (default)                                       │
+out_file                    (unset)                                         │
+                                                                            │
+────────────────────────────────────────────────────────────────────────────│
+inputs                                                                      │
+args                        ["--port","8080"]                               │
+channel                     (default)                                       │
+environment                 (unset)                                         │
+stdin                       (default)                                       │
+
+esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                                      control enabled`;
+
+const sheepPaneSparklines = `shep lookout   /home/ada/.shep                                                       1 in the flock
+ ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 20.0%   mem 30.0M   fold…
+CPU 20s         ▆▅█▅      MEM/CEIL   █████░░░░░
+esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log  … control enabled`;
 
 const settingsNarrow = `shep lookout   /home/ada/.shep 2 in the flock
   [daemon]
@@ -451,6 +505,47 @@ esc/s close   j/k select   g… control enabled`;
       counted the lines inside them:
     </p>
     <CodeBlock>{feedExcerpt}</CodeBlock>
+
+    <h2>The sheep pane</h2>
+    <p>
+      <code>↵</code> on a selected sheep opens a full-screen pane for it.
+      Nothing happens on a group row, a fold header, or a dog: there's no
+      single process to chart or config to show. <code>esc</code> closes it
+      back to the table.
+    </p>
+    <p>
+      Two charts share a time axis: CPU history above, memory RSS below,
+      one column per two-second poll. The window is whatever the terminal's
+      width buys, stated in the chart's own header rather than promised as a
+      constant: a fresh pane reads <code>collecting</code> until it has
+      enough polls to fill its own body. The memory chart draws a ceiling
+      line at <code>max_memory</code> when the sheep has one; with none set
+      it scales to the window's own peak instead and says so.
+    </p>
+    <CodeBlock label="160×48, the design size">{sheepPane}</CodeBlock>
+    <p>
+      Below the charts, a read-only listing of the sheep's config and env
+      keys sits beside a <code>BLEATS</code> feed scoped to this sheep.{" "}
+      <code>e</code> opens the same full editor the dashboard's own{" "}
+      <code>e</code> does; <code>b</code> hands the embedded feed to the
+      full-screen bleats pane, filter and all, rather than opening a fresh
+      one; <code>/</code> filters it in place. <code>J</code>/<code>K</code>{" "}
+      step to the next or previous sheep in the current sort and filter,
+      re-fetching its config and re-scaling both charts without leaving the
+      pane. <code>x</code>, <code>R</code> and <code>L</code> arm and
+      confirm against the pinned sheep, the same gate and the same prompt
+      the dashboard's own action keys use.
+    </p>
+    <p>
+      Narrower terminals give up the second chart before the first: below
+      140 columns the memory chart folds into one line, an RSS reading and
+      a ten-cell gauge; below 100 both charts fall back to the flock
+      table's own <code>CPU 20s</code> sparkline and <code>MEM/CEIL</code>{" "}
+      gauge, one row. The config and feed columns are what the pane is for,
+      so they give up ground last: the memory chart drops below 26 rows,
+      the CPU chart below 21.
+    </p>
+    <CodeBlock label="99×48, the sparkline fallback">{sheepPaneSparklines}</CodeBlock>
 
     <h2>The bleats pane, full screen</h2>
     <p>
