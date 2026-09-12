@@ -342,6 +342,10 @@ mod tests {
     use crate::privilege::SpawnIdentity;
     use shep_core::status::ProcStatus;
 
+    /// A number this process will never own, the same floor `sys`'s own
+    /// refusal tests use.
+    const NEVER_OPEN: RawFd = 4096;
+
     /// One carried sheep named `web`, whose descriptors are `fds`.
     fn carried(fds: CarriedFds) -> CarriedSheep {
         carried_slot(0, fds)
@@ -541,18 +545,20 @@ mod tests {
         let mut adopted = adopt(&blob).expect("a merged-log clustered app must be adoptable");
 
         assert_eq!(adopted.sheep.len(), 2, "one adopted sheep per instance");
-        let mut zero = adopted.sheep[0].out_log.take().expect("slot 0's log");
-        let mut one = adopted.sheep[1].out_log.take().expect("slot 1's log");
+        let zero = adopted.sheep[0].out_log.take().expect("slot 0's log");
+        let one = adopted.sheep[1].out_log.take().expect("slot 1's log");
         // Alternated, so a second handle that had become an alias of the
         // first shows up as lost text rather than two clean halves. Flushed
         // per line because a `tokio::fs::File` hands the real `write(2)` to
         // the blocking pool, which finishes in its own order.
-        for line in ["zero-1\n", "one-1\n", "zero-2\n", "one-2\n"] {
-            let handle = if line.starts_with("zero") {
-                &mut zero
-            } else {
-                &mut one
-            };
+        let mut handles = [zero, one];
+        for (line, slot) in [
+            ("zero-1\n", 0),
+            ("one-1\n", 1),
+            ("zero-2\n", 0),
+            ("one-2\n", 1),
+        ] {
+            let handle = &mut handles[slot];
             handle.write_all(line.as_bytes()).await.unwrap();
             handle.flush().await.unwrap();
         }
@@ -565,10 +571,6 @@ mod tests {
 
     #[tokio::test]
     async fn a_blob_naming_a_descriptor_that_is_not_open_fails_loudly() {
-        // fd 4096 is a number this process will never own, the same floor
-        // `sys`'s own refusal tests use.
-        const NEVER_OPEN: RawFd = 4096;
-
         let dir = tempfile::tempdir().unwrap();
         let socket = dir.path().join("shep.sock");
         let blob = blob_with(
@@ -600,8 +602,6 @@ mod tests {
     async fn a_refused_rehydrate_leaves_the_pidfile_lock_held() {
         // The pidfile is adopted last, so a failure before it leaves that
         // descriptor open and unowned, and its `flock` held.
-        const NEVER_OPEN: RawFd = 4096;
-
         let dir = tempfile::tempdir().unwrap();
         let socket = dir.path().join("shep.sock");
         let blob = blob_with(

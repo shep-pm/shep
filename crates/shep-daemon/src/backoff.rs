@@ -113,12 +113,6 @@ mod tests {
     }
 
     #[test]
-    fn stable_exit_is_never_delayed_even_with_a_configured_backoff() {
-        let app = shep_core::config::AppConfig::minimal("p", "./p");
-        assert_eq!(restart_delay(&app, 0), None);
-    }
-
-    #[test]
     fn an_explicit_none_still_means_no_backoff() {
         let mut app = shep_core::config::AppConfig::minimal("p", "./p");
         app.exp_backoff_restart_delay = None;

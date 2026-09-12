@@ -148,7 +148,7 @@ impl StatsState {
     /// For a caller with no index already in hand. The polling tick always
     /// has one and uses [`Self::record_baseline`] directly, so this has no
     /// production caller; it lets a test set a baseline in one line.
-    #[allow(dead_code, reason = "called only by this crate's tests")]
+    #[cfg(test)]
     pub(crate) fn record_baseline_now(&self, now: Instant) {
         let table = self.sampler.sample();
         self.record_baseline(&TreeIndex::build(&table), now);
@@ -298,18 +298,8 @@ mod tests {
     use core::time::Duration;
 
     use super::super::MEMORY_POLL_INTERVAL;
-    use super::super::sample::ProcessRss;
     use super::*;
-    use crate::testing::{ScriptedSampler, identity};
-
-    fn rss_cpu(pid: u32, parent: Option<u32>, bytes: u64, cpu_ms: u64) -> ProcessRss {
-        ProcessRss {
-            pid,
-            parent,
-            bytes,
-            cpu_ms,
-        }
-    }
+    use crate::testing::{ScriptedSampler, identity, rss_cpu};
 
     #[tokio::test(start_paused = true)]
     async fn a_sheep_with_no_baseline_reports_no_cpu_but_still_reports_memory() {
