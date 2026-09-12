@@ -1112,6 +1112,24 @@ mod path_advisory_tests {
         assert!(warning.contains("does not exist"), "{warning}");
     }
 
+    /// The `Ok(_)` arm of [`missing_directory`], reached through the parent
+    /// rather than through the path itself. A sibling test covers the path
+    /// BEING a directory; this covers its parent being an ordinary file,
+    /// which is the likelier misconfiguration: an operator points `out_file`
+    /// at `<something>/web.log` where `<something>` is already a file.
+    #[test]
+    fn a_log_path_whose_parent_is_a_file_is_named() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("not-a-directory");
+        std::fs::write(&parent, b"").unwrap();
+        let warning =
+            log_path_advisory(&parent.join("web-out.log")).expect("a parent that is a file warns");
+        assert!(
+            warning.contains("exists but is not a directory"),
+            "{warning}"
+        );
+    }
+
     #[test]
     fn a_log_path_that_is_already_a_directory_is_named() {
         let dir = tempfile::tempdir().unwrap();
