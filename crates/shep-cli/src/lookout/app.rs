@@ -3636,9 +3636,21 @@ impl App {
             | KeyPress::MatchNext
             | KeyPress::MatchPrev
             | KeyPress::Bleats => {}
-            // No-op here for now: Task 5 gives `NextGroup`/`Group` a
-            // reducer arm and Task 8 gives `Undo` one.
-            KeyPress::NextGroup | KeyPress::Group(_) | KeyPress::Undo => {}
+            // Drops the newest edit, the same key the field list answers
+            // and on the same terms: no control gate, since a key that
+            // unfiles something cannot write. The sub-screen re-reads the
+            // array from what is left filed, so the rows show what was
+            // restored. The set holds one entry per field, so this takes
+            // the whole array back to the shepherd's rather than one
+            // keystroke of it.
+            KeyPress::Undo => {
+                if let Some(pane) = self.config_pane_mut() {
+                    pane.undo_edit();
+                }
+            }
+            // The groups belong to the field list; the sub-screen is one
+            // field's own array and has none to walk.
+            KeyPress::NextGroup | KeyPress::Group(_) => {}
         }
         Effect::None
     }
@@ -10538,6 +10550,37 @@ mod tests {
         assert!(app.config_pane().is_some(), "the pane is still open");
         let _ = app.update(Msg::Key(KeyPress::Escape));
         assert!(app.config_pane().is_none());
+    }
+
+    /// `u` is on the sub-screen's own key hint, so it has to do something
+    /// there. It drops the field's entry and the rows go back to the
+    /// array the shepherd sent.
+    #[test]
+    fn u_undoes_a_list_edit_from_inside_the_sub_screen() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        pane_to(&mut app, "args");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let _ = app.update(Msg::Key(KeyPress::Remove));
+        assert_eq!(filed_value(&app, "args"), serde_json::json!(["--port"]));
+
+        let _ = app.update(Msg::Key(KeyPress::Undo));
+        assert!(
+            app.config_pane()
+                .expect("the pane is open")
+                .edits()
+                .is_empty(),
+            "u drops the entry the removal filed"
+        );
+        assert_eq!(
+            app.config_pane()
+                .expect("the pane is open")
+                .list()
+                .expect("the sub-screen is still up")
+                .elements(),
+            ["--port", "8080"],
+            "the rows show the array that was restored"
+        );
     }
 
     /// A write re-reads the whole config, so without the carry the
