@@ -4449,9 +4449,13 @@ impl<R: ProcessRunner> Actor<R> {
         for id in survivors.iter().chain(orphaned_by_failed_spawn.iter()) {
             if let Some(slot) = self.sheep.get_mut(id) {
                 // `out_file`/`err_file` need no refresh here: `stored` only
-                // moves `instances`, no log-path template reads that
-                // (`render` substitutes `{{instance}}`/`{{name}}` alone),
-                // and a survivor's own `instance` is untouched by a scale.
+                // moves `instances`, and no token an accepted log path may
+                // carry reads that. `normalize` refuses a `{{secret:...}}`
+                // in either field (`SecretInLogPath`), which leaves
+                // `{{instance}}` and `{{name}}`; a survivor's own `instance`
+                // is untouched by a scale and its name cannot move. Note it
+                // is `normalize` that narrows this and not `render`, which
+                // resolves secret references too.
                 slot.entry.spec = stored.clone();
                 match &mut slot.entry.pending {
                     // A slot already owed a config keeps it, with the count
