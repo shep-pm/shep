@@ -2505,12 +2505,13 @@ mod tests {
     }
 
     #[test]
-    /// Not every [`Scene`] gets a block, only the ones whose caption
-    /// promises something a bare snapshot pin would not catch: a rollup
-    /// number, a column that appears or drops at a threshold, a border
-    /// that is present or absent. A scene whose caption is fully covered
-    /// by its own pinned `.snap` (most of the settings and filter scenes,
-    /// for instance) has nothing this function would add.
+    /// Every [`Scene`] gets a block here except two, checked by walking
+    /// `Scene::ALL` against this function's own body rather than trusted
+    /// from memory: `Folds`, which has no assertion anywhere pinning what
+    /// its caption claims beyond the `.snap` file, and `Secrets`, which
+    /// does but in its own dedicated test,
+    /// `the_secrets_scene_shows_a_revealed_row_not_a_mask`, below, rather
+    /// than duplicated here.
     ///
     /// `cfg(unix)`: one fixture carries a synthetic signalled exit, and
     /// `signal_label` resolves it against the running platform's table.
