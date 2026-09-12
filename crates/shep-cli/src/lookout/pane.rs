@@ -1908,7 +1908,6 @@ mod tests {
     fn a_sheep_pane_has_forty_two_fields_in_eight_groups() {
         let pane = ConfigPane::sheep(web());
         assert_eq!(pane.fields().len(), 42);
-        assert!(!pane.fields().is_empty());
         let mut groups: Vec<&str> = Vec::new();
         for field in pane.fields().fields() {
             let group = field.group.as_deref().expect("every field carries a group");
