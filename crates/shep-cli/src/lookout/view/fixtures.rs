@@ -26,6 +26,14 @@ use crate::commands::settings::{DogView, ScalarView, SettingField, SettingsSnaps
 use crate::secret_readers::Reader;
 use crate::style::StyleSource;
 
+/// What the last dial said when the ladder ran out, in
+/// `super::super::source::LinkError::Unreachable`'s own shape.
+///
+/// The link panel renders it verbatim, so every test that freezes a
+/// dashboard feeds it verbatim rather than inventing a shorter sentence the
+/// panel would never see.
+pub const FROZEN_WHY: &str = "the shepherd did not answer: could not connect to `/home/ada/.shep/run/shep.sock`: Connection refused (os error 61)";
+
 /// No colour at all: the palette every fixture uses unless the test is about
 /// colour.
 pub fn plain() -> Palette {

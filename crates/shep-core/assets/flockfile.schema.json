@@ -140,10 +140,20 @@
           }
         },
         "env": {
-          "description": "Environment for the sheep (merged over the daemon's filtered env)",
+          "description": "Environment for the sheep (merged over the daemon's filtered env).\n\nA value may arrive as a string, a bare boolean, or a bare whole\nnumber (`SOME_BOOL = true`, `PORT = 8080`), and leaves as a string\neither way, so this field stays `BTreeMap<String, String>` and the\nwire always carries strings. A float is refused: `1.10` would reach\nthe process as `1.1`. YAML resolves an unquoted `yes` to `\"true\"`\nand `0x1F` to `\"31\"`, so quote a value whose text must survive.",
           "type": "object",
           "additionalProperties": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              }
+            ]
           },
           "default": {},
           "init": {
