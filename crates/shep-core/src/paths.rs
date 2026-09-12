@@ -79,6 +79,26 @@ pub fn user_home(var: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
     }
 }
 
+/// The directory a shep home defaults to, under the user's own home.
+const DEFAULT_HOME_DIR: &str = ".shep";
+
+/// The shep home directory `$SHEP_HOME` names, or the default under
+/// `home_dir`
+///
+/// `None` only when nothing names a `$SHEP_HOME` and `home_dir` is `None`
+/// too, which is the same condition that leaves a `~/` path unexpandable.
+///
+/// Unlike [`user_home`], an empty `$SHEP_HOME` is honoured rather than read
+/// as unset: [`ShepPaths::resolve`] has always taken the variable at its
+/// word, and the `{{SHEP_HOME}}` template token resolves through here to the
+/// same directory the layout was built from.
+#[must_use]
+pub fn shep_home(env: &dyn Fn(&str) -> Option<String>, home_dir: Option<&Path>) -> Option<PathBuf> {
+    env("SHEP_HOME")
+        .map(PathBuf::from)
+        .or_else(|| home_dir.map(|dir| dir.join(DEFAULT_HOME_DIR)))
+}
+
 /// Resolved filesystem layout for one shep home
 ///
 /// All paths are derived from `$SHEP_HOME` (default `<home>/.shep`); nothing
@@ -178,9 +198,11 @@ impl ShepPaths {
     /// unix, [`Self::pipe_name`] on Windows. Everything else is identical.
     #[must_use]
     pub fn resolve(env: &dyn Fn(&str) -> Option<String>, home_dir: &Path) -> Self {
-        let home = env("SHEP_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home_dir.join(".shep"));
+        // `home_dir` is always `Some` here, so the fallback is unreachable;
+        // `shep_home` carries the rule for the callers that have no home
+        // directory to offer.
+        let home =
+            shep_home(env, Some(home_dir)).unwrap_or_else(|| home_dir.join(DEFAULT_HOME_DIR));
         let run = home.join("run");
         // `mut` is read only by the `cfg(windows)` block below; on unix the
         // value is returned exactly as built.
@@ -212,6 +234,44 @@ impl ShepPaths {
 
 #[cfg(test)]
 mod tests {
+    /// The one rule `ShepPaths::resolve` and the `{{SHEP_HOME}}` token both
+    /// read, so a value rendered into a log path names the directory the
+    /// rest of the layout was built under.
+    #[test]
+    fn shep_home_prefers_the_variable_and_falls_back_to_the_default() {
+        use std::path::{Path, PathBuf};
+
+        let named = |_: &str| Some("/srv/shep".to_string());
+        let unset = |_: &str| None;
+        let ada = Path::new("/home/ada");
+
+        assert_eq!(
+            super::shep_home(&named, Some(ada)),
+            Some(PathBuf::from("/srv/shep")),
+            "the variable wins over the default"
+        );
+        assert_eq!(
+            super::shep_home(&named, None),
+            Some(PathBuf::from("/srv/shep")),
+            "and needs no home directory of its own"
+        );
+        assert_eq!(
+            super::shep_home(&unset, Some(ada)),
+            Some(ada.join(".shep")),
+            "the default hangs off the user's home"
+        );
+        assert_eq!(
+            super::shep_home(&unset, None),
+            None,
+            "with neither, there is nothing to name"
+        );
+        assert_eq!(
+            super::ShepPaths::resolve(&named, ada).home,
+            super::shep_home(&named, Some(ada)).expect("a home directory was given"),
+            "and the layout is built from the same answer"
+        );
+    }
+
     /// Unit-level because no end-to-end case can pin this reliably: Node's
     /// handling of a `\\?\` path differs by version.
     #[cfg(windows)]

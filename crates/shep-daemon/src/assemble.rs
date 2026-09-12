@@ -180,10 +180,11 @@ impl core::error::Error for AssembleError {
 /// directly; `Some(path)` runs `path` with `[script, ...args]`.
 ///
 /// Explicit `out_file`/`err_file` win over the default log path and render
-/// `{{instance}}` and `{{name}}` the way `env` and `args` do; normalize
-/// refuses a `{{secret:...}}` in either, and a path that collides across
-/// instances unless `merge_logs` asked for it. A relative one is anchored at
-/// the app's `cwd`.
+/// `{{instance}}`, `{{name}}` and `{{SHEP_HOME}}` the way `env` and `args`
+/// do; normalize refuses a `{{secret:...}}` in either, and a path that
+/// collides across instances unless `merge_logs` asked for it. A relative one
+/// is anchored at the app's `cwd`, which a `{{SHEP_HOME}}` path never is: it
+/// renders absolute, so the anchor leaves it alone.
 /// `SpawnSpec::stdin` carries `config.stdin` straight through: unlike
 /// `channel`, nothing else turns it on.
 ///
@@ -212,7 +213,7 @@ pub fn assemble(
         credentials,
         secrets.environment(),
         |value, field| {
-            template::render(value, &name, instance, secrets).map_err(|source| {
+            template::render(value, &name, instance, Some(&paths.home), secrets).map_err(|source| {
                 AssembleError::Template {
                     field: field.to_string(),
                     source,
@@ -258,8 +259,12 @@ pub(crate) fn describe(
         credentials,
         secrets.environment(),
         |value, _| {
-            Ok(template::render(value, &name, instance, secrets)
-                .unwrap_or_else(|_| template::render_positional(value, &name, instance)))
+            Ok(
+                template::render(value, &name, instance, Some(&paths.home), secrets)
+                    .unwrap_or_else(|_| {
+                        template::render_positional(value, &name, instance, Some(&paths.home))
+                    }),
+            )
         },
     );
     match built {
