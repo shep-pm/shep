@@ -17,7 +17,7 @@
 use core::convert::Infallible;
 use core::fmt;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use shep_core::config::ResolvedApp;
 use shep_core::config::template::{self, RenderError};
@@ -182,7 +182,8 @@ impl core::error::Error for AssembleError {
 /// Explicit `out_file`/`err_file` win over the default log path and render
 /// `{{instance}}` and `{{name}}` the way `env` and `args` do; normalize
 /// refuses a `{{secret:...}}` in either, and a path that collides across
-/// instances unless `merge_logs` asked for it.
+/// instances unless `merge_logs` asked for it. A relative one is anchored at
+/// the app's `cwd`.
 /// `SpawnSpec::stdin` carries `config.stdin` straight through: unlike
 /// `channel`, nothing else turns it on.
 ///
@@ -326,12 +327,12 @@ fn build<E>(
     };
 
     let out_file = match &config.out_file {
-        Some(explicit) => PathBuf::from(render(explicit, "out_file")?),
+        Some(explicit) => anchor_log_path(render(explicit, "out_file")?, cwd.as_deref()),
         None => paths.logs.join(format!("{}out.log", log_stem)),
     };
 
     let err_file = match &config.err_file {
-        Some(explicit) => PathBuf::from(render(explicit, "err_file")?),
+        Some(explicit) => anchor_log_path(render(explicit, "err_file")?, cwd.as_deref()),
         None => paths.logs.join(format!("{}err.log", log_stem)),
     };
 
@@ -352,6 +353,22 @@ fn build<E>(
         stdin: config.stdin,
         credentials,
     })
+}
+
+/// Anchors an explicit log path at the sheep's `cwd` when it is relative.
+///
+/// The shepherd opens these files itself, so a bare relative path resolves
+/// against the shepherd's directory rather than the sheep's: the same config
+/// names one file under the shepherd a handover started from and another
+/// under its successor, and `shep bleats` reads a third under the CLI's.
+///
+/// A sheep with no `cwd` already runs in the shepherd's own directory.
+fn anchor_log_path(rendered: String, cwd: Option<&Path>) -> PathBuf {
+    let path = PathBuf::from(rendered);
+    match cwd {
+        Some(cwd) if path.is_relative() => cwd.join(path),
+        _ => path,
+    }
 }
 
 #[cfg(test)]
@@ -543,6 +560,92 @@ mod tests {
         assert_eq!(
             spec.err_file,
             PathBuf::from("/home/ada/.shep/logs/app-0-err.log")
+        );
+    }
+
+    #[test]
+    fn a_relative_log_path_is_anchored_at_the_app_cwd() {
+        let app_config = AppConfig {
+            name: "app".to_string(),
+            script: "app".to_string(),
+            args: vec![],
+            cwd: Some("/srv/app".to_string()),
+            out_file: Some("logs/out.log".to_string()),
+            err_file: Some("logs/{{name}}-err.log".to_string()),
+            ..Default::default()
+        };
+        let app = normalize(app_config).unwrap();
+        let paths = test_paths();
+
+        let spec = assemble(&app, 0, &paths, None, &no_secrets()).unwrap();
+
+        assert_eq!(spec.out_file, PathBuf::from("/srv/app/logs/out.log"));
+        assert_eq!(spec.err_file, PathBuf::from("/srv/app/logs/app-err.log"));
+    }
+
+    #[test]
+    fn an_absolute_log_path_ignores_the_app_cwd() {
+        // A leading separator is not absolute on Windows, so the literal
+        // has to carry a drive letter there to be the case under test.
+        let absolute = if cfg!(windows) {
+            r"C:\var\log\myapp.log"
+        } else {
+            "/var/log/myapp.log"
+        };
+        let app_config = AppConfig {
+            name: "app".to_string(),
+            script: "app".to_string(),
+            args: vec![],
+            cwd: Some("/srv/app".to_string()),
+            out_file: Some(absolute.to_string()),
+            ..Default::default()
+        };
+        let app = normalize(app_config).unwrap();
+        let paths = test_paths();
+
+        let spec = assemble(&app, 0, &paths, None, &no_secrets()).unwrap();
+
+        assert_eq!(spec.out_file, PathBuf::from(absolute));
+    }
+
+    /// A sheep with no `cwd` runs where the shepherd does, so a relative
+    /// path already resolves there and gains nothing from an anchor.
+    #[test]
+    fn a_relative_log_path_without_a_cwd_is_left_alone() {
+        let app_config = AppConfig {
+            name: "app".to_string(),
+            script: "app".to_string(),
+            args: vec![],
+            cwd: None,
+            out_file: Some("logs/out.log".to_string()),
+            ..Default::default()
+        };
+        let app = normalize(app_config).unwrap();
+        let paths = test_paths();
+
+        let spec = assemble(&app, 0, &paths, None, &no_secrets()).unwrap();
+
+        assert_eq!(spec.out_file, PathBuf::from("logs/out.log"));
+    }
+
+    /// The default log path is `$SHEP_HOME/logs`, which no `cwd` moves.
+    #[test]
+    fn a_defaulted_log_path_ignores_the_app_cwd() {
+        let app_config = AppConfig {
+            name: "app".to_string(),
+            script: "app".to_string(),
+            args: vec![],
+            cwd: Some("/srv/app".to_string()),
+            ..Default::default()
+        };
+        let app = normalize(app_config).unwrap();
+        let paths = test_paths();
+
+        let spec = assemble(&app, 0, &paths, None, &no_secrets()).unwrap();
+
+        assert_eq!(
+            spec.out_file,
+            PathBuf::from("/home/ada/.shep/logs/app-0-out.log")
         );
     }
 

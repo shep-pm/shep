@@ -848,6 +848,54 @@ async fn a_bare_interpreter_resolves_via_the_seeded_path() {
     assert_eq!(outcome.code, Some(0));
 }
 
+/// The shepherd opens a sheep's log files itself, so a relative `out_file`
+/// has to be anchored at the sheep's `cwd` before that open.
+///
+/// This test process stands somewhere else entirely, which is the case: an
+/// unanchored path would create the file under the test binary's own
+/// directory and leave the one asserted here missing.
+#[tokio::test]
+async fn a_relative_log_path_lands_under_the_sheep_cwd() {
+    use shep_core::config::{AppConfig, normalize};
+    use shep_core::paths::ShepPaths;
+    use shep_core::secrets::SecretView;
+    use shep_daemon::assemble::assemble;
+
+    let dir = tempfile::tempdir().unwrap();
+    let app_dir = dir.path().join("app");
+    fs::create_dir_all(&app_dir).unwrap();
+    let paths = ShepPaths::resolve(
+        &|key| (key == "SHEP_HOME").then(|| dir.path().to_string_lossy().into_owned()),
+        Path::new("/unused-by-this-fixture"),
+    );
+
+    let app_config = AppConfig {
+        name: "anchored".to_string(),
+        script: "/bin/sh".to_string(),
+        interpreter: Some("none".to_string()),
+        args: vec!["-c".to_string(), "echo anchored-ok".to_string()],
+        cwd: Some(app_dir.to_string_lossy().into_owned()),
+        out_file: Some("logs/out.log".to_string()),
+        err_file: Some("logs/err.log".to_string()),
+        ..Default::default()
+    };
+    let app = normalize(app_config).unwrap();
+    let spec = assemble(
+        &app,
+        0,
+        &paths,
+        None,
+        &SecretView::empty("production".to_string()),
+    )
+    .expect("this fixture carries no secret to resolve");
+    assert_eq!(spec.out_file, app_dir.join("logs").join("out.log"));
+
+    let runner = TokioRunner::new();
+    let (mut proc, _io) = runner.spawn(&spec).unwrap();
+    assert_eq!(proc.wait().await.code, Some(0));
+    await_file_contents(&app_dir.join("logs").join("out.log"), "anchored-ok\n").await;
+}
+
 /// A real pipe on a real fd 0. `cat` echoes what is written to it, so a
 /// line on stdout proves the whole path worked: created, mapped to fd 0,
 /// written, flushed, and read by the child.
