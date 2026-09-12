@@ -20,6 +20,7 @@ use super::super::theme::Palette;
 use super::flock::{GUTTER, fit, gutter};
 use super::status;
 use crate::output::human_duration;
+use crate::output::width::char_columns;
 use crate::secret_readers::Reader;
 use crate::vocabulary::Role;
 
@@ -163,6 +164,51 @@ fn byte_count(len: usize) -> String {
     }
 }
 
+/// The last `width` columns of `text`, `\u{2026}` standing in for whatever it
+/// dropped off the front, padded to `width` the way [`fit`] pads.
+///
+/// [`fit`]'s own truncation keeps the head, which is right for a stored
+/// value and wrong for one being typed: the cursor sits at the end, so the
+/// characters an operator is putting on screen right now are exactly the
+/// ones `fit` drops.
+fn tail(text: &str, width: u16) -> String {
+    let width = usize::from(width);
+    let columns: usize = text.chars().map(char_columns).sum();
+    if columns <= width {
+        let mut out = String::from(text);
+        out.extend(core::iter::repeat_n(' ', width - columns));
+        return out;
+    }
+    if width == 0 {
+        return String::new();
+    }
+    // One column pays for the `\u{2026}`, and a double-width character
+    // straddling the boundary is dropped rather than split: `fit`'s own two
+    // rules, read from the other end.
+    let budget = width - 1;
+    let mut kept = String::new();
+    let mut used = 0;
+    for c in text.chars().rev() {
+        let c_width = char_columns(c);
+        if used + c_width > budget {
+            break;
+        }
+        kept.push(c);
+        used += c_width;
+    }
+    let mut out = String::from("\u{2026}");
+    out.extend(core::iter::repeat_n(' ', budget - used));
+    out.extend(kept.chars().rev());
+    out
+}
+
+/// A buffer being typed, with the block cursor after it, in a cell one
+/// column short of `width` so the cursor never touches the next column's
+/// own text. [`tail`], not [`fit`], for the reason [`tail`] gives.
+fn typed_cell(buffer: &str, width: u16) -> String {
+    tail(&format!("{buffer}\u{2588}"), width.saturating_sub(1))
+}
+
 /// What one row shows in `VALUE`.
 ///
 /// A run proportional to the value's length rather than equal to it: the
@@ -181,7 +227,7 @@ fn value_cell(
     width: u16,
 ) -> String {
     if let Some(buffer) = typing {
-        return fit(&format!("{buffer}\u{2588}"), width);
+        return fit(&typed_cell(buffer, width), width);
     }
     if let Some(reveal) = revealed {
         return fit(&reveal.value, width);
@@ -352,7 +398,7 @@ fn new_key_row_line(
         let text = match column {
             Column::Key => "+ new key".to_string(),
             Column::Value => {
-                typing_name.map_or_else(String::new, |buffer| format!("{buffer}\u{2588}"))
+                typing_name.map_or_else(String::new, |buffer| typed_cell(buffer, column.width()))
             }
             Column::InForce | Column::SetIn | Column::ReadBy | Column::Lands => String::new(),
         };
@@ -1317,6 +1363,91 @@ mod tests {
             tail.trim_start().starts_with('\u{2026}'),
             "hidden tabs before the last one: {tail:?}"
         );
+    }
+
+    /// A value long enough to outgrow `VALUE`, typed through the keys an
+    /// operator actually presses.
+    fn app_typing(buffer: &str) -> App {
+        let mut app = fixtures::app_with_secrets_and_control();
+        app.update(Msg::Key(KeyPress::Confirm));
+        for typed in buffer.chars() {
+            app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        app
+    }
+
+    /// `fit` keeps the head, so once the buffer outgrew its column the cell
+    /// showed the first 29 characters of a value and an ellipsis where the
+    /// cursor had been: the operator was shown the start of what they typed
+    /// while typing the end of it. The status bar's own editor carries the
+    /// whole buffer, but the cell they are looking at should not disagree
+    /// with it about where they are.
+    #[test]
+    fn a_value_outgrowing_its_column_is_shown_from_the_end_being_typed() {
+        let typed = "abcdefghijklmnopqrstuvwxyz0123456789-THE-TAIL";
+        let app = app_typing(typed);
+        let buffer = fixtures::render(&app, 160, 48);
+        let drawn = cell(&buffer, row_of(&buffer, "DB_PASSWORD"), Column::Value);
+
+        assert!(
+            drawn.trim_end().ends_with('\u{2588}'),
+            "the cursor is the last thing on the cell: {drawn:?}"
+        );
+        assert!(
+            drawn.contains("THE-TAIL"),
+            "and the characters just typed are next to it: {drawn:?}"
+        );
+        assert!(
+            drawn.starts_with('\u{2026}'),
+            "with the marker where the head went: {drawn:?}"
+        );
+        assert!(
+            !drawn.contains("abcdef"),
+            "the head is what gives way, not the tail: {drawn:?}"
+        );
+        assert!(
+            drawn.ends_with(' '),
+            "one column short, so the cursor never touches IN FORCE: {drawn:?}"
+        );
+        assert_eq!(
+            drawn.chars().count(),
+            usize::from(Column::Value.width()),
+            "the cell still measures its column: {drawn:?}"
+        );
+    }
+
+    /// The same window on the `+ new key` row, whose key name is typed into
+    /// the same column by the same helper.
+    #[test]
+    fn a_new_key_name_outgrowing_its_column_is_shown_from_the_end_too() {
+        let short = typed_cell("SHORT", Column::Value.width());
+        let long = typed_cell(
+            "A_VERY_LONG_KEY_NAME_THAT_RUNS_PAST_THE_COLUMN",
+            Column::Value.width(),
+        );
+
+        assert!(short.starts_with("SHORT\u{2588}"), "{short:?}");
+        assert!(!short.contains('\u{2026}'), "nothing dropped: {short:?}");
+        assert!(long.starts_with('\u{2026}'), "{long:?}");
+        assert!(long.ends_with("THE_COLUMN\u{2588}"), "{long:?}");
+    }
+
+    /// A double-width character straddling the boundary is dropped rather
+    /// than split, the same rule `fit` keeps, read from the other end.
+    #[test]
+    fn the_tail_drops_a_wide_character_rather_than_splitting_it() {
+        // Ten columns of hiragana. In nine the `…` pays one and the last
+        // four characters spend the other eight exactly.
+        let exact = tail("\u{3042}\u{3044}\u{3046}\u{3048}\u{304a}", 9);
+        assert_eq!(exact, "\u{2026}\u{3044}\u{3046}\u{3048}\u{304a}");
+        assert_eq!(exact.chars().map(char_columns).sum::<usize>(), 9);
+
+        // In eight, seven columns are left for characters worth two each:
+        // the fourth from the end is dropped whole and its odd column is
+        // padded rather than half-drawn.
+        let padded = tail("\u{3042}\u{3044}\u{3046}\u{3048}\u{304a}", 8);
+        assert_eq!(padded, "\u{2026} \u{3046}\u{3048}\u{304a}");
+        assert_eq!(padded.chars().map(char_columns).sum::<usize>(), 8);
     }
 
     #[test]
