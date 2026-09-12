@@ -102,6 +102,17 @@ const INHERITED: &[&str] = &["HOME", "USER", "LANG", "TZ"];
 /// resolve and run `.cmd` files at all. `TEMP`/`TMP` and the
 /// `USERPROFILE`/`APPDATA`/`LOCALAPPDATA` trio are where most runtimes keep
 /// per-user state. Still a closed allowlist, not inherit-everything.
+///
+/// `PYTHONUTF8`/`PYTHONIOENCODING` are here for one specific failure: a
+/// non-console stdio handle (a pipe, which is what every spawned child gets)
+/// makes CPython on Windows fall back to the legacy ANSI code page for
+/// `sys.stdout`/`sys.stderr`, and any non-ASCII byte an app prints then
+/// raises `UnicodeEncodeError`. Neither variable has a unix equivalent to
+/// piggyback on: `LANG` on unix already carries a UTF-8 locale through, but
+/// Windows has nothing that plays the same role for a child's stdio
+/// encoding. Setting either in the daemon's own environment now reaches
+/// every spawned app; an app can still set them itself, per-app, in its
+/// Flockfile `env`.
 #[cfg(windows)]
 const INHERITED: &[&str] = &[
     "SystemRoot",
@@ -121,6 +132,8 @@ const INHERITED: &[&str] = &[
     "OS",
     "LANG",
     "TZ",
+    "PYTHONUTF8",
+    "PYTHONIOENCODING",
 ];
 
 /// Which of an app's fields carried a `{{secret:...}}` that would not
@@ -650,6 +663,18 @@ mod tests {
             !path.is_empty(),
             "an empty PATH is exactly the ENOENT failure mode"
         );
+    }
+
+    // Pins list membership rather than mutating process env: base_env()
+    // reads std::env::var directly (no injectable seam, unlike
+    // DaemonConfig::load's env closure), and mutating real process env
+    // from a test is both unsound to do concurrently and, since edition
+    // 2024, `unsafe` to call at all.
+    #[cfg(windows)]
+    #[test]
+    fn windows_inherits_the_stdio_encoding_vars() {
+        assert!(INHERITED.contains(&"PYTHONUTF8"));
+        assert!(INHERITED.contains(&"PYTHONIOENCODING"));
     }
 
     #[test]
