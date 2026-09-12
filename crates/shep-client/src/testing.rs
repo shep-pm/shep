@@ -30,6 +30,7 @@ use shep_core::protocol::{
 };
 use shep_core::status::ProcStatus;
 
+use crate::spawn::SpawnOptions;
 use crate::{Client, ReconnectingClient};
 
 /// A control address valid on the platform running the test, unique to
@@ -61,13 +62,25 @@ pub fn control_address(dir: &Path) -> PathBuf {
     }
 }
 
+/// Binds `path`, naming it if the bind fails.
+///
+/// Thirteen fakes in this module bind a listener, and a bare `unwrap` on
+/// any of them reports an `AddrInUse` or a `NotFound` without saying which
+/// address it was.
+///
+/// # Panics
+///
+/// If `path` cannot be bound.
+fn bind(path: &Path) -> Listener {
+    Listener::bind(path).unwrap_or_else(|error| panic!("bind {}: {error}", path.display()))
+}
+
 /// The framed transport a fake daemon holds for one accepted client.
 ///
 /// Not [`crate::connection::Frames`], the client's side: the two coincide
 /// on unix but differ on Windows, where a named pipe's server end is its
 /// own type.
 type Frames = Framed<ServerStream, tokio_util::codec::LengthDelimitedCodec>;
-use crate::spawn::SpawnOptions;
 
 /// Serves exactly one connection, replying to the `Hello` with `reply` and
 /// closing. Returns the `Hello` the client actually sent.
@@ -78,7 +91,7 @@ use crate::spawn::SpawnOptions;
 /// Panics if `path` cannot be bound or the connection fails partway
 /// through the handshake.
 pub async fn fake_daemon(path: &Path, reply: HelloReply) -> JoinHandle<Hello> {
-    let mut listener = Listener::bind(path).unwrap();
+    let mut listener = bind(path);
     tokio::spawn(async move {
         let stream = listener.accept().await.unwrap();
         let mut frames = Framed::new(stream, codec());
@@ -102,7 +115,7 @@ pub async fn serve_one_request(
     ack: HelloAck,
     response: Response,
 ) -> JoinHandle<Envelope> {
-    let mut listener = Listener::bind(path).unwrap();
+    let mut listener = bind(path);
     tokio::spawn(async move {
         let stream = listener.accept().await.unwrap();
         let mut frames = Framed::new(stream, codec());
@@ -129,7 +142,7 @@ pub fn fake_daemon_wedged_after_handshake(
     path: &Path,
     ack: HelloAck,
 ) -> (JoinHandle<()>, Arc<AtomicBool>) {
-    let mut listener = Listener::bind(path).unwrap();
+    let mut listener = bind(path);
     let handshook = Arc::new(AtomicBool::new(false));
     let flag = Arc::clone(&handshook);
     let handle = tokio::spawn(async move {
@@ -170,7 +183,7 @@ pub fn fake_daemon_accepting_repeatedly_with_ack(
     ack: HelloAck,
     reply: Response,
 ) -> (JoinHandle<()>, Arc<AtomicU32>) {
-    let mut listener = Listener::bind(path).unwrap();
+    let mut listener = bind(path);
     let served = Arc::new(AtomicU32::new(0));
     let counter = Arc::clone(&served);
     let handle = tokio::spawn(async move {
@@ -297,7 +310,7 @@ pub fn fake_daemon_across_handovers(path: &Path, handshakes: Vec<Handshake>) -> 
         !handshakes.is_empty(),
         "a handover fixture needs at least one generation"
     );
-    let mut listener = Listener::bind(path).unwrap();
+    let mut listener = bind(path);
     let (cut_tx, mut cut_rx) = mpsc::channel(SCRIPT_CHANNEL_CAPACITY);
     let cut_on_next_request = Arc::new(AtomicBool::new(false));
     let accepted = Arc::new(AtomicU32::new(0));
@@ -853,7 +866,7 @@ pub async fn fake_reconnecting_client_on(path: &Path) -> (ReconnectingClient, Fa
 /// Panics if `path` cannot be bound.
 #[must_use]
 pub fn fake_daemon_scripted_on(path: &Path, ack: HelloAck) -> FakeDaemon {
-    let listener = Listener::bind(path).unwrap();
+    let listener = bind(path);
     let (script_tx, script_rx) = mpsc::channel(SCRIPT_CHANNEL_CAPACITY);
     let armed_list = Arc::new(Mutex::new(None));
     let armed_list_sequence = Arc::new(Mutex::new(VecDeque::new()));
@@ -912,7 +925,7 @@ pub async fn fake_daemon_answering_with_ack(
     ack: HelloAck,
     answer: impl Fn(&Request) -> Response + Send + Sync + Clone + 'static,
 ) -> mpsc::UnboundedReceiver<Envelope> {
-    let mut listener = Listener::bind(path).unwrap();
+    let mut listener = bind(path);
     let (tx, rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {
         while let Ok(stream) = listener.accept().await {
@@ -955,7 +968,7 @@ pub async fn fake_client_answering(
     path: &Path,
     answer: impl Fn(&Request) -> Response + Send + 'static,
 ) -> (Client, mpsc::UnboundedReceiver<Envelope>) {
-    let mut listener = Listener::bind(path).unwrap();
+    let mut listener = bind(path);
     let (tx, rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {
         let stream = listener.accept().await.unwrap();
@@ -982,7 +995,7 @@ pub async fn fake_client_answering(
 /// the returned channel, for asserting on what a `Client` puts on the wire
 /// rather than on how the daemon answers.
 pub async fn fake_client_capturing_envelopes(path: &Path) -> (Client, mpsc::Receiver<Envelope>) {
-    let mut listener = Listener::bind(path).unwrap();
+    let mut listener = bind(path);
     let (tx, rx) = mpsc::channel(SCRIPT_CHANNEL_CAPACITY);
     tokio::spawn(async move {
         let stream = listener.accept().await.unwrap();
@@ -1058,7 +1071,7 @@ pub async fn fake_client_event_then_reply(path: &Path) -> (Client, FakeDaemon) {
 /// connection, for testing that a `Client` fails every pending request with
 /// `RequestError::Closed` rather than hanging.
 pub async fn fake_client_that_closes_after_handshake(path: &Path) -> (Client, JoinHandle<()>) {
-    let mut listener = Listener::bind(path).unwrap();
+    let mut listener = bind(path);
     let task = tokio::spawn(async move {
         let stream = listener.accept().await.unwrap();
         let mut frames = Framed::new(stream, codec());
@@ -1076,7 +1089,7 @@ pub async fn fake_client_that_closes_after_handshake(path: &Path) -> (Client, Jo
 /// Unlike [`fake_client_that_closes_after_handshake`], which never accepts
 /// the request at all.
 pub async fn fake_client_that_dies_mid_request(path: &Path) -> (Client, JoinHandle<()>) {
-    let mut listener = Listener::bind(path).unwrap();
+    let mut listener = bind(path);
     let task = tokio::spawn(async move {
         let stream = listener.accept().await.unwrap();
         let mut frames = Framed::new(stream, codec());
@@ -1098,7 +1111,7 @@ pub async fn fake_client_that_dies_mid_request(path: &Path) -> (Client, JoinHand
 /// `FakeDaemon`'s `serve_scripted` loop always answers some request
 /// promptly, and no `ScriptCommand` means never answering.
 pub async fn fake_client_that_never_replies(path: &Path) -> (Client, JoinHandle<()>) {
-    let mut listener = Listener::bind(path).unwrap();
+    let mut listener = bind(path);
     let task = tokio::spawn(async move {
         let stream = listener.accept().await.unwrap();
         let mut frames = Framed::new(stream, codec());
@@ -1136,7 +1149,7 @@ pub fn fast_opts() -> SpawnOptions {
 ///
 /// Panics if `path` cannot be bound.
 pub fn start_fake_daemon_answering_on(path: &Path) {
-    let mut listener = Listener::bind(path).unwrap();
+    let mut listener = bind(path);
     tokio::spawn(async move {
         let stream = listener.accept().await.unwrap();
         let mut frames = Framed::new(stream, codec());
