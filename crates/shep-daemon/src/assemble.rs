@@ -654,6 +654,74 @@ mod tests {
         );
     }
 
+    /// `{{SHEP_HOME}}` renders absolute, so the cwd anchor leaves it alone.
+    /// The ordering is what makes that true: `build` renders first and
+    /// anchors second. Inverted, the token would still be in the string at
+    /// the anchor, read as a relative path, and land the sheep's logs under
+    /// its own working directory.
+    #[test]
+    fn a_shep_home_log_path_is_not_anchored_at_the_app_cwd() {
+        // A leading separator is not absolute on Windows, so the home has to
+        // carry a drive letter there for this to be the case under test.
+        let home = if cfg!(windows) {
+            r"C:\shep"
+        } else {
+            "/home/ada/.shep"
+        };
+        let mut paths = test_paths();
+        paths.home = PathBuf::from(home);
+
+        let app_config = AppConfig {
+            name: "app".to_string(),
+            script: "app".to_string(),
+            args: vec![],
+            cwd: Some("/srv/app".to_string()),
+            out_file: Some("{{SHEP_HOME}}/logs/{{name}}-out.log".to_string()),
+            err_file: Some("{{SHEP_HOME}}/logs/{{name}}-err.log".to_string()),
+            ..Default::default()
+        };
+        let app = normalize(app_config).unwrap();
+
+        let spec = assemble(&app, 0, &paths, None, &no_secrets()).unwrap();
+
+        let logs = PathBuf::from(home).join("logs");
+        assert_eq!(spec.out_file, logs.join("app-out.log"));
+        assert_eq!(spec.err_file, logs.join("app-err.log"));
+    }
+
+    /// The token reads the shepherd's own home rather than a fixed default,
+    /// so two daemons under different `$SHEP_HOME`s write to different files
+    /// from one Flockfile.
+    #[test]
+    fn a_shep_home_log_path_follows_the_shepherd_it_is_assembled_for() {
+        let app_config = AppConfig {
+            name: "app".to_string(),
+            script: "app".to_string(),
+            args: vec![],
+            out_file: Some("{{SHEP_HOME}}/logs/out.log".to_string()),
+            ..Default::default()
+        };
+        let app = normalize(app_config).unwrap();
+
+        let mut elsewhere = test_paths();
+        elsewhere.home = PathBuf::from(if cfg!(windows) {
+            r"C:\srv\shep"
+        } else {
+            "/srv/shep"
+        });
+
+        let here = assemble(&app, 0, &test_paths(), None, &no_secrets()).unwrap();
+        let there = assemble(&app, 0, &elsewhere, None, &no_secrets()).unwrap();
+
+        assert_eq!(
+            here.out_file,
+            PathBuf::from("/home/ada/.shep")
+                .join("logs")
+                .join("out.log")
+        );
+        assert_eq!(there.out_file, elsewhere.home.join("logs").join("out.log"));
+    }
+
     // fails if the gate drops the `channel` term from the disjunction
     #[test]
     fn channel_enabled_by_its_own_field() {
