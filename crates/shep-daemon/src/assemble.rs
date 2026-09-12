@@ -110,9 +110,11 @@ const INHERITED_UNIX: &[&str] = &["HOME", "USER", "LANG", "TZ"];
 ///
 /// `PYTHONUTF8`/`PYTHONIOENCODING` are here for one specific failure: a
 /// non-console stdio handle (a pipe, which is what every spawned child gets)
-/// makes CPython on Windows fall back to the legacy ANSI code page for
-/// `sys.stdout`/`sys.stderr`, and any non-ASCII byte an app prints then
-/// raises `UnicodeEncodeError`. Neither has a unix equivalent to piggyback
+/// makes CPython up to 3.14 fall back to the legacy ANSI code page for
+/// `sys.stdout`/`sys.stderr` on Windows, and any non-ASCII byte an app prints
+/// then raises `UnicodeEncodeError`. CPython 3.15 turns UTF-8 mode on by
+/// default (PEP 686), so these two matter for an older interpreter and for
+/// anything that sets `PYTHONUTF8=0`. Neither has a unix equivalent to piggyback
 /// on. `LANG` is what decides a child's stdio encoding there and
 /// [`INHERITED_UNIX`] forwards it, which is not the same as setting one: a
 /// daemon started with no `LANG`, or with one naming a non-UTF-8 locale,

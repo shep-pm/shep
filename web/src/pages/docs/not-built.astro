@@ -106,12 +106,15 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
     </p>
     <CodeBlock>{`UnicodeEncodeError: 'charmap' codec can't encode characters in position 5-7: character maps to <undefined>`}</CodeBlock>
     <p>
-      CPython on Windows picks its stdout/stderr encoding by whether a real
-      console is attached. A shepherd-managed process never has one, since
-      its output is a pipe, so CPython falls back to the legacy code page
-      (<code>cp1252</code> on a US/Western install) instead of UTF-8. The
-      app runs fine at a terminal and crashes the moment shep supervises it,
-      the first time it prints anything outside that code page.
+      Up to CPython 3.14, Python on Windows picks its stdout/stderr encoding
+      by whether a real console is attached. A shepherd-managed process never
+      has one, since its output is a pipe, so CPython falls back to the legacy
+      code page (<code>cp1252</code> on a US/Western install) instead of
+      UTF-8. The app runs fine at a terminal and crashes the moment shep
+      supervises it, the first time it prints anything outside that code
+      page. CPython 3.15 turns UTF-8 mode on by default (<a
+      href="https://peps.python.org/pep-0686/">PEP 686</a>), so upgrading
+      fixes it too, unless something sets <code>PYTHONUTF8=0</code>.
     </p>
     <p>
       Two environment variables fix it: <code>PYTHONUTF8=1</code> and{" "}
