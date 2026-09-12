@@ -1481,11 +1481,8 @@ impl CloseDialog {
     /// The sheep this dialog is asking about.
     ///
     /// Unread by this frame's own render: `close_dialog_lines` names no
-    /// target, only what changed. Kept for a later frame's title band.
-    #[allow(
-        dead_code,
-        reason = "task 4's boxed form reads this; that frame is not built yet"
-    )]
+    /// target, only what changed. [`App::answer_close`] reads it, since a
+    /// held verb has to name the sheep after the dialog itself is gone.
     #[must_use]
     pub fn target_name(&self) -> &str {
         &self.name
@@ -5099,6 +5096,15 @@ impl App {
     /// on, which respawns into the config the pane was just fixing. A batch
     /// with nothing to wait for (parked fields only, nothing filed) sends
     /// the verb at once instead; there is nothing for it to outrun.
+    ///
+    /// The writes always go: they are the operator's own edits, and the
+    /// transport already orders them safely against whatever else is
+    /// outstanding. What refuses is only the verb, and only when one is
+    /// already in flight, held or armed: [`Self::held`] already occupied,
+    /// or [`Self::action`] already sent by an earlier confirm. Holding a
+    /// second verb there would let the first batch's own replies fire it,
+    /// same conflict [`Self::arm`] and [`Self::arm_sheep_pane`] refuse by
+    /// the front door.
     fn answer_close(&mut self, verb: Option<ActionVerb>) -> Effect {
         let name = self
             .close_dialog
@@ -5109,6 +5115,13 @@ impl App {
         let (Some(verb), Some(name)) = (verb, name) else {
             return Effect::SendAll(writes);
         };
+        if self.held.is_some() || self.action.is_some() {
+            self.notice = Some(Notice {
+                text: "one action is already in flight".to_string(),
+                grave: true,
+            });
+            return Effect::SendAll(writes);
+        }
         if writes.is_empty() {
             return self.send_held_action(verb, name);
         }
@@ -5143,12 +5156,16 @@ impl App {
         }
         let held = self.held.take().expect("checked Some above");
         if !held.landed {
+            // The per-field handler already set a notice naming which write
+            // and why: reuse it rather than replace it, so the one thing an
+            // operator needs most (the reason) is not the thing this frame
+            // clobbers to say the action did not go out.
+            let reason = self.notice.as_ref().map_or_else(
+                || format!("{}: every write was refused", held.name),
+                |notice| notice.text.clone(),
+            );
             self.notice = Some(Notice {
-                text: format!(
-                    "{}: every write was refused, so {} did not go out",
-                    held.name,
-                    held.verb.label()
-                ),
+                text: format!("{reason}, so {} did not go out", held.verb.label()),
                 grave: true,
             });
             return Some(Effect::None);
@@ -13534,7 +13551,15 @@ mod tests {
             result: Err(fixtures::invalid_config()),
         });
         assert!(matches!(last, Effect::None), "got {last:?}");
-        assert!(app.notice().is_some(), "and it says why");
+        let notice = app.notice().map(ToString::to_string).unwrap_or_default();
+        assert!(
+            notice.contains("no such directory"),
+            "the field's own refusal is not lost: {notice:?}"
+        );
+        assert!(
+            notice.contains("restart did not go out"),
+            "and it says the action did not go out: {notice:?}"
+        );
     }
 
     /// `L` takes the same wait-for-the-writes path as `R`, and must reach
@@ -13627,6 +13652,89 @@ mod tests {
         let later = app.now() + CONFIRM_EXPIRY;
         app.update(Msg::Tick { now: later });
         assert!(app.held_action().is_none(), "it expired");
+    }
+
+    /// The gap that let a second held verb through: two `R` answers in a
+    /// row, with the first batch's replies still outstanding when the
+    /// second is asked. The bug was `self.held` being overwritten by the
+    /// second session, so the first session's own replies (an unrelated
+    /// batch, and the wrong count) resolved the second session's verb
+    /// early. Proof of the fix: the first write's reply alone must not
+    /// finish anything (the held count is still the first batch's own two,
+    /// not the second batch's one), and the second session's `R` never
+    /// gets an action at all, in flight or otherwise.
+    #[test]
+    fn a_second_r_never_holds_over_the_first() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let Effect::SendAll(first_batch) =
+            app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)))
+        else {
+            panic!("expected the first batch");
+        };
+        assert_eq!(first_batch.len(), 2);
+
+        // Reopen the pane, file another edit, and answer the dialog again
+        // while the first batch's replies are still outstanding.
+        app.update(Msg::Key(KeyPress::Edit));
+        app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "web".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(
+                fixtures::sheep_config_view(),
+            ))),
+        });
+        fixtures::file_edit(&mut app, "cwd", "/srv/second");
+        app.update(Msg::Key(KeyPress::Escape));
+        let second_answer = app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        assert!(
+            matches!(second_answer, Effect::SendAll(ref batch) if batch.len() == 1),
+            "the edit still goes out: {second_answer:?}"
+        );
+        assert!(
+            app.notice()
+                .is_some_and(|n| n.to_string().contains("already in flight")),
+            "got {:?}",
+            app.notice()
+        );
+
+        // The first write's own reply must not finish anything: the held
+        // count is still the first batch's own two, not the second
+        // batch's one that a bug would have overwritten it with.
+        let first_reply = app.update(Msg::Replied {
+            sent: first_batch[0].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "cwd".to_string(),
+                pending: false,
+            }),
+        });
+        assert!(
+            matches!(first_reply, Effect::None),
+            "fired early: {first_reply:?}"
+        );
+
+        // The first batch's own second reply completes it, correctly: this
+        // is the first session's own action, not the second's.
+        let second_reply = app.update(Msg::Replied {
+            sent: first_batch[1].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "max_memory".to_string(),
+                pending: false,
+            }),
+        });
+        assert!(
+            matches!(
+                second_reply,
+                Effect::Send(Sent::Action {
+                    verb: ActionVerb::Restart,
+                    ..
+                })
+            ),
+            "got {second_reply:?}"
+        );
     }
 
     /// `TextAbandon` drops the env editor and leaves the pane exactly as
