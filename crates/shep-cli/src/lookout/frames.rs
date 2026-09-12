@@ -2505,6 +2505,13 @@ mod tests {
     }
 
     #[test]
+    /// Not every [`Scene`] gets a block, only the ones whose caption
+    /// promises something a bare snapshot pin would not catch: a rollup
+    /// number, a column that appears or drops at a threshold, a border
+    /// that is present or absent. A scene whose caption is fully covered
+    /// by its own pinned `.snap` (most of the settings and filter scenes,
+    /// for instance) has nothing this function would add.
+    ///
     /// `cfg(unix)`: one fixture carries a synthetic signalled exit, and
     /// `signal_label` resolves it against the running platform's table.
     /// Windows never sets a signal on `ExitOutcome`, so this arm only
@@ -2512,7 +2519,7 @@ mod tests {
     /// artifacts under `docs/lookout/` are unix renderings for the same
     /// reason.
     #[cfg(unix)]
-    #[allow(clippy::too_many_lines)] // one assertion block per scene, each pinning its own caption clause
+    #[allow(clippy::too_many_lines)] // one assertion block per scene covered, each pinning its own caption clause
     fn every_scene_shows_the_thing_it_is_named_for() {
         // HealthyWide: all three panes at 120x30.
         let wide_buffer = scene(Scene::HealthyWide).1;
@@ -3228,6 +3235,132 @@ mod tests {
         assert!(
             short_pane.contains("\u{2588}\u{2588} CONFIG & ENV"),
             "the config column, which gives ground last, is still up: {short_pane:?}"
+        );
+
+        // EditPane: fresh, no edits filed, 160x48. LANDS draws in the
+        // header and the explanation panel is on screen, and the title
+        // band carries no edit count.
+        let edit_pane = render_text(&scene(Scene::EditPane).1);
+        let title = edit_pane
+            .lines()
+            .find(|line| line.contains("(sheep config)"))
+            .expect("the title band");
+        assert!(
+            !title.contains("edit"),
+            "fresh, so the title names no edit count: {title:?}"
+        );
+        let header = edit_pane
+            .lines()
+            .find(|line| line.contains("FIELD") && line.contains("VALUE"))
+            .expect("the field list header");
+        assert!(
+            header.contains("LANDS"),
+            "wide enough for the cost column: {header:?}"
+        );
+        assert!(
+            edit_pane.contains("FOCUSED"),
+            "the explanation panel names the focused field: {edit_pane:?}"
+        );
+
+        // EditPaneEdited: the same pane with cwd and max_memory filed. The
+        // title counts them and the pending section lists both.
+        let edit_pane_edited = render_text(&scene(Scene::EditPaneEdited).1);
+        let edited_title = edit_pane_edited
+            .lines()
+            .find(|line| line.contains("(sheep config)"))
+            .expect("the title band");
+        assert!(
+            edited_title.contains("2 edits"),
+            "two edits filed: {edited_title:?}"
+        );
+        let pending_section = edit_pane_edited
+            .lines()
+            .skip_while(|line| !line.trim_start().starts_with("pending edits"))
+            .take(3)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            pending_section.contains("cwd") && pending_section.contains("max_memory"),
+            "both filed edits are named under the pending edits section: {pending_section:?}"
+        );
+
+        // EditPaneSqueezed: 120 columns. The panel still draws; LANDS
+        // gives way to it, so the header carries FIELD and VALUE but not
+        // LANDS.
+        let squeezed = render_text(&scene(Scene::EditPaneSqueezed).1);
+        let squeezed_header = squeezed
+            .lines()
+            .find(|line| line.contains("FIELD") && line.contains("VALUE"))
+            .expect("the field list header");
+        assert!(
+            !squeezed_header.contains("LANDS"),
+            "LANDS gives way to the panel at 120 columns: {squeezed_header:?}"
+        );
+        assert!(
+            squeezed.contains("FOCUSED"),
+            "the panel still draws at 120 columns: {squeezed:?}"
+        );
+
+        // EditPaneNarrow: 88 columns. The panel is gone, so LANDS returns.
+        let narrow_edit = render_text(&scene(Scene::EditPaneNarrow).1);
+        let narrow_edit_header = narrow_edit
+            .lines()
+            .find(|line| line.contains("FIELD") && line.contains("VALUE"))
+            .expect("the field list header");
+        assert!(
+            narrow_edit_header.contains("LANDS"),
+            "nothing else carries cost at 88 columns, so LANDS is back: {narrow_edit_header:?}"
+        );
+        assert!(
+            !narrow_edit.contains("FOCUSED"),
+            "the panel does not draw at 88 columns: {narrow_edit:?}"
+        );
+
+        // CloseDialog: 160x48, boxed. The heading, the first row inside
+        // the border, names both halves: two edits needing a respawn and
+        // one field already parked.
+        let close_dialog = render_text(&scene(Scene::CloseDialog).1);
+        let close_dialog_lines: Vec<&str> = close_dialog.lines().collect();
+        let border_row = close_dialog_lines
+            .iter()
+            .position(|line| line.contains('▛')) // BOX_TOP_LEFT
+            .expect("the box border draws at 160 columns");
+        let heading = close_dialog_lines[border_row + 1];
+        assert!(
+            heading.contains("EDITS NEED A RESPAWN") && heading.contains("FIELD ALREADY"),
+            "the heading names both the unsent and the parked half: {heading:?}"
+        );
+
+        // CloseDialogFloor: 90x48, exactly the width the border needs.
+        let close_dialog_floor = render_text(&scene(Scene::CloseDialogFloor).1);
+        assert!(
+            close_dialog_floor.contains('▛'),
+            "the border draws at the floor: {close_dialog_floor:?}"
+        );
+
+        // CloseDialogNarrow: 89x48, one column under the floor. No box
+        // glyph anywhere in the frame; this is the assertion a wrong
+        // BOX_FLOOR would fail.
+        let close_dialog_narrow = render_text(&scene(Scene::CloseDialogNarrow).1);
+        for glyph in ['▛', '▜', '▙', '▟', '▐', '▀', '▄', '▌'] {
+            assert!(
+                !close_dialog_narrow.contains(glyph),
+                "no border glyph {glyph:?} draws one column under the floor: {close_dialog_narrow:?}"
+            );
+        }
+
+        // CloseDialogParked: 160x48, no edit of the operator's own. The
+        // heading names only the parked half, with no unsent count.
+        let close_dialog_parked = render_text(&scene(Scene::CloseDialogParked).1);
+        let parked_lines: Vec<&str> = close_dialog_parked.lines().collect();
+        let parked_border_row = parked_lines
+            .iter()
+            .position(|line| line.contains('▛'))
+            .expect("the box border draws at 160 columns");
+        let parked_heading = parked_lines[parked_border_row + 1];
+        assert!(
+            parked_heading.contains("FIELD ALREADY") && !parked_heading.contains("EDIT"),
+            "the heading names the parked half alone, with no unsent count: {parked_heading:?}"
         );
     }
 
