@@ -147,6 +147,9 @@ async fn accept_forever(listener: TcpListener, cfg: Arc<ServeConfig>, semaphore:
 /// Answers exactly one request on `stream`: read, auth, method, body,
 /// resolve, hidden, contain, then a directory or a file, in that order.
 /// Every reply is logged as one access-log line before this returns.
+///
+/// The reply is [`answer`]'s; the single `log_access` call is here, so no
+/// exit path can answer a request and leave it out of the log.
 async fn handle_connection(mut stream: TcpStream, cfg: Arc<ServeConfig>) {
     let peer = stream.peer_addr().ok();
 
@@ -158,14 +161,35 @@ async fn handle_connection(mut stream: TcpStream, cfg: Arc<ServeConfig>) {
         Err(_err) => return,
     };
 
-    let raw_path = request
-        .target
-        .split(['?', '#'])
-        .next()
-        .unwrap_or(request.target.as_str());
-    // The logged path starts as the raw target, escaped, and is
-    // overwritten with the resolved path once resolution succeeds.
-    let mut logged_path = escape_for_log(raw_path);
+    // The logged path starts as the raw target, escaped, and `answer`
+    // overwrites it with the resolved path once resolution succeeds.
+    let mut logged_path = escape_for_log(path_of(&request.target));
+    let (status, bytes) = answer(&mut stream, &cfg, &request, &mut logged_path).await;
+    log_access(peer, &request.method, &logged_path, status, bytes);
+}
+
+/// A request target's path: everything before the first `?` or `#`, or the
+/// whole target when it carries neither.
+fn path_of(target: &str) -> &str {
+    target
+        .split_once(['?', '#'])
+        .map_or(target, |(path, _rest)| path)
+}
+
+/// Writes one reply to `stream`, returning the status answered and the
+/// body byte count for [`handle_connection`]'s access-log line.
+///
+/// Steps 2 through 10; step 1, the read, is the caller's. `logged_path`
+/// arrives holding the escaped raw target and is overwritten with the
+/// resolved path as soon as resolution succeeds, so a refusal reached
+/// before then is still logged under the target the client sent.
+async fn answer(
+    stream: &mut TcpStream,
+    cfg: &ServeConfig,
+    request: &HttpRequest,
+    logged_path: &mut String,
+) -> (u16, u64) {
+    let raw_path = path_of(&request.target);
 
     // 2. auth, before path resolution: an unauthenticated client must not
     // use 400-vs-404 to map the filesystem before it proves who it is.
@@ -174,7 +198,7 @@ async fn handle_connection(mut stream: TcpStream, cfg: Arc<ServeConfig>) {
         if !creds.satisfies(header) {
             let body = b"unauthorized\n";
             send(
-                &mut stream,
+                stream,
                 401,
                 "text/plain",
                 body,
@@ -184,8 +208,7 @@ async fn handle_connection(mut stream: TcpStream, cfg: Arc<ServeConfig>) {
                 }],
             )
             .await;
-            log_access(peer, &request.method, &logged_path, 401, body.len() as u64);
-            return;
+            return (401, body.len() as u64);
         }
     }
 
@@ -193,7 +216,7 @@ async fn handle_connection(mut stream: TcpStream, cfg: Arc<ServeConfig>) {
     if request.method != "GET" && request.method != "HEAD" {
         let body = b"method not allowed; this server answers GET and HEAD\n";
         send(
-            &mut stream,
+            stream,
             405,
             "text/plain",
             body,
@@ -203,8 +226,7 @@ async fn handle_connection(mut stream: TcpStream, cfg: Arc<ServeConfig>) {
             }],
         )
         .await;
-        log_access(peer, &request.method, &logged_path, 405, body.len() as u64);
-        return;
+        return (405, body.len() as u64);
     }
 
     // 4. body: this server never reads one.
@@ -216,9 +238,8 @@ async fn handle_connection(mut stream: TcpStream, cfg: Arc<ServeConfig>) {
         || request.headers.contains_key("transfer-encoding");
     if has_declared_body {
         let body = b"this server does not accept a request body\n";
-        send(&mut stream, 400, "text/plain", body, vec![]).await;
-        log_access(peer, &request.method, &logged_path, 400, body.len() as u64);
-        return;
+        send(stream, 400, "text/plain", body, vec![]).await;
+        return (400, body.len() as u64);
     }
 
     // 5. resolve.
@@ -226,26 +247,21 @@ async fn handle_connection(mut stream: TcpStream, cfg: Arc<ServeConfig>) {
         Ok(segments) => segments,
         Err(refusal) => {
             let body = refusal.to_string();
-            send(&mut stream, 400, "text/plain", body.as_bytes(), vec![]).await;
-            log_access(peer, &request.method, &logged_path, 400, body.len() as u64);
-            return;
+            send(stream, 400, "text/plain", body.as_bytes(), vec![]).await;
+            return (400, body.len() as u64);
         }
     };
-    logged_path = format!("/{}", segments.join("/"));
+    *logged_path = format!("/{}", segments.join("/"));
 
     // 6. hidden: a 404, not a 403, checked before any filesystem access.
     if path::is_hidden(&segments) && !cfg.hidden {
-        let (status, bytes) = send_not_found(&mut stream, &cfg, &request).await;
-        log_access(peer, &request.method, &logged_path, status, bytes);
-        return;
+        return send_not_found(stream, cfg, request).await;
     }
 
     // 7. contain: the syscall tier's containment walk and symlink
     // refusal, or canonicalize-and-check under `--follow-symlinks`.
     let Some(resolved) = fs::contain(&cfg.root, &segments, cfg.follow_symlinks).await else {
-        let (status, bytes) = send_not_found(&mut stream, &cfg, &request).await;
-        log_access(peer, &request.method, &logged_path, status, bytes);
-        return;
+        return send_not_found(stream, cfg, request).await;
     };
 
     // 8. metadata: a directory goes to step 9, anything else (a fifo, a
@@ -253,11 +269,7 @@ async fn handle_connection(mut stream: TcpStream, cfg: Arc<ServeConfig>) {
     // it.
     let metadata = match tokio::fs::metadata(&resolved).await {
         Ok(metadata) => metadata,
-        Err(_err) => {
-            let (status, bytes) = send_not_found(&mut stream, &cfg, &request).await;
-            log_access(peer, &request.method, &logged_path, status, bytes);
-            return;
-        }
+        Err(_err) => return send_not_found(stream, cfg, request).await,
     };
 
     if metadata.is_dir() {
@@ -272,8 +284,8 @@ async fn handle_connection(mut stream: TcpStream, cfg: Arc<ServeConfig>) {
                     .join("/"),
             );
             location.push('/');
-            match respond(
-                &mut stream,
+            return match respond(
+                stream,
                 301,
                 "text/plain",
                 0,
@@ -284,30 +296,22 @@ async fn handle_connection(mut stream: TcpStream, cfg: Arc<ServeConfig>) {
             )
             .await
             {
-                Ok(()) => log_access(peer, &request.method, &logged_path, 301, 0),
+                Ok(()) => (301, 0),
                 Err(_err) => {
                     // A peer disconnect, not a bad header: `encode_segment`
                     // only ever produces printable ASCII, so `write_head`'s
                     // control-byte check never fires from this call.
                     let body = b"could not build the redirect\n";
-                    send(&mut stream, 500, "text/plain", body, vec![]).await;
-                    log_access(peer, &request.method, &logged_path, 500, body.len() as u64);
+                    send(stream, 500, "text/plain", body, vec![]).await;
+                    (500, body.len() as u64)
                 }
-            }
-            return;
+            };
         }
 
         if let Some((file, len)) = fs::open_regular(&resolved.join("index.html")).await {
-            let status = serve_file(
-                &mut stream,
-                &request,
-                mime::content_type("index.html"),
-                file,
-                len,
-            )
-            .await;
-            log_access(peer, &request.method, &logged_path, status, len);
-            return;
+            let status =
+                serve_file(stream, request, mime::content_type("index.html"), file, len).await;
+            return (status, len);
         }
 
         if cfg.listing {
@@ -321,33 +325,27 @@ async fn handle_connection(mut stream: TcpStream, cfg: Arc<ServeConfig>) {
             }
             let html = listing::render(&prefix, &entries);
             send(
-                &mut stream,
+                stream,
                 200,
                 "text/html; charset=utf-8",
                 html.as_bytes(),
                 vec![],
             )
             .await;
-            log_access(peer, &request.method, &logged_path, 200, html.len() as u64);
-            return;
+            return (200, html.len() as u64);
         }
 
-        let (status, bytes) = send_not_found(&mut stream, &cfg, &request).await;
-        log_access(peer, &request.method, &logged_path, status, bytes);
-        return;
+        return send_not_found(stream, cfg, request).await;
     }
 
     // 10. file.
     let Some((file, len)) = fs::open_regular(&resolved).await else {
-        let (status, bytes) = send_not_found(&mut stream, &cfg, &request).await;
-        log_access(peer, &request.method, &logged_path, status, bytes);
-        return;
+        return send_not_found(stream, cfg, request).await;
     };
-    let content_type = mime::content_type(&logged_path);
-    let status = serve_file(&mut stream, &request, content_type, file, len).await;
-    log_access(peer, &request.method, &logged_path, status, len);
+    let content_type = mime::content_type(logged_path.as_str());
+    let status = serve_file(stream, request, content_type, file, len).await;
+    (status, len)
 }
-
 /// Answers a 404, or, if `cfg.spa` is set, the method is `GET`/`HEAD`, and
 /// the request's `Accept` header names `text/html`, serves the docroot's
 /// `index.html` with a 200 instead. Every 404 this worker would otherwise

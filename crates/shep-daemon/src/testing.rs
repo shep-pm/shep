@@ -360,26 +360,36 @@ fn harness_sampling(scripts: Vec<ProcScript>, readings: Vec<Vec<ProcessRss>>) ->
 /// [`harness_sampling`], over a runner the caller built.
 fn harness_sampling_with(runner: ScriptedRunner, readings: Vec<Vec<ProcessRss>>) -> Harness {
     harness_with_runner(runner, |reports| {
-        let sampler: Arc<dyn MemorySampler> = Arc::new(ScriptedSampler::new(readings));
-        let stats = Arc::new(StatsState::new(Arc::clone(&sampler)));
-        Extras {
-            clock: Arc::new(TestClock::starting_at(
-                "2026-01-01T00:00:00Z"
-                    .parse()
-                    .expect("a valid RFC3339 timestamp"),
-            )),
-            enforcer: Arc::new(crate::limits::PollingEnforcer::start(
-                sampler,
-                reports.breaches.clone(),
-                Arc::clone(&stats),
-            )),
-            // A fixture nobody configured behaves like a daemon nobody
-            // configured.
-            max_cron_sleep: DEFAULT_MAX_CRON_SLEEP,
-            reports,
-            stats,
-        }
+        standard_extras(Arc::new(ScriptedSampler::new(readings)), reports)
     })
+}
+
+/// The [`Extras`] every scripted harness runs with, over a caller-chosen
+/// sampler.
+///
+/// The sampler is the only part a fixture varies. Everything else is the
+/// fixed test environment: a clock that does not move on its own, an
+/// enforcer polling that sampler, and the defaults a daemon nobody
+/// configured would run with.
+fn standard_extras(sampler: Arc<dyn MemorySampler>, reports: ExtrasReports) -> Extras {
+    let stats = Arc::new(StatsState::new(Arc::clone(&sampler)));
+    Extras {
+        clock: Arc::new(TestClock::starting_at(
+            "2026-01-01T00:00:00Z"
+                .parse()
+                .expect("a valid RFC3339 timestamp"),
+        )),
+        enforcer: Arc::new(crate::limits::PollingEnforcer::start(
+            sampler,
+            reports.breaches.clone(),
+            Arc::clone(&stats),
+        )),
+        // A fixture nobody configured behaves like a daemon nobody
+        // configured.
+        max_cron_sleep: DEFAULT_MAX_CRON_SLEEP,
+        reports,
+        stats,
+    }
 }
 
 /// [`harness`], over a process table that reports process identities.
@@ -392,24 +402,10 @@ pub(crate) fn harness_identifying(
     identities: Vec<ProcessIdentity>,
 ) -> Harness {
     harness_with_extras(scripts, |reports| {
-        let sampler: Arc<dyn MemorySampler> =
-            Arc::new(ScriptedSampler::identifying(vec![identities]));
-        let stats = Arc::new(StatsState::new(Arc::clone(&sampler)));
-        Extras {
-            clock: Arc::new(TestClock::starting_at(
-                "2026-01-01T00:00:00Z"
-                    .parse()
-                    .expect("a valid RFC3339 timestamp"),
-            )),
-            enforcer: Arc::new(crate::limits::PollingEnforcer::start(
-                sampler,
-                reports.breaches.clone(),
-                Arc::clone(&stats),
-            )),
-            max_cron_sleep: DEFAULT_MAX_CRON_SLEEP,
+        standard_extras(
+            Arc::new(ScriptedSampler::identifying(vec![identities])),
             reports,
-            stats,
-        }
+        )
     })
 }
 
@@ -668,6 +664,21 @@ impl Clock for TestClock {
         let elapsed =
             chrono::Duration::from_std(self.started.elapsed()).unwrap_or(chrono::Duration::MAX);
         self.epoch + elapsed
+    }
+}
+
+/// A reading with no CPU time on it, for the memory cases.
+pub(crate) fn rss(pid: u32, parent: Option<u32>, bytes: u64) -> ProcessRss {
+    rss_cpu(pid, parent, bytes, 0)
+}
+
+/// A reading carrying both quantities, for the CPU cases.
+pub(crate) fn rss_cpu(pid: u32, parent: Option<u32>, bytes: u64, cpu_ms: u64) -> ProcessRss {
+    ProcessRss {
+        pid,
+        parent,
+        bytes,
+        cpu_ms,
     }
 }
 

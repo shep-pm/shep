@@ -71,6 +71,14 @@ pub struct SheepRow {
     pub cpu_percent: Option<f32>,
     /// Tree resident set size in bytes.
     pub memory_bytes: Option<u64>,
+    /// The tree's cumulative CPU-milliseconds, or `None` when the shepherd
+    /// is not sampling this sheep.
+    ///
+    /// Present in one case [`Self::cpu_percent`] is not: a sheep spawned
+    /// since the last periodic tick has a counter already, but no baseline
+    /// to measure it against, so this is `Some` while the percent is still
+    /// `None`.
+    pub cpu_ms: Option<u64>,
     /// Present when this row is a dog rather than a sheep.
     pub dog: Option<DogRow>,
     /// Process-tree members, when the reply walked for them (`describe`
@@ -184,6 +192,7 @@ impl From<&ProcessInfo> for SheepRow {
             err_file: info.err_file.clone(),
             cpu_percent: info.cpu_percent,
             memory_bytes: info.memory_bytes,
+            cpu_ms: info.cpu_ms,
             dog: info.dog.as_ref().map(DogRow::from),
             lambs: info
                 .lambs
@@ -364,6 +373,7 @@ mod tests {
             .cpu_percent(Some(12.5))
             .memory_bytes(Some(1024 * 1024))
             .max_memory(Some(64 * 1024 * 1024))
+            .cpu_ms(Some(5_678))
             .dog(Some(DogSource::Adopted {
                 path: "/usr/local/bin/dog".to_string(),
             }))

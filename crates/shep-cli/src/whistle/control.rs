@@ -197,6 +197,7 @@ mod tests {
 
     use super::*;
     use crate::whistle::gate;
+    use crate::whistle::matching_ack;
 
     /// How long a test waits for a tool call before treating it as hung.
     const TEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -204,13 +205,6 @@ mod tests {
     /// A [`shep_core::protocol::HelloAck`] whose version matches this
     /// binary, since `sample_ack`'s fixed `"9.9.9"` would be refused by
     /// the guard in `Shepherd::call_with_ack`.
-    fn matching_ack() -> shep_core::protocol::HelloAck {
-        shep_core::protocol::HelloAck {
-            daemon_version: env!("CARGO_PKG_VERSION").to_string(),
-            ..shep_client::testing::sample_ack()
-        }
-    }
-
     fn whistle_at(socket: std::path::PathBuf) -> Whistle {
         // Only `socket` is read by a control tool; the rest of `ShepPaths`
         // can be nonexistent, `barks` included.

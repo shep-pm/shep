@@ -9,7 +9,7 @@
 #![cfg(windows)]
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use shep_daemon::runner::{ProcessRunner, RunningProcess, SpawnSpec, StopSignal};
@@ -68,50 +68,59 @@ fn cmd_spec(dir: &tempfile::TempDir, args: &[&str]) -> SpawnSpec {
     }
 }
 
-/// Reads `path` until it contains `needle`, or fails after [`SETTLE`].
+/// Reads `out_file` until it contains `needle`, or fails after [`SETTLE`].
 ///
 /// Polls rather than reading once: the log pump writes on its own task, so
 /// a single read right after the child exits can race it.
-async fn wait_for_log(path: &PathBuf, needle: &str) -> String {
+///
+/// `err_file` is only read on the way to the panic. An empty log says
+/// nothing arrived, not why, and a sheep that failed to launch reports it
+/// on stderr.
+///
+/// # Panics
+///
+/// If `needle` has not reached `out_file` within [`SETTLE`].
+async fn wait_for_log(out_file: &Path, err_file: &Path, needle: &str) -> String {
     let started = tokio::time::Instant::now();
-    let deadline = tokio::time::Instant::now() + SETTLE;
+    let deadline = started + SETTLE;
     let mut last = String::new();
     while tokio::time::Instant::now() < deadline {
-        last = std::fs::read_to_string(path).unwrap_or_default();
+        last = std::fs::read_to_string(out_file).unwrap_or_default();
         if last.contains(needle) {
             return last;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    // An empty log says nothing arrived, not why. A sheep that failed to
-    // launch reports it on stderr, in a sibling file this does not check.
-    let sibling = path.with_file_name(path.file_name().and_then(|name| name.to_str()).map_or_else(
-        || "web-err.log".to_string(),
-        |name| name.replace("out", "err"),
-    ));
     panic!(
         "{needle:?} never reached {} after {:?}; last saw {last:?}\n\
          out file exists: {}, len {:?}\n\
          stderr file {}: {:?}",
-        path.display(),
+        out_file.display(),
         started.elapsed(),
-        path.exists(),
-        std::fs::metadata(path).map(|m| m.len()).ok(),
-        sibling.display(),
-        std::fs::read_to_string(&sibling).ok(),
+        out_file.exists(),
+        std::fs::metadata(out_file).map(|m| m.len()).ok(),
+        err_file.display(),
+        std::fs::read_to_string(err_file).ok(),
     );
 }
 
-/// Whether `pid` names a live process right now.
-fn pid_is_alive(pid: u32) -> bool {
-    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate};
+/// A process table read fresh, since both readers below want the state
+/// right now rather than whatever a cached `System` last saw.
+fn fresh_process_table() -> sysinfo::System {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate};
     let mut system = sysinfo::System::new();
     system.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
         ProcessRefreshKind::everything(),
     );
-    system.process(Pid::from_u32(pid)).is_some()
+    system
+}
+
+/// Whether `pid` names a live process right now.
+fn pid_is_alive(pid: u32) -> bool {
+    use sysinfo::Pid;
+    fresh_process_table().process(Pid::from_u32(pid)).is_some()
 }
 
 /// Every live `ping` the sheep has spawned.
@@ -122,14 +131,8 @@ fn pid_is_alive(pid: u32) -> bool {
 /// order handed that one back a third of the time. Callers fail on an empty
 /// answer rather than skip the assertion.
 fn pings_under(parent: u32) -> Vec<u32> {
-    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate};
-    let mut system = sysinfo::System::new();
-    system.refresh_processes_specifics(
-        ProcessesToUpdate::All,
-        true,
-        ProcessRefreshKind::everything(),
-    );
-    system
+    use sysinfo::Pid;
+    fresh_process_table()
         .processes()
         .values()
         .filter(|process| process.parent() == Some(Pid::from_u32(parent)))
@@ -159,7 +162,7 @@ async fn a_real_child_writes_its_stdout_to_the_log_file() {
         outcome.signal, None,
         "a Windows exit carries no signal number, ever"
     );
-    let logged = wait_for_log(&spec.out_file, "hello-from-windows").await;
+    let logged = wait_for_log(&spec.out_file, &spec.err_file, "hello-from-windows").await;
     assert!(logged.contains("hello-from-windows"), "{logged}");
 }
 
@@ -225,7 +228,7 @@ async fn kill_tree_reaches_a_grandchild_and_not_just_the_sheep() {
     let (mut proc, _io) = runner.spawn(&spec).unwrap();
     // The batch says when it has started its grandchild; the pid itself
     // comes from the process table, since `cmd` cannot report one.
-    wait_for_log(&spec.out_file, "LAMB-STARTED").await;
+    wait_for_log(&spec.out_file, &spec.err_file, "LAMB-STARTED").await;
     let sheep = proc.pid();
     // Both pings, not whichever is up first: `LAMB-STARTED` is echoed
     // between the background ping and the foreground one, so a snapshot on
@@ -335,7 +338,7 @@ async fn a_child_reaches_the_shepherd_channel_by_pipe_name() {
 
     let message = got.unwrap_or_else(|_| {
         panic!(
-            "no channel message within {SETTLE:?}; child saw SHEP_CHANNEL_PIPE={saw:?};              child stderr={child_err:?}"
+            "no channel message within {SETTLE:?}; child saw SHEP_CHANNEL_PIPE={saw:?}; child stderr={child_err:?}"
         )
     });
     assert!(

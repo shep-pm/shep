@@ -333,6 +333,20 @@ impl bark::EventSource for EventStream {
     }
 }
 
+/// The error for a reply that is not the variant the request names.
+///
+/// Never returned by a daemon on the same protocol version; kept
+/// reportable rather than `unreachable!()`. One function rather than the
+/// literal at each impl, so the two reports keep saying the same thing
+/// in the same shape.
+fn unexpected_reply(request: &str, expected: &str) -> RequestError {
+    RequestError::Rpc(RpcError {
+        code: RpcErrorCode::Internal,
+        message: format!("the shepherd answered {request} with something other than {expected}"),
+        daemon_version: None,
+    })
+}
+
 /// Wraps [`ReconnectingClient`] as both [`bark::FlockSource`] and
 /// [`bark::ConfigSource`]. [`ReconnectingClient`] is not `Clone`, so the
 /// two roles reach it through one [`Arc`] rather than through two clients
@@ -347,15 +361,7 @@ impl bark::FlockSource for ClientShepherd {
     async fn flock(&self) -> Result<Vec<ProcessInfo>, RequestError> {
         match self.client.request(Request::ListFlock).await? {
             Response::Flock(flock) => Ok(flock),
-            // Never returned by a daemon on the same protocol version;
-            // kept reportable rather than `unreachable!()`.
-            _ => Err(RequestError::Rpc(RpcError {
-                code: RpcErrorCode::Internal,
-                message: "the shepherd answered ListFlock with something other than \
-                          Response::Flock"
-                    .to_owned(),
-                daemon_version: None,
-            })),
+            _ => Err(unexpected_reply("ListFlock", "Response::Flock")),
         }
     }
 }
@@ -370,15 +376,7 @@ impl bark::ConfigSource for ClientShepherd {
             .await?;
         match response {
             Response::DogSection { toml } => Ok(toml.as_str().to_string()),
-            // Never returned by a daemon on the same protocol version;
-            // kept reportable rather than `unreachable!()`.
-            _ => Err(RequestError::Rpc(RpcError {
-                code: RpcErrorCode::Internal,
-                message: "the shepherd answered DogConfig with something other than \
-                          Response::DogSection"
-                    .to_owned(),
-                daemon_version: None,
-            })),
+            _ => Err(unexpected_reply("DogConfig", "Response::DogSection")),
         }
     }
 }

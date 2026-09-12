@@ -175,6 +175,21 @@ pub async fn whistle(err: &mut dyn Write, fmt: Format, paths: &ShepPaths) -> Exi
     }
 }
 
+/// A [`HelloAck`](shep_core::protocol::HelloAck) whose version the skew
+/// gate never refuses, since `sample_ack`'s `"9.9.9"` always would.
+///
+/// Here rather than in `shep_client::testing` beside `sample_ack`:
+/// `CARGO_PKG_VERSION` has to expand in this crate, whose version is the
+/// one a shepherd's is compared against. Expanded in shep-client it would
+/// report shep-client's, and the two crates carry separate versions.
+#[cfg(test)]
+fn matching_ack() -> shep_core::protocol::HelloAck {
+    shep_core::protocol::HelloAck {
+        daemon_version: env!("CARGO_PKG_VERSION").to_string(),
+        ..shep_client::testing::sample_ack()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

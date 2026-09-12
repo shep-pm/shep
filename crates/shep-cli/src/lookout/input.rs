@@ -79,8 +79,8 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char(' ') => Some(KeyPress::Cycle),
         KeyCode::Char('d') => Some(KeyPress::ListRemove),
         KeyCode::Char('D') => Some(KeyPress::SecretDelete),
-        KeyCode::Char('K') => Some(KeyPress::ListMoveUp),
-        KeyCode::Char('J') => Some(KeyPress::ListMoveDown),
+        KeyCode::Char('K') => Some(KeyPress::StepUp),
+        KeyCode::Char('J') => Some(KeyPress::StepDown),
         KeyCode::Char('F') => Some(KeyPress::FoldView),
         KeyCode::Char('z') => Some(KeyPress::Collapse),
         KeyCode::Char('b') => Some(KeyPress::Bleats),
@@ -185,11 +185,11 @@ mod tests {
         );
         assert_eq!(
             map_key(&key(KeyCode::Char('K')), InputMode::Normal),
-            Some(KeyPress::ListMoveUp)
+            Some(KeyPress::StepUp)
         );
         assert_eq!(
             map_key(&key(KeyCode::Char('J')), InputMode::Normal),
-            Some(KeyPress::ListMoveDown)
+            Some(KeyPress::StepDown)
         );
         assert_eq!(
             map_key(&key(KeyCode::Char('F')), InputMode::Normal),
@@ -443,6 +443,21 @@ mod tests {
         assert_eq!(
             map_key(&key(KeyCode::Char('N')), InputMode::Normal),
             Some(KeyPress::MatchPrev)
+        );
+    }
+
+    /// Named for the key, not for one pane's use of it. `map_key` dispatches
+    /// on mode rather than on which body is showing, so the body is what
+    /// decides whether a step reorders a list or walks to the next sheep.
+    #[test]
+    fn shift_j_and_shift_k_are_steps() {
+        assert_eq!(
+            map_key(&key(KeyCode::Char('J')), InputMode::Normal),
+            Some(KeyPress::StepDown)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('K')), InputMode::Normal),
+            Some(KeyPress::StepUp)
         );
     }
 }

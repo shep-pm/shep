@@ -55,6 +55,18 @@ pub struct Target {
     pub path: String,
 }
 
+impl Target {
+    /// The port a URL of this scheme reaches when it names none: 443 for
+    /// `https://`, 80 for `http://`.
+    ///
+    /// One spelling for both readers of the rule: [`parse_url`], which
+    /// assigns it, and [`build_get_request`], which decides from it whether
+    /// the `Host` header names a port at all.
+    const fn default_port(https: bool) -> u16 {
+        if https { 443 } else { 80 }
+    }
+}
+
 /// Manual: a derived `Debug` would print `path` in full, and `path` is
 /// where a webhook's own credential lives. Every `Target` collapses to its
 /// scheme, host and port, with `path` withheld.
@@ -308,7 +320,7 @@ pub fn parse_url(url: &str) -> Result<Target, FetchError> {
                 FetchError::Url(format!("{} has a non-numeric port", url_for_message(url)))
             })?,
         ),
-        None => (authority, if https { 443 } else { 80 }),
+        None => (authority, Target::default_port(https)),
     };
     if host.is_empty() {
         return Err(FetchError::Url(format!(
@@ -396,7 +408,7 @@ fn peer_transport_error(source: std::io::Error) -> FetchError {
 /// only when it is off the scheme's own default (443/80), and there is no
 /// `Accept-Encoding`.
 fn build_get_request(target: &Target) -> String {
-    let default_port = if target.https { 443 } else { 80 };
+    let default_port = Target::default_port(target.https);
     let host = if target.port == default_port {
         target.host.clone()
     } else {

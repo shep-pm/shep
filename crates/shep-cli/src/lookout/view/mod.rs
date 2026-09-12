@@ -16,6 +16,7 @@ pub mod pane;
 pub mod scroll;
 pub mod secrets;
 pub mod settings;
+pub mod sheep;
 pub mod status;
 
 // `pub`, not private: a test in `super::super`'s own `mod tests` (it drives
@@ -228,9 +229,30 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     let buffer = frame.buffer_mut();
 
     buffer.set_line(area.x, y, &title_band(app, width), width);
+    // The sheep pane owns the whole body between the title and the status
+    // bar too, the same as the four below, but row 1 is its own identity
+    // band rather than blank chrome, so it is checked here, ahead of the
+    // roomy blank row the others are paid in: a tall terminal must not
+    // push the band down to row 2 the way it pushes their body down. Its
+    // own row, `y + 1`, rather than `title_gap_rows`, which is exactly the
+    // gap it is skipping.
+    if let Body::Sheep(pane) = app.body() {
+        let top = y + 1;
+        let body = Rect {
+            x: area.x,
+            y: top,
+            width,
+            height: bottom.saturating_sub(top),
+        };
+        sheep::draw(app, pane, body, buffer);
+        buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
+        return;
+    }
+
     // `title_gap_rows` also covers the blank row under the title on a
     // roomy terminal; the rule further down spends a second one of its
-    // own, both from the design's own row allocation.
+    // own, both from the design's own row allocation. One function, read
+    // by `body_rows` too, so the two cannot drift.
     y += title_gap_rows(height);
     let roomy = height >= ROOMY_HEIGHT;
     // Read four times below: the column header's own wording, and the three
@@ -287,6 +309,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
             buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
             return;
         }
+        Body::Sheep(_) => unreachable!("handled above, ahead of the roomy blank row"),
         Body::FlockTable => {}
     }
 

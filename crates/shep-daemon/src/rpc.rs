@@ -1208,6 +1208,7 @@ async fn with_live_stats(stats: &Arc<StatsState>, mut infos: Vec<ProcessInfo>) -
         if let Some(reading) = info.pid.and_then(|pid| sample.get(&pid)) {
             info.cpu_percent = reading.cpu_percent;
             info.memory_bytes = Some(reading.memory_bytes);
+            info.cpu_ms = Some(reading.cpu_ms);
         }
     }
     infos
