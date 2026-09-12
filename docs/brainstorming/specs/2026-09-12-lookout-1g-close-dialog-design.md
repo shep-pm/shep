@@ -200,9 +200,12 @@ width >= 90     box, 86 cells wide, centred
 width  < 90     full width, no border box
 ```
 
-86 plus two cells of margin each side is 90, which is where the rulings' floor
-comes from. Below it the box would have to clip, and the rulings refuse
-clipping. The box is 12 rows: a border pair, the heading, two sentences, three
+86 plus a border cell and a margin cell each side is 90, which is where the
+floor comes from. The rule is `docs/lookout/design-files/README.md:332`, not
+rulings.md: "The 1g and 1k overlays need 90 and 132 columns; below that, draw
+them full-width with no border box rather than clipping." **Corrected
+2026-09-12.** This section cited rulings.md, which is 92 lines and says nothing
+about clipping or a floor. The box is 12 rows: a border pair, the heading, two sentences, three
 option rows with a continuation for the long reload line, and the `esc` line.
 The borderless form sheds its blank rows first and floors at 6, below which the
 field list it is drawn over cannot render either.
@@ -218,7 +221,13 @@ render is not touched, which is what should keep its four pinned snapshots from
 moving. If they move, something else did.
 
 Muting is a colour operation, so under `NO_COLOR` the pane behind does not dim
-and the border plus the reverse-video heading carry the separation on their own.
+and the border carries the separation. **Corrected 2026-09-12**, having said
+"the border plus the reverse-video heading": `REVERSED` is added only by
+`Palette::band` (`crates/shep-cli/src/lookout/theme.rs`), which this dialog
+never called, so the heading was plain text with no colour behind it. The
+heading takes `Palette::band` for that reason, which is the same rule 12a
+settled: colour is redundant with text, so `NO_COLOR` loses decoration and
+never information.
 
 ### The border, checked as the rulings ask
 

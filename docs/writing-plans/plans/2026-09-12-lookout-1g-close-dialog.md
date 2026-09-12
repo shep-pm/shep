@@ -20,6 +20,7 @@
 - **Never "lamb" for an instance.** `docs/terminology.md:20`.
 - **Repo-relative paths only**, never an absolute path out of a local checkout.
 - **Code shown in this plan about files that already exist is a reading, not a quotation, unless it is marked as quoted.** Grep the real file before matching against it. Where this plan and the code disagree, the code wins and the plan is wrong.
+- **Invoke the `tui-screen-capture` skill for any task that changes what the dashboard draws**, which here is tasks 4 and 5. Snapshot tests pin characters and will happily pin a border one column off, a band whose background never painted, or a box that clips at its own floor. Capture before and after, at more than one width, and use `--attrs` when the question is whether something was painted rather than whether it was spelled. `--keys` land near the end of `--seconds`, so a short capture looks like the change did nothing; and `SHEP_HOME` must be short enough for a unix socket path if a live daemon is involved, so `mktemp -d` rather than a scratchpad path.
 
 ---
 
@@ -841,7 +842,7 @@ git commit -m "feat(lookout): send the close dialog's verb after its writes land
 ```rust
 /// 86 interior plus a border cell each side is 88, plus a margin cell each
 /// side is 90. One column narrower and the border would have to clip, which
-/// `docs/lookout/design-files/rulings.md` refuses, so 89 draws the
+/// `docs/lookout/design-files/README.md:332` refuses, so 89 draws the
 /// borderless form instead.
 const BOX_WIDTH: u16 = 86;
 const BOX_FLOOR: u16 = BOX_WIDTH + 4;
