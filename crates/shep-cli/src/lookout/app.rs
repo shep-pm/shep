@@ -5853,7 +5853,13 @@ impl App {
             });
             return Effect::None;
         };
-        if self.action.is_some() {
+        // `self.held` as well as `self.action`, the same pair
+        // `answer_close` refuses on and in the same sentence: a verb the
+        // close dialog is holding until its writes land has not gone out
+        // yet, so `self.action` is still empty, and arming a second one
+        // here would have `send_held_action` overwrite it on the reply
+        // that releases it.
+        if self.action.is_some() || self.held.is_some() {
             self.notice = Some(Notice {
                 text: "one action is already in flight".to_string(),
                 grave: true,
@@ -13664,6 +13670,29 @@ mod tests {
         assert!(
             matches!(effect, Effect::Send(Sent::Action { .. })),
             "got {effect:?}"
+        );
+    }
+
+    /// `arm` refuses on the same pair `answer_close` does. A verb the
+    /// dialog is holding has not gone out, so `self.action` is still empty
+    /// and only `self.held` says the operator is mid-answer; a dashboard
+    /// `R` armed past it would be overwritten by `send_held_action` on the
+    /// reply that releases the held one.
+    #[test]
+    fn the_dashboard_refuses_a_verb_while_the_dialog_still_holds_one() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        assert!(app.held_action().is_some(), "the verb is held");
+
+        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload)));
+        assert!(matches!(effect, Effect::None), "got {effect:?}");
+        assert!(app.action().is_none(), "nothing armed past the held verb");
+        assert!(
+            app.notice()
+                .is_some_and(|n| n.to_string().contains("already in flight")),
+            "got {:?}",
+            app.notice()
         );
     }
 
