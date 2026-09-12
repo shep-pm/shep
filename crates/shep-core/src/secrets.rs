@@ -848,6 +848,7 @@ mod tests {
             .env
             .insert("C".into(), "{{name}}-{{secret:vercel/TWO}}".into());
         config.args = vec!["--x={{secret:ONE}}".into()];
+        config.out_file = Some("{{SHEP_HOME}}/logs/{{instance}}.log".into());
 
         let found = references(&config);
         assert_eq!(
