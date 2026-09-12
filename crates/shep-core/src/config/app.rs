@@ -588,11 +588,12 @@ impl<'de> serde::de::Deserialize<'de> for EnvValue {
                 Ok(EnvValue::Int(i128::from(v)))
             }
 
-            /// A whole unsigned number.
+            /// A whole unsigned number. Only JSON can produce one beyond
+            /// `i64::MAX`; TOML's own spec bounds integers to signed 64-bit,
+            /// so its `visit_u64` input is always within `i64::MAX` and the
+            /// wider type is invisible from a TOML Flockfile. i128 holds
+            /// whatever we receive losslessly, so no value is refused.
             fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<EnvValue, E> {
-                // A u64 beyond i64::MAX is valid JSON (and TOML). i128 holds
-                // the full u64 range losslessly, so no value is refused and
-                // none is silently wrapped.
                 Ok(EnvValue::Int(i128::from(v)))
             }
 
@@ -866,10 +867,10 @@ env = { SOME_BOOL = true, PORT = 8080, NEG = -1, RATIO = 1.5, STR = "plain" }
         assert_eq!(app.env["STR"], "plain");
     }
 
-    /// A whole number larger than `i64::MAX` is valid JSON and TOML, and a
-    /// Flockfile that writes one (a port, a token, an id) must still load. It
-    /// stringifies to its full, positive value — not a negative wrap and not a
-    /// refused error. Pinned to the exact string.
+    /// A whole number larger than `i64::MAX` is valid JSON and must load.
+    /// TOML cannot reach this test: its spec bounds integers to signed 64-bit,
+    /// so only JSON exercises this path. The value stringifies to its full
+    /// positive form, not a negative wrap. Pinned to the exact string.
     #[test]
     fn env_reads_a_number_beyond_i64_max_without_wrapping() {
         let beyond_i64 = u64::MAX; // 18446744073709551615
