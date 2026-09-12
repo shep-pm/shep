@@ -3443,6 +3443,58 @@ mod tests {
         assert_eq!(reply.result.unwrap_err().code, RpcErrorCode::NotFound);
     }
 
+    /// The additive claim on `SheepFieldSet::warning` has three halves and
+    /// the reply fixture pins only the first. `None` staying off the wire is
+    /// what makes the field additive at all; `Some` surviving a round trip is
+    /// what makes it useful; and a payload with no `warning` key reading back
+    /// as `None` is what lets a daemon built before the field answer a client
+    /// built after it.
+    ///
+    /// The third pins the behaviour, not the attribute. Measured by removing
+    /// `#[serde(default)]` and re-running: it still passes, because serde
+    /// already reads a missing `Option` field as `None` without being asked.
+    /// So the attribute is belt-and-braces and this test would not notice its
+    /// removal. What it does notice is the field being renamed, retyped, or
+    /// made required, which is what would actually break an older peer.
+    #[test]
+    fn the_set_field_warning_is_additive_in_both_directions() {
+        let quiet = Response::SheepFieldSet {
+            name: "web".to_string(),
+            key: "script".to_string(),
+            pending: true,
+            warning: None,
+        };
+        let json = serde_json::to_string(&quiet).unwrap();
+        assert!(
+            !json.contains("warning"),
+            "a `None` warning must not reach the wire at all: {json}"
+        );
+
+        let loud = Response::SheepFieldSet {
+            name: "web".to_string(),
+            key: "cwd".to_string(),
+            pending: true,
+            warning: Some("/srv/app does not exist yet".to_string()),
+        };
+        let json = serde_json::to_string(&loud).unwrap();
+        let back: Response = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, loud, "a warning must survive the round trip: {json}");
+
+        let older =
+            r#"{"kind":"sheep_field_set","data":{"name":"web","key":"script","pending":true}}"#;
+        let back: Response = serde_json::from_str(older).unwrap();
+        assert_eq!(
+            back,
+            Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "script".to_string(),
+                pending: true,
+                warning: None,
+            },
+            "a peer that predates the field must still deserialize"
+        );
+    }
+
     #[test]
     fn v1_hello_ack_fixture_still_deserializes() {
         let fixture = r#"{"Ok":{"daemon_version":"0.1.0","protocol":1,"pid":4242}}"#;
