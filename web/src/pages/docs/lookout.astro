@@ -1002,6 +1002,15 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       write is the one that reports what actually happened, and the{" "}
       <code>!</code> flag on the row carries it afterwards.
     </p>
+    <p class="fine">
+      <code>cwd</code>, <code>script</code>, <code>out_file</code> and{" "}
+      <code>err_file</code> get one more line on that status bar when the
+      shepherd looks at the path and it looks wrong: a directory that
+      isn't there, or a script it can't find. The write still lands. A
+      deploy that hasn't created the directory yet is a real config, not a
+      typo, so this is a warning next to the write rather than a refusal
+      of it.
+    </p>
     <p>
       A tab row above the fields names all eight groups. <code>Tab</code>{" "}
       walks to the next one, and <code>1</code> through <code>8</code> jump

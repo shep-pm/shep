@@ -2362,6 +2362,7 @@ mod tests {
                     name: "web".to_string(),
                     key: key.to_string(),
                     pending,
+                    warning: None,
                 }),
             });
             let bar = crate::lookout::view::status::status_line(&app, 200).to_string();

@@ -1579,6 +1579,24 @@ pub enum Response {
         /// `shep reload <name>` is what promotes it. A client rendering
         /// this says so, the same rule [`SheepApplied::pending`] carries.
         pending: bool,
+        /// A `cwd`, `script`, `out_file` or `err_file` that looks wrong on
+        /// disk, `None` for every other field and for one of these four
+        /// that looks fine.
+        ///
+        /// Advisory, not a second way to say no: the write above still
+        /// landed. `normalize` cannot see the filesystem (a daemon and a
+        /// CLI normalizing the same config may run as different users), so
+        /// this is checked once, daemon-side, after the value is already
+        /// accepted, and a directory a deploy script has not created yet is
+        /// a real config the write must not refuse. The window between this
+        /// check and the respawn that actually needs the path is the same
+        /// one `check_log_ancestry`'s own doc comment names for its check
+        /// (`docs/specs/deferred.md`).
+        ///
+        /// Additive: absent rather than `null` on a peer built before this
+        /// field existed, so `PROTOCOL_VERSION` does not move for it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        warning: Option<String>,
     },
     /// Answer to `SetDogConfig`: the section was written and the topic
     /// published.
@@ -3132,6 +3150,11 @@ mod tests {
                     name: "web".to_string(),
                     key: "script".to_string(),
                     pending: true,
+                    // `None` on purpose: this is the row every earlier
+                    // version's fixture already pinned, and `warning` must
+                    // stay invisible on the wire for that value or the
+                    // additive claim above is false.
+                    warning: None,
                 }),
             },
             Reply {
