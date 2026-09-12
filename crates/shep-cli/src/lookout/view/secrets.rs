@@ -102,6 +102,16 @@ pub(super) const SECRET_TIERS: &[(u16, &[Column])] = &[
     (74, &[Column::Key, Column::Value, Column::InForce]),
 ];
 
+/// The narrowest terminal this pane draws a table into: [`SECRET_TIERS`]'
+/// own floor tier, a terminal width rather than a table width (the
+/// thresholds count the gutter, unlike [`super::flock::MIN_WIDTH`]).
+///
+/// There is nothing below it to fall back to. The floor tier's three
+/// columns are what [`SECRET_TIERS`]' own doc calls the pane, and a
+/// narrower terminal used to get them anyway, clipped mid-column by
+/// `Buffer::set_line` with nothing on screen saying so.
+const MIN_WIDTH: u16 = SECRET_TIERS[SECRET_TIERS.len() - 1].0;
+
 /// [`pane_band`]'s label.
 const PANE_BAND_LABEL: &str = "SECRETS   flock-wide values a Flockfile refers to and never carries";
 
@@ -726,6 +736,33 @@ fn draw_new_key_row(
     *y += 1;
 }
 
+/// What [`draw`] puts on screen below [`MIN_WIDTH`].
+///
+/// Two short lines, for the reason `view::draw`'s own floor refusal gives:
+/// `Buffer::set_line` truncates in silence, so a refusal written as one
+/// sentence could lose the number it is about. The way out is already on
+/// the status bar (`esc/S close`) and is not repeated here.
+fn draw_too_narrow(width: u16, palette: Palette, area: Rect, buffer: &mut Buffer) {
+    buffer.set_line(
+        area.x,
+        area.y,
+        &Line::from(Span::styled("too narrow for secrets", palette.refusal())),
+        width,
+    );
+    if area.height < 2 {
+        return;
+    }
+    buffer.set_line(
+        area.x,
+        area.y + 1,
+        &Line::from(Span::styled(
+            format!("need {MIN_WIDTH} columns"),
+            palette.muted(),
+        )),
+        width,
+    );
+}
+
 /// Draws the secrets pane into `area`, straight into `buffer`.
 ///
 /// Seven rows of chrome before the first group header: this pane's own
@@ -745,6 +782,10 @@ pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
     }
     let palette = app.palette();
     let width = area.width;
+    if width < MIN_WIDTH {
+        draw_too_narrow(width, palette, area, buffer);
+        return;
+    }
     let table_width = width.saturating_sub(GUTTER);
     // `width`, not `table_width`: [`SECRET_TIERS`]' thresholds are the
     // design's own row width, gutter included.
@@ -1070,6 +1111,50 @@ mod tests {
                 "tier {threshold} spends {spent} plus {GUTTER} of gutter"
             );
         }
+    }
+
+    /// The gap between the dashboard's own floor (33) and this pane's
+    /// (74) is where the clipping was: `columns_for` handed back the floor
+    /// tier at every width below 74, and `Buffer::set_line` cut its 72-cell
+    /// row off at the screen edge with nothing saying a column had gone.
+    ///
+    /// Swept rather than sampled, and the refusal is asserted whole: it has
+    /// to fit the narrowest terminal it is complaining about, and a
+    /// `contains` on a truncated line would not notice.
+    #[test]
+    fn a_terminal_narrower_than_the_floor_tier_says_so_instead_of_clipping() {
+        let app = fixtures::app_with_secrets();
+
+        assert!(
+            SECRET_TIERS
+                .iter()
+                .all(|(threshold, _)| *threshold >= MIN_WIDTH),
+            "MIN_WIDTH is the floor tier's own threshold, so no tier below \
+             it is refused away unreached"
+        );
+        let spent: u16 = columns_for(MIN_WIDTH).iter().map(|c| c.width()).sum();
+        assert!(
+            spent + GUTTER <= MIN_WIDTH,
+            "the width the refusal names has to be one the floor tier \
+             actually fits: {spent} plus {GUTTER} of gutter"
+        );
+
+        for width in crate::lookout::view::MIN_TERM_WIDTH..MIN_WIDTH {
+            let text = frame_text(&fixtures::render(&app, width, 24));
+            assert!(text.contains("too narrow for secrets"), "{width}: {text}");
+            assert!(
+                text.contains(&format!("need {MIN_WIDTH} columns")),
+                "{width}: {text}"
+            );
+            assert!(
+                !text.contains("DB_PASSWORD"),
+                "no half-drawn table at {width}: {text}"
+            );
+        }
+
+        let text = frame_text(&fixtures::render(&app, MIN_WIDTH, 24));
+        assert!(text.contains("DB_PASSWORD"), "the floor tier draws: {text}");
+        assert!(!text.contains("too narrow"), "{text}");
     }
 
     #[test]
