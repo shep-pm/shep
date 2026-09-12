@@ -171,16 +171,8 @@ pub fn own_refusal(code: &str, message: String) -> CallToolResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::whistle::matching_ack;
     use shep_core::protocol::{RpcError, RpcErrorCode};
-
-    /// A [`HelloAck`] whose version [`refuse_if_skewed`] never refuses,
-    /// since `sample_ack`'s `"9.9.9"` always would.
-    fn matching_ack() -> HelloAck {
-        HelloAck {
-            daemon_version: env!("CARGO_PKG_VERSION").to_string(),
-            ..shep_client::testing::sample_ack()
-        }
-    }
 
     /// shep does not paraphrase the shepherd: `is_error: true` keeps the
     /// message in front of the model, where an `Err(ErrorData)` would
