@@ -395,7 +395,15 @@ fn follow_frame(
 /// Rows, not lines: a line wider than the terminal wraps onto more than one
 /// of them, so counting lines would overrun a narrow window and leave every
 /// redraw scrolling. One row is held back for the cursor the redraw leaves
-/// behind, and one more for the notice whenever there is a notice to print.
+/// behind, and the notice's own height for the notice.
+///
+/// The notice wraps like anything else, which is why its height is measured
+/// rather than assumed to be one. Giving a kept line back to make room was
+/// the earlier answer and it does not hold: at 30 columns the notice takes
+/// two rows and the line handed back was worth one, so the frame overran by
+/// one row and the window scrolled on every redraw. Measured at 12, 16, 20,
+/// 24 and 30 columns. Reserving the worst case, every line dropped, costs at
+/// most one row more than the final count needs, and no circularity.
 ///
 /// A size of nothing is not a window of nothing. A pty that has never been
 /// told how big it is reports zero, and `script(1)` hands `--follow` exactly
@@ -408,11 +416,14 @@ fn fit_rows(frame: &str, columns: u16, rows: u16) -> String {
         return frame.to_owned();
     }
     let lines: Vec<&str> = frame.lines().collect();
+    // Widest the notice can get, since more dropped lines means more digits.
+    let reserve = line_rows(&notice(lines.len()), columns);
+    let fill = budget.saturating_sub(reserve);
     let mut used = 0;
     let mut kept = 0;
     for line in &lines {
         let height = line_rows(line, columns);
-        if used + height > budget {
+        if used + height > fill {
             break;
         }
         used += height;
@@ -421,14 +432,22 @@ fn fit_rows(frame: &str, columns: u16, rows: u16) -> String {
     if kept == lines.len() {
         return frame.to_owned();
     }
-    // One kept line goes back, so the notice has a row of its own.
-    let kept = kept.saturating_sub(1);
-    let dropped = lines.len() - kept;
     let mut fitted = lines[..kept].join("\n");
-    fitted.push_str(&format!(
-        "\n{dropped} more lines than this terminal shows\n"
-    ));
+    if kept > 0 {
+        fitted.push('\n');
+    }
+    fitted.push_str(&notice(lines.len() - kept));
+    fitted.push('\n');
     fitted
+}
+
+/// What a trimmed frame says in place of the lines it dropped.
+///
+/// A function rather than a literal because [`fit_rows`] measures this twice:
+/// once at its widest to reserve the rows, and once with the count it settled
+/// on.
+fn notice(dropped: usize) -> String {
+    format!("{dropped} more lines than this terminal shows")
 }
 
 /// How many terminal rows `line` occupies once it wraps at `columns`.
@@ -689,6 +708,37 @@ mod tests {
     /// fails if a frame that fits gets trimmed anyway. Three lines in a
     /// window with rows to spare come back byte-identical, trailing newline
     /// and all.
+    /// fails if the notice's own height stops being reserved. It wraps like
+    /// any other line, so at 30 columns it is two rows and the old "hand one
+    /// kept line back" reservation bought one. Measured overruns before the
+    /// fix: 12x3, 12x5, 16x3, 20x3, 24x3 and 30x3.
+    ///
+    /// A window too narrow to hold even the notice is the one case that
+    /// cannot be satisfied, and it reads as the notice alone.
+    #[test]
+    fn a_trimmed_frame_never_overruns_the_rows_it_was_given() {
+        let frame: String = (0..40)
+            .map(|n| format!("sheep-{n:02}  online  1234  0.5%  12.3 MB  0d 0h 1m\n"))
+            .collect();
+        for columns in [12u16, 16, 20, 24, 30, 38, 40, 60, 80, 120] {
+            for rows in [3u16, 4, 5, 8, 12, 24, 40] {
+                let out = fit_rows(&frame, columns, rows);
+                let used: usize = out
+                    .lines()
+                    .map(|line| line_rows(line, usize::from(columns)))
+                    .sum();
+                let budget = usize::from(rows).saturating_sub(1);
+                if out.lines().count() == 1 {
+                    continue; // the notice alone, which is all that fits
+                }
+                assert!(
+                    used <= budget,
+                    "{columns}x{rows}: used {used} rows against a budget of {budget}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn a_frame_that_fits_is_left_alone() {
         let frame = "one\ntwo\nthree\n";
