@@ -844,7 +844,12 @@ fn windows_name_advisory(path: &Path) -> Option<String> {
         if let Some(bad) = name.chars().find(|c| ILLEGAL.contains(c)) {
             return Some(format!("contains `{bad}`, which Windows refuses in a path"));
         }
-        let stem = name.split('.').next().unwrap_or(name);
+        // Up to the LAST dot, not the first. Measured on Windows 2026-09-12
+        // by creating each name and asking whether a file appeared:
+        // `CON.txt` did not (the device took it), `CON.my.txt` did, and so
+        // did `NUL.my.log`. Splitting on the first dot would warn about
+        // `CON.my.txt`, which is an ordinary file.
+        let stem = name.rsplit_once('.').map_or(name, |(stem, _)| stem);
         if RESERVED
             .iter()
             .any(|reserved| reserved.eq_ignore_ascii_case(stem))
@@ -1133,6 +1138,30 @@ mod windows_advisory_tests {
         assert!(
             warning.contains("reserved Windows device name"),
             "{warning}"
+        );
+    }
+
+    /// fails if the stem is taken up to the first dot again. Measured on
+    /// Windows 2026-09-12: writing `CON.txt` created no file, the device
+    /// swallowed it, while `CON.my.txt` and `NUL.my.log` both created
+    /// ordinary files. So a second dot takes the name back out of the
+    /// reserved set, and warning about it would be a false alarm on a path
+    /// that works.
+    #[test]
+    fn a_second_dot_takes_a_name_back_out_of_the_reserved_set() {
+        assert_eq!(
+            windows_name_advisory(Path::new(r"C:\logs\CON.my.txt")),
+            None,
+            "CON.my is not a device name"
+        );
+        assert_eq!(
+            windows_name_advisory(Path::new(r"C:\logs\NUL.my.log")),
+            None,
+            "NUL.my is not a device name"
+        );
+        assert!(
+            windows_name_advisory(Path::new(r"C:\logs\CON.txt")).is_some(),
+            "one dot still leaves CON reserved"
         );
     }
 
