@@ -98,6 +98,30 @@ fn panel_width(width: u16) -> Option<u16> {
     (width.saturating_sub(panel) >= LEFT_MIN).then_some(panel)
 }
 
+/// The narrowest terminal that draws `LANDS` beside the panel rather than
+/// giving way to it. The design target itself: at 160 the frame's own
+/// `FIELD / VALUE / LANDS` header and the `FOCUSED` panel share a row, per
+/// `docs/lookout/design-files/rulings.md`'s 1e ruling and
+/// `docs/brainstorming/specs/2026-09-08-lookout-1e-editing-pane-design.md`'s
+/// width table.
+const LANDS_WITH_PANEL_MIN: u16 = 160;
+
+/// Whether `LANDS` draws on a terminal `width` columns wide that also draws
+/// the panel (`has_panel`).
+///
+/// `LANDS` and the panel do different jobs: the column is what an operator
+/// scans to read every field's cost at once, the panel is a sentence about
+/// only the field under the cursor. Where both fit, both draw. Where they
+/// cannot, `LANDS` gives way first, since the panel's own impact sentence
+/// already names the focused field's cost and nothing else on screen names
+/// the column's.
+///
+/// Always `true` when the panel is absent: nothing else on screen carries
+/// cost then, so `LANDS` has no reason to hide.
+const fn lands_fits_beside_panel(width: u16, has_panel: bool) -> bool {
+    !has_panel || width >= LANDS_WITH_PANEL_MIN
+}
+
 /// The width the rows are laid out in: the terminal minus [`GUTTER`].
 const fn body_width(width: u16) -> u16 {
     width.saturating_sub(GUTTER)
@@ -130,15 +154,14 @@ const fn cost_label(group: ApplyGroup) -> &'static str {
 /// cost verbatim in the status bar, which is the same reasoning
 /// [`super::settings`] gives for dropping its own cost cell first.
 ///
-/// `show_cost` is `false` whenever the explanation panel is drawn beside
-/// this body: the panel's own impact sentence already says what COST
-/// would, and the `LANDS` cell and the panel saying the same thing on the
-/// same screen is exactly the duplication the width ladder exists to
-/// avoid. `false` here behaves as if `width` had fallen under
-/// [`FULL_WIDTH`] on its own, freeing what COST would have spent onto
-/// VALUE instead.
-fn widths(width: u16, show_cost: bool) -> (u16, u16, u16) {
-    if show_cost && width >= FULL_WIDTH {
+/// `show_lands` is `false` only where the explanation panel is drawn and
+/// the terminal is too narrow to hold both beside it (see
+/// [`lands_fits_beside_panel`]): the panel still names the focused field's
+/// own cost in its impact sentence, so nothing on screen goes unsaid.
+/// `false` here behaves as if `width` had fallen under [`FULL_WIDTH`] on its
+/// own, freeing what COST would have spent onto VALUE instead.
+fn widths(width: u16, show_lands: bool) -> (u16, u16, u16) {
+    if show_lands && width >= FULL_WIDTH {
         let rest = width - COST_W - 2;
         let key = KEY_W.min(rest - VALUE_MIN - 2);
         (key, rest - key - 2, COST_W)
@@ -215,12 +238,12 @@ fn field_line(
     selected: bool,
     width: u16,
     palette: Palette,
-    panel: bool,
+    show_lands: bool,
 ) -> Line<'static> {
     let Some(field) = pane.fields().fields().get(index) else {
         return Line::default();
     };
-    let (key_w, value_w, cost_w) = widths(body_width(width), !panel);
+    let (key_w, value_w, cost_w) = widths(body_width(width), show_lands);
     let flag = match (pane.is_pending(&field.key), pane.is_overridden(&field.key)) {
         (true, _) => '!',
         (false, true) => '*',
@@ -617,8 +640,8 @@ fn hairline_line(palette: Palette, width: u16) -> Line<'static> {
 /// [`field_line`]'s own cells. Drawn in place of [`top_line`] when neither
 /// the apply menu nor `h`'s help text is up, so the slot under the tab row
 /// always says something.
-fn column_header_line(palette: Palette, width: u16, panel: bool) -> Line<'static> {
-    let (key_w, value_w, cost_w) = widths(body_width(width), !panel);
+fn column_header_line(palette: Palette, width: u16, show_lands: bool) -> Line<'static> {
+    let (key_w, value_w, cost_w) = widths(body_width(width), show_lands);
     let mut text = String::from("  ");
     text.push_str(&fit("FIELD", key_w));
     if value_w > 0 {
@@ -720,7 +743,7 @@ fn pending_and_env_lines(
     palette: Palette,
     width: u16,
     budget: usize,
-    panel: bool,
+    show_lands: bool,
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
     if budget == 0 {
@@ -741,7 +764,7 @@ fn pending_and_env_lines(
     if pending_len + env_len > budget
         && let Some(PaneRow::Env(_) | PaneRow::AddEnv) = pane.cursor()
     {
-        return vec![cursor_env_row_line(pane, width, palette, panel)];
+        return vec![cursor_env_row_line(pane, width, palette, show_lands)];
     }
     let mut remaining = budget;
 
@@ -774,12 +797,14 @@ fn pending_and_env_lines(
             break;
         }
         let selected = pane.cursor() == Some(PaneRow::Env(index));
-        lines.push(env_row_line(pane, name, selected, width, palette, panel));
+        lines.push(env_row_line(
+            pane, name, selected, width, palette, show_lands,
+        ));
         remaining -= 1;
     }
     if remaining > 0 {
         let selected = pane.cursor() == Some(PaneRow::AddEnv);
-        lines.push(add_env_row_line(pane, selected, width, palette, panel));
+        lines.push(add_env_row_line(pane, selected, width, palette, show_lands));
     }
     lines
 }
@@ -792,7 +817,7 @@ fn cursor_env_row_line(
     pane: &ConfigPane,
     width: u16,
     palette: Palette,
-    panel: bool,
+    show_lands: bool,
 ) -> Line<'static> {
     match pane.cursor() {
         Some(PaneRow::Env(index)) => {
@@ -800,9 +825,9 @@ fn cursor_env_row_line(
                 .env_key_names()
                 .get(index)
                 .expect("the cursor names a real env row");
-            env_row_line(pane, name, true, width, palette, panel)
+            env_row_line(pane, name, true, width, palette, show_lands)
         }
-        Some(PaneRow::AddEnv) => add_env_row_line(pane, true, width, palette, panel),
+        Some(PaneRow::AddEnv) => add_env_row_line(pane, true, width, palette, show_lands),
         Some(PaneRow::Field(_)) | None => {
             unreachable!("callers check the cursor is on an env row first")
         }
@@ -820,9 +845,9 @@ fn env_row_line(
     selected: bool,
     width: u16,
     palette: Palette,
-    panel: bool,
+    show_lands: bool,
 ) -> Line<'static> {
-    let (key_w, value_w, _) = widths(body_width(width), !panel);
+    let (key_w, value_w, _) = widths(body_width(width), show_lands);
     let typing = selected
         .then(|| pane.env_typing())
         .flatten()
@@ -866,9 +891,9 @@ fn add_env_row_line(
     selected: bool,
     width: u16,
     palette: Palette,
-    panel: bool,
+    show_lands: bool,
 ) -> Line<'static> {
-    let (key_w, _, _) = widths(body_width(width), !panel);
+    let (key_w, _, _) = widths(body_width(width), show_lands);
     let typing = selected
         .then(|| pane.env_typing())
         .flatten()
@@ -910,7 +935,7 @@ fn grouped_body_lines(
     palette: Palette,
     width: u16,
     budget: usize,
-    panel: bool,
+    show_lands: bool,
 ) -> Vec<Line<'static>> {
     // The cursor's own row has to draw somewhere in this budget, per the
     // rule every screen in this file holds. When it is on an env row or
@@ -920,10 +945,10 @@ fn grouped_body_lines(
     // `pending_and_env_lines` goes first then, and the field body takes
     // whatever it leaves, rather than the other way around.
     if matches!(pane.cursor(), Some(PaneRow::Env(_) | PaneRow::AddEnv)) {
-        let tail = pending_and_env_lines(pane, palette, width, budget, panel);
+        let tail = pending_and_env_lines(pane, palette, width, budget, show_lands);
         let remaining = budget.saturating_sub(tail.len());
         let mut lines = if !pane.field_rows().is_empty() && remaining > 0 {
-            body_from(pane, palette, width, remaining, 0, false, panel).lines
+            body_from(pane, palette, width, remaining, 0, false, show_lands).lines
         } else {
             Vec::new()
         };
@@ -939,15 +964,15 @@ fn grouped_body_lines(
         super::scroll::to_cursor(
             cursor_row,
             pane.view().offset(),
-            |offset| body_from(pane, palette, width, budget, offset, false, panel),
-            || cursor_only(pane, palette, width, budget, cursor_row, panel),
+            |offset| body_from(pane, palette, width, budget, offset, false, show_lands),
+            || cursor_only(pane, palette, width, budget, cursor_row, show_lands),
         )
     } else {
         Vec::new()
     };
     let remaining = budget.saturating_sub(lines.len());
     lines.extend(pending_and_env_lines(
-        pane, palette, width, remaining, panel,
+        pane, palette, width, remaining, show_lands,
     ));
     lines
 }
@@ -1008,6 +1033,7 @@ fn grouped_pane_lines_with_panel(
     panel: Option<(Vec<Line<'static>>, u16)>,
 ) -> Vec<Line<'static>> {
     let has_panel = panel.is_some();
+    let show_lands = lands_fits_beside_panel(width, has_panel);
     let left_width = panel
         .as_ref()
         .map_or(width, |(_, panel_width)| width.saturating_sub(*panel_width));
@@ -1037,7 +1063,7 @@ fn grouped_pane_lines_with_panel(
                 style,
             )));
         } else {
-            lines.push(column_header_line(palette, left_width, has_panel));
+            lines.push(column_header_line(palette, left_width, show_lands));
         }
         remaining -= 1;
     }
@@ -1056,7 +1082,7 @@ fn grouped_pane_lines_with_panel(
     };
     let body_budget = remaining - footer_lines;
     if body_budget > 0 {
-        let body = grouped_body_lines(pane, palette, left_width, body_budget, has_panel);
+        let body = grouped_body_lines(pane, palette, left_width, body_budget, show_lands);
         lines.extend(match panel {
             Some((panel, _)) => merge_beside_panel(body, panel, left_width, body_budget),
             None => body,
@@ -1229,8 +1255,8 @@ pub fn pane_lines(
         lines.extend(super::scroll::to_cursor(
             cursor_row,
             pane.view().offset(),
-            |offset| body_from(pane, palette, width, body_budget, offset, true, false),
-            || cursor_only(pane, palette, width, body_budget, cursor_row, false),
+            |offset| body_from(pane, palette, width, body_budget, offset, true, true),
+            || cursor_only(pane, palette, width, body_budget, cursor_row, true),
         ));
     }
     push_footer_line(&mut lines, footer, width, palette);
@@ -1262,6 +1288,7 @@ fn ungrouped_pane_with_panel_lines(
     budget: usize,
 ) -> Vec<Line<'static>> {
     let left_width = width.saturating_sub(panel_w);
+    let show_lands = lands_fits_beside_panel(width, true);
     let mut lines = vec![title_line(pane, palette, width)];
     let mut body_budget = budget - 1;
     if let Some((text, style)) = top_line(pane, menu, palette)
@@ -1284,8 +1311,27 @@ fn ungrouped_pane_with_panel_lines(
         let body = super::scroll::to_cursor(
             cursor_row,
             pane.view().offset(),
-            |offset| body_from(pane, palette, left_width, body_budget, offset, true, true),
-            || cursor_only(pane, palette, left_width, body_budget, cursor_row, true),
+            |offset| {
+                body_from(
+                    pane,
+                    palette,
+                    left_width,
+                    body_budget,
+                    offset,
+                    true,
+                    show_lands,
+                )
+            },
+            || {
+                cursor_only(
+                    pane,
+                    palette,
+                    left_width,
+                    body_budget,
+                    cursor_row,
+                    show_lands,
+                )
+            },
         );
         lines.extend(merge_beside_panel(body, panel, left_width, body_budget));
     }
@@ -1306,7 +1352,7 @@ fn body_from(
     budget: usize,
     offset: usize,
     show_group_headers: bool,
-    panel: bool,
+    show_lands: bool,
 ) -> Attempt {
     let rows = pane.field_rows();
     let total = rows.len();
@@ -1375,7 +1421,7 @@ fn body_from(
             pane.cursor() == Some(*row),
             width,
             palette,
-            panel,
+            show_lands,
         ));
         drawn += 1;
     }
@@ -1425,12 +1471,12 @@ fn cursor_only(
     width: u16,
     budget: usize,
     cursor_row: usize,
-    panel: bool,
+    show_lands: bool,
 ) -> Vec<Line<'static>> {
     let rows = pane.field_rows();
     let mut lines = Vec::new();
     if let Some(PaneRow::Field(index)) = rows.get(cursor_row).copied() {
-        lines.push(field_line(pane, index, true, width, palette, panel));
+        lines.push(field_line(pane, index, true, width, palette, show_lands));
     }
     let hidden_below = rows.len().saturating_sub(cursor_row + 1);
     if cursor_row > 0 && lines.len() < budget {
@@ -3126,23 +3172,47 @@ mod tests {
         pane_lines(pane, None, fixtures::plain(), width, height)
     }
 
-    /// The panel and the LANDS cell say the same thing, so exactly one of
-    /// them is on screen at any width. This is the invariant the whole
-    /// ladder rests on, and it is asserted at every width rather than at
-    /// three of them, through the real render path
-    /// ([`pane_lines`]/[`config_pane_lines_for_tests`]) rather than
-    /// [`widths`] called directly: `widths`'s own `show_cost` parameter is
-    /// wired from the caller's own `panel` state, so calling it directly
-    /// with a fixed `show_cost` cannot see whether that wiring is actually
-    /// in place.
+    /// The drop order the whole ladder rests on: where both the panel and
+    /// `LANDS` fit, both draw; where they cannot, `LANDS` gives way first.
+    /// Corrected 2026-09-11, reversing this test's own original name and
+    /// claim, which asserted the two were never both present. Asserted at
+    /// every width rather than at three of them, through the real render
+    /// path ([`pane_lines`]/[`config_pane_lines_for_tests`]) rather than
+    /// [`widths`] called directly: `widths`'s own `show_lands` parameter is
+    /// wired from the caller's own [`lands_fits_beside_panel`] state, so
+    /// calling it directly with a fixed `show_lands` cannot see whether
+    /// that wiring is actually in place.
     #[test]
-    fn the_panel_and_the_lands_cell_are_never_both_present() {
+    fn lands_gives_way_to_the_panel_below_the_design_target_and_joins_it_above() {
         let app = fixtures::app_in_sheep_pane();
         for width in MIN_TERM_WIDTH..=200 {
             let rows = fixtures::render_all(&config_pane_lines_for_tests(&app, width, 48));
             let panel = rows.contains("FOCUSED");
             let lands = rows.contains("LANDS");
-            assert!(!(panel && lands), "both are drawn at {width} columns");
+            let has_panel = panel_width(width).is_some();
+            match (has_panel, width >= LANDS_WITH_PANEL_MIN) {
+                // 160 and up: the panel and the column share the row.
+                (true, true) => assert!(
+                    panel && lands,
+                    "the panel and LANDS must both draw at {width} columns"
+                ),
+                // 90 to 159: the panel draws, LANDS gives way to it.
+                (true, false) => assert!(
+                    panel && !lands,
+                    "LANDS must give way to the panel at {width} columns"
+                ),
+                // below 90: no panel, so LANDS carries cost alone, subject
+                // to `widths`'s own pre-existing narrow-terminal cascade,
+                // which this fix leaves untouched.
+                (false, _) => {
+                    assert!(!panel, "the panel must not draw at {width} columns");
+                    let expected_lands = body_width(width) >= FULL_WIDTH;
+                    assert_eq!(
+                        lands, expected_lands,
+                        "LANDS mismatch at {width} columns, no panel"
+                    );
+                }
+            }
         }
     }
 
