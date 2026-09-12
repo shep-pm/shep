@@ -5858,7 +5858,8 @@ impl App {
         // close dialog is holding until its writes land has not gone out
         // yet, so `self.action` is still empty, and arming a second one
         // here would have `send_held_action` overwrite it on the reply
-        // that releases it.
+        // that releases it. [`Self::arm_sheep_pane`] is the only other
+        // door that arms from a keypress, and it refuses on the same pair.
         if self.action.is_some() || self.held.is_some() {
             self.notice = Some(Notice {
                 text: "one action is already in flight".to_string(),
@@ -5913,16 +5914,20 @@ impl App {
     /// replaced it while the pane still names the first. Refuses instead.
     ///
     /// The ladder is [`Self::confirm_refusal`]'s own gate and link, then one
-    /// action already in flight, same order [`Self::arm`] uses for those
-    /// two; [`Self::arm`]'s "nothing selected" case cannot happen here,
-    /// since the pane would not be open without a sheep, so its place is
-    /// taken by the pinned sheep having left instead.
+    /// action already in flight or held, same order [`Self::arm`] uses for
+    /// those two; [`Self::arm`]'s "nothing selected" case cannot happen
+    /// here, since the pane would not be open without a sheep, so its place
+    /// is taken by the pinned sheep having left instead.
     fn arm_sheep_pane(&mut self, verb: ActionVerb) -> Effect {
         if let Some(text) = self.confirm_refusal() {
             self.notice = Some(Notice { text, grave: true });
             return Effect::None;
         }
-        if self.action.is_some() {
+        // [`Self::arm`]'s own pair, for the reason given there: a verb the
+        // close dialog is holding has not gone out yet, so `self.action` is
+        // still empty. These two are the whole set of doors that arm from a
+        // keypress.
+        if self.action.is_some() || self.held.is_some() {
             self.notice = Some(Notice {
                 text: "one action is already in flight".to_string(),
                 grave: true,
@@ -13680,6 +13685,27 @@ mod tests {
                 .is_some_and(|n| n.to_string().contains("already in flight")),
             "got {:?}",
             app.notice()
+        );
+    }
+
+    /// The sibling door. `arm_sheep_pane` keeps its own copy of the
+    /// refusal ladder, so a held verb has to be refused there as well or
+    /// the fix reaches one of the two doors that arm from a keypress.
+    #[test]
+    fn the_sheep_pane_refuses_a_verb_while_the_dialog_still_holds_one() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        assert!(app.held_action().is_some(), "the verb is held");
+
+        app.update(Msg::Key(KeyPress::Confirm));
+        assert!(app.sheep_pane().is_some(), "the sheep pane is open");
+        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload)));
+        assert!(matches!(effect, Effect::None), "got {effect:?}");
+        assert!(app.action().is_none(), "nothing armed past the held verb");
+        assert_eq!(
+            app.notice().map(|n| n.to_string()).as_deref(),
+            Some("one action is already in flight")
         );
     }
 
