@@ -1201,13 +1201,30 @@ impl ConfigPane {
     /// `d` on the field list: restores the field under the cursor to its
     /// default.
     ///
-    /// Under batching, restoring a default means removing the operator's
-    /// value so the stored default shows through once sent, and that is
-    /// exactly what an empty typed buffer already means: see
-    /// [`Self::apply_typing`]. The value filed is the same [`Value::Null`],
-    /// through the same [`Self::file_field`] every other edit goes through,
-    /// so a re-edit back to the stored value still drops the entry rather
-    /// than counting a no-op.
+    /// What gets filed depends on which door the write leaves through, not
+    /// on the field's kind:
+    ///
+    /// - A sheep's write is `Request::SetSheepField`, which re-validates
+    ///   the value against `AppConfig`'s own type for the key, and `null`
+    ///   only deserializes into an `Option<T>`. So the value filed is
+    ///   [`Field::default_value`] when the schema names one, else
+    ///   [`Value::Null`]: a bool, a plain `Vec`, or a non-optional scalar
+    ///   needs its schema default filed to actually clear, while an
+    ///   `Option<T>` field with no default (`cwd` and its like) keeps
+    ///   unsetting the way it always has. See [`Field::default_value`]'s
+    ///   own doc for why the two `None` cases collapse to the same value.
+    /// - A dog's write patches the section's own TOML text (see
+    ///   [`Self::edited_section_with`]), where `null` already means
+    ///   "remove this key" rather than a value handed to a deserializer.
+    ///   Removing the key is exactly a restore: the dog reads its own
+    ///   compiled default for whatever is absent. Filing the schema
+    ///   default there instead would hard-code the value into the section
+    ///   rather than restoring it, so a dog always files [`Value::Null`],
+    ///   regardless of the field's default.
+    ///
+    /// Either way, filed through the same [`Self::file_field`] every other
+    /// edit goes through, so a re-edit back to the stored value still drops
+    /// the entry rather than counting a no-op.
     ///
     /// Files nothing when the row is already showing its default: see
     /// [`Self::field_shows_default`]. A locked row is refused the same way
@@ -1228,7 +1245,11 @@ impl ConfigPane {
         if self.field_shows_default(&key) {
             return;
         }
-        self.file_field(key, Value::Null);
+        let value = match &self.target {
+            PaneTarget::Sheep { .. } => field.default_value.clone().unwrap_or(Value::Null),
+            PaneTarget::Dog { .. } => Value::Null,
+        };
+        self.file_field(key, value);
     }
 
     /// Whether `key`'s row is already showing its stored default, with
@@ -2366,6 +2387,33 @@ mod tests {
             .expect("the fixture section parses");
         assert!(!out.contains("history_bytes"), "{out}");
         assert!(out.contains("# how often"), "{out}");
+    }
+
+    /// A dog's write patches its section's own TOML text rather than going
+    /// through `Request::SetSheepField`'s deserializer, so `null` already
+    /// means "remove this key" there, not a value refused for the wrong
+    /// type. `d` must keep filing `Value::Null` for a dog even when its
+    /// schema names a non-null default, or it would hard-code the default
+    /// into the section instead of restoring it.
+    #[test]
+    fn d_on_a_dog_field_files_null_even_with_a_schema_default() {
+        let schema = serde_json::json!({
+            "properties": {
+                "merge_logs": { "type": "boolean", "default": true },
+            },
+        });
+        let mut pane = ConfigPane::dog("bark".into(), None, schema, "merge_logs = false\n".into());
+        pane.move_to_key("merge_logs");
+        pane.file_default();
+        assert_eq!(
+            filed(&pane, "merge_logs"),
+            Some(Value::Null),
+            "a dog restores by removing the key, not by filing its default"
+        );
+        let out = pane
+            .edited_section_with(pane.edits())
+            .expect("the fixture section parses");
+        assert!(!out.contains("merge_logs"), "{out}");
     }
 
     /// A dog section takes every filed edit in one write rather than one

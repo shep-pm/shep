@@ -90,6 +90,16 @@ pub struct Field {
     /// The schema's own `default`, rendered as the pane will show it. `None`
     /// for an absent or `null` default.
     pub default: Option<String>,
+    /// The schema's own `default`, in the shape a write carries. `None` for
+    /// an absent or `null` default, the same two cases [`Self::default`]
+    /// collapses to one for: a field with no schema default and a field
+    /// whose default genuinely is `null` (an `Option<T>` unset by design)
+    /// both restore the same way, by filing `Value::Null`, so neither needs
+    /// its own entry here. Kept alongside the rendered string rather than
+    /// parsed back out of it: `kill_timeout`'s default is the string
+    /// `"1600"` and `args`' is `[]`, and neither round-trips through
+    /// display text.
+    pub default_value: Option<Value>,
     /// `x-shep-secret`. The pane shows `<set>` and never reads the value.
     pub secret: bool,
     /// Whether the pane may edit it. `false` for [`FieldKind::Opaque`], and
@@ -420,6 +430,10 @@ fn field_from(key: &str, schema: &Value, defs: &Map<String, Value>) -> Field {
         kind,
         value_kind,
         default: render_default(schema.get("default")),
+        default_value: schema
+            .get("default")
+            .filter(|value| !value.is_null())
+            .cloned(),
         secret: schema
             .get(shep_core::dogs::SECRET_KEY)
             .and_then(Value::as_bool)

@@ -9464,11 +9464,13 @@ mod tests {
         );
     }
 
-    /// `d` on an overridden field files the same [`Value::Null`] an empty
-    /// typed buffer already means, so it reaches the wire as an unset
-    /// rather than a second spelling of it.
+    /// `d` on an overridden field files the schema's own `default` rather
+    /// than [`Value::Null`]: `max_restarts` is a plain `u32`, not an
+    /// `Option<u32>`, and the shepherd's deserializer refuses `null` for
+    /// one of those. The Flockfile schema's default for `max_restarts` is
+    /// `16`.
     #[test]
-    fn d_restores_an_overridden_field_to_null() {
+    fn d_restores_an_overridden_field_to_its_schema_default() {
         let mut app = fixtures::app_in_sheep_pane_with_control();
         assert!(
             app.config_pane().unwrap().is_overridden("max_restarts"),
@@ -9478,14 +9480,14 @@ mod tests {
         let effect = app.update(Msg::Key(KeyPress::Remove));
         assert!(matches!(effect, Effect::None), "{effect:?}");
         assert_eq!(app.config_pane().unwrap().edits().len(), 1);
-        assert_eq!(filed_value(&app, "max_restarts"), serde_json::Value::Null);
+        assert_eq!(filed_value(&app, "max_restarts"), serde_json::json!(16));
 
         let request = one_wire(app.update(Msg::Key(KeyPress::Escape)));
         let Request::SetSheepField { key, value, .. } = request else {
             panic!("expected SetSheepField, got {request:?}");
         };
         assert_eq!(key, "max_restarts");
-        assert_eq!(value, serde_json::Value::Null);
+        assert_eq!(value, serde_json::json!(16));
     }
 
     /// A field the operator has not overridden is already showing its
@@ -9505,9 +9507,12 @@ mod tests {
     }
 
     /// A field flipped this session, even one the shepherd never
-    /// overrode, is no longer showing its default: `d` replaces the
-    /// filed edit with the unset rather than leaving the flipped value in
-    /// place.
+    /// overrode, is no longer showing its default: `d` restores the
+    /// schema default rather than leaving the flipped value in place. For
+    /// a field the shepherd never overrode, the schema default and what
+    /// the shepherd already holds are the same value, so restoring it
+    /// exactly cancels the flip: the fresh edit drops rather than being
+    /// replaced by a second one.
     #[test]
     fn d_after_cycling_a_fresh_value_restores_the_default_anyway() {
         let mut app = fixtures::app_in_sheep_pane_with_control();
@@ -9526,12 +9531,11 @@ mod tests {
 
         let effect = app.update(Msg::Key(KeyPress::Remove));
         assert!(matches!(effect, Effect::None), "{effect:?}");
-        assert_eq!(
-            app.config_pane().unwrap().edits().len(),
-            1,
-            "one edit, replaced rather than added to"
+        assert!(
+            app.config_pane().unwrap().edits().is_empty(),
+            "the schema default for autostart is the fixture's own stored value, \
+             so restoring it cancels the flip rather than filing a second edit"
         );
-        assert_eq!(filed_value(&app, "autostart"), serde_json::Value::Null);
     }
 
     /// A field that is already `(unset)` on the shepherd's own side has

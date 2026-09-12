@@ -106,6 +106,7 @@ pub fn settings_field_set() -> crate::lookout::field::FieldSet {
         kind,
         value_kind: None,
         default: None,
+        default_value: None,
         secret: false,
         editable: true,
         example: None,
