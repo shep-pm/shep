@@ -125,6 +125,16 @@ fn is_loopback(interface: &NetworkData) -> bool {
     !addresses.is_empty() && addresses.iter().all(|network| network.addr.is_loopback())
 }
 
+/// Whether `window` is long enough to report a rate over.
+///
+/// `MINIMUM_CPU_UPDATE_INTERVAL` is the floor for all three rates, not only
+/// for CPU. It is the shortest window `sysinfo` promises a CPU reading over,
+/// and dividing a handful of bytes by a handful of milliseconds is no more
+/// honest for the other two.
+fn is_measurable(window: Duration) -> bool {
+    window >= sysinfo::MINIMUM_CPU_UPDATE_INTERVAL
+}
+
 /// `bytes` over `window`, as bytes a second.
 ///
 /// `u128` throughout: a window of a few milliseconds against a large delta
@@ -186,13 +196,8 @@ impl HostWatch {
     ///
     /// Refreshing always, reporting conditionally: a refresh that is skipped
     /// leaves the next window measuring from the wrong instant, so the short
-    /// window is spent rather than avoided. What a short window suppresses is
-    /// the arithmetic, not the sample.
-    ///
-    /// `MINIMUM_CPU_UPDATE_INTERVAL` is the floor for all three rates, not
-    /// only for CPU. It is the shortest window `sysinfo` promises a CPU
-    /// reading over, and dividing a handful of bytes by a handful of
-    /// milliseconds is no more honest for the other two.
+    /// window is spent rather than avoided. What [`is_measurable`] suppresses
+    /// is the arithmetic, not the sample.
     pub(crate) fn sample(&mut self) -> HostSample {
         let now = Instant::now();
         let window = now.saturating_duration_since(self.sampled_at);
@@ -202,7 +207,7 @@ impl HostWatch {
         self.disks.refresh_specifics(false, Self::disk_refresh());
         self.networks.refresh(false);
 
-        let measured = window >= sysinfo::MINIMUM_CPU_UPDATE_INTERVAL;
+        let measured = is_measurable(window);
         let disk = measured.then(|| {
             let (read, written) = distinct_disk_io(self.disks.list().iter().map(|disk| {
                 let usage = disk.usage();
@@ -330,11 +335,28 @@ mod tests {
         );
     }
 
-    /// fails if the real sampler stops reading this machine's memory. The
-    /// rates are not asserted: the window here is microseconds, which is the
-    /// case that has to report nothing.
+    /// fails if the first redraw starts reporting rates over a window too
+    /// short to divide by, or if the floor drifts off `sysinfo`'s own.
+    ///
+    /// A pure function rather than a real sample, deliberately: asserting
+    /// that `HostWatch::install` and the sample after it fall inside 200 ms
+    /// would be asserting that a CI runner never deschedules a thread, and
+    /// the rule under test has nothing to do with how fast the machine is.
     #[test]
-    fn the_first_sample_reads_memory_and_no_rate() {
+    fn a_window_under_sysinfos_own_floor_carries_no_rate() {
+        assert!(!is_measurable(Duration::ZERO));
+        assert!(!is_measurable(Duration::from_millis(5)));
+        assert!(!is_measurable(
+            sysinfo::MINIMUM_CPU_UPDATE_INTERVAL - Duration::from_nanos(1)
+        ));
+        assert!(is_measurable(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL));
+        assert!(is_measurable(Duration::from_secs(1)), "the interval floor");
+    }
+
+    /// fails if the real sampler stops reading this machine's memory. Memory
+    /// is not a rate, so it is the one number a first sample must carry.
+    #[test]
+    fn a_real_sample_reads_this_machines_memory() {
         let Some(mut watch) = HostWatch::install() else {
             return;
         };
@@ -343,8 +365,5 @@ mod tests {
 
         assert!(sample.memory_total_bytes > 0, "a machine has memory");
         assert!(sample.memory_used_bytes > 0);
-        assert_eq!(sample.cpu_percent, None, "no window, no rate");
-        assert_eq!(sample.disk_bytes_per_second, None);
-        assert_eq!(sample.network_bytes_per_second, None);
     }
 }
