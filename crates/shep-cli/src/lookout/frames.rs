@@ -2030,7 +2030,8 @@ it read and dropped are counted exactly; bytes below its 64 KiB window were
 never read at all, so those are reported in bytes, because nothing counted the
 lines in them and guessing would be worse than saying so.
 
-The last frame is the full-screen bleats pane, `b` from the dashboard. The
+The last five frames are the full-screen bleats pane, `b` from the
+dashboard, then the four sheep-pane scenes, `↵` on a sheep. The
 seven before it are the settings screen, `s` from the dashboard. It owns
 the whole body between the title and the status bar rather than sharing it
 with the flock table, so a fresh $SHEP_HOME, some scalars declared, an armed
