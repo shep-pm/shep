@@ -110,6 +110,19 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             format!("match  {buffer}\u{258f}   enter applies   esc cancels"),
             palette.attention(),
         )
+    } else if let Some(buffer) = app
+        .sheep_pane()
+        .and_then(|pane| pane.feed().match_editing())
+    {
+        // The same box, embedded: the sheep pane's own feed shares
+        // `InputMode::Text` with the dashboard's name filter too, and a
+        // fall-through here would label the dashboard's untouched query as
+        // this feed's match, the same mislabel the branch above already
+        // guards against for the full-screen pane.
+        (
+            format!("match  {buffer}\u{258f}   enter applies   esc cancels"),
+            palette.attention(),
+        )
     } else if let Some((label, buffer)) = app.config_pane().and_then(pane_editor) {
         // The pane's own free-text editor, and the env sub-screen's, ahead
         // of the filter branch: all three share `InputMode::Text`, and a
@@ -188,6 +201,15 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // it at all, so it is appended rather than inserted, the same rule
         // `hint_for`'s own doc gives for its dashboard forms.
         (BLEATS_HINT.to_string(), palette.attention())
+    } else if app.sheep_pane().is_some() {
+        // Checked below the bleats pane's own branch, the same as the
+        // config pane's above it: the four full-screen panes cannot be
+        // open at once, so their order here is documentation, not
+        // correctness.
+        (
+            sheep_pane_hint(app.control()).to_string(),
+            palette.attention(),
+        )
     } else if app.settings().is_none() && !app.filter().is_empty() {
         // Gated on the screen being closed: the filter survives the swap
         // into settings (`App::on_settings_key` never touches it), but `/`
@@ -370,6 +392,23 @@ const fn pane_hint(control: Control, screen: PaneScreen) -> &'static str {
         }
         (Control::Allowed, PaneScreen::List) => {
             "esc back   j/k select   g/G first/last   r refresh   e edit   d remove   K/J move   q quit"
+        }
+    }
+}
+
+/// The sheep pane's own key hint.
+///
+/// `x stop`, `R restart` and `L reload` are appended only under
+/// [`Control::Allowed`], the same rule [`hint_for`]'s own doc gives for the
+/// dashboard's write keys: a hint naming a key that is inert where the
+/// operator is reading it teaches them the key is broken. `b full log` and
+/// `/ filter` are named for every control level, the same as `esc`/`e`/`J`/`K`:
+/// both now route to the embedded feed Task 10 wired in.
+const fn sheep_pane_hint(control: Control) -> &'static str {
+    match control {
+        Control::ReadOnly => "esc flock   e edit   J/K next sheep   b full log   / filter",
+        Control::Allowed => {
+            "esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter"
         }
     }
 }
@@ -969,7 +1008,7 @@ mod tests {
         app.update(Msg::Key(KeyPress::ListRemove));
         assert!(app.config_pane().unwrap().is_armed(), "d arms a removal");
         app.update(Msg::Key(KeyPress::Escape));
-        app.update(Msg::Key(KeyPress::ListMoveDown));
+        app.update(Msg::Key(KeyPress::StepDown));
         assert!(app.config_pane().unwrap().is_armed(), "J arms a move");
     }
 
@@ -1046,5 +1085,52 @@ mod tests {
             "scrolled back, no longer following: {scrolled}"
         );
         assert!(scrolled.contains("read-only"), "got {scrolled}");
+    }
+
+    /// `x`/`R`/`L` are wired, so the hint keeps naming them; `b`/`/` are
+    /// wired too now, so the hint names them alongside the write keys
+    /// rather than dropping them, the same rule that gates the write keys
+    /// behind `Control::Allowed` just below.
+    #[test]
+    fn the_sheep_panes_hint_names_the_write_keys_and_the_feeds_own() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        app.set_control_for_tests(Control::Allowed);
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let bar = rendered(&status_line(&app, 200));
+        for key in [
+            "esc flock",
+            "e edit",
+            "J/K next sheep",
+            "x stop",
+            "R restart",
+            "L reload",
+            "b full log",
+            "/ filter",
+        ] {
+            assert!(bar.contains(key), "missing {key:?}: got {bar}");
+        }
+    }
+
+    /// `x`/`R`/`L` are hidden under `Control::ReadOnly`, the same rule
+    /// `hint_for`'s own dashboard forms follow: a hint naming a key that is
+    /// inert where the operator is reading it teaches them the key is
+    /// broken.
+    #[test]
+    fn the_sheep_panes_hint_drops_the_write_keys_under_read_only() {
+        use shep_core::protocol::ProcessInfo;
+        use shep_core::status::ProcStatus;
+
+        let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let bar = rendered(&status_line(&app, 200));
+        assert!(bar.contains("esc flock"), "got {bar}");
+        assert!(!bar.contains("x stop"), "got {bar}");
+        assert!(!bar.contains("R restart"), "got {bar}");
+        assert!(!bar.contains("L reload"), "got {bar}");
+        assert!(bar.contains("b full log"), "got {bar}");
+        assert!(bar.contains("/ filter"), "got {bar}");
     }
 }

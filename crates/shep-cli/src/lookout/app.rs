@@ -18,7 +18,7 @@ use shep_client::RequestError;
 use shep_core::config::LogLevel;
 use shep_core::protocol::{
     BusEvent, DogSectionToml, DogSource, EnvValue, Lamb, ProcessEventKind, ProcessInfo, Request,
-    Response, SelectorSpec, SheepRefusal,
+    Response, SelectorSpec, SheepConfigView, SheepRefusal,
 };
 use shep_core::status::ProcStatus;
 
@@ -26,6 +26,7 @@ use super::field::{FieldKind, FieldSet};
 use super::level::Level;
 use super::pane::{ConfigPane, FieldValue, Lock, PaneEdit, PanePending, PaneTarget, ReloadKind};
 use super::pane_bleats::BleatsPane;
+use super::pane_sheep::SheepPane;
 use super::tail::Stream;
 use super::theme::Palette;
 use super::viewport::Viewport;
@@ -112,11 +113,13 @@ pub enum KeyPress {
     /// pane's list sub-screen. Bound nowhere else, and named for that
     /// screen so every other screen's own keymap reads as the no-op it is.
     ListRemove,
-    /// `K`: arms the element under the cursor moving up one place, on the
-    /// same sub-screen.
-    ListMoveUp,
-    /// `J`: the same, moving down.
-    ListMoveDown,
+    /// `K`. What a step means is the body's to decide: a config pane
+    /// reorders the list element under the cursor, the sheep pane steps to
+    /// the previous sheep the flock table would show without leaving the
+    /// pane, and every other body routes it to [`Effect::None`].
+    StepUp,
+    /// `J`, the twin of [`Self::StepUp`].
+    StepDown,
     /// `F`: toggles the flock table between the flat list and grouping by
     /// fold.
     FoldView,
@@ -1290,7 +1293,7 @@ const READ_ONLY_REFUSAL: &str = "read-only: from --read-only or lookout.allow_co
 /// 140-cell chart body. Sized for the charts now so the sheep pane
 /// inherits a filled buffer rather than starting cold on a pane the
 /// operator has just opened.
-const HISTORY: usize = 140;
+pub(crate) const HISTORY: usize = 140;
 
 /// The lowest ceiling [`App::cpu_ceiling`] will report, in percent of one
 /// core.
@@ -1299,7 +1302,11 @@ const HISTORY: usize = 140;
 /// jitter scaled to full height, so the busiest thing on screen would be
 /// noise. Two percent is low enough that any real work clears it and high
 /// enough that nothing else does.
-const CPU_CEILING_FLOOR: f32 = 2.0;
+///
+/// `pub(crate)`, not private: `pane_sheep::scale_top`'s own floor argument
+/// is this same number for the sheep pane's CPU chart, and a second
+/// constant carrying the value would be the thing that drifts.
+pub(crate) const CPU_CEILING_FLOOR: f32 = 2.0;
 
 /// What occupies the body between the title band and the status bar.
 ///
@@ -1329,6 +1336,25 @@ pub(crate) enum Body {
     /// The bleats feed given the whole screen, opened by
     /// [`KeyPress::Bleats`].
     Bleats(BleatsPane),
+    /// One sheep given the whole screen, opened by [`KeyPress::Confirm`].
+    Sheep(Box<SheepPane>),
+}
+
+/// Which screen asked for a sheep's config.
+///
+/// Both [`Sent::SheepConfig`]'s callers send the exact same request, and the
+/// reply cannot tell them apart on its own: `e` pressed inside the sheep
+/// pane leaves that pane on screen while the reply is in flight, so
+/// [`App::on_sheep_config`] cannot route by the current [`Body`] the way it
+/// could if only one screen ever asked. This is read instead, and it is set
+/// in the same step as [`App::config_target`], by whichever door sent the
+/// request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ConfigFor {
+    /// The editing pane, opened by `e`.
+    Editor,
+    /// The sheep pane's read-only left column.
+    SheepPane,
 }
 
 /// The whole dashboard's state.
@@ -1403,6 +1429,11 @@ pub struct App {
     /// reopen a closed pane on the late reply. [`Self::config_pane`] alone
     /// cannot tell those two `None` states apart.
     config_target: Option<String>,
+    /// Which screen [`Self::config_target`] is standing in for, while it is
+    /// `Some`. `None` whenever `config_target` is: the two are set and
+    /// cleared together, always in the same step that sends
+    /// [`Sent::SheepConfig`]. See [`ConfigFor`].
+    config_for: Option<ConfigFor>,
     /// The dog a config pane is open for, or wanted for, and the schema its
     /// binary answered with.
     ///
@@ -1432,6 +1463,18 @@ pub struct App {
     /// The whole flock's summed CPU percent, one sample per poll, same
     /// depth and ordering as [`Self::cpu_history`].
     flock_cpu: VecDeque<f32>,
+    /// Each sheep's last [`HISTORY`] RSS samples, oldest first, keyed by
+    /// [`ProcessInfo::id`], on the same terms as [`Self::cpu_history`].
+    ///
+    /// Buffered as read rather than differenced: RSS is a reading at an
+    /// instant, and only CPU arrives as a counter.
+    rss_history: HashMap<u32, VecDeque<u64>>,
+    /// The previous CPU counter and the instant it was read, per sheep.
+    ///
+    /// What makes a sample a mean over one poll rather than over the
+    /// shepherd's own baseline window. Dropped when a sheep reports no
+    /// reading, so a stop is never differenced across.
+    cpu_last: HashMap<u32, (Option<u32>, u64, Instant)>,
     /// How [`Self::visible_rows`] gathers the flock table, toggled by `F`.
     grouping: Grouping,
     /// Fold names `z` has collapsed: [`Self::visible_rows`] skips a
@@ -1510,11 +1553,14 @@ impl App {
             action: None,
             body: Body::FlockTable,
             config_target: None,
+            config_for: None,
             dog_target: None,
             pane_menu: None,
             style: (StyleLevel::Full, StyleSource::Default),
             cpu_history: HashMap::new(),
             flock_cpu: VecDeque::new(),
+            rss_history: HashMap::new(),
+            cpu_last: HashMap::new(),
             grouping: Grouping::Flat,
             collapsed_folds: HashSet::new(),
         }
@@ -1534,7 +1580,7 @@ impl App {
                     .into_iter()
                     .map(|info| (info.id, Row { info, anchor: at }))
                     .collect();
-                self.record_cpu_samples();
+                self.record_samples(at);
                 self.reseat(previous);
                 self.forget_missing_target();
                 // Unconditional: the selected row's log paths can change even
@@ -1628,18 +1674,20 @@ impl App {
                 {
                     pane.cancel();
                 }
-                // The bleats pane has no timer of its own; it rides every
-                // tick instead of the dashboard's own cadence, which is
-                // fixed for the connection's lifetime (see `RefreshFeed`'s
-                // own doc). The dashboard raises nothing here, or every
-                // lookout would poll twice as often for nothing.
-                // `Link::Lost` too: `Msg::Bleats` throws the tail away
-                // while the link is down, so every read would be work done
-                // and discarded once a second. `Msg::Snapshot` and
+                // Neither full-screen feed has a timer of its own; each
+                // rides every tick instead of the dashboard's own cadence,
+                // which is fixed for the connection's lifetime (see
+                // `RefreshFeed`'s own doc). The dashboard raises nothing
+                // here, or every lookout would poll twice as often for
+                // nothing. `Link::Lost` too: `Msg::Bleats` throws the tail
+                // away while the link is down, so every read would be work
+                // done and discarded once a second. `Msg::Snapshot` and
                 // `select_at` guard on the same thing, and
                 // `a_frozen_dashboard_does_not_re_read_anything` states the
                 // rule.
-                if matches!(self.body, Body::Bleats(_)) && !matches!(self.link, Link::Lost { .. }) {
+                if matches!(self.body, Body::Bleats(_) | Body::Sheep(_))
+                    && !matches!(self.link, Link::Lost { .. })
+                {
                     Effect::RefreshFeed
                 } else {
                     Effect::None
@@ -2095,49 +2143,20 @@ impl App {
             return Effect::None;
         }
         match result {
-            Ok(Response::SheepConfig(view)) => {
-                let carried = self.config_pane().map(|pane| pane.view().clone());
-                // The env sub-screen is carried too: a set re-reads the
-                // whole config, and without this it would close on the
-                // very keystroke that just added a row. Its cursor rides
-                // by key, not index, since a removal would rename it.
-                let carried_env = self
-                    .config_pane()
-                    .and_then(ConfigPane::env)
-                    .map(|env| (env.view().clone(), env.cursor_key().map(str::to_owned)));
-                // The list sub-screen rides across for the same reason,
-                // and by index rather than by name: an element has no
-                // name. See `ListPane::adopt_view`.
-                let carried_list = self
-                    .config_pane()
-                    .and_then(ConfigPane::list)
-                    .map(|list| (list.key().to_owned(), list.view().clone()));
-                // A question the operator has not answered, or a write
-                // still out, survives the rebuild. Only `Typing` is
-                // dropped. See `ConfigPane::adopt_pending_edit`.
-                let carried_edit = self
-                    .config_pane()
-                    .and_then(|pane| pane.pending_edit().cloned());
-                // Carried for the same reason as the cursor: a re-read must
-                // not dismiss a help note the operator has not dismissed.
-                let carried_help = self.config_pane().is_some_and(ConfigPane::help_open);
-                let mut pane = ConfigPane::sheep(*view);
-                pane.adopt_pending_edit(carried_edit);
-                if let Some(carried) = carried {
-                    pane.adopt_view(carried);
+            Ok(Response::SheepConfig(view)) => match self.config_for {
+                Some(ConfigFor::SheepPane) => {
+                    if let Some(pane) = self.sheep_pane_mut() {
+                        pane.adopt_config(*view);
+                    }
                 }
-                if let Some((carried, cursor_key)) = carried_env {
-                    pane.adopt_env_view(carried, cursor_key.as_deref());
-                }
-                if let Some((key, carried)) = carried_list {
-                    pane.adopt_list_view(&key, carried);
-                }
-                pane.set_help_open(carried_help);
-                self.body = Body::ConfigPane(pane);
-                // The rebuilt pane carries no editor, so the keyboard must
-                // not still think one is open.
-                self.release_text_mode_if_unowned();
-            }
+                // `None` only if something outside this file set
+                // `config_target` without `config_for`, which nothing does:
+                // [`Self::ask_for_sheep_config`] is the one place both are
+                // set, always together. Falling back to the editor is the
+                // pre-[`ConfigFor`] behaviour, not a guess this reply
+                // belongs to a screen that never asked for it.
+                None | Some(ConfigFor::Editor) => self.open_or_refresh_config_pane(*view),
+            },
             Ok(_unrecognised) => {
                 self.notice = Some(Notice {
                     text: format!(
@@ -2165,6 +2184,55 @@ impl App {
             }
         }
         Effect::None
+    }
+
+    /// Opens the config pane on `view`, or refreshes one already open in
+    /// place, carrying across everything a rebuild would otherwise drop.
+    /// Split out of [`Self::on_sheep_config`] so that method can route a
+    /// [`ConfigFor::SheepPane`] reply to [`Self::sheep_pane_mut`] instead
+    /// without repeating its guard or its error arms.
+    fn open_or_refresh_config_pane(&mut self, view: SheepConfigView) {
+        let carried = self.config_pane().map(|pane| pane.view().clone());
+        // The env sub-screen is carried too: a set re-reads the whole
+        // config, and without this it would close on the very keystroke
+        // that just added a row. Its cursor rides by key, not index, since
+        // a removal would rename it.
+        let carried_env = self
+            .config_pane()
+            .and_then(ConfigPane::env)
+            .map(|env| (env.view().clone(), env.cursor_key().map(str::to_owned)));
+        // The list sub-screen rides across for the same reason, and by
+        // index rather than by name: an element has no name. See
+        // `ListPane::adopt_view`.
+        let carried_list = self
+            .config_pane()
+            .and_then(ConfigPane::list)
+            .map(|list| (list.key().to_owned(), list.view().clone()));
+        // A question the operator has not answered, or a write still out,
+        // survives the rebuild. Only `Typing` is dropped. See
+        // `ConfigPane::adopt_pending_edit`.
+        let carried_edit = self
+            .config_pane()
+            .and_then(|pane| pane.pending_edit().cloned());
+        // Carried for the same reason as the cursor: a re-read must not
+        // dismiss a help note the operator has not dismissed.
+        let carried_help = self.config_pane().is_some_and(ConfigPane::help_open);
+        let mut pane = ConfigPane::sheep(view);
+        pane.adopt_pending_edit(carried_edit);
+        if let Some(carried) = carried {
+            pane.adopt_view(carried);
+        }
+        if let Some((carried, cursor_key)) = carried_env {
+            pane.adopt_env_view(carried, cursor_key.as_deref());
+        }
+        if let Some((key, carried)) = carried_list {
+            pane.adopt_list_view(&key, carried);
+        }
+        pane.set_help_open(carried_help);
+        self.body = Body::ConfigPane(pane);
+        // The rebuilt pane carries no editor, so the keyboard must not
+        // still think one is open.
+        self.release_text_mode_if_unowned();
     }
 
     fn on_event(&mut self, event: BusEvent) -> Effect {
@@ -2478,6 +2546,13 @@ impl App {
         if self.bleats_pane().is_some() {
             return self.on_bleats_key(key);
         }
+        // The sheep pane owns the keyboard while it is open, the same as
+        // the three full-screen panes above. `Body` holds only one at a
+        // time, so this ordering is documentation, not correctness, the
+        // same as theirs.
+        if self.sheep_pane().is_some() {
+            return self.on_sheep_pane_key(key);
+        }
         // A cancelling keypress is consumed: a stray `j` cancels the confirm
         // and does not also move the selection, or the next reflexive Enter
         // acts on a target the operator lost track of. Cancelling is silent.
@@ -2527,24 +2602,28 @@ impl App {
             KeyPress::SelectFirst => self.select_at(0, 1),
             KeyPress::SelectLast => self.select_at(self.visible_len().saturating_sub(1), -1),
             KeyPress::Action(verb) => self.arm(verb),
-            // Enter means nothing outside an armed confirm, including while one
-            // is in flight: the routing rule above fires only on `Stage::Armed`.
-            KeyPress::Confirm => Effect::None,
+            // An armed confirm (including one already in flight) owns
+            // `Enter` before it ever reaches here: the routing rule above
+            // fires only on `Stage::Armed`. With nothing armed, `Enter`
+            // opens the sheep pane on the selected row, or does nothing on
+            // a dog, a group or a fold header, none of which is a sheep to
+            // open one on.
+            KeyPress::Confirm => self.open_sheep_pane(),
             KeyPress::FilterStart => {
                 self.mode = InputMode::Text;
                 Effect::None
             }
             // `TextChar`/`TextBackspace`/`TextApply`/`TextAbandon` reach here
             // only from text mode, already branched above. `map_key` also
-            // sends `ListRemove`/`ListMoveUp`/`ListMoveDown` from Normal mode
+            // sends `ListRemove`/`StepUp`/`StepDown` from Normal mode
             // (`d`/`K`/`J`), so those land here too, just inert.
             KeyPress::TextChar(_)
             | KeyPress::TextBackspace
             | KeyPress::TextApply
             | KeyPress::TextAbandon
             | KeyPress::ListRemove
-            | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown => Effect::None,
+            | KeyPress::StepUp
+            | KeyPress::StepDown => Effect::None,
             // The read, not the open: the screen opens only once
             // `Msg::Settings` lands.
             KeyPress::Settings => Effect::LoadSettings,
@@ -2619,6 +2698,265 @@ impl App {
             self.body = Body::Bleats(BleatsPane::new(sheep));
         }
         Effect::None
+    }
+
+    /// `b`, from inside the sheep pane: hands the embedded feed's own state
+    /// to `Body::Bleats` rather than [`BleatsPane::new`]ing a fresh one, so
+    /// a filter narrowed in the pane's own column survives going full
+    /// screen. A no-op on any other screen; `on_sheep_pane_key` only reaches
+    /// this while [`Self::sheep_pane`] is `Some`, but the match on `body`
+    /// stays defensive rather than assuming that.
+    fn promote_feed_to_full_screen(&mut self) -> Effect {
+        if let Body::Sheep(pane) = &self.body {
+            self.body = Body::Bleats(pane.feed().clone());
+        }
+        // The embedded feed never clamps its own offset: it draws no
+        // scrollback, so `N` can walk the stored value past anything the
+        // full screen can scroll back to. Clamping on arrival rather than
+        // leaving it is what `scroll_bleats_back` already documents, in
+        // those words: the render clamps while the stored value keeps
+        // climbing, so `j` stops appearing to work until the operator has
+        // pressed it as many times as `N` was pressed before.
+        let ceiling = self.bleats_pane().map_or(0, |pane| {
+            super::view::bleats_full::max_scroll_offset(self, pane)
+        });
+        if let Some(pane) = self.bleats_pane_mut() {
+            pane.clamp_scroll(ceiling);
+        }
+        Effect::None
+    }
+
+    /// `Enter`'s own handler on the dashboard: opens the sheep pane on the
+    /// selected sheep and asks for its config in the same step, since the
+    /// pane's own left column has nothing to draw without it.
+    ///
+    /// [`Self::selected_row`], not [`Self::selected_name`]: a group row has
+    /// no single sheep to open the pane on, and a dog runs no config the
+    /// pane's own `SheepConfigView` can show (its section is a TOML table,
+    /// not a Flockfile's `AppConfig`). Both are silently refused, the same
+    /// silence [`Self::ask_for_bleats`] falls back to for a group.
+    fn open_sheep_pane(&mut self) -> Effect {
+        let Some(row) = self.selected_row() else {
+            return Effect::None;
+        };
+        if row.info.dog.is_some() {
+            return Effect::None;
+        }
+        let sheep = self
+            .selected()
+            .expect("selected_row answered, so a selection exists");
+        let name = row.info.name.clone();
+        self.body = Body::Sheep(Box::new(SheepPane::new(sheep)));
+        self.ask_for_sheep_config(name, ConfigFor::SheepPane)
+    }
+
+    /// `J`/`K` from inside the sheep pane: steps to the next or previous
+    /// sheep the flock table would show, skipping a dog, a group header and
+    /// a fold header (none of which is a sheep the pane can open on), and
+    /// asks for the new sheep's config in the same step.
+    ///
+    /// Silent past either end of the list, and silent if the pane's own
+    /// sheep has already left the flock: there is nothing to step from.
+    fn step_sheep_pane(&mut self, delta: isize) -> Effect {
+        let Body::Sheep(pane) = &self.body else {
+            return Effect::None;
+        };
+        let current = pane.sheep().clone();
+        let sheep_rows: Vec<RowKey> = self
+            .visible_rows()
+            .into_iter()
+            .filter(|key| match key {
+                RowKey::Sheep(id) => self.flock.get(id).is_some_and(|row| row.info.dog.is_none()),
+                RowKey::Group(_) | RowKey::Fold(_) | RowKey::Section(_) => false,
+            })
+            .collect();
+        let Some(index) = sheep_rows.iter().position(|key| *key == current) else {
+            return Effect::None;
+        };
+        let next_index = index
+            .saturating_add_signed(delta)
+            .min(sheep_rows.len().saturating_sub(1));
+        let next = sheep_rows[next_index].clone();
+        if next == current {
+            return Effect::None;
+        }
+        let RowKey::Sheep(id) = &next else {
+            unreachable!("the filter above admits only `RowKey::Sheep`")
+        };
+        let Some(name) = self.flock.get(id).map(|row| row.info.name.clone()) else {
+            return Effect::None;
+        };
+        self.selected = Some(next.clone());
+        if let Some(pane) = self.sheep_pane_mut() {
+            pane.set_sheep(next);
+        }
+        self.ask_for_sheep_config(name, ConfigFor::SheepPane)
+    }
+
+    /// The sheep pane's own keymap, in force while [`Self::sheep_pane`] is
+    /// `Some`. `esc` closes it; `e` opens the config editor over it,
+    /// routed by [`ConfigFor`] once the reply lands, since both send the
+    /// same request; `J`/`K` step to the next or previous sheep without
+    /// leaving the pane; `x`/`R`/`L` arm a confirm against the pane's own
+    /// pinned sheep ([`Self::arm_sheep_pane`]), `↵` confirms it and any
+    /// other key cancels it, the same as the dashboard's own armed check
+    /// just below in [`Self::on_key`], needed here too, in its own copy,
+    /// because `on_key` routes to this method ahead of that check, so an
+    /// action armed from inside this pane never reaches it. `j`/`k` and
+    /// `g`/`G` scroll the config/env column through its own `Viewport`.
+    /// `/`, `o`, `m`, `f`, `w`, `n` and `N` belong to the embedded feed
+    /// ([`Self::sheep_feed_mut`]), the same axes [`Self::on_bleats_key`]
+    /// wires for the full-screen pane, and `b` hands that same feed to
+    /// [`Self::promote_feed_to_full_screen`] rather than opening a fresh one.
+    /// Every other key is inert.
+    fn on_sheep_pane_key(&mut self, key: KeyPress) -> Effect {
+        if self
+            .action
+            .as_ref()
+            .is_some_and(|action| action.stage == Stage::Armed)
+        {
+            if key == KeyPress::Confirm {
+                return self.confirm();
+            }
+            if key == KeyPress::Quit {
+                return Effect::Quit;
+            }
+            self.action = None;
+            return Effect::None;
+        }
+        self.notice = None;
+        match key {
+            KeyPress::Quit => Effect::Quit,
+            KeyPress::Escape => {
+                self.close_pane();
+                Effect::None
+            }
+            KeyPress::Edit => self.ask_for_sheep_pane_config(),
+            KeyPress::StepDown => self.step_sheep_pane(1),
+            KeyPress::StepUp => self.step_sheep_pane(-1),
+            KeyPress::Action(verb) => self.arm_sheep_pane(verb),
+            KeyPress::SelectUp => {
+                if let Some(pane) = self.sheep_pane_mut() {
+                    pane.move_by(-1);
+                }
+                Effect::None
+            }
+            KeyPress::SelectDown => {
+                if let Some(pane) = self.sheep_pane_mut() {
+                    pane.move_by(1);
+                }
+                Effect::None
+            }
+            KeyPress::SelectFirst => {
+                if let Some(pane) = self.sheep_pane_mut() {
+                    pane.move_to_first();
+                }
+                Effect::None
+            }
+            KeyPress::SelectLast => {
+                if let Some(pane) = self.sheep_pane_mut() {
+                    pane.move_to_last();
+                }
+                Effect::None
+            }
+            // `b`: hands the embedded feed's own state to `Body::Bleats`
+            // rather than rebuilding one, so a filter narrowed here survives
+            // going full screen.
+            KeyPress::Bleats => self.promote_feed_to_full_screen(),
+            // Opens the feed's own match box: `on_text_key` routes the
+            // keystrokes that follow to `on_sheep_feed_text_key` once this
+            // pane owns `InputMode::Text`, the same shape
+            // `on_bleats_key`'s own `FilterStart` arm follows.
+            KeyPress::FilterStart => {
+                if let Some(feed) = self.sheep_feed_mut() {
+                    feed.begin_match_edit();
+                }
+                self.mode = InputMode::Text;
+                Effect::None
+            }
+            // `o`: cycles the embedded feed's stream axis, the same cycle
+            // `on_bleats_key`'s own arm follows.
+            KeyPress::StreamCycle => {
+                if let Some(feed) = self.sheep_feed_mut() {
+                    let next = match feed.filters().stream {
+                        None => Some(Stream::Out),
+                        Some(Stream::Out) => Some(Stream::Err),
+                        Some(Stream::Err) => None,
+                    };
+                    feed.set_stream(next);
+                }
+                Effect::None
+            }
+            // `m`: cycles the embedded feed's minimum-level axis, the same
+            // cycle `on_bleats_key`'s own arm follows.
+            KeyPress::LevelCycle => {
+                if let Some(feed) = self.sheep_feed_mut() {
+                    let next = match feed.filters().min_level {
+                        None => Some(Level::Trace),
+                        Some(Level::Trace) => Some(Level::Debug),
+                        Some(Level::Debug) => Some(Level::Info),
+                        Some(Level::Info) => Some(Level::Warn),
+                        Some(Level::Warn) => Some(Level::Error),
+                        Some(Level::Error) => None,
+                    };
+                    feed.set_min_level(next);
+                }
+                Effect::None
+            }
+            // `f`: toggles following explicitly.
+            KeyPress::FollowToggle => {
+                if let Some(feed) = self.sheep_feed_mut() {
+                    feed.toggle_follow();
+                }
+                Effect::None
+            }
+            // `w`: toggles whether a long line wraps or truncates.
+            KeyPress::WrapToggle => {
+                if let Some(feed) = self.sheep_feed_mut() {
+                    feed.toggle_wrap();
+                }
+                Effect::None
+            }
+            // `n`: one match toward the newest line. A no-op with no match
+            // axis set: see `BleatsPane::match_next`.
+            KeyPress::MatchNext => {
+                if let Some(feed) = self.sheep_feed_mut() {
+                    feed.match_next();
+                }
+                Effect::None
+            }
+            // `N`: the same, toward the oldest matching line. Unlike
+            // `on_bleats_key`'s own `MatchPrev` arm, this does not clamp
+            // through `bleats_full::max_scroll_offset`: the embedded feed
+            // draws no scrollback of its own (there is no `j`/`k` for it
+            // here, unlike the full-screen pane), and `window_range`
+            // saturates a stale offset rather than reading past the end.
+            // `promote_feed_to_full_screen` clamps on arrival, which is
+            // where an unclamped value would otherwise be felt.
+            KeyPress::MatchPrev => {
+                let stepping = self
+                    .sheep_pane()
+                    .is_some_and(|pane| pane.feed().filters().matcher.is_some());
+                if stepping && let Some(feed) = self.sheep_feed_mut() {
+                    feed.scroll_up(1);
+                }
+                Effect::None
+            }
+            KeyPress::Refresh
+            | KeyPress::Confirm
+            | KeyPress::TextChar(_)
+            | KeyPress::TextBackspace
+            | KeyPress::TextApply
+            | KeyPress::TextAbandon
+            | KeyPress::Settings
+            | KeyPress::Cycle
+            | KeyPress::Help
+            | KeyPress::ListRemove
+            | KeyPress::FoldView
+            | KeyPress::Collapse
+            | KeyPress::PageDown
+            | KeyPress::PageUp => Effect::None,
+        }
     }
 
     /// The bleats pane's own keymap, in force while [`Self::bleats_pane`] is
@@ -2780,8 +3118,8 @@ impl App {
             | KeyPress::Edit
             | KeyPress::Help
             | KeyPress::ListRemove
-            | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown
+            | KeyPress::StepUp
+            | KeyPress::StepDown
             // `F` and `z` belong to the flock table. Regrouping a table the
             // operator cannot see, while a log pane owns the screen, is a
             // change they would meet on closing it.
@@ -2828,6 +3166,48 @@ impl App {
                 self.mode = InputMode::Normal;
                 if let Some(pane) = self.bleats_pane_mut() {
                     pane.abandon_match_edit();
+                }
+                Effect::None
+            }
+            _ => Effect::None,
+        }
+    }
+
+    /// The embedded feed's own match box, in force while it owns
+    /// [`InputMode::Text`]. [`Self::on_bleats_text_key`]'s own body, against
+    /// [`Self::sheep_feed_mut`] instead of [`Self::bleats_pane_mut`]: the two
+    /// panes never coexist, but each opens its match box against its own
+    /// filter state.
+    fn on_sheep_feed_text_key(&mut self, key: KeyPress) -> Effect {
+        match key {
+            KeyPress::Quit => Effect::Quit,
+            KeyPress::TextChar(typed) => {
+                if let Some(feed) = self.sheep_feed_mut() {
+                    let mut text = feed.filters().matcher.clone().unwrap_or_default();
+                    text.push(typed);
+                    feed.set_match(text);
+                }
+                Effect::None
+            }
+            KeyPress::TextBackspace => {
+                if let Some(feed) = self.sheep_feed_mut() {
+                    let mut text = feed.filters().matcher.clone().unwrap_or_default();
+                    text.pop();
+                    feed.set_match(text);
+                }
+                Effect::None
+            }
+            KeyPress::TextApply => {
+                self.mode = InputMode::Normal;
+                if let Some(feed) = self.sheep_feed_mut() {
+                    feed.commit_match_edit();
+                }
+                Effect::None
+            }
+            KeyPress::TextAbandon => {
+                self.mode = InputMode::Normal;
+                if let Some(feed) = self.sheep_feed_mut() {
+                    feed.abandon_match_edit();
                 }
                 Effect::None
             }
@@ -2910,8 +3290,8 @@ impl App {
             | KeyPress::TextAbandon
             | KeyPress::Help
             | KeyPress::ListRemove
-            | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown
+            | KeyPress::StepUp
+            | KeyPress::StepDown
             | KeyPress::FoldView
             | KeyPress::Collapse => {}
             KeyPress::StreamCycle
@@ -2972,12 +3352,41 @@ impl App {
             };
         }
         match self.selected_name() {
-            Some(name) => {
-                self.config_target = Some(name.clone());
-                Effect::Send(Sent::SheepConfig { name })
-            }
+            Some(name) => self.ask_for_sheep_config(name, ConfigFor::Editor),
             None => Effect::None,
         }
+    }
+
+    /// `e`'s own handler from inside the sheep pane: targets the pane's own
+    /// pinned sheep, never [`Self::selected_row`]/[`Self::selected_name`].
+    ///
+    /// The same reasoning [`Self::arm_sheep_pane`]'s own doc gives:
+    /// `Msg::Snapshot` reseats the dashboard's selection whatever screen is
+    /// showing, so reading the selection here would open a neighbour's
+    /// config under the pane's own title the instant the pinned sheep left
+    /// the flock. Refuses instead of substituting. A pane is never pinned
+    /// on a dog, so [`Self::ask_for_config`]'s dog branch has no twin here.
+    fn ask_for_sheep_pane_config(&mut self) -> Effect {
+        let Some(row) = self.sheep_pane_row() else {
+            self.notice = Some(Notice {
+                text: "that sheep is no longer in the flock".to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        };
+        self.ask_for_sheep_config(row.info.name.clone(), ConfigFor::Editor)
+    }
+
+    /// Sends `Request::SheepConfig` for `name`, recording which screen it is
+    /// for so [`Self::on_sheep_config`] can route the reply once it lands.
+    ///
+    /// The one place [`Self::config_target`] and [`Self::config_for`] are
+    /// set for a sheep-config read, so the two can never disagree about
+    /// which request is outstanding.
+    fn ask_for_sheep_config(&mut self, name: String, for_screen: ConfigFor) -> Effect {
+        self.config_target = Some(name.clone());
+        self.config_for = Some(for_screen);
+        Effect::Send(Sent::SheepConfig { name })
     }
 
     /// Puts the keyboard back to [`InputMode::Normal`] when no pane editor
@@ -3103,8 +3512,8 @@ impl App {
             | KeyPress::TextApply
             | KeyPress::TextAbandon
             | KeyPress::ListRemove
-            | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown
+            | KeyPress::StepUp
+            | KeyPress::StepDown
             | KeyPress::FoldView
             | KeyPress::Collapse => {}
             KeyPress::StreamCycle
@@ -3157,6 +3566,7 @@ impl App {
         self.body = Body::FlockTable;
         self.pane_menu = None;
         self.config_target = None;
+        self.config_for = None;
         self.dog_target = None;
         self.release_text_mode_if_unowned();
     }
@@ -3208,8 +3618,8 @@ impl App {
             | KeyPress::TextApply
             | KeyPress::TextAbandon
             | KeyPress::ListRemove
-            | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown
+            | KeyPress::StepUp
+            | KeyPress::StepDown
             | KeyPress::FoldView
             | KeyPress::Collapse => Effect::None,
             KeyPress::StreamCycle
@@ -3384,7 +3794,7 @@ impl App {
         // scope.
         let Some(pane) = (match &mut self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }) else {
             return Effect::None;
         };
@@ -3580,11 +3990,11 @@ impl App {
                     pane.arm_list_removal(now);
                 }
             }
-            KeyPress::ListMoveUp | KeyPress::ListMoveDown => {
+            KeyPress::StepUp | KeyPress::StepDown => {
                 if self.authorize_write().is_none() {
                     return Effect::None;
                 }
-                let delta = if key == KeyPress::ListMoveUp { -1 } else { 1 };
+                let delta = if key == KeyPress::StepUp { -1 } else { 1 };
                 if let Some(pane) = self.config_pane_mut() {
                     pane.arm_list_reorder(delta, now);
                 }
@@ -3687,8 +4097,8 @@ impl App {
             | KeyPress::TextAbandon
             | KeyPress::Help
             | KeyPress::ListRemove
-            | KeyPress::ListMoveUp
-            | KeyPress::ListMoveDown
+            | KeyPress::StepUp
+            | KeyPress::StepDown
             | KeyPress::FoldView
             | KeyPress::Collapse => {}
             KeyPress::StreamCycle
@@ -3760,7 +4170,7 @@ impl App {
         // `Self::config_pane_mut`, so `self.mode` stays reachable below.
         let Some(pane) = (match &mut self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }) else {
             return Effect::None;
         };
@@ -3798,7 +4208,7 @@ impl App {
         // `Self::config_pane_mut`, so `self.mode` stays reachable below.
         let Some(pane) = (match &mut self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }) else {
             return Effect::None;
         };
@@ -3863,7 +4273,7 @@ impl App {
         // `Self::settings_mut`, so `self.now` stays reachable below.
         let Some(settings) = (match &mut self.body {
             Body::Settings(settings) => Some(settings),
-            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }) else {
             return Effect::None;
         };
@@ -3897,7 +4307,7 @@ impl App {
         // `Self::settings_mut`, so `self.now` stays reachable below.
         let Some(settings) = (match &mut self.body {
             Body::Settings(settings) => Some(settings),
-            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }) else {
             return Effect::None;
         };
@@ -3986,28 +4396,50 @@ impl App {
         }
     }
 
+    /// The refusal ladder shared by [`Self::arm`] and [`Self::arm_sheep_pane`]:
+    /// the gate, the link. Neither caller's own target-specific refusal
+    /// (nothing selected, one action already in flight, the pane's pinned
+    /// sheep is gone) lives here, since the two callers order those three
+    /// differently: `arm` asks "nothing selected" before "one already in
+    /// flight", `arm_sheep_pane` cannot ask the first (the pane would not be
+    /// open without a sheep) so only asks the second. Folding "in flight"
+    /// in here once put it ahead of `arm`'s "nothing selected" for every
+    /// caller, which is the bug this comment now exists to keep out.
+    fn confirm_refusal(&self) -> Option<String> {
+        if self.control == Control::ReadOnly {
+            Some(READ_ONLY_REFUSAL.to_string())
+        } else {
+            self.link_refusal()
+        }
+    }
+
     /// Arms a confirm, or refuses and says why.
     ///
     /// Every refusal happens here rather than at confirm time, so an operator
-    /// never answers a question that was never going to be honoured. The ladder
-    /// is gate, link, nothing selected, one already in flight.
+    /// never answers a question that was never going to be honoured. The
+    /// ladder is [`Self::confirm_refusal`]'s own gate and link, then nothing
+    /// selected, then one action already in flight, but this method checks
+    /// nothing selected first, since a keypress with no target asked a
+    /// question that was never about the in-flight action at all.
     fn arm(&mut self, verb: ActionVerb) -> Effect {
-        let refusal = if self.control == Control::ReadOnly {
-            Some(READ_ONLY_REFUSAL.to_string())
-        } else if let Some(text) = self.link_refusal() {
-            Some(text)
-        } else if self.selected.is_none() {
-            Some("no sheep is selected".to_string())
-        } else if self.action.is_some() {
-            Some("one action is already in flight".to_string())
-        } else {
-            None
-        };
-        if let Some(text) = refusal {
+        if let Some(text) = self.confirm_refusal() {
             self.notice = Some(Notice { text, grave: true });
             return Effect::None;
         }
-        let key = self.selected.clone().expect("checked just above");
+        let Some(key) = self.selected.clone() else {
+            self.notice = Some(Notice {
+                text: "no sheep is selected".to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        };
+        if self.action.is_some() {
+            self.notice = Some(Notice {
+                text: "one action is already in flight".to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
         let (target, name, count) = match &key {
             RowKey::Sheep(id) => {
                 let row = self
@@ -4039,6 +4471,50 @@ impl App {
             target,
             name,
             count,
+            at: self.now,
+            stage: Stage::Armed,
+        });
+        Effect::None
+    }
+
+    /// `x`/`R`/`L` from inside the sheep pane: arms a confirm against the
+    /// pane's own pinned sheep, never [`Self::selected`].
+    ///
+    /// Arming against the selection here would be the same mistake
+    /// [`Self::sheep_pane_row`]'s own doc explains: `Msg::Snapshot` reseats
+    /// the selection whatever screen is showing, so a pinned sheep that
+    /// leaves the flock would arm an action against whichever sheep
+    /// replaced it while the pane still names the first. Refuses instead.
+    ///
+    /// The ladder is [`Self::confirm_refusal`]'s own gate and link, then one
+    /// action already in flight, same order [`Self::arm`] uses for those
+    /// two; [`Self::arm`]'s "nothing selected" case cannot happen here,
+    /// since the pane would not be open without a sheep, so its place is
+    /// taken by the pinned sheep having left instead.
+    fn arm_sheep_pane(&mut self, verb: ActionVerb) -> Effect {
+        if let Some(text) = self.confirm_refusal() {
+            self.notice = Some(Notice { text, grave: true });
+            return Effect::None;
+        }
+        if self.action.is_some() {
+            self.notice = Some(Notice {
+                text: "one action is already in flight".to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        }
+        let Some(row) = self.sheep_pane_row() else {
+            self.notice = Some(Notice {
+                text: "that sheep is no longer in the flock".to_string(),
+                grave: true,
+            });
+            return Effect::None;
+        };
+        self.action = Some(Action {
+            verb,
+            target: RowKey::Sheep(row.info.id),
+            name: row.info.name.clone(),
+            count: 1,
             at: self.now,
             stage: Stage::Armed,
         });
@@ -4089,25 +4565,75 @@ impl App {
         }
     }
 
-    /// Appends one CPU sample per sheep in the current flock, plus the
-    /// flock-wide sum, and drops every history entry for a sheep the new
-    /// snapshot no longer carries.
+    /// Differences one CPU sample per sheep in the current flock against its
+    /// last reading, buffers RSS as read, appends the flock-wide CPU sum,
+    /// and drops every history entry (CPU, RSS and baseline) for a sheep the
+    /// new snapshot no longer carries.
     ///
     /// Called after `self.flock` is replaced, so it reads the fresh
-    /// snapshot rather than the one before it. A sheep with no reading
-    /// contributes `0.0`: skipping it would slide the whole window and
-    /// make an old spike look recent.
+    /// snapshot rather than the one before it. A sheep with no CPU reading
+    /// contributes `0.0` and forgets its baseline: skipping the sample would
+    /// slide the whole window and make an old spike look recent, and
+    /// keeping the baseline would difference the next live reading across
+    /// the gap.
     ///
-    /// Every touched deque is made contiguous here, while this method
-    /// still holds `&mut self`, so [`Self::cpu_history`] and
-    /// [`Self::flock_cpu_history`] can hand out a slice from `&self`
+    /// Every touched deque is made contiguous here, while this method still
+    /// holds `&mut self`, so [`Self::cpu_history`], [`Self::rss_history`]
+    /// and [`Self::flock_cpu_history`] can hand out a slice from `&self`
     /// alone.
-    fn record_cpu_samples(&mut self) {
+    fn record_samples(&mut self, at: Instant) {
+        // Collected first: the differencing below needs `&mut self.cpu_last`
+        // while a walk of `self.flock` would still be borrowing it.
+        let readings: Vec<(u32, Option<u32>, Option<u64>, u64)> = self
+            .flock
+            .values()
+            .map(|row| {
+                (
+                    row.info.id,
+                    row.info.pid,
+                    row.info.cpu_ms,
+                    row.info.memory_bytes.unwrap_or(0),
+                )
+            })
+            .collect();
         let mut sum = 0.0;
-        for row in self.flock.values() {
-            let cpu = row.info.cpu_percent.unwrap_or(0.0);
+        for (id, pid, cpu_ms, rss) in readings {
+            let rss_history = self.rss_history.entry(id).or_default();
+            rss_history.push_back(rss);
+            if rss_history.len() > HISTORY {
+                rss_history.pop_front();
+            }
+            rss_history.make_contiguous();
+
+            let cpu = match cpu_ms {
+                None => {
+                    self.cpu_last.remove(&id);
+                    0.0
+                }
+                Some(now_ms) => match self.cpu_last.insert(id, (pid, now_ms, at)) {
+                    // Nothing behind this reading to difference. The buffer
+                    // stays one short of the poll count rather than claiming
+                    // an idle sample it never measured.
+                    None => continue,
+                    // A respawn keeps the sheep's id and takes a new pid, and
+                    // `cpu_ms` counts the tree under whichever pid the
+                    // shepherd is watching now. Differencing across that
+                    // boundary subtracts a dead process's counter from a live
+                    // one's: `saturating_sub` keeps it from ever reading as a
+                    // spike, but it still underreports the new process by
+                    // exactly what the old one had spent. A new process is a
+                    // first reading, so it records a baseline and appends
+                    // nothing, the same as a sheep the pane has never seen.
+                    Some((then_pid, _, _)) if then_pid != pid => continue,
+                    Some((_, then_ms, then)) => shep_core::values::cpu_percent(
+                        now_ms.saturating_sub(then_ms),
+                        at.saturating_duration_since(then),
+                    )
+                    .unwrap_or(0.0),
+                },
+            };
             sum += cpu;
-            let history = self.cpu_history.entry(row.info.id).or_default();
+            let history = self.cpu_history.entry(id).or_default();
             history.push_back(cpu);
             if history.len() > HISTORY {
                 history.pop_front();
@@ -4115,6 +4641,14 @@ impl App {
             history.make_contiguous();
         }
         self.cpu_history.retain(|id, _| self.flock.contains_key(id));
+        self.rss_history.retain(|id, _| self.flock.contains_key(id));
+        // A departed sheep's baseline outlives its rows here unless dropped
+        // too: without this, a later id reused by an unrelated sheep would
+        // inherit a stranger's counter and difference its first honest
+        // reading against it, breaking the exact guarantee
+        // `Self::cpu_history`'s doc makes about a later id inheriting
+        // nothing.
+        self.cpu_last.retain(|id, _| self.flock.contains_key(id));
         self.flock_cpu.push_back(sum);
         if self.flock_cpu.len() > HISTORY {
             self.flock_cpu.pop_front();
@@ -4125,11 +4659,47 @@ impl App {
     /// One sheep's CPU-percent samples, oldest first, newest last.
     ///
     /// Empty for a sheep with no history yet, and for one that has left the
-    /// flock: [`Self::record_cpu_samples`] drops its entry entirely.
+    /// flock: [`Self::record_samples`] drops its entry entirely.
+    #[must_use]
     pub fn cpu_history(&self, id: u32) -> &[f32] {
         self.cpu_history
             .get(&id)
             .map_or(&[][..], |history| history.as_slices().0)
+    }
+
+    /// `id`'s newest differenced CPU sample: [`Self::cpu_history`]'s last
+    /// entry, the same number its sparkline's last cell draws.
+    ///
+    /// `None` in two cases, both honest gaps rather than a claimed zero:
+    /// before a first difference exists (one poll after launch, on
+    /// [`Self::cpu_history`]'s own terms), and when the current snapshot's
+    /// `cpu_ms` is itself `None` (the sheep is not running, or the peer
+    /// daemon predates the field). The second check matters because
+    /// [`Self::record_samples`] still appends a zero to the history buffer
+    /// in that case, to keep the sparkline's window from sliding; reading
+    /// that zero back as a figure would report "0.0%" for a sheep whose CPU
+    /// was never sampled, the same false claim `ProcessInfo::cpu_percent`'s
+    /// own `None` exists to refuse.
+    ///
+    /// Every CPU figure lookout draws reads through here rather than
+    /// `ProcessInfo::cpu_percent`, the shepherd's own mean over a window
+    /// that resets independently of this pane's polls: reading both would
+    /// put two different numbers under one label.
+    #[must_use]
+    pub fn cpu_now(&self, id: u32) -> Option<f32> {
+        self.flock.get(&id)?.info.cpu_ms?;
+        self.cpu_history(id).last().copied()
+    }
+
+    /// One sheep's RSS samples in bytes, oldest first, newest last.
+    ///
+    /// Empty for a sheep with no history yet and for one that has left the
+    /// flock, on [`Self::cpu_history`]'s terms.
+    #[must_use]
+    pub fn rss_history(&self, id: u32) -> &[u64] {
+        self.rss_history
+            .get(&id)
+            .map_or(&[][..], |series| series.as_slices().0)
     }
 
     /// The whole flock's summed CPU-percent samples, oldest first, newest
@@ -4189,12 +4759,12 @@ impl App {
     /// closed, [`Self::on_settings_text_key`]'s editor while it is open. The
     /// two never both own [`InputMode::Text`].
     fn on_text_key(&mut self, key: KeyPress) -> Effect {
-        // Four now, and the split is still total: the config pane, the
-        // settings screen and the bleats pane cannot coexist with each
-        // other (`e` and `s` reach the dashboard only from the dashboard,
-        // and `b` only from there too), and none of them coexist with the
-        // dashboard's own filter box, which `Msg::Settings`'s own arm
-        // closed the window on.
+        // Five now, and the split is still total: the config pane, the
+        // settings screen, the bleats pane and the sheep pane cannot coexist
+        // with each other (`e` and `s` reach the dashboard only from the
+        // dashboard, and `b`/`↵` only from there too), and none of them
+        // coexist with the dashboard's own filter box, which `Msg::Settings`'s
+        // own arm closed the window on.
         if self.config_pane().is_some() {
             return self.on_pane_text_key(key);
         }
@@ -4203,6 +4773,9 @@ impl App {
         }
         if self.bleats_pane().is_some() {
             return self.on_bleats_text_key(key);
+        }
+        if self.sheep_pane().is_some() {
+            return self.on_sheep_feed_text_key(key);
         }
         self.on_filter_text_key(key)
     }
@@ -4599,14 +5172,16 @@ impl App {
     }
 
     /// The row whose log files the feed should read: the bleats pane's
-    /// pinned sheep while that pane is open, and the selection otherwise.
+    /// pinned sheep while that pane is open, the sheep pane's own pinned
+    /// sheep while its embedded feed is open, and the selection otherwise.
     ///
-    /// The two are not the same and the difference is operator-visible. The
-    /// pane pins one sheep for its lifetime, but `Msg::Snapshot` reseats the
-    /// selection whatever screen is showing, so a pinned sheep leaving the
-    /// flock moves the selection to another one. Reading the selection here
-    /// would then draw that other sheep's lines under a title still naming
-    /// the pinned sheep, which is one sheep's output presented as another's.
+    /// The three are not the same and the difference is operator-visible.
+    /// Both panes pin one sheep for their lifetime, but `Msg::Snapshot`
+    /// reseats the selection whatever screen is showing, so a pinned sheep
+    /// leaving the flock moves the selection to another one. Reading the
+    /// selection here would then draw that other sheep's lines under a
+    /// title still naming the pinned sheep, which is one sheep's output
+    /// presented as another's.
     ///
     /// `None` once the pinned sheep is gone, so the pane shows its own
     /// "no longer in the flock" title over nothing rather than over somebody
@@ -4618,7 +5193,13 @@ impl App {
                 RowKey::Sheep(id) => self.flock.get(id),
                 _ => None,
             },
-            None => self.selected_row(),
+            None => match self.sheep_pane() {
+                Some(pane) => match pane.feed_sheep() {
+                    RowKey::Sheep(id) => self.flock.get(id),
+                    _ => None,
+                },
+                None => self.selected_row(),
+            },
         }
     }
 
@@ -4729,9 +5310,12 @@ impl App {
         GroupTotals {
             count: members.len(),
             restarts: members.iter().map(|row| row.info.restarts).sum(),
+            // `Self::cpu_now`, not `row.info.cpu_percent`: this rollup feeds
+            // the same CPU cell a standalone row draws, and must answer the
+            // same question the row and the flock figure do.
             cpu: members
                 .iter()
-                .filter_map(|row| row.info.cpu_percent)
+                .filter_map(|row| self.cpu_now(row.info.id))
                 .fold(None, |acc, cpu| Some(acc.unwrap_or(0.0) + cpu)),
             memory: members
                 .iter()
@@ -4941,7 +5525,7 @@ impl App {
     pub fn settings(&self) -> Option<&Settings> {
         match &self.body {
             Body::Settings(settings) => Some(settings),
-            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }
     }
 
@@ -4950,7 +5534,7 @@ impl App {
     fn settings_mut(&mut self) -> Option<&mut Settings> {
         match &mut self.body {
             Body::Settings(settings) => Some(settings),
-            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::ConfigPane(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }
     }
 
@@ -5013,7 +5597,7 @@ impl App {
     pub fn config_pane(&self) -> Option<&ConfigPane> {
         match &self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }
     }
 
@@ -5022,7 +5606,7 @@ impl App {
     fn config_pane_mut(&mut self) -> Option<&mut ConfigPane> {
         match &mut self.body {
             Body::ConfigPane(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::Bleats(_) | Body::Sheep(_) => None,
         }
     }
 
@@ -5031,7 +5615,7 @@ impl App {
     pub fn bleats_pane(&self) -> Option<&BleatsPane> {
         match &self.body {
             Body::Bleats(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) | Body::Sheep(_) => None,
         }
     }
 
@@ -5041,7 +5625,7 @@ impl App {
     fn bleats_pane_mut(&mut self) -> Option<&mut BleatsPane> {
         match &mut self.body {
             Body::Bleats(pane) => Some(pane),
-            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) => None,
+            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) | Body::Sheep(_) => None,
         }
     }
 
@@ -5051,6 +5635,53 @@ impl App {
     #[cfg(test)]
     pub(crate) fn bleats_pane_mut_for_tests(&mut self) -> Option<&mut BleatsPane> {
         self.bleats_pane_mut()
+    }
+
+    /// The open sheep pane, or `None` on any other screen.
+    #[must_use]
+    pub fn sheep_pane(&self) -> Option<&SheepPane> {
+        match &self.body {
+            Body::Sheep(pane) => Some(pane.as_ref()),
+            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) | Body::Bleats(_) => None,
+        }
+    }
+
+    /// The open sheep pane's own pinned sheep, or `None` once it has left
+    /// the flock.
+    ///
+    /// Reads [`SheepPane::sheep`], never [`Self::selected`]: the same
+    /// reasoning [`Self::feed_row`]'s own doc gives. `Msg::Snapshot` reseats
+    /// the selection whatever screen is showing, so a pane pinned to a
+    /// sheep that then leaves the flock would have this read a neighbour's
+    /// row while the pane still names the first, one sheep's facts
+    /// presented as another's. The identity band draws this instead of
+    /// `App::selected_row`, and any figure it shows (a CPU reading among
+    /// them) resolves through the row this returns, not the selection.
+    #[must_use]
+    pub fn sheep_pane_row(&self) -> Option<&Row> {
+        match self.sheep_pane()?.sheep() {
+            RowKey::Sheep(id) => self.flock.get(id),
+            RowKey::Group(_) | RowKey::Fold(_) | RowKey::Section(_) => None,
+        }
+    }
+
+    /// [`Self::sheep_pane`]'s mutable twin, for `J`/`K` and for adopting a
+    /// `Request::SheepConfig` reply in place.
+    fn sheep_pane_mut(&mut self) -> Option<&mut SheepPane> {
+        match &mut self.body {
+            Body::Sheep(pane) => Some(pane.as_mut()),
+            Body::FlockTable | Body::Settings(_) | Body::ConfigPane(_) | Body::Bleats(_) => None,
+        }
+    }
+
+    /// The embedded feed inside the open sheep pane, or `None` while the
+    /// pane itself is closed.
+    ///
+    /// [`Self::sheep_pane_mut`] and [`SheepPane::feed_mut`] composed once,
+    /// for `on_sheep_pane_key`'s own filter-axis arms, which would otherwise
+    /// repeat the two-step `and_then` at every one of them.
+    fn sheep_feed_mut(&mut self) -> Option<&mut BleatsPane> {
+        self.sheep_pane_mut().map(SheepPane::feed_mut)
     }
 
     /// The apply offer over the open pane, or `None`.
@@ -5145,16 +5776,33 @@ mod tests {
             .build()
     }
 
-    /// One snapshot row for `id`, reporting `cpu` percent.
-    fn row_with_cpu(id: u32, cpu: f32) -> ProcessInfo {
+    /// One snapshot row for `id`, reporting `cpu_ms` CPU-milliseconds.
+    fn row_with_cpu_ms(id: u32, cpu_ms: u64) -> ProcessInfo {
         ProcessInfo::builder(id, format!("sheep-{id}"), ProcStatus::Online)
-            .cpu_percent(Some(cpu))
+            .cpu_ms(Some(cpu_ms))
+            .build()
+    }
+
+    /// A row naming its own pid, for the respawn case: one sheep id outlives
+    /// the process under it, and `cpu_ms` counts whichever tree the shepherd
+    /// watches now.
+    fn row_with_pid_and_cpu_ms(id: u32, pid: u32, cpu_ms: u64) -> ProcessInfo {
+        ProcessInfo::builder(id, format!("sheep-{id}"), ProcStatus::Online)
+            .pid(Some(pid))
+            .cpu_ms(Some(cpu_ms))
             .build()
     }
 
     /// The same row with no CPU reading, which is what a stopped sheep sends.
     fn row_without_cpu(id: u32) -> ProcessInfo {
         ProcessInfo::builder(id, format!("sheep-{id}"), ProcStatus::Stopped).build()
+    }
+
+    /// One snapshot row for `id`, reporting `rss` bytes of resident memory.
+    fn row_with_rss(id: u32, rss: u64) -> ProcessInfo {
+        ProcessInfo::builder(id, format!("sheep-{id}"), ProcStatus::Online)
+            .memory_bytes(Some(rss))
+            .build()
     }
 
     /// A dashboard with an empty flock, for tests that only exercise the
@@ -5169,65 +5817,211 @@ mod tests {
     }
 
     impl App {
-        /// Drives [`Msg::Snapshot`] the way the poll does, anchored on the
-        /// app's own clock.
+        /// Drives `Msg::Snapshot` the way the poll does, two seconds after
+        /// the last one. The gap is load-bearing: a differenced sample over
+        /// a zero window has no honest value.
         fn on_snapshot(&mut self, rows: Vec<ProcessInfo>) {
+            self.now += Duration::from_secs(2);
             let at = self.now;
             self.update(Msg::Snapshot { rows, at });
         }
     }
 
+    /// The first reading has nothing behind it to difference, so it records a
+    /// baseline and appends nothing. A zero would claim an idle sample that
+    /// was never measured.
     #[test]
-    fn a_snapshot_appends_one_sample_per_sheep() {
+    fn the_first_reading_records_a_baseline_and_no_sample() {
         let mut app = fixture();
-        app.on_snapshot(vec![row_with_cpu(1, 10.0)]);
-        app.on_snapshot(vec![row_with_cpu(1, 20.0)]);
-        assert_eq!(app.cpu_history(1), &[10.0, 20.0]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0)]);
+        assert!(app.cpu_history(1).is_empty());
+    }
+
+    /// 2000 CPU-milliseconds across a two-second poll is one core.
+    #[test]
+    fn two_readings_difference_into_one_sample() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 2_000)]);
+        assert_eq!(app.cpu_history(1), &[100.0]);
+    }
+
+    /// The 15s baseline is what this whole change exists to stop mattering. A
+    /// one-second burst reads once and then reads zero, rather than decaying
+    /// across the next seven polls.
+    #[test]
+    fn a_burst_does_not_smear_across_later_polls() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 1_000)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 1_000)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 1_000)]);
+        assert_eq!(app.cpu_history(1), &[50.0, 0.0, 0.0]);
+    }
+
+    /// A sheep with no reading appends a zero rather than a gap: the chart is
+    /// one cell per sample, and a skipped sample would slide the whole window
+    /// and make an old spike look recent. The stored reading goes with it, so
+    /// the next live reading is not differenced across the stop.
+    #[test]
+    fn an_unsampled_sheep_appends_a_zero_and_forgets_its_baseline() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 2_000)]);
+        app.on_snapshot(vec![row_without_cpu(1)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 9_000)]);
+        assert_eq!(app.cpu_history(1), &[100.0, 0.0]);
+    }
+
+    /// `App::cpu_now` is the source every CPU figure lookout draws reads
+    /// through, and it must agree with the sparkline beside it: `None`
+    /// while one poll has nothing differenced yet, then the same newest
+    /// sample [`App::cpu_history`] holds once a second poll has something
+    /// to difference against.
+    #[test]
+    fn cpu_now_reads_none_after_one_poll_and_matches_cpu_history_after_two() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0)]);
+        assert_eq!(app.cpu_now(1), None, "one poll has nothing to difference");
+        app.on_snapshot(vec![row_with_cpu_ms(1, 2_000)]);
+        assert_eq!(app.cpu_now(1), Some(100.0));
+        assert_eq!(
+            app.cpu_history(1).last().copied(),
+            app.cpu_now(1),
+            "the figure and the sparkline's newest cell must be the same number"
+        );
+    }
+
+    /// `App::record_samples` still appends a zero to the history buffer for
+    /// a sheep with no current reading, so the sparkline's window does not
+    /// slide. `App::cpu_now` must not read that buffered zero back as a
+    /// figure: a sheep whose `cpu_ms` is `None` this poll has nothing
+    /// measured, and `0.0%` would claim otherwise.
+    #[test]
+    fn cpu_now_reads_none_for_a_sheep_with_no_current_reading() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 2_000)]);
+        app.on_snapshot(vec![row_without_cpu(1)]);
+        assert_eq!(
+            app.cpu_history(1),
+            &[100.0, 0.0],
+            "sanity: the buffer still holds the appended zero"
+        );
+        assert_eq!(app.cpu_now(1), None);
+    }
+
+    /// A departed sheep's baseline must not survive to be inherited by an
+    /// unrelated sheep that later reuses its id. Without
+    /// [`App::record_samples`]'s `cpu_last.retain`, the third poll below
+    /// would difference the new sheep's tiny counter against the departed
+    /// sheep's much larger one and manufacture a sample, instead of
+    /// recording an honest baseline and appending nothing.
+    #[test]
+    fn a_departed_sheeps_baseline_is_not_inherited_by_a_reused_id() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_cpu_ms(1, 9_000)]);
+        // Sheep 1 leaves the flock entirely.
+        app.on_snapshot(vec![]);
+        // An unrelated sheep reuses id 1, with its own counter starting low.
+        app.on_snapshot(vec![row_with_cpu_ms(1, 12)]);
+        assert!(
+            app.cpu_history(1).is_empty(),
+            "the reused id's first reading should record a baseline and \
+             append nothing, on `Self::cpu_history`'s own terms for a first \
+             reading: {:?}",
+            app.cpu_history(1)
+        );
+    }
+
+    /// A respawn gives a new tree whose counter starts below the old one's.
+    /// Clamped to zero, the same rule the daemon applies, and it costs one
+    /// dropped sample rather than a negative spike.
+    /// A respawn keeps the id and takes a new pid, so differencing across it
+    /// would subtract a dead process's counter from a live one's.
+    ///
+    /// The counter rising across the boundary is the case `saturating_sub`
+    /// cannot save: it reads as a real delta and underreports the new
+    /// process by exactly what the old one had spent. A new process is a
+    /// first reading, so it records a baseline and appends nothing.
+    #[test]
+    fn a_respawn_under_the_same_id_starts_a_new_baseline() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_pid_and_cpu_ms(1, 100, 50)]);
+        app.on_snapshot(vec![row_with_pid_and_cpu_ms(1, 100, 2_050)]);
+        assert_eq!(app.cpu_history(1), &[100.0], "the live process differences");
+        app.on_snapshot(vec![row_with_pid_and_cpu_ms(1, 200, 3_000)]);
+        assert_eq!(
+            app.cpu_history(1),
+            &[100.0],
+            "the new pid appends nothing rather than differencing 3000 against 2050"
+        );
     }
 
     #[test]
-    fn a_sheep_with_no_cpu_reading_appends_a_zero_rather_than_a_gap() {
-        // The sparkline is one cell per sample; a skipped sample would slide
-        // the whole window and make an old spike look recent.
+    fn a_counter_that_went_backwards_reads_zero() {
         let mut app = fixture();
-        app.on_snapshot(vec![row_with_cpu(1, 10.0)]);
-        app.on_snapshot(vec![row_without_cpu(1)]);
-        assert_eq!(app.cpu_history(1), &[10.0, 0.0]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 9_000)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 12)]);
+        assert_eq!(app.cpu_history(1), &[0.0]);
+    }
+
+    /// RSS is sampled at an instant, so it is buffered as it arrives with no
+    /// differencing at all.
+    #[test]
+    fn rss_is_buffered_as_read() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_rss(1, 1_024)]);
+        app.on_snapshot(vec![row_with_rss(1, 2_048)]);
+        assert_eq!(app.rss_history(1), &[1_024, 2_048]);
+    }
+
+    /// Same depth and same drop-on-leave rule as the CPU buffer.
+    #[test]
+    fn a_sheep_that_leaves_takes_its_rss_history_too() {
+        let mut app = fixture();
+        app.on_snapshot(vec![row_with_rss(1, 1_024), row_with_rss(2, 512)]);
+        app.on_snapshot(vec![row_with_rss(1, 1_024)]);
+        assert!(app.rss_history(2).is_empty());
     }
 
     #[test]
     fn the_buffer_holds_at_most_a_hundred_and_forty_samples() {
-        // Each pushed value is distinct so a wrong-end eviction or a
-        // reversed order fails this, not just a wrong length.
+        // Each poll's counter climbs by a distinct step, so each differenced
+        // percent is distinct too; a wrong-end eviction or a reversed order
+        // fails this, not just a wrong length.
         let mut app = fixture();
-        for i in 0..200 {
-            app.on_snapshot(vec![row_with_cpu(1, i as f32)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0)]);
+        let mut counter: u64 = 0;
+        for i in 1..=200u64 {
+            counter += i * 20;
+            app.on_snapshot(vec![row_with_cpu_ms(1, counter)]);
         }
         let history = app.cpu_history(1);
         assert_eq!(history.len(), 140);
-        assert_eq!(history.first(), Some(&60.0), "oldest survivor");
-        assert_eq!(history.last(), Some(&199.0), "newest sample");
+        assert_eq!(history.first(), Some(&61.0), "oldest survivor");
+        assert_eq!(history.last(), Some(&200.0), "newest sample");
     }
 
     #[test]
     fn a_sheep_that_leaves_the_flock_takes_its_history_with_it() {
         let mut app = fixture();
-        app.on_snapshot(vec![row_with_cpu(1, 10.0), row_with_cpu(2, 5.0)]);
-        app.on_snapshot(vec![row_with_cpu(1, 10.0)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0), row_with_cpu_ms(2, 0)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 2_000)]);
         assert!(
             app.cpu_history(2).is_empty(),
             "a deleted sheep leaves no history behind"
         );
     }
 
+    /// The first poll only records a baseline for each sheep and contributes
+    /// nothing to the sum, so the series starts with a zero.
     #[test]
     fn the_flock_series_is_the_sum_of_the_snapshot() {
         let mut app = fixture();
-        app.on_snapshot(vec![row_with_cpu(1, 10.0), row_with_cpu(2, 5.5)]);
-        // Sheep 2 leaves on the second poll; the next sample must sum only
-        // the sheep still present, not carry the departed one along.
-        app.on_snapshot(vec![row_with_cpu(1, 10.0)]);
-        assert_eq!(app.flock_cpu_history(), &[15.5, 10.0]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 0), row_with_cpu_ms(2, 0)]);
+        app.on_snapshot(vec![row_with_cpu_ms(1, 2_000), row_with_cpu_ms(2, 1_000)]);
+        assert_eq!(app.flock_cpu_history(), &[0.0, 150.0]);
     }
 
     fn started() -> (App, Instant) {
@@ -5307,6 +6101,528 @@ mod tests {
     /// The status bar's own rendered text.
     fn status_line_text(app: &App) -> String {
         super::super::view::fixtures::rendered(&super::super::view::status::status_line(app, 200))
+    }
+
+    /// Two online sheep, `alpha` (id 1) and `bravo` (id 2), named so their
+    /// alphabetical table order agrees with their ids: `alpha` is selected
+    /// by [`App::reseat`]'s own default the moment the snapshot lands, and
+    /// stepping down from it reaches `bravo` in one move.
+    fn fixture_with_two_sheep() -> App {
+        let t0 = Instant::now();
+        let mut app = App::new(
+            Palette::detect(None, None, None),
+            Control::ReadOnly,
+            "/home/ada/.shep".to_string(),
+            t0,
+        );
+        app.update(Msg::Snapshot {
+            rows: vec![
+                sheep(1, "alpha", ProcStatus::Online),
+                sheep(2, "bravo", ProcStatus::Online),
+            ],
+            at: t0,
+        });
+        app
+    }
+
+    /// One dog and nothing else, so `App::reseat`'s own header-skip selects
+    /// it the moment the snapshot lands: the only row that is not a
+    /// `Section` header is the dog.
+    fn fixture_with_a_dog_selected() -> App {
+        let t0 = Instant::now();
+        let mut app = App::new(
+            Palette::detect(None, None, None),
+            Control::ReadOnly,
+            "/home/ada/.shep".to_string(),
+            t0,
+        );
+        app.update(Msg::Snapshot {
+            rows: vec![
+                ProcessInfo::builder(90, "otel", ProcStatus::Online)
+                    .dog(Some(DogSource::BuiltIn))
+                    .build(),
+            ],
+            at: t0,
+        });
+        app
+    }
+
+    /// `↵` opens the pane on the selected sheep and asks for its config in
+    /// the same step, since the pane's left column has nothing to draw
+    /// without it.
+    #[test]
+    fn enter_opens_the_sheep_pane_and_asks_for_its_config() {
+        let mut app = fixture_with_two_sheep();
+        let effect = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(matches!(app.body(), Body::Sheep(_)));
+        assert_eq!(
+            effect,
+            Effect::Send(Sent::SheepConfig {
+                name: "alpha".to_string()
+            })
+        );
+    }
+
+    /// An armed prompt owns `↵`. Opening a pane out from under a question
+    /// the operator has not answered would answer it for them.
+    #[test]
+    fn enter_confirms_an_armed_action_rather_than_opening_the_pane() {
+        let mut app = allowed();
+        let _ = app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(matches!(app.body(), Body::FlockTable));
+    }
+
+    /// A dog row has no charts to draw and its config is a TOML section
+    /// rather than a `SheepConfigView`, so `↵` does nothing there. `e`
+    /// still opens the dog config pane it opens today.
+    #[test]
+    fn enter_on_a_dog_row_opens_nothing() {
+        let mut app = fixture_with_a_dog_selected();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(matches!(app.body(), Body::FlockTable));
+    }
+
+    /// `e` inside the sheep pane opens the editor, not a refill of the pane
+    /// that asked. Both send `Request::SheepConfig`, so the reply has to
+    /// say which one it is for.
+    #[test]
+    fn e_inside_the_sheep_pane_opens_the_editor() {
+        let mut app = fixture_with_two_sheep();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::Edit));
+        app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "alpha".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(
+                fixtures::sheep_config_view(),
+            ))),
+        });
+        assert!(matches!(app.body(), Body::ConfigPane(_)));
+    }
+
+    /// Ahead of the mutation check below: if `on_sheep_config` branched on
+    /// the current body instead of `ConfigFor`, this reply would refill the
+    /// sheep pane it found on screen rather than open the editor `e` asked
+    /// for, since the pane is still `Body::Sheep` while the reply is in
+    /// flight.
+    #[test]
+    fn escape_closes_the_sheep_pane() {
+        let mut app = fixture_with_two_sheep();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(matches!(app.body(), Body::FlockTable));
+    }
+
+    /// `on_sheep_pane_key`'s own `SelectUp`/`SelectDown`/`SelectFirst`/
+    /// `SelectLast` arms, exercised through `App::update` rather than by
+    /// calling `SheepPane::move_by` directly: this pins the routing itself,
+    /// the surface `pane_sheep.rs`'s own unit tests cannot reach.
+    #[test]
+    fn j_k_g_and_capital_g_scroll_the_sheep_panes_column() {
+        let mut app = fixture_with_two_sheep();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "alpha".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(
+                fixtures::sheep_config_view(),
+            ))),
+        });
+        let len = crate::lookout::view::sheep::column_len(app.sheep_pane().unwrap().config());
+
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        assert_eq!(app.sheep_pane().unwrap().view().cursor(), 1);
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        assert_eq!(app.sheep_pane().unwrap().view().cursor(), 0);
+
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        assert_eq!(app.sheep_pane().unwrap().view().cursor(), len - 1);
+        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
+        assert_eq!(app.sheep_pane().unwrap().view().cursor(), 0);
+    }
+
+    /// `J` walks the flock without leaving the pane, and asks for the new
+    /// sheep's config.
+    #[test]
+    fn step_down_moves_to_the_next_sheep() {
+        let mut app = fixture_with_two_sheep();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let effect = app.update(Msg::Key(KeyPress::StepDown));
+        let Body::Sheep(pane) = app.body() else {
+            panic!("still in the sheep pane")
+        };
+        assert_eq!(pane.sheep(), &RowKey::Sheep(2));
+        assert_eq!(
+            effect,
+            Effect::Send(Sent::SheepConfig {
+                name: "bravo".to_string()
+            })
+        );
+    }
+
+    /// `fixture_with_two_sheep`, with a tail already landed for `alpha`: two
+    /// lines, one of them containing `boom`, so the embedded feed's filter
+    /// and promotion tests below have something to narrow and a second
+    /// sheep to step onto.
+    fn fixture_with_feed() -> App {
+        let mut app = fixture_with_two_sheep();
+        app.update(Msg::Bleats {
+            tail: super::super::tail::Tail {
+                lines: vec![
+                    super::super::tail::TailLine {
+                        stream: Stream::Out,
+                        text: "boom detected".to_string(),
+                    },
+                    super::super::tail::TailLine {
+                        stream: Stream::Out,
+                        text: "all quiet".to_string(),
+                    },
+                ],
+                missed_lines: 0,
+                missed_bytes: 0,
+                read_bytes: 0,
+                note: None,
+            },
+        });
+        app
+    }
+
+    /// Types `text` into the embedded feed's match box and applies it,
+    /// through the same keys an operator presses (`FilterStart`, one
+    /// `TextChar` per byte, `TextApply`) rather than reaching into
+    /// `SheepPane` directly: this is what `on_sheep_pane_key`'s own filter
+    /// arms are for, and a fixture that skipped them would not exercise the
+    /// routing this task adds.
+    fn apply_match(app: &mut App, text: &str) {
+        let _ = app.update(Msg::Key(KeyPress::FilterStart));
+        for ch in text.chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(ch)));
+        }
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+    }
+
+    /// The embedded feed's surviving lines, filtered the way its own
+    /// `Filters` would narrow them, for a test to inspect without reaching
+    /// into `view::sheep::draw` for a rendered row.
+    fn feed_rows(app: &App) -> Vec<String> {
+        let Body::Sheep(pane) = app.body() else {
+            panic!("the sheep pane is not open")
+        };
+        pane.feed()
+            .visible(&app.feed().lines)
+            .into_iter()
+            .map(|line| line.text.clone())
+            .collect()
+    }
+
+    /// The pane's own filters, not a second set. The header advertises them,
+    /// so they have to work here and not only in the full-screen pane.
+    #[test]
+    fn a_filter_applied_in_the_sheep_pane_narrows_its_feed() {
+        let mut app = fixture_with_feed();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        apply_match(&mut app, "boom");
+        assert!(feed_rows(&app).iter().all(|row| row.contains("boom")));
+    }
+
+    /// `b` hands the same pane the whole screen, carrying its filters.
+    #[test]
+    fn b_promotes_the_feed_to_full_screen_with_its_filters() {
+        let mut app = fixture_with_feed();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        apply_match(&mut app, "boom");
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let Body::Bleats(pane) = app.body() else {
+            panic!("full screen")
+        };
+        assert_eq!(pane.match_filter(), Some("boom"));
+    }
+
+    /// Promotion clamps the offset the embedded feed never clamps itself.
+    ///
+    /// `N` walks the stored value up one line at a time and the embedded
+    /// feed draws no scrollback, so nothing bounds it there. Carried across
+    /// unclamped, the full screen renders the oldest survivor while the
+    /// stored value sits past it, and `j` does nothing visible until it has
+    /// been pressed back down through the excess.
+    #[test]
+    fn promotion_clamps_an_offset_the_embedded_feed_left_out_of_range() {
+        let mut app = fixture_with_feed();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        if let Some(feed) = app.sheep_feed_mut() {
+            feed.scroll_up(9_999);
+        }
+        let _ = app.update(Msg::Key(KeyPress::Bleats));
+        let Body::Bleats(pane) = app.body() else {
+            panic!("full screen")
+        };
+        let ceiling = super::super::view::bleats_full::max_scroll_offset(&app, pane);
+        assert!(
+            pane.scroll_offset() <= ceiling,
+            "offset {} should have been clamped to {ceiling}",
+            pane.scroll_offset()
+        );
+    }
+
+    /// Stepping to another sheep re-scopes the feed. A feed left on the
+    /// previous sheep under a new title is worse than an empty one.
+    #[test]
+    fn stepping_re_scopes_the_feed() {
+        let mut app = fixture_with_feed();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::StepDown));
+        let Body::Sheep(pane) = app.body() else {
+            panic!("still in the sheep pane")
+        };
+        assert_eq!(pane.feed_sheep(), &RowKey::Sheep(2));
+    }
+
+    /// `allowed()`'s cursor is parked on `web`, id 1; `↵` pins the pane to
+    /// it.
+    fn allowed_in_the_sheep_pane() -> App {
+        let mut app = allowed();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        app
+    }
+
+    /// `x` arms against the pane's own pinned sheep (`web`, id 1), the same
+    /// target the dashboard's own `arm` would reach for the same cursor
+    /// position. The two agree here because nothing has moved the
+    /// selection out from under the pane yet.
+    #[test]
+    fn x_arms_a_confirm_against_the_panes_pinned_sheep() {
+        let mut app = allowed_in_the_sheep_pane();
+        assert_eq!(
+            app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop))),
+            Effect::None
+        );
+        let armed = app.action().expect("armed");
+        assert_eq!(armed.verb, ActionVerb::Stop);
+        assert_eq!(armed.target, &RowKey::Sheep(1));
+        assert_eq!(armed.name, "web");
+        assert!(!armed.sent, "nothing has gone out");
+        assert!(
+            matches!(app.body(), Body::Sheep(_)),
+            "arming does not close the pane"
+        );
+    }
+
+    /// `↵` confirms the armed action from inside the pane, the same send
+    /// the dashboard's own `confirm` produces.
+    #[test]
+    fn confirm_inside_the_pane_sends_the_armed_action() {
+        let mut app = allowed_in_the_sheep_pane();
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        let Effect::Send(sent) = app.update(Msg::Key(KeyPress::Confirm)) else {
+            panic!("Enter sends the armed action");
+        };
+        assert_eq!(
+            sent,
+            Sent::Action {
+                verb: ActionVerb::Restart,
+                target: RowKey::Sheep(1),
+                name: "web".to_string(),
+            }
+        );
+        assert!(
+            matches!(app.body(), Body::Sheep(_)),
+            "confirming does not close the pane"
+        );
+    }
+
+    /// Every key but `↵` and `q` cancels an action armed from inside the
+    /// pane, the same rule the dashboard's own armed check applies, needed
+    /// in the pane's own copy, since `on_key` routes here ahead of that
+    /// check.
+    #[test]
+    fn any_other_key_cancels_an_action_armed_inside_the_pane() {
+        for key in [
+            KeyPress::Escape,
+            KeyPress::StepDown,
+            KeyPress::StepUp,
+            KeyPress::Edit,
+        ] {
+            let mut app = allowed_in_the_sheep_pane();
+            app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+            assert!(app.action().is_some(), "armed before {key:?}");
+            assert_eq!(
+                app.update(Msg::Key(key)),
+                Effect::None,
+                "{key:?} sent something"
+            );
+            assert!(app.action().is_none(), "{key:?} did not cancel");
+            assert!(
+                matches!(app.body(), Body::Sheep(_)),
+                "{key:?} must not also close the pane"
+            );
+        }
+    }
+
+    /// `--read-only` refuses the same way it refuses the dashboard's own
+    /// `x`/`R`/`L`, with the same sentence.
+    #[test]
+    fn x_refuses_under_read_only_from_inside_the_pane() {
+        let mut app = fixture_with_two_sheep();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+        assert!(app.action().is_none());
+        assert_eq!(
+            app.notice().map(ToString::to_string).as_deref(),
+            Some("read-only: from --read-only or lookout.allow_control")
+        );
+    }
+
+    /// The pinned sheep can leave the flock entirely while the pane stays
+    /// open on it (nothing but `Escape` closes it): arming then must refuse
+    /// rather than target whoever replaced it.
+    #[test]
+    fn arming_refuses_once_the_pinned_sheep_has_left_the_flock() {
+        let mut app = fixture_with_two_sheep();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(matches!(app.body(), Body::Sheep(_)), "pinned to alpha");
+        app.set_control_for_tests(Control::Allowed);
+        app.update(Msg::Snapshot {
+            rows: vec![sheep(2, "bravo", ProcStatus::Online)],
+            at: Instant::now(),
+        });
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+        assert!(
+            app.action().is_none(),
+            "refused rather than arming against bravo"
+        );
+        assert!(app.notice().is_some_and(Notice::is_grave));
+    }
+
+    /// `e` from inside the sheep pane targets the pane's own pinned sheep
+    /// (`alpha`, id 1), not the dashboard's selection: nothing has moved
+    /// the selection out from under the pane yet, so the two agree here,
+    /// but only [`Self::sheep_pane_row`] is asked.
+    #[test]
+    fn e_asks_for_the_panes_own_pinned_sheeps_config() {
+        let mut app = fixture_with_two_sheep();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(matches!(app.body(), Body::Sheep(_)), "pinned to alpha");
+        let request = wire(app.update(Msg::Key(KeyPress::Edit)));
+        assert_eq!(
+            request,
+            Request::SheepConfig {
+                name: "alpha".to_string()
+            }
+        );
+    }
+
+    /// The regression the reviewer reproduced: pane pinned to `alpha`,
+    /// `Msg::Snapshot` reseats the dashboard's selection onto `bravo` once
+    /// `alpha` leaves the flock, and `e` must refuse rather than open
+    /// `bravo`'s config under a pane still titled `alpha`.
+    #[test]
+    fn e_refuses_once_the_pinned_sheep_has_left_the_flock() {
+        let mut app = fixture_with_two_sheep();
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(matches!(app.body(), Body::Sheep(_)), "pinned to alpha");
+        app.update(Msg::Snapshot {
+            rows: vec![sheep(2, "bravo", ProcStatus::Online)],
+            at: Instant::now(),
+        });
+        assert_eq!(app.update(Msg::Key(KeyPress::Edit)), Effect::None);
+        assert!(app.notice().is_some_and(Notice::is_grave));
+    }
+
+    /// `arm` and `arm_sheep_pane` share their refusal ladder through
+    /// `confirm_refusal`, but nothing before this test exercised
+    /// `arm_sheep_pane`'s own copy of the "one already in flight" branch: a
+    /// hand-copied ladder that dropped it silently would still pass every
+    /// other sheep-pane test, since none of them arm twice.
+    #[test]
+    fn a_second_arm_from_inside_the_sheep_pane_refuses_while_one_is_in_flight() {
+        let mut app = allowed_in_the_sheep_pane();
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+        app.update(Msg::Key(KeyPress::Confirm));
+        assert!(app.action().is_some_and(|action| action.sent), "in flight");
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        assert_eq!(
+            app.notice().map(ToString::to_string).as_deref(),
+            Some("one action is already in flight")
+        );
+        let action = app.action().expect("the first one is untouched");
+        assert_eq!(action.verb, ActionVerb::Stop);
+        assert!(action.sent);
+    }
+
+    /// `on_key`'s own armed-keypress prelude clears `self.notice` before its
+    /// `match`; `on_sheep_pane_key` copied the prelude but not that line, so
+    /// a refusal raised inside the pane never cleared, kept overriding the
+    /// pane's own key hints in `status_line`, and survived `close_pane`
+    /// back to the flock table.
+    #[test]
+    fn a_refusal_inside_the_sheep_pane_clears_on_the_next_keypress() {
+        let mut app = allowed_in_the_sheep_pane();
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+        app.update(Msg::Key(KeyPress::Confirm));
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        assert!(app.notice().is_some(), "setup: the refusal is raised");
+        app.update(Msg::Key(KeyPress::SelectDown));
+        assert!(
+            app.notice().is_none(),
+            "the refusal outlived a keypress that was not the one that \
+             raised it"
+        );
+    }
+
+    /// `↵` confirms an armed action, correctly: a question awaiting an
+    /// answer keeps `↵`. But once sent (`Stage::Sent`), it is in flight and
+    /// no longer asking anything, and a regression that let `Stage::Sent` keep
+    /// swallowing `↵` (rather than falling through, here, to the dashboard's
+    /// own `Confirm` handler, which opens the pane) would pass
+    /// `a_second_confirm_does_not_resend_an_action_already_in_flight` above
+    /// just as easily, since that test only checks nothing resends.
+    #[test]
+    fn a_confirm_at_stage_sent_falls_through_to_opening_the_sheep_pane() {
+        let mut app = allowed();
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+        app.update(Msg::Key(KeyPress::Confirm));
+        assert!(app.action().is_some_and(|action| action.sent), "in flight");
+        app.update(Msg::Key(KeyPress::Confirm));
+        assert!(
+            matches!(app.body(), Body::Sheep(_)),
+            "the second Enter opened the pane rather than being swallowed"
+        );
+    }
+
+    /// The reviewer's own reachable state: an action sent (`Stage::Sent`, in
+    /// flight), then a filter typed down to zero rows clears the selection
+    /// (`reseat`'s own empty-flock-view branch), then an action key. Before
+    /// this fix, `confirm_refusal` checked "one already in flight" ahead of
+    /// `arm`'s own "nothing selected", so this exact sequence told the
+    /// operator the wrong thing (the in-flight action, not the empty
+    /// selection the keypress actually asked about).
+    #[test]
+    fn arm_with_nothing_selected_refuses_that_and_not_the_in_flight_action() {
+        let mut app = allowed();
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+        app.update(Msg::Key(KeyPress::Confirm));
+        assert!(app.action().is_some_and(|action| action.sent), "in flight");
+
+        app.update(Msg::Key(KeyPress::FilterStart));
+        for letter in ['z', 'z', 'z'] {
+            app.update(Msg::Key(KeyPress::TextChar(letter)));
+        }
+        app.update(Msg::Key(KeyPress::TextApply));
+        assert_eq!(app.rows().len(), 0, "the query matches nothing");
+        assert!(app.selected_row().is_none(), "reseat cleared the selection");
+
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        assert_eq!(
+            app.notice().map(ToString::to_string).as_deref(),
+            Some("no sheep is selected"),
+            "the keypress asked whether it had a target, and it did not"
+        );
+        let action = app.action().expect("the first one is still in flight");
+        assert_eq!(action.verb, ActionVerb::Stop);
+        assert!(action.sent, "untouched by the refused second arm");
     }
 
     #[test]
@@ -5872,7 +7188,14 @@ mod tests {
             at_ms: 0,
         }));
         assert!(app.action().is_none());
-        assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
+        // Nothing is armed any more, so `Confirm` falls to its other
+        // meaning: it opens the sheep pane on whichever row the reseat
+        // above moved the selection to, rather than sending the disarmed
+        // `Sent::Action` the stale confirm would have.
+        assert!(matches!(
+            app.update(Msg::Key(KeyPress::Confirm)),
+            Effect::Send(Sent::SheepConfig { .. })
+        ));
     }
 
     /// Driven by `Msg::Tick`, so there is no sleep here.
@@ -5965,19 +7288,23 @@ mod tests {
         assert_eq!(app.update(Msg::Key(KeyPress::Quit)), Effect::Quit);
     }
 
+    /// Outside an armed confirm, `Enter` opens the sheep pane
+    /// ([`enter_opens_the_sheep_pane_and_asks_for_its_config`] pins the
+    /// whole of that); the point pinned here is narrower and unchanged by
+    /// that: a second `Enter` over an action already sent does not re-send
+    /// it, the armed-confirm guard having already let it through once.
     #[test]
-    fn enter_outside_an_armed_confirm_does_nothing() {
+    fn a_second_confirm_does_not_resend_an_action_already_in_flight() {
         let mut app = allowed();
-        assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
-        assert!(app.action().is_none());
-
         app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
         app.update(Msg::Key(KeyPress::Confirm));
         assert!(app.action().is_some_and(|action| action.sent), "in flight");
-        assert_eq!(
-            app.update(Msg::Key(KeyPress::Confirm)),
-            Effect::None,
-            "a second Enter does not re-send"
+        assert!(
+            !matches!(
+                app.update(Msg::Key(KeyPress::Confirm)),
+                Effect::Send(Sent::Action { .. })
+            ),
+            "a second Enter does not re-send the action"
         );
     }
 
@@ -6007,11 +7334,13 @@ mod tests {
             assert!(app.action().is_some(), "armed while live");
             app.update(link);
             assert!(app.action().is_none(), "and gone once the link is not");
-            assert_eq!(
+            // Nothing is armed any more, so `Enter` falls to its other
+            // meaning (opening the sheep pane) rather than to the confirm
+            // this prompt no longer has a question for.
+            assert!(!matches!(
                 app.update(Msg::Key(KeyPress::Confirm)),
-                Effect::None,
-                "so Enter has nothing to send"
-            );
+                Effect::Send(Sent::Action { .. })
+            ));
         }
     }
 
@@ -8197,6 +9526,49 @@ mod tests {
         );
     }
 
+    /// The same regression as [`the_feed_follows_the_pinned_sheep_when_the_selection_moves`],
+    /// through the sheep pane's own embedded feed rather than the
+    /// full-screen one: `Confirm` pins the pane to sheep 9, `feed_row`
+    /// answers 9 while it is open, sheep 9 then leaves the flock and the
+    /// reseat moves the selection to 4, and `feed_row` must still answer
+    /// `None` (sheep 9 is gone) rather than 4 (the selection's own new row).
+    /// Before this task, `feed_row` had no `Body::Sheep` branch at all and
+    /// fell through to `self.selected_row()` unconditionally, so this would
+    /// have read billing's log under a pane still naming `web`.
+    #[test]
+    fn the_feed_row_follows_the_sheep_panes_own_pinned_sheep_when_the_selection_moves() {
+        let mut app = fixtures::app_with(
+            vec![
+                ProcessInfo::builder(9, "web", ProcStatus::Online).build(),
+                ProcessInfo::builder(4, "billing", ProcStatus::Online).build(),
+            ],
+            fixtures::plain(),
+        );
+        app.select(RowKey::Sheep(9));
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert_eq!(
+            app.feed_row().map(|row| row.info.id),
+            Some(9),
+            "the pane opened on 9"
+        );
+
+        // 9 leaves the flock. The reseat moves the selection to 4.
+        let _ = app.update(Msg::Snapshot {
+            rows: vec![ProcessInfo::builder(4, "billing", ProcStatus::Online).build()],
+            at: Instant::now(),
+        });
+        assert_eq!(
+            app.selected(),
+            Some(RowKey::Sheep(4)),
+            "the selection did move, which is the setup for the bug"
+        );
+        assert_eq!(
+            app.feed_row().map(|row| row.info.id),
+            None,
+            "and the feed reads nothing rather than billing's log"
+        );
+    }
+
     #[test]
     fn b_opens_the_pane_on_the_selected_sheep() {
         let mut app =
@@ -10270,7 +11642,7 @@ mod tests {
         assert_eq!(key, "args");
         assert_eq!(value, serde_json::json!(["--port", "9090"]));
 
-        let _ = app.update(Msg::Key(KeyPress::ListMoveUp));
+        let _ = app.update(Msg::Key(KeyPress::StepUp));
         assert_eq!(
             armed_value(&app),
             serde_json::json!(["8080", "--port"]),

@@ -7,9 +7,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all thirty-seven scenes through the same coloured
+frames.ansi renders all forty-one scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same thirty-seven scenes through the flattened NO_COLOR palette
+renders the same forty-one scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -32,7 +32,8 @@ it read and dropped are counted exactly; bytes below its 64 KiB window were
 never read at all, so those are reported in bytes, because nothing counted the
 lines in them and guessing would be worse than saying so.
 
-The last frame is the full-screen bleats pane, `b` from the dashboard. The
+The last five frames are the full-screen bleats pane, `b` from the
+dashboard, then the four sheep-pane scenes, `↵` on a sheep. The
 seven before it are the settings screen, `s` from the dashboard. It owns
 the whole body between the title and the status bar rather than sharing it
 with the flock table, so a fresh $SHEP_HOME, some scalars declared, an armed
@@ -120,8 +121,8 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
    ██ FLOCK                                                                                                             
   3     api         online           48219    1         -          7.1%    241.0M    1h 29m    edge        -            
->       web ×3      online                    3                    9.4%    540.0M    15m       edge        -            
-  0      ↳ :0       online           48400    0         -          3.4%    182.0M    1h 25m                             
+>       web ×3      online                    3                    9.5%    540.0M    15m       edge        -            
+  0      ↳ :0       online           48400    0         -          3.5%    182.0M    1h 25m                             
   1      ↳ :1       online           48401    2         -          2.9%    178.0M    15m                                
   2      ↳ :2       online           48402    1         -          3.1%    180.0M    2h 40m                             
                                                                                                                         
@@ -130,7 +131,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                                                                                                                         
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-app web ×3  online   restarts 3   uptime 15m   cpu 9.4%   mem 540.0M                                                    
+app web ×3  online   restarts 3   uptime 15m   cpu 9.5%   mem 540.0M                                                    
 lambs  not shown for a group; select one instance                                                                       
                                                                                                                         
                                                                                                                         
@@ -148,7 +149,7 @@ q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s set
 
 shep lookout   /home/ada/.shep                                                                                                                   10 in the flock
                                                                                                                                                                 
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 20.6%        █   flock mem 928.0M …
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 20.6%       ▁█   flock mem 928.0M …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
                                                                                                                                                                 
   NAME        STATUS        SHARE                   MEM         CPU        UPTIME      RESTARTS  NOTES                                                          
@@ -216,14 +217,14 @@ Three sheep with a max_memory ceiling configured, or not: web-headroom sits at a
 
 shep lookout   /home/ada/.shep                                                                                                          3 in the flock
                                                                                                                                                       
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 5.0%        █   flock me…
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 6.6%       ▁█   flock me…
 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
                                                                                                                                                       
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       UPTIME    FOLD        SMIT         
    ██ FLOCK                                                                                                                                           
-  2     batch-wor…  online           48303    0         -          -              ▅  1.0%    ░░░░░░░░░░  64.0M     1h 28m    -           -            
-  0     web-headr…  online           48300    0         -          -              █  2.0%    ███░░░░░░░  128.0M    1h 25m    edge        -            
-> 1     web-hot     online           48301    0         -          -              █  2.0%    █████████░  480.0M    1h 26m    edge        -            
+  2     batch-wor…  online           48303    0         -          -              ▃  1.0%    ░░░░░░░░░░  64.0M     1h 28m    -           -            
+  0     web-headr…  online           48300    0         -          -              ▄  1.7%    ███░░░░░░░  128.0M    1h 25m    edge        -            
+> 1     web-hot     online           48301    0         -          -              █  3.9%    █████████░  480.0M    1h 26m    edge        -            
                                                                                                                                                       
                                                                                                                                                       
                                                                                                                                                       
@@ -232,7 +233,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                                                                                                                                                       
                                                                                                                                                       
 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ SHEEP 1  web-hot   online   pid 48301   restarts 0   uptime 1h 26m   cpu 2.0%   mem 480.0M   fold edge                                            
+ ██ SHEEP 1  web-hot   online   pid 48301   restarts 0   uptime 1h 26m   cpu 3.9%   mem 480.0M   fold edge                                            
 lambs  not read yet                                                                                                                                   
 out  /home/ada/.shep/logs/web-hot-1-out.log   │   err  /home/ada/.shep/logs/web-hot-1-err.log                                                         
                                                                                                                                                       
@@ -246,18 +247,18 @@ out  connection pool: 14/50 in use
 q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                    control enabled
 
 === cfg_drift  (140x30) ===
-140 columns: wide enough for the CFG and CPU 20s columns beside the ones every other scene shows. web has two fields parked for the next spawn and reads !2, api has one field an operator set that its Flockfile does not declare and reads *1, and cron has neither and reads a bare -. The status bar's own legend explains both glyphs; this is where they actually appear in a cell. web's CPU history carries ten distinct samples, so its sparkline draws a shape over time rather than one static bar, and the cursor is parked on web so the detail pane's own cfg !2 pending cell is on screen too.
+140 columns: wide enough for the CFG and CPU 20s columns beside the ones every other scene shows. web has two fields parked for the next spawn and reads !2, api has one field an operator set that its Flockfile does not declare and reads *1, and cron has neither and reads a bare -. The status bar's own legend explains both glyphs; this is where they actually appear in a cell. web's counter is differenced across several two-second polls at varying deltas, so its CPU history draws a shape over time rather than one static bar, and the cursor is parked on web so the detail pane's own cfg !2 pending cell is on screen too.
 
 shep lookout   /home/ada/.shep                                                                                                3 in the flock
                                                                                                                                             
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 1 parked   flock cpu 7.5% ▅█▅▇▄▆▇▆ …
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 1 parked   flock cpu 6.5% ▆▃█▄▇▃▅▇ …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
                                                                                                                                             
   ID    NAME          STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM       UPTIME    FOLD        SMIT         
    ██ FLOCK                                                                                                                                 
-  11    api           online           48411    0         -          *1    ▄▄▄▄▄▄▄▄▄▄  3.0%    96.0M     1h 41m    edge        -            
-  12    cron          online           48412    0         -          -     ▁▁▁▁▁▁▁▁▁▁  0.5%    8.0M      1h 43m    -           -            
-> 10    web           online           48410    0         -          !2    ▂▆▃█▄▇▃▅▇▅  4.0%    64.0M     1h 40m    edge        -            
+  11    api           online           48411    0         -          *1     ▁▁▁▁▁▁▁▁▁  -       96.0M     1h 41m    edge        -            
+  12    cron          online           48412    0         -          -      ▁▁▁▁▁▁▁▁▁  -       8.0M      1h 43m    -           -            
+> 10    web           online           48410    0         -          !2      ▆▃█▄▇▃▅▇  6.5%    64.0M     1h 40m    edge        -            
                                                                                                                                             
                                                                                                                                             
                                                                                                                                             
@@ -266,7 +267,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                                                                                                                                             
                                                                                                                                             
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ██ SHEEP 10  web   online   pid 48410   restarts 0   uptime 1h 40m   cpu 4.0%   mem 64.0M   fold edge   cfg !2 pending                     
+ ██ SHEEP 10  web   online   pid 48410   restarts 0   uptime 1h 40m   cpu 6.5%   mem 64.0M   fold edge   cfg !2 pending                     
 lambs  not read yet                                                                                                                         
 out  /home/ada/.shep/logs/web-10-out.log   │   err  /home/ada/.shep/logs/web-10-err.log                                                     
                                                                                                                                             
@@ -381,14 +382,14 @@ The ladder ran out. The band says so in bark, the whole table and the host strip
  THE SHEPHERD HAS DIED  ▖  these values are frozen as of 2026-08-14 14:32:07                                                 nothing here is live  ▖  q to quit 
                                                                                                                                                                 
  shep lookout   /home/ada/.shep  ·  the dashboard stays up so you can read what it had  ·  it will not exit on its own                                          
-host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     1 errored · 0 parked   flock cpu 6.7%        █   flock mem 371.0M  …
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     1 errored · 0 parked   flock cpu 6.7%       ▁█   flock mem 371.0M  …
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
                                                                                                                                                                 
   ID    NAME                  STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       FROZEN    FOLD        SMIT         
    ██ FLOCK                                                                                                                                                     
-> 2     api                   errored          -        14        1          -              ▁  -       ░░░░░░░░░░  -         1h 18m    edge        -            
-  3     billing-reconciliat…  waiting-restart  -        3         1          -              ▁  -       ░░░░░░░░░░  -         1h 19m    -           -            
-  4     cron                  stopped          -        0         SIGTERM    -              ▁  -       ░░░░░░░░░░  -         1h 21m    -           -            
+> 2     api                   errored          -        14        1          -             ▁▁  -       ░░░░░░░░░░  -         1h 18m    edge        -            
+  3     billing-reconciliat…  waiting-restart  -        3         1          -             ▁▁  -       ░░░░░░░░░░  -         1h 19m    -           -            
+  4     cron                  stopped          -        0         SIGTERM    -             ▁▁  -       ░░░░░░░░░░  -         1h 21m    -           -            
   5     metrics               online           48240    0         -          -              ▂  0.4%    ░░░░░░░░░░  11.0M     1h 22m    -           -            
   0     web                   online           48211    0         -          -              █  3.4%    ░░░░░░░░░░  182.0M    1h 15m    edge        -            
   1     web                   online           48212    0         -          -              ▇  2.9%    ░░░░░░░░░░  178.0M    1h 16m    edge        -            
@@ -640,7 +641,7 @@ q quit   j/k sel… control enabled
 
 shep lookout   /home/ada/.shep                                                                            6 in the flock
                                                                                                                         
-host  usage is not available on this platform   0 errored · 0 parked   flock cpu 14.7%        █   flock mem 716.0M      
+host  usage is not available on this platform   0 errored · 0 parked   flock cpu 14.7%       ▁█   flock mem 716.0M      
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
                                                                                                                         
   ID    NAME        STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME    FOLD        SMIT         
@@ -781,11 +782,11 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
    ██ FLOCK                                                                                         
-> 3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m  
-  4     cron               online           48233    0         -          0.1%    8.0M      1h 31m  
-  5     metrics            online           48240    0         -          0.4%    11.0M     1h 32m  
-  0     web                online           48211    0         -          3.4%    182.0M    1h 25m  
-  1     web                online           48212    0         -          2.9%    178.0M    1h 26m  
+> 3     billing-reconcil…  online           48230    0         -          -       96.0M     1h 29m  
+  4     cron               online           48233    0         -          -       8.0M      1h 31m  
+  5     metrics            online           48240    0         -          -       11.0M     1h 32m  
+  0     web                online           48211    0         -          -       182.0M    1h 25m  
+  1     web                online           48212    0         -          -       178.0M    1h 26m  
                                                                                                     
                                                                                                     
                                                                                                     
@@ -799,7 +800,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   ID    NAME               STATUS           PID      RESTARTS  EXIT       CPU     MEM       UPTIME  
    ██ FLOCK                                                                                         
-> 2     api                online           48299    2         -          7.1%    241.0M    1h 18m  
+> 2     api                online           48299    2         -          -       241.0M    1h 18m  
   3     billing-reconcil…  online           48230    0         -          0.8%    96.0M     1h 29m  
   4     cron               online           48233    0         -          0.1%    8.0M      1h 31m  
   5     metrics            online           48240    0         -          0.4%    11.0M     1h 32m  
@@ -1060,3 +1061,188 @@ out  WARN retrying upstream payment gateway after a timeout, backing off 500ms b
                                                                                                     
                                                                                                     
 esc back   j/k line   ctrl-d/u page   G end   / search   n/N match   f follow   w wrap … █ following
+
+=== sheep_pane  (160x48) ===
+The sheep pane on web, at its design size: 160 = 8 gutter + 140 body + 12 margin for each chart, and 160 = 76 config + 1 divider + 83 feed across the row below them. Both charts draw their full body, the config and env column lists web's own fields, and the embedded feed carries its own lines, all on one screen. web's cpu_ms counter is differenced across several two-second polls, rising by varying deltas, so both charts draw a shape rather than a single repeated bar.
+
+shep lookout   /home/ada/.shep                                                                                                                    1 in the flock
+ ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 20.0%   mem 30.0M   fold edge                                                         
+██ CPU   collecting · 0m08s of 4m40s                                                                                                                            
+    50%                                                                                                                                                         
+      |                                                                                                                                                         
+    38%                                                                                                                                           ▄             
+      |                                                                                                                                           █             
+    25%                                                                                                                                         █ █             
+      |                                                                                                                                         ████            
+    12%                                                                                                                                         ████            
+      0                                                                                                                                         ████            
+██ MEM   rss   same window   ·   ceiling 64.0M                                                                                                                  
+ 100.0M                                                                                                                                                         
+  80.0M                                                                                                                                                         
+  64.0M ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ ceiling    
+  40.0M                                                                                                                                          ▄▄▄            
+      0                                                                                                                                        ▄████            
+        ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────now            
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+██ CONFIG & ENV   e edit                                                    │ ██ BLEATS out then err · / narrow                                                 
+                                                                            │out  listening on 0.0.0.0:8080                                                     
+────────────────────────────────────────────────────────────────────────────│out  GET /healthz 200 3ms                                                          
+process                                                                     │out  GET /v1/orders 200 44ms                                                       
+cwd                         (unset)                                         │out  POST /v1/orders 201 88ms                                                      
+depends_on                  (default)                                       │out  GET /v1/orders/8821 200 9ms                                                   
+fold                        (unset)                                         │out  connection pool: 14/50 in use                                                 
+group                       (unset)                                         │                                                                                   
+instances                   3                                               │                                                                                   
+interpreter                 (unset)                                         │                                                                                   
+name                        web                                             │                                                                                   
+reuse_port                  (default)                                       │                                                                                   
+script                      ./srv                                           │                                                                                   
+user                        (unset)                                         │                                                                                   
+                                                                            │                                                                                   
+────────────────────────────────────────────────────────────────────────────│                                                                                   
+logging                                                                     │                                                                                   
+err_file                    (unset)                                         │                                                                                   
+merge_logs                  (default)                                       │                                                                                   
+out_file                    (unset)                                         │                                                                                   
+                                                                            │                                                                                   
+────────────────────────────────────────────────────────────────────────────│                                                                                   
+inputs                                                                      │                                                                                   
+args                        ["--port","8080"]                               │                                                                                   
+channel                     (default)                                       │                                                                                   
+environment                 (unset)                                         │                                                                                   
+stdin                       (default)                                       │                                                                                   
+                                                                                                                                                                
+esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                                      control enabled
+
+=== sheep_pane_cpu_only  (139x48) ===
+139 columns: one cell under the 140 the full two-chart body needs. The CPU chart still draws at its own body width, but the memory chart is gone, replaced by a one-line `rss` summary and a ten-cell gauge: memory still has a gauge to fall back on, and the CPU chart is the more diagnostic of the two, so it is the one that stays.
+
+shep lookout   /home/ada/.shep                                                                                               1 in the flock
+ ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 20.0%   mem 30.0M   fold edge                                    
+██ CPU   collecting · 0m08s of 3m58s                                                                                                       
+    50%                                                                                                                                    
+      |                                                                                                                                    
+    38%                                                                                                                      ▄             
+      |                                                                                                                      █             
+    25%                                                                                                                    █ █             
+      |                                                                                                                    ████            
+    12%                                                                                                                    ████            
+      0                                                                                                                    ████            
+rss 30.0M of 64.0M █████░░░░░                                                                                                              
+                                                                                                                                           
+                                                                                                                                           
+                                                                                                                                           
+                                                                                                                                           
+                                                                                                                                           
+        ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────now            
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+██ CONFIG & ENV   e edit                                                                                                                   
+                                                                                                                                           
+────────────────────────────────────────────────────────────────────────────                                                               
+process                                                                                                                                    
+cwd                         (unset)                                                                                                        
+depends_on                  (default)                                                                                                      
+fold                        (unset)                                                                                                        
+group                       (unset)                                                                                                        
+instances                   3                                                                                                              
+interpreter                 (unset)                                                                                                        
+name                        web                                                                                                            
+reuse_port                  (default)                                                                                                      
+script                      ./srv                                                                                                          
+user                        (unset)                                                                                                        
+                                                                                                                                           
+────────────────────────────────────────────────────────────────────────────                                                               
+logging                                                                                                                                    
+err_file                    (unset)                                                                                                        
+merge_logs                  (default)                                                                                                      
+out_file                    (unset)                                                                                                        
+                                                                                                                                           
+────────────────────────────────────────────────────────────────────────────                                                               
+inputs                                                                                                                                     
+args                        ["--port","8080"]                                                                                              
+channel                     (default)                                                                                                      
+environment                 (unset)                                                                                                        
+stdin                       (default)                                                                                                      
+                                                                                                                                           
+esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                 control enabled
+
+=== sheep_pane_sparklines  (99x48) ===
+99 columns: one cell under the 100 the CPU-only tier needs. Both charts are gone, and the pane falls back to 1a's own pair: the `CPU 20s` sparkline and the `MEM/CEIL` gauge, on one row.
+
+shep lookout   /home/ada/.shep                                                       1 in the flock
+ ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 20.0%   mem 30.0M   fold…
+CPU 20s         ▆▅█▅      MEM/CEIL   █████░░░░░                                                    
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+                                                                                                   
+██ CONFIG & ENV   e edit                                                                           
+                                                                                                   
+────────────────────────────────────────────────────────────────────────────                       
+process                                                                                            
+cwd                         (unset)                                                                
+depends_on                  (default)                                                              
+fold                        (unset)                                                                
+group                       (unset)                                                                
+instances                   3                                                                      
+interpreter                 (unset)                                                                
+name                        web                                                                    
+reuse_port                  (default)                                                              
+script                      ./srv                                                                  
+user                        (unset)                                                                
+                                                                                                   
+────────────────────────────────────────────────────────────────────────────                       
+logging                                                                                            
+err_file                    (unset)                                                                
+merge_logs                  (default)                                                              
+out_file                    (unset)                                                                
+                                                                                                   
+────────────────────────────────────────────────────────────────────────────                       
+inputs                                                                                             
+args                        ["--port","8080"]                                                      
+channel                     (default)                                                              
+environment                 (unset)                                                                
+stdin                       (default)                                                              
+                                                                                                   
+esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log  … control enabled
+
+=== sheep_pane_short  (160x25) ===
+160 columns, 25 rows: the charts hold their design width but not their design height. Under 26 rows the memory chart goes; the CPU chart and the config and env column, which give ground last, are still up.
+
+shep lookout   /home/ada/.shep                                                                                                                    1 in the flock
+ ██ SHEEP 20  web   online   pid 48500   restarts 0   uptime 1h 55m   cpu 20.0%   mem 30.0M   fold edge                                                         
+██ CPU   collecting · 0m08s of 4m40s                                                                                                                            
+    50%                                                                                                                                                         
+      |                                                                                                                                                         
+    38%                                                                                                                                           ▄             
+      |                                                                                                                                           █             
+    25%                                                                                                                                         █ █             
+      |                                                                                                                                         ████            
+    12%                                                                                                                                         ████            
+      0                                                                                                                                         ████            
+rss 30.0M of 64.0M █████░░░░░                                                                                                                                   
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+        ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────now            
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+██ CONFIG & ENV   e edit                                                    │ ██ BLEATS out then err · / narrow                                                 
+                                                                            │out  listening on 0.0.0.0:8080                                                     
+────────────────────────────────────────────────────────────────────────────│out  GET /healthz 200 3ms                                                          
+process                                                                     │out  GET /v1/orders 200 44ms                                                       
+cwd                         (unset)                                         │out  POST /v1/orders 201 88ms                                                      
+esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                                      control enabled

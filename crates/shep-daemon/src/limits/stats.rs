@@ -15,6 +15,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use shep_core::protocol::Lamb;
+use shep_core::values;
 use tokio::time::Instant;
 
 use super::sample::{MemorySampler, ProcessIdentity, TreeIndex};
@@ -33,6 +34,8 @@ pub(crate) struct SheepStats {
     pub cpu_percent: Option<f32>,
     /// Tree resident set size, current as of the reading that produced this.
     pub memory_bytes: u64,
+    /// The tree's cumulative CPU-milliseconds as of this reading.
+    pub cpu_ms: u64,
 }
 
 /// One watched root's CPU counter, and when it was read.
@@ -178,6 +181,7 @@ impl StatsState {
                         .get(&root_pid)
                         .and_then(|baseline| cpu_percent(*baseline, observed_cpu_ms, now)),
                     memory_bytes: index.sum_from(root_pid),
+                    cpu_ms: observed_cpu_ms,
                 };
                 (root_pid, stats)
             })
@@ -282,19 +286,11 @@ impl fmt::Debug for StatsState {
 /// `None` when no wall time has passed since the baseline: dividing by a
 /// zero window would produce a nonsense figure.
 fn cpu_percent(baseline: Baseline, cpu_ms: u64, now: Instant) -> Option<f32> {
-    let window = now.saturating_duration_since(baseline.at);
-    if window.is_zero() {
-        return None;
-    }
     // Saturating: a counter that went backwards means the tree under this
     // pid is not the one the baseline was taken from (a lamb exited, or the
     // pid was recycled), and zero is the honest reading for that window.
     let elapsed_cpu_ms = cpu_ms.saturating_sub(baseline.cpu_ms);
-    // CPU-milliseconds over wall-seconds is per-mille of one core. Computed
-    // in f64 and narrowed once at the end, since f32 would lose milliseconds
-    // off a counter that has run for a month.
-    let percent = elapsed_cpu_ms as f64 / window.as_secs_f64() / 10.0;
-    Some(percent as f32)
+    values::cpu_percent(elapsed_cpu_ms, now.saturating_duration_since(baseline.at))
 }
 
 #[cfg(test)]
@@ -326,6 +322,21 @@ mod tests {
         let now = stats.sample_now();
         assert_eq!(now[&100].cpu_percent, None);
         assert_eq!(now[&100].memory_bytes, 4096, "memory is always current");
+    }
+
+    /// The counter is reported whether or not a baseline exists: it is the
+    /// reading itself, not a rate measured against anything.
+    #[tokio::test(start_paused = true)]
+    async fn a_sample_carries_the_counter_without_a_baseline() {
+        let sampler = Arc::new(ScriptedSampler::new(vec![vec![rss_cpu(
+            100, None, 1024, 5_000,
+        )]]));
+        let stats = StatsState::new(sampler);
+        stats.watch(1, 100);
+
+        let now = stats.sample_now();
+        assert_eq!(now[&100].cpu_ms, 5_000);
+        assert_eq!(now[&100].cpu_percent, None);
     }
 
     /// 1500 CPU-ms over a 15 s window is 10%; the process's whole

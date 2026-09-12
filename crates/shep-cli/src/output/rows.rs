@@ -145,6 +145,9 @@ impl Render for FlockRows {
         // MEM already reports the raw reading; a gauge against this ceiling
         // is lookout's, not this table's.
         "max_memory",
+        // CPU already reports the percentage; the raw counter behind it is
+        // for a client differencing its own polls, not this table.
+        "cpu_ms",
     ];
 
     // Parallel to `headers()`. The rest survive in ascending order. CFG ties
@@ -801,6 +804,9 @@ impl Render for DogRows {
         // A sheep concept: a dog has no `AppConfig` and so no ceiling to
         // report; always `null` here.
         "max_memory",
+        // CPU already reports the percentage; the raw counter behind it is
+        // for a client differencing its own polls, not this table.
+        "cpu_ms",
     ];
 
     // Parallel to `headers()`. The nine shared columns carry the numbers
@@ -1193,6 +1199,8 @@ impl Render for FlushedRows {
         "fold",
         "cpu_percent",
         "memory_bytes",
+        // The raw counter behind `cpu_percent`, same reason.
+        "cpu_ms",
         // Every row is a sheep: no `dog`, no handshake, and nothing for a
         // shepherd to give up on.
         "dog",
@@ -2936,7 +2944,7 @@ pub(crate) mod tests {
 
         use crate::lookout::app::{App, Control, Msg, RowKey};
         use crate::lookout::theme::Palette;
-        use crate::lookout::view::flock::{columns_for, key_line};
+        use crate::lookout::view::flock::{Column, columns_for, key_line};
 
         // Every slot differs in every summed field, so a rollup reading one
         // member cannot coincide with the sum.
@@ -2975,7 +2983,17 @@ pub(crate) mod tests {
         let dashboard_totals = app.group_totals("web");
         assert_eq!(dashboard_totals.count, flock.len());
         assert_eq!(dashboard_totals.restarts, table_totals.restarts, "restarts");
-        assert_eq!(dashboard_totals.cpu, table_totals.cpu, "cpu");
+        // CPU is the one field these two surfaces do NOT agree on, by
+        // design: `shep flock` reads `ProcessInfo::cpu_percent`, the
+        // shepherd's own running mean, while lookout differences its own
+        // polls and has had only one here, so it honestly has nothing yet.
+        // A one-shot listing has nothing to difference against, so the two
+        // surfaces answering differently is correct rather than drift.
+        assert_eq!(table_totals.cpu, Some(9.4), "the table keeps cpu_percent");
+        assert_eq!(
+            dashboard_totals.cpu, None,
+            "one poll has nothing differenced to sum yet"
+        );
         assert_eq!(dashboard_totals.memory, table_totals.memory, "memory");
         assert_eq!(
             dashboard_totals.uptime_ms,
@@ -3009,21 +3027,25 @@ pub(crate) mod tests {
 
         let table = FlockRows(flock).rows_for(full_presentation(), true);
         let header = &table[0];
-        let dashboard = key_line(
+        let dashboard_columns = columns_for(200);
+        let dashboard_line = key_line(
             &app,
             &RowKey::Group("web".to_string()),
-            columns_for(200),
+            dashboard_columns,
             200,
             false,
-        )
-        .spans
-        .iter()
-        .map(|span| span.content.as_ref())
-        .collect::<String>();
+        );
+        let dashboard = dashboard_line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
 
         // Then the rendered cells. FOLD and SMIT are per-app facts, not sums;
-        // STATUS carries a face here and not in the dashboard.
-        for column in ["NAME", "RESTARTS", "CPU", "MEM", "UPTIME"] {
+        // STATUS carries a face here and not in the dashboard. CPU is not
+        // in this list: `dashboard_totals.cpu` above already pins the one
+        // field these two surfaces deliberately disagree on.
+        for column in ["NAME", "RESTARTS", "MEM", "UPTIME"] {
             let at = FlockRows::headers()
                 .iter()
                 .position(|header| *header == column)
@@ -3035,6 +3057,31 @@ pub(crate) mod tests {
                  does not agree: {dashboard:?}"
             );
         }
+
+        // The CPU cell specifically, not a substring search of the whole
+        // line: FOLD and SMIT are blank-instance dashes too, so `" - "`
+        // shows up in the rendered row whatever the CPU cell holds. `key_line`
+        // pushes one span per column (a "  " separator span between them,
+        // two text spans only for `Column::MemCeil`), so walking `columns_for`
+        // the same way it does finds the exact span the CPU cell landed in.
+        let mut cpu_span = None;
+        let mut span_index = 0;
+        for (index, column) in dashboard_columns.iter().enumerate() {
+            if index > 0 {
+                span_index += 1; // the "  " separator span
+            }
+            if *column == Column::Cpu {
+                cpu_span = Some(span_index);
+                break;
+            }
+            span_index += if *column == Column::MemCeil { 2 } else { 1 };
+        }
+        let cpu_span = cpu_span.expect("CPU is drawn at this width");
+        let cpu_cell = dashboard_line.spans[cpu_span].content.as_ref().trim();
+        assert_eq!(
+            cpu_cell, "-",
+            "the dashboard's own CPU cell reads `-` after one poll: {dashboard:?}"
+        );
     }
 
     #[test]

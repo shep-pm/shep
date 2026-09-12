@@ -15,6 +15,7 @@
       "err_file": null,
       "cpu_percent": null,
       "memory_bytes": null,
+      "cpu_ms": null,
       "dog": null,
       "lambs": [
         {

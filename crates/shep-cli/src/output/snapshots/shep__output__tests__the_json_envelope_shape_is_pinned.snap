@@ -19,6 +19,7 @@ expression: out
       "err_file": "/logs/web-0-err.log",
       "cpu_percent": 12.5,
       "memory_bytes": 50462720,
+      "cpu_ms": null,
       "dog": null,
       "lambs": null,
       "last_exit": {
@@ -50,6 +51,7 @@ expression: out
       "err_file": "/logs/worker-0-err.log",
       "cpu_percent": 12.5,
       "memory_bytes": 50462720,
+      "cpu_ms": null,
       "dog": null,
       "lambs": null,
       "last_exit": {
@@ -81,6 +83,7 @@ expression: out
       "err_file": "/logs/cron-0-err.log",
       "cpu_percent": 12.5,
       "memory_bytes": 50462720,
+      "cpu_ms": null,
       "dog": null,
       "lambs": null,
       "last_exit": {

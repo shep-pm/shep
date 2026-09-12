@@ -295,6 +295,20 @@ impl BleatsPane {
         &self.sheep
     }
 
+    /// The match axis's current text, or `None` when it is not set.
+    ///
+    /// A thin alias for `filters().matcher.as_deref()`, `#[cfg(test)]` like
+    /// [`super::app::App::bleats_pane_mut_for_tests`]: nothing in production
+    /// reads a promoted pane's carried filter back out once `b` has set it,
+    /// only `crate::lookout::app`'s own
+    /// `b_promotes_the_feed_to_full_screen_with_its_filters`, which asserts
+    /// that promotion carried it rather than dropping it.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn match_filter(&self) -> Option<&str> {
+        self.filters.matcher.as_deref()
+    }
+
     /// The filters currently stacked on this pane's feed.
     ///
     /// Read by [`super::view::bleats_full::draw`] to draw the filter row's

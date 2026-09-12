@@ -20,6 +20,7 @@ expression: events
         "err_file": "/home/ada/.shep/logs/web-0-err.log",
         "cpu_percent": null,
         "memory_bytes": null,
+        "cpu_ms": null,
         "dog": null,
         "lambs": null,
         "last_exit": {
@@ -66,6 +67,7 @@ expression: events
         "err_file": null,
         "cpu_percent": null,
         "memory_bytes": null,
+        "cpu_ms": null,
         "dog": null,
         "lambs": null,
         "last_exit": null,
@@ -96,6 +98,7 @@ expression: events
         "err_file": "/home/ada/.shep/logs/web-0-err.log",
         "cpu_percent": null,
         "memory_bytes": null,
+        "cpu_ms": null,
         "dog": null,
         "lambs": null,
         "last_exit": {
@@ -129,6 +132,7 @@ expression: events
         "err_file": "/home/ada/.shep/logs/web-0-err.log",
         "cpu_percent": null,
         "memory_bytes": null,
+        "cpu_ms": null,
         "dog": null,
         "lambs": null,
         "last_exit": {
@@ -162,6 +166,7 @@ expression: events
         "err_file": "/home/ada/.shep/logs/web-0-err.log",
         "cpu_percent": null,
         "memory_bytes": null,
+        "cpu_ms": null,
         "dog": null,
         "lambs": null,
         "last_exit": {
@@ -195,6 +200,7 @@ expression: events
         "err_file": "/home/ada/.shep/logs/web-0-err.log",
         "cpu_percent": null,
         "memory_bytes": null,
+        "cpu_ms": null,
         "dog": null,
         "lambs": null,
         "last_exit": {
@@ -228,6 +234,7 @@ expression: events
         "err_file": "/home/ada/.shep/logs/web-0-err.log",
         "cpu_percent": null,
         "memory_bytes": null,
+        "cpu_ms": null,
         "dog": null,
         "lambs": null,
         "last_exit": {
@@ -261,6 +268,7 @@ expression: events
         "err_file": "/home/ada/.shep/logs/web-0-err.log",
         "cpu_percent": null,
         "memory_bytes": null,
+        "cpu_ms": null,
         "dog": null,
         "lambs": null,
         "last_exit": {

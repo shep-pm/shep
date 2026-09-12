@@ -7,19 +7,19 @@ become real bugs are listed below.
 
 ## What is being built
 
-1a, 1d, 1e, 1g, 1j, 1k and 1l go ahead as drawn. 1i changes scope. 1h waits.
+1a, 1d, 1e, 1g, 1j, 1k and 1l go ahead as drawn. 1i changes scope. 1h is in
+flight against the store that shipped.
 
-## 1h waits for the store
+## 1h no longer waits for the store
 
-The secrets pane describes a vault shep does not have. `crates/shep-core/src/kv.rs`
-is `kv.json` today: a flat `BTreeMap<String, String>`, `0600` and file-locked,
-unencrypted, with no per-sheep scoping, no timestamps, no set-by or read-by
-record, and no audit log anywhere in the repo. `shep set`/`get`/`unset` never
-touch the daemon (`docs/decisions.md:1089`), and nothing reads the store into a
-sheep's env at spawn.
+**Corrected 2026-09-08. This section said the store did not exist. It does.**
+`crates/shep-core/src/secrets.rs` is real, env values carry `{{secret:NAME}}`
+references, and `AppConfig` has a field naming the namespace a sheep resolves
+them in (`crates/shep-core/src/config/app.rs:147`). The pane itself is in
+flight and binds `S`, not the frame's `g`, which is already `SelectFirst`.
 
-That functionality is being built separately and merges first. Build the pane
-against what lands, not against the frame.
+What the frame still gets wrong is unchanged: build the pane against the
+store that shipped, not against the vault the frame drew.
 
 ## 1i reads the window, not the file
 
@@ -67,7 +67,15 @@ filters work against a log on disk instead of a hand-written grep.
 - The rollup math exists (`crates/shep-cli/src/lookout/app.rs:3876`), and so does
   1g's press-to-act carve-out (`docs/lookout/README.md:54`).
 
-## The charts need a decision first
+## The charts needed a decision, and it is made
+
+**Answered 2026-09-08 in
+[the 1d spec](../../brainstorming/specs/2026-09-08-lookout-1d-sheep-pane-design.md),
+decisions 1 to 3.** The buffer stays client side, the daemon publishes its raw
+CPU counter so lookout can difference consecutive polls instead of buffering a
+running mean, and the window is computed from the chart's own width rather
+than written into a label. The paragraph below is what the question looked
+like before it was answered.
 
 Nothing keeps history. The daemon holds one CPU baseline per pid
 (`crates/shep-daemon/src/limits/stats.rs:53`) and lookout replaces the flock map
