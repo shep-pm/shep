@@ -587,12 +587,13 @@ mod tests {
         assert!(rendered.contains("binds its control socket before the restore"));
     }
 
-    /// fails if a metacharacter in a path escapes the double quotes.
-    #[test]
-    fn the_openrc_script_quotes_shell_metacharacters() {
-        let mut s = spec();
-        s.home = PathBuf::from(r#"/tmp/we"ird/$HOME/`x`/back\slash"#);
-        let rendered = openrc_script(&s);
+    /// A `home` carrying every character [`sh_double_quoted`] escapes.
+    const SHELL_METACHARACTER_HOME: &str = r#"/tmp/we"ird/$HOME/`x`/back\slash"#;
+
+    /// Asserts a script built from [`SHELL_METACHARACTER_HOME`] escaped all
+    /// four, so a fifth character added to the escape set is pinned here
+    /// rather than in each rc flavour's test.
+    fn assert_double_quoted_escapes(rendered: &str) {
         assert!(
             rendered.contains(r#"we\"ird"#),
             "a quote must be escaped: {rendered}"
@@ -609,6 +610,15 @@ mod tests {
             rendered.contains(r"back\\slash"),
             "a backslash must be escaped: {rendered}"
         );
+    }
+
+    /// fails if a metacharacter in a path escapes the double quotes.
+    #[test]
+    fn the_openrc_script_quotes_shell_metacharacters() {
+        let mut s = spec();
+        s.home = PathBuf::from(SHELL_METACHARACTER_HOME);
+        let rendered = openrc_script(&s);
+        assert_double_quoted_escapes(&rendered);
     }
 
     /// openrc derives defaults from `name`/`RC_SVCNAME`; a constant `name`
@@ -679,24 +689,9 @@ mod tests {
     #[test]
     fn the_freebsd_script_quotes_shell_metacharacters() {
         let mut s = spec();
-        s.home = PathBuf::from(r#"/tmp/we"ird/$HOME/`x`/back\slash"#);
+        s.home = PathBuf::from(SHELL_METACHARACTER_HOME);
         let rendered = freebsd_rc_script(&s);
-        assert!(
-            rendered.contains(r#"we\"ird"#),
-            "a quote must be escaped: {rendered}"
-        );
-        assert!(
-            rendered.contains(r"\$HOME"),
-            "a dollar must be escaped: {rendered}"
-        );
-        assert!(
-            rendered.contains(r"\`x\`"),
-            "a backtick must be escaped: {rendered}"
-        );
-        assert!(
-            rendered.contains(r"back\\slash"),
-            "a backslash must be escaped: {rendered}"
-        );
+        assert_double_quoted_escapes(&rendered);
     }
 
     /// fails if a metacharacter in `home` escapes the quoting in the
@@ -705,24 +700,9 @@ mod tests {
     #[test]
     fn the_openbsd_script_quotes_shell_metacharacters() {
         let mut s = spec();
-        s.home = PathBuf::from(r#"/tmp/we"ird/$HOME/`x`/back\slash"#);
+        s.home = PathBuf::from(SHELL_METACHARACTER_HOME);
         let rendered = openbsd_rc_script(&s);
-        assert!(
-            rendered.contains(r#"we\"ird"#),
-            "a quote must be escaped: {rendered}"
-        );
-        assert!(
-            rendered.contains(r"\$HOME"),
-            "a dollar must be escaped: {rendered}"
-        );
-        assert!(
-            rendered.contains(r"\`x\`"),
-            "a backtick must be escaped: {rendered}"
-        );
-        assert!(
-            rendered.contains(r"back\\slash"),
-            "a backslash must be escaped: {rendered}"
-        );
+        assert_double_quoted_escapes(&rendered);
     }
 
     /// fails if a `PATH` containing a space becomes two environment entries.

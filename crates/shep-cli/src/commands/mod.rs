@@ -23,6 +23,7 @@ pub mod query;
 // reparent-to-init rule, so there is nothing for a reaper to do.
 #[cfg(unix)]
 pub(crate) mod reap;
+pub(crate) mod rpc;
 pub mod runtime;
 pub mod schema;
 pub mod secret;

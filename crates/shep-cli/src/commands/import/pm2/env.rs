@@ -116,20 +116,23 @@ pub(crate) fn split(row: &DumpRow) -> AppEnv {
     }
 }
 
+/// Whether `key` is in a closed list: named outright, or under one of its
+/// prefixes.
+///
+/// The matching rule for both lists, so a third kind of match added later
+/// reaches them together.
+fn in_closed_set(key: &str, exact: &[&str], prefixes: &[&str]) -> bool {
+    exact.contains(&key) || prefixes.iter().any(|prefix| key.starts_with(prefix))
+}
+
 /// Whether `key` is a login shell's own variable rather than an app's.
 fn is_session_shell(key: &str) -> bool {
-    SESSION_SHELL.contains(&key)
-        || SESSION_SHELL_PREFIXES
-            .iter()
-            .any(|prefix| key.starts_with(prefix))
+    in_closed_set(key, SESSION_SHELL, SESSION_SHELL_PREFIXES)
 }
 
 /// Whether `key` is one pm2 injects into a process it supervises.
 fn is_pm2_injected(key: &str) -> bool {
-    PM2_INJECTED.contains(&key)
-        || PM2_INJECTED_PREFIXES
-            .iter()
-            .any(|prefix| key.starts_with(prefix))
+    in_closed_set(key, PM2_INJECTED, PM2_INJECTED_PREFIXES)
 }
 
 #[cfg(test)]

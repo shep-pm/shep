@@ -22,7 +22,8 @@ use shep_core::secrets::{
 use crate::cli::{Format, SecretArgs, SecretCommand};
 use crate::exit::ExitCode;
 use crate::output::{
-    SecretKeyRow, SecretKeyRows, SecretSlotRow, SecretValueRow, Streams, emit, write_outcome,
+    Render, SecretKeyRow, SecretKeyRows, SecretSlotRow, SecretValueRow, Streams, emit,
+    write_outcome,
 };
 
 /// The one sentence that tells an operator how to open the read gate.
@@ -247,13 +248,7 @@ fn get(
                     key: key.to_string(),
                     value,
                 };
-                write_outcome(emit(
-                    &mut *streams.out,
-                    streams.fmt,
-                    "secret",
-                    row,
-                    streams.style,
-                ))
+                emit_secret(streams, row)
             }
         },
         Ok(None) => {
@@ -346,13 +341,7 @@ fn list(streams: &mut Streams<'_>, paths: &ShepPaths) -> ExitCode {
                     })
                     .collect(),
             );
-            write_outcome(emit(
-                &mut *streams.out,
-                streams.fmt,
-                "secret",
-                rows,
-                streams.style,
-            ))
+            emit_secret(streams, rows)
         }
         Err(err) => fail(streams, &err),
     }
@@ -361,10 +350,17 @@ fn list(streams: &mut Streams<'_>, paths: &ShepPaths) -> ExitCode {
 /// The one report `set` and `unset` share: which slot changed, never what
 /// is in it.
 fn emit_slot(streams: &mut Streams<'_>, key: &str, environment: &str) -> ExitCode {
-    let row = SecretSlotRow {
-        key: key.to_string(),
-        environment: environment.to_string(),
-    };
+    emit_secret(
+        streams,
+        SecretSlotRow {
+            key: key.to_string(),
+            environment: environment.to_string(),
+        },
+    )
+}
+
+/// Renders `row` under the one envelope command every `secret` verb reports.
+fn emit_secret<T: Render>(streams: &mut Streams<'_>, row: T) -> ExitCode {
     write_outcome(emit(
         &mut *streams.out,
         streams.fmt,

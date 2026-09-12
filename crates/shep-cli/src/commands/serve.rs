@@ -12,16 +12,16 @@
 
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
-use shep_client::{Client, START_DEADLINE};
+use shep_client::START_DEADLINE;
 use shep_core::config::AppConfig;
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{Request, Response};
 
 use crate::cli::ServeArgs;
+use crate::commands::rpc::request_and_render;
 use crate::exit::ExitCode;
-use crate::output::{FlockRows, Render, Streams, emit, write_outcome};
+use crate::output::{FlockRows, Streams};
 use crate::serve::auth::{self, AuthError, Credentials};
 use crate::serve::worker::{self, ServeConfig};
 
@@ -316,44 +316,6 @@ async fn register(
         },
     )
     .await
-}
-
-/// Sends `body`, renders whatever the daemon answers through [`emit`], and
-/// maps every way that can go wrong to its exit code.
-///
-/// A copy of `commands::lifecycle`'s helper of the same name and shape,
-/// also duplicated in `commands::logs` and `commands::query`.
-async fn request_and_render<T, F>(
-    client: &Client,
-    streams: &mut Streams<'_>,
-    command: &str,
-    body: Request,
-    deadline: Option<Duration>,
-    extract: F,
-) -> ExitCode
-where
-    T: Render,
-    F: FnOnce(Response) -> Option<T>,
-{
-    match client.request_with_deadline(body, deadline).await {
-        Ok(response) => match extract(response) {
-            Some(payload) => write_outcome(emit(
-                &mut *streams.out,
-                streams.fmt,
-                command,
-                payload,
-                streams.style,
-            )),
-            None => {
-                let message = "the daemon answered with a response this client does not understand";
-                streams.fail(ExitCode::Internal, message)
-            }
-        },
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            streams.fail(code, &err.to_string())
-        }
-    }
 }
 
 #[cfg(test)]

@@ -21,54 +21,16 @@ use shep_core::status::ProcStatus;
 use shep_daemon::snapshot::FlockSnapshot;
 
 use crate::cli::{DogsArgs, FoldArgs, Format, SelectorArgs};
-use crate::commands::selector::parse_selector;
+use crate::commands::rpc::{client_error, request_and_render, unexpected_response};
+use crate::commands::selector::parse_selector_spec;
 use crate::dog_index::{self, AvailableDog, DogSourceKind};
 use crate::exit::ExitCode;
 use crate::fetch;
 use crate::flourish;
 use crate::output::{
-    AvailableDogRows, DescribedSecret, DogRows, Render, RolledSheep, RolledSheepRows, SecretStatus,
+    AvailableDogRows, DescribedSecret, DogRows, RolledSheep, RolledSheepRows, SecretStatus,
     Streams, emit, emit_described, emit_flock, write_outcome,
 };
-
-/// Sends `body`, renders whatever the daemon answers through [`emit`], and
-/// maps every way that can go wrong to its exit code.
-///
-/// `extract` pulls the verb's own payload out of `Response`, which is
-/// `#[non_exhaustive]`: an answer it does not recognise maps to
-/// [`ExitCode::Internal`] rather than being guessed at. Every query verb uses
-/// the client's default deadline, so there is no deadline parameter.
-async fn request_and_render<T, F>(
-    client: &Client,
-    streams: &mut Streams<'_>,
-    command: &str,
-    body: Request,
-    extract: F,
-) -> ExitCode
-where
-    T: Render,
-    F: FnOnce(Response) -> Option<T>,
-{
-    match client.request(body).await {
-        Ok(response) => match extract(response) {
-            Some(payload) => write_outcome(emit(
-                &mut *streams.out,
-                streams.fmt,
-                command,
-                payload,
-                streams.style,
-            )),
-            None => {
-                let message = "the daemon answered with a response this client does not understand";
-                streams.fail(ExitCode::Internal, message)
-            }
-        },
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            streams.fail(code, &err.to_string())
-        }
-    }
-}
 
 /// `describe` and `fold`'s shared body: one `Request::Describe` against
 /// `selector`, rendered through [`emit_described`] as the sheep table and
@@ -81,8 +43,8 @@ where
 /// diagnostic this feature was built for.
 ///
 /// Not routed through [`request_and_render`]: `emit_described` renders one
-/// `Vec<ProcessInfo>` into two tables, which no single [`Render`] impl can
-/// express.
+/// `Vec<ProcessInfo>` into two tables, which no single
+/// [`crate::output::Render`] impl can express.
 async fn describe_selector(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -118,14 +80,8 @@ async fn describe_selector(
             );
             write_outcome(result)
         }
-        Ok(_) => {
-            let message = "the daemon answered with a response this client does not understand";
-            streams.fail(ExitCode::Internal, message)
-        }
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            streams.fail(code, &err.to_string())
-        }
+        Ok(_unrecognised) => unexpected_response(streams),
+        Err(err) => client_error(streams, &err),
     }
 }
 
@@ -286,7 +242,7 @@ pub fn flock_from_roll(streams: &mut Streams<'_>, paths: &ShepPaths) -> ExitCode
 ///
 /// The flourish is gated on `Format::Table` and `streams.style.level.sheep()`
 /// and nothing else. Not routed through [`request_and_render`], which renders
-/// one [`Render`] type per verb rather than two tables from one
+/// one [`crate::output::Render`] type per verb rather than two tables from one
 /// `Vec<ProcessInfo>`.
 pub async fn flock(client: &Client, streams: &mut Streams<'_>) -> ExitCode {
     match client.request(Request::ListFlock).await {
@@ -306,14 +262,8 @@ pub async fn flock(client: &Client, streams: &mut Streams<'_>) -> ExitCode {
                 streams.style,
             ))
         }
-        Ok(_) => {
-            let message = "the daemon answered with a response this client does not understand";
-            streams.fail(ExitCode::Internal, message)
-        }
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            streams.fail(code, &err.to_string())
-        }
+        Ok(_unrecognised) => unexpected_response(streams),
+        Err(err) => client_error(streams, &err),
     }
 }
 
@@ -348,6 +298,7 @@ pub async fn dogs(client: &Client, streams: &mut Streams<'_>, args: &DogsArgs) -
         streams,
         "dogs",
         Request::ListFlock,
+        None,
         |response| match response {
             Response::Flock(procs) => Some(DogRows(
                 procs
@@ -534,8 +485,8 @@ pub async fn describe(
     // a tree per sheep, so merging them would lose that shape.
     let mut failure: Option<ExitCode> = None;
     for raw in &args.selectors {
-        let selector = match parse_selector(streams, raw) {
-            Ok(selector) => SelectorSpec::from(&selector),
+        let selector = match parse_selector_spec(streams, raw) {
+            Ok(selector) => selector,
             Err(code) => return code,
         };
         let code = describe_selector(client, streams, paths, "describe", true, selector).await;

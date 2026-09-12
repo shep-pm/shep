@@ -25,6 +25,7 @@ use shep_core::protocol::{DogSource, MIN_SUPPORTED, Request, Response, SelectorS
 
 use crate::cli::{AdoptArgs, BarksArgs};
 use crate::commands::dog_migration::{self, DogMigrationError};
+use crate::commands::rpc::{client_error, unexpected_response};
 use crate::commands::shep_toml::{ShepToml, ShepTomlError};
 use crate::exit::ExitCode;
 use crate::output::{
@@ -265,14 +266,8 @@ async fn enable_after_config(
                 streams.style,
             ))
         }
-        Ok(_) => {
-            let message = "the daemon answered with a response this client does not understand";
-            streams.fail(ExitCode::Internal, message)
-        }
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            streams.fail(code, &err.to_string())
-        }
+        Ok(_unrecognised) => unexpected_response(streams),
+        Err(err) => client_error(streams, &err),
     }
 }
 
@@ -354,14 +349,8 @@ async fn disable_after_config(
                 streams.style,
             ))
         }
-        Ok(_) => {
-            let message = "the daemon answered with a response this client does not understand";
-            streams.fail(ExitCode::Internal, message)
-        }
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            streams.fail(code, &err.to_string())
-        }
+        Ok(_unrecognised) => unexpected_response(streams),
+        Err(err) => client_error(streams, &err),
     }
 }
 
@@ -1288,14 +1277,8 @@ async fn adopt_after_config(
                 streams.style,
             ))
         }
-        Ok(_) => {
-            let message = "the daemon answered with a response this client does not understand";
-            streams.fail(ExitCode::Internal, message)
-        }
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            streams.fail(code, &err.to_string())
-        }
+        Ok(_unrecognised) => unexpected_response(streams),
+        Err(err) => client_error(streams, &err),
     }
 }
 
@@ -1380,14 +1363,8 @@ async fn rehome_after_config(
                 streams.style,
             ))
         }
-        Ok(_) => {
-            let message = "the daemon answered with a response this client does not understand";
-            streams.fail(ExitCode::Internal, message)
-        }
-        Err(err) => {
-            let code = ExitCode::from(&err);
-            streams.fail(code, &err.to_string())
-        }
+        Ok(_unrecognised) => unexpected_response(streams),
+        Err(err) => client_error(streams, &err),
     }
 }
 
