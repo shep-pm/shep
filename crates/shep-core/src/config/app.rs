@@ -873,9 +873,7 @@ env = { SOME_BOOL = true, PORT = 8080, NEG = -1, RATIO = 1.5, STR = "plain" }
     #[test]
     fn env_reads_a_number_beyond_i64_max_without_wrapping() {
         let beyond_i64 = u64::MAX; // 18446744073709551615
-        let src = format!(
-            r#"{{ "name":"web","script":"./srv","env":{{ "BIG": {beyond_i64} }} }}"#
-        );
+        let src = format!(r#"{{ "name":"web","script":"./srv","env":{{ "BIG": {beyond_i64} }} }}"#);
         let app = serde_json::from_str::<AppConfig>(&src)
             .expect("a u64 beyond i64::MAX is valid JSON and must load");
         assert_eq!(app.env["BIG"], "18446744073709551615");
