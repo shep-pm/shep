@@ -213,9 +213,13 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       <li>
         <code>cpu_ms</code> is cumulative CPU-milliseconds the sheep's
         process tree has spent since it started, the raw counter{" "}
-        <code>cpu_percent</code> is one view of. <code>null</code> only when
-        the shepherd isn't sampling the sheep at all (not running, or the
-        peer daemon predates the field); it's the one case
+        <code>cpu_percent</code> is one view of. <code>null</code> when the
+        shepherd isn't sampling the sheep (not running, or the peer daemon
+        predates the field), and on any verb that answers without taking a
+        live reading: only <code>shep list</code> and{" "}
+        <code>shep describe</code> pay for one, so the{" "}
+        <code>shep reload</code> reply above shows a{" "}
+        <code>null</code> counter on an online sheep; it's the one case
         <code>cpu_percent</code> can't cover the same way, since a sheep
         spawned since the last periodic tick has a counter already but no
         baseline yet to turn it into a percent. <code>shep lookout</code>{" "}
