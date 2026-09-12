@@ -64,8 +64,10 @@ filters work against a log on disk instead of a hand-written grep.
   1j needs a view, not a protocol change.
 - The impact tags map onto `ApplyGroup` (`crates/shep-core/src/config/apply.rs:18`),
   already shown in the pane's COST column.
-- The rollup math exists (`crates/shep-cli/src/lookout/app.rs:3876`), and so does
-  1g's press-to-act carve-out (`docs/lookout/README.md:54`).
+- The rollup math exists (`crates/shep-cli/src/lookout/app.rs:3876`), and the
+  close dialog 1g builds is itself the carve-out from the arm-then-confirm
+  rule: it names its keys on screen, so `R` and `L` act on the press
+  (`docs/lookout/README.md:72`).
 
 ## The charts needed a decision, and it is made
 
