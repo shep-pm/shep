@@ -3934,6 +3934,12 @@ impl<R: ProcessRunner> Actor<R> {
                 slot.entry.pid = Some(pid);
                 slot.entry.started_at = Some(tokio::time::Instant::now());
                 slot.entry.restarts += 1;
+                // `out_file`/`err_file` are `ApplyGroup::NeedsRespawn`: this
+                // respawn is when they take effect. `to_info` reads these
+                // fields, not `spec`, so a moved path reaches an operator
+                // only once it moves here too.
+                slot.entry.out_file = spec.out_file;
+                slot.entry.err_file = spec.err_file;
                 // A different process under the same id, so an earlier reload's
                 // verdict about the last one does not apply to it.
                 slot.ready_failed = false;
@@ -4442,6 +4448,14 @@ impl<R: ProcessRunner> Actor<R> {
         });
         for id in survivors.iter().chain(orphaned_by_failed_spawn.iter()) {
             if let Some(slot) = self.sheep.get_mut(id) {
+                // `out_file`/`err_file` need no refresh here: `stored` only
+                // moves `instances`, and no token an accepted log path may
+                // carry reads that. `normalize` refuses a `{{secret:...}}`
+                // in either field (`SecretInLogPath`), which leaves
+                // `{{instance}}` and `{{name}}`; a survivor's own `instance`
+                // is untouched by a scale and its name cannot move. Note it
+                // is `normalize` that narrows this and not `render`, which
+                // resolves secret references too.
                 slot.entry.spec = stored.clone();
                 match &mut slot.entry.pending {
                     // A slot already owed a config keeps it, with the count
@@ -19787,6 +19801,100 @@ mod tests {
             entry.pid,
             Some(APPLY_FIRST_PID),
             "a promotion is only reachable through a process that actually replaced the old one"
+        );
+    }
+
+    /// Without this refresh, `to_info` keeps naming a respawned child's old
+    /// log path forever: `out_file`/`err_file` are `ApplyGroup::NeedsRespawn`,
+    /// so a restart is the one moment they take effect, and every reader
+    /// built on `to_info` (`shep describe`, the muster roll) inherits it.
+    #[tokio::test(start_paused = true)]
+    async fn restart_refreshes_the_reported_log_paths_from_the_new_spec() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
+
+        let mut file = AppConfig::minimal("web", "./srv");
+        file.out_file = Some("/var/log/moved-out.log".to_string());
+        file.err_file = Some("/var/log/moved-err.log".to_string());
+        apply_config(
+            &mut actor,
+            vec![declared_app(
+                file,
+                &["name", "script", "out_file", "err_file"],
+            )],
+            ResetDepth::None,
+        )
+        .await;
+        assert!(
+            actor.sheep[&0].entry.pending.is_some(),
+            "the fixture must really park the change, or this case proves nothing"
+        );
+
+        let (reply, _answer) = oneshot::channel();
+        actor.begin_manual(
+            ProcessSelector::Name("web".to_string()),
+            ManualKind::Restart,
+            CommandOrigin::Operator,
+            ReplyKind::Info(reply),
+        );
+        actor.handle_exited(
+            0,
+            ExitOutcome {
+                code: Some(0),
+                signal: None,
+            },
+        );
+
+        let after = to_info(&actor.sheep[&0].entry, &actor.smits);
+        assert_eq!(
+            after.out_file.as_deref(),
+            Some("/var/log/moved-out.log"),
+            "the restarted child writes to the moved path; the listing must say so"
+        );
+        assert_eq!(
+            after.err_file.as_deref(),
+            Some("/var/log/moved-err.log"),
+            "and the same for stderr"
+        );
+    }
+
+    /// The mirror case: a load parks a moved `out_file`/`err_file`, but the
+    /// child has not respawned yet and is still appending to the old path.
+    /// Reporting the parked path early would be this same bug pointed the
+    /// other way, naming a file nothing writes to yet.
+    #[tokio::test(start_paused = true)]
+    async fn a_parked_log_path_change_does_not_reach_the_listing_before_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
+        let logs = actor.paths.logs.clone();
+
+        let mut file = AppConfig::minimal("web", "./srv");
+        file.out_file = Some("/var/log/moved-out.log".to_string());
+        file.err_file = Some("/var/log/moved-err.log".to_string());
+        apply_config(
+            &mut actor,
+            vec![declared_app(
+                file,
+                &["name", "script", "out_file", "err_file"],
+            )],
+            ResetDepth::None,
+        )
+        .await;
+        assert!(
+            actor.sheep[&0].entry.pending.is_some(),
+            "the fixture must really park the change, or this case proves nothing"
+        );
+
+        let still_reported = to_info(&actor.sheep[&0].entry, &actor.smits);
+        assert_eq!(
+            still_reported.out_file.as_deref(),
+            logs.join("web-0-out.log").to_str(),
+            "the child is still writing to the old path until it respawns"
+        );
+        assert_eq!(
+            still_reported.err_file.as_deref(),
+            logs.join("web-0-err.log").to_str(),
+            "and the same for stderr"
         );
     }
 
