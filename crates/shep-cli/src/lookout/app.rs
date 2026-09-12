@@ -199,6 +199,10 @@ pub enum Msg {
     Frozen {
         /// When the link was declared lost, already rendered for display.
         at_local: String,
+        /// The last dial's own words, from [`super::source::LinkError`]'s
+        /// `Display`. Carried rather than re-derived so the link panel
+        /// quotes the failure instead of guessing at one.
+        why: String,
     },
     /// One key.
     Key(KeyPress),
@@ -410,6 +414,8 @@ pub enum Link {
     Lost {
         /// When it was declared lost, already rendered for display.
         at_local: String,
+        /// Why the last dial failed, in the error's own words.
+        why: String,
     },
 }
 
@@ -1389,6 +1395,16 @@ pub struct App {
     /// The clock the view reads. Advanced by [`Msg::Tick`], and never once the
     /// link is [`Link::Lost`], so a frozen dashboard's uptime column stops.
     now: Instant,
+    /// When the link was declared lost, on [`Self::now`]'s clock. `None`
+    /// while it is still up.
+    froze_at: Option<Instant>,
+    /// How long ago that was, as of the last [`Msg::Tick`].
+    ///
+    /// The one number on a frozen dashboard that still moves. [`Self::now`]
+    /// stops, so every uptime stops with it; this rides the tick separately,
+    /// because how long the shepherd has been gone is a fact about now
+    /// rather than a value the shepherd reported.
+    frozen_for: Duration,
     /// The last host reading, or `None` before the first heartbeat and on a
     /// platform `sysinfo` does not support. [`Self::host_unsupported`] tells
     /// the strip which of the two it is looking at.
@@ -1516,6 +1532,8 @@ impl App {
             control,
             home,
             now,
+            froze_at: None,
+            frozen_for: Duration::ZERO,
             host: None,
             host_unsupported: false,
             feed: super::tail::Tail::default(),
@@ -1577,9 +1595,21 @@ impl App {
                 }
                 Effect::None
             }
-            Msg::Frozen { at_local } => {
-                self.link = Link::Lost { at_local };
+            Msg::Frozen { at_local, why } => {
+                self.link = Link::Lost { at_local, why };
+                self.froze_at = Some(self.now);
+                self.frozen_for = Duration::ZERO;
                 self.disarm_on_link_change();
+                // Every notice is about a shepherd that no longer exists,
+                // and none of them can be acted on. Left standing, the last
+                // one outranks the key hint for the rest of the session
+                // (`view::status::status_line`'s own ordering), so an
+                // operator reads `the shepherd is shutting down` where the
+                // bar should be naming the keys that still work. Whether the
+                // shutdown was clean is on the screen either way: the link
+                // panel quotes an error that says the socket was removed
+                // rather than refusing.
+                self.notice = None;
                 Effect::None
             }
             Msg::Tick { now } => {
@@ -1598,6 +1628,12 @@ impl App {
                     if stale {
                         self.pane_menu = None;
                     }
+                }
+                // The tick's own `now` again, for the same reason: how long
+                // the shepherd has been gone is the one number a frozen
+                // dashboard keeps counting.
+                if let Some(at) = self.froze_at {
+                    self.frozen_for = now.saturating_duration_since(at);
                 }
                 // Against the tick's own `now`, not `self.now`, which stops on
                 // a dead link: a settings edit describes a local file that is
@@ -4776,6 +4812,28 @@ impl App {
         &self.link
     }
 
+    /// How long the link has been [`Link::Lost`], as of the last
+    /// [`Msg::Tick`]. Zero while it is up.
+    #[must_use]
+    pub fn frozen_for(&self) -> Duration {
+        self.frozen_for
+    }
+
+    /// The palette every cell of data renders through.
+    ///
+    /// [`Palette::frozen`] once the link is [`Link::Lost`], so the table and
+    /// the host strip go to one muted ink and no cell can be read as live.
+    /// The chrome keeps [`Self::palette`]: the band still names the mode in
+    /// bark and the status bar still paints its keys.
+    #[must_use]
+    pub fn data_palette(&self) -> Palette {
+        if matches!(self.link, Link::Lost { .. }) {
+            self.palette.frozen()
+        } else {
+            self.palette
+        }
+    }
+
     /// The current notice, if the last message left one.
     #[must_use]
     pub fn notice(&self) -> Option<&Notice> {
@@ -5685,6 +5743,7 @@ mod tests {
             Msg::Retrying { attempt: 2 },
             Msg::Frozen {
                 at_local: "2026-08-16 09:00:00".to_string(),
+                why: fixtures::FROZEN_WHY.to_string(),
             },
         ] {
             let mut app = allowed_with_instances();
@@ -5863,6 +5922,7 @@ mod tests {
             Msg::Retrying { attempt: 2 },
             Msg::Frozen {
                 at_local: "2026-08-16 09:00:00".to_string(),
+                why: fixtures::FROZEN_WHY.to_string(),
             },
         ] {
             let mut app = allowed();
@@ -5942,6 +6002,7 @@ mod tests {
             Msg::Retrying { attempt: 2 },
             Msg::Frozen {
                 at_local: "2026-08-16 09:00:00".to_string(),
+                why: fixtures::FROZEN_WHY.to_string(),
             },
         ] {
             let mut app = allowed();
@@ -6123,6 +6184,7 @@ mod tests {
         let (mut app, _t0) = started();
         app.update(Msg::Frozen {
             at_local: "2026-08-16 09:00:00".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
         assert_eq!(app.update(Msg::Key(KeyPress::SelectDown)), Effect::None);
     }
@@ -6139,6 +6201,7 @@ mod tests {
         );
         app.update(Msg::Frozen {
             at_local: "2026-08-14 14:32:07".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
         assert_eq!(
             app.update(Msg::Snapshot {
@@ -6157,6 +6220,7 @@ mod tests {
         let (mut app, _) = started();
         app.update(Msg::Frozen {
             at_local: "2026-08-14 14:32:07".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
 
         assert_eq!(
@@ -6224,6 +6288,7 @@ mod tests {
         });
         app.update(Msg::Frozen {
             at_local: "2026-08-14 14:32:07".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
         let at_freeze = app.uptime_ms(1);
         app.update(Msg::Tick {
@@ -6285,6 +6350,7 @@ mod tests {
             Msg::Retrying { attempt: 5 },
             Msg::Frozen {
                 at_local: "2026-08-14 14:32:07".to_string(),
+                why: fixtures::FROZEN_WHY.to_string(),
             },
         ] {
             assert_ne!(app.update(msg), Effect::Quit);
@@ -6389,11 +6455,13 @@ mod tests {
         app.update(Msg::Retrying { attempt: 5 });
         app.update(Msg::Frozen {
             at_local: "2026-08-14 14:32:07".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
         assert_eq!(
             app.link(),
             &Link::Lost {
-                at_local: "2026-08-14 14:32:07".to_string()
+                at_local: "2026-08-14 14:32:07".to_string(),
+                why: fixtures::FROZEN_WHY.to_string(),
             }
         );
 
@@ -6437,6 +6505,7 @@ mod tests {
 
         app.update(Msg::Frozen {
             at_local: "2026-08-14 14:32:07".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
         assert_eq!(
             app.update(Msg::Key(KeyPress::Refresh)),
@@ -6476,6 +6545,7 @@ mod tests {
 
         app.update(Msg::Frozen {
             at_local: "2026-08-14 14:32:07".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
         let frozen = app.host();
         assert_eq!(app.update(Msg::Host { sample: None }), Effect::None);
@@ -6516,6 +6586,7 @@ mod tests {
 
         app.update(Msg::Frozen {
             at_local: "2026-08-14 14:32:07".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
 
         let in_flight_tail = super::super::tail::Tail {
@@ -6795,6 +6866,7 @@ mod tests {
         let (mut app, _t0) = started();
         app.update(Msg::Frozen {
             at_local: "2026-08-16 09:00:00".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
         app.update(Msg::Replied {
             sent: Sent::Lambs { id: 1 },
@@ -7428,6 +7500,7 @@ mod tests {
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let _ = app.update(Msg::Frozen {
             at_local: "12:00:00".into(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
         assert!(
             app.settings().unwrap().pending().is_some(),
@@ -7443,6 +7516,7 @@ mod tests {
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let _ = app.update(Msg::Frozen {
             at_local: "12:00:00".into(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
         let _ = app.update(Msg::Tick {
             now: start + CONFIRM_EXPIRY,
@@ -7759,6 +7833,7 @@ mod tests {
         let mut app = fixtures::app_in_settings_on_dog("metrics");
         let _ = app.update(Msg::Frozen {
             at_local: "12:00:00".into(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
         let effect = app.update(Msg::Key(KeyPress::Cycle));
         assert_eq!(effect, Effect::None);
@@ -7771,6 +7846,7 @@ mod tests {
         let mut app = fixtures::app_in_settings_with_control(); // on log_level
         let _ = app.update(Msg::Frozen {
             at_local: "12:00:00".into(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         assert!(
@@ -8412,6 +8488,7 @@ mod tests {
 
         let _ = app.update(Msg::Frozen {
             at_local: "2026-09-08 09:00:00".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
         });
         assert_eq!(
             app.update(Msg::Tick { now }),

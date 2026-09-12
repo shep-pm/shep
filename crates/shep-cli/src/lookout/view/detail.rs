@@ -504,6 +504,7 @@ mod tests {
 
         app.update(Msg::Frozen {
             at_local: "2026-08-16 09:00:00".to_string(),
+            why: super::super::fixtures::FROZEN_WHY.to_string(),
         });
         app.update(Msg::Tick {
             now: t0 + Duration::from_secs(3_600),
