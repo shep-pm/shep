@@ -310,7 +310,7 @@ pub enum Scene {
     /// The overlay at 130 columns, the narrowest the box's own border can
     /// still hold.
     KeymapFloor,
-    /// Two columns below the box's floor of 130, at 128: the widest borderless
+    /// One column below the box's floor of 130, at 129: the widest borderless
     /// form, still carrying all four columns.
     KeymapBorderlessWide,
     /// 100 columns: three columns share one bank and the fourth, DOING,
@@ -561,7 +561,7 @@ impl Scene {
                 "The same overlay at 130 columns, the narrowest the border can still hold: 130 = 128 (126 interior plus one border cell each side) plus one margin cell each side. One column narrower and the border is gone."
             }
             Self::KeymapBorderlessWide => {
-                "128 columns, two below KeymapFloor's own 130: the border is gone, but columns_for(128) is still 4, so this is the widest form the overlay ever draws with all four columns and no frame around them."
+                "129 columns, one below KeymapFloor's own 130: the border is gone, but columns_for(129) is still 4, so this is the widest form the overlay ever draws with all four columns and no frame around them. It sits next to KeymapFloor on purpose, so the two together pin the boundary rather than bracketing it loosely."
             }
             Self::KeymapNarrow => {
                 "100 columns: columns_for(100) is 3, so MOVING, LOOKING and CHANGING share one bank and DOING drops to a bank of its own below a blank separator row."
@@ -718,9 +718,9 @@ impl Scene {
             // 130: `overlay::floor_for(126)`, the narrowest width the box's
             // own border can still draw at.
             Self::KeymapFloor => (130, 48),
-            // 128: two below the floor of 130, the widest borderless form that
-            // still carries all four columns (`columns_for(128) == 4`).
-            Self::KeymapBorderlessWide => (128, 48),
+            // 129: one below the floor of 130, the widest borderless form that
+            // still carries all four columns (`columns_for(129) == 4`).
+            Self::KeymapBorderlessWide => (129, 48),
             // 100: `columns_for(100) == 3`, so DOING drops to a bank of
             // its own.
             Self::KeymapNarrow => (100, 48),

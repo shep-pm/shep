@@ -767,14 +767,14 @@ mod tests {
     fn one_column_under_the_floor_keeps_four_columns_and_loses_the_border() {
         let app = app_with_overlay();
         let boxed = render_overlay(&app, 130, 48);
-        let bare = render_overlay(&app, 128, 48);
+        let bare = render_overlay(&app, 129, 48);
         let border = top_border_row();
         assert!(boxed.contains(&border), "130 must be boxed: {boxed}");
-        assert!(!bare.contains(&border), "128 must not be: {bare}");
+        assert!(!bare.contains(&border), "129 must not be: {bare}");
         for group in Group::DRAWN {
             assert!(
                 bare.contains(group.heading()),
-                "{} is missing at 128 columns",
+                "{} is missing at 129 columns",
                 group.heading()
             );
         }
