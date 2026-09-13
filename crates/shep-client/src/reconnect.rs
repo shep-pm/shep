@@ -1526,9 +1526,6 @@ mod tests {
         );
     }
 
-    /// fails if `Reconnected` starts printing anything but its verdict. It
-    /// carries no payload, and a caller logging one must never begin
-    /// emitting a daemon's own details alongside it.
     /// fails if a caller waiting out a handover is told the link came back
     /// when it did not, or is left waiting after it did.
     #[tokio::test]
@@ -1667,6 +1664,44 @@ mod tests {
         assert_eq!(client.link(), LinkState::Connected);
     }
 
+    /// fails if a dog a shepherd refuses sits out its whole budget before
+    /// noticing. `link_lost` reaches a refusal only by delegating to
+    /// `connected_within`, so the early exit is one call away from being
+    /// lost in a refactor, and nothing else here would catch it.
+    #[tokio::test]
+    async fn a_watch_for_a_lost_shepherd_ends_on_a_refusal_rather_than_a_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Refuse(RpcError {
+                    code: RpcErrorCode::ProtocolMismatch,
+                    message: "daemon speaks protocol 3, client speaks 2".into(),
+                    daemon_version: Some("0.9.9".into()),
+                }),
+            ],
+        );
+        let client = ReconnectingClient::connect(&path).await.unwrap();
+
+        subscribe_then_lose_it(&client, &shepherds).await;
+        // An hour, so serving the budget out could never look like passing.
+        let lost = tokio::time::timeout(BOUND, client.link_lost(Duration::from_secs(3600)))
+            .await
+            .expect("a refusal must end the watch long before its budget");
+
+        let LinkLost::Refused {
+            daemon_version,
+            message,
+        } = lost
+        else {
+            panic!("expected a refusal, got {lost:?}");
+        };
+        assert_eq!(daemon_version.as_deref(), Some("0.9.9"));
+        assert!(message.contains("protocol 3"), "{message}");
+    }
+
     /// fails if a dog whose shepherd stopped keeps waiting: the metrics dog
     /// has no stream to end, so this watch is the only thing that tells it.
     #[tokio::test]
@@ -1708,6 +1743,9 @@ mod tests {
         );
     }
 
+    /// fails if `Reconnected` starts printing anything but its verdict. It
+    /// carries no payload, and a caller logging one must never begin
+    /// emitting a daemon's own details alongside it.
     #[test]
     fn reconnected_debug_is_the_verdict_and_nothing_else() {
         assert_eq!(format!("{:?}", Reconnected::SameDaemon), "SameDaemon");
