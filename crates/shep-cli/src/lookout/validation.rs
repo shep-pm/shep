@@ -7,8 +7,8 @@
 //! The table lives here rather than beside the parsers because it is
 //! rendering copy. It is safe there only because its own tests feed every
 //! listed form back through the real parser. The per-field lists are backed
-//! the same way one crate down, where shep-core hands `normalize` a value
-//! for every refusal a field writes.
+//! one crate down, where shep-core hands `normalize` a value for every
+//! refusal it makes, and names the enforcer for the few decided at spawn.
 
 use super::field::{Field, FieldKind, ValueKind};
 

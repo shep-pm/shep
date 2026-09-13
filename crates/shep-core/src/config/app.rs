@@ -1256,7 +1256,9 @@ target = "http://127.0.0.1:8080/healthz"
 
     /// Every `refuses` clause in the schema, paired with what enforces it.
     ///
-    /// Ordered by field, then as the field writes them.
+    /// Ordered by field, then as the field writes them. A clause naming
+    /// several spellings gets a row for each, since one of them passing
+    /// says nothing about the rest.
     ///
     /// Refusals only. Most fields have nothing validating them, so proving
     /// an `accepts` clause by handing `normalize` a value it never inspects
@@ -1285,6 +1287,30 @@ target = "http://127.0.0.1:8080/healthz"
                 "cron_restart",
                 "a sixth seconds field, or L, W, # or ?",
                 sheep(|a| a.cron_restart = Some("0 0 * * * *".to_owned())),
+                |e| matches!(e, NormalizeError::InvalidCron { .. }),
+            ),
+            refused(
+                "cron_restart",
+                "a sixth seconds field, or L, W, # or ?",
+                sheep(|a| a.cron_restart = Some("0 0 L * *".to_owned())),
+                |e| matches!(e, NormalizeError::InvalidCron { .. }),
+            ),
+            refused(
+                "cron_restart",
+                "a sixth seconds field, or L, W, # or ?",
+                sheep(|a| a.cron_restart = Some("0 0 15W * *".to_owned())),
+                |e| matches!(e, NormalizeError::InvalidCron { .. }),
+            ),
+            refused(
+                "cron_restart",
+                "a sixth seconds field, or L, W, # or ?",
+                sheep(|a| a.cron_restart = Some("0 0 * * 1#2".to_owned())),
+                |e| matches!(e, NormalizeError::InvalidCron { .. }),
+            ),
+            refused(
+                "cron_restart",
+                "a sixth seconds field, or L, W, # or ?",
+                sheep(|a| a.cron_restart = Some("0 0 ? * *".to_owned())),
                 |e| matches!(e, NormalizeError::InvalidCron { .. }),
             ),
             refused(
