@@ -45,9 +45,9 @@ pub use rows::{
 };
 pub use table::{human_bytes, human_duration, local_timestamp, render_table};
 
-// `pub(crate)`, not part of the block above: both are named only inside
-// `lookout`, `exit_cell` by the flock table's EXIT column and `cfg_cell` by
-// its CFG column and the sheep detail pane.
+// `pub(crate)`, not part of the block above: outside this module both are
+// named only by `lookout`, `exit_cell` by the flock table's EXIT column and
+// `cfg_cell` by its CFG column and the sheep detail pane.
 pub(crate) use rows::{cfg_cell, exit_cell};
 
 use crate::cli::Format;
