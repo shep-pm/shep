@@ -406,9 +406,11 @@ Dogs
 
     <h3 id="errors-and-notices">Errors and notices</h3>
     <p>
-      These go to stderr, not stdout, so a pipe on stdout never carries them.
-      A refusal names its code on the first line and indents everything after
-      it:
+      An error always goes to stderr. A notice goes to whichever stream its
+      command chose: to stdout when the notice is the answer, as{" "}
+      <code>shep style</code> does, and to stderr when it rides beside some
+      other output, so that <code>--format json</code> stays pipeable. Both
+      name their code on the first line and indent everything after it:
     </p>
     <CodeBlock label="shep --home /tmp/no-such flock">{`error[usage]: no flock at /tmp/no-such
   did you mean to drop --home? the default is ~/.shep
