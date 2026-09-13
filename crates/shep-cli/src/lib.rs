@@ -323,23 +323,81 @@ async fn print_shepherd_status(argv: &[OsString]) {
 ///
 /// # Errors
 ///
-/// [`ExitCode::Usage`] if neither `--home`/`$SHEP_HOME` nor a home directory
-/// resolves a root. The home directory is read only as that fallback, so a
-/// `--home` invocation still works with none at all.
-fn resolve_paths(global: &GlobalArgs) -> Result<ShepPaths, ExitCode> {
+/// - [`HomeRefusal::Relative`] if whichever of the two supplied the root
+///   named a path without one. Decided here rather than in
+///   [`ShepPaths::resolve`], which promises to touch no filesystem: the
+///   absolute form of a relative path is a read of this process's own
+///   directory.
+/// - [`HomeRefusal::Unresolved`] if neither `--home`/`$SHEP_HOME` nor a home
+///   directory resolves a root. The home directory is read only as that
+///   fallback, so a `--home` invocation still works with none at all.
+fn resolve_paths(global: &GlobalArgs) -> Result<ShepPaths, HomeRefusal> {
+    resolve_paths_in(global, &|key| std::env::var_os(key))
+}
+
+/// [`resolve_paths`] with the environment injected, so the home-directory
+/// arm can be pinned without mutating this process's own.
+///
+/// # Errors
+///
+/// [`resolve_paths`]'s, unchanged.
+fn resolve_paths_in(
+    global: &GlobalArgs,
+    var: &dyn Fn(&str) -> Option<OsString>,
+) -> Result<ShepPaths, HomeRefusal> {
+    if let Some(named) = global.home.as_ref() {
+        require_absolute(HOME_KNOB, named)?;
+    }
     let env = |key: &str| match key {
         "SHEP_HOME" => global
             .home
             .as_ref()
             .map(|p| p.to_string_lossy().into_owned()),
-        other => std::env::var(other).ok(),
+        other => var(other).map(|value| value.to_string_lossy().into_owned()),
     };
-    let home_dir = match (user_home(&|key| std::env::var_os(key)), env("SHEP_HOME")) {
+    let home_dir = match (user_home(var), env("SHEP_HOME")) {
         (Some(dir), _) => dir,
         (None, Some(_)) => PathBuf::new(),
-        (None, None) => return Err(ExitCode::Usage),
+        (None, None) => return Err(HomeRefusal::Unresolved),
     };
+    // Only when the home directory is what `resolve` will join `.shep` onto:
+    // an absolute `--home` above has already won, and the empty placeholder
+    // this arm can carry goes unread in that case.
+    if global.home.is_none() {
+        require_absolute(HOME_DIR_VAR, &home_dir)?;
+    }
     Ok(ShepPaths::resolve(&env, &home_dir))
+}
+
+/// Refuses `candidate` when it has no root, naming `knob` as the spelling to
+/// fix.
+///
+/// Every path in a [`ShepPaths`] is `$SHEP_HOME` plus a fixed tail, the
+/// control socket included, so one rootless home is a whole flock that
+/// answers from one directory and reports nothing from the next.
+///
+/// # Errors
+///
+/// [`HomeRefusal::Relative`], carrying `candidate` as typed and its absolute
+/// form when this process's own directory could be read.
+fn require_absolute(knob: &'static str, candidate: &Path) -> Result<(), HomeRefusal> {
+    if candidate.is_absolute() {
+        return Ok(());
+    }
+    Err(HomeRefusal::Relative {
+        knob,
+        absolute: absolute_form(candidate),
+        given: candidate.to_path_buf(),
+    })
+}
+
+/// What a rootless `candidate` would have meant from here, for a refusal's
+/// remedy line. `None` when this process's directory could not be read.
+///
+/// Shared with `commands::dev`, so the two refusals suggest the same path
+/// for the same typed one.
+pub(crate) fn absolute_form(candidate: &Path) -> Option<PathBuf> {
+    std::env::current_dir().ok().map(|cwd| cwd.join(candidate))
 }
 
 /// Parses `shep.toml`'s `[interpreters]` table into an extension to
@@ -420,15 +478,28 @@ fn must_render_bare(stdout_is_terminal: bool, fmt: cli::Format) -> bool {
     !stdout_is_terminal || fmt == cli::Format::Json
 }
 
-/// Why [`ensure_home`] would not hand back a layout.
+/// Why [`resolve_paths`] or [`ensure_home`] would not hand back a layout.
 ///
-/// A type rather than a bare [`ExitCode`]: two of the three carry the path
+/// A type rather than a bare [`ExitCode`]: three of the four carry the path
 /// they are about, and an operator cannot act on a refusal that omits it.
 #[derive(Debug)]
 pub(crate) enum HomeRefusal {
     /// None of `--home`, `$SHEP_HOME` or the user's home directory
     /// resolved a root directory.
     Unresolved,
+    /// Something named a path with no root, so every path derived from it
+    /// would resolve against whatever directory the process happens to be
+    /// in.
+    Relative {
+        /// The spelling an operator has to fix: `--home`/`$SHEP_HOME`, or
+        /// the home-directory variable when that is what supplied the root.
+        knob: &'static str,
+        /// The path as it was spelled.
+        given: PathBuf,
+        /// The same path joined onto this process's directory, for the
+        /// remedy line. `None` when that directory could not be read.
+        absolute: Option<PathBuf>,
+    },
     /// `--home`/`$SHEP_HOME` named a directory that is not there. Never
     /// created: a named path is not a path shep may invent.
     Missing(PathBuf),
@@ -446,6 +517,11 @@ impl core::fmt::Display for HomeRefusal {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Unresolved => f.write_str(UNRESOLVED_HOME),
+            Self::Relative {
+                knob,
+                given,
+                absolute,
+            } => write_relative_refusal(f, knob, given, absolute.as_deref()),
             Self::Missing(path) => write!(
                 f,
                 "no flock at {path}\n  \
@@ -463,7 +539,7 @@ impl core::fmt::Display for HomeRefusal {
 impl core::error::Error for HomeRefusal {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
-            Self::Unresolved | Self::Missing(_) => None,
+            Self::Unresolved | Self::Relative { .. } | Self::Missing(_) => None,
             Self::Io { source, .. } => Some(source),
         }
     }
@@ -476,7 +552,7 @@ impl HomeRefusal {
     /// something reasonable and shep failed at it.
     pub(crate) fn code(&self) -> ExitCode {
         match self {
-            Self::Unresolved | Self::Missing(_) => ExitCode::Usage,
+            Self::Unresolved | Self::Relative { .. } | Self::Missing(_) => ExitCode::Usage,
             Self::Io { .. } => ExitCode::Internal,
         }
     }
@@ -489,7 +565,7 @@ impl HomeRefusal {
 ///
 /// Every variant of [`HomeRefusal`]; see [`ensure_home_at`].
 fn ensure_home(global: &GlobalArgs) -> Result<(ShepPaths, bool), HomeRefusal> {
-    let paths = resolve_paths(global).map_err(|_| HomeRefusal::Unresolved)?;
+    let paths = resolve_paths(global)?;
     ensure_home_at(paths, global.home.is_some())
 }
 
@@ -636,8 +712,9 @@ async fn run(
             if let Some(cli::DaemonCmd::Reload) = args.cmd {
                 let paths = match resolve_paths(&cli.global) {
                     Ok(paths) => paths,
-                    Err(code) => {
-                        emit_error_locked(fmt, code, UNRESOLVED_HOME);
+                    Err(refusal) => {
+                        let code = refusal.code();
+                        emit_error_locked(fmt, code, &refusal.to_string());
                         return code;
                     }
                 };
@@ -1059,11 +1136,11 @@ async fn run(
     }
 }
 
-/// What both [`resolve_paths`] call sites report when nothing resolves a root.
+/// What [`HomeRefusal::Unresolved`] reports.
 #[cfg(not(windows))]
 const UNRESOLVED_HOME: &str = "none of --home, $SHEP_HOME, or $HOME resolves a root directory";
 
-/// What both [`resolve_paths`] call sites report when nothing resolves a root.
+/// What [`HomeRefusal::Unresolved`] reports.
 ///
 /// Names `%USERPROFILE%`, not `$HOME`: a Windows session sets no `HOME`, so
 /// naming it sends an operator looking for a variable that was never going
@@ -1071,6 +1148,55 @@ const UNRESOLVED_HOME: &str = "none of --home, $SHEP_HOME, or $HOME resolves a r
 #[cfg(windows)]
 const UNRESOLVED_HOME: &str =
     "none of --home, %SHEP_HOME%, or %USERPROFILE% resolves a root directory";
+
+/// How an operator on this platform names the home directly, for a refusal
+/// that has to say what to fix.
+#[cfg(not(windows))]
+const HOME_KNOB: &str = "--home/$SHEP_HOME";
+
+/// How an operator on this platform names the home directly, for a refusal
+/// that has to say what to fix.
+#[cfg(windows)]
+const HOME_KNOB: &str = "--home/%SHEP_HOME%";
+
+/// The variable behind the default home, named by the refusal for a root
+/// that came from there rather than from [`HOME_KNOB`].
+#[cfg(not(windows))]
+const HOME_DIR_VAR: &str = "$HOME";
+
+/// The variable behind the default home, named by the refusal for a root
+/// that came from there rather than from [`HOME_KNOB`].
+///
+/// Names `%USERPROFILE%` for the same reason [`UNRESOLVED_HOME`] does: a
+/// Windows session sets no `HOME`, so although [`user_home`] reads that
+/// first, `%USERPROFILE%` is the first of the three that answers.
+#[cfg(windows)]
+const HOME_DIR_VAR: &str = "%USERPROFILE%";
+
+/// The one refusal shep gives for a home with no root, whichever knob named
+/// it: `knob` is the spelling to fix, `absolute` the same path against this
+/// process's directory when that could be read.
+///
+/// Shared with `commands::dev`, which gates `$SHEP_DEV_HOME` on the same
+/// rule and owes an operator the same sentence.
+pub(crate) fn write_relative_refusal(
+    f: &mut core::fmt::Formatter<'_>,
+    knob: &str,
+    given: &Path,
+    absolute: Option<&Path>,
+) -> core::fmt::Result {
+    write!(
+        f,
+        "{knob} must be an absolute path, not {given}\n  \
+         a relative home is read against whatever directory shep runs in, so the flock it \
+         names is reachable from that one directory and nowhere else",
+        given = given.display(),
+    )?;
+    match absolute {
+        Some(absolute) => write!(f, "\n  did you mean:  {}", absolute.display()),
+        None => Ok(()),
+    }
+}
 
 /// Emits one error envelope to stderr under a lock taken for just that write.
 ///
@@ -1481,8 +1607,9 @@ fn flock_connect_refusal_message(err: &shep_client::ConnectError) -> String {
 async fn run_daemon_command(fmt: Format, global: &GlobalArgs, args: &DaemonArgs) -> ExitCode {
     let paths = match resolve_paths(global) {
         Ok(paths) => paths,
-        Err(code) => {
-            emit_error_locked(fmt, code, UNRESOLVED_HOME);
+        Err(refusal) => {
+            let code = refusal.code();
+            emit_error_locked(fmt, code, &refusal.to_string());
             return code;
         }
     };
@@ -2145,19 +2272,23 @@ mod tests {
         );
     }
 
+    /// A rooted path on the platform running the test. `/tmp/explicit` has
+    /// no drive prefix, so Windows reads it as relative and the gate in
+    /// `resolve_paths` refuses it.
+    #[cfg(not(windows))]
+    const EXPLICIT_HOME: &str = "/tmp/explicit";
+
+    /// A rooted path on the platform running the test.
+    #[cfg(windows)]
+    const EXPLICIT_HOME: &str = r"C:\tmp\explicit";
+
     /// Pins `resolve_paths`'s folding of an already-populated
     /// `GlobalArgs::home` only. `$SHEP_HOME` reaches that field through clap,
     /// and is pinned in `cli.rs`.
     #[test]
     fn explicit_home_field_resolves_to_the_expected_shep_paths() {
-        let global = cli::GlobalArgs {
-            home: Some("/tmp/explicit".into()),
-            format: cli::Format::Table,
-            quiet: false,
-            style: None,
-        };
-        let paths = resolve_paths(&global).unwrap();
-        assert_eq!(paths.home, std::path::Path::new("/tmp/explicit"));
+        let paths = resolve_paths(&global_with_home(Some(EXPLICIT_HOME))).unwrap();
+        assert_eq!(paths.home, std::path::Path::new(EXPLICIT_HOME));
         // The control address is a socket file on unix and a named-pipe name
         // on Windows, so `--home` is asserted to reach both derivations.
         #[cfg(unix)]
@@ -2167,6 +2298,96 @@ mod tests {
         );
         #[cfg(windows)]
         assert_eq!(paths.socket, std::path::Path::new(&paths.pipe_name()));
+    }
+
+    fn global_with_home(home: Option<&str>) -> cli::GlobalArgs {
+        cli::GlobalArgs {
+            home: home.map(Into::into),
+            format: cli::Format::Table,
+            quiet: false,
+            style: None,
+        }
+    }
+
+    /// The whole point of the gate: a home with no root puts the control
+    /// socket at `rel-home/run/shep.sock`, which names one flock from the
+    /// directory it was started in and a different, absent one from
+    /// anywhere else.
+    #[test]
+    fn a_relative_home_is_refused_before_any_path_is_derived() {
+        let Err(refusal) = resolve_paths(&global_with_home(Some("rel-home"))) else {
+            panic!("a relative --home must not resolve a layout");
+        };
+        assert_eq!(
+            refusal.code(),
+            ExitCode::Usage,
+            "a path shep cannot act on is the operator's to fix"
+        );
+
+        let rendered = refusal.to_string();
+        assert!(
+            rendered.contains("rel-home"),
+            "the refusal must quote the path as typed: {rendered}"
+        );
+        assert!(
+            rendered.contains(HOME_KNOB),
+            "the refusal must name the spelling to fix: {rendered}"
+        );
+        let cwd = std::env::current_dir().expect("a current directory");
+        assert!(
+            rendered.contains(&cwd.join("rel-home").display().to_string()),
+            "the remedy must name the absolute form of what was typed: {rendered}"
+        );
+    }
+
+    /// Windows reads a path with no drive prefix as relative, so `\shep`
+    /// carries the same defect as `rel-home` and has to be refused with it.
+    #[cfg(windows)]
+    #[test]
+    fn a_drive_relative_home_is_refused_on_windows() {
+        assert!(
+            resolve_paths(&global_with_home(Some(r"\shep"))).is_err(),
+            r"`\shep` resolves against whichever drive is current"
+        );
+    }
+
+    /// The gate is on the resolved root, not on `--home` alone: with no
+    /// `--home`, the default home is the home directory plus `.shep`, and a
+    /// rootless home directory is the same defect one door over.
+    #[test]
+    fn a_relative_home_directory_is_refused_and_names_its_own_variable() {
+        // Every variable `user_home` reads on either platform, so the arm
+        // under test is the one that answered rather than a fallback.
+        let rootless = |key: &str| {
+            matches!(key, "HOME" | "USERPROFILE" | "HOMEDRIVE" | "HOMEPATH")
+                .then(|| OsString::from("ada"))
+        };
+        let Err(refusal) = resolve_paths_in(&global_with_home(None), &rootless) else {
+            panic!("a rootless home directory must not resolve a layout");
+        };
+        let rendered = refusal.to_string();
+        assert!(
+            rendered.contains(HOME_DIR_VAR),
+            "an operator cannot fix `--home` when `--home` is not what said it: {rendered}"
+        );
+        assert!(
+            !rendered.contains(HOME_KNOB),
+            "naming a knob the operator did not touch sends them to the wrong fix: {rendered}"
+        );
+    }
+
+    /// The gate must not refuse the ordinary case it sits in front of.
+    #[test]
+    fn an_absolute_home_directory_still_resolves_the_default_home() {
+        let rooted = |key: &str| (key == "HOME").then(|| OsString::from(EXPLICIT_HOME));
+        // Windows reads `HOME` only after `USERPROFILE`, which this closure
+        // leaves unset, so one absolute answer serves both platforms.
+        let paths = resolve_paths_in(&global_with_home(None), &rooted)
+            .expect("an absolute home directory resolves the default home");
+        assert_eq!(
+            paths.home,
+            std::path::Path::new(EXPLICIT_HOME).join(".shep")
+        );
     }
 
     #[test]
