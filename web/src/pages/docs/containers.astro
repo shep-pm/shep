@@ -101,6 +101,11 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
       shepherd behind; a <code>shep dev</code> that leaked a supervisor would
       stop being trusted.
     </p>
+    <p class="fine">
+      <code>$SHEP_DEV_HOME</code> takes an absolute path, and so does the{" "}
+      <code>$HOME</code> behind the default. A relative one is refused, with
+      the absolute form printed.
+    </p>
     <CodeBlock label="real output, 2026-08-16">{devNotices}</CodeBlock>
     <Callout variant="careful">
       <strong><code>--home</code> and <code>$SHEP_HOME</code> are

@@ -451,7 +451,7 @@ mod tests {
         // What the child gets, through the renderer the daemon runs.
         for planned in plan.entries.iter().filter(|p| p.class == Class::Plain) {
             assert_eq!(
-                render_positional(wire[&planned.key].as_str(), "echoer", 0),
+                render_positional(wire[&planned.key].as_str(), "echoer", 0, None),
                 planned.value,
                 "{} was rewritten on its way to the child",
                 planned.key

@@ -4343,7 +4343,7 @@ impl App {
             KeyPress::MatchPrev => {
                 let stepping = self
                     .sheep_pane()
-                    .is_some_and(|pane| pane.feed().filters().matcher.is_some());
+                    .is_some_and(|pane| pane.feed().filters().match_text().is_some());
                 if stepping && let Some(feed) = self.sheep_feed_mut() {
                     feed.scroll_up(1);
                 }
@@ -4515,7 +4515,7 @@ impl App {
             KeyPress::MatchPrev => {
                 let stepping = self
                     .bleats_pane()
-                    .is_some_and(|pane| pane.filters().matcher.is_some());
+                    .is_some_and(|pane| pane.filters().match_text().is_some());
                 if stepping {
                     self.scroll_bleats_back(1);
                 }
@@ -4579,7 +4579,7 @@ impl App {
             KeyPress::Quit => Effect::Quit,
             KeyPress::TextChar(typed) => {
                 if let Some(pane) = self.bleats_pane_mut() {
-                    let mut text = pane.filters().matcher.clone().unwrap_or_default();
+                    let mut text = pane.filters().match_text().unwrap_or_default().to_string();
                     text.push(typed);
                     pane.set_match(text);
                 }
@@ -4587,7 +4587,7 @@ impl App {
             }
             KeyPress::TextBackspace => {
                 if let Some(pane) = self.bleats_pane_mut() {
-                    let mut text = pane.filters().matcher.clone().unwrap_or_default();
+                    let mut text = pane.filters().match_text().unwrap_or_default().to_string();
                     text.pop();
                     pane.set_match(text);
                 }
@@ -4621,7 +4621,7 @@ impl App {
             KeyPress::Quit => Effect::Quit,
             KeyPress::TextChar(typed) => {
                 if let Some(feed) = self.sheep_feed_mut() {
-                    let mut text = feed.filters().matcher.clone().unwrap_or_default();
+                    let mut text = feed.filters().match_text().unwrap_or_default().to_string();
                     text.push(typed);
                     feed.set_match(text);
                 }
@@ -4629,7 +4629,7 @@ impl App {
             }
             KeyPress::TextBackspace => {
                 if let Some(feed) = self.sheep_feed_mut() {
-                    let mut text = feed.filters().matcher.clone().unwrap_or_default();
+                    let mut text = feed.filters().match_text().unwrap_or_default().to_string();
                     text.pop();
                     feed.set_match(text);
                 }
@@ -13727,21 +13727,13 @@ mod tests {
         let _ = app.update(Msg::Key(KeyPress::TextChar('p')));
         let _ = app.update(Msg::Key(KeyPress::TextChar('o')));
         assert_eq!(
-            app.bleats_pane()
-                .expect("open")
-                .filters()
-                .matcher
-                .as_deref(),
+            app.bleats_pane().expect("open").filters().match_text(),
             Some("po")
         );
         let _ = app.update(Msg::Key(KeyPress::TextApply));
         assert_eq!(app.mode(), InputMode::Normal);
         assert_eq!(
-            app.bleats_pane()
-                .expect("open")
-                .filters()
-                .matcher
-                .as_deref(),
+            app.bleats_pane().expect("open").filters().match_text(),
             Some("po"),
             "TextApply keeps what was already applied live"
         );
@@ -13762,22 +13754,14 @@ mod tests {
         let _ = app.update(Msg::Key(KeyPress::FilterStart));
         let _ = app.update(Msg::Key(KeyPress::TextChar('x')));
         assert_eq!(
-            app.bleats_pane()
-                .expect("open")
-                .filters()
-                .matcher
-                .as_deref(),
+            app.bleats_pane().expect("open").filters().match_text(),
             Some("poolx"),
             "typing narrowed live"
         );
         let _ = app.update(Msg::Key(KeyPress::TextAbandon));
         assert_eq!(app.mode(), InputMode::Normal);
         assert_eq!(
-            app.bleats_pane()
-                .expect("open")
-                .filters()
-                .matcher
-                .as_deref(),
+            app.bleats_pane().expect("open").filters().match_text(),
             Some("pool"),
             "abandon restores what the axis held before the edit"
         );

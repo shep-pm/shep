@@ -1,10 +1,9 @@
 //! [`Role`] bound to `anstyle`, for the box-drawn table.
 //!
 //! A second, independent binding of the roles `lookout/theme.rs` binds to
-//! `ratatui`: the two style types come from different crates, and `mod
-//! lookout` is `#[cfg(unix)]` while this must compile everywhere `output/`
-//! does. Colour numbers are copied from `theme.rs` and pinned against it by
-//! that module's tests. Faces and the status-to-role mapping live in
+//! `ratatui`: the two style types come from different crates. Colour
+//! numbers are copied from `theme.rs` and pinned against it by that
+//! module's tests. Faces and the status-to-role mapping live in
 //! `vocabulary.rs`, never here.
 
 use anstyle::{Ansi256Color, AnsiColor, Color, Style};

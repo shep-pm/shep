@@ -174,7 +174,8 @@ pub struct GlobalArgs {
     /// Talk to a different shepherd
     ///
     /// Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You
-    /// almost certainly want the default, ~/.shep.
+    /// almost certainly want the default, ~/.shep. Must be an absolute path:
+    /// a relative one would name a different flock from every directory.
     // Declared last on purpose. It was the first global option anyone read,
     // which announced it as a choice when it is really the daemon's
     // data-root. `{options}` renders in declaration order and ignores
