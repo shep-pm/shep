@@ -467,7 +467,8 @@ fn feed_header_text(feed: &BleatsPane, hidden: usize) -> String {
 /// One chip's text per filter axis currently set on the embedded feed, in
 /// field order. Deliberately its own, smaller vocabulary rather than
 /// `view::bleats_full`'s private `chip_labels`: this row has 83 cells for
-/// the whole sentence, not a dedicated filter row underneath it.
+/// the whole sentence, not a dedicated filter row underneath it. The match
+/// axis's suffix is the one exception, shared as [`MatchKind::chip_suffix`].
 fn feed_chip_labels(filters: &Filters) -> Vec<String> {
     let mut chips = Vec::new();
     if let Some(stream) = filters.stream {
@@ -480,11 +481,7 @@ fn feed_chip_labels(filters: &Filters) -> Vec<String> {
         chips.push(format!("level\u{2265}{min}"));
     }
     if let Some(text) = &filters.matcher {
-        let suffix = match filters.match_kind() {
-            Some(MatchKind::Literal) | None => "",
-            Some(MatchKind::Regex) => " (regex)",
-            Some(MatchKind::Invalid) => " (invalid regex, matches nothing)",
-        };
+        let suffix = filters.match_kind().map_or("", MatchKind::chip_suffix);
         chips.push(format!("match {text}{suffix}"));
     }
     chips
@@ -1772,6 +1769,19 @@ mod tests {
         feed.set_match("/po+l/".to_string());
         let text = feed_header_text(&feed, 0);
         assert!(text.contains("match /po+l/ (regex)"), "got {text:?}");
+    }
+
+    /// A literal matcher's chip is the typed text and nothing after it.
+    /// The two assertions around this one read a suffix they expect, so
+    /// neither can see a suffix that should not be there; this one anchors
+    /// on the brackets `feed_header_text` draws around each chip, which
+    /// anything appended would fall outside of.
+    #[test]
+    fn the_headers_match_chip_carries_nothing_after_a_literal() {
+        let mut feed = BleatsPane::new(RowKey::Sheep(1));
+        feed.set_match("pool".to_string());
+        let text = feed_header_text(&feed, 0);
+        assert!(text.contains("[match pool]"), "got {text:?}");
     }
 
     /// A pattern that fails to compile says so on the chip, rather than the
