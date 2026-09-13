@@ -233,7 +233,7 @@ mod tests {
 
     /// fails if the split drifts from what the spec recorded.
     #[test]
-    fn the_split_is_twenty_five_fifteen_three() {
+    fn the_split_is_20_5_15_3() {
         let fields = appconfig_fields();
         let count = |want: ApplyGroup| fields.keys().filter(|k| apply_group(k) == want).count();
         assert_eq!(count(ApplyGroup::Live), 20, "Live");
