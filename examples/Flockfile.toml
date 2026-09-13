@@ -1,4 +1,5 @@
-# Ten small apps, each demonstrating one thing shep does. Build them, then
+# Ten apps across nine demonstrations, one per numbered section below.
+# Build them, then
 # start this file to watch every behaviour happen instead of reading about it:
 #
 #   $ cargo build --release --workspace

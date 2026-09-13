@@ -59,7 +59,14 @@ func openChannel() (*os.File, error) {
 		if err != nil {
 			return nil, fmt.Errorf("SHEP_CHANNEL_FD is %q, not a descriptor number", fd)
 		}
-		return os.NewFile(uintptr(n), "shep-channel"), nil
+		// NewFile wraps any number at all, so a descriptor that is not
+		// open stays invisible until the first write fails, by which
+		// point this app has already logged that it is ready.
+		f := os.NewFile(uintptr(n), "shep-channel")
+		if _, err := f.Stat(); err != nil {
+			return nil, fmt.Errorf("SHEP_CHANNEL_FD is %q, which is not an open descriptor", fd)
+		}
+		return f, nil
 	}
 	return nil, fmt.Errorf("no shepherd channel. Set channel = true on this app " +
 		"in the Flockfile, or wait_ready, or shutdown_with_message")

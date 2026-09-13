@@ -42,16 +42,23 @@ def open_channel():
     named pipe does report seekable, so this spelling is the one that
     works on both.
     """
+    # Both opens can fail on a value that looked fine: a pipe path that is
+    # not there, a descriptor number that is not open. Every other
+    # misconfiguration here exits with a sentence, so these do too.
     pipe = os.environ.get("SHEP_CHANNEL_PIPE")
     if pipe:
-        return open(pipe, "rb+", buffering=0)
+        try:
+            return open(pipe, "rb+", buffering=0)
+        except OSError as err:
+            sys.exit(f"python-chatty: cannot open SHEP_CHANNEL_PIPE {pipe!r}: {err}")
     fd = os.environ.get("SHEP_CHANNEL_FD")
     if fd:
-        # A refusal an operator can act on, rather than the traceback a bare
-        # int() would print.
         if not fd.isdigit():
             sys.exit(f"python-chatty: SHEP_CHANNEL_FD is {fd!r}, not a descriptor number")
-        return os.fdopen(int(fd), "rb+", buffering=0)
+        try:
+            return os.fdopen(int(fd), "rb+", buffering=0)
+        except OSError as err:
+            sys.exit(f"python-chatty: cannot use SHEP_CHANNEL_FD {fd!r}: {err}")
     return None
 
 

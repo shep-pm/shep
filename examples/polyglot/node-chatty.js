@@ -29,10 +29,13 @@ const started = process.hrtime.bigint();
 // this is one duplex stream, and libuv drives the pipe with overlapped
 // I/O, so a pending read here never blocks a write the way a parked
 // ReadFile on a synchronous handle would.
+// Returns the stream and whether it is still opening. A descriptor is
+// already open; a named pipe connects asynchronously, so a bad path fails
+// after this returns and has to be caught on the socket instead.
 function openChannel() {
   const pipe = process.env.SHEP_CHANNEL_PIPE;
   if (pipe) {
-    return net.connect({ path: pipe });
+    return { socket: net.connect({ path: pipe }), opening: true };
   }
   const fd = process.env.SHEP_CHANNEL_FD;
   if (fd) {
@@ -42,7 +45,7 @@ function openChannel() {
     if (!Number.isInteger(n) || n < 0) {
       throw new Error(`SHEP_CHANNEL_FD is "${fd}", not a descriptor number`);
     }
-    return new net.Socket({ fd: n, readable: true, writable: true });
+    return { socket: new net.Socket({ fd: n, readable: true, writable: true }), opening: false };
   }
   return null;
 }
@@ -65,15 +68,16 @@ function parseLevel(params) {
   return LEVELS.includes(level) ? level : null;
 }
 
-let channel;
+let opened;
 try {
-  channel = openChannel();
+  opened = openChannel();
 } catch (err) {
   // A refusal an operator can act on, rather than the stack trace an
   // uncaught throw at module scope would print.
   console.error(`node-chatty: ${err.message}`);
   process.exit(1);
 }
+const channel = opened === null ? null : opened.socket;
 if (channel === null) {
   console.error(
     "node-chatty: no shepherd channel. Set channel = true on this app in " +
@@ -92,9 +96,19 @@ if (stamp !== undefined && stamp !== "1") {
 
 const send = (message) => channel.write(`${JSON.stringify(message)}\n`);
 
-send({ kind: "ready" });
-send({ kind: "metric", name: "starts", value: 1 });
-console.log(`node-chatty pid=${process.pid} ready on the shepherd channel`);
+// Held until the pipe is actually connected. Announcing readiness into a
+// socket that is still opening prints a ready line this app then dies
+// after, which is worse than saying nothing.
+function announce() {
+  send({ kind: "ready" });
+  send({ kind: "metric", name: "starts", value: 1 });
+  console.log(`node-chatty pid=${process.pid} ready on the shepherd channel`);
+}
+if (opened.opening) {
+  channel.once("connect", announce);
+} else {
+  announce();
+}
 
 // The reply body is what the operator reads back from shep trigger.
 let samples = 0;
@@ -179,9 +193,19 @@ channel.on("data", (chunk) => {
 // Rust app running for the same reason: a channel is something an app has,
 // not what it is for, and a shepherd can be replaced under it. The timer
 // is what keeps this event loop alive once the socket is its only work.
-// Without this, a write to a socket the shepherd has dropped raises an
-// unhandled 'error' and ends the process, which reads as a bug in this app.
+// A failure before the pipe is open is a channel that never existed, and an
+// operator can fix that. A failure afterwards is the shepherd going away,
+// which this app has already decided is not a reason to stop. Without the
+// handler at all, either one ends the process looking like a bug here.
+let live = !opened.opening;
+channel.on("connect", () => {
+  live = true;
+});
 channel.on("error", (err) => {
+  if (!live) {
+    console.error(`node-chatty: cannot open the shepherd channel: ${err.message}`);
+    process.exit(1);
+  }
   console.error(`node-chatty: the channel failed: ${err.message}`);
 });
 channel.on("close", () => {

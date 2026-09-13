@@ -48,7 +48,19 @@ fn main() {
             eprintln!("chatty: shepherd speaks channel {stamp}, this app speaks {CHANNEL_VERSION}");
         }
         Some(_) => {}
-        None => eprintln!("chatty: no shepherd channel; every call below is a no-op"),
+        None => {}
+    }
+
+    // The crate hands back a working handle either way, so an ordinary app
+    // needs no branch here. This one is the channel and nothing else, so it
+    // refuses rather than running as a no-op, which is what the other three
+    // do when the environment names a channel they cannot open.
+    if !shepherd.is_active() {
+        eprintln!(
+            "chatty: no shepherd channel. Set channel = true on this app in \
+             the Flockfile, or wait_ready, or shutdown_with_message."
+        );
+        std::process::exit(1);
     }
 
     shepherd.on_action("ping", move |_params, _name| {
