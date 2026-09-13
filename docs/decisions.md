@@ -33,7 +33,7 @@ go for the full argument. The commit that removed them names itself.
 - [whistle](#whistle) (18)
 - [Config and packaging](#config-and-packaging) (5)
 - [serve, dev and runtime](#serve-dev-and-runtime) (8)
-- [Output and first run](#output-and-first-run) (7)
+- [Output and first run](#output-and-first-run) (8)
 - [Config overrides](#config-overrides) (9)
 - [Dog config store](#dog-config-store) (1)
 - [CI flakes, and the log line a stop could lose](#ci-flakes-and-the-log-line-a-stop-could-lose) (4)
@@ -1691,6 +1691,37 @@ ensure_home_at creates ~/.shep silently on first use, but a --home/$SHEP_HOME pa
 **Why:** ~/.shep is a name shep chose, so shep may conjure it; an operator-typed path is more likely a typo than intent, and silently creating it would produce a second, empty, invisible flock whose bug report reads as "shep lost all my processes" when the truth is "you're looking at a different flock". Uses DirBuilder::new().mode(DIR_MODE) at creation, not create_dir_all+chmod, to avoid a window where the directory exists world-readable.
 
 `docs/writing-plans/plans/2026-08-17-first-run-experience.md:178`
+
+### A relative home is refused, never absolutized
+
+`resolve_paths` requires a rooted home before any path is derived from it, and
+`dev_home` holds the same line for `$SHEP_DEV_HOME`. Both check the home
+directory they fall back to as well. The refusal quotes the path as typed and
+names its absolute form.
+
+**Why:** The two candidate fixes were refusing and absolutizing, and only one of
+them reaches the defect. A relative home names a different directory from every
+cwd, so absolutizing at each invocation leaves the flock reachable from the one
+directory it was started in; it makes the wrong answer internally consistent
+rather than fixing it. Measured 2026-09-13 against the release binary: a
+shepherd started under `SHEP_HOME=rel-home` in one directory answers
+`shep flock` there and reports "no shepherd running" from the next, while still
+supervising every process it was given. That is the bug report the
+missing-home entry above exists to prevent, reached with no typo at all.
+Absolutizing inside `ShepPaths::resolve` was ruled out separately: its doc
+promises to touch no filesystem, and the absolute form of a relative path is a
+read of this process's own directory, so the gate belongs in the CLI.
+
+The gate is on the resolved root rather than on the knob alone. Both resolvers
+fall back to the home directory when nothing names a home, and a rootless one
+reaches `ShepPaths` carrying the same defect, so it is refused by the same rule
+and named by its own variable instead of a knob the operator never touched.
+Each source is checked separately rather than the joined path, so the refusal
+quotes `ada` rather than `ada/.shep-dev`. Windows reads a path with no drive
+prefix as relative, so `\shep` is refused there for the same reason `rel-home`
+is everywhere.
+
+`verified crates/shep-cli/src/lib.rs (resolve_paths, require_absolute, absolute_form), crates/shep-cli/src/commands/dev.rs (dev_home, require_absolute)`
 
 ### Sheep decoration never appears on error output or after a destructive verb
 
