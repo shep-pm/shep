@@ -2487,6 +2487,37 @@ mod tests {
 
     /// The gate is on the resolved root, not on `--home` alone: with no
     /// `--home`, the default home is the home directory plus `.shep`, and a
+    /// The other door into the same refusal. `--home` is the one an operator
+    /// types, but the home directory the OS hands back is equally capable of
+    /// carrying a byte shep cannot render, and it reaches the same
+    /// `to_string_lossy`.
+    ///
+    /// `resolve_paths_in` exists to inject this closure, so the arm is
+    /// reachable without mutating the process environment.
+    #[cfg(unix)]
+    #[test]
+    fn a_home_directory_that_is_not_utf8_is_refused_and_names_its_own_variable() {
+        use std::os::unix::ffi::OsStringExt as _;
+        // Every variable `user_home` reads, so the arm under test is the one
+        // that answered rather than a fallback.
+        let mangled = |key: &str| {
+            matches!(key, "HOME" | "USERPROFILE" | "HOMEDRIVE" | "HOMEPATH")
+                .then(|| OsString::from_vec(b"/home/\xff".to_vec()))
+        };
+        let Err(refusal) = resolve_paths_in(&global_with_home(None), &mangled) else {
+            panic!("a home directory that is not UTF-8 must not resolve a layout");
+        };
+        assert!(
+            matches!(&refusal, HomeRefusal::NotUtf8 { knob, .. } if *knob == HOME_DIR_VAR),
+            "names the variable that supplied it, not the --home knob: {refusal:?}"
+        );
+        assert_eq!(refusal.code(), ExitCode::Usage);
+        assert!(
+            refusal.to_string().contains("UTF-8"),
+            "says what is wrong with it"
+        );
+    }
+
     /// rootless home directory is the same defect one door over.
     #[test]
     fn a_relative_home_directory_is_refused_and_names_its_own_variable() {
