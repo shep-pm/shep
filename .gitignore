@@ -20,10 +20,11 @@
 .superpowers/
 docs/teach
 
-# examples/polyglot build artifacts: a venv and a compiled Go binary, both
-# built by a setup script the docs page names, neither meant to be
-# committed. .rs/.js/.py/.go SOURCE under examples/polyglot/ is tracked as
-# normal; only what those two setup scripts produce is excluded here.
+# examples/polyglot build artifacts: a venv and two compiled Go binaries,
+# built by a setup script the docs page names, none meant to be committed.
+# .rs/.js/.py/.go SOURCE under examples/polyglot/ is tracked as normal;
+# only what those setup scripts produce is excluded here.
 /examples/polyglot/venv/
 /examples/polyglot/go-http/go-http
+/examples/polyglot/go-chatty/go-chatty
 /crates/shep-cli/completions/

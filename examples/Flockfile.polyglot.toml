@@ -1,6 +1,6 @@
 # A second layer over examples/Flockfile.toml, for readers who have these
 # runtimes installed and want to see shep drive their own stack rather than
-# a Rust binary. The seven apps in examples/Flockfile.toml need nothing but
+# a Rust binary. The ten apps in examples/Flockfile.toml need nothing but
 # cargo and are the entry point that always runs; nothing here replaces or
 # reorders them. This file needs, per app below: node, bun, python3, and go.
 # `shep serve` (see the bottom of this file) needs none of them.
@@ -20,8 +20,9 @@
 #
 # Setup, once, per runtime you want to see:
 #
-#   $ examples/polyglot/setup-venv.sh       # python's own interpreter
+#   $ examples/polyglot/setup-venv.sh        # python's own interpreter
 #   $ examples/polyglot/go-http/build.sh     # go-http's compiled binary
+#   $ examples/polyglot/go-chatty/build.sh   # go-chatty's compiled binary
 #
 # node and bun need no build step -- `interpreter` runs their source
 # directly. Ports continue examples/Flockfile.toml's numbering, one range
@@ -91,27 +92,29 @@ name   = "go-http"
 script = "polyglot/go-http/go-http"
 args   = ["19097"]
 
-# --- 6. The shepherd channel, twice -----------------------------------------
-# examples/Flockfile.toml's chatty again, once per runtime. Each frames the
-# wire itself, because neither language has a shep client library the way
-# Rust does. The Rust one is worth reading beside either: it takes the
-# shep-channel crate and is a third the length.
+# --- 6. The shepherd channel, three times -----------------------------------
+# The same app as examples/Flockfile.toml's chatty, once per runtime. Each
+# frames the wire itself, because none of these three languages has a shep
+# client library the way Rust does. The Rust one is worth reading beside any
+# of them: it takes the shep-channel crate and is a third the length.
 #
-# The three fields below each open a channel on their own, and both entries
-# set all three because they use all three: `wait_ready` makes shep hold the
-# start until the app writes `{"kind":"ready"}`, `shutdown_with_message`
-# sends a JSON shutdown instead of a signal, and `channel` says so outright
-# for anyone who wants neither.
+# The three fields below each open a channel on their own, and every entry
+# here sets all three because it uses all three: `wait_ready` makes shep
+# hold the start until the app writes `{"kind":"ready"}`,
+# `shutdown_with_message` sends a JSON shutdown instead of a signal, and
+# `channel` says so outright for anyone who wants neither.
 #
-# Both answer the same actions, so the same triggers read the same way
-# against either:
+# All three answer the same actions, so the same triggers read the same way
+# against any of them:
 #
-#   $ shep trigger '*-chatty' ping
-#   $ shep trigger '*-chatty' metric queue-depth
-#   $ shep trigger '*-chatty' level "debug rate=0.5"
-#   $ shep trigger '*-chatty' nonsense    # replies "unknown action: nonsense"
+#   $ shep trigger node-chatty ping
+#   $ shep trigger python-chatty metric queue-depth
+#   $ shep trigger go-chatty level "debug rate=0.5"
+#   $ shep trigger go-chatty nonsense     # replies "unknown action: nonsense"
 #
-# See docs/shepherd-channel.md for the contract.
+# `shep trigger '*-chatty' ping` reaches all three at once, which is the
+# clearest way to see that the wire is the same in every language. See
+# docs/shepherd-channel.md for the contract.
 [[app]]
 name                  = "node-chatty"
 script                = "polyglot/node-chatty.js"
@@ -124,6 +127,16 @@ shutdown_with_message = true
 name                  = "python-chatty"
 script                = "polyglot/python-chatty.py"
 interpreter           = "polyglot/venv/bin/python3"
+channel               = true
+wait_ready            = true
+shutdown_with_message = true
+
+# No `interpreter`: run examples/polyglot/go-chatty/build.sh first, and the
+# compiled program is its own interpreter. That script also refuses to build
+# if this example's copy of shep's generated Go wire types has drifted.
+[[app]]
+name                  = "go-chatty"
+script                = "polyglot/go-chatty/go-chatty"
 channel               = true
 wait_ready            = true
 shutdown_with_message = true
