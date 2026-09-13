@@ -60,6 +60,25 @@ def open_channel():
 _shepherd_gone = False
 
 
+def read_lines(channel):
+    """Yields one message a line, and stops rather than raising.
+
+    A read fails the same way a write does once the shepherd has gone:
+    EIO on unix, a broken-pipe OSError on a Windows named pipe. Letting
+    that escape would end the process, which is the opposite of what this
+    app decided about a closed channel.
+    """
+    while True:
+        try:
+            line = channel.readline()
+        except OSError as err:
+            warn(f"python-chatty: could not read from the shepherd: {err}")
+            return
+        if not line:
+            return
+        yield line
+
+
 def send(channel, message):
     """Writes one message, or says once that the shepherd stopped listening.
 
@@ -154,7 +173,7 @@ def main():
     # this app's own writes. A metrics ticker is the usual way to end up
     # with two, so this app emits samples from the loop instead.
     samples = 0
-    for line in iter(channel.readline, b""):
+    for line in read_lines(channel):
         try:
             message = json.loads(line)
         except ValueError as err:
@@ -182,7 +201,14 @@ def main():
         if not isinstance(name, str) or ident is None:
             continue
 
+        # params is a string or it is absent. A typed language gets this
+        # free: serde and encoding/json both refuse a number here and
+        # reject the whole frame, so hand-rolling is where the check has
+        # to be written out.
         params = message.get("params")
+        if params is not None and not isinstance(params, str):
+            warn(f"python-chatty: ignoring {name}, its params is not a string")
+            continue
         if name == "metric":
             samples += 1
             metric = metric_name(params)

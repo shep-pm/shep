@@ -119,6 +119,13 @@ function handle(message) {
   if (typeof name !== "string" || id === undefined) {
     return;
   }
+  // params is a string or it is absent. A typed language gets this free:
+  // serde and encoding/json both refuse a number here and reject the whole
+  // frame, so hand-rolling is where the check has to be written out.
+  if (params !== undefined && params !== null && typeof params !== "string") {
+    console.error(`node-chatty: ignoring ${name}, its params is not a string`);
+    return;
+  }
 
   let body;
   if (name === "ping") {
