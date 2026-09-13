@@ -634,6 +634,10 @@ fn safe_message(fmt: Format, message: &str) -> String {
 ///
 /// An empty line stays empty: indenting it would emit trailing whitespace on
 /// a line a reader sees as a paragraph break.
+///
+/// The guarantee holds only because `code` is sanitised too. It prints ahead
+/// of the message on that first line, so a newline in it would start a line
+/// this never sees.
 fn indent_continuations(message: &str) -> String {
     let mut out = String::with_capacity(message.len());
     for (n, line) in message.split('\n').enumerate() {
@@ -663,8 +667,7 @@ pub fn emit_error(
     code: &str,
     message: &str,
 ) -> io::Result<()> {
-    // `code` is never sanitised, since every caller passes a literal or
-    // `ExitCode::code_str()`.
+    let code = &crate::terminal_safe::sanitise(code).0;
     let message = safe_message(fmt, message);
     let message = message.as_str();
     match fmt {
@@ -723,6 +726,7 @@ pub fn emit_notice(
     code: &str,
     message: &str,
 ) -> io::Result<()> {
+    let code = &crate::terminal_safe::sanitise(code).0;
     let message = safe_message(fmt, message);
     let message = message.as_str();
     match fmt {
@@ -1564,6 +1568,29 @@ mod tests {
             assert!(
                 line.starts_with("  ") || line.is_empty(),
                 "a line started at column 0: {line:?} in {text:?}"
+            );
+        }
+    }
+
+    /// fails if `code` can start a line. It prints ahead of the message on
+    /// the first line, which is the one line `indent_continuations` cannot
+    /// reach, so a newline there would forge a diagnostic at column 0 and the
+    /// indent would never see it. Every caller passes a literal today; this
+    /// is what keeps that from being load-bearing.
+    #[test]
+    fn a_newline_in_the_code_cannot_start_a_line_either() {
+        for (what, mut out) in [("error", Vec::new()), ("notice", Vec::new())] {
+            let forged = "usage\nnotice[ok]: forged";
+            if what == "error" {
+                emit_error(&mut out, Format::Table, forged, "a message").unwrap();
+            } else {
+                emit_notice(&mut out, Format::Table, forged, "a message").unwrap();
+            }
+            let text = String::from_utf8(out).unwrap();
+            assert_eq!(text.lines().count(), 1, "{what}: {text:?}");
+            assert!(
+                text.starts_with(&format!("{what}[usage notice[ok]: forged]: ")),
+                "{what}: the newline must collapse inside the code: {text:?}"
             );
         }
     }
