@@ -16,6 +16,7 @@ mod dog_index;
 mod exit;
 mod fetch;
 mod flourish;
+mod host;
 mod http;
 mod launch;
 mod lookout;
@@ -34,6 +35,7 @@ use std::ffi::OsString;
 use std::io::{IsTerminal, Write};
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use clap::Parser;
 
@@ -948,7 +950,7 @@ async fn run(
         },
         // Falls back to the muster roll rather than refusing: looking at the
         // flock must not be a dead end on a machine that just rebooted.
-        Commands::Flock => flock_command(&mut streams, &paths, guard).await,
+        Commands::Flock(ref args) => flock_command(&mut streams, &paths, guard, args).await,
         // The guard arm is what makes `--available` work with no shepherd
         // running: it never reaches `connect_client`.
         Commands::Dogs(ref args) if args.available => {
@@ -1395,7 +1397,11 @@ async fn flock_command(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
     guard: VersionGuard,
+    args: &cli::FlockArgs,
 ) -> ExitCode {
+    if args.follow {
+        return follow_flock_command(streams, paths, guard, args).await;
+    }
     match Client::connect(&paths.socket).await {
         Ok(client) => match refuse_version_skew(streams, &client, guard) {
             Ok(()) => query::flock(&client, streams).await,
@@ -1417,6 +1423,44 @@ async fn flock_command(
             let code = ExitCode::from(&err);
             streams.fail(code, &flock_connect_refusal_message(&err))
         }
+    }
+}
+
+/// `shep flock --follow`'s own dispatch: two refusals, then
+/// [`connect_client`] and the redraw loop.
+///
+/// [`connect_client`], not [`flock_command`]'s hand-rolled connect, because
+/// this path has no roll to fall back to. A saved roll is one moment, and a
+/// follow exists for the moments after it, so a shepherd that is not running
+/// is a refusal here rather than a listing.
+///
+/// Both refusals are usage errors rather than degradations. A follow written
+/// into a file would be a file of escape sequences, and a follow that quietly
+/// printed once instead would exit zero having done something else than what
+/// was asked.
+async fn follow_flock_command(
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    guard: VersionGuard,
+    args: &cli::FlockArgs,
+) -> ExitCode {
+    if streams.fmt == Format::Json {
+        return streams.fail(
+            ExitCode::Usage,
+            "`--follow` redraws a table; `--format json` has no follow form",
+        );
+    }
+    if !std::io::stdout().is_terminal() {
+        return streams.fail(
+            ExitCode::Usage,
+            "`--follow` needs a terminal; stdout is not one",
+        );
+    }
+    match connect_client(streams, paths, guard).await {
+        Ok(client) => {
+            query::flock_follow(&client, streams, Duration::from_secs(args.interval)).await
+        }
+        Err(code) => code,
     }
 }
 
@@ -2458,7 +2502,7 @@ mod tests {
         let mut err = Vec::new();
         let code = {
             let mut streams = buffered_streams(&mut out, &mut err);
-            flock_command(&mut streams, &paths, VersionGuard::Enforce).await
+            flock_command(&mut streams, &paths, VersionGuard::Enforce, &flock_args()).await
         };
 
         assert_ne!(code, ExitCode::Success);
@@ -2481,12 +2525,64 @@ mod tests {
         let mut err = Vec::new();
         let code = {
             let mut streams = buffered_streams(&mut out, &mut err);
-            flock_command(&mut streams, &paths, VersionGuard::Enforce).await
+            flock_command(&mut streams, &paths, VersionGuard::Enforce, &flock_args()).await
         };
 
         assert_eq!(code, ExitCode::DaemonUnreachable);
         let text = String::from_utf8(err).unwrap();
         assert!(text.contains("no shepherd running"), "{text}");
+    }
+
+    /// Both of `--follow`'s refusals carry `ExitCode::Usage`, so the code
+    /// alone cannot tell them apart: delete either guard and a test asserting
+    /// only the code still passes. Each is pinned by its own message instead.
+    ///
+    /// Neither arm needs a fixture. The `--format json` case proves the first
+    /// guard answered rather than the second, since a table-format follow
+    /// under a pipe would have refused too, with different words.
+    #[tokio::test]
+    async fn follow_refuses_json_and_a_pipe_for_different_reasons() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ShepPaths::resolve(&|_| None, dir.path());
+        let args = cli::FlockArgs {
+            follow: true,
+            interval: 1,
+        };
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = buffered_streams(&mut out, &mut err);
+            streams.fmt = Format::Json;
+            flock_command(&mut streams, &paths, VersionGuard::Enforce, &args).await
+        };
+        assert_eq!(code, ExitCode::Usage);
+        let text = String::from_utf8(err).unwrap();
+        assert!(
+            text.contains("no follow form"),
+            "the json guard answers before the terminal one: {text}"
+        );
+
+        // `cargo test` captures stdout, so the terminal guard fires on its
+        // own. Under `--nocapture` on a real terminal it cannot, and there is
+        // nothing to pin rather than something to fail.
+        if std::io::stdout().is_terminal() {
+            return;
+        }
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = buffered_streams(&mut out, &mut err);
+            flock_command(&mut streams, &paths, VersionGuard::Enforce, &args).await
+        };
+        assert_eq!(code, ExitCode::Usage);
+        let text = String::from_utf8(err).unwrap();
+        assert!(text.contains("needs a terminal"), "{text}");
+        assert!(
+            out.is_empty(),
+            "a refused follow prints no listing: {}",
+            String::from_utf8_lossy(&out)
+        );
     }
 
     #[tokio::test]
@@ -2535,6 +2631,14 @@ mod tests {
         }
     }
 
+    /// A [`cli::FlockArgs`] that does not follow: the bare `shep flock`.
+    fn flock_args() -> cli::FlockArgs {
+        cli::FlockArgs {
+            follow: false,
+            interval: cli::FOLLOW_INTERVAL_FLOOR_SECONDS,
+        }
+    }
+
     /// A [`DaemonArgs`] carrying `cmd` and nothing else, for asking which
     /// guard the `daemon` verb's two shapes get.
     fn daemon_args(cmd: Option<cli::DaemonCmd>) -> DaemonArgs {
@@ -2576,9 +2680,9 @@ mod tests {
             VersionGuard::for_command(&Commands::Daemon(daemon_args(None))),
             VersionGuard::Enforce
         );
-        assert_eq!(recovery_verb(&Commands::Flock), None);
+        assert_eq!(recovery_verb(&Commands::Flock(flock_args())), None);
         assert_eq!(
-            VersionGuard::for_command(&Commands::Flock),
+            VersionGuard::for_command(&Commands::Flock(flock_args())),
             VersionGuard::Enforce
         );
         assert_eq!(
