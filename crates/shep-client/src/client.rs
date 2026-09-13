@@ -497,8 +497,15 @@ mod tests {
             .await
             .expect("a refused reconnect must fail, not hang");
 
+        // Either shape: a peer that closes with the handshake unread
+        // sends RST on Linux, which arrives as `Io(ConnectionReset)`, and
+        // EOF on macOS. `connection`'s own close test accepts the same
+        // pair. Which one is not this test's question.
         assert!(
-            matches!(refused, Err(ConnectError::HandshakeClosed)),
+            matches!(
+                refused,
+                Err(ConnectError::HandshakeClosed | ConnectError::Io(_))
+            ),
             "a successor that closes mid-handshake: {refused:?}"
         );
         assert_eq!(client.daemon().pid, 11, "the ack must be the one it had");
