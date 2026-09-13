@@ -21,8 +21,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde::Deserialize;
-use shep_client::RequestError;
 use shep_client::dogs::DogConfig;
+use shep_client::{LinkLost, RequestError};
 use shep_core::barks::{self, SinkOutcome};
 use shep_core::protocol::{BusEvent, ProcessInfo};
 use shep_core::values::UpDuration;
@@ -95,6 +95,20 @@ pub trait EventSource: Send {
     /// The next event; `Err(count)` when the source dropped `count` frames
     /// before this one; `None` when it ends.
     fn next(&mut self) -> impl Future<Output = Option<Result<BusEvent, u64>>> + Send;
+
+    /// Arms a fresh source against whatever shepherd is answering now,
+    /// waiting a bounded time for one to be.
+    ///
+    /// A subscription belongs to one connection, so a handover ends it:
+    /// the shepherd execs a successor on purpose and every dog is meant to
+    /// cross that without restarting. What [`run_loop`] calls when
+    /// [`Self::next`] returns `None`.
+    ///
+    /// # Errors
+    /// [`LinkLost`]: no shepherd answered inside the dog's budget, or one
+    /// refused this dog's protocol version. Either way the shepherd is
+    /// gone as far as this dog is concerned, and it exits.
+    fn resubscribe(&mut self) -> impl Future<Output = Result<(), LinkLost>> + Send;
 }
 
 /// What bark reads the flock through, so the loop's poll is drivable
@@ -238,15 +252,29 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
 
         loop {
             tokio::select! {
-                _ = tokio::signal::ctrl_c() => break,
-                _ = sigterm.recv() => break,
+                _ = tokio::signal::ctrl_c() => break ExitCode::Success,
+                _ = sigterm.recv() => break ExitCode::Success,
                 next = events.next() => {
                     match next {
-                        // One connection generation: the shepherd went away,
-                        // usually to exec a successor. The dog exits 0 and
-                        // `autorestart` replaces it, one restart per reload;
-                        // docs/specs/deferred.md tracks resubscribing instead.
-                        None => break,
+                        // One connection generation ended. Usually the
+                        // shepherd exec'd a successor, which is not the
+                        // shepherd going away: `resubscribe` waits a
+                        // bounded time for one to answer, and only a
+                        // shepherd that never does ends this dog.
+                        None => match events.resubscribe().await {
+                            Ok(()) => {
+                                // Reconcile whichever daemon answered.
+                                // Frames sent with no subscription are
+                                // gone, and the verdict decides nothing
+                                // here: bark debounces on a sheep's name,
+                                // never on an id the shepherd minted.
+                                reconcile(&flock, &mut rules, &delivery).await;
+                            }
+                            Err(lost) => {
+                                eprintln!("shep dog bark: {lost}");
+                                break exit_for(&lost);
+                            }
+                        },
                         // Matched on the variant rather than on the dog's
                         // name: the subscription already narrows this to
                         // bark's own topic, `config.dog.<name>`.
@@ -286,8 +314,19 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
                 }
             }
         }
+    }
+}
 
-        ExitCode::Success
+/// The exit code a dog that gave up on its shepherd reports.
+///
+/// Named rather than `Success`, because a dog that stopped because nothing
+/// answered is not a dog that finished. The wildcard is what
+/// [`LinkLost`]'s `non_exhaustive` asks for: a variant added later is some
+/// other way of not reaching a shepherd until someone says otherwise.
+fn exit_for(lost: &LinkLost) -> ExitCode {
+    match lost {
+        LinkLost::Refused { .. } => ExitCode::ProtocolMismatch,
+        _ => ExitCode::DaemonUnreachable,
     }
 }
 
@@ -468,6 +507,76 @@ mod tests {
                 Ok(event) => Some(Ok(event)),
                 Err(broadcast::error::RecvError::Lagged(count)) => Some(Err(count)),
                 Err(broadcast::error::RecvError::Closed) => None,
+            }
+        }
+
+        /// A bare receiver has no shepherd behind it to ask again, so this
+        /// stands for the shepherd that never came back.
+        async fn resubscribe(&mut self) -> Result<(), LinkLost> {
+            Err(LinkLost::Budget {
+                waited: Duration::ZERO,
+            })
+        }
+    }
+
+    /// An [`EventSource`] that ends the way a handover ends a real
+    /// subscription, and hands out the next generation when asked.
+    ///
+    /// The whole shape of a handover from a dog's side: the stream stops,
+    /// and whether the dog lives depends on there being a successor to
+    /// subscribe to.
+    struct HandoverSource {
+        current: Option<broadcast::Receiver<BusEvent>>,
+        /// Generations still to come, oldest first. Empty means no
+        /// shepherd answered before the budget ran out.
+        later: std::collections::VecDeque<broadcast::Receiver<BusEvent>>,
+        /// What [`Self::resubscribe`] reports when `later` is empty.
+        when_gone: LinkLost,
+        resubscribes: Arc<std::sync::atomic::AtomicU32>,
+    }
+
+    impl HandoverSource {
+        fn across(
+            generations: Vec<broadcast::Receiver<BusEvent>>,
+            when_gone: LinkLost,
+        ) -> (Self, Arc<std::sync::atomic::AtomicU32>) {
+            let mut later: std::collections::VecDeque<_> = generations.into();
+            let current = later.pop_front();
+            let resubscribes = Arc::new(std::sync::atomic::AtomicU32::new(0));
+            (
+                Self {
+                    current,
+                    later,
+                    when_gone,
+                    resubscribes: Arc::clone(&resubscribes),
+                },
+                resubscribes,
+            )
+        }
+    }
+
+    impl EventSource for HandoverSource {
+        async fn next(&mut self) -> Option<Result<BusEvent, u64>> {
+            let stream = self.current.as_mut()?;
+            match stream.recv().await {
+                Ok(event) => Some(Ok(event)),
+                Err(broadcast::error::RecvError::Lagged(count)) => Some(Err(count)),
+                Err(broadcast::error::RecvError::Closed) => {
+                    self.current = None;
+                    None
+                }
+            }
+        }
+
+        async fn resubscribe(&mut self) -> Result<(), LinkLost> {
+            self.resubscribes
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            match self.later.pop_front() {
+                Some(stream) => {
+                    self.current = Some(stream);
+                    Ok(())
+                }
+                None => Err(self.when_gone.clone()),
             }
         }
     }
@@ -723,6 +832,162 @@ mod tests {
         );
 
         loop_handle.abort();
+    }
+
+    /// fails if a handover restarts the bark dog, which is what it used to
+    /// do: the stream ends with the connection, and a loop that took that
+    /// for its shepherd going away exited 0 once per `shep daemon reload`.
+    /// The restart is not free. `restarts` is the one column an operator
+    /// reads to judge a dog's health, and the dog drops every rule's
+    /// per-subject debounce on the way out, so a sheep already alerted on
+    /// can be alerted on again.
+    #[tokio::test]
+    async fn a_handover_re_subscribes_instead_of_ending_the_dog() {
+        let (first_tx, first_rx) = tokio::sync::broadcast::channel(8);
+        let (second_tx, second_rx) = tokio::sync::broadcast::channel(8);
+        let (source, resubscribes) = HandoverSource::across(
+            vec![first_rx, second_rx],
+            LinkLost::Budget {
+                waited: Duration::ZERO,
+            },
+        );
+
+        let (addr, captured) = one_shot_sink(200, "").await;
+        let dir = tempfile::tempdir().unwrap();
+        let barks_path = dir.path().join("barks.jsonl");
+        let flock = ScriptedFlock::answering(vec![errored_info("web", 16)]);
+
+        let loop_handle = tokio::spawn(run_loop(
+            source,
+            flock.clone(),
+            gave_up_rules(),
+            &config_with_sink(addr, &barks_path),
+            &barks_path,
+            ScriptedConfig::answering(String::new()),
+        ));
+
+        // The handover: the first generation's sender goes, exactly as an
+        // `execve` takes the accepted connection with it.
+        drop(first_tx);
+
+        // An event only the SECOND generation could have carried. A loop
+        // that ended on the handover never sees this one.
+        let delivered = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                // Sent repeatedly: the second generation is armed inside
+                // the loop, and a broadcast sent before anyone subscribed
+                // reaches nobody.
+                let _ = second_tx.send(errored_event("web"));
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                if loop_handle.is_finished() {
+                    panic!("the loop ended on a handover instead of re-subscribing");
+                }
+            }
+        });
+        let captured = tokio::time::timeout(Duration::from_secs(5), captured);
+        let request = tokio::select! {
+            () = async { delivered.await.ok(); } => unreachable!("the sender loop never returns"),
+            request = captured => request.expect("a bark must be delivered after the handover"),
+        };
+        assert!(String::from_utf8_lossy(&request.unwrap().body).contains("web"));
+
+        assert_eq!(
+            resubscribes.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the handover must have been answered by exactly one re-subscribe"
+        );
+        assert!(
+            flock.calls() >= 1,
+            "a re-subscribe must reconcile: frames sent while there was no \
+             subscription are gone, and only the shepherd knows the flock now"
+        );
+        assert!(
+            !loop_handle.is_finished(),
+            "the dog must still be running after a handover"
+        );
+        loop_handle.abort();
+    }
+
+    /// fails if a dog whose shepherd is gone for good lingers. A lingering
+    /// dog attaches itself to whatever shepherd next binds that socket,
+    /// beside that shepherd's own dog of the same kind, and doubles its
+    /// alerts quietly.
+    #[tokio::test]
+    async fn a_shepherd_that_never_comes_back_ends_the_dog() {
+        let (tx, rx) = tokio::sync::broadcast::channel(8);
+        let (source, resubscribes) = HandoverSource::across(
+            vec![rx],
+            LinkLost::Budget {
+                waited: Duration::from_secs(5),
+            },
+        );
+
+        let (addr, _captured) = one_shot_sink(200, "").await;
+        let dir = tempfile::tempdir().unwrap();
+        let barks_path = dir.path().join("barks.jsonl");
+
+        let loop_handle = tokio::spawn(run_loop(
+            source,
+            ScriptedFlock::answering(Vec::new()),
+            gave_up_rules(),
+            &config_with_sink(addr, &barks_path),
+            &barks_path,
+            ScriptedConfig::answering(String::new()),
+        ));
+
+        drop(tx);
+
+        let code = tokio::time::timeout(Duration::from_secs(5), loop_handle)
+            .await
+            .expect("a dog whose shepherd is gone must exit, not linger")
+            .unwrap();
+        assert_eq!(
+            code,
+            ExitCode::DaemonUnreachable,
+            "exiting 0 would read as a dog that finished its work"
+        );
+        assert_eq!(
+            resubscribes.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "it must have tried once before giving up"
+        );
+    }
+
+    /// fails if a dog that cannot speak the shepherd's protocol exits as
+    /// though nothing answered. The shepherd that refused is running and
+    /// answering, and an operator told it was unreachable goes looking for
+    /// the wrong thing.
+    #[tokio::test]
+    async fn a_refused_dog_exits_saying_it_was_refused() {
+        let (tx, rx) = tokio::sync::broadcast::channel(8);
+        let (source, _resubscribes) = HandoverSource::across(
+            vec![rx],
+            LinkLost::Refused {
+                daemon_version: Some("0.9.9".into()),
+                message: "daemon speaks protocol 9, client speaks 8".into(),
+            },
+        );
+
+        let (addr, _captured) = one_shot_sink(200, "").await;
+        let dir = tempfile::tempdir().unwrap();
+        let barks_path = dir.path().join("barks.jsonl");
+
+        let loop_handle = tokio::spawn(run_loop(
+            source,
+            ScriptedFlock::answering(Vec::new()),
+            gave_up_rules(),
+            &config_with_sink(addr, &barks_path),
+            &barks_path,
+            ScriptedConfig::answering(String::new()),
+        ));
+
+        drop(tx);
+
+        let code = tokio::time::timeout(Duration::from_secs(5), loop_handle)
+            .await
+            .expect("a refused dog must exit rather than retry")
+            .unwrap();
+        assert_eq!(code, ExitCode::ProtocolMismatch);
     }
 
     /// Drives `deliver_and_record` directly rather than through

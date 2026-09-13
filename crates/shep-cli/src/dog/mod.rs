@@ -15,8 +15,11 @@ pub mod metrics;
 
 use core::fmt;
 use std::sync::Arc;
+use std::time::Duration;
 
-use shep_client::{ConnectError, EventStream, ReconnectingClient, RequestError};
+use shep_client::{
+    ConnectError, EventStream, LinkLost, RECONNECT_MIN_DELAY, ReconnectingClient, RequestError,
+};
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{BusEvent, ProcessInfo, Request, Response, RpcError, RpcErrorCode};
 
@@ -28,6 +31,31 @@ use crate::exit::ExitCode;
 /// a re-exec through `shep dog <name>` only ever reaches one of these two.
 /// [`run_dog`] refuses anything else before touching the socket.
 pub(crate) const BUILT_IN_DOGS: [&str; 2] = ["metrics", "bark"];
+
+/// How long a dog waits for a shepherd to answer again before it gives up
+/// and exits.
+///
+/// A shepherd that execs a successor has not gone away, and every dog is
+/// meant to cross that without restarting. A shepherd that stopped has
+/// gone away, and a dog that waits for it indefinitely is still running
+/// when an unrelated shepherd binds that socket later, at which point it
+/// attaches itself to that one beside that shepherd's own dog of the same
+/// kind and doubles its alerts quietly.
+///
+/// Measured on this machine over ten `shep daemon reload` runs against a
+/// three-sheep flock: the control socket turned away a full connect,
+/// handshake and request for 38ms at the shortest, 254ms at the longest,
+/// 80ms on average. A larger flock and a busier host both push that up.
+///
+/// [`DOG_SILENCE_BUDGET`](shep_daemon::dogs::DOG_SILENCE_BUDGET) is the
+/// number to reuse rather than a second one to invent: it is how long the
+/// shepherd lets a dog go quiet before acting on it, so a dog that waits
+/// exactly that long cannot outlive the budget it is judged by. It is also
+/// around twenty times the longest handover measured, which leaves room
+/// for a far slower one. Five seconds of waiting is not the lingering this
+/// guards against; that one is measured in however long it takes another
+/// shepherd to come along.
+const SHEPHERD_RETURN_BUDGET: Duration = shep_daemon::dogs::DOG_SILENCE_BUDGET;
 
 /// The schema a built-in dog would print for the schema flag, without
 /// spawning anything: a built-in dog is this binary, so the answer is one
@@ -292,12 +320,11 @@ async fn run_bark(runtime: DogRuntime) -> ExitCode {
     // is reused below for `ClientShepherd`'s re-read request, so the two
     // cannot drift apart.
     let dog = runtime.name.clone();
-    let events = match runtime
-        .client
-        .subscribe(vec!["process.*".to_owned(), format!("config.dog.{dog}")])
-        .await
-    {
-        Ok(events) => events,
+    // Named once, because `ClientEvents` asks for the same list again on
+    // every handover and a second literal could drift from this one.
+    let topics = vec!["process.*".to_owned(), format!("config.dog.{dog}")];
+    let stream = match runtime.client.subscribe(topics.clone()).await {
+        Ok(stream) => stream,
         Err(err) => {
             eprintln!("shep dog bark: could not subscribe to the shepherd's bus: {err}");
             return ExitCode::from(&err);
@@ -308,6 +335,11 @@ async fn run_bark(runtime: DogRuntime) -> ExitCode {
         client: runtime.client,
         dog,
     });
+    let events = ClientEvents {
+        shepherd: Arc::clone(&shepherd),
+        topics,
+        stream,
+    };
     bark::run_loop(
         events,
         Arc::clone(&shepherd),
@@ -319,17 +351,62 @@ async fn run_bark(runtime: DogRuntime) -> ExitCode {
     .await
 }
 
-/// Adapts [`EventStream`] to [`bark::EventSource`]: a `map_err` over
-/// [`shep_client::Lagged::count`].
+/// Bark's subscription, and what arming a fresh one after a handover
+/// takes: the client to ask, and the topics the first one named.
 ///
-/// `self.next()` below resolves to [`EventStream`]'s own inherent method,
-/// not a recursive call into this trait impl: an inherent method wins name
-/// resolution over a trait method of the same name.
-impl bark::EventSource for EventStream {
+/// A subscription belongs to one connection generation, so the stream ends
+/// every time the shepherd execs a successor. Carrying the topics here is
+/// what keeps the second subscription asking for the same thing as the
+/// first.
+struct ClientEvents {
+    /// Reached through the same [`Arc`] the flock and config sources use,
+    /// so every role speaks to one client rather than to clients that
+    /// would reconnect independently.
+    shepherd: Arc<ClientShepherd>,
+    topics: Vec<String>,
+    stream: EventStream,
+}
+
+/// `self.stream.next()` resolves to [`EventStream`]'s own inherent method,
+/// not a recursive call into this trait impl.
+impl bark::EventSource for ClientEvents {
     async fn next(&mut self) -> Option<Result<BusEvent, u64>> {
-        self.next()
+        self.stream
+            .next()
             .await
             .map(|item| item.map_err(|lagged| lagged.count))
+    }
+
+    async fn resubscribe(&mut self) -> Result<(), LinkLost> {
+        let started = tokio::time::Instant::now();
+        let mut reported = false;
+        loop {
+            let left = SHEPHERD_RETURN_BUDGET.saturating_sub(started.elapsed());
+            self.shepherd.client.connected_within(left).await?;
+            match self.shepherd.client.subscribe(self.topics.clone()).await {
+                Ok(stream) => {
+                    self.stream = stream;
+                    return Ok(());
+                }
+                Err(RequestError::Closed) => {}
+                // A shepherd answered and refused the subscription itself,
+                // which waiting cannot fix. Reported once rather than on
+                // every attempt, then left to the budget: a dog that
+                // cannot subscribe has nothing to do either way.
+                Err(other) => {
+                    if !reported {
+                        eprintln!("shep dog bark: the shepherd refused a subscription: {other}");
+                        reported = true;
+                    }
+                }
+            }
+            // The supervisor reports a connection's death a moment after
+            // the socket does, so a bare retry here would spin against a
+            // link still reading as connected. One rung of the supervisor's
+            // own ladder is long enough to outlast that and short against
+            // the handover it is waiting out.
+            tokio::time::sleep(RECONNECT_MIN_DELAY.min(left)).await;
+        }
     }
 }
 
