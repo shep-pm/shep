@@ -2439,12 +2439,11 @@ mod tests {
         assert_eq!(serde_json::from_str::<Response>(&json).unwrap(), response);
     }
 
-    /// Additive, so the version does not move. Guards against a reflexive bump.
+    /// Additive, so the floor does not move. Guards against a reflexive
+    /// raise. The ceiling is pinned once, by `protocol::tests`, and moves
+    /// for reasons unrelated to this variant.
     #[test]
     fn the_batch_variant_did_not_raise_the_floor() {
-        // The ceiling's own value is pinned once, by `protocol::tests`, and
-        // moves for reasons that have nothing to do with this variant.
-        // Adding it was additive, so what belongs here is the floor.
         assert_eq!(super::super::MIN_SUPPORTED, 8);
     }
 
