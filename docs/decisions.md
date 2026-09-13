@@ -1695,8 +1695,9 @@ ensure_home_at creates ~/.shep silently on first use, but a --home/$SHEP_HOME pa
 ### A relative home is refused, never absolutized
 
 `resolve_paths` requires a rooted home before any path is derived from it, and
-`dev_home` holds the same line for `$SHEP_DEV_HOME`. The refusal quotes the path
-as typed and names its absolute form.
+`dev_home` holds the same line for `$SHEP_DEV_HOME`. Both check the home
+directory they fall back to as well. The refusal quotes the path as typed and
+names its absolute form.
 
 **Why:** The two candidate fixes were refusing and absolutizing, and only one of
 them reaches the defect. A relative home names a different directory from every
@@ -1711,14 +1712,16 @@ Absolutizing inside `ShepPaths::resolve` was ruled out separately: its doc
 promises to touch no filesystem, and the absolute form of a relative path is a
 read of this process's own directory, so the gate belongs in the CLI.
 
-The gate is on the resolved root rather than on `--home` alone. A rootless home
-directory reaches `ShepPaths` through the default-home fallback and carries the
-same defect, so it is refused by the same rule and named by its own variable
-instead of a flag the operator never typed. Windows reads a path with no drive
+The gate is on the resolved root rather than on the knob alone. Both resolvers
+fall back to the home directory when nothing names a home, and a rootless one
+reaches `ShepPaths` carrying the same defect, so it is refused by the same rule
+and named by its own variable instead of a knob the operator never touched.
+Each source is checked separately rather than the joined path, so the refusal
+quotes `ada` rather than `ada/.shep-dev`. Windows reads a path with no drive
 prefix as relative, so `\shep` is refused there for the same reason `rel-home`
 is everywhere.
 
-`verified crates/shep-cli/src/lib.rs (resolve_paths, require_absolute), crates/shep-cli/src/commands/dev.rs (dev_home)`
+`verified crates/shep-cli/src/lib.rs (resolve_paths, require_absolute, absolute_form), crates/shep-cli/src/commands/dev.rs (dev_home, require_absolute)`
 
 ### Sheep decoration never appears on error output or after a destructive verb
 
