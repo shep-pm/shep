@@ -715,10 +715,8 @@ mod tests {
         assert_eq!(pane.filters().match_kind(), Some(MatchKind::Literal));
     }
 
-    /// The three suffixes, exact. Both panes that draw a filter chip word
-    /// them through here, and a render assertion reading `match pool` would
-    /// pass with a suffix appended too, so the empty one is pinned here
-    /// rather than only there.
+    /// The three suffixes, exact. This pins the wording itself; each
+    /// pane's own test pins that its call site adds nothing to it.
     #[test]
     fn only_the_two_regex_states_carry_a_chip_suffix() {
         assert_eq!(MatchKind::Literal.chip_suffix(), "");
