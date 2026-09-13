@@ -610,17 +610,42 @@ struct ErrorBody<'a> {
 /// The seam every emitted message passes through, which is why the
 /// guarantee lives here rather than at each caller. JSON collapses to one
 /// line: `jq -r .error.message` unescapes a control byte straight back
-/// onto a terminal. A table keeps the line breaks shep wrote, and loses
-/// its trailing whitespace, which the caller's `writeln!` would otherwise
-/// print as a blank line.
+/// onto a terminal. A table keeps the line breaks shep wrote, indents every
+/// one of them, and loses its trailing whitespace, which the caller's
+/// `writeln!` would otherwise print as a blank line.
 fn safe_message(fmt: Format, message: &str) -> String {
     match fmt {
         Format::Json => crate::terminal_safe::sanitise(message).0,
-        Format::Table => crate::terminal_safe::sanitise_multiline(message)
-            .0
-            .trim_end()
-            .to_owned(),
+        Format::Table => {
+            let clean = crate::terminal_safe::sanitise_multiline(message).0;
+            indent_continuations(clean.trim_end())
+        }
     }
+}
+
+/// `message` with every line after the first indented by two spaces.
+///
+/// The indent is what makes a kept `\n` safe rather than merely useful. Only
+/// the first line of a table message starts at column 0, so a newline
+/// reaching here inside an interpolated value cannot forge a line that reads
+/// as shep's own or that a script keying on `error[` at the start of a line
+/// will match. Messages are written with plain `\n` and no indent of their
+/// own, because this owns it.
+///
+/// An empty line stays empty: indenting it would emit trailing whitespace on
+/// a line a reader sees as a paragraph break.
+fn indent_continuations(message: &str) -> String {
+    let mut out = String::with_capacity(message.len());
+    for (n, line) in message.split('\n').enumerate() {
+        if n > 0 {
+            out.push('\n');
+            if !line.is_empty() {
+                out.push_str("  ");
+            }
+        }
+        out.push_str(line);
+    }
+    out
 }
 
 /// Renders a failure to `err` in `fmt`. `code` is `ExitCode::code_str()`.
@@ -1495,10 +1520,12 @@ mod tests {
 
     /// fails if a refusal's layout stops depending on the format. The
     /// remedy line is the point: an operator copies it, and a JSON consumer
-    /// gets the same facts with no layout to parse around.
+    /// gets the same facts with no layout to parse around. The message is
+    /// written with a plain `\n`; the indent in the table snapshot comes
+    /// from the emitter.
     #[test]
     fn a_multiline_refusal_keeps_its_lines_in_a_table_and_loses_them_in_json() {
-        let written = "no flock at /tmp/x\n  to set up a flock there deliberately: mkdir -p /tmp/x";
+        let written = "no flock at /tmp/x\nto set up a flock there deliberately: mkdir -p /tmp/x";
         for (fmt, name) in [(Format::Table, "table"), (Format::Json, "json")] {
             let mut out = Vec::new();
             emit_error(&mut out, fmt, ExitCode::Usage.code_str(), written).unwrap();
@@ -1507,6 +1534,59 @@ mod tests {
                 String::from_utf8(out).unwrap()
             );
         }
+    }
+
+    /// fails if a value carrying a newline can start a line of its own. Only
+    /// the first line of a table message begins at column 0, so a forged
+    /// `error[...]` lands indented and neither reads as shep's nor matches a
+    /// script anchoring on the start of a line. This is what makes keeping
+    /// `\n` safe rather than only useful, and it holds for every error type
+    /// without one of them having to know the rule.
+    #[test]
+    fn an_interpolated_newline_cannot_start_a_line_of_its_own() {
+        let forged = "could not read /tmp/a\nerror[internal]: shepherd compromised";
+        let mut out = Vec::new();
+        emit_error(
+            &mut out,
+            Format::Table,
+            ExitCode::Failure.code_str(),
+            forged,
+        )
+        .unwrap();
+        let text = String::from_utf8(out).unwrap();
+        let mut lines = text.lines();
+        assert_eq!(
+            lines.next(),
+            Some("error[failure]: could not read /tmp/a"),
+            "{text:?}"
+        );
+        for line in lines {
+            assert!(
+                line.starts_with("  ") || line.is_empty(),
+                "a line started at column 0: {line:?} in {text:?}"
+            );
+        }
+    }
+
+    /// fails if a paragraph break gains trailing whitespace. `refuse_version_skew`
+    /// separates its three parts with blank lines, and two spaces on one of
+    /// them is invisible until it reaches a diff or a terminal that shows it.
+    #[test]
+    fn a_blank_line_between_paragraphs_stays_empty() {
+        let mut out = Vec::new();
+        emit_error(
+            &mut out,
+            Format::Table,
+            ExitCode::VersionSkew.code_str(),
+            "lead\n\nmiddle\n\ntail",
+        )
+        .unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert!(
+            !text.contains("\n  \n"),
+            "blank line carried an indent: {text:?}"
+        );
+        assert!(text.contains("\n\n  middle\n\n  tail"), "{text:?}");
     }
 
     /// fails if a message's own trailing newline reaches the stream, where

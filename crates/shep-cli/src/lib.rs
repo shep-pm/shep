@@ -477,7 +477,7 @@ fn style_write_is_overridden(source: style::StyleSource) -> bool {
 const WINDOWS_NO_SERVICE: &str = "\
 shep startup installs a boot-time service, and on Windows that means \
 registering with the Service Control Manager -- not yet built (Tier B in \
-docs/specs/windows-estimate.md).\n  \
+docs/specs/windows-estimate.md).\n\
 the shepherd itself works here: run `shep start` in your own session, or wrap \
 `shep runtime` in a service manager such as NSSM or WinSW.";
 
@@ -537,8 +537,8 @@ impl core::fmt::Display for HomeRefusal {
             } => write_relative_refusal(f, knob, given, absolute.as_deref()),
             Self::Missing(path) => write!(
                 f,
-                "no flock at {path}\n  \
-                 did you mean to drop --home? the default is ~/.shep\n  \
+                "no flock at {path}\n\
+                 did you mean to drop --home? the default is ~/.shep\n\
                  to set up a flock there deliberately: mkdir -p {quoted}",
                 path = one_line(path),
                 quoted = shell_quoted(path),
@@ -1218,13 +1218,13 @@ pub(crate) fn write_relative_refusal(
 ) -> core::fmt::Result {
     write!(
         f,
-        "{knob} must be an absolute path, not {given}\n  \
+        "{knob} must be an absolute path, not {given}\n\
          a relative home is read against whatever directory shep runs in, so the flock it \
          names is reachable from that one directory and nowhere else",
         given = one_line(given),
     )?;
     match absolute {
-        Some(absolute) => write!(f, "\n  did you mean: {}", one_line(absolute)),
+        Some(absolute) => write!(f, "\ndid you mean: {}", one_line(absolute)),
         None => Ok(()),
     }
 }
@@ -1461,6 +1461,9 @@ const VERSION_SKEW_REMEDY: &str = RECOVERY_VERBS[1];
 fn version_skew_instruction(fmt: Format) -> String {
     match fmt {
         Format::Json => format!("Run `shep {VERSION_SKEW_REMEDY}`."),
+        // Two spaces of its own, on top of the indent `safe_message` gives
+        // every continuation line, so the command sits a level under its
+        // label rather than beside it.
         Format::Table => format!("Run:\n  shep {VERSION_SKEW_REMEDY}"),
     }
 }
@@ -2847,9 +2850,11 @@ mod tests {
         let text = String::from_utf8(err).unwrap();
 
         // No blank line between the label and the command: a gap reads as
-        // two unrelated things.
+        // two unrelated things. Four spaces, not two: `safe_message` indents
+        // every continuation line and the instruction adds one level on top,
+        // so the command sits under its label rather than beside it.
         assert!(
-            text.contains("Run:\n  shep daemon reload"),
+            text.contains("Run:\n    shep daemon reload"),
             "the label must sit directly on the copyable line it points at: {text}"
         );
         // The sentence above the indented line must not repeat the command.
