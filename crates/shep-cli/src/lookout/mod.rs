@@ -19,6 +19,7 @@ pub mod field;
 #[cfg(test)]
 pub mod frames;
 pub mod input;
+mod keymap;
 pub mod level;
 pub mod link;
 pub mod pane;
