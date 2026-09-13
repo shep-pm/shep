@@ -630,10 +630,11 @@ mod tests {
     /// Reconnects `client` inside [`BOUND`], failing the test rather than
     /// hanging, and hands back the verdict.
     ///
-    /// Eight cases want exactly this and differ only in what they assert
-    /// afterwards. Three do not use it: the refusal and spent-budget cases
-    /// assert on the error this unwraps, and the retries-past-a-successor
-    /// case names the generation it expected to be answered by.
+    /// Most cases want exactly this and differ only in what they assert
+    /// afterwards. The refusal and spent-budget cases spell it out instead,
+    /// because they assert on the error this unwraps, and so does the
+    /// retries-past-a-successor case, which names the generation it expected
+    /// to be answered by.
     async fn reconnect_ok(client: &mut Client) -> Reconnected {
         tokio::time::timeout(BOUND, client.reconnect())
             .await
