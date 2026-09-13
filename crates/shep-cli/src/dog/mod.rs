@@ -397,6 +397,17 @@ impl bark::EventSource for ClientEvents {
         let mut reported = false;
         loop {
             let left = SHEPHERD_RETURN_BUDGET.saturating_sub(started.elapsed());
+            // The budget is checked here rather than left to
+            // `connected_within`, which returns `Ok` on a live link without
+            // consulting it. A shepherd that answers the handshake and then
+            // fails every `Subscribe`, which a slow one does by timing them
+            // out, would otherwise keep this loop going for as long as it
+            // stayed up.
+            if left.is_zero() {
+                return Err(LinkLost::Budget {
+                    waited: started.elapsed(),
+                });
+            }
             self.shepherd.client.connected_within(left).await?;
             match self.shepherd.client.subscribe(self.topics.clone()).await {
                 Ok(stream) => {

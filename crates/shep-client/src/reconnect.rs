@@ -1550,6 +1550,28 @@ mod tests {
         assert_eq!(client.link(), LinkState::Connected);
     }
 
+    /// fails if a spent budget starts refusing a link that is already up.
+    ///
+    /// Pins the trap rather than the convenience. A caller looping on this
+    /// cannot use it as the loop's bound, because a live link answers `Ok`
+    /// without ever consulting the budget, and a caller whose own work
+    /// keeps failing against that live link would never leave the loop.
+    /// `ClientEvents::resubscribe` in the CLI checks the budget itself for
+    /// exactly this reason.
+    #[tokio::test]
+    async fn a_wait_on_a_live_link_answers_at_once_even_with_no_budget_left() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let _shepherds = fake_daemon_across_handovers(&path, vec![Handshake::Accept(ack_from(11))]);
+        let client = ReconnectingClient::connect(&path).await.unwrap();
+
+        let answered = tokio::time::timeout(BOUND, client.connected_within(Duration::ZERO))
+            .await
+            .expect("a live link must answer without waiting");
+
+        assert_eq!(answered, Ok(()));
+    }
+
     /// fails if a dog whose shepherd is gone for good waits forever, which
     /// is the lingering that lets it attach to an unrelated shepherd later.
     #[tokio::test]
