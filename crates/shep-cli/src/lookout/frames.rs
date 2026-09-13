@@ -3458,7 +3458,7 @@ mod tests {
 
         // CloseDialogNarrow: 89x48, one column under the floor. No box
         // glyph anywhere in the frame; this is the assertion a wrong
-        // BOX_FLOOR would fail.
+        // overlay::floor_for(BOX_WIDTH) would fail.
         let close_dialog_narrow = render_text(&scene(Scene::CloseDialogNarrow).1);
         for glyph in ['▛', '▜', '▙', '▟', '▐', '▀', '▄', '▌'] {
             assert!(
