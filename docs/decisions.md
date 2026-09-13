@@ -19,7 +19,7 @@ go for the full argument. The commit that removed them names itself.
 
 ## Contents
 
-- [Core types and the daemon's shape](#core-types-and-the-daemons-shape) (4)
+- [Core types and the daemon's shape](#core-types-and-the-daemons-shape) (5)
 - [The CLI surface](#the-cli-surface) (4)
 - [Supervision and lifecycle](#supervision-and-lifecycle) (17)
 - [The log plane](#the-log-plane) (8)
@@ -33,7 +33,7 @@ go for the full argument. The commit that removed them names itself.
 - [whistle](#whistle) (18)
 - [Config and packaging](#config-and-packaging) (5)
 - [serve, dev and runtime](#serve-dev-and-runtime) (8)
-- [Output and first run](#output-and-first-run) (7)
+- [Output and first run](#output-and-first-run) (8)
 - [Config overrides](#config-overrides) (9)
 - [Dog config store](#dog-config-store) (1)
 - [CI flakes, and the log line a stop could lose](#ci-flakes-and-the-log-line-a-stop-could-lose) (4)
@@ -43,6 +43,16 @@ go for the full argument. The commit that removed them names itself.
 - [Following the flock](#following-the-flock) (3)
 
 ## Core types and the daemon's shape
+
+### increment_var is deleted, not kept as a refusal that names its replacement
+
+The field is gone from `AppConfig`. A Flockfile setting it now fails the parser's own unknown-key check instead of reaching `normalize`, which used to refuse it by name and print the line to write instead. `docs/migration.md` is where that replacement is written down now.
+
+**Why:** the refusal was carried so an operator upgrading mid-0.1.x would be told what to write. Nothing else ever read the field. pm2's `NODE_APP_INSTANCE` is imported as `NODE_APP_INSTANCE = "{{instance}}"` under `[app.env]`, so the last reader was a hand-written Flockfile carrying a field from older docs, and shep was pre-release when the replacement landed.
+
+`PROTOCOL_VERSION` moves 8 to 9: the field is serialized, and removing something serialized is what the constant is for. `MIN_SUPPORTED` stays at 8, because no peer can see the difference. `AppConfig` is `#[serde(default)]` and carries no serde `deny_unknown_fields`, so an older peer's extra key is ignored and a newer peer's missing one defaults to `None`. `SCHEMA_VERSION` does not move: no command's `--format json` payload carries an `AppConfig`. The generated Flockfile schema does not change either, the field having been `schemars(skip)` since it stopped being usable.
+
+`verified crates/shep-core/src/config/app.rs (AppConfig derives), crates/shep-core/src/protocol/mod.rs (PROTOCOL_VERSION, MIN_SUPPORTED), crates/shep-cli/src/commands/import/pm2/convert.rs (instance_var)`
 
 ### OwnedFd::from over into_raw_fd/from_raw_fd for channel adoption
 
@@ -516,9 +526,9 @@ A key is written only if it appears in some env_<name> map (by construction, onl
 
 `docs/writing-plans/plans/2026-08-12-shep-phase8-cutover.md:1400`
 
-### NODE_APP_INSTANCE becomes increment_var, never a literal env value
+### NODE_APP_INSTANCE becomes a template, never a literal env value
 
-The importer maps pm2's NODE_APP_INSTANCE env key to AppConfig's increment_var mechanism instead of copying its literal value into env.
+The importer writes pm2's NODE_APP_INSTANCE key back as NODE_APP_INSTANCE = "{{instance}}" under [app.env], rather than copying the value the dump recorded.
 
 **Why:** The dump only records instance 0's value; copying it verbatim would pin every instance to instance 0.
 
@@ -638,13 +648,13 @@ ProcessEntry gains dog: Option<DogSource>; ProcessInfo carries it onto the wire,
 
 `docs/writing-plans/plans/2026-08-12-shep-phase9-dogs.md:95`
 
-### A reload's own deadline is exposed per-instance on ProcessInfo, not as a sibling field on Response::Reloading - *unverified* - **superseded**
+### A reload's own deadline is exposed per-instance on ProcessInfo, not as a sibling field on Response::Reloading - **superseded in part**
 
 An external ledger recorded the maintainer's decision as "the reload deadline rides the reload response, as an additive field, no PROTOCOL_VERSION bump needed" - re-deriving from the actual wire shape found that premise WRONG and switched the design to a new ProcessInfo::reload_deadline_ms: Option<u64> field instead, still additive, still version 1.
 
 **Why:** Response::Reloading(Vec<ProcessInfo>) is a tuple variant under #[serde(tag="kind", content="data")]; giving it a sibling field would turn `data` from a JSON array into an object, which shep's own documented wire-evolution rule classifies as a retype requiring a PROTOCOL_VERSION bump - and since the handshake compares versions for strict equality, that would stop every published client talking to every published daemon over one advisory number. Putting the deadline on ProcessInfo instead is strictly better, not merely a workaround: it's computed per-replacement-instance from that instance's own registered listen_timeout+graceful_timeout+slack (exactly what arm_reload_deadline already computes internally), so it hands a dog the real per-instance number rather than one it would otherwise have to infer from a possibly-stale Flockfile copy, and it closes the instance-counting gap too since one field appears per ProcessInfo already returned.
 
-`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:1261 (NOT yet shipped - no reload_deadline_ms field exists on ProcessInfo in the current tree)`. Replaced by: "The handshake takes a floor, not a strict match" below, for the "since the handshake compares versions for strict equality" clause in the Why. Everything else about this entry, the retype-forces-a-bump reasoning and the choice to put the deadline on ProcessInfo, still holds.
+`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:1261`. Shipped 2026-09-13 as `ProcessInfo::reload_deadline_ms`, `Option<u64>` under `skip_serializing_if`, so the key is absent rather than null and neither PROTOCOL_VERSION nor SCHEMA_VERSION moves. The daemon sets it in `handle_reload` for the instances that reload will try to swap, and nowhere else: a row nothing is queued for carries no number, since one would promise a replacement that is not coming. `supervisor::swap_budget` is the single source the watchdog arms from and the reply reports, so the two cannot disagree. Replaced by: "The handshake takes a floor, not a strict match" below, for the "since the handshake compares versions for strict equality" clause in the Why. Everything else about this entry, the retype-forces-a-bump reasoning and the choice to put the deadline on ProcessInfo, still holds.
 
 ### A running dog does not see a config change until disable+enable
 
@@ -654,13 +664,13 @@ A dog reads its [dog.<name>] section exactly once, at connect time; there is no 
 
 `docs/writing-plans/plans/2026-08-12-shep-phase9-dogs.md:106`
 
-### A supervised dog's on-remove hook uses tokio::process with concurrent stdout/stderr draining, not std::process + a poll loop - *unverified*
+### A supervised dog's on-remove hook uses tokio::process with concurrent stdout/stderr draining, not std::process + a poll loop
 
 The planned hook runner spawns a dog binary with `on-remove` as its sole argv and awaits it under a timeout via tokio::process::Command::output(), rather than following vet_binary's existing std::process + try_wait poll pattern.
 
 **Why:** vet_binary can get away with std::process because it nulls all three stdio handles and never reads a byte, so it can't deadlock; the hook runner DOES read the dog's output, and a double that returns canned output can't reveal that a real child writing more than one pipe buffer with no concurrent reader would simply hang forever until killed at the budget, silently losing its own output. tokio::process::Command::output() under a timeout drains both pipes concurrently, which is the actual problem being solved; doing the equivalent with std::process would need two reader threads or a temp file. A dog refusing the hook's unknown argument (the ordinary case, since every dog that exists today predates this hook and shep-log-rotate is a real example) is deliberately modeled as HookOutcome::Refused, not a failure.
 
-`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:334 (NOT yet shipped - crates/shep-cli/src/commands/hook.rs does not exist in the current tree)`
+`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:334`. Shipped 2026-09-13 as `crates/shep-cli/src/commands/hook.rs`, the runner alone: which verb fires the hook was never ruled on, so nothing calls it and the module carries a dead-code allow naming that. Outcomes are `Ran`, `Refused`, `TimedOut` and `NotSpawned`. `a_dog_that_fills_both_pipes_is_drained_rather_than_deadlocked` is the deadlock proof: a fixture writing a quarter of a mebibyte to each pipe, which reports `TimedOut` in four runs out of four when the drain is made sequential. Each stream is capped separately at 4KiB so a chatty stdout cannot push a dog's explanation off stderr; the budget, not the cap, is what bounds how much a spewing dog writes.
 
 ### adopt is a distinct verb from enable --exec, kept only as a hidden alias
 
@@ -786,9 +796,9 @@ Sorting happens exactly once, inside the actor's snapshot_all, so every consumer
 
 D4 of the research argued shep-client's stream type must wrap connection-state transitions itself (an EventSub yielding ClientEvent::{Bus, Disconnected, Reconnected}), flagging that a bare Stream<Item=BusEvent> would block lookout's reconnect UX entirely.
 
-**Why:** lookout instead built its own local Shepherd trait (lookout/source.rs) to own reconnect+resubscribe together, without any change to shep-client. This is not merely superseded but explicitly named as still-open technical debt as of 2026-08-27's dog-prerequisites plan (Task 8): shep-client was expected to get a narrower reconnect() API (Client::reconnect/reconnect_within returning Reconnected::{SameDaemon,NewDaemon}) built for lookout/whistle's benefit. That API never shipped. What shipped instead, in phase 3 on 2026-08-31, is `ReconnectingClient` (shep-client/src/reconnect.rs), a distinct wrapper type rather than a mode on Client, so a one-shot CLI verb cannot silently acquire retry semantics. It exists for dogs crossing a daemon handover rather than for lookout. Either way, lookout's own ladder (250ms x2 capped at 4s) deliberately still does NOT converge onto that shared schedule (100ms x1.5 capped at 5s) or onto the new API, because its 5-attempt bound exists specifically to reach a 'frozen' UI state a plain backoff has no concept of.
+**Why:** lookout instead built its own local Shepherd trait (lookout/source.rs) to own reconnect+resubscribe together, without any change to shep-client. This is not merely superseded but explicitly named as still-open technical debt as of 2026-08-27's dog-prerequisites plan (Task 8): shep-client was expected to get a narrower reconnect() API (Client::reconnect/reconnect_within returning Reconnected::{SameDaemon,NewDaemon}) built for lookout/whistle's benefit. It shipped on 2026-09-13, beside ReconnectingClient in the same module and sharing its backoff schedule. What shipped instead, in phase 3 on 2026-08-31, is `ReconnectingClient` (shep-client/src/reconnect.rs), a distinct wrapper type rather than a mode on Client, so a one-shot CLI verb cannot silently acquire retry semantics. It exists for dogs crossing a daemon handover rather than for lookout. Either way, lookout's own ladder (250ms x2 capped at 4s) deliberately still does NOT converge onto that shared schedule (100ms x1.5 capped at 5s) or onto the new API, because its 5-attempt bound exists specifically to reach a 'frozen' UI state a plain backoff has no concept of.
 
-`docs/research/lookout-tui.md:117-129 (partially addressed by docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:2124, itself not yet shipped as of the current tree - grep for Client::reconnect finds nothing)`
+`docs/research/lookout-tui.md:117-129 (addressed by docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:2124, shipped 2026-09-13; lookout itself has not been moved onto it)`
 
 ### No `--all` flag anywhere in flock/dogs listings
 
@@ -806,13 +816,13 @@ When a dog dies, the daemon's own bus watcher (at the edge of the supervisor, no
 
 `docs/writing-plans/plans/2026-08-12-shep-phase9-dogs.md:116`
 
-### rehome should keep [dog.<name>]'s operator-written settings, forgetting only the adoption - *unverified*
+### rehome keeps the dog's operator-written settings, forgetting only the adoption
 
 Currently rehome_dog deletes the dog's config table along with removing it from enabled_dogs/adopted_dogs; the maintainer approved (2026-08-26) changing it to forget only the adoption, leaving the [dog.<name>] table (including comments, since it's edited via toml_edit) untouched - so re-adopting the same dog finds its old configuration waiting rather than a blank table.
 
 **Why:** disable_dog's own doc already makes this exact argument for `disable` ("an operator who disables a dog to restart it must not lose the configuration they wrote for it"); the only reason rehome hadn't followed it is that "forget the dog entirely" was read as covering the operator's own file too. The two verbs would still differ meaningfully: disable leaves the binary path in adopted_dogs (so the next enable brings it straight back); rehome forgets that, so recovery needs a fresh `shep adopt <path>`.
 
-`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:91 (NOT yet shipped - crates/shep-cli/src/commands/shep_toml.rs:383-385 still deletes the [dog.<name>] table as of the current tree)`
+`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:91`. Shipped 2026-09-13. Two deletions had to go, not the one the entry named: `ShepToml::rehome_dog` struck a `[dog.<name>]` an un-migrated shep.toml still carried, and `commands::dogs::rehome` struck the `[<name>]` in dogs.toml where one lives now, so keeping only the second would have made the outcome depend on whether a daemon had booted since the 2026-09-03 move. `dog_migration::forget_dog_section` went with them, leaving two writers on dogs.toml, the boot migration and dogs::set_dog_section behind the config pane; its two contention tests went too, and nothing now covers ConfigLock under concurrency. A rehome that leaves a section behind says so on stderr, because "forget an adopted dog entirely" no longer describes what the verb does.
 
 ### Restart-loop detection is two independent rule kinds
 
@@ -838,13 +848,15 @@ shep flock prints the sheep table, then an always-visible Dogs table beneath it 
 
 `docs/writing-plans/plans/2026-08-12-shep-phase9-dogs.md:108-109`
 
-### shep-client gets an explicit, opt-in Client::reconnect (&mut self) API rather than a transparent retry inside request() - *unverified*
+### shep-client gets an explicit, opt-in Client::reconnect (&mut self) API rather than a transparent retry inside request()
 
 Ruled explicitly against making a dropped connection silently re-dial inside the ordinary request() call path; instead Client::reconnect()/reconnect_within() are new, separately-called methods returning Reconnected::{SameDaemon, NewDaemon} (distinguished via the pid already carried in HelloAck), and the documented remedy for a SUPERVISED dog specifically is to exit on RequestError::Closed rather than reconnect at all.
 
-**Why:** Instance ids are minted per daemon lifetime and never persisted (ProcessEntry has no Serialize); a request like `Delete{selector: Id(7)}` transparently re-dialed after a daemon restart could silently land on a totally different process (or none) under a NEW daemon where id 7 means something else - converting a loud, safe failure into a silent, wrong action, which is exactly the shape of shep-deploy's own worst production defects. `&mut self` (rather than interior mutability that would slide back toward transparent silent reconnection) also forces a caller to hold exclusive access at exactly the moment a connection's identity changes, deliberately trading away the crate's own documented Arc<Client>-sharing convenience for that safety property. A supervised dog reconnecting instead of exiting risks becoming a SECOND copy racing the new daemon's own freshly-autostarted instance of itself.
+**Why:** Instance ids are minted per daemon lifetime and never persisted (ProcessEntry has no Serialize); a request like `Delete{selector: Id(7)}` transparently re-dialed after a daemon restart could silently land on a totally different process (or none) under a NEW daemon where id 7 means something else - converting a loud, safe failure into a silent, wrong action, which is exactly the shape of shep-deploy's own worst production defects. `&mut self` (rather than interior mutability that would slide back toward transparent silent reconnection) also forces a caller to hold exclusive access at exactly the moment a connection's identity changes, deliberately trading away the crate's own documented Arc<Client>-sharing convenience for that safety property. The clearest evidence that this is the right signature came from a CodeRabbit thread on 2026-09-13 arguing that a predecessor request could still complete after reconnect_within returned: it cannot, because request takes &self and reconnect_within takes &mut self, so the borrow checker excludes the case rather than the actor's shutdown timing having to handle it. ReconnectingClient needs that guarantee and does not get it, since its swap happens in a supervisor task concurrently with &self requests, which is exactly why its own docs have to promise that in-flight requests fail. Client::reconnect never makes the promise because the signature makes it unnecessary. A supervised dog reconnecting instead of exiting risks becoming a SECOND copy racing the new daemon's own freshly-autostarted instance of itself.
 
-`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:2124 (NOT yet shipped - no Client::reconnect method exists in the current tree)`
+**On the pid:** it is the right discriminator, but not because a pid identifies a process. A handover is an `execve`, which KEEPS the pid (`crates/shep-daemon/src/handover/adopt.rs:34` says so in as many words), so a pid comparison reports SameDaemon straight across `shep daemon reload` - and that is correct, because the same handover blob carries `next_id` and every sheep with it (`crates/shep-daemon/src/handover/mod.rs:174`). The pid is preserved by exactly the transition that also preserves the id space, which is the whole argument. A handover the fitness gate refuses falls back to stop-and-start, and Windows has no `execve` at all, so both get a fresh process and a fresh id space: new pid, NewDaemon, correct again. The one gap is pid reuse inside a single reconnect window, which would need the OS to recycle the number in milliseconds; nothing on the wire today could tell that apart, and closing it would mean a new HelloAck field that the handover blob then has to carry too.
+
+`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:2124 (shipped 2026-09-13 in crates/shep-client/src/reconnect.rs)`
 
 ### shep.toml has exactly one writer (the CLI); the daemon only reads, and re-reads on every DogConfig request
 
@@ -1691,6 +1703,37 @@ ensure_home_at creates ~/.shep silently on first use, but a --home/$SHEP_HOME pa
 **Why:** ~/.shep is a name shep chose, so shep may conjure it; an operator-typed path is more likely a typo than intent, and silently creating it would produce a second, empty, invisible flock whose bug report reads as "shep lost all my processes" when the truth is "you're looking at a different flock". Uses DirBuilder::new().mode(DIR_MODE) at creation, not create_dir_all+chmod, to avoid a window where the directory exists world-readable.
 
 `docs/writing-plans/plans/2026-08-17-first-run-experience.md:178`
+
+### A relative home is refused, never absolutized
+
+`resolve_paths` requires a rooted home before any path is derived from it, and
+`dev_home` holds the same line for `$SHEP_DEV_HOME`. Both check the home
+directory they fall back to as well. The refusal quotes the path as typed and
+names its absolute form.
+
+**Why:** The two candidate fixes were refusing and absolutizing, and only one of
+them reaches the defect. A relative home names a different directory from every
+cwd, so absolutizing at each invocation leaves the flock reachable from the one
+directory it was started in; it makes the wrong answer internally consistent
+rather than fixing it. Measured 2026-09-13 against the release binary: a
+shepherd started under `SHEP_HOME=rel-home` in one directory answers
+`shep flock` there and reports "no shepherd running" from the next, while still
+supervising every process it was given. That is the bug report the
+missing-home entry above exists to prevent, reached with no typo at all.
+Absolutizing inside `ShepPaths::resolve` was ruled out separately: its doc
+promises to touch no filesystem, and the absolute form of a relative path is a
+read of this process's own directory, so the gate belongs in the CLI.
+
+The gate is on the resolved root rather than on the knob alone. Both resolvers
+fall back to the home directory when nothing names a home, and a rootless one
+reaches `ShepPaths` carrying the same defect, so it is refused by the same rule
+and named by its own variable instead of a knob the operator never touched.
+Each source is checked separately rather than the joined path, so the refusal
+quotes `ada` rather than `ada/.shep-dev`. Windows reads a path with no drive
+prefix as relative, so `\shep` is refused there for the same reason `rel-home`
+is everywhere.
+
+`verified crates/shep-cli/src/lib.rs (resolve_paths, require_absolute, absolute_form), crates/shep-cli/src/commands/dev.rs (dev_home, require_absolute)`
 
 ### Sheep decoration never appears on error output or after a destructive verb
 

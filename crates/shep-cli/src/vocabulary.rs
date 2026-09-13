@@ -4,7 +4,7 @@
 //! `shep flock` renders a table through `output/`, and `shep lookout`
 //! renders one through ratatui. They must agree about what `online` looks
 //! like, and they cannot share code: their colour types come from different
-//! crates, and `mod lookout` is `#[cfg(unix)]` while `mod output` is not.
+//! crates.
 //!
 //! So this module is the only place that defines a face or a mapping.
 //! Each renderer only binds [`Role`] to its own colour type: `theme.rs` to

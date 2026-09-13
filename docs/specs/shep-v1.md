@@ -97,7 +97,7 @@ config), `flock.json` (state snapshot), `logs/`, `pids/`, `run/` (sockets,
 One spawn path: `tokio::process::Command`, own process group, optional
 uid/gid, piped stdio + one extra pipe fd (the shepherd channel). "Cluster"
 = N instances of the same app, each with `SHEP_INSTANCE` slot id (lowest free
-slot among same-name; `increment_var` supported). Processes a sheep spawns
+slot among same-name). Processes a sheep spawns
 are its **lambs** (the process-tree members): shown in `describe`'s tree
 view, killed with the sheep by the process-group/Job-Object tree kill.
 

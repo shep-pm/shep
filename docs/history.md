@@ -301,13 +301,30 @@ which this said until 2026-09-04: `refuse_version_skew` runs only after
 so it returns `Err` and that check is never reached. `docs/decisions.md`'s entry on this reverses the
 "`PROTOCOL_VERSION` stayed 2" ruling that predates it.
 
-**Verb count: 41 generated, 42 listed, and the difference is `help`.**
-`./web/scripts/generate-cli-reference.sh` prints its own number every time it
-runs, and its `VERBS` array holds 41 because it does not generate a page for
-`help`. `shep --help`'s grouped listing shows 42 because it does. Both are
-right about different questions, so neither is a bug to fix; check which one is
-being asked before changing either. README.md deliberately quotes the grouping
-without a count, so there is no third number to keep in step.
+**Verb count is three questions, and this line used to answer two of them.**
+It said "41 generated, 42 listed", and explained the first by saying the
+`VERBS` array holds 41 too. That was true on 2026-09-07 and wrong the next
+day: `import pm2` and `import env` took their own array entries on 2026-09-08,
+because a subcommand's own flags need their own `--help` block, so every
+subcommand takes an entry alongside the command hosting it. The array has
+counted entries rather than verbs ever since, so the number
+`./web/scripts/generate-cli-reference.sh` prints at the end of a run stopped
+matching the generated count and became the largest of the three. Verbs kept
+being added in the meantime, which moved all three again. A measurement on
+2026-09-13, before `secret`'s own subcommands reached the array, put them at 42
+generated, 43 listed and 44 printed, recorded here only to show that all three
+had parted.
+
+Neither file keeps a count current now. `CLAUDE.md` describes the three
+questions and answers none of them, and tests in
+`crates/shep-cli/src/cli.rs` hold the relationships instead:
+`every_visible_verb_appears_in_exactly_one_help_group` pins the listing
+against clap's own subcommands, and
+`every_visible_verb_reaches_the_docs_site_generator` pins the generator
+against every visible command path at every depth, hidden subtrees and `help`
+left out. The three questions stay genuinely different, which was
+this paragraph's original point. README.md still quotes the grouping without a
+count.
 
 What's built vs. deferred to v1.1+: [docs/specs/deferred.md](specs/deferred.md).
 
@@ -354,7 +371,10 @@ What that means for anyone editing this workspace:
   the app writes.
 
 The instances redesign merged too: `increment_var` is removed, and refused
-with the replacement named rather than a bare serde error. Env values, args,
+with the replacement named rather than a bare serde error. That refusal was
+itself deleted later, once the pre-release window closed, so the field now
+gets the parser's own unrecognized-key error and `docs/migration.md` carries
+the replacement. Env values, args,
 `out_file` and `err_file` can now carry `{{instance}}` and `{{name}}`
 templates (doubled braces escape a literal brace), `SHEP_INSTANCE` and
 `SHEP_NAME` are always injected and can no longer be set by hand in

@@ -1,13 +1,13 @@
-//! Moving `[dog.<name>]` out of `shep.toml` and into `dogs.toml`, once,
-//! and the one write path `dogs.toml` has.
+//! Moving `[dog.<name>]` out of `shep.toml` and into `dogs.toml`, once.
 //!
 //! [`migrate_dog_sections`] runs at the top of every daemon boot and does
-//! nothing on all but the first. [`forget_dog_section`] is `shep rehome`'s
-//! half. Both hold `dogs.toml`'s own [`ConfigLock`] across the whole
-//! read-modify-write, since each rewrites the entire file; when both locks
-//! are held, `shep.toml`'s is the outer one. `RawDaemonConfig` keeps its
-//! `dog` field so an un-migrated file still parses under
-//! `deny_unknown_fields`.
+//! nothing on all but the first. It is one of two writers `dogs.toml` has:
+//! the other is `shep_daemon::dogs::set_dog_section`, which the config pane
+//! reaches through `Request::SetDogConfig`. Both rewrite the whole file, so
+//! both hold `dogs.toml`'s own [`ConfigLock`] across the read-modify-write;
+//! while both locks are held, `shep.toml`'s is the outer one.
+//! `RawDaemonConfig` keeps its `dog` field so an un-migrated file still
+//! parses under `deny_unknown_fields`.
 
 use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
@@ -77,9 +77,11 @@ pub(crate) fn migrate_dog_sections(paths: &ShepPaths) -> Result<Vec<String>, Dog
         if !missing.is_empty() || incoming.is_empty() {
             return Err(DogMigrationError::SectionsUnreadable { names: missing });
         }
-        // `dogs.toml`'s lock, so the read and merge below are one transaction
-        // against `forget_dog_section`. Nested inside `shep.toml`'s lock,
-        // which `try_edit` holds; that order is the only one taken anywhere.
+        // Take `dogs.toml`'s lock, so the read and merge below are one
+        // transaction against the other writers: a second boot here, and
+        // `dogs::set_dog_section` behind the config pane. It nests inside
+        // `shep.toml`'s, which `try_edit` holds, and that order is the only
+        // one anything takes.
         let _dogs_lock =
             ConfigLock::acquire(&paths.dogs_config).map_err(DogMigrationError::Lock)?;
         // A live document, not a `toml::Table`: a second migration writes into
@@ -117,36 +119,27 @@ pub(crate) fn migrate_dog_sections(paths: &ShepPaths) -> Result<Vec<String>, Dog
     })
 }
 
-/// Removes `name`'s section from `dogs.toml`, answering whether there was
-/// one to remove. A missing file, or no section under `name`, is `Ok(false)`.
+/// Whether `dogs.toml` holds a section for `name`. A missing file is
+/// `Ok(false)`.
 ///
-/// Call only after `shep.toml` is rewritten: the two writes are not one
-/// transaction, and the other order can drop a section while the dog stays
-/// enabled, guaranteed on unix only since `sync_dir` no-ops on Windows.
+/// `shep rehome`'s only interest in this file: it forgets the adoption and
+/// leaves the settings, so the answer decides whether there is anything to
+/// tell the operator it kept. Takes no lock and writes nothing, so a
+/// section appearing or vanishing under the read changes a notice, never a
+/// file.
 ///
 /// # Errors
-/// - [`DogMigrationError::ReadDogs`], [`DogMigrationError::Parse`]:
-///   `dogs.toml` cannot be read, or is not valid TOML.
-/// - [`DogMigrationError::Lock`], [`DogMigrationError::Write`]: the lock
-///   could not be taken, or the staged write failed.
-pub(crate) fn forget_dog_section(path: &Path, name: &str) -> Result<bool, DogMigrationError> {
-    // Held across the read, the removal and the rename: this is a whole-file
-    // read-modify-write, so two unserialised `shep rehome` calls lose one of
-    // the two removals. No other lock is taken here, so it cannot deadlock.
-    let _lock = ConfigLock::acquire(path).map_err(DogMigrationError::Lock)?;
-    let mut doc = read_dogs_document(path)?;
-    if doc.remove(name).is_none() {
-        return Ok(false);
-    }
-    write_dogs_config(path, &doc.to_string()).map_err(DogMigrationError::Write)?;
-    Ok(true)
+/// [`DogMigrationError::ReadDogs`] if the file exists and could not be
+/// read, and [`DogMigrationError::Parse`] if it is not valid TOML.
+pub(crate) fn dog_section_exists(path: &Path, name: &str) -> Result<bool, DogMigrationError> {
+    Ok(read_dogs_document(path)?.contains_key(name))
 }
 
 /// Reads `path` as an editable document, treating a missing file as an empty
-/// one. Callers hold `path`'s [`ConfigLock`]: a read outside it is the first
-/// half of a lost update.
+/// one. A caller that goes on to write holds `path`'s [`ConfigLock`]: a read
+/// outside it is the first half of a lost update.
 ///
-/// A [`DocumentMut`] rather than a [`DogsConfig`], since both writers rewrite
+/// A [`DocumentMut`] rather than a [`DogsConfig`], since the writer rewrites
 /// the whole file and an operator hand-edits it: comments and inline tables
 /// survive a `toml_edit` round trip and not a `toml::to_string` of a parsed
 /// map. [`DogsConfig::load`] still gates it, being the stricter parse.
@@ -391,15 +384,6 @@ impl From<ShepTomlError> for DogMigrationError {
 mod tests {
     use super::*;
 
-    /// How many times [`two_rehomes_at_once_both_land`] re-runs its race.
-    ///
-    /// A lost update needs both threads to read before either renames, and
-    /// on this write path (stage, `fsync`, rename) that window is wide, so
-    /// one round is usually enough. Twenty costs a few milliseconds and
-    /// makes the failure a certainty rather than a likelihood, which is
-    /// what a test guarding a race has to be to be worth having.
-    const ROUNDS_OF_CONTENTION: u32 = 20;
-
     fn home_with(shep_toml: &str) -> (tempfile::TempDir, ShepPaths) {
         let dir = tempfile::tempdir().expect("tempdir");
         // `ShepPaths` has no temp-directory constructor and does not grow
@@ -538,122 +522,6 @@ mod tests {
             .mode()
             & 0o777;
         assert_eq!(mode, 0o600, "mode was {mode:o}");
-    }
-
-    /// Two threads sharing a barrier, not two processes: `flock(2)` is
-    /// per-open-file-description, so two threads contend the same as two
-    /// `shep` invocations. Repeated because a race that serialises itself
-    /// once proves nothing.
-    #[test]
-    fn two_rehomes_at_once_both_land() {
-        use std::sync::{Arc, Barrier};
-
-        for round in 0..ROUNDS_OF_CONTENTION {
-            let (_dir, paths) = home_with("");
-            std::fs::write(
-                &paths.dogs_config,
-                "[otel]\nendpoint = \"127.0.0.1:4317\"\n\n[watchdog]\nevery = \"30s\"\n",
-            )
-            .expect("write");
-
-            let gate = Arc::new(Barrier::new(2));
-            let removals: Vec<_> = ["otel", "watchdog"]
-                .into_iter()
-                .map(|name| {
-                    let gate = Arc::clone(&gate);
-                    let path = paths.dogs_config.clone();
-                    std::thread::spawn(move || {
-                        gate.wait();
-                        forget_dog_section(&path, name).expect("rehome")
-                    })
-                })
-                .collect();
-            for removal in removals {
-                assert!(removal.join().expect("thread"), "each found its own dog");
-            }
-
-            let left = read_dogs_document(&paths.dogs_config).expect("read");
-            assert!(
-                left.is_empty(),
-                "round {round}: both removals must survive, {:?} came back",
-                left.iter().map(|(name, _)| name).collect::<Vec<_>>()
-            );
-        }
-    }
-
-    /// A boot migrating a section in while `shep rehome` takes a different
-    /// one out. Whoever renames second wins the whole file, so without the
-    /// shared lock one write silently drops the other.
-    ///
-    /// The migration holds `shep.toml`'s lock while it takes `dogs.toml`'s;
-    /// `forget_dog_section` takes only `dogs.toml`'s, so there is no second
-    /// ordering for the two to deadlock across.
-    #[test]
-    fn a_boot_migration_and_a_rehome_at_once_both_land() {
-        use std::sync::{Arc, Barrier};
-
-        for round in 0..ROUNDS_OF_CONTENTION {
-            let (_dir, paths) = home_with("[dog.metrics]\nbind = \"127.0.0.1:9615\"\n");
-            std::fs::write(
-                &paths.dogs_config,
-                "[otel]\nendpoint = \"127.0.0.1:4317\"\n",
-            )
-            .expect("write");
-
-            let gate = Arc::new(Barrier::new(2));
-            let migrating = {
-                let gate = Arc::clone(&gate);
-                let paths = paths.clone();
-                std::thread::spawn(move || {
-                    gate.wait();
-                    migrate_dog_sections(&paths).expect("migrate")
-                })
-            };
-            let rehoming = {
-                let gate = Arc::clone(&gate);
-                let path = paths.dogs_config.clone();
-                std::thread::spawn(move || {
-                    gate.wait();
-                    forget_dog_section(&path, "otel").expect("rehome")
-                })
-            };
-            let moved = migrating.join().expect("thread");
-            // Whether the rehome found a section to strike is the one
-            // thing the ordering genuinely decides, so it is not asserted
-            // on; the file left behind is the same either way.
-            let _removed = rehoming.join().expect("thread");
-
-            let left = read_dogs_document(&paths.dogs_config).expect("read");
-            // Both orderings must agree on the file left behind, whichever
-            // ran first.
-            assert_eq!(moved, vec!["metrics".to_string()], "round {round}");
-            assert_eq!(
-                left.iter().map(|(name, _)| name).collect::<Vec<_>>(),
-                vec!["metrics"],
-                "round {round}: the migrated section stays and the rehomed one goes"
-            );
-        }
-    }
-
-    /// Exact string: a reparse agrees on the values whether the comments,
-    /// inline table and blank lines survived or not, so only the string
-    /// tells a correct rewrite from a wrecked one.
-    #[test]
-    fn forgetting_a_dog_keeps_every_other_comment_and_shape() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("dogs.toml");
-        std::fs::write(
-            &path,
-            "# hand-written, do not clobber\n[otel]\nendpoint = \"127.0.0.1:4317\"\nheaders = { auth = \"x\" }\n\n[metrics]\nbind = \"127.0.0.1:9615\"\n",
-        )
-        .expect("write");
-
-        assert!(forget_dog_section(&path, "metrics").expect("forget"));
-
-        assert_eq!(
-            std::fs::read_to_string(&path).expect("read"),
-            "# hand-written, do not clobber\n[otel]\nendpoint = \"127.0.0.1:4317\"\nheaders = { auth = \"x\" }\n"
-        );
     }
 
     /// Exact string: it pins both that the destination keeps its own
