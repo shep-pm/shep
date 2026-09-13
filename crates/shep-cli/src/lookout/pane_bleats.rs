@@ -57,7 +57,7 @@ impl MatchKind {
     /// embedded feed words the stream and level axes shorter than
     /// `view::bleats_full` does, on purpose.
     #[must_use]
-    pub fn chip_suffix(self) -> &'static str {
+    pub const fn chip_suffix(self) -> &'static str {
         match self {
             Self::Literal => "",
             Self::Regex => " (regex)",
