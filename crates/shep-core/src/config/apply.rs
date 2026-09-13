@@ -257,7 +257,7 @@ mod tests {
         assert!(is_classified("depends_on"));
     }
 
-    /// fails if the split drifts from what the spec recorded.
+    /// fails if the split drifts unnoticed.
     #[test]
     fn the_split_is_20_5_15_2() {
         let fields = appconfig_fields();

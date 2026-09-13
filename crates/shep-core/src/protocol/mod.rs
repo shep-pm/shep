@@ -70,16 +70,9 @@ mod tests {
     #[test]
     fn a_removed_app_config_field_forced_the_protocol_version_up() {
         // fails if a field is added to or removed from `AppConfig` without
-        // the bump, the same way `depends_on` forced 5, `environment`
-        // forced 8 and dropping `increment_var` forced 9. The retypes of
-        // `Response::Reloading` and `Response::Restarted` forced 6 and 7
-        // for the separate reason that an object is not an array.
-        //
-        // The bump records the shape change; it does not refuse anyone.
-        // `AppConfig` is `#[serde(default)]` and carries no serde
-        // `deny_unknown_fields`, so a peer either side of this boundary
-        // reads the other's config: an extra key is ignored, a missing one
-        // defaults. That is why `MIN_SUPPORTED` stays where it is.
+        // the bump: `depends_on` forced 5, `environment` 8, and dropping
+        // `increment_var` 9. The retypes of `Response::Reloading` and
+        // `Response::Restarted` forced 6 and 7, an object not being an array.
         assert_eq!(PROTOCOL_VERSION, 9);
     }
 
