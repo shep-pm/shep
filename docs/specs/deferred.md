@@ -950,11 +950,12 @@ against [shepherd-channel.md](../shepherd-channel.md) is about forty lines
 and the better trade, which is an odd thing to have to say about one's own
 published crate. The other three languages have nothing at all.
 
-**There is no example anywhere.** `examples/` holds seven Rust binaries and
-four polyglot apps in Go, Node, Python and static HTML, and not one of them
-speaks fd 3. The contract doc has two code blocks and one of them is JSON.
-The wire is specified in prose and demonstrated nowhere, which is the real
-barrier for anyone deciding whether to adopt it.
+**The examples half of this is built.** `examples/` now holds the same
+channel app in all four languages: `chatty.rs` over the `shep-channel`
+crate, and hand-rolled Go, Node and Python under `examples/polyglot/`. Each
+carries both platform arms. What this entry described, an `examples/`
+directory where nothing spoke fd 3 and a contract demonstrated only in
+prose, is no longer the state of the repository.
 
 **Three things a hand-roll gets wrong**, each named in `channel.rs`'s own
 module doc: an app must reply to a `ShepherdMessage::Action` even when it
@@ -972,6 +973,11 @@ diff against files that already exist, and it gives every community app
 something to copy. A library second, for whichever language earns one. The
 four chosen are also the ones the surrounding ecosystem is written in, so
 the examples serve the whole audience on their own.
+
+Both halves of that have moved. The examples exist, and two of the four
+languages have a library: `shep-channel` for Rust and
+`github.com/shep-pm/shep-go/channel` for Go. What is left of this entry is
+JavaScript and Python, where the examples are what an author copies today.
 
 ## A readiness probe cannot verify a reload's replacement
 

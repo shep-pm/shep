@@ -70,12 +70,26 @@ channel = true`}</CodeBlock>
       parse a line with nothing to connect that failure to.
     </p>
     <p>
-      <strong>A Rust app does not have to speak this by hand.</strong> The{" "}
-      <code>shep-channel</code> crate implements everything on this page:
-      discovering the descriptor, framing the JSON, and answering messages
-      the app does not handle itself. Go, JavaScript and Python libraries
-      over the same contract are planned. Whatever language an app is
-      written in, this page is still the contract it has to hold to.
+      <strong>Rust and Go apps do not have to speak this by hand.</strong>{" "}
+      The <code>shep-channel</code> crate and{" "}
+      <code>github.com/shep-pm/shep-go/channel</code> each implement
+      everything on this page: discovering the descriptor, framing the
+      JSON, and answering messages the app does not handle itself.
+      JavaScript and Python libraries over the same contract are planned.
+      Whatever language an app is written in, this page is still the
+      contract it has to hold to.
+    </p>
+    <p>
+      <strong>Four working apps ship in the repository</strong>, one per
+      language, and a Flockfile starts each of them:{" "}
+      <code>examples/src/bin/chatty.rs</code> over the crate, and{" "}
+      <code>go-chatty</code>, <code>node-chatty.js</code> and{" "}
+      <code>python-chatty.py</code> under <code>examples/polyglot/</code>{" "}
+      framing the wire themselves. All four answer the same actions, so one{" "}
+      <code>shep trigger</code> reads the same way against any of them. The
+      three hand-rolled ones carry both platform arms and were run on
+      Windows against a real named pipe. See{" "}
+      <a href="/docs/examples#polyglot">Examples</a>.
     </p>
     <p>
       <strong>Go types are generated from the Rust enums, not typed by

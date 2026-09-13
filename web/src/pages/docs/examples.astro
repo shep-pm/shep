@@ -53,6 +53,16 @@ const rustRows: ExampleRow[] = [
     demonstrates: "The log plane.",
     watch: "shep bleats noisy -f, alternating stdout and stderr lines.",
   },
+  {
+    program: "busy",
+    demonstrates: "Load worth plotting, on two different periods.",
+    watch: "shep lookout's CPU column draws a shape instead of a flat line, and the two rows differ.",
+  },
+  {
+    program: "chatty",
+    demonstrates: "The shepherd channel: readiness, a metric, and custom actions.",
+    watch: "shep trigger chatty ping, then nonsense for the unknown-action reply. shep stop sends a JSON shutdown instead of a signal.",
+  },
 ];
 
 const polyglotRows: ExampleRow[] = [
@@ -77,6 +87,11 @@ const polyglotRows: ExampleRow[] = [
     watch: "curl 127.0.0.1:19097/ after examples/polyglot/go-http/build.sh.",
   },
   {
+    program: "node-chatty / python-chatty / go-chatty",
+    demonstrates: "The shepherd channel framed by hand, three times, both platform arms each.",
+    watch: "shep trigger '*-chatty' ping answers identically in all three, and shep trigger '*chatty' ping adds the Rust one.",
+  },
+  {
     program: "static-site",
     demonstrates: "shep serve — no program of the operator's own.",
     watch: "curl 127.0.0.1:19098/ after shep serve examples/polyglot/static-site --port 19098.",
@@ -86,7 +101,7 @@ const polyglotRows: ExampleRow[] = [
 
 <DocsLayout
   title="Examples"
-  description="Seven small Rust programs and a Flockfile that need only cargo and a Unix host, plus a second, polyglot layer over the top for Node, Bun, Python and Go — watch shep's supervision behaviours happen instead of reading about them."
+  description="Small Rust programs and a Flockfile that need only cargo and a Unix host, plus a second, polyglot layer over the top for Node, Bun, Python and Go — watch shep's supervision behaviours happen instead of reading about them."
   crumb="Start here / Examples"
   activeSlug="examples"
 >
@@ -95,7 +110,7 @@ const polyglotRows: ExampleRow[] = [
     <ReferencePills slug="examples" />
     <p class="lede">
       Every page in this section describes what shep does. This one is
-      seven tiny programs and a Flockfile that make it happen where you can
+      a set of tiny programs and a Flockfile that make it happen where you can
       watch: a probe waiting, a stop signal being ignored, a memory ceiling
       firing, a crash loop backing off. Everything lives under{" "}
       <code>examples/</code> — a workspace member of its own, built by{" "}
@@ -120,7 +135,7 @@ const polyglotRows: ExampleRow[] = [
     </p>
 
     <Callout variant="careful">
-      Unix, not just cargo. Six of the seven build and run anywhere Rust
+      Unix, not just cargo. All but one build and run anywhere Rust
       does, but <code>stubborn</code> traps <code>SIGTERM</code> with a
       Unix signal mask — on any other platform it prints why and exits 1
       instead of running at all. <code>shep start</code> works through a
@@ -144,7 +159,7 @@ const polyglotRows: ExampleRow[] = [
 
     <h2>Run it</h2>
     <p>
-      Two of the seven — <code>leaky</code> and <code>crasher</code> — restart
+      Two of them — <code>leaky</code> and <code>crasher</code> — restart
       on purpose and by design, and <code>shep start</code> registers into
       whatever <code>$SHEP_HOME</code> is already pointed at. The{" "}
       <code>export</code> below is not optional: skip it and this starts
@@ -226,11 +241,12 @@ timeout  = "1s"`}</CodeBlock>
       <code>examples/Flockfile.polyglot.toml</code> needs, per app,{" "}
       <code>node</code>, <code>bun</code>, <code>python3</code>, or{" "}
       <code>go</code> — never all four to run any single one of them.
-      Two setup steps, once, before the runtimes that need them:
+      Three setup steps, once, before the runtimes that need them:
     </p>
     <div class="terminal">
       <div><span class="prompt">$</span> examples/polyglot/setup-venv.sh</div>
       <div><span class="prompt">$</span> examples/polyglot/go-http/build.sh</div>
+      <div><span class="prompt">$</span> examples/polyglot/go-chatty/build.sh</div>
       <div><span class="prompt">$</span> export SHEP_HOME="$(mktemp -d)"</div>
       <div><span class="prompt">$</span> ./target/release/shep start examples/Flockfile.polyglot.toml</div>
     </div>
@@ -355,6 +371,47 @@ args        = ["19096"]`}</CodeBlock>
       <code>go build</code> first, and the Flockfile entry that follows has
       no <code>interpreter</code> field at all — a native executable
       already runs itself.
+    </p>
+
+    <h3>The shepherd channel, in four languages</h3>
+    <p>
+      <code>chatty</code> and the three <code>*-chatty</code> apps are the
+      same program written four times: readiness, a metric, and three
+      custom actions. The Rust one takes the{" "}
+      <code>shep-channel</code> crate; Go, Node and Python frame the wire
+      themselves, because those languages either have no shep library or
+      would need a dependency this directory deliberately avoids. All four
+      set <code>channel</code>, <code>wait_ready</code> and{" "}
+      <code>shutdown_with_message</code>, so all three of the fields that
+      open a channel are visible in one entry.
+    </p>
+    <div class="terminal">
+      <div><span class="prompt">$</span> ./target/release/shep trigger '*chatty' ping</div>
+      <div>ID  NAME           OUTCOME  DETAIL</div>
+      <div>20  chatty         replied  pong from rust pid=40076, up 7.1s</div>
+      <div>10  go-chatty      replied  pong from go pid=40075, up 7.1s</div>
+      <div>8   node-chatty    replied  pong from node pid=40077, up 7.1s</div>
+      <div>9   python-chatty  replied  pong from python pid=40078, up 7.1s</div>
+    </div>
+    <p>
+      Trigger a name none of them knows and every one still answers, which
+      is the rule the contract cares about most: an operator's typo costs
+      them a reply rather than the whole <code>action_timeout</code>.
+    </p>
+    <div class="terminal">
+      <div><span class="prompt">$</span> ./target/release/shep trigger '*chatty' nonsense</div>
+      <div>ID  NAME           OUTCOME  DETAIL</div>
+      <div>20  chatty         replied  unknown action: nonsense</div>
+      <div>10  go-chatty      replied  unknown action: nonsense</div>
+      <div>8   node-chatty    replied  unknown action: nonsense</div>
+      <div>9   python-chatty  replied  unknown action: nonsense</div>
+    </div>
+    <p class="fine">
+      <code>examples/polyglot/go-chatty/build.sh</code> compiles the Go one,
+      and refuses to build if its copy of shep's generated Go wire types has
+      drifted from the canonical file. See{" "}
+      <a href="/docs/shepherd-channel">The shepherd channel</a> for the
+      contract all four hold to.
     </p>
 
     <h3>shep serve, not an app</h3>
