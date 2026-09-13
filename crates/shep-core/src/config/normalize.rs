@@ -208,25 +208,33 @@ fn expand_paths(app: &mut AppConfig, home: Option<&Path>) -> Result<(), Normaliz
 /// - [`NormalizeError::SharedLogPath`]: `out_file` or `err_file` renders to the same path for two instances.
 /// - [`NormalizeError::TildeUser`]: a path field names another user's `~user` home.
 /// - [`NormalizeError::NoHomeForTilde`]: a path field expands `~/` but no home directory could be found.
+/// - [`NormalizeError::NoShepHome`]: a templated value carries `{{SHEP_HOME}}` but no shep home could be found.
 /// - [`NormalizeError::SelfDependency`]: an app names itself in `depends_on`.
 /// - [`NormalizeError::InstanceDependency`]: a `depends_on` entry is written `name:slot`.
 pub fn normalize(app: AppConfig) -> Result<ResolvedApp, NormalizeError> {
-    normalize_with_home(app, std::env::home_dir().as_deref())
+    let home = std::env::home_dir();
+    let shep_home = crate::paths::shep_home(&|key| std::env::var(key).ok(), home.as_deref());
+    normalize_with_home(app, home.as_deref(), shep_home.as_deref())
 }
 
-/// [`normalize`], with the home directory supplied rather than read.
+/// [`normalize`], with both home directories supplied rather than read.
 ///
-/// A parameter so the `~/` expansion above is testable without mutating the
+/// Parameters so the `~/` expansion above is testable without mutating the
 /// process environment, which is racy under a parallel `cargo test`. This is
 /// also the seam that matters for correctness rather than only for tests:
 /// the daemon may run as a different user than the CLI, so `~` has to be
 /// resolved where the config is normalised, not where it is executed.
+///
+/// `shep_home` arrives the same way and for the same reason: it is the
+/// directory `{{SHEP_HOME}}` expands to, and reading it inside the renderer
+/// would resolve it wherever the value happened to be rendered.
 ///
 /// # Errors
 /// The same set [`normalize`] documents.
 pub fn normalize_with_home(
     mut app: AppConfig,
     home: Option<&Path>,
+    shep_home: Option<&Path>,
 ) -> Result<ResolvedApp, NormalizeError> {
     if app.name.is_empty() {
         return Err(NormalizeError::MissingName);
@@ -257,14 +265,14 @@ pub fn normalize_with_home(
         });
     }
     for (key, value) in &app.env {
-        validate_template(&app.name, &format!("env.{key}"), value)?;
+        validate_template(&app.name, &format!("env.{key}"), value, shep_home)?;
     }
     for (index, value) in app.args.iter().enumerate() {
-        validate_template(&app.name, &format!("args[{index}]"), value)?;
+        validate_template(&app.name, &format!("args[{index}]"), value, shep_home)?;
     }
     for (field, value) in [("out_file", &app.out_file), ("err_file", &app.err_file)] {
         if let Some(value) = value {
-            validate_template(&app.name, field, value)?;
+            validate_template(&app.name, field, value, shep_home)?;
             if crate::config::template::holds_secret(value) {
                 return Err(NormalizeError::SecretInLogPath {
                     name: app.name.clone(),
@@ -292,8 +300,8 @@ pub fn normalize_with_home(
             // one literal path for every instance, which is exactly the
             // collision this refuses. Two slots that render alike collide.
             if let Some(path) = path
-                && crate::config::template::render_positional(path, &app.name, 0)
-                    == crate::config::template::render_positional(path, &app.name, 1)
+                && crate::config::template::render_positional(path, &app.name, 0, shep_home)
+                    == crate::config::template::render_positional(path, &app.name, 1, shep_home)
             {
                 return Err(NormalizeError::SharedLogPath {
                     name: app.name.clone(),
@@ -402,21 +410,39 @@ pub fn normalize_with_home(
     Ok(ResolvedApp { config: app })
 }
 
-/// Validates one `{{instance}}`/`{{name}}` template value, naming `field` in
-/// any rejection so the user knows which entry to edit.
+/// Validates one template value, naming `field` in any rejection so the user
+/// knows which entry to edit.
+///
+/// The `{{SHEP_HOME}}` check lives here rather than beside the log paths
+/// because all four templated field kinds run through this one function, and
+/// a value nothing can expand is as broken in an `env` entry as in a path.
 ///
 /// # Errors
-/// [`NormalizeError::BadTemplate`] if `value` carries a `{{...}}` this
-/// grammar does not define, or a `{{` this value never closes. Both of
-/// [`crate::config::template::validate`]'s own rejections map here, so the
-/// two are told apart by the rendered `reason` the variant carries rather
-/// than by the variant.
-fn validate_template(name: &str, field: &str, value: &str) -> Result<(), NormalizeError> {
+/// - [`NormalizeError::BadTemplate`] if `value` carries a `{{...}}` this
+///   grammar does not define, or a `{{` this value never closes. Both of
+///   [`crate::config::template::validate`]'s own rejections map here, so the
+///   two are told apart by the rendered `reason` the variant carries rather
+///   than by the variant.
+/// - [`NormalizeError::NoShepHome`] if `value` carries a `{{SHEP_HOME}}` and
+///   `shep_home` is `None`.
+fn validate_template(
+    name: &str,
+    field: &str,
+    value: &str,
+    shep_home: Option<&Path>,
+) -> Result<(), NormalizeError> {
     crate::config::template::validate(value).map_err(|reason| NormalizeError::BadTemplate {
         name: name.to_string(),
         field: field.to_string(),
         reason: reason.to_string(),
-    })
+    })?;
+    if shep_home.is_none() && crate::config::template::holds_shep_home(value) {
+        return Err(NormalizeError::NoShepHome {
+            name: name.to_string(),
+            field: field.to_string(),
+        });
+    }
+    Ok(())
 }
 
 /// Validates one of an app's two watch glob lists, rejecting any pattern
@@ -658,6 +684,17 @@ pub enum NormalizeError {
         /// Which field carried it.
         field: &'static str,
     },
+    /// A value carries `{{SHEP_HOME}}` and no shep home could be determined.
+    ///
+    /// The tilde's condition, one token over: nothing named a `$SHEP_HOME`
+    /// and there was no home directory to put the default under.
+    NoShepHome {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+        /// Which field carried it. Owned rather than `&'static str`, since
+        /// an `env` key and an `args` index are both spelled at runtime.
+        field: String,
+    },
     /// `watch_delay` is `0`, which would spin the debouncer's own OS thread.
     /// Carries the app name.
     ZeroWatchDelay {
@@ -814,6 +851,11 @@ impl fmt::Display for NormalizeError {
                 "`{name}`: {field} begins with `~/` but no home directory could be found. \
                  Set $HOME, or write the path out in full."
             ),
+            Self::NoShepHome { name, field } => write!(
+                f,
+                "`{name}`: {field} carries `{{{{SHEP_HOME}}}}` but no shep home could be \
+                 found. Set $SHEP_HOME, or write the path out in full."
+            ),
             Self::WatchWithoutCwd { name } => {
                 write!(f, "sheep `{name}` has watch = true but no cwd to watch")
             }
@@ -871,6 +913,97 @@ mod tests {
     use super::*;
     use crate::config::{LevelRule, LevelRuleError, LineLevel};
 
+    /// A shep home for the cases below that never mention one, so a fixture
+    /// growing a `{{SHEP_HOME}}` later reads as the token rather than as a
+    /// refusal.
+    fn shep_home_fixture() -> Option<&'static Path> {
+        Some(Path::new("/home/ada/.shep"))
+    }
+
+    /// The token is refused where nothing could expand it, rather than
+    /// reaching a child as a filename with braces in it. Every templated
+    /// field kind, since one shared validator sees all four.
+    #[test]
+    fn shep_home_with_no_shep_home_is_refused_in_every_templated_field() {
+        for (field, mutate) in [
+            (
+                "out_file",
+                (|app: &mut AppConfig| {
+                    app.out_file = Some("{{SHEP_HOME}}/logs/out.log".to_string());
+                }) as fn(&mut AppConfig),
+            ),
+            ("err_file", |app| {
+                app.err_file = Some("{{SHEP_HOME}}/logs/err.log".to_string());
+            }),
+            ("env.DATA_DIR", |app| {
+                app.env
+                    .insert("DATA_DIR".to_string(), "{{SHEP_HOME}}/data".to_string());
+            }),
+            ("args[0]", |app| {
+                app.args = vec!["--state={{SHEP_HOME}}/state".to_string()];
+            }),
+        ] {
+            let mut app = AppConfig::minimal("web", "/srv/server.js");
+            mutate(&mut app);
+            let err = normalize_with_home(app, Some(Path::new("/home/ada")), None)
+                .expect_err("nothing to expand it against");
+            assert!(
+                matches!(&err, NormalizeError::NoShepHome { field: got, .. } if got == field),
+                "{field}: {err:?}"
+            );
+            let rendered = err.to_string();
+            assert!(rendered.contains("$SHEP_HOME"), "names the fix: {rendered}");
+            assert!(
+                !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
+                "no em or en dash in copy a user reads: {rendered}"
+            );
+        }
+    }
+
+    #[test]
+    fn shep_home_is_accepted_once_there_is_one() {
+        let mut app = AppConfig::minimal("web", "/srv/server.js");
+        app.out_file = Some("{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log".to_string());
+        app.env
+            .insert("DATA_DIR".to_string(), "{{SHEP_HOME}}/data".to_string());
+        app.args = vec!["--state={{SHEP_HOME}}/state".to_string()];
+        let resolved = normalize_with_home(app, Some(Path::new("/home/ada")), shep_home_fixture())
+            .expect("every field accepts it");
+        // Stored as written: the token expands at spawn, per instance, not
+        // here. Unlike `~`, which `expand_paths` resolves in place.
+        assert_eq!(
+            resolved.config().out_file.as_deref(),
+            Some("{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log")
+        );
+    }
+
+    /// The collision check reads the rendered path, and `{{SHEP_HOME}}`
+    /// renders alike for every slot, so a path carrying only that one still
+    /// collides. Same rule `{{name}}` alone already falls under.
+    #[test]
+    fn a_shep_home_log_path_still_needs_an_instance_token() {
+        let mut app = AppConfig::minimal("web", "/srv/server.js");
+        app.instances = 2;
+        app.out_file = Some("{{SHEP_HOME}}/logs/{{name}}-out.log".to_string());
+        let err = normalize_with_home(app, Some(Path::new("/home/ada")), shep_home_fixture())
+            .expect_err("both slots render one path");
+        assert!(matches!(
+            err,
+            NormalizeError::SharedLogPath {
+                field: "out_file",
+                ..
+            }
+        ));
+
+        let mut app = AppConfig::minimal("web", "/srv/server.js");
+        app.instances = 2;
+        app.out_file = Some("{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log".to_string());
+        assert!(
+            normalize_with_home(app, Some(Path::new("/home/ada")), shep_home_fixture()).is_ok(),
+            "the slot tells them apart"
+        );
+    }
+
     /// All four path fields expand `~/`, and expanding some but not others
     /// would be worse than expanding none: it teaches that tildes work and
     /// then fails where the operator has no reason to suspect it.
@@ -882,7 +1015,8 @@ mod tests {
         app.out_file = Some("~/logs/out.log".to_string());
         app.err_file = Some("~/logs/err.log".to_string());
 
-        let resolved = normalize_with_home(app, Some(home)).expect("all four expand");
+        let resolved = normalize_with_home(app, Some(home), Some(&home.join(".shep")))
+            .expect("all four expand");
         let c = resolved.config();
         // Expectations are built with `join` rather than written as literals:
         // the separator is `/` here and `\` on Windows, and hardcoding one
@@ -905,7 +1039,8 @@ mod tests {
         app.out_file = Some("~/o".to_string());
         app.err_file = Some("~/e".to_string());
 
-        let resolved = normalize_with_home(app, Some(home)).expect("expands");
+        let resolved =
+            normalize_with_home(app, Some(home), Some(&home.join(".shep"))).expect("expands");
         let c = resolved.config();
         let expanded = [
             ("script", Some(c.script.as_str())),
@@ -935,8 +1070,8 @@ mod tests {
     #[test]
     fn a_path_without_a_tilde_is_left_exactly_as_written() {
         let app = AppConfig::minimal("web", "./server.js");
-        let resolved =
-            normalize_with_home(app, Some(Path::new("/home/ada"))).expect("no tilde, no change");
+        let resolved = normalize_with_home(app, Some(Path::new("/home/ada")), shep_home_fixture())
+            .expect("no tilde, no change");
         assert_eq!(resolved.config().script, "./server.js");
     }
 
@@ -945,7 +1080,7 @@ mod tests {
     #[test]
     fn another_users_home_is_refused_rather_than_resolved() {
         let app = AppConfig::minimal("web", "~deploy/app/server.js");
-        let err = normalize_with_home(app, Some(Path::new("/home/ada")))
+        let err = normalize_with_home(app, Some(Path::new("/home/ada")), shep_home_fixture())
             .expect_err("~user/ must not resolve");
         assert!(
             matches!(err, NormalizeError::TildeUser { field, .. } if field == "script"),
@@ -967,7 +1102,8 @@ mod tests {
     #[test]
     fn a_dollar_variable_is_not_expanded() {
         let app = AppConfig::minimal("web", "$HOME/server.js");
-        let resolved = normalize_with_home(app, Some(Path::new("/home/ada"))).expect("left alone");
+        let resolved = normalize_with_home(app, Some(Path::new("/home/ada")), shep_home_fixture())
+            .expect("left alone");
         assert_eq!(resolved.config().script, "$HOME/server.js");
     }
 
@@ -976,7 +1112,7 @@ mod tests {
     #[test]
     fn a_tilde_with_no_home_is_an_error_not_a_literal_path() {
         let app = AppConfig::minimal("web", "~/server.js");
-        let err = normalize_with_home(app, None).expect_err("nothing to expand against");
+        let err = normalize_with_home(app, None, None).expect_err("nothing to expand against");
         assert!(
             matches!(err, NormalizeError::NoHomeForTilde { .. }),
             "{err:?}"

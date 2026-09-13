@@ -49,7 +49,7 @@
           "init": {
             "accepts": [
               "a list of strings, one argument each",
-              "{{instance}}, {{name}}, and {{secret:key}} expand"
+              "{{instance}}, {{name}}, {{SHEP_HOME}} and {{secret:key}} expand"
             ],
             "blurb": "Arguments passed to the script, as a list",
             "group": "inputs",
@@ -219,7 +219,7 @@
             "accepts": [
               "a table of KEY = value pairs",
               "a bare true or 8080, which arrives as text",
-              "{{instance}}, {{name}}, and {{secret:key}} expand in a value"
+              "{{instance}}, {{name}}, {{SHEP_HOME}} and {{secret:key}} expand in a value"
             ],
             "blurb": "Environment variables for this app, layered over the daemon's own",
             "example": "{ NODE_ENV = 'production' }",
@@ -264,7 +264,7 @@
           }
         },
         "err_file": {
-          "description": "Stderr log file (default: `$SHEP_HOME/logs/<name>-<instance>-err.log`; `merge_logs` collapses to `<name>-err.log`)",
+          "description": "Stderr log file (default: `{{SHEP_HOME}}/logs/{{name}}-{{instance}}-err.log`; `merge_logs` collapses to `{{name}}-err.log`)",
           "type": [
             "string",
             "null"
@@ -273,11 +273,11 @@
           "init": {
             "accepts": [
               "a path, relative paths follow cwd",
-              "{{instance}} and {{name}} expand",
+              "{{instance}}, {{name}} and {{SHEP_HOME}} expand",
               "a parent that does not exist yet: warned"
             ],
-            "blurb": "Where stderr goes. Defaults to a file under $SHEP_HOME/logs",
-            "example": "/var/log/my-first-sheep/err.log",
+            "blurb": "Where stderr goes. Written out, the default is {{SHEP_HOME}}/logs/{{name}}-{{instance}}-err.log",
+            "example": "{{SHEP_HOME}}/logs/{{name}}-{{instance}}-err.log",
             "group": "logging",
             "neighbours": [
               {
@@ -286,7 +286,7 @@
               },
               {
                 "field": "merge_logs",
-                "note": "lets instances share one file on purpose"
+                "note": "shares one file, unless this path spells {{instance}} out"
               }
             ],
             "refuses": [
@@ -585,7 +585,7 @@
           }
         },
         "out_file": {
-          "description": "Stdout log file (default: `$SHEP_HOME/logs/<name>-<instance>-out.log`; `merge_logs` collapses to `<name>-out.log`)",
+          "description": "Stdout log file (default: `{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log`; `merge_logs` collapses to `{{name}}-out.log`)",
           "type": [
             "string",
             "null"
@@ -594,11 +594,11 @@
           "init": {
             "accepts": [
               "a path, relative paths follow cwd",
-              "{{instance}} and {{name}} expand",
+              "{{instance}}, {{name}} and {{SHEP_HOME}} expand",
               "a parent that does not exist yet: warned"
             ],
-            "blurb": "Where stdout goes. Defaults to a file under $SHEP_HOME/logs",
-            "example": "/var/log/my-first-sheep/out.log",
+            "blurb": "Where stdout goes. Written out, the default is {{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log",
+            "example": "{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log",
             "group": "logging",
             "neighbours": [
               {
@@ -607,7 +607,7 @@
               },
               {
                 "field": "merge_logs",
-                "note": "lets instances share one file on purpose"
+                "note": "shares one file, unless this path spells {{instance}} out"
               }
             ],
             "refuses": [
