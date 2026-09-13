@@ -1047,4 +1047,52 @@ mod tests {
             .collect();
         assert_eq!(kept, vec!["pool  exhausted"]);
     }
+
+    /// `Matcher` hand-writes `Debug`, and that impl is half of why holding a
+    /// compiled regex on `Filters` was possible at all: a derived one prints
+    /// the compiled half as `Regex(Regex("po+l"))`, so an operator's search
+    /// text would appear twice in every `Filters` dump.
+    ///
+    /// Exact-string, because nothing else pins it. `pane_sheep`'s own
+    /// `Debug` test only ever sees `matcher: None`, so a later derive here
+    /// would change this output and fail nothing.
+    #[test]
+    fn a_matcher_debug_names_its_kind_and_prints_its_text_once() {
+        let mut pane = BleatsPane::new(RowKey::Sheep(9));
+
+        pane.set_match("/po+l/".to_string());
+        assert_eq!(
+            format!("{:?}", pane.filters()),
+            r#"Filters { stream: None, min_level: None, matcher: Some(Matcher { text: "/po+l/", kind: Regex }), order: [Match] }"#
+        );
+
+        pane.set_match("/pool(/".to_string());
+        assert_eq!(
+            format!("{:?}", pane.filters()),
+            r#"Filters { stream: None, min_level: None, matcher: Some(Matcher { text: "/pool(/", kind: Invalid }), order: [Match] }"#
+        );
+    }
+
+    /// The other half: `PartialEq` reads the typed text, since `regex::Regex`
+    /// implements neither `PartialEq` nor `Eq` and the compiled form is a
+    /// pure function of the text anyway.
+    ///
+    /// Worth pinning because an impl answering `true` unconditionally would
+    /// also compile, and would make every `Filters` comparison in the suite
+    /// pass while comparing nothing.
+    #[test]
+    fn filter_sets_compare_by_their_match_text() {
+        let mut one = BleatsPane::new(RowKey::Sheep(9));
+        let mut two = BleatsPane::new(RowKey::Sheep(9));
+        one.set_match("/po+l/".to_string());
+        two.set_match("/po+l/".to_string());
+        assert_eq!(one.filters(), two.filters(), "same text, same axis");
+
+        two.set_match("/po+ls/".to_string());
+        assert_ne!(
+            one.filters(),
+            two.filters(),
+            "different text, different axis"
+        );
+    }
 }
