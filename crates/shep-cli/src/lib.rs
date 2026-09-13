@@ -1180,12 +1180,12 @@ const UNRESOLVED_HOME: &str =
 /// How an operator on this platform names the home directly, for a refusal
 /// that has to say what to fix.
 #[cfg(not(windows))]
-const HOME_KNOB: &str = "--home/$SHEP_HOME";
+pub(crate) const HOME_KNOB: &str = "--home/$SHEP_HOME";
 
 /// How an operator on this platform names the home directly, for a refusal
 /// that has to say what to fix.
 #[cfg(windows)]
-const HOME_KNOB: &str = "--home/%SHEP_HOME%";
+pub(crate) const HOME_KNOB: &str = "--home/%SHEP_HOME%";
 
 /// The variable behind the default home, named by the refusal for a root
 /// that came from there rather than from [`HOME_KNOB`].
