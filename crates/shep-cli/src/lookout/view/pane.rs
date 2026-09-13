@@ -3020,6 +3020,32 @@ mod tests {
         }
     }
 
+    /// [`the_body_never_outgrows_the_height_it_was_given`], at a width
+    /// [`top_lines`] actually draws at.
+    ///
+    /// 120 columns has a panel, so every height in the test above walks
+    /// `grouped_pane_lines_with_panel` with `top_lines` returning empty and
+    /// never reaches the blurb loop's own arithmetic. 89 is one column
+    /// under `panel_width`'s floor, so the blurb draws here and the height
+    /// sweep below crosses `remaining` entering that loop at 0, 1 and 2
+    /// without having to name which height produces which value.
+    #[test]
+    fn the_body_never_outgrows_the_height_it_was_given_with_a_blurb_drawing() {
+        let mut pane = web_pane();
+        for height in 1..=60u16 {
+            pane.set_rows(usize::from(height.saturating_sub(1)));
+            for cursor in [0usize, 7, 20, 38] {
+                pane.move_to_first();
+                pane.move_by(isize::try_from(cursor).unwrap());
+                let text = text_of(&pane_lines(&pane, fixtures::plain(), 89, height));
+                assert!(
+                    text.len() <= usize::from(height),
+                    "height {height}, cursor {cursor}: {text:?}"
+                );
+            }
+        }
+    }
+
     /// Nothing is armed and nothing is in flight, so the slot under the
     /// title carries no question. A filed edit shows in its own row's
     /// value cell, which is where the operator is already looking.
