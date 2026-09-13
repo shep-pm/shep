@@ -119,6 +119,9 @@ impl LevelMatcher {
     /// of the line.
     ///
     /// # Errors
+    /// - [`LevelRuleError::TooManyRules`] if `rules` is longer than this
+    ///   crate's ceiling on how many one app may declare, which the error
+    ///   carries as `limit`.
     /// - [`LevelRuleError::EmptyPattern`] if a rule's pattern is empty.
     /// - [`LevelRuleError::BadPattern`] if a pattern does not compile, or
     ///   compiles to a program over this crate's 1 MiB bound.
