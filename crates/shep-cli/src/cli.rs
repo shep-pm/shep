@@ -1761,16 +1761,66 @@ mod tests {
         Cli::command().debug_assert(); // clap's own structural self-check
     }
 
-    /// fails when a visible verb is missing from the docs site's CLI
-    /// reference generator.
+    /// The generator's `VERBS` array, one entry per element, with a quoted
+    /// multi-word entry like `"secret set"` kept whole.
+    fn listed_verb_paths(generator: &str) -> Vec<String> {
+        let (_, rest) = generator
+            .split_once("VERBS=(")
+            .expect("the generator declares a VERBS array");
+        let (block, _) = rest.split_once(')').expect("the VERBS array closes");
+
+        // Splitting on the quote character puts every quoted entry at an odd
+        // index and everything unquoted at an even one.
+        block
+            .split('"')
+            .enumerate()
+            .flat_map(|(i, chunk)| {
+                if i % 2 == 1 {
+                    vec![chunk.to_string()]
+                } else {
+                    chunk.split_whitespace().map(str::to_string).collect()
+                }
+            })
+            .collect()
+    }
+
+    /// Every visible command path, space-joined, parents before children:
+    /// `secret`, `secret set`, `secret get`, and so on.
     ///
-    /// The generator's `VERBS` array is hand-kept, and regenerating the
-    /// reference refreshes only what that array already names -- so a verb
-    /// left out of it is invisible in the published docs and the generator
-    /// reports success. `style` and `welcome` shipped that way, found
-    /// 2026-08-23 when `init` did the same.
+    /// A hidden command takes its whole subtree with it, which is how the
+    /// `daemon` re-exec target and its own `reload` stay out. `help` is
+    /// clap's own at every depth and the other deliberate omission.
+    fn visible_command_paths(command: &clap::Command) -> Vec<String> {
+        fn walk(command: &clap::Command, prefix: &str, found: &mut Vec<String>) {
+            for sub in command.get_subcommands() {
+                if sub.is_hide_set() || sub.get_name() == "help" {
+                    continue;
+                }
+                let path = if prefix.is_empty() {
+                    sub.get_name().to_string()
+                } else {
+                    format!("{prefix} {}", sub.get_name())
+                };
+                found.push(path.clone());
+                walk(sub, &path, found);
+            }
+        }
+
+        let mut found = Vec::new();
+        walk(command, "", &mut found);
+        found
+    }
+
+    /// fails when a visible verb or subcommand is missing from the docs
+    /// site's CLI reference generator.
     ///
-    /// `help` is clap's own subcommand and the one deliberate omission.
+    /// The generator's `VERBS` array is hand-kept and regenerating the
+    /// reference refreshes only what it already names, so a verb left out
+    /// is invisible on the published site while the generator reports
+    /// success. `style` and `welcome` shipped that way, found 2026-08-23
+    /// when `init` did the same. So did every `shep secret` flag: a host's
+    /// own `--help` names its subcommands without their flags, and this
+    /// walk used to stop at the top level.
     ///
     /// Skips outside the workspace checkout -- see
     /// [`read_workspace_web_file`].
@@ -1781,26 +1831,51 @@ mod tests {
         let Some(generator) = read_workspace_web_file("scripts/generate-cli-reference.sh") else {
             return;
         };
-        const NOT_DOCUMENTED: &[&str] = &["help"];
-
-        let (_, rest) = generator
-            .split_once("VERBS=(")
-            .expect("the generator declares a VERBS array");
-        let (block, _) = rest.split_once(')').expect("the VERBS array closes");
-        let listed: Vec<&str> = block.split_whitespace().collect();
+        let listed = listed_verb_paths(&generator);
 
         let command = Cli::command();
-        let missing: Vec<&str> = command
-            .get_subcommands()
-            .filter(|verb| !verb.is_hide_set())
-            .map(clap::Command::get_name)
-            .filter(|name| !NOT_DOCUMENTED.contains(name) && !listed.contains(name))
+        let missing: Vec<String> = visible_command_paths(&command)
+            .into_iter()
+            .filter(|path| !listed.contains(path))
             .collect();
 
         assert!(
             missing.is_empty(),
             "these verbs would be missing from the published CLI reference: {missing:?}\n\
              add them to VERBS in web/scripts/generate-cli-reference.sh and re-run it"
+        );
+    }
+
+    /// fails when the committed CLI reference has no block for something
+    /// the generator's `VERBS` array names.
+    ///
+    /// The array and the generated file are two separate edits and only the
+    /// first one is typing, so a stale file is the ordinary way this drifts.
+    /// `web/src/data/cliReference.ts` reads its verb list off the
+    /// `@@VERB:...@@` markers rather than keeping a second copy of the
+    /// array, which leaves an entry with no block as a verb the site
+    /// quietly does not have.
+    ///
+    /// Skips outside the workspace checkout -- see
+    /// [`read_workspace_web_file`].
+    #[test]
+    fn every_listed_verb_has_a_block_in_the_committed_reference() {
+        let (Some(generator), Some(reference)) = (
+            read_workspace_web_file("scripts/generate-cli-reference.sh"),
+            read_workspace_web_file("src/data/cli-reference.generated.txt"),
+        ) else {
+            return;
+        };
+
+        let missing: Vec<String> = listed_verb_paths(&generator)
+            .into_iter()
+            .filter(|path| !reference.contains(&format!("\n@@VERB:{path}@@\n")))
+            .collect();
+
+        assert!(
+            missing.is_empty(),
+            "the committed CLI reference has no block for {missing:?}\n\
+             run 'cargo build --release' then ./web/scripts/generate-cli-reference.sh"
         );
     }
 
