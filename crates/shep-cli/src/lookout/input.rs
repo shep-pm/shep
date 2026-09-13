@@ -501,7 +501,16 @@ mod tests {
 
     #[test]
     fn the_digits_one_through_eight_jump_to_a_group() {
-        for (typed, wanted) in [('1', 1_u8), ('4', 4), ('8', 8)] {
+        for (typed, wanted) in [
+            ('1', 1_u8),
+            ('2', 2),
+            ('3', 3),
+            ('4', 4),
+            ('5', 5),
+            ('6', 6),
+            ('7', 7),
+            ('8', 8),
+        ] {
             assert_eq!(press(KeyCode::Char(typed)), Some(KeyPress::Group(wanted)));
         }
     }

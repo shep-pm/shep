@@ -310,7 +310,7 @@ pub enum Scene {
     /// The overlay at 130 columns, the narrowest the box's own border can
     /// still hold.
     KeymapFloor,
-    /// One column below the box's floor, at 128: the widest borderless
+    /// Two columns below the box's floor of 130, at 128: the widest borderless
     /// form, still carrying all four columns.
     KeymapBorderlessWide,
     /// 100 columns: three columns share one bank and the fourth, DOING,
@@ -718,7 +718,7 @@ impl Scene {
             // 130: `overlay::floor_for(126)`, the narrowest width the box's
             // own border can still draw at.
             Self::KeymapFloor => (130, 48),
-            // 128: one below the floor, the widest borderless form that
+            // 128: two below the floor of 130, the widest borderless form that
             // still carries all four columns (`columns_for(128) == 4`).
             Self::KeymapBorderlessWide => (128, 48),
             // 100: `columns_for(100) == 3`, so DOING drops to a bank of

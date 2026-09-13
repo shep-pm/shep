@@ -655,9 +655,16 @@ mod tests {
             .lines()
             .find(|row| row.contains(SHEEP[0]))
             .expect("no sheep row");
+        // `str::find` answers in BYTES and 113 is a character column, so the
+        // byte index is inflated by every multi-byte glyph before it. That
+        // made the old assertion a lower bound rather than a measurement.
+        let column = row
+            .find(SHEEP[0])
+            .map(|at| row[..at].chars().count())
+            .expect("no sheep on the row that contains it");
         assert!(
-            row.find(SHEEP[0]).is_some_and(|at| at >= 113),
-            "the sheep is left of the DOING column: {row:?}"
+            column >= 113,
+            "the sheep starts at column {column}, left of DOING's 113: {row:?}"
         );
     }
 
@@ -779,8 +786,23 @@ mod tests {
             .filter(|row| Group::DRAWN.iter().any(|g| row.contains(g.heading())))
             .collect();
         assert_eq!(heading_rows.len(), 2, "{heading_rows:?}");
-        assert!(heading_rows[0].contains("MOVING") && heading_rows[0].contains("CHANGING"));
-        assert!(heading_rows[1].contains("DOING"));
+        // Every group, asserted by bank rather than a sample of two: at 100
+        // columns the first bank carries three, so naming only MOVING and
+        // CHANGING let a regression drop LOOKING and still pass.
+        for group in [Group::Moving, Group::Looking, Group::Changing] {
+            assert!(
+                heading_rows[0].contains(group.heading()),
+                "{} missing from the first bank: {:?}",
+                group.heading(),
+                heading_rows[0]
+            );
+        }
+        assert!(heading_rows[1].contains(Group::Doing.heading()));
+        assert!(
+            !heading_rows[1].contains(Group::Moving.heading()),
+            "the second bank should hold DOING alone: {:?}",
+            heading_rows[1]
+        );
     }
 
     /// The heights, from the top of the ladder to the refusal.

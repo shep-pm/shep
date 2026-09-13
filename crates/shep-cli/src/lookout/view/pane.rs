@@ -3089,7 +3089,7 @@ mod tests {
         let pane = web_pane();
         let lines = pane_lines(&pane, fixtures::plain(), 89, 40);
         let rows = text_of(&lines);
-        let help = first_field_help(&pane);
+        let help = field_help_under_cursor(&pane);
         let indent = |row: &str| row.len() - row.trim_start().len();
         let header = rows
             .iter()
@@ -3113,11 +3113,11 @@ mod tests {
         let pane = web_pane();
         assert!(panel_width(89).is_none(), "89 must have no panel");
         let lines = pane_lines(&pane, fixtures::plain(), 89, 40);
-        let help = first_field_help(&pane);
+        let help = field_help_under_cursor(&pane);
+        let rows = text_of(&lines);
         assert!(
-            text_of(&lines).iter().any(|row| row.contains(&help)),
-            "no blurb at 89 columns: {:?}",
-            text_of(&lines)
+            rows.iter().any(|row| row.contains(&help)),
+            "no blurb at 89 columns: {rows:?}"
         );
     }
 
@@ -3125,7 +3125,7 @@ mod tests {
     #[test]
     fn the_blurb_follows_the_cursor_with_no_panel() {
         let mut pane = web_pane();
-        let first = first_field_help(&pane);
+        let first = field_help_under_cursor(&pane);
         pane.move_by(1);
         let second = field_help_under_cursor(&pane);
         assert_ne!(first, second, "the fixture needs two differing blurbs");
@@ -3148,17 +3148,12 @@ mod tests {
         let pane = web_pane();
         assert!(panel_width(160).is_some(), "160 must have a panel");
         let lines = pane_lines(&pane, fixtures::plain(), 160, 48);
-        let help = first_field_help(&pane);
+        let help = field_help_under_cursor(&pane);
         let hits = text_of(&lines)
             .iter()
             .filter(|row| row.contains(&help))
             .count();
         assert_eq!(hits, 1, "the blurb is on screen {hits} times, not once");
-    }
-
-    /// The `help` string of the field the pane's cursor starts on.
-    fn first_field_help(pane: &ConfigPane) -> String {
-        field_help_under_cursor(pane)
     }
 
     /// The `help` string of the field under the cursor, whichever it is.
