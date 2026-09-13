@@ -362,11 +362,28 @@ pub(crate) async fn flock_follow(
             // whole. Scrolling beats hiding a sheep.
             Err(_unmeasured) => frame,
         };
-        let _ = streams.out.queue(MoveTo(0, 0));
-        let _ = streams.out.queue(Clear(ClearType::FromCursorDown));
-        let _ = write!(streams.out, "{frame}");
-        let _ = streams.out.flush();
+        // Not discarded. A follow whose terminal has gone (the emulator
+        // closed, an ssh session dropped) writes into a dead descriptor
+        // forever otherwise, and keeps asking the shepherd for a listing it
+        // cannot paint. `write_outcome` keeps a broken pipe at
+        // `ExitCode::Success`, which is the reader leaving rather than a
+        // failure.
+        let painted = paint(streams.out, &frame);
+        if painted.is_err() {
+            return write_outcome(painted);
+        }
     }
+}
+
+/// One redraw's four writes, as one `io::Result`.
+///
+/// Separate so the loop above reads as "paint, and stop if that failed"
+/// rather than four discarded results in a row.
+fn paint(out: &mut dyn io::Write, frame: &str) -> io::Result<()> {
+    out.queue(MoveTo(0, 0))?;
+    out.queue(Clear(ClearType::FromCursorDown))?;
+    write!(out, "{frame}")?;
+    out.flush()
 }
 
 /// One redraw's worth of text: the host line, then the tables [`flock`]
@@ -436,9 +453,31 @@ fn fit_rows(frame: &str, columns: u16, rows: u16) -> String {
     if kept > 0 {
         fitted.push('\n');
     }
-    fitted.push_str(&notice(lines.len() - kept));
+    // `budget - used` rather than the whole notice: a window too narrow to
+    // hold it is the one case the reservation above cannot satisfy, and
+    // printing it whole overruns the budget and scrolls the screen, which is
+    // the single thing this function exists to prevent. Clipped, the frame
+    // stays inside its rows and the operator still reads the leading digits,
+    // which is the part that says how much is missing.
+    fitted.push_str(&clip_rows(
+        &notice(lines.len() - kept),
+        columns,
+        budget.saturating_sub(used),
+    ));
     fitted.push('\n');
     fitted
+}
+
+/// `text` cut to at most `rows` rows at `columns` wide.
+///
+/// Only [`fit_rows`]'s notice reaches this, and only on a window too narrow
+/// to print it whole.
+fn clip_rows(text: &str, columns: usize, rows: usize) -> String {
+    let ceiling = rows.saturating_mul(columns);
+    if width::visible_width(text) <= ceiling {
+        return text.to_owned();
+    }
+    text.chars().take(ceiling).collect()
 }
 
 /// What a trimmed frame says in place of the lines it dropped.
@@ -716,8 +755,9 @@ mod tests {
     /// kept line back" reservation bought one. Measured overruns before the
     /// fix: 12x3, 12x5, 16x3, 20x3, 24x3 and 30x3.
     ///
-    /// A window too narrow to hold even the notice is the one case that
-    /// cannot be satisfied, and it reads as the notice alone.
+    /// Including the window too narrow to hold the notice whole, which is
+    /// the case that used to be skipped here: it is clipped now rather than
+    /// allowed to overrun.
     #[test]
     fn a_trimmed_frame_never_overruns_the_rows_it_was_given() {
         let frame: String = (0..40)
@@ -731,9 +771,6 @@ mod tests {
                     .map(|line| line_rows(line, usize::from(columns)))
                     .sum();
                 let budget = usize::from(rows).saturating_sub(1);
-                if out.lines().count() == 1 {
-                    continue; // the notice alone, which is all that fits
-                }
                 assert!(
                     used <= budget,
                     "{columns}x{rows}: used {used} rows against a budget of {budget}"
