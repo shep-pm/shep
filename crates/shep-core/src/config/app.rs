@@ -603,13 +603,6 @@ pub struct AppConfig {
         "neighbours": [{"field": "cron_restart", "note": "the pattern this zone is read against"}]
     })))]
     pub cron_timezone: Option<String>,
-    /// Removed. Set your own variable to `{{instance}}` in `env` instead.
-    ///
-    /// Kept only so `normalize` can reject it with that instruction: a
-    /// `deny_unknown_fields` serde error would name no replacement. Remove
-    /// in 0.2.
-    #[cfg_attr(feature = "schema", schemars(skip))]
-    pub increment_var: Option<String>,
 }
 
 /// One value an `env` table may carry: a string, or a bare boolean or whole
@@ -778,7 +771,6 @@ impl Default for AppConfig {
             liveness_probe: None,
             watch_options: Vec::new(),
             cron_timezone: None,
-            increment_var: None,
         }
     }
 }

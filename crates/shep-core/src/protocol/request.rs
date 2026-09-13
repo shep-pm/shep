@@ -68,7 +68,7 @@ pub enum SelectorSpec {
     Regex(String),
     /// By fold name
     Fold(String),
-    // Both field names are wire contract, pinned by `request_wire_v8`.
+    // Both field names are wire contract, pinned by `request_wire_v9`.
     /// By app name and instance slot
     ///
     /// On the wire: `{"kind":"instance","value":{"name":"web","slot":2}}`.
@@ -2441,8 +2441,10 @@ mod tests {
 
     /// Additive, so the version does not move. Guards against a reflexive bump.
     #[test]
-    fn the_batch_variant_did_not_move_the_version() {
-        assert_eq!(super::super::PROTOCOL_VERSION, 8);
+    fn the_batch_variant_did_not_raise_the_floor() {
+        // The ceiling's own value is pinned once, by `protocol::tests`, and
+        // moves for reasons that have nothing to do with this variant.
+        // Adding it was additive, so what belongs here is the floor.
         assert_eq!(super::super::MIN_SUPPORTED, 8);
     }
 
@@ -2819,7 +2821,7 @@ mod tests {
                 },
             },
         ];
-        insta::assert_json_snapshot!("request_wire_v8", requests);
+        insta::assert_json_snapshot!("request_wire_v9", requests);
     }
 
     #[test]
@@ -3217,7 +3219,7 @@ mod tests {
                 }),
             },
         ];
-        insta::assert_json_snapshot!("reply_wire_v8", replies);
+        insta::assert_json_snapshot!("reply_wire_v9", replies);
     }
 
     /// Asserts on the JSON, not the struct: a `Vec<String>` cannot say which
@@ -3367,7 +3369,7 @@ mod tests {
             dog_name: None,
         };
         let json = serde_json::to_string(&hello).unwrap();
-        assert_eq!(json, r#"{"client_version":"0.1.0","protocol":8}"#);
+        assert_eq!(json, r#"{"client_version":"0.1.0","protocol":9}"#);
     }
 
     #[test]
@@ -3380,7 +3382,7 @@ mod tests {
         let json = serde_json::to_string(&dog).unwrap();
         assert_eq!(
             json,
-            r#"{"client_version":"0.1.0","protocol":8,"dog_name":"metrics"}"#
+            r#"{"client_version":"0.1.0","protocol":9,"dog_name":"metrics"}"#
         );
         assert_eq!(serde_json::from_str::<Hello>(&json).unwrap(), dog);
     }
@@ -3414,7 +3416,7 @@ mod tests {
         let json = serde_json::to_string(&ack).unwrap();
         assert_eq!(
             json,
-            r#"{"daemon_version":"0.5.0","protocol":8,"pid":1234,"min_supported":8}"#
+            r#"{"daemon_version":"0.5.0","protocol":9,"pid":1234,"min_supported":8}"#
         );
         assert_eq!(serde_json::from_str::<HelloAck>(&json).unwrap(), ack);
     }
@@ -3433,7 +3435,7 @@ mod tests {
         let json = serde_json::to_string(&ack).unwrap();
         assert_eq!(
             json,
-            r#"{"daemon_version":"0.5.0","protocol":8,"pid":1234}"#
+            r#"{"daemon_version":"0.5.0","protocol":9,"pid":1234}"#
         );
         assert!(!json.contains("min_supported"));
     }

@@ -325,11 +325,11 @@ shep is 0.1.x and guarantees no API, so a Flockfile that worked under an
 older shep can stop parsing under a newer one. This release's breaks, and
 what to do about each:
 
-- **`increment_var` is removed.** A Flockfile setting it is refused at
-  `shep start`, naming the field and the replacement: set your own key to
-  `"{{instance}}"` under `[app.env]` instead. `SHEP_INSTANCE` is still
-  always set on every instance regardless, so most apps need no field at
-  all.
+- **`increment_var` is removed.** The field is gone from the config, so a
+  Flockfile setting it no longer parses: `Flockfile names unrecognized
+  key: app.0.increment_var`. Set your own key to `"{{instance}}"` under
+  `[app.env]` instead. `SHEP_INSTANCE` is still always set on every
+  instance regardless, so most apps need no field at all.
 - **A colon is refused in a sheep name.** `:` is now the `name:slot`
   selector's separator, and names also land in log filenames, where a
   colon is the NTFS alternate-data-stream separator. Rename any sheep

@@ -5262,9 +5262,8 @@ impl<R: ProcessRunner> Actor<R> {
                 ApplyGroup::Live => live.push(field),
                 ApplyGroup::NextSpawn => next_spawn.push(field),
                 ApplyGroup::NeedsRespawn => respawn.push(field),
-                // `name` cannot drift, the app having been found by it, and
-                // `increment_var` is refused by `normalize`, so `instances` is
-                // the only structural field that reaches here.
+                // `name` cannot drift, the app having been found by it, so
+                // `instances` is the only structural field that reaches here.
                 ApplyGroup::Structural => instances |= field == "instances",
                 // A group a later shep-core adds. Treated as the table's own
                 // fallback treats an unknown field: the conservative answer
