@@ -79,6 +79,41 @@ pub fn user_home(var: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
     }
 }
 
+/// The directory a shep home defaults to, under the user's own home.
+const DEFAULT_HOME_DIR: &str = ".shep";
+
+/// The shep home directory `$SHEP_HOME` names, or the default under
+/// `home_dir`
+///
+/// `None` only when nothing names a `$SHEP_HOME` and `home_dir` is `None`
+/// too, which is the same condition that leaves a `~/` path unexpandable.
+///
+/// Unlike [`user_home`], an empty `$SHEP_HOME` is taken at its word rather
+/// than read as unset, which is what [`ShepPaths::resolve`] has always done.
+/// No operator reaches that: the CLI refuses an empty `--home` or
+/// `$SHEP_HOME` before either function runs. It matters to a library caller
+/// passing its own lookup, who gets one answer from here and from the
+/// layout rather than two.
+#[must_use]
+pub fn shep_home(env: &dyn Fn(&str) -> Option<String>, home_dir: Option<&Path>) -> Option<PathBuf> {
+    match home_dir {
+        Some(dir) => Some(home_under(env, dir)),
+        None => env("SHEP_HOME").map(PathBuf::from),
+    }
+}
+
+/// [`shep_home`] for a caller that has a home directory, so the answer is
+/// total.
+///
+/// The rule lives here rather than in [`shep_home`] so that
+/// [`ShepPaths::resolve`], which always has one, reaches it without an
+/// `Option` it would have to unwrap through a branch that can never fire.
+fn home_under(env: &dyn Fn(&str) -> Option<String>, home_dir: &Path) -> PathBuf {
+    env("SHEP_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_dir.join(DEFAULT_HOME_DIR))
+}
+
 /// Resolved filesystem layout for one shep home
 ///
 /// All paths are derived from `$SHEP_HOME` (default `<home>/.shep`); nothing
@@ -178,9 +213,7 @@ impl ShepPaths {
     /// unix, [`Self::pipe_name`] on Windows. Everything else is identical.
     #[must_use]
     pub fn resolve(env: &dyn Fn(&str) -> Option<String>, home_dir: &Path) -> Self {
-        let home = env("SHEP_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home_dir.join(".shep"));
+        let home = home_under(env, home_dir);
         let run = home.join("run");
         // `mut` is read only by the `cfg(windows)` block below; on unix the
         // value is returned exactly as built.
@@ -212,6 +245,53 @@ impl ShepPaths {
 
 #[cfg(test)]
 mod tests {
+    /// The one rule `ShepPaths::resolve` and the `{{SHEP_HOME}}` token both
+    /// read, so a value rendered into a log path names the directory the
+    /// rest of the layout was built under.
+    #[test]
+    fn shep_home_prefers_the_variable_and_falls_back_to_the_default() {
+        use std::path::{Path, PathBuf};
+
+        let named = |_: &str| Some("/srv/shep".to_string());
+        let unset = |_: &str| None;
+        let ada = Path::new("/home/ada");
+
+        assert_eq!(
+            super::shep_home(&named, Some(ada)),
+            Some(PathBuf::from("/srv/shep")),
+            "the variable wins over the default"
+        );
+        assert_eq!(
+            super::shep_home(&named, None),
+            Some(PathBuf::from("/srv/shep")),
+            "and needs no home directory of its own"
+        );
+        assert_eq!(
+            super::shep_home(&unset, Some(ada)),
+            Some(ada.join(".shep")),
+            "the default hangs off the user's home"
+        );
+        assert_eq!(
+            super::shep_home(&unset, None),
+            None,
+            "with neither, there is nothing to name"
+        );
+        // The one behaviour that differs from `user_home`, which reads an
+        // empty value as unset. Untested, a regression that filtered
+        // `Some("")` the same way would leave the token and the layout
+        // pointing at different directories and nothing would say so.
+        assert_eq!(
+            super::shep_home(&|_| Some(String::new()), Some(ada)),
+            Some(PathBuf::new()),
+            "an empty value is taken at its word rather than read as unset"
+        );
+        assert_eq!(
+            super::ShepPaths::resolve(&named, ada).home,
+            super::shep_home(&named, Some(ada)).expect("a home directory was given"),
+            "and the layout is built from the same answer"
+        );
+    }
+
     /// Unit-level because no end-to-end case can pin this reliably: Node's
     /// handling of a `\\?\` path differs by version.
     #[cfg(windows)]
