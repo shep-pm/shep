@@ -117,8 +117,14 @@ function parseQueuedAnchors(text: string): string[] {
 
 /**
  * The cuts section's items, which are top-level `- ` bullets rather than
- * paragraphs. Only column-zero bullets: Windows' own sub-bullets are
- * indented two spaces and are detail about one cut, not six more of them.
+ * paragraphs. Only column-zero bullets, so a bullet indented under a cut
+ * reads as detail about that cut rather than another one. Windows used to be
+ * the example and its sub-bullets left the section with it on 2026-08-26, so
+ * nothing in there is indented today and the rule is here for the next one.
+ *
+ * Column zero is only half the scoping. `section` supplies the other half by
+ * ending at the next heading of any depth, which is what keeps a `### `
+ * subsection's own column-zero bullets from landing here as cuts.
  *
  * The anchor is each bullet's head, meaning its text up to the first
  * parenthesis, em dash, or sentence end, with bold and backticks stripped.
