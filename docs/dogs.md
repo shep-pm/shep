@@ -94,12 +94,12 @@ second waits its turn instead of writing back a document it read before
 the first one's edit landed.
 
 `dogs.toml` has a lock of its own on the same terms, and it needs one for
-the same reason: its writers rewrite the whole file rather than a line of
-it. Two of them exist, `shep rehome` and the once-per-home migration a
-boot runs, and each holds that lock across its whole read-edit-write. So
-two backgrounded `shep rehome` calls for two different dogs both land,
-and a rehome that overlaps a boot does not undo the migration or get
-undone by it. A boot that holds both locks takes `shep.toml`'s first.
+the same reason: its one writer rewrites the whole file rather than a
+line of it. That writer is the once-per-home migration a boot runs, and
+it holds the lock across its whole read-edit-write, so two boots at once
+cannot undo each other. A boot that holds both locks takes `shep.toml`'s
+first. Nothing else shep runs writes this file; `shep rehome` reads it
+and leaves it alone.
 
 ## Configuration
 
@@ -355,11 +355,15 @@ started as `shep dog <name>` and read their own name from that argv, but
 neither is a dog anybody writes: they ship inside the binary.
 
 `rehome <name>` is `disable`'s counterpart for a third-party dog: it stops
-it if running and forgets the dog entirely, rather than leaving it
-disabled-but-known the way plain `disable` would. Both files: the
-registration in `shep.toml`, and the dog's own `[<name>]` section in
-`dogs.toml`, webhook URLs and all. `disable` keeps that section on
-purpose; `rehome` is the verb that does not.
+it if running and forgets where its binary lived, rather than leaving it
+disabled-but-known the way plain `disable` would. One file, the
+registration in `shep.toml`. The dog's own `[<name>]` section in
+`dogs.toml` stays where it is, webhook URLs and all, exactly as `disable`
+leaves it: those settings are yours rather than the adoption's, so
+adopting the same dog again finds them waiting. Delete that section by
+hand when you want them gone. The difference from `disable` is the
+adopted path, so bringing the dog back takes a fresh `shep adopt` and not
+an `enable`.
 
 The wire a third-party dog speaks is the same client protocol
 [§6](specs/shep-v1.md#6-wire-protocol-v1--protocol-version-1) pins for

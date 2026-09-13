@@ -401,8 +401,8 @@ pub enum Commands {
     /// and stops it now if a shepherd is running.
     ///
     /// Leaves `[<name>]` in `dogs.toml` in place: the dog's own
-    /// configuration survives a disable/enable cycle. `shep rehome` is the
-    /// verb that forgets a dog entirely.
+    /// configuration survives a disable/enable cycle. `shep rehome` leaves
+    /// it too, and forgets the adoption as well.
     Disable(DogArgs),
     /// Vet a binary shep has never seen and register it as a dog: writes
     /// `[daemon] adopted_dogs` and `[daemon] enabled_dogs` in `shep.toml`,
@@ -419,12 +419,15 @@ pub enum Commands {
     /// passing `args` through untouched — a second invocation mode from
     /// the one the shepherd itself uses to supervise it.
     Adopt(AdoptArgs),
-    /// Forget an adopted dog entirely: stops it if a shepherd is running,
-    /// and removes it from `[daemon] enabled_dogs`, `[daemon]
-    /// adopted_dogs`, and its own `[<name>]` table in `dogs.toml`.
+    /// Forget where an adopted dog's binary lived: stops it if a shepherd
+    /// is running, and removes it from `[daemon] enabled_dogs` and
+    /// `[daemon] adopted_dogs`.
     ///
-    /// `shep disable` stops a dog without forgetting its configuration;
-    /// `rehome` is the verb that forgets it.
+    /// Its `[<name>]` table in `dogs.toml` stays, as it does through a
+    /// `shep disable`: those settings are the operator's, so adopting the
+    /// same dog again finds them waiting. Delete that table by hand to be
+    /// rid of them. Only the adoption differs from `disable`, so recovery
+    /// is a fresh `shep adopt <path>` rather than an `enable`.
     Rehome(DogArgs),
     /// Describe one sheep in detail.
     ///

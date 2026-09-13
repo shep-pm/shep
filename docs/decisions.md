@@ -806,13 +806,13 @@ When a dog dies, the daemon's own bus watcher (at the edge of the supervisor, no
 
 `docs/writing-plans/plans/2026-08-12-shep-phase9-dogs.md:116`
 
-### rehome should keep [dog.<name>]'s operator-written settings, forgetting only the adoption - *unverified*
+### rehome keeps the dog's operator-written settings, forgetting only the adoption
 
 Currently rehome_dog deletes the dog's config table along with removing it from enabled_dogs/adopted_dogs; the maintainer approved (2026-08-26) changing it to forget only the adoption, leaving the [dog.<name>] table (including comments, since it's edited via toml_edit) untouched - so re-adopting the same dog finds its old configuration waiting rather than a blank table.
 
 **Why:** disable_dog's own doc already makes this exact argument for `disable` ("an operator who disables a dog to restart it must not lose the configuration they wrote for it"); the only reason rehome hadn't followed it is that "forget the dog entirely" was read as covering the operator's own file too. The two verbs would still differ meaningfully: disable leaves the binary path in adopted_dogs (so the next enable brings it straight back); rehome forgets that, so recovery needs a fresh `shep adopt <path>`.
 
-`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:91 (NOT yet shipped - crates/shep-cli/src/commands/shep_toml.rs:383-385 still deletes the [dog.<name>] table as of the current tree)`
+`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:91`. Shipped 2026-09-13. Two deletions had to go, not the one the entry named: `ShepToml::rehome_dog` struck a `[dog.<name>]` an un-migrated shep.toml still carried, and `commands::dogs::rehome` struck the `[<name>]` in dogs.toml where one lives now, so keeping only the second would have made the outcome depend on whether a daemon had booted since the 2026-09-03 move. `dog_migration::forget_dog_section` went with them, leaving the boot migration as dogs.toml's only writer; its two contention tests went too, and nothing now covers ConfigLock under concurrency. A rehome that leaves a section behind says so on stderr, because "forget an adopted dog entirely" no longer describes what the verb does.
 
 ### Restart-loop detection is two independent rule kinds
 
