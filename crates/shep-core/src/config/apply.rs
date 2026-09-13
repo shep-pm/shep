@@ -233,6 +233,21 @@ mod tests {
         );
     }
 
+    /// fails if the table keeps a row for a field `AppConfig` no longer
+    /// has. `every_appconfig_field_has_a_group` checks the other
+    /// direction only, so without this one a removed field's row survives
+    /// every run: the count tests iterate the struct, never the table.
+    #[test]
+    fn every_group_row_names_a_real_field() {
+        let fields = appconfig_fields();
+        let strays: Vec<&str> = FIELDS
+            .iter()
+            .map(|(name, _)| *name)
+            .filter(|name| !fields.contains_key(*name))
+            .collect();
+        assert!(strays.is_empty(), "FIELDS rows naming no field: {strays:?}");
+    }
+
     #[test]
     fn kill_signal_reaches_the_next_spawn_not_the_next_kill() {
         assert_eq!(apply_group("kill_signal"), ApplyGroup::NextSpawn);
