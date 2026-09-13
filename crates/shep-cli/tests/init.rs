@@ -2,7 +2,7 @@
 //! `commands::reap`'s signal forwarding and relayed exit status have no
 //! coverage elsewhere.
 //!
-//! `#![cfg(unix)]`: `commands` itself is unix only. An integration test
+//! `#![cfg(unix)]`: `commands::reap` is unix only. An integration test
 //! file is its own compilation unit. Without the guard, `--all-targets`
 //! would build this on Windows.
 //!

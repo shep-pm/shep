@@ -7,8 +7,10 @@
 //! the OS serialize the writes. Same guarantee a shell's `2>&1` gives,
 //! without a pty.
 //!
-//! `#![cfg(unix)]`: `lookout` is unix only, so `--all-targets` would
-//! otherwise build this file on Windows.
+//! `#![cfg(unix)]`: not a portability gate, since nothing here needs a Unix
+//! API and `lookout` builds on Windows. On Windows `execute!` emits the
+//! escape only when crossterm's ANSI probe says the terminal takes one, and
+//! otherwise calls a console API that writes no bytes for this to find.
 
 #![cfg(unix)]
 
