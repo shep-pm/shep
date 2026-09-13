@@ -1691,8 +1691,8 @@ mod tests {
     }
 
     /// fails if the offer to drop `--home` stops naming the path a unix
-    /// operator would type. The Windows spelling is pinned below and this
-    /// side was not pinned at all.
+    /// operator would type. Its Windows counterpart pins the same line
+    /// below.
     #[cfg(not(windows))]
     #[test]
     fn the_missing_home_refusal_names_the_unix_default_home() {

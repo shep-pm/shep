@@ -1686,7 +1686,7 @@ render_boxed drops columns by descending priority until the table fits the termi
 
 ### Default $SHEP_HOME is auto-created; an explicitly-named missing home is refused, never created
 
-ensure_home_at creates ~/.shep silently on first use, but a --home/$SHEP_HOME path that's missing is refused with a message pointing at `mkdir -p` and at dropping back to the default.
+ensure_home_at creates ~/.shep silently on first use, but a --home/$SHEP_HOME path that's missing is refused with a message pointing at a `mkdir` this platform can run and at dropping back to the default.
 
 **Why:** ~/.shep is a name shep chose, so shep may conjure it; an operator-typed path is more likely a typo than intent, and silently creating it would produce a second, empty, invisible flock whose bug report reads as "shep lost all my processes" when the truth is "you're looking at a different flock". Uses DirBuilder::new().mode(DIR_MODE) at creation, not create_dir_all+chmod, to avoid a window where the directory exists world-readable.
 
