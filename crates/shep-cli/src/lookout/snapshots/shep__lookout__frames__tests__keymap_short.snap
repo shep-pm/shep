@@ -1,0 +1,20 @@
+---
+source: crates/shep-cli/src/lookout/frames.rs
+expression: render_text(&buffer)
+---
+MOVING                          LOOKING                         CHANGING                        DOING                                                           
+j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane    x            stop                                               
+g/G home/end first / last       b            feed, full screen  space        cycle a value      R            restart                                            
+J/K          next / prev sheep  F            gather by fold     d            restore default    L            reload                                             
+ctrl-d/u     page the feed      z            collapse a fold    u            undo the edit                                                                      
+←/→          environment tab    o            out / err / both   s            shepherd settings                                                                  
+tab          next config group  m            minimum level      S            secrets                                                                            
+1-8          jump to a group    f            follow the tail    D            delete a secret                                                                    
+n/N          next / prev match  w            wrap long lines    c            leave it running                                                                   
+↵            open selection     /            filter, or match   a-z 0-9      types into a box                                                                   
+esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop                                                                  
+                                v            reveal for 10s                                                                                                     
+                                y            copy the value                                                                                                     
+                                                                                                                                                                
+ the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                                                      
+ h or ?  closes this  ·  q  ctrl-c  quits lookout
