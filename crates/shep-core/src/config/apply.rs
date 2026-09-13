@@ -99,8 +99,6 @@ const FIELDS: &[(&str, ApplyGroup)] = &[
     ("shutdown_with_message", ApplyGroup::NeedsRespawn),
     ("name", ApplyGroup::Structural),
     ("instances", ApplyGroup::Structural),
-    // Read only by `normalize` to refuse it by name.
-    ("increment_var", ApplyGroup::Structural),
 ];
 
 /// The group `field` belongs to.
@@ -261,13 +259,13 @@ mod tests {
 
     /// fails if the split drifts from what the spec recorded.
     #[test]
-    fn the_split_is_20_5_15_3() {
+    fn the_split_is_20_5_15_2() {
         let fields = appconfig_fields();
         let count = |want: ApplyGroup| fields.keys().filter(|k| apply_group(k) == want).count();
         assert_eq!(count(ApplyGroup::Live), 20, "Live");
         assert_eq!(count(ApplyGroup::NextSpawn), 5, "NextSpawn");
         assert_eq!(count(ApplyGroup::NeedsRespawn), 15, "NeedsRespawn");
-        assert_eq!(count(ApplyGroup::Structural), 3, "Structural");
+        assert_eq!(count(ApplyGroup::Structural), 2, "Structural");
     }
 
     #[test]

@@ -646,10 +646,10 @@ question here for a contract to answer:
 ```
 $ shep --version
 shep 0.1.24
-speaks protocol 8, accepts 8 and newer
+speaks protocol 9, accepts 8 and newer
 $ shep dog metrics --version
 shep-dog 0.1.24
-speaks protocol 8, accepts 8 and newer
+speaks protocol 9, accepts 8 and newer
 ```
 
 Neither prints the `shep-protocol:` line an external dog's probe answers

@@ -16,7 +16,7 @@
 //! has never heard of it decodes [`Request::Unrecognized`] and refuses by
 //! name.
 //!
-//! A `*_wire_v8` test pins today's shape. A
+//! A `*_wire_v9` test pins today's shape. A
 //! `v1_*_fixture_still_deserializes` test pins an old peer's payload and
 //! never renames.
 
@@ -52,7 +52,7 @@ pub mod channel {
 /// renaming, or retyping anything serialized bumps it, recorded in the
 /// CHANGELOG. Byte fixtures in each protocol module pin the deserialize
 /// direction.
-pub const PROTOCOL_VERSION: u32 = 8;
+pub const PROTOCOL_VERSION: u32 = 9;
 
 /// The oldest protocol this build accepts from a peer.
 ///
@@ -68,15 +68,19 @@ mod tests {
     use super::{MIN_SUPPORTED, PROTOCOL_VERSION};
 
     #[test]
-    fn a_new_app_config_field_forced_the_protocol_version_up() {
-        // fails if a field is added to `AppConfig` without the bump, the
-        // same way `depends_on` forced 5 and `environment` forced 8. That
-        // struct is `deny_unknown_fields`, so an older peer refuses the
-        // whole payload rather than ignoring a key it does not know, and
-        // the handshake is the only place that can say so. The retypes of
+    fn a_removed_app_config_field_forced_the_protocol_version_up() {
+        // fails if a field is added to or removed from `AppConfig` without
+        // the bump, the same way `depends_on` forced 5, `environment`
+        // forced 8 and dropping `increment_var` forced 9. The retypes of
         // `Response::Reloading` and `Response::Restarted` forced 6 and 7
         // for the separate reason that an object is not an array.
-        assert_eq!(PROTOCOL_VERSION, 8);
+        //
+        // The bump records the shape change; it does not refuse anyone.
+        // `AppConfig` is `#[serde(default)]` and carries no serde
+        // `deny_unknown_fields`, so a peer either side of this boundary
+        // reads the other's config: an extra key is ignored, a missing one
+        // defaults. That is why `MIN_SUPPORTED` stays where it is.
+        assert_eq!(PROTOCOL_VERSION, 9);
     }
 
     #[test]

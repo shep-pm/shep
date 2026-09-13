@@ -19,7 +19,7 @@ go for the full argument. The commit that removed them names itself.
 
 ## Contents
 
-- [Core types and the daemon's shape](#core-types-and-the-daemons-shape) (4)
+- [Core types and the daemon's shape](#core-types-and-the-daemons-shape) (5)
 - [The CLI surface](#the-cli-surface) (4)
 - [Supervision and lifecycle](#supervision-and-lifecycle) (17)
 - [The log plane](#the-log-plane) (8)
@@ -43,6 +43,16 @@ go for the full argument. The commit that removed them names itself.
 - [Following the flock](#following-the-flock) (3)
 
 ## Core types and the daemon's shape
+
+### increment_var is deleted, not kept as a refusal that names its replacement
+
+The field is gone from `AppConfig`. A Flockfile setting it now fails the parser's own unknown-key check instead of reaching `normalize`, which used to refuse it by name and print the line to write instead. `docs/migration.md` is where that replacement is written down now.
+
+**Why:** the refusal was carried so an operator upgrading mid-0.1.x would be told what to write. Nothing else ever read the field. pm2's `NODE_APP_INSTANCE` is imported as `NODE_APP_INSTANCE = "{{instance}}"` under `[app.env]`, so the last reader was a hand-written Flockfile carrying a field from older docs, and shep was pre-release when the replacement landed.
+
+`PROTOCOL_VERSION` moves 8 to 9: the field is serialized, and removing something serialized is what the constant is for. `MIN_SUPPORTED` stays at 8, because no peer can see the difference. `AppConfig` is `#[serde(default)]` and carries no serde `deny_unknown_fields`, so an older peer's extra key is ignored and a newer peer's missing one defaults to `None`. `SCHEMA_VERSION` does not move: no command's `--format json` payload carries an `AppConfig`. The generated Flockfile schema does not change either, the field having been `schemars(skip)` since it stopped being usable.
+
+`verified crates/shep-core/src/config/app.rs (AppConfig derives), crates/shep-core/src/protocol/mod.rs (PROTOCOL_VERSION, MIN_SUPPORTED), crates/shep-cli/src/commands/import/pm2/convert.rs (instance_var)`
 
 ### OwnedFd::from over into_raw_fd/from_raw_fd for channel adoption
 
