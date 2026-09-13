@@ -8,8 +8,8 @@ shep lookout   /home/ada/.shep                                             6 in 
    process   logging   inputs   restart   readiness   shutdown   watch   cron     tab ne…
   ───────────────────────────────────────────────────────────────────────────────────────
   FIELD                       VALUE                                            LANDS     
-    Where stderr goes. Written out, the default is                                       
-    {{SHEP_HOME}}/logs/{{name}}-{{instance}}-err.log                                     
+  Where stderr goes. Written out, the default is                                         
+  {{SHEP_HOME}}/logs/{{name}}-{{instance}}-err.log                                       
 >  err_file                   (unset) -> /var/log/api/err.log                  respawn   
  ~ level_rules                []                                               now       
    merge_logs                 false                                            respawn   

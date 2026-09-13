@@ -385,7 +385,12 @@ fn top_lines(pane: &ConfigPane, palette: Palette, width: u16) -> Vec<(String, St
         usize::from(BLURB_WRAP.min(width.saturating_sub(2))),
     )
     .into_iter()
-    .map(|row| (format!("  {row}"), palette.muted()))
+    // No indent here. Both callers prepend the pane's own two columns, and
+    // the wrap budget above already reserves them, so adding them a second
+    // time put the blurb four columns in while every other row in the pane
+    // sits at two. `panel_for_field`'s copy of this indents once because it
+    // is the thing writing the row.
+    .map(|row| (row, palette.muted()))
     .collect()
 }
 
@@ -3072,6 +3077,37 @@ mod tests {
     /// clamps to `PANEL_MIN` 50 and 89 - 50 is 39, one short of `LEFT_MIN`.
     /// `h` used to be the only route to this text, which is why it survived
     /// the panel that made it redundant everywhere else.
+    /// The blurb sits at the pane's own two-column indent, not deeper.
+    ///
+    /// `contains` cannot see this, which is why it shipped four columns in:
+    /// `top_lines` indented its own rows and both callers indent again. The
+    /// header row is the reference, since every row in the pane shares its
+    /// margin, so the test compares against it rather than against a
+    /// literal 2.
+    #[test]
+    fn the_blurb_shares_the_panes_own_indent() {
+        let pane = web_pane();
+        let lines = pane_lines(&pane, fixtures::plain(), 89, 40);
+        let rows = text_of(&lines);
+        let help = first_field_help(&pane);
+        let indent = |row: &str| row.len() - row.trim_start().len();
+        let header = rows
+            .iter()
+            .find(|row| row.contains("FIELD") && row.contains("VALUE"))
+            .expect("no column header");
+        let blurb = rows
+            .iter()
+            .find(|row| row.contains(help.split_whitespace().next().expect("help is empty")))
+            .expect("no blurb row");
+        assert_eq!(
+            indent(blurb),
+            indent(header),
+            "blurb {:?} against header {:?}",
+            blurb.get(..12),
+            header.get(..12)
+        );
+    }
+
     #[test]
     fn the_blurb_draws_at_a_width_with_no_panel() {
         let pane = web_pane();
