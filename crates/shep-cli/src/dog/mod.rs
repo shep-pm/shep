@@ -599,6 +599,62 @@ mod tests {
         );
     }
 
+    /// Tests that wait out a real [`SHEPHERD_RETURN_BUDGET`]. Five seconds
+    /// of elapsed time is the point, so a paused clock would test nothing.
+    mod slow {
+        use super::*;
+
+        /// fails if the bark adapter waits for a shepherd that is never
+        /// coming back, or gives up before the budget it was given.
+        ///
+        /// The success path has its own test above. This is the other half:
+        /// the `?` that carries a spent budget out of `resubscribe` and
+        /// ends the dog, which is the whole point of the wait being bounded.
+        #[tokio::test]
+        async fn the_bark_adapter_gives_up_once_its_budget_is_spent() {
+            use bark::EventSource as _;
+
+            let dir = tempfile::tempdir().unwrap();
+            let socket = shep_client::testing::control_address(dir.path());
+            let shepherds =
+                fake_daemon_across_handovers(&socket, vec![Handshake::Accept(sample_ack())]);
+            let client = ReconnectingClient::connect_as_dog(&socket, "bark")
+                .await
+                .unwrap();
+            let topics = vec!["process.*".to_owned()];
+            let stream = client.subscribe(topics.clone()).await.unwrap();
+            let shepherd = Arc::new(ClientShepherd {
+                client,
+                dog: "bark".to_owned(),
+            });
+            let mut events = ClientEvents {
+                shepherd: Arc::clone(&shepherd),
+                topics,
+                stream,
+            };
+
+            // Gone for good, listener and all, which is what a stopped
+            // shepherd leaves behind. A handover leaves the listener bound.
+            drop(shepherds);
+            let started = tokio::time::Instant::now();
+
+            let gave_up = tokio::time::timeout(SHEPHERD_RETURN_BUDGET * 3, events.resubscribe())
+                .await
+                .expect("a spent budget must end the wait, not hang it");
+            let waited = started.elapsed();
+
+            assert!(
+                matches!(gave_up, Err(LinkLost::Budget { .. })),
+                "expected a spent budget, got {gave_up:?}"
+            );
+            assert!(
+                waited >= SHEPHERD_RETURN_BUDGET,
+                "gave up after {waited:?}, inside the {SHEPHERD_RETURN_BUDGET:?} a handover \
+                 is allowed to take, which is the restart-per-reload this rule exists to avoid"
+            );
+        }
+    }
+
     /// A [`ShepPaths`] rooted at `dir`, with `socket` pointed wherever the
     /// caller's fake daemon actually bound. Flat, not nested under `run/`,
     /// so a test never has to create that directory.
