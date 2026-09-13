@@ -2191,10 +2191,7 @@ fn draw_close_dialog(
 ) {
     if dialog_is_boxed(area.width) {
         let lines = close_dialog_lines(dialog, palette, BOX_WIDTH, now);
-        let box_height = u16::try_from(lines.len())
-            .unwrap_or(u16::MAX)
-            .saturating_add(2);
-        if box_height <= area.height {
+        if boxed_dialog_height(&lines) <= area.height {
             draw_boxed_close_dialog(&lines, palette, area, buffer);
             return;
         }
@@ -2234,6 +2231,22 @@ fn draw_borderless_close_dialog(
 /// vertically centred too.
 ///
 /// `lines` comes from the caller, which has already measured them against
+/// The rows a boxed dialog occupies: its own lines plus a border above
+/// and below.
+///
+/// Both the fit check and the draw read this rather than each doing the
+/// addition, because they did it differently once. The check saturated
+/// from a `u16::MAX` fallback and the draw added plainly from a `0` one,
+/// so a `lines.len()` past `u16::MAX` would have refused to draw in one
+/// place and drawn a two-row box in the other. Neither is reachable with
+/// a dialog of a dozen rows, which is why nothing caught it; one function
+/// is what stops it coming back.
+fn boxed_dialog_height(lines: &[Line<'static>]) -> u16 {
+    u16::try_from(lines.len())
+        .unwrap_or(u16::MAX)
+        .saturating_add(2)
+}
+
 /// `area.height` to decide this form fits at all.
 fn draw_boxed_close_dialog(
     lines: &[Line<'static>],
@@ -2241,8 +2254,8 @@ fn draw_boxed_close_dialog(
     area: Rect,
     buffer: &mut Buffer,
 ) {
-    let rows = u16::try_from(lines.len()).unwrap_or(0);
-    let box_height = rows + 2;
+    let box_height = boxed_dialog_height(lines);
+    let rows = box_height.saturating_sub(2);
     let margin = area.width.saturating_sub(BOX_WIDTH + 2) / 2;
     let box_x = area.x + margin;
     let box_y = area.y + area.height.saturating_sub(box_height) / 2;
@@ -2375,7 +2388,7 @@ mod tests {
             );
             let trimmed = heading.trim();
             assert!(
-                trimmed.starts_with("2 EDITS") || trimmed.starts_with('2'),
+                trimmed.starts_with("2 EDIT"),
                 "the question survives at {width}: {heading:?}"
             );
             // 43 for the question, 2 for the gutter, 1 for the gap and 24
