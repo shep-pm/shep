@@ -36,18 +36,25 @@ fi
 # Verb order matches the Commands enum's declaration order. `resurrect`, a
 # hidden alias of `muster` (clap `alias`, not `visible_alias`), stays out on
 # purpose so it doesn't appear in generated docs. `help` is clap's own and
-# is the other deliberate omission. `import pm2` and `import env` sit right
-# after `import` itself: `import` is a subcommand host now, so `shep import
-# --help` only lists them, and each entry's own flags need their own block.
+# is the other deliberate omission.
+#
+# A quoted multi-word entry is a path into the tree, and every subcommand of
+# a subcommand host needs one. A host's own `--help` prints its subcommands
+# as one-line summaries and none of their flags, so `secret set --stdin` --
+# there so a credential stays out of `ps` and shell history -- reaches the
+# published reference only through `"secret set"` below.
 #
 # `every_visible_verb_reaches_the_docs_site_generator` in cli.rs checks this
-# list against the binary's own visible subcommands, so a new verb fails a
-# test rather than going undocumented.
+# list against the binary's own command tree, at every depth, so a new verb
+# or subcommand fails a test rather than going undocumented. Its sibling
+# `every_listed_verb_has_a_block_in_the_committed_reference` fails when this
+# array has grown and nobody re-ran this script.
 VERBS=(
   start add serve stop restart reload delete stock flock dogs enable disable
   adopt rehome describe trigger signal whisper fold bleats lookout whistle
-  reopen flush barks set get unset secret ping kill save muster runtime dev
-  import "import pm2" "import env" startup unstartup completions init style
+  reopen flush barks set get unset secret "secret set" "secret get"
+  "secret unset" "secret list" ping kill save muster runtime dev import
+  "import pm2" "import env" startup unstartup completions init style
   welcome
 )
 
