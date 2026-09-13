@@ -816,6 +816,11 @@ fn windows_name_advisory(path: &Path) -> Option<String> {
     use std::os::windows::ffi::OsStrExt as _;
 
     /// Characters no Windows filesystem accepts anywhere in a path.
+    ///
+    /// The printable half of the set. Windows refuses every control
+    /// character below U+0020 too, which is handled separately because
+    /// naming one in an advisory means printing its code point rather than
+    /// the character.
     const ILLEGAL: &[char] = &['<', '>', ':', '"', '|', '?', '*'];
     /// Device names Windows reserves regardless of extension, compared
     /// case-insensitively against each path component's stem.
@@ -858,6 +863,21 @@ fn windows_name_advisory(path: &Path) -> Option<String> {
         };
         if let Some(bad) = name.chars().find(|c| ILLEGAL.contains(c)) {
             return Some(format!("contains `{bad}`, which Windows refuses in a path"));
+        }
+        // Below U+0020 only, which is the range Windows documents. Not
+        // `char::is_control`, which also matches U+007F and the C1 block
+        // U+0080 to U+009F: those are legal in a Windows file name, so
+        // warning about them would refuse a path the filesystem accepts,
+        // the same way counting bytes did above.
+        //
+        // Named by code point, not printed. A tab or a newline reaching an
+        // advisory would otherwise rearrange the operator's line rather
+        // than appear in it, and a NUL would truncate it.
+        if let Some(control) = name.chars().find(|&c| (c as u32) < 0x20) {
+            return Some(format!(
+                "contains U+{:04X}, a control character Windows refuses in a path",
+                control as u32
+            ));
         }
         // Up to the LAST dot, not the first. Measured on Windows 2026-09-12
         // by creating each name and asking whether a file appeared:
@@ -1214,6 +1234,25 @@ mod windows_advisory_tests {
         let over = format!(r"C:\logs\{}.log", "\u{1f411}".repeat(130));
         let warning = windows_name_advisory(Path::new(&over)).expect("260 units is at the limit");
         assert!(warning.contains("260-character"), "{warning}");
+    }
+
+    /// fails if the control range widens to `char::is_control`. A tab is
+    /// refused by Windows and U+0085 is not, so a check that cannot tell
+    /// them apart refuses a path the filesystem accepts.
+    #[test]
+    fn a_control_character_is_named_by_code_point_and_c1_is_not() {
+        let warning = windows_name_advisory(Path::new("C:\\logs\\web\tout.log"))
+            .expect("a tab is refused anywhere in a Windows path");
+        assert!(warning.contains("U+0009"), "{warning}");
+        // Printed as a code point, or the advisory would carry the tab
+        // itself and rearrange the operator's line.
+        assert!(!warning.contains('\t'), "{warning}");
+
+        assert_eq!(
+            windows_name_advisory(Path::new("C:\\logs\\web\u{85}out.log")),
+            None,
+            "U+0085 is a C1 control that Windows accepts in a file name"
+        );
     }
 
     #[test]
