@@ -1629,8 +1629,13 @@ fn ungrouped_pane_lines_with_panel(
     // The selected field's own help text, on the lines under the title.
     // Subtracted from the budget rather than appended, per `body_from`'s
     // own doc on markers. See `top_lines`.
+    //
+    // Floored at `<= 1`, not `== 0`, on purpose: `grouped_pane_lines_with_
+    // panel`'s own blurb loop keeps the same floor, so a long wrapped help
+    // string cannot spend the last line either path reserves for the
+    // cursor's own row. The two agree deliberately, not by coincidence.
     for (text, style) in top_lines(pane, palette, width) {
-        if body_budget == 0 {
+        if body_budget <= 1 {
             break;
         }
         lines.push(Line::from(Span::styled(
