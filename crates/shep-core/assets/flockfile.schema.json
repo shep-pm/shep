@@ -158,7 +158,8 @@
           "init": {
             "accepts": [
               "an absolute or relative path, expanded from cwd",
-              "~ expands, $VARS do not"
+              "~ expands, $VARS do not",
+              "a directory that does not exist yet: warned"
             ],
             "blurb": "Where the process runs. Without it, the daemon's own directory",
             "example": "/srv/app",
@@ -274,7 +275,8 @@
           "init": {
             "accepts": [
               "a path, relative paths follow cwd",
-              "{{instance}} and {{name}} expand"
+              "{{instance}} and {{name}} expand",
+              "a parent that does not exist yet: warned"
             ],
             "blurb": "Where stderr goes. Defaults to a file under $SHEP_HOME/logs",
             "example": "/var/log/my-first-sheep/err.log",
@@ -595,7 +597,8 @@
           "init": {
             "accepts": [
               "a path, relative paths follow cwd",
-              "{{instance}} and {{name}} expand"
+              "{{instance}} and {{name}} expand",
+              "a parent that does not exist yet: warned"
             ],
             "blurb": "Where stdout goes. Defaults to a file under $SHEP_HOME/logs",
             "example": "/var/log/my-first-sheep/out.log",
@@ -687,7 +690,8 @@
           "init": {
             "accepts": [
               "an absolute or relative path, expanded from cwd",
-              "~ expands, $VARS do not"
+              "~ expands, $VARS do not",
+              "a script shep cannot resolve yet: warned"
             ],
             "blurb": "The script that shep should use to launch your app",
             "example": "./index.js",

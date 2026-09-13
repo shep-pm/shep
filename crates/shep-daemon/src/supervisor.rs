@@ -24,6 +24,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use shep_core::config::{
     AppConfig, ApplyGroup, DeclaredApp, ResetDepth, ResolvedApp, apply_group, normalize,
+    reaches_running,
 };
 use shep_core::overrides::{self, AppOverrides};
 use shep_core::paths::ShepPaths;
@@ -63,7 +64,8 @@ use crate::probes::ready::{Readiness, ReadinessSource, await_ready};
 use crate::runner::AdoptSpec;
 use crate::runner::{
     ExitOutcome, FlushError, LogCtl, Preflight, ProcIo, ProcessRunner, ReopenError, RunnerError,
-    RunningProcess, SpawnSpec, StdinWrite, check_log_ancestry, open_log_path,
+    RunningProcess, SpawnSpec, StdinWrite, check_log_ancestry, cwd_advisory, log_path_advisory,
+    open_log_path,
 };
 use crate::secrets::ProviderSecrets;
 
@@ -718,7 +720,8 @@ impl core::error::Error for SupervisorError {}
 /// value yet.
 ///
 /// `Debug` is derived (IR-41): [`ResolvedApp`] wraps an [`AppConfig`], whose
-/// own manual `Debug` redacts `env`, and a bool.
+/// own manual `Debug` redacts `env`, and the rest is a bool and an
+/// operator-facing string with no value from a live flock in it.
 #[derive(Debug, Clone)]
 pub(crate) struct FieldSet {
     /// The app as it now stands, for `rpc.rs` to hand the registry: the
@@ -728,6 +731,9 @@ pub(crate) struct FieldSet {
     pub(crate) app: ResolvedApp,
     /// `true` when the running child does not have the value yet.
     pub(crate) pending: bool,
+    /// The `warning` [`shep_core::protocol::Response::SheepFieldSet`]
+    /// answers with, computed here where the filesystem is in reach.
+    pub(crate) warning: Option<String>,
 }
 
 /// What a [`Command::SetSheepEnvBatch`] did.
@@ -4963,6 +4969,14 @@ impl<R: ProcessRunner> Actor<R> {
     /// force the moment it lands, the same carve-out `apply_one` makes. A
     /// [`ApplyGroup::NeedsRespawn`] field only parks.
     ///
+    /// # `warning`, the one field this can answer besides `pending`
+    ///
+    /// `cwd`, `script`, `out_file` and `err_file` get a filesystem check
+    /// nothing before this ran anywhere: `normalize` cannot see the
+    /// filesystem, and a spawn is the daemon's own first look. A problem
+    /// here never refuses the write; it names what the next respawn will
+    /// otherwise fail on with a bare OS error. See [`FieldSet::warning`].
+    ///
     /// # Errors
     ///
     /// - [`SupervisorError::IsADog`] - the name is a dog's. Raised before
@@ -5049,6 +5063,49 @@ impl<R: ProcessRunner> Actor<R> {
         let merged = normalize(edited)
             .map_err(|err| SupervisorError::InvalidField(format!("{key}: {err}")))?;
 
+        // Advisory, never a second way to refuse the write above: the
+        // validation has already accepted the value. Not that the override
+        // store has been written, which happens further down; what is
+        // settled here is that nothing below will refuse. `normalize` cannot make
+        // this call itself (`normalize_with_home`'s own doc gives the
+        // reason: the CLI and the daemon can normalize the same config as
+        // different users), and the gap between this check and the respawn
+        // that actually needs the path is the same one `check_log_ancestry`
+        // documents for its own check-then-open window
+        // (`docs/specs/deferred.md`). `cwd` and `script` share one spec and
+        // one `preflight` call because each one's resolution already
+        // depends on the other; `out_file`/`err_file` need neither `cwd`
+        // nor one another.
+        //
+        // The two arms each build their own spec rather than hoisting one
+        // above the `match`, which would look tidier and cost more: most
+        // keys reach `_ => None`, and `describe` renders every template and
+        // resolves every secret reference the config carries. Duplicated
+        // lines here buy that work being skipped on every field but these
+        // four.
+        let warning = match key {
+            "cwd" | "script" => {
+                let view = self.secret_view(&merged);
+                let spec = describe(&merged, 0, &self.paths, None, &view);
+                spec.cwd.as_deref().and_then(cwd_advisory).or_else(|| {
+                    match self.runner.preflight(&spec) {
+                        Preflight::Impossible(reason) | Preflight::Doubtful(reason) => Some(reason),
+                        Preflight::Unknown => None,
+                    }
+                })
+            }
+            "out_file" | "err_file" => {
+                let view = self.secret_view(&merged);
+                let spec = describe(&merged, 0, &self.paths, None, &view);
+                log_path_advisory(if key == "out_file" {
+                    &spec.out_file
+                } else {
+                    &spec.err_file
+                })
+            }
+            _ => None,
+        };
+
         // The one field that moved, if it moved at all. A value identical
         // to what is already intended still records the override (the
         // operator has spoken for the key, which is the whole point of
@@ -5122,17 +5179,13 @@ impl<R: ProcessRunner> Actor<R> {
             self.rearm_name(name);
         }
 
-        // In force, or waiting for a respawn. `autostart` and `depends_on`
-        // are the two `NextSpawn` fields that report as in force, because
-        // both are read at a muster, a boot or an ordered walk rather than at
-        // a spawn: `restorable()` reads one and `plan_for_names` the other,
-        // off the stored spec the moment it lands. Telling an operator to
-        // restart for either would be telling them to do nothing.
-        let in_force =
-            !park_all && (group == ApplyGroup::Live || matches!(key, "autostart" | "depends_on"));
+        // `reaches_running` owns the `autostart`/`depends_on` carve-out now,
+        // so the pane's prediction and this answer cannot drift.
+        let in_force = !park_all && reaches_running(key);
         Ok(Some(FieldSet {
             app: parked.unwrap_or_else(|| next_spec.unwrap_or(merged)),
             pending: !in_force,
+            warning,
         }))
     }
 

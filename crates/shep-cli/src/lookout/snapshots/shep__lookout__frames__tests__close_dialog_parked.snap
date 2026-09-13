@@ -21,18 +21,16 @@ shep lookout   /home/ada/.shep                                                  
                                                                                           ──────────────────────────────────────────────────────────────────────
   env                                                                                     VALIDATION                                                            
    DATABASE_URL               (set)                                                       █ an absolute or relative path, expanded from cwd                     
-   NODE_ENV                   (set)                                                       █ ~ expands, $VARS do not                                             
-   + add a key                                                                            █ a directory that does not exist yet: warned                         
-                                                                                                                                                                
-                                                                                          NEIGHBOURS                                                            
-                                                                                          script  resolved against this cwd                                     
-                                                                                          out_file  relative paths follow it too                                
-                                                                                          watch_options  globs are rooted here                                  
-  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
+   NODE_ENV                   (set) ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                                    
+   + add a key                      ▐  1 FIELD ALREADY WAITING             api is online, pid 48219                        ▌yet: warned                         
+                                    ▐                                                                                      ▌                                    
+                                    ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌                                    
+                                    ▐  L   reload           the replacement starts alongside and takes over. No gap, if the▌                                    
+                                    ▐                       app sets SO_REUSEPORT itself.                                  ▌ too                                
+                                    ▐  c   continue         write them and leave it running. They wait for a respawn.      ▌re                                  
+  ──────────────────────────────────▐                                                                                      ▌────────────────────────────────────
+  = read-only, set it in the Flockfi▐  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        ▌ou, not yet written                 
+                                    ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟                                    
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
@@ -49,4 +47,6 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
-esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked   q quit   control enabled
+                                                                                                                                                                
+                                                                                                                                                                
+the dialog owns the keyboard until it is answered or it expires                                                                                  control enabled

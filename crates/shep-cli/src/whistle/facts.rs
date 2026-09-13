@@ -348,6 +348,13 @@ pub struct BleatTail {
     /// A model that cannot tell "this is all of it" from "this is the last
     /// 50" will draw the wrong conclusion from a quiet log.
     pub truncated: bool,
+    /// One entry per stream whose file this process could not find, naming
+    /// the path it tried. Empty when both files were read.
+    ///
+    /// An empty `out` alone cannot tell a sheep that has written nothing
+    /// from a path that resolves to a different file here than it does
+    /// under the shepherd.
+    pub notes: Vec<String>,
 }
 
 #[cfg(test)]

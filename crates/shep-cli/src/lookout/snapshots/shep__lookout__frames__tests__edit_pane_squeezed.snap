@@ -23,6 +23,7 @@ shep lookout   /home/ada/.shep                                                  
    DATABASE_URL               (set)                                 VALIDATION                                          
    NODE_ENV                   (set)                                 █ an absolute or relative path, expanded from cwd   
    + add a key                                                      █ ~ expands, $VARS do not                           
+                                                                    █ a directory that does not exist yet: warned       
                                                                                                                         
                                                                     NEIGHBOURS                                          
                                                                     script  resolved against this cwd                   
@@ -48,5 +49,4 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                         
                                                                                                                         
                                                                                                                         
-                                                                                                                        
-esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default … control enabled
+esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo… control enabled

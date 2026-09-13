@@ -236,6 +236,23 @@ pub(crate) fn read_tail(path: &Path, limit: usize) -> io::Result<(Vec<String>, b
     Ok((lines, truncated))
 }
 
+/// Why a log file is not there, naming the path this process tried.
+///
+/// `stream` is `"out"` or `"err"`. Each process resolves a relative
+/// `out_file`/`err_file` against its own directory, so the absolute form is
+/// what shows that the shepherd is writing a different file.
+pub(crate) fn missing_log_note(stream: &str, path: &Path) -> String {
+    if !path.is_relative() {
+        return format!("no {stream} log at {} yet", path.display());
+    }
+    let tried = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    format!(
+        "no {stream} log at {}; {stream}_file is relative, so the shepherd \
+         resolves it against its own directory instead",
+        tried.display()
+    )
+}
+
 /// Renders the selected files of every sheep the selector admits, in flock
 /// order, and returns the exit code that reports how that went.
 ///
@@ -245,9 +262,10 @@ pub(crate) fn read_tail(path: &Path, limit: usize) -> io::Result<(Vec<String>, b
 ///
 /// A `None` path (a shepherd predating
 /// [`shep_core::protocol::ProcessInfo::out_file`]) is a `log_path_unknown`
-/// notice. A missing file is silent, since the daemon creates both at
-/// spawn. Any other read failure is a `log_unreadable` notice and sets
-/// [`ExitCode::Failure`]; the rest of the flock still prints.
+/// notice. A file that is not there is a `log_missing` notice and leaves
+/// the exit code alone. Any other read failure is a `log_unreadable`
+/// notice and sets [`ExitCode::Failure`]; the rest of the flock still
+/// prints.
 fn tail_log_files(
     streams: &mut Streams<'_>,
     quiet: bool,
@@ -348,10 +366,15 @@ fn tail_log_files(
                             }
                         }
                         Err(err) if err.kind() == io::ErrorKind::NotFound => {
-                            // Silent: the daemon creates both files at spawn,
-                            // so a missing file means this sheep has never
-                            // run in this $SHEP_HOME. A notice per quiet
-                            // sheep would spam stderr on a fresh flock.
+                            write_notice(
+                                streams,
+                                quiet,
+                                "log_missing",
+                                &format!(
+                                    "{name}: {}",
+                                    missing_log_note(stream_name, Path::new(path))
+                                ),
+                            );
                         }
                         Err(err) => {
                             failure = true;
@@ -1926,10 +1949,10 @@ mod tests {
     }
 
     /// The daemon creates both files at spawn, so a missing one means this
-    /// sheep has never run in this `$SHEP_HOME`, not a fault worth a
-    /// notice.
+    /// sheep has never run in this `$SHEP_HOME`. Said rather than exited on:
+    /// an empty tail and an empty log read the same on a terminal.
     #[tokio::test]
-    async fn a_missing_file_is_silent_and_the_rest_still_print() {
+    async fn a_missing_file_is_noticed_and_the_rest_still_print() {
         let dir = tempfile::tempdir().unwrap();
         let sock = shep_client::testing::control_address(dir.path());
         let real_path = write_log(dir.path(), "web-out.log", "still-here\n");
@@ -1942,7 +1965,7 @@ mod tests {
 
         let (client, daemon) = fake_client_with_push(&sock).await;
         let mut ghost = info(1, "ghost");
-        ghost.out_file = Some(missing_path);
+        ghost.out_file = Some(missing_path.clone());
         let mut real = info(2, "web");
         real.out_file = Some(real_path);
         daemon.reply_to_list(vec![ghost, real]);
@@ -1964,12 +1987,64 @@ mod tests {
             .expect("--no-follow never subscribes, so it must terminate on its own")
         };
 
-        assert_eq!(code, ExitCode::Success);
+        assert_eq!(
+            code,
+            ExitCode::Success,
+            "a sheep that has never run is not a failed run"
+        );
         assert!(String::from_utf8(out).unwrap().contains("still-here"));
+        let stderr = String::from_utf8(err).unwrap();
         assert!(
-            err.is_empty(),
-            "a missing file is silent, not a notice: {}",
-            String::from_utf8_lossy(&err)
+            stderr.contains(&format!(
+                "notice[log_missing]: ghost: no out log at {missing_path} yet"
+            )),
+            "the notice must name the sheep, the stream and the file: {stderr}"
+        );
+    }
+
+    /// A relative `out_file` is resolved against the shepherd's directory
+    /// by the shepherd and against this one here, so the two name different
+    /// files and the silent read was of the wrong one.
+    #[tokio::test]
+    async fn a_relative_path_names_the_file_this_process_actually_tried() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = shep_client::testing::control_address(dir.path());
+
+        let (client, daemon) = fake_client_with_push(&sock).await;
+        let mut sheep = info(1, "web");
+        sheep.out_file = Some("logs/out.log".to_string());
+        daemon.reply_to_list(vec![sheep]);
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = Streams {
+                out: &mut out,
+                err: &mut err,
+                style: crate::style::Presentation::BARE,
+                fmt: Format::Table,
+            };
+            tokio::time::timeout(
+                RUN_TIMEOUT,
+                bleats(&client, &mut streams, false, &no_follow_args_out("all")),
+            )
+            .await
+            .expect("--no-follow never subscribes, so it must terminate on its own")
+        };
+
+        assert_eq!(code, ExitCode::Success);
+        assert!(out.is_empty());
+        let stderr = String::from_utf8(err).unwrap();
+        // Asserted against the un-resolved spelling rather than against a
+        // second `absolute` call: a sibling test moves the process cwd, so
+        // the expected string cannot be recomputed here.
+        assert!(
+            stderr.contains("out.log") && !stderr.contains("at logs"),
+            "the notice must name the absolute path this process read: {stderr}"
+        );
+        assert!(
+            stderr.contains("out_file is relative"),
+            "the notice must say why the shepherd's file is a different one: {stderr}"
         );
     }
 

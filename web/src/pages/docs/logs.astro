@@ -96,8 +96,10 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
       <code>&lt;name&gt;-&lt;instance&gt;-err.log</code>. An app can point either
       somewhere else with{" "}
       <code>out_file</code> and <code>err_file</code>, or fold both streams
-      into one file with <code>merge_logs</code>. A clustered app gets one
-      pair per instance unless it says otherwise, which is why an explicit{" "}
+      into one file with <code>merge_logs</code>. A relative path in either
+      lands under the app's <code>cwd</code>, so a Flockfile can keep its logs
+      beside the app it runs. A clustered app gets one pair per instance
+      unless it says otherwise, which is why an explicit{" "}
       <code>out_file</code> on a multi-instance app is refused unless it
       carries <code>{"{{instance}}"}</code> or the app sets{" "}
       <code>merge_logs</code>: without one of those, every instance would be
@@ -167,6 +169,13 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
       and nothing shep said about it. Interleaving a sheep's stderr into
       shep's would silently lose half the output of that redirect and make{" "}
       <code>--err</code> produce an empty file.
+    </p>
+    <p>
+      A log file that is not there is named on stderr rather than read as an
+      empty tail, and the notice carries the path this command resolved. That
+      matters most when <code>out_file</code> is relative: the shepherd
+      resolves it against its own directory and <code>shep bleats</code>{" "}
+      against yours, so the two are different files.
     </p>
     <Callout variant="note">
       <code>--no-follow</code> reads files and <code>--follow</code> reads

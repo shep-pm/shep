@@ -11,7 +11,9 @@
 use std::path::PathBuf;
 
 use serde_json::{Map, Value};
-use shep_core::config::{AppConfig, ApplyGroup, GROUP_ORDER, apply_group, flockfile_schema_json};
+use shep_core::config::{
+    AppConfig, ApplyGroup, GROUP_ORDER, apply_group, flockfile_schema_json, reaches_running,
+};
 use shep_core::protocol::{EnvValue, SheepConfigView};
 use shep_core::values::{MemSize, UpDuration};
 
@@ -1286,10 +1288,13 @@ impl ConfigPane {
     /// an entry for it would still be counted by the title band, still be
     /// asked about on close, and still be written.
     ///
-    /// The one door every config edit files through, which is what makes
-    /// [`Edits::worst_impact`]'s claim about [`ApplyGroup::Structural`]
-    /// checkable: every caller has already refused a locked row, and
-    /// [`Self::lock`] locks exactly the Structural ones.
+    /// The one door every config edit files through, which is what keeps
+    /// [`ApplyGroup::Structural`] out of the set at all: every caller has
+    /// already refused a locked row, and [`Self::lock`] locks exactly the
+    /// Structural ones. [`super::app::App::close_offer`]'s own walk over
+    /// [`Edits::iter`], which is what decides whether the close dialog
+    /// appears, rests on that: it never has to ask what a Structural
+    /// edit would cost, because one can never be in the set to ask about.
     fn file_field(&mut self, key: String, value: Value) {
         if self.stored_value_is(&key, &value) {
             self.edits.remove(&EditKey::Field(key));
@@ -1629,6 +1634,39 @@ impl ConfigPane {
         self.pending.len()
     }
 
+    /// The filed edits a respawn is what applies, by field name, in the
+    /// set's own key order.
+    ///
+    /// An env key counts: `env` is `ApplyGroup::NeedsRespawn` and every
+    /// value is baked into the child at exec.
+    #[must_use]
+    pub(super) fn unsent_fields_needing_a_respawn(&self) -> Vec<String> {
+        self.edits
+            .iter()
+            .filter_map(|(key, _)| match key {
+                EditKey::Field(name) if !reaches_running(name) => Some(name.clone()),
+                EditKey::Env(name) => Some(format!("env {name}")),
+                EditKey::Field(_) => None,
+            })
+            .collect()
+    }
+
+    /// How many filed edits the running sheep already takes without a
+    /// respawn: the complement of [`Self::unsent_fields_needing_a_respawn`]
+    /// within the same set. An env key never counts, for the same reason it
+    /// always counts on the other side: `env` is `ApplyGroup::NeedsRespawn`.
+    ///
+    /// What the close dialog's "everything else you changed is already
+    /// live" sentence draws on: a filed set holding only fields a respawn
+    /// applies has nothing else to say that about.
+    #[must_use]
+    pub(super) fn live_edit_count(&self) -> usize {
+        self.edits
+            .iter()
+            .filter(|(key, _)| matches!(key, EditKey::Field(name) if reaches_running(name)))
+            .count()
+    }
+
     /// Whether a reload of this sheep overlaps its replacement or runs
     /// serially. Always [`ReloadKind::Overlap`] for a dog, which has no
     /// such fields to read.
@@ -1836,17 +1874,6 @@ pub enum ReloadKind {
     /// The instance being replaced is drained first, so the app is down for
     /// the length of the drain.
     Serial,
-}
-
-impl ReloadKind {
-    /// The word the pane's own menu prints for it.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Overlap => "overlapping",
-            Self::Serial => "serial",
-        }
-    }
 }
 
 /// Whether a reload of this app overlaps or runs serially.
@@ -2146,10 +2173,11 @@ mod tests {
         }
     }
 
-    /// The invariant [`Edits::worst_impact`]'s own doc rests on: nothing a
-    /// keystroke can do files a `Structural` edit, because
-    /// [`ConfigPane::sheep`] marks those fields not editable and every
-    /// filing door checks [`ConfigPane::lock`] first.
+    /// The invariant [`super::app::App::close_offer`]'s own walk over
+    /// [`Edits::iter`] rests on: nothing a keystroke can do files a
+    /// `Structural` edit, because [`ConfigPane::sheep`] marks those fields
+    /// not editable and every filing door checks [`ConfigPane::lock`]
+    /// first.
     #[test]
     fn no_key_files_an_edit_for_a_structural_field() {
         let structural: Vec<String> = ConfigPane::sheep(web())
