@@ -63,6 +63,16 @@ pub const RECONNECT_MIN_DELAY: Duration = Duration::from_millis(50);
 /// that vanished.
 pub const RECONNECT_MAX_DELAY: Duration = Duration::from_secs(5);
 
+/// The next delay in the reconnect ladder, doubling up to
+/// [`RECONNECT_MAX_DELAY`].
+///
+/// Both reconnect paths walk this one ladder: the supervisor behind
+/// [`ReconnectingClient`], and [`Client::reconnect_within`]. Shared so a
+/// change to the schedule cannot reach one of them and miss the other.
+fn next_delay(current: Duration) -> Duration {
+    (current * 2).min(RECONNECT_MAX_DELAY)
+}
+
 /// What a [`ReconnectingClient`]'s supervisor is currently doing.
 ///
 /// Non-exhaustive: expect more variants.
@@ -201,7 +211,7 @@ impl Client {
                 return Err(failed);
             }
             tokio::time::sleep(delay).await;
-            delay = (delay * 2).min(RECONNECT_MAX_DELAY);
+            delay = next_delay(delay);
         }
     }
 }
@@ -525,7 +535,7 @@ async fn supervise(shared: Arc<Shared>) {
                 // only question is how often to ask.
                 Err(_transient) => {
                     tokio::time::sleep(delay).await;
-                    delay = (delay * 2).min(RECONNECT_MAX_DELAY);
+                    delay = next_delay(delay);
                 }
             }
         }
@@ -932,6 +942,25 @@ mod tests {
         );
     }
 
+    /// fails if the ladder changes shape while its constants stay put.
+    ///
+    /// Pins the exact sequence both reconnect paths walk, without sleeping
+    /// through any of it. The last two entries are the assertion that
+    /// matters: doubling stops at the ceiling rather than running past it.
+    #[test]
+    fn the_reconnect_ladder_doubles_then_holds_at_the_ceiling() {
+        let mut delay = RECONNECT_MIN_DELAY;
+        let mut walked = vec![delay];
+        for _ in 0..8 {
+            delay = next_delay(delay);
+            walked.push(delay);
+        }
+        assert_eq!(
+            walked,
+            [50, 100, 200, 400, 800, 1600, 3200, 5000, 5000].map(Duration::from_millis)
+        );
+    }
+
     /// fails if a reconnect that reached the very daemon it was talking to
     /// before reports a different one, which would have a caller throw away
     /// ids that are still valid.
@@ -1019,7 +1048,7 @@ mod tests {
     /// so a caller reading `daemon_version` would report a build that is no
     /// longer running.
     #[tokio::test]
-    async fn a_reconnected_clients_ack_describes_the_daemon_now_answering() {
+    async fn a_reconnect_updates_the_ack_to_the_daemon_now_answering() {
         let dir = tempfile::tempdir().unwrap();
         let path = control_address(dir.path());
         let shepherds = fake_daemon_across_handovers(
