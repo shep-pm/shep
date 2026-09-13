@@ -82,7 +82,7 @@ impl fmt::Display for StyleLevel {
 /// `NO_COLOR=` reads as unset.
 ///
 /// Lives here rather than in `lookout::theme::Palette::detect` so both
-/// call one copy: `lookout` is `#[cfg(unix)]` and this module is not.
+/// call one copy.
 pub(crate) fn no_color_set(no_color: Option<&OsStr>) -> bool {
     no_color.is_some_and(|value| !value.is_empty())
 }
