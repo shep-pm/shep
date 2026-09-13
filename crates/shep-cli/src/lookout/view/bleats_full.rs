@@ -491,7 +491,7 @@ fn chip_labels(filters: &Filters) -> Vec<String> {
     if let Some(min) = filters.min_level {
         chips.push(format!("level ≥ {min}"));
     }
-    if let Some(text) = &filters.matcher {
+    if let Some(text) = filters.match_text() {
         let suffix = match filters.match_kind() {
             Some(MatchKind::Literal) | None => String::new(),
             Some(MatchKind::Regex) => " (regex)".to_string(),
@@ -580,7 +580,7 @@ mod tests {
     use super::super::super::app::{KeyPress, Msg};
     use super::super::super::frames::render_text;
     use super::super::super::level::Level;
-    use super::super::super::pane_bleats::MatchKind;
+    use super::super::super::pane_bleats::{MatchKind, compiles};
     use super::super::super::tail::{Stream, Tail, TailLine};
     use super::super::fixtures::{
         bleats_pane_with_filters, full_app, render_all, rendered, with_feed, with_no_selection,
@@ -1025,5 +1025,58 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A redraw compiles the match axis's pattern no times at all.
+    ///
+    /// `highlighted` runs once per rendered line, so this used to be one
+    /// `Regex::new` per line per frame. Measured over this feed at 160x50,
+    /// `/\w+@\w+\.\w+/` cost 27.0 ms a redraw that way, against
+    /// `lookout::MIN_REDRAW`'s 33 ms frame budget; it is 24.8 us now. The
+    /// count is what pins it: a timing assertion would be flaky, and a test
+    /// asserting only that the highlight renders passes just as well over a
+    /// version that recompiles every line.
+    #[test]
+    fn a_redraw_compiles_the_match_axis_no_times() {
+        let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        app.update(Msg::Bleats {
+            tail: Tail {
+                lines: (0..80)
+                    .map(|i| TailLine {
+                        stream: if i % 2 == 0 { Stream::Out } else { Stream::Err },
+                        text: format!("worker[{i}] pool acquire ok user=ops{i}@example.com"),
+                    })
+                    .collect(),
+                missed_lines: 0,
+                missed_bytes: 0,
+                read_bytes: 65_536,
+                note: None,
+            },
+        });
+        app.update(Msg::Key(KeyPress::Bleats));
+        app.bleats_pane_mut_for_tests()
+            .expect("the key above opened the pane")
+            .set_match(r"/\w+@\w+\.\w+/".to_string());
+
+        let before = compiles();
+        let drawn = draw_lines(&app, 160, 50);
+        assert_eq!(compiles(), before, "a redraw compiles nothing");
+
+        // Without these the count above would hold over a pane drawing no
+        // lines at all, which is how two of the first measurements of this
+        // looked cheap: a matcher that survives no line is never run. The
+        // span count is the second half: a body row whose match was
+        // highlighted is split into more spans than the stream tag plus one
+        // run of plain text.
+        assert_eq!(
+            drawn.len(),
+            50,
+            "the title, the filter row and 48 body rows"
+        );
+        let body = &drawn[2..];
+        assert!(
+            body.iter().all(|line| line.spans.len() > 2),
+            "every body row split its hit into its own span"
+        );
     }
 }

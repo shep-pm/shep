@@ -479,7 +479,7 @@ fn feed_chip_labels(filters: &Filters) -> Vec<String> {
     if let Some(min) = filters.min_level {
         chips.push(format!("level\u{2265}{min}"));
     }
-    if let Some(text) = &filters.matcher {
+    if let Some(text) = filters.match_text() {
         let suffix = match filters.match_kind() {
             Some(MatchKind::Literal) | None => "",
             Some(MatchKind::Regex) => " (regex)",
