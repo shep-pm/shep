@@ -330,10 +330,19 @@ closing        2
 
 Shedding order, by what each step frees:
 
-1. **the `NO_COLOR` line, and the sheep with it.** One row. The sheep frees
-   nothing on its own, but a decoration sitting beside a list that has already
-   lost text is worse than no decoration, so it goes with the first trim rather
-   than outliving the sentence about colour.
+1. **the `NO_COLOR` line.** One row. The sheep goes here too, though it frees
+   nothing on its own: a decoration sitting beside a list that has already lost
+   text is worse than no decoration, so it does not outlive the sentence about
+   colour.
+
+   **The sheep is in fact boxed-only, at every tier.** Found during
+   implementation, and it follows the same logic one step further: the
+   borderless form is the degraded rendering, reached because the frame itself
+   cannot be drawn, and decoration goes before content. Recorded because a
+   glyph-absence test appeared to require it for a different and wrong reason.
+   Five of the eight border glyphs (`▛ ▜ ▙ ▟ ▀`) also appear in the sheep art,
+   leaving only `▐ ▄ ▌` unique to the border, so no assertion about a single
+   character can tell a border from the decoration.
 2. **the blank separator.** One row.
 3. **the gate line**, folded onto the surviving closing line. One row.
 
