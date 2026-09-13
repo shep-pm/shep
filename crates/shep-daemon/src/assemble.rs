@@ -762,16 +762,20 @@ mod tests {
             "/srv/shep"
         });
 
-        let here = assemble(&app, 0, &test_paths(), None, &no_secrets()).unwrap();
+        let here_paths = test_paths();
+        let here = assemble(&app, 0, &here_paths, None, &no_secrets()).unwrap();
         let there = assemble(&app, 0, &elsewhere, None, &no_secrets()).unwrap();
 
-        assert_eq!(
-            here.out_file,
-            PathBuf::from("/home/ada/.shep")
-                .join("logs")
-                .join("out.log")
-        );
+        // Both sides read their own `paths.home` rather than a literal. The
+        // `there` half already had to, since its home carries a drive letter
+        // on Windows, and spelling `here`'s out again was the one place in
+        // this test that could go stale against the fixture.
+        assert_eq!(here.out_file, here_paths.home.join("logs").join("out.log"));
         assert_eq!(there.out_file, elsewhere.home.join("logs").join("out.log"));
+        assert_ne!(
+            here.out_file, there.out_file,
+            "one config, two shepherds, two files"
+        );
     }
 
     // fails if the gate drops the `channel` term from the disjunction

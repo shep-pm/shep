@@ -235,7 +235,8 @@
             "refuses": [
               "a float, since 1.10 would arrive as 1.1",
               "SHEP_INSTANCE, SHEP_NAME, or SHEP_ENVIRONMENT, which shep sets itself",
-              "an unclosed {{ token"
+              "an unclosed {{ token",
+              "a token shep does not define"
             ]
           }
         },

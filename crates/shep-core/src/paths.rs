@@ -96,9 +96,22 @@ const DEFAULT_HOME_DIR: &str = ".shep";
 /// layout rather than two.
 #[must_use]
 pub fn shep_home(env: &dyn Fn(&str) -> Option<String>, home_dir: Option<&Path>) -> Option<PathBuf> {
+    match home_dir {
+        Some(dir) => Some(home_under(env, dir)),
+        None => env("SHEP_HOME").map(PathBuf::from),
+    }
+}
+
+/// [`shep_home`] for a caller that has a home directory, so the answer is
+/// total.
+///
+/// The rule lives here rather than in [`shep_home`] so that
+/// [`ShepPaths::resolve`], which always has one, reaches it without an
+/// `Option` it would have to unwrap through a branch that can never fire.
+fn home_under(env: &dyn Fn(&str) -> Option<String>, home_dir: &Path) -> PathBuf {
     env("SHEP_HOME")
         .map(PathBuf::from)
-        .or_else(|| home_dir.map(|dir| dir.join(DEFAULT_HOME_DIR)))
+        .unwrap_or_else(|| home_dir.join(DEFAULT_HOME_DIR))
 }
 
 /// Resolved filesystem layout for one shep home
@@ -200,11 +213,7 @@ impl ShepPaths {
     /// unix, [`Self::pipe_name`] on Windows. Everything else is identical.
     #[must_use]
     pub fn resolve(env: &dyn Fn(&str) -> Option<String>, home_dir: &Path) -> Self {
-        // `home_dir` is always `Some` here, so the fallback is unreachable;
-        // `shep_home` carries the rule for the callers that have no home
-        // directory to offer.
-        let home =
-            shep_home(env, Some(home_dir)).unwrap_or_else(|| home_dir.join(DEFAULT_HOME_DIR));
+        let home = home_under(env, home_dir);
         let run = home.join("run");
         // `mut` is read only by the `cfg(windows)` block below; on unix the
         // value is returned exactly as built.

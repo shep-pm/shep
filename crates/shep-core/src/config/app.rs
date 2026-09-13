@@ -175,7 +175,8 @@ pub struct AppConfig {
                             "{{instance}}, {{name}}, {{SHEP_HOME}} and {{secret:key}} expand in a value"],
                 "refuses": ["a float, since 1.10 would arrive as 1.1",
                             "SHEP_INSTANCE, SHEP_NAME, or SHEP_ENVIRONMENT, which shep sets itself",
-                            "an unclosed {{ token"],
+                            "an unclosed {{ token",
+                            "a token shep does not define"],
                 "neighbours": [{"field": "environment", "note": "which environment {{secret:...}} reads from"}]
             },
             "additionalProperties" = {
@@ -1342,6 +1343,14 @@ target = "http://127.0.0.1:8080/healthz"
                 "env",
                 "a float, since 1.10 would arrive as 1.1",
                 "EnvValue's Deserialize, before normalize sees the table",
+            ),
+            refused(
+                "env",
+                "a token shep does not define",
+                sheep(|a| {
+                    a.env.insert("WORKER".to_owned(), "{{slot}}".to_owned());
+                }),
+                |e| matches!(e, NormalizeError::BadTemplate { .. }),
             ),
             refused(
                 "env",
