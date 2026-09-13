@@ -305,21 +305,23 @@ so it returns `Err` and that check is never reached. `docs/decisions.md`'s entry
 It said "41 generated, 42 listed", and explained the first by saying the
 `VERBS` array holds 41 too. That was true on 2026-09-07 and wrong the next
 day: `import pm2` and `import env` took their own array entries on 2026-09-08,
-because each needs its own `--help` block. The array has counted entries rather
-than verbs ever since, so the number
+because a subcommand's own flags need their own `--help` block, so every
+subcommand takes an entry alongside the verb hosting it. The array has counted
+entries rather than verbs ever since, so the number
 `./web/scripts/generate-cli-reference.sh` prints at the end of a run stopped
 matching the generated count and became the largest of the three. Verbs kept
-being added in the meantime, which moved all three again. A measurement on
-2026-09-13 put them at 42 generated, 43 listed and 44 printed, recorded here
-only to show that all three had parted.
+being added in the meantime, which moved all three again. A measurement against
+main on 2026-09-13 put them at 42 generated, 43 listed and 44 printed, recorded
+here only to show that all three had parted.
 
 Neither file keeps a count current now. `CLAUDE.md` describes the three
-questions and answers none of them, and two tests in
+questions and answers none of them, and tests in
 `crates/shep-cli/src/cli.rs` hold the relationships instead:
-`every_visible_verb_appears_in_exactly_one_help_group` pins the listing to
-clap's own subcommands, and
-`every_visible_verb_reaches_the_docs_site_generator` pins the generator to
-those minus `help`. The three questions stay genuinely different, which was
+`every_visible_verb_appears_in_exactly_one_help_group` pins the listing
+against clap's own subcommands, and
+`every_visible_verb_reaches_the_docs_site_generator` pins the generator
+against every visible command path at every depth, hidden subtrees and `help`
+left out. The three questions stay genuinely different, which was
 this paragraph's original point. README.md still quotes the grouping without a
 count.
 
