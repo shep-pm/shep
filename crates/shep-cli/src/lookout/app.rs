@@ -14772,6 +14772,29 @@ mod tests {
         assert!(app.keymap_open(), "h did not raise the overlay");
     }
 
+    /// `h` raises the keymap overlay from the list sub-screen too, reached
+    /// the same way `enter_on_an_array_row_opens_the_list_sub_screen` gets
+    /// there: `pane_to` an array field, then `Confirm`. `on_pane_key`
+    /// routes to `on_list_key` only once `ConfigPane::list()` is `Some`, so
+    /// landing here for real is the only way to exercise its own `Help`
+    /// arm rather than the pane's.
+    #[test]
+    fn h_opens_the_keymap_overlay_from_the_list_sub_screen() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        pane_to(&mut app, "args");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(
+            app.config_pane().unwrap().list().is_some(),
+            "the list sub-screen did not open"
+        );
+        assert_eq!(app.update(Msg::Key(KeyPress::Help)), Effect::None);
+        assert!(
+            app.config_pane().unwrap().list().is_some(),
+            "h closed the list sub-screen"
+        );
+        assert!(app.keymap_open(), "h did not raise the overlay");
+    }
+
     /// The overlay swallows a movement key rather than letting it reach the
     /// table underneath, which the box is covering.
     ///
@@ -14901,7 +14924,12 @@ mod tests {
     /// about `on_pane_key` or `on_settings_key`: those two get their own
     /// dedicated tests instead
     /// (`h_opens_the_keymap_overlay_in_the_config_pane`,
-    /// `the_overlay_opens_from_the_settings_screen`).
+    /// `the_overlay_opens_from_the_settings_screen`). The list sub-screen is
+    /// not a `Body` at all (it is `ConfigPane::list`, nested inside
+    /// `Body::ConfigPane`, and reached by a `pane_to` plus `Confirm` rather
+    /// than a single opener from the dashboard), so it was never in scope
+    /// for this loop either; it gets its own dedicated test too
+    /// (`h_opens_the_keymap_overlay_from_the_list_sub_screen`).
     #[test]
     fn the_overlay_opens_from_every_synchronously_opened_body() {
         for opener in [KeyPress::Secrets, KeyPress::Bleats, KeyPress::Confirm] {
