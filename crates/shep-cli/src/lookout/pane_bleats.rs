@@ -341,9 +341,12 @@ pub struct BleatsPane {
     scroll_offset: usize,
     /// Whether the view stays pinned to the newest surviving line as new
     /// ones arrive. `true` on open: an operator who has not scrolled wants
-    /// the live tail. Any backward movement clears it;
-    /// [`Self::jump_to_end`] and [`Self::toggle_follow`] (turning it on) both
-    /// restore it and reset [`Self::scroll_offset`] to `0`.
+    /// the live tail. A deliberate move off the tail clears it: every
+    /// backward step, and [`Self::match_next`], which steps toward the newest
+    /// line and clears it anyway. [`Self::scroll_down`] is the one that does
+    /// not, walking back toward a tail an earlier step left rather than away
+    /// from one. [`Self::jump_to_end`] and [`Self::toggle_follow`] (turning it
+    /// on) both restore it and reset [`Self::scroll_offset`] to `0`.
     following: bool,
     /// The body rows available to page by, set from
     /// [`super::app::App::note_body_rows`]. `0` until the first draw.
@@ -385,7 +388,7 @@ impl BleatsPane {
 
     /// The match axis's current text, or `None` when it is not set.
     ///
-    /// A thin alias for `filters().matcher.as_deref()`, `#[cfg(test)]` like
+    /// A thin alias for [`Filters::match_text`], `#[cfg(test)]` like
     /// [`super::app::App::bleats_pane_mut_for_tests`]: nothing in production
     /// reads a promoted pane's carried filter back out once `b` has set it,
     /// only `crate::lookout::app`'s own
@@ -595,10 +598,10 @@ impl BleatsPane {
     /// [`Filters::keeps`] already dropped every non-matching line out of
     /// [`Self::visible`], so every surviving line *is* a match, and
     /// stepping between matches is stepping between the lines already on
-    /// screen. Clears the follow flag either way, like any other backward
-    /// movement — `n` moves toward the newest line, not away from it, but
-    /// the design still calls it a deliberate jump the next refresh must
-    /// not undo.
+    /// screen. Clears the follow flag whenever it steps: `n` moves toward
+    /// the newest line rather than away from it, but the design still calls
+    /// it a deliberate jump the next refresh must not undo. The guard above clears nothing, so an `n` pressed with no
+    /// axis set leaves a followed view following.
     pub fn match_next(&mut self) {
         if self.filters.match_text().is_none() {
             return;
@@ -1008,5 +1011,30 @@ mod tests {
             3,
             "the axis is gone, so `n` did nothing"
         );
+    }
+
+    /// Whitespace is a needle like any other: only a genuinely empty string
+    /// clears the axis. Worth pinning because the chip for it renders as a
+    /// near-blank `match   `, which reads like the empty-clears rule having
+    /// misfired rather than like a filter doing what it was asked.
+    #[test]
+    fn whitespace_only_match_text_is_a_needle_not_a_cleared_axis() {
+        let mut pane = BleatsPane::new(RowKey::Sheep(9));
+        pane.set_match("  ".to_string());
+
+        assert_eq!(pane.filters().match_kind(), Some(MatchKind::Literal));
+        assert_eq!(pane.filters().match_text(), Some("  "));
+        assert!(!pane.filters().is_empty(), "the axis is set, not cleared");
+
+        let lines = vec![
+            line(Stream::Out, "pool  exhausted"),
+            line(Stream::Out, "kennel"),
+        ];
+        let kept: Vec<&str> = pane
+            .visible(&lines, &Classifier::new(&[]))
+            .iter()
+            .map(|l| l.text.as_str())
+            .collect();
+        assert_eq!(kept, vec!["pool  exhausted"]);
     }
 }
