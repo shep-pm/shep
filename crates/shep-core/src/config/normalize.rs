@@ -202,7 +202,7 @@ fn expand_paths(app: &mut AppConfig, home: Option<&Path>) -> Result<(), Normaliz
 /// - [`NormalizeError::WatchWithoutCwd`]: `watch` is `true` with no `cwd` set.
 /// - [`NormalizeError::ZeroWatchDelay`]: `watch_delay` is `0`.
 /// - [`NormalizeError::InvalidWatchGlob`]: a `watch_options` or `ignore_watch` pattern globset will not compile.
-/// - [`NormalizeError::InvalidLevelRule`]: a `level_rules` entry has an empty pattern, or one regex will not compile.
+/// - [`NormalizeError::InvalidLevelRule`]: a `level_rules` entry has an empty pattern, one regex will not compile, or the list is longer than the ceiling on how many rules an app may declare.
 /// - [`NormalizeError::BadTemplate`]: an `env`/`args`/log-path value carries an undefined or unclosed `{{...}}` token.
 /// - [`NormalizeError::SecretInLogPath`]: `out_file` or `err_file` carries a `{{secret:...}}`.
 /// - [`NormalizeError::SharedLogPath`]: `out_file` or `err_file` renders to the same path for two instances.

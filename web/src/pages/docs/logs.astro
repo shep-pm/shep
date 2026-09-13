@@ -205,7 +205,10 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
       The pattern is matched against the whole line, exactly as written:{" "}
       <code>(?i)</code> folds case, and nothing is anchored for you. One that
       will not compile is refused when the Flockfile loads, not when a line is
-      drawn.
+      drawn. So is a list of more than 64 rules: lookout rebuilds the whole
+      list every time it redraws the feed, so the length is a per-frame cost
+      rather than a one-off one. Five levels and a few spellings each stays
+      far under it.
     </p>
     <Callout variant="note">
       Declaring any rule replaces shep's own reading for that app rather than

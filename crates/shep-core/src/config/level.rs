@@ -19,6 +19,24 @@ use serde::{Deserialize, Serialize};
 /// choose, and regex's own default is unbounded in practice.
 const PATTERN_SIZE_LIMIT: usize = 1 << 20;
 
+/// Most rules one app may declare.
+///
+/// [`PATTERN_SIZE_LIMIT`] bounds what ONE pattern may compile to, and a list
+/// of N patterns costs N of those, so leaving the count open left the same
+/// argument half made: the memory is still not this process's to choose.
+///
+/// Sixty-four because five levels need five entries to name each once, and an
+/// app whose lines announce a level several ways needs a small multiple of
+/// that. Twelve times over is past anything a real Flockfile reaches.
+///
+/// The count is what a client pays per redraw, not just once:
+/// `Classifier::new` compiles the whole list on every `visible()` call rather
+/// than holding it, which is the right call while the list is short and is
+/// only defensible because of this ceiling. At a measured 78 us for five
+/// rules, a full list costs about 1 ms a frame; unbounded, a redraw is
+/// unbounded too.
+const MAX_LEVEL_RULES: usize = 64;
+
 /// The level one log line announces.
 ///
 /// Ordered lowest first, so `level >= minimum` reads the way an operator
@@ -105,6 +123,12 @@ impl LevelMatcher {
     /// - [`LevelRuleError::BadPattern`] if a pattern does not compile, or
     ///   compiles to a program over this crate's 1 MiB bound.
     pub fn compile(rules: &[LevelRule]) -> Result<Self, LevelRuleError> {
+        if rules.len() > MAX_LEVEL_RULES {
+            return Err(LevelRuleError::TooManyRules {
+                count: rules.len(),
+                limit: MAX_LEVEL_RULES,
+            });
+        }
         let mut compiled = Vec::with_capacity(rules.len());
         for rule in rules {
             if rule.pattern.is_empty() {
@@ -152,6 +176,14 @@ pub enum LevelRuleError {
         /// entry to edit.
         level: LineLevel,
     },
+    /// More rules than [`MAX_LEVEL_RULES`]. Each costs a compiled regex, and
+    /// a client recompiles the whole list on every redraw.
+    TooManyRules {
+        /// How many the app declared.
+        count: usize,
+        /// The ceiling it passed.
+        limit: usize,
+    },
     /// A pattern does not compile, or compiles to a program over the size
     /// bound this crate puts on a pattern it did not write.
     BadPattern {
@@ -169,6 +201,11 @@ impl fmt::Display for LevelRuleError {
                 f,
                 "the `{level}` level rule has an empty pattern, which would match every line"
             ),
+            Self::TooManyRules { count, limit } => write!(
+                f,
+                "{count} level rules, over the {limit} one app may declare: each is a compiled \
+                 regex a client rebuilds on every redraw"
+            ),
             Self::BadPattern { pattern, reason } => {
                 write!(f, "invalid level rule pattern `{pattern}`: {reason}")
             }
@@ -180,6 +217,37 @@ impl core::error::Error for LevelRuleError {}
 
 #[cfg(test)]
 mod tests {
+    /// fails if the count stops being bounded. `PATTERN_SIZE_LIMIT` caps one
+    /// pattern and a list costs one of those per entry, so without this the
+    /// memory a Flockfile can ask a client to spend per redraw is open.
+    #[test]
+    fn a_list_longer_than_the_ceiling_is_refused() {
+        let rule = |n: usize| LevelRule {
+            pattern: format!("^{n} "),
+            level: LineLevel::Info,
+        };
+        let at_ceiling: Vec<LevelRule> = (0..MAX_LEVEL_RULES).map(rule).collect();
+        assert!(
+            LevelMatcher::compile(&at_ceiling).is_ok(),
+            "the ceiling itself is allowed"
+        );
+
+        let over: Vec<LevelRule> = (0..=MAX_LEVEL_RULES).map(rule).collect();
+        let err = LevelMatcher::compile(&over).expect_err("one past it is refused");
+        assert_eq!(
+            err,
+            LevelRuleError::TooManyRules {
+                count: MAX_LEVEL_RULES + 1,
+                limit: MAX_LEVEL_RULES,
+            }
+        );
+        // The refusal has to name both numbers: an operator trimming a list
+        // needs to know how far over it is.
+        let text = err.to_string();
+        assert!(text.contains("65"), "{text}");
+        assert!(text.contains("64"), "{text}");
+    }
+
     use super::*;
 
     #[test]
