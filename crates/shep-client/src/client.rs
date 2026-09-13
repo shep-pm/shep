@@ -394,11 +394,15 @@ mod tests {
     /// CI runner, small enough that a stuck test fails rather than hangs.
     const BOUND: Duration = Duration::from_secs(5);
 
-    /// An ack distinguishable per generation, so a test can tell which
-    /// daemon answered rather than only that one did.
-    fn ack_from(pid: u32) -> HelloAck {
+    /// An ack with the two facts a test might read set independently.
+    ///
+    /// Separate arguments on purpose. A helper deriving one from the other
+    /// makes every generation differ in both at once, and a test written
+    /// over such a fixture stays green when the code under it starts
+    /// comparing the wrong field.
+    fn ack(pid: u32, version: &str) -> HelloAck {
         HelloAck {
-            daemon_version: format!("0.0.{pid}"),
+            daemon_version: version.to_string(),
             protocol: PROTOCOL_VERSION,
             pid,
             min_supported: None,
@@ -429,8 +433,8 @@ mod tests {
         let shepherds = fake_daemon_across_handovers(
             &path,
             vec![
-                Handshake::Accept(ack_from(11)),
-                Handshake::Accept(ack_from(11)),
+                Handshake::Accept(ack(11, "0.0.11")),
+                Handshake::Accept(ack(11, "0.0.11")),
             ],
         );
         let mut client = Client::connect(&path).await.unwrap();
@@ -458,8 +462,8 @@ mod tests {
         let shepherds = fake_daemon_across_handovers(
             &path,
             vec![
-                Handshake::Accept(ack_from(11)),
-                Handshake::Accept(ack_from(22)),
+                Handshake::Accept(ack(11, "0.0.11")),
+                Handshake::Accept(ack(22, "0.0.22")),
             ],
         );
         let mut client = Client::connect(&path).await.unwrap();
@@ -479,6 +483,65 @@ mod tests {
         );
     }
 
+    /// fails if identity is read off `daemon_version` rather than the pid.
+    ///
+    /// This is what a handover actually looks like: `execve` replaces the
+    /// image in place, so the pid is the one it always was while the binary
+    /// and its version are new. The id space crossed with the pid, so the
+    /// caller's ids still mean what they meant, and a version comparison
+    /// would tell it to throw them away.
+    #[tokio::test]
+    async fn an_upgraded_daemon_on_the_same_pid_is_still_the_same_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack(11, "0.7.4")),
+                Handshake::Accept(ack(11, "0.8.0")),
+            ],
+        );
+        let mut client = Client::connect(&path).await.unwrap();
+
+        cut_and_settle(&client, &shepherds).await;
+        let outcome = tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("the reconnect must not hang")
+            .expect("the successor accepts");
+
+        assert_eq!(outcome, Reconnected::SameDaemon);
+        assert_eq!(
+            client.daemon().daemon_version,
+            "0.8.0",
+            "and the ack still follows the binary now answering"
+        );
+    }
+
+    /// fails if identity is read off `daemon_version` rather than the pid,
+    /// in the other direction: a daemon stopped and started again is the
+    /// same build, so the versions match while the id space is fresh.
+    #[tokio::test]
+    async fn a_restart_of_the_same_build_is_a_new_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack(11, "0.7.4")),
+                Handshake::Accept(ack(22, "0.7.4")),
+            ],
+        );
+        let mut client = Client::connect(&path).await.unwrap();
+
+        cut_and_settle(&client, &shepherds).await;
+        let outcome = tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("the reconnect must not hang")
+            .expect("the successor accepts");
+
+        assert_eq!(outcome, Reconnected::NewDaemon);
+    }
+
     /// fails if a failed reconnect tears down the client it was called on.
     /// The caller's next move is to try again, and a client left holding
     /// neither connection could not say which socket or which dog it was.
@@ -488,7 +551,7 @@ mod tests {
         let path = control_address(dir.path());
         let shepherds = fake_daemon_across_handovers(
             &path,
-            vec![Handshake::Accept(ack_from(11)), Handshake::Drop],
+            vec![Handshake::Accept(ack(11, "0.0.11")), Handshake::Drop],
         );
         let mut client = Client::connect(&path).await.unwrap();
 
@@ -522,8 +585,8 @@ mod tests {
         let shepherds = fake_daemon_across_handovers(
             &path,
             vec![
-                Handshake::Accept(ack_from(11)),
-                Handshake::Accept(ack_from(22)),
+                Handshake::Accept(ack(11, "0.0.11")),
+                Handshake::Accept(ack(22, "0.0.22")),
             ],
         );
         let mut client = Client::connect_as(&path, HANDSHAKE_TIMEOUT, Some("metrics"))
@@ -556,8 +619,8 @@ mod tests {
         let shepherds = fake_daemon_across_handovers(
             &path,
             vec![
-                Handshake::Accept(ack_from(11)),
-                Handshake::Accept(ack_from(22)),
+                Handshake::Accept(ack(11, "0.0.11")),
+                Handshake::Accept(ack(22, "0.0.22")),
             ],
         );
         let mut client = Client::connect(&path).await.unwrap();
