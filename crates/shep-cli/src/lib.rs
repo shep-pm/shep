@@ -347,6 +347,7 @@ fn resolve_paths_in(
 ) -> Result<ShepPaths, HomeRefusal> {
     if let Some(named) = global.home.as_ref() {
         require_absolute(HOME_KNOB, named)?;
+        require_utf8(HOME_KNOB, named)?;
     }
     let env = |key: &str| match key {
         "SHEP_HOME" => global
@@ -365,8 +366,30 @@ fn resolve_paths_in(
     // this arm can carry goes unread in that case.
     if global.home.is_none() {
         require_absolute(HOME_DIR_VAR, &home_dir)?;
+        require_utf8(HOME_DIR_VAR, &home_dir)?;
     }
     Ok(ShepPaths::resolve(&env, &home_dir))
+}
+
+/// Refuses `candidate` when its bytes are not valid UTF-8, naming `knob` as
+/// the spelling to fix.
+///
+/// A path is bytes on unix and UTF-16 on Windows, and neither promises valid
+/// UTF-8. Shep's own surfaces are all text, so the conversion happens
+/// somewhere regardless; this makes it happen once, loudly, at the only door
+/// an operator can name a home through.
+///
+/// # Errors
+///
+/// [`HomeRefusal::NotUtf8`], carrying `candidate` as typed.
+fn require_utf8(knob: &'static str, candidate: &Path) -> Result<(), HomeRefusal> {
+    if candidate.to_str().is_some() {
+        return Ok(());
+    }
+    Err(HomeRefusal::NotUtf8 {
+        knob,
+        given: candidate.to_path_buf(),
+    })
 }
 
 /// Refuses `candidate` when it has no root, naming `knob` as the spelling to
@@ -513,6 +536,20 @@ pub(crate) enum HomeRefusal {
         /// remedy line. `None` when that directory could not be read.
         absolute: Option<PathBuf>,
     },
+    /// Something named a path whose bytes are not valid UTF-8.
+    ///
+    /// Refused rather than carried, because the path does not stay a path:
+    /// it reaches the `{{SHEP_HOME}}` template, the Windows pipe name and
+    /// every log path on the wire as a `String`, and each of those
+    /// conversions is lossy. Shep would then read and write a directory
+    /// whose name is not the one the operator typed, and say nothing.
+    NotUtf8 {
+        /// The spelling an operator has to fix, as in [`Self::Relative`].
+        knob: &'static str,
+        /// The path as it was spelled, rendered lossily for the message.
+        /// Nothing but the message reads it.
+        given: PathBuf,
+    },
     /// `--home`/`$SHEP_HOME` named a directory that is not there. Never
     /// created: a named path is not a path shep may invent.
     Missing(PathBuf),
@@ -535,6 +572,15 @@ impl core::fmt::Display for HomeRefusal {
                 given,
                 absolute,
             } => write_relative_refusal(f, knob, given, absolute.as_deref()),
+            Self::NotUtf8 { knob, given } => write!(
+                f,
+                "{knob} must be valid UTF-8, and {given} is not\n  \
+                 shep carries the home path into the `{{{{SHEP_HOME}}}}` template, the log \
+                 paths it reports, and the control socket's own name, all of which are text, \
+                 so a byte that is not UTF-8 would be replaced and shep would use a \
+                 directory you did not name",
+                given = given.display(),
+            ),
             Self::Missing(path) => write!(
                 f,
                 "no flock at {path}\n  \
@@ -552,7 +598,9 @@ impl core::fmt::Display for HomeRefusal {
 impl core::error::Error for HomeRefusal {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
-            Self::Unresolved | Self::Relative { .. } | Self::Missing(_) => None,
+            Self::Unresolved | Self::Relative { .. } | Self::NotUtf8 { .. } | Self::Missing(_) => {
+                None
+            }
             Self::Io { source, .. } => Some(source),
         }
     }
@@ -565,7 +613,9 @@ impl HomeRefusal {
     /// something reasonable and shep failed at it.
     pub(crate) fn code(&self) -> ExitCode {
         match self {
-            Self::Unresolved | Self::Relative { .. } | Self::Missing(_) => ExitCode::Usage,
+            Self::Unresolved | Self::Relative { .. } | Self::NotUtf8 { .. } | Self::Missing(_) => {
+                ExitCode::Usage
+            }
             Self::Io { .. } => ExitCode::Internal,
         }
     }
@@ -2307,6 +2357,82 @@ mod tests {
             quiet: false,
             style: None,
         }
+    }
+
+    /// An absolute path whose bytes are not valid UTF-8, which only unix can
+    /// spell. Windows paths are UTF-16, so the same hole there is an unpaired
+    /// surrogate and needs its own constructor.
+    #[cfg(unix)]
+    fn non_utf8_home() -> std::path::PathBuf {
+        use std::os::unix::ffi::OsStringExt as _;
+        std::path::PathBuf::from(std::ffi::OsString::from_vec(
+            b"/tmp/shep-\xff-home".to_vec(),
+        ))
+    }
+
+    /// A home shep cannot carry as text is refused at the door rather than
+    /// replaced silently.
+    ///
+    /// Without this, `to_string_lossy` turns the byte into U+FFFD and every
+    /// path in the layout is built from a directory the operator never
+    /// named. The refusal has to come before `ShepPaths::resolve`, since that
+    /// is where the conversion happens.
+    #[cfg(unix)]
+    #[test]
+    fn a_home_that_is_not_utf8_is_refused_before_any_path_is_derived() {
+        let home = non_utf8_home();
+        let global = cli::GlobalArgs {
+            home: Some(home.clone()),
+            format: cli::Format::Table,
+            quiet: false,
+            style: None,
+        };
+        let Err(refusal) = resolve_paths(&global) else {
+            panic!("a home that is not UTF-8 must not resolve a layout");
+        };
+        assert!(
+            matches!(&refusal, HomeRefusal::NotUtf8 { knob, given }
+                if *knob == HOME_KNOB && given == &home),
+            "its own refusal, not the relative or unresolved one: {refusal:?}"
+        );
+        assert_eq!(refusal.code(), ExitCode::Usage);
+
+        let rendered = refusal.to_string();
+        assert!(
+            rendered.contains(HOME_KNOB),
+            "names the spelling to fix: {rendered}"
+        );
+        assert!(
+            rendered.contains("UTF-8"),
+            "says what is wrong with it: {rendered}"
+        );
+        assert!(
+            !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
+            "no em or en dash in copy a user reads: {rendered}"
+        );
+    }
+
+    /// The neighbouring gate still answers first for a path that is both
+    /// relative and not UTF-8, so one bad home reports one reason.
+    #[cfg(unix)]
+    #[test]
+    fn a_relative_home_is_refused_as_relative_even_when_it_is_also_not_utf8() {
+        use std::os::unix::ffi::OsStringExt as _;
+        let home =
+            std::path::PathBuf::from(std::ffi::OsString::from_vec(b"rel-\xff-home".to_vec()));
+        let global = cli::GlobalArgs {
+            home: Some(home),
+            format: cli::Format::Table,
+            quiet: false,
+            style: None,
+        };
+        let Err(refusal) = resolve_paths(&global) else {
+            panic!("a relative home must not resolve a layout");
+        };
+        assert!(
+            matches!(refusal, HomeRefusal::Relative { .. }),
+            "the rootless reason wins, since it is the one an operator hits first"
+        );
     }
 
     /// The whole point of the gate: a home with no root puts the control

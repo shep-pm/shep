@@ -211,6 +211,21 @@ impl ShepPaths {
     ///
     /// [`Self::socket`] resolves per-platform: a socket file under `run/` on
     /// unix, [`Self::pipe_name`] on Windows. Everything else is identical.
+    ///
+    /// # Why `String` and not `OsString`
+    ///
+    /// [`user_home`] takes an `OsString` lookup and this takes a `String`
+    /// one, which reads like an oversight and is not. A home path does not
+    /// stay a path: it reaches the `{{SHEP_HOME}}` template, [`Self::pipe_name`]
+    /// and every log path on the wire as text, and each of those conversions
+    /// is lossy. Widening this signature would move the loss rather than
+    /// remove it, and it would break every caller of a published crate to do
+    /// so.
+    ///
+    /// The CLI refuses a home that is not valid UTF-8 instead, at the one
+    /// door an operator can name one through, so nothing lossy reaches here.
+    /// A library caller supplying its own lookup has already chosen its
+    /// encoding by building a `String`.
     #[must_use]
     pub fn resolve(env: &dyn Fn(&str) -> Option<String>, home_dir: &Path) -> Self {
         let home = home_under(env, home_dir);
