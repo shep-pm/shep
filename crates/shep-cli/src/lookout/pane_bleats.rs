@@ -106,15 +106,27 @@ pub(crate) fn compiles() -> usize {
 }
 
 impl Matcher {
-    /// Compiles `text` per [`MatchKind`]'s rule.
-    fn new(text: String) -> Self {
+    /// Compiles `text` per [`MatchKind`]'s rule, or `None` for an empty
+    /// `text`, which is an unset axis rather than a matcher hitting every
+    /// line.
+    ///
+    /// The refusal lives here rather than in [`Filters::set_match`] because
+    /// [`Self::is_match`] and [`Self::ranges`] disagree on an empty needle:
+    /// `str::contains` answers true for one, and `str::match_indices`
+    /// reports a hit at every byte boundary. A matcher that cannot hold
+    /// empty text is one guard instead of two, and neither method has to
+    /// know about it.
+    fn new(text: String) -> Option<Self> {
+        if text.is_empty() {
+            return None;
+        }
         #[cfg(test)]
         COMPILES.with(|count| count.set(count.get() + 1));
         let compiled = match delimited_regex(&text) {
             Some(pattern) => Regex::new(pattern).map_or(Compiled::Invalid, Compiled::Regex),
             None => Compiled::Literal,
         };
-        Self { text, compiled }
+        Some(Self { text, compiled })
     }
 
     /// This matcher's [`MatchKind`].
@@ -136,16 +148,14 @@ impl Matcher {
     }
 
     /// Every byte range in `haystack` this matcher hits, oldest first, for
-    /// highlighting. Empty for [`Compiled::Invalid`], which matches nothing,
-    /// and for an empty literal pattern, which `str::match_indices` would
-    /// otherwise report at every byte boundary.
+    /// highlighting. Empty for [`Compiled::Invalid`], which matches nothing.
     fn ranges(&self, haystack: &str) -> Vec<(usize, usize)> {
         match &self.compiled {
-            Compiled::Literal if !self.text.is_empty() => haystack
+            Compiled::Literal => haystack
                 .match_indices(self.text.as_str())
                 .map(|(start, matched)| (start, start + matched.len()))
                 .collect(),
-            Compiled::Literal | Compiled::Invalid => Vec::new(),
+            Compiled::Invalid => Vec::new(),
             Compiled::Regex(re) => re
                 .find_iter(haystack)
                 .map(|m| (m.start(), m.end()))
@@ -237,7 +247,7 @@ impl Filters {
     /// once per line the pane later draws. An empty `text` clears the axis;
     /// see [`BleatsPane::set_match`] for why.
     fn set_match(&mut self, text: String) {
-        let matcher = (!text.is_empty()).then(|| Matcher::new(text));
+        let matcher = Matcher::new(text);
         self.note_axis(Axis::Match, matcher.is_some());
         self.matcher = matcher;
     }
