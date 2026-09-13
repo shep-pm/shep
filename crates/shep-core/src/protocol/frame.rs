@@ -72,6 +72,7 @@ mod tests {
                 pending: None,
                 overridden: None,
                 max_memory: None,
+                level_rules: Vec::new(),
             },
             manually: false,
             at_ms: 1_700_000_000_000,

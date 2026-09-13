@@ -451,6 +451,34 @@
             "group": "shutdown"
           }
         },
+        "level_rules": {
+          "description": "How this app's own lines announce their level, for a client that\nfilters by one.\n\nOrdered: rules are tried as written and the first match wins.\nDeclaring any replaces the reader's built-in guess for this app\nrather than adding to it, so a line matching no rule announces no\nlevel. Nothing here hides a line: an unclassified line survives\nevery level filter.",
+          "type": "array",
+          "default": [],
+          "init": {
+            "accepts": [
+              "a list of { pattern, level } rules, tried in order",
+              "a regex matched against the whole line, (?i) folds case",
+              "a level of trace, debug, info, warn, or error"
+            ],
+            "blurb": "What this app's own log levels look like, for filtering",
+            "example": "[{ pattern = '\\[ERROR\\]', level = 'error' }]",
+            "group": "logging",
+            "neighbours": [
+              {
+                "field": "out_file",
+                "note": "the lines these rules read"
+              }
+            ],
+            "refuses": [
+              "an empty pattern, which would claim every line",
+              "a pattern regex cannot compile"
+            ]
+          },
+          "items": {
+            "$ref": "#/$defs/LevelRule"
+          }
+        },
         "listen_timeout": {
           "description": "Readiness fallback window when no ready signal/probe configured",
           "$ref": "#/$defs/UpDuration",
@@ -808,6 +836,55 @@
         }
       },
       "additionalProperties": false
+    },
+    "LevelRule": {
+      "description": "One rule: the lines this pattern matches carry this level.\n\nThe pattern is a regex, matched against the whole line, exactly as\nwritten: `(?i)` makes one case-insensitive, and nothing is anchored for\nyou.",
+      "type": "object",
+      "properties": {
+        "level": {
+          "description": "The level a matching line is given.",
+          "$ref": "#/$defs/LineLevel"
+        },
+        "pattern": {
+          "description": "The regex a line must match for this rule to claim it.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "pattern",
+        "level"
+      ]
+    },
+    "LineLevel": {
+      "description": "The level one log line announces.\n\nOrdered lowest first, so `level >= minimum` reads the way an operator\nsetting a floor expects. `Display` renders the spelling a Flockfile\nwrites.",
+      "oneOf": [
+        {
+          "description": "The lowest, and the only one an app has to opt into emitting.",
+          "type": "string",
+          "const": "trace"
+        },
+        {
+          "description": "Below `Info`, and the usual floor for an app's own noise.",
+          "type": "string",
+          "const": "debug"
+        },
+        {
+          "description": "The default an operator reads when nothing is filtered.",
+          "type": "string",
+          "const": "info"
+        },
+        {
+          "description": "Something an operator should look at, without the sheep being broken.",
+          "type": "string",
+          "const": "warn"
+        },
+        {
+          "description": "The highest. A line saying it is fatal is not saying something milder\nthan one saying error.",
+          "type": "string",
+          "const": "error"
+        }
+      ]
     },
     "MemSize": {
       "description": "A byte quantity: digits, optionally suffixed G, M or K (binary units).",

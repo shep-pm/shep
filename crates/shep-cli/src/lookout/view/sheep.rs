@@ -18,7 +18,7 @@ use super::super::field::{Field, FieldSet};
 use super::super::pane;
 use super::super::pane_bleats::{BleatsPane, Filters, MatchKind};
 use super::super::pane_sheep::{SheepPane, scale_top, window};
-use super::super::tail::{Stream, Tail, TailLine};
+use super::super::tail::{Stream, TailLine};
 use super::super::theme::Palette;
 use super::detail::chip_text;
 use super::flock::{self, fit};
@@ -403,11 +403,15 @@ fn draw_feed(
 ) {
     let feed = pane.feed();
     let tail = app.feed();
-    write_feed_row(buffer, area, top, &feed_header_line(feed, tail, palette));
+    let levels = app.feed_classifier();
+    // Filtered once for both halves. The header counts what the body does
+    // not show, so computing it twice is how the two come to disagree, and
+    // it also compiled the classifier's regexes a second time per frame.
+    let survivors = feed.visible(&tail.lines, &levels);
+    let hidden = survivors.len().saturating_sub(COLUMN_BODY_ROWS);
+    write_feed_row(buffer, area, top, &feed_header_line(feed, hidden, palette));
 
-    let survivors = feed.visible(&tail.lines);
-    let shown = survivors.len().saturating_sub(COLUMN_BODY_ROWS);
-    for (i, line) in survivors.iter().skip(shown).enumerate() {
+    for (i, line) in survivors.iter().skip(hidden).enumerate() {
         write_feed_row(buffer, area, top + 1 + i as u16, &feed_line(line, palette));
     }
 }
@@ -432,22 +436,23 @@ fn feed_line(line: &TailLine, palette: Palette) -> Line<'static> {
 /// many of the window's surviving lines this column has no room to show,
 /// then a bracketed chip per filter axis currently set, then `/ narrow`,
 /// naming the one key this row does not otherwise spell out.
-fn feed_header_line(feed: &BleatsPane, tail: &Tail, palette: Palette) -> Line<'static> {
+fn feed_header_line(feed: &BleatsPane, hidden: usize, palette: Palette) -> Line<'static> {
     let chip = chip_text("BLEATS");
     let chip_width = u16::try_from(chip.chars().count() + 1).unwrap_or(FEED_WIDTH);
     let budget = FEED_WIDTH.saturating_sub(chip_width);
     Line::from(vec![
         Span::styled(chip, palette.band(crate::vocabulary::Role::Butter)),
         Span::raw(" "),
-        Span::styled(fit(&feed_header_text(feed, tail), budget), palette.muted()),
+        Span::styled(
+            fit(&feed_header_text(feed, hidden), budget),
+            palette.muted(),
+        ),
     ])
 }
 
 /// [`feed_header_line`]'s own sentence, built separately so a test can pin
 /// its wording without rendering a [`Line`] back into a string.
-fn feed_header_text(feed: &BleatsPane, tail: &Tail) -> String {
-    let survivors = feed.visible(&tail.lines);
-    let hidden = survivors.len().saturating_sub(COLUMN_BODY_ROWS);
+fn feed_header_text(feed: &BleatsPane, hidden: usize) -> String {
     let mut parts = vec!["out then err".to_string()];
     if hidden > 0 {
         parts.push(format!("{hidden} earlier"));
@@ -472,10 +477,7 @@ fn feed_chip_labels(filters: &Filters) -> Vec<String> {
         });
     }
     if let Some(min) = filters.min_level {
-        chips.push(format!(
-            "level\u{2265}{}",
-            format!("{min:?}").to_lowercase()
-        ));
+        chips.push(format!("level\u{2265}{min}"));
     }
     if let Some(text) = &filters.matcher {
         let suffix = match filters.match_kind() {
@@ -1013,6 +1015,8 @@ fn axis_row(body_cells: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::level::Classifier;
+    use super::super::super::tail::Tail;
     use shep_core::protocol::ProcessInfo;
     use shep_core::status::ProcStatus;
 
@@ -1753,7 +1757,7 @@ mod tests {
     fn the_headers_level_chip_names_the_minimum() {
         let mut feed = BleatsPane::new(RowKey::Sheep(1));
         feed.set_min_level(Some(Level::Warn));
-        let text = feed_header_text(&feed, &Tail::default());
+        let text = feed_header_text(&feed, 0);
         assert!(text.contains("[level≥warn]"), "got {text:?}");
         assert!(text.contains("/ narrow"), "got {text:?}");
     }
@@ -1766,7 +1770,7 @@ mod tests {
     fn the_headers_match_chip_names_a_regex() {
         let mut feed = BleatsPane::new(RowKey::Sheep(1));
         feed.set_match("/po+l/".to_string());
-        let text = feed_header_text(&feed, &Tail::default());
+        let text = feed_header_text(&feed, 0);
         assert!(text.contains("match /po+l/ (regex)"), "got {text:?}");
     }
 
@@ -1777,7 +1781,7 @@ mod tests {
     fn the_headers_match_chip_names_an_invalid_regex() {
         let mut feed = BleatsPane::new(RowKey::Sheep(1));
         feed.set_match("/pool(/".to_string());
-        let text = feed_header_text(&feed, &Tail::default());
+        let text = feed_header_text(&feed, 0);
         assert!(
             text.contains("invalid regex, matches nothing"),
             "got {text:?}"
@@ -1802,7 +1806,11 @@ mod tests {
             read_bytes: 0,
             note: None,
         };
-        let text = feed_header_text(&feed, &tail);
+        let hidden = feed
+            .visible(&tail.lines, &Classifier::new(&[]))
+            .len()
+            .saturating_sub(COLUMN_BODY_ROWS);
+        let text = feed_header_text(&feed, hidden);
         assert!(text.contains("1 earlier"), "got {text:?}");
     }
 

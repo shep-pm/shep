@@ -2937,19 +2937,19 @@ mod tests {
         };
         assert_eq!(flagged('*'), ["reuse_port", "max_restarts"]);
         assert_eq!(flagged('!'), ["kill_signal"]);
-        // 40, not 41: `env` no longer draws its own field row, folded into
+        // 41, not 42: `env` no longer draws its own field row, folded into
         // the env rows below the field list instead.
         assert_eq!(
             rows_of(&text).len(),
-            40,
+            41,
             "every field but env is drawn at 89"
         );
     }
 
     /// `=` is shep refusing the write outright; `~` is only this pane
-    /// having no widget for the shape. The two probes shep writes happily
-    /// carry `~`, so their cost cell must say `respawn` or `now`, never
-    /// `read-only`.
+    /// having no widget for the shape. The two probes and the level rules
+    /// shep writes happily carry `~`, so their cost cell must say `respawn`
+    /// or `now`, never `read-only`.
     #[test]
     fn a_refused_field_and_one_the_pane_has_no_widget_for_get_different_glyphs() {
         let text = text_of(&all_group_lines(fixtures::plain()));
@@ -2961,9 +2961,12 @@ mod tests {
                 .collect()
         };
         assert_eq!(glyphed('='), ["instances", "name"]);
-        assert_eq!(glyphed('~'), ["liveness_probe", "readiness_probe"]);
-        // 40, not 41: `env` no longer draws its own field row.
-        assert_eq!(glyphed(' ').len(), 40 - 2 - 2);
+        assert_eq!(
+            glyphed('~'),
+            ["level_rules", "liveness_probe", "readiness_probe"]
+        );
+        // 41, not 42: `env` no longer draws its own field row.
+        assert_eq!(glyphed(' ').len(), 41 - 2 - 3);
     }
 
     /// `kill_timeout` and `exp_backoff_restart_delay` default to 1600ms

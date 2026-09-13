@@ -85,10 +85,17 @@ shep-core = { workspace = true, features = ["schema"] }
 # dependency edge.
 shep-daemon.workspace = true
 shep-client.workspace = true
-# `dog::metrics`'s host reading (`shep_host_*`). Adds zero crates: the same
-# workspace-pinned version shep-daemon already carries for its tree sampler
-# (`limits/sample.rs`).
-sysinfo.workspace = true
+# `dog::metrics`'s host reading (`shep_host_*`) and `host`'s own line above a
+# followed listing. Adds zero crates: the same workspace-pinned version
+# shep-daemon already carries for its tree sampler (`limits/sample.rs`).
+#
+# # Option: `disk` and `network`
+# The two rates on `shep flock --follow`'s host line. Named here rather than
+# at the workspace root because only this crate reads them, and both are
+# additive: `disk` and `network` pull no crate `system` has not already
+# pulled on macOS, Linux or Windows, only more of the `windows` crate's own
+# feature surface.
+sysinfo = { workspace = true, features = ["disk", "network"] }
 # `serve`'s basic-auth comparison, through `hmac::sign`/`hmac::verify`, not
 # `ring::constant_time`: that module is `deprecated_constant_time` under an
 # alias in 0.17.14, and its own doc disclaims side-channel guarantees for

@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 // use schemars::generate
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::config::LevelRule;
 use crate::values::{MemSize, UpDuration};
 
 /// How a health probe checks a sheep
@@ -444,6 +445,26 @@ pub struct AppConfig {
         "blurb": "Put every instance's output in one pair of files"
     })))]
     pub merge_logs: bool,
+    /// How this app's own lines announce their level, for a client that
+    /// filters by one.
+    ///
+    /// Ordered: rules are tried as written and the first match wins.
+    /// Declaring any replaces the reader's built-in guess for this app
+    /// rather than adding to it, so a line matching no rule announces no
+    /// level. Nothing here hides a line: an unclassified line survives
+    /// every level filter.
+    #[cfg_attr(feature = "schema", schemars(extend("init" = {
+        "example": "[{ pattern = '\\[ERROR\\]', level = 'error' }]",
+        "group": "logging",
+        "blurb": "What this app's own log levels look like, for filtering",
+        "accepts": ["a list of { pattern, level } rules, tried in order",
+                    "a regex matched against the whole line, (?i) folds case",
+                    "a level of trace, debug, info, warn, or error"],
+        "refuses": ["an empty pattern, which would claim every line",
+                    "a pattern regex cannot compile"],
+        "neighbours": [{"field": "out_file", "note": "the lines these rules read"}]
+    })))]
+    pub level_rules: Vec<LevelRule>,
     /// Open the shepherd channel on fd 3 for this app on its own, without
     /// needing `wait_ready` or `shutdown_with_message` to imply it.
     ///
@@ -741,6 +762,7 @@ impl Default for AppConfig {
             out_file: None,
             err_file: None,
             merge_logs: false,
+            level_rules: Vec::new(),
             channel: false,
             stdin: false,
             wait_ready: false,

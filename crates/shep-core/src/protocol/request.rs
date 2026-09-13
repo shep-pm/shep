@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::config::{AppConfig, DeclaredApp, ResetDepth};
+use crate::config::{AppConfig, DeclaredApp, LevelRule, ResetDepth};
 use crate::status::ProcStatus;
 
 /// Client's opening frame
@@ -702,7 +702,8 @@ pub struct ExitInfo {
 // wire format: changing this is a breaking change. No `Eq`: `cpu_percent` is
 // an `f32`. Paths travel as `String`, since serde's `PathBuf` refuses a
 // non-UTF-8 path and would blank a whole `Reply`. Every added field is an
-// `Option`, so a peer built before it sends no key and `None` reads as unknown.
+// `Option` or a defaulted collection, so a peer built before it sends no key
+// and the empty reading means unknown.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProcessInfo {
@@ -844,6 +845,18 @@ pub struct ProcessInfo {
     /// `MEM/CEIL` gauge is the only reader; `None` draws an all-tail bar
     /// rather than guessing a denominator.
     pub max_memory: Option<u64>,
+    /// How this sheep's own log lines announce their level, from its
+    /// [`AppConfig::level_rules`](crate::config::AppConfig::level_rules).
+    ///
+    /// Empty both when the sheep declares none and when the peer daemon
+    /// predates the field, which read the same way: a client classifying
+    /// this sheep's lines falls back to its own reading of them. The key is
+    /// absent from the payload entirely when the list is empty.
+    // On the listing rather than behind a fetch of its own: a client reads
+    // this on every line it draws, and a listing it already polls cannot go
+    // stale between polls.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub level_rules: Vec<LevelRule>,
 }
 
 /// Orders one flock listing the way every operator-facing surface presents
@@ -896,6 +909,7 @@ impl ProcessInfo {
                 pending: None,
                 overridden: None,
                 max_memory: None,
+                level_rules: Vec::new(),
             },
         }
     }
@@ -1039,6 +1053,12 @@ impl ProcessInfoBuilder {
     /// ceiling configured.
     pub fn max_memory(mut self, max_memory: Option<u64>) -> Self {
         self.info.max_memory = max_memory;
+        self
+    }
+
+    /// Sets the sheep's declared level rules; empty when it declares none.
+    pub fn level_rules(mut self, level_rules: Vec<LevelRule>) -> Self {
+        self.info.level_rules = level_rules;
         self
     }
 
@@ -1955,6 +1975,13 @@ mod tests {
             pending: None,
             overridden: None,
             max_memory: Some(512 * 1024 * 1024),
+            // Populated where its list-shaped neighbours above are not:
+            // nothing else on the wire pins a `LevelRule`'s field names or a
+            // `LineLevel` spelling, and an empty list would prove neither.
+            level_rules: vec![crate::config::LevelRule {
+                pattern: r"\[ERROR\]".to_string(),
+                level: crate::config::LineLevel::Error,
+            }],
         }
     }
 
@@ -2018,6 +2045,10 @@ mod tests {
                 signal: None,
             }))
             .max_memory(Some(512 * 1024 * 1024))
+            .level_rules(vec![crate::config::LevelRule {
+                pattern: r"\[ERROR\]".to_string(),
+                level: crate::config::LineLevel::Error,
+            }])
             .build();
 
         // `sample_info()` is a struct literal on purpose: it is the one

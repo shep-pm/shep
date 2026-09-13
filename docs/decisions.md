@@ -22,7 +22,7 @@ go for the full argument. The commit that removed them names itself.
 - [Core types and the daemon's shape](#core-types-and-the-daemons-shape) (4)
 - [The CLI surface](#the-cli-surface) (4)
 - [Supervision and lifecycle](#supervision-and-lifecycle) (17)
-- [The log plane](#the-log-plane) (6)
+- [The log plane](#the-log-plane) (8)
 - [Reload](#reload) (9)
 - [Custom actions and the shepherd channel](#custom-actions-and-the-shepherd-channel) (9)
 - [The pm2 cutover](#the-pm2-cutover) (18)
@@ -40,6 +40,7 @@ go for the full argument. The commit that removed them names itself.
 - [CI and releases](#ci-and-releases) (2)
 - [Config pane writes](#config-pane-writes) (1)
 - [Boot ordering](#boot-ordering) (6)
+- [Following the flock](#following-the-flock) (3)
 
 ## Core types and the daemon's shape
 
@@ -249,6 +250,16 @@ normalize() rejects watch=true when the app sets no cwd (NormalizeError::WatchWi
 
 ## The log plane
 
+### A sheep's declared level rules replace shep's own reading, they do not extend it
+
+`AppConfig::level_rules` is an ordered list of `{ pattern, level }` regex rules. Declaring any of them turns off the built-in reading of a level word for that sheep, so a line no rule matches announces no level at all.
+
+**Why:** the friendlier alternative, falling back to the built-in reading for a line no rule matches, cannot express "stop guessing". An operator declares rules either because shep sees no level in their lines or because it sees the wrong one, and the second case needs the guess gone. Re-stating a couple of built-in shapes under this rule is laborious; losing the ability to turn the guess off is not recoverable at all. It also makes the Flockfile the whole answer to how a sheep's lines are read, with no second source to go looking for.
+
+A line that still announces no level survives every level filter, which is the bleats pane's decision 3 and is unchanged by any of this. Rules narrow what gets a level, never what gets shown.
+
+`verified crates/shep-core/src/config/level.rs (LevelMatcher), crates/shep-cli/src/lookout/level.rs (Classifier), crates/shep-cli/src/lookout/pane_bleats.rs (Filters::keeps)`
+
 ### flush truncates AFTER flushing pending writes, not before
 
 shep flush's log-clearing sequence flushes buffered writes to disk first, then truncates.
@@ -264,6 +275,16 @@ shep flush truncates ProcessEntry::out_file/err_file (the paths the actor holds)
 **Why:** tokio::fs::File genuinely buffers: a write already dispatched to the blocking pool can land at offset 0 immediately after a bare truncate if flush-then-truncate isn't ordered. And truncating by current inode rather than by path would truncate a rotator's freshly-renamed archive instead of the live file if run right after an external rename.
 
 `docs/writing-plans/plans/2026-08-09-shep-phase5-log-plane.md:290`
+
+### Level rules ride ProcessInfo rather than a fetch of their own
+
+A sheep's `level_rules` are copied onto every `ProcessInfo` the shepherd builds, skipped on the wire when empty. Lookout reads them off the listing it already polls.
+
+**Why:** a client classifies a line, and the rules live on `AppConfig`, which no client holds. A fetch when the pane opens would hold one answer for as long as the pane stayed open, so an edit through the config pane would not reach it; the muster roll is a saved file and goes stale by design. The listing refreshes on its own cadence and carries the rules with it. `max_memory` is the same shape, added for one lookout gauge.
+
+Additive, so none of `PROTOCOL_VERSION`, `MIN_SUPPORTED` or `SCHEMA_VERSION` moves: an older peer sends no key and the empty list reads as no rules, which is also what a sheep declaring none means.
+
+`verified crates/shep-core/src/protocol/request.rs (ProcessInfo::level_rules, ProcessInfoBuilder::level_rules), crates/shep-daemon/src/supervisor.rs (to_info), crates/shep-cli/src/lookout/app.rs (App::feed_classifier)`
 
 ### reopen uses a push channel with a synchronous ack, not a generation counter
 
@@ -2103,3 +2124,86 @@ than a solved problem, and it is written down here so nobody later reads the
 emitter as the whole of what was designed.
 
 `verified docs/brainstorming/specs/2026-09-02-shep-client-libraries-design.md (The generator)`
+
+## Following the flock
+
+### `--follow` rather than `--watch`, and no second TUI
+
+`shep flock` grew `--follow` and `--interval`, redrawing the listing in place
+on the main screen.
+
+**Why the name:** `watch` already means something on this surface. It is the
+Flockfile field that restarts a sheep when its files change, so a flag reading
+"the flock, watched" next to an app setting reading "watch the filesystem" is
+one word carrying two meanings. `--follow` is the spelling `shep bleats`
+already uses for keeping a stream open. The uncommitted work this was built
+from used `--watch`; that is the only part of it that was overruled outright.
+
+**Why the main screen:** the alternate screen hands back a terminal with no
+trace of what the flock looked like, and the last frame is what an operator
+reads after stopping. A cursor-up-and-overwrite count was rejected separately,
+because a wrapped line makes the count wrong.
+
+**Why the frame is rendered before anything is cleared:** a clear issued ahead
+of the list request leaves the terminal blank for the length of the round trip.
+This is also why the uncommitted `flock_with_list_hook` seam was dropped rather
+than used: it existed so the clear could happen inside the same call as the
+request, and buffering removes the need for the seam and the blank screen at
+once.
+
+Both refusals are usage errors rather than degradations. Not a terminal, and
+`--format json`. A follow printed once into a redirect would exit zero having
+done something other than what was asked, and `shep lookout` already refuses a
+redirected stdout for the same reason.
+
+`verified crates/shep-cli/src/cli.rs (FlockArgs), crates/shep-cli/src/commands/query.rs (flock_follow, follow_frame, fit_rows), crates/shep-cli/src/lib.rs (follow_flock_command)`
+
+### The host line rides with a follow, and not with the one-shot listing
+
+A followed listing carries a line of host numbers above the tables. A bare
+`shep flock` carries nothing new, and its JSON envelope is unchanged.
+
+**Why:** three of the four numbers are rates, and a rate is a difference
+between two samples. A listing that prints once and exits has only ever taken
+one. `HostWatch` holds the earlier sample between redraws, which is the whole
+reason the follow can show them.
+
+The structural note, since it is the call most likely to want revisiting: pm2's
+own analogue splits the same way. `pm2 monit` is per-process, and host-level
+CPU, memory, disk and network is `pm2-server-monit`, a separately installed
+module. That is the shape of a dog here, not of a verb, so extending the
+metrics dog would be the closer match. Pulling the host line is a small revert
+if that is the call: nothing outside the follow path changed, and
+`SCHEMA_VERSION` does not move.
+
+`verified crates/shep-cli/src/host.rs, crates/shep-cli/src/commands/query.rs (follow_frame)`
+
+### Disk traffic sums over distinct devices, keyed on lifetime counters
+
+`sysinfo::Disks` lists mount points, and several of them can sit on one device.
+`host::distinct_disk_io` counts each device once.
+
+**Why:** on macOS sysinfo walks each APFS volume up to the
+`IOBlockStorageDriver` behind it, so `/` and `/System/Volumes/Data` report the
+same counters and a plain sum doubles every number. Measured 2026-09-12:
+byte-identical lifetime counters on both volumes, 12 rounds out of 12, under a
+4 GB write. The lifetime pair is the identity because sysinfo exposes no device
+name to group by, and two separate devices agreeing on both 64-bit counters is
+only reachable at boot with both at zero, where they contribute nothing either
+way. Linux is unaffected: its backend keys `/proc/diskstats` by the partition,
+so two partitions are two devices with different counters.
+
+The rejected alternative was to ship three numbers and say the fourth could not
+be had. It stays the fallback if the dedupe ever proves wrong on a platform
+this was not measured on.
+
+Network excludes loopback, judged by address rather than by interface name. On
+a box where a sheep answers a local proxy, loopback carries every request twice
+and swamps the interface being watched; `lo` and `lo0` are two spellings of a
+set with no promised end.
+
+`disk` and `network` are enabled on shep-cli alone rather than at the workspace
+root, since nothing else reads them. Neither adds a crate on any of the three
+platforms.
+
+`verified crates/shep-cli/src/host.rs (distinct_disk_io, is_loopback), crates/shep-cli/Cargo.toml (the sysinfo entry)`

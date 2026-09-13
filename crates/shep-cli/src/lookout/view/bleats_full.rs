@@ -75,7 +75,7 @@ fn lines(app: &App, pane: &BleatsPane, width: u16, rows: usize) -> Vec<Line<'sta
 
     let filters = pane.filters();
     let feed = app.feed();
-    let survivors = pane.visible(&feed.lines);
+    let survivors = pane.visible(&feed.lines, &app.feed_classifier());
 
     if let Some(row) = filter_row_line(app, filters, survivors.len(), feed.lines.len(), width) {
         out.push(row);
@@ -220,7 +220,7 @@ fn window_range(
 /// escape that, but `j` is the reflex and it would do nothing.
 #[must_use]
 pub(crate) fn max_scroll_offset(app: &App, pane: &BleatsPane) -> usize {
-    let survivors = pane.visible(&app.feed().lines);
+    let survivors = pane.visible(&app.feed().lines, &app.feed_classifier());
     let body_rows = pane.body_rows();
     if body_rows == 0 || survivors.is_empty() {
         return 0;
@@ -293,7 +293,7 @@ pub(crate) fn page_amount_up(app: &App, pane: &BleatsPane) -> usize {
     if !pane.wrapped() || pane.width() == 0 {
         return body_rows.max(1);
     }
-    let survivors = pane.visible(&app.feed().lines);
+    let survivors = pane.visible(&app.feed().lines, &app.feed_classifier());
     let text_width = pane.width().saturating_sub(TAG_PREFIX_WIDTH);
     let cost = |index: usize| row_height(&survivors[index].text, text_width, true);
     let shown = window_range(survivors.len(), pane.scroll_offset(), body_rows, cost);
@@ -313,7 +313,7 @@ pub(crate) fn page_amount_down(app: &App, pane: &BleatsPane) -> usize {
     if !pane.wrapped() || pane.width() == 0 {
         return body_rows.max(1);
     }
-    let survivors = pane.visible(&app.feed().lines);
+    let survivors = pane.visible(&app.feed().lines, &app.feed_classifier());
     let text_width = pane.width().saturating_sub(TAG_PREFIX_WIDTH);
     let shown = window_range(survivors.len(), pane.scroll_offset(), body_rows, |index| {
         row_height(&survivors[index].text, text_width, true)
@@ -489,7 +489,7 @@ fn chip_labels(filters: &Filters) -> Vec<String> {
         chips.push(format!("stream {name}"));
     }
     if let Some(min) = filters.min_level {
-        chips.push(format!("level ≥ {}", format!("{min:?}").to_lowercase()));
+        chips.push(format!("level ≥ {min}"));
     }
     if let Some(text) = &filters.matcher {
         let suffix = match filters.match_kind() {
