@@ -2247,6 +2247,10 @@ fn boxed_dialog_height(lines: &[Line<'static>]) -> u16 {
         .saturating_add(2)
 }
 
+/// The boxed form: [`BOX_WIDTH`] cells wide, centred in `area`, its rows
+/// vertically centred too.
+///
+/// `lines` comes from the caller, which has already measured them against
 /// `area.height` to decide this form fits at all.
 fn draw_boxed_close_dialog(
     lines: &[Line<'static>],

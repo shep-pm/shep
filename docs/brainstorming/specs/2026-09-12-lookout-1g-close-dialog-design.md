@@ -210,8 +210,11 @@ option rows with a continuation for the long reload line, and the `esc` line.
 The borderless form sheds its blank rows first and floors at 6, below which the
 field list it is drawn over cannot render either.
 
-Rows 19 to 30 at the design height of 48, centred horizontally: at 160 that is
-37 dimmed columns each side.
+Centred horizontally, and at 160 that is 36 dimmed columns each side:
+`BOX_WIDTH` is 86, a border cell each side makes 88, and 160 less 88 is 72.
+**Corrected 2026-09-13**, having said 37, which the gallery plan already
+contradicted with the same geometry. Measured from a real capture at 160x48,
+the box draws rows 19 to 29.
 
 ### Dimming
 

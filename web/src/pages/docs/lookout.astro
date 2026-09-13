@@ -1086,7 +1086,8 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       <code>instances</code> included.
     </p>
     <p class="fine">
-      A field the running child already holds parks until the next spawn. If
+      A field a write cannot reach in the running child parks until the next
+      spawn, since the child was given its value at exec and holds it. If
       an edit still filed needs a respawn, or a field is already parked from
       an earlier write, <code>Esc</code> asks before it closes: restart now,
       reload, or leave it running with the edits parked. <code>L</code>{" "}

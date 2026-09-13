@@ -32,11 +32,17 @@ it read and dropped are counted exactly; bytes below its 64 KiB window were
 never read at all, so those are reported in bytes, because nothing counted the
 lines in them and guessing would be worse than saying so.
 
-The last four frames are the editing pane, `e` from the dashboard, on a
-sheep's own row: fresh at the 160x48 design target, the same pane with two
-edits filed (one of them needing a respawn), and the same fresh pane at 120
-and at 88 columns, where the explanation panel and the LANDS column trade
-places as the width falls.
+Four frames show the editing pane, `e` from the dashboard, on a sheep's own
+row: fresh at the 160x48 design target, the same pane with two edits filed
+(one of them needing a respawn), and the same fresh pane at 120 and at 88
+columns, where the explanation panel and the LANDS column trade places as
+the width falls.
+
+The last four are the close dialog `esc` raises over that pane when a change
+is filed the running child cannot take. Boxed and centred at the 160x48
+target, the same at 90 where the border only just fits, borderless at 89 one
+column below its floor, and the parked-only heading on a sheep whose fields
+were written before the pane was opened.
 
 Before those are the four sheep-pane scenes, `↵` on a sheep, then the
 secrets pane, `S`, and before them the full-screen bleats pane, `b` from

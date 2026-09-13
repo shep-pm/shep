@@ -1395,12 +1395,15 @@ struct Action {
 /// Raised by [`App::close_offer`], answered by [`App::on_close_dialog_key`],
 /// and expired by the same [`CONFIRM_EXPIRY`] every other prompt gets.
 ///
-/// Both counts are carried rather than recomputed: the set is taken from
-/// the pane when the dialog goes up, and `parked` is the shepherd's own
-/// answer from the last fetch.
+/// Everything is carried rather than recomputed: the unsent names are
+/// taken from the pane when the dialog goes up, and `parked` is the
+/// shepherd's own answer from the last fetch.
 ///
-/// `Debug` is derived (IR-41): three counts, a reload mode, a name, a
-/// status, a pid, a time.
+/// `Debug` is derived (IR-41): field names the operator is already
+/// reading on screen, two counts, an instance count, two durations
+/// rendered for display, a reload mode, a name, a status, a pid and a
+/// time. No value of any field, and no env value, since the wire never
+/// sends one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CloseDialog {
     unsent: Vec<String>,
