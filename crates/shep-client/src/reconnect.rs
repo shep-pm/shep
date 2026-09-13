@@ -11,6 +11,12 @@
 //! [`ReconnectingClient::connect_as_dog`] names the dog on every handshake so
 //! a refusal is actionable.
 //!
+//! The two differ in more than retry policy. This type's swap happens in its
+//! supervisor task, concurrently with `&self` requests, so a request really
+//! can be in flight when the daemon is replaced and really does fail.
+//! [`Client::reconnect`] takes `&mut self`, which excludes that case instead
+//! of handling it.
+//!
 //! # Which daemon answered
 //!
 //! [`Client::reconnect`] reports [`Reconnected::SameDaemon`] when the daemon
