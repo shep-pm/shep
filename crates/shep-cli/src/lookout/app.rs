@@ -1440,6 +1440,13 @@ impl CloseDialog {
             parked,
             live: pane.live_edit_count(),
             reload: pane.reload_kind(),
+            // `value` renders the pane's own map as JSON and `instances`
+            // is a plain `u32` every `AppConfig` carries, so the parse
+            // cannot fail for a sheep. The only target without the field
+            // is a dog, and `close_offer` refuses a dog before it builds
+            // one of these. A fallback that ever fired would understate
+            // how many processes the reload row is describing, which is
+            // the one number that row exists to give.
             instances: pane.value("instances").parse().unwrap_or(1),
             kill_timeout: pane.display_value("kill_timeout"),
             graceful_timeout: pane.display_value("graceful_timeout"),
