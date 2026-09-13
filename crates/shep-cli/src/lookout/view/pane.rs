@@ -12,16 +12,18 @@
 //! A sheep pane is 40 rows plus a title, eight headers and seven blank
 //! separators: sixteen lines of chrome before a marker is paid for.
 
+use std::time::Instant;
+
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use shep_core::config::{ApplyGroup, GROUP_ORDER};
 
-use super::super::app::{App, PaneMenu};
+use super::super::app::{App, CONFIRM_EXPIRY, CloseDialog};
 use super::super::field::{Field, FieldKind, ValueKind};
 use super::super::pane::{
-    ConfigPane, EnvTyping, ListPane, ListRow, Lock, PaneEdit, PaneRow, PaneTarget,
+    ConfigPane, EnvTyping, ListPane, ListRow, Lock, PaneEdit, PaneRow, PaneTarget, ReloadKind,
 };
 use super::super::theme::Palette;
 use super::super::validation;
@@ -36,6 +38,43 @@ use crate::vocabulary::Role;
 /// exists for the reason that one does: a budget that forgets it is a budget
 /// every line overruns.
 const GUTTER: u16 = 2;
+
+/// The close dialog's own interior width, once it is boxed: what
+/// [`close_dialog_lines`] lays its rows out to when [`draw_close_dialog`]
+/// draws the boxed form.
+const BOX_WIDTH: u16 = 86;
+
+/// 86 interior plus a border cell each side is 88, plus a margin cell each
+/// side is 90. One column narrower and the border would have to clip, which
+/// `docs/lookout/design-files/README.md:332` refuses ("The 1g and 1k
+/// overlays need 90 and 132 columns; below that, draw them full-width with
+/// no border box rather than clipping"), so 89 draws the borderless form
+/// instead.
+const BOX_FLOOR: u16 = BOX_WIDTH + 4;
+
+/// The border's four corners, checked against `unicodedata.east_asian_width`
+/// and found Neutral, same as [`BOX_LEFT`].
+const BOX_TOP_LEFT: char = '▛';
+const BOX_TOP_RIGHT: char = '▜';
+const BOX_BOTTOM_LEFT: char = '▙';
+const BOX_BOTTOM_RIGHT: char = '▟';
+
+/// The left edge. Neutral, unlike the other three edge glyphs below.
+const BOX_LEFT: char = '▐';
+
+/// The top, bottom and right edges. All three are East-Asian Ambiguous,
+/// checked the same way the rulings ask `▌` to be. Kept anyway: `─` already
+/// draws every hairline rule in this pane at full width and `█░` fill every
+/// gauge, both Ambiguous too, so "no Ambiguous glyph" was never this
+/// codebase's bar. The right edge is the one with real exposure, since no
+/// Neutral right-half block exists to swap `▌` for and a terminal that
+/// doubles it shifts every interior row;
+/// `the_border_vocabulary_is_the_one_that_was_checked` pins the set so a
+/// later glyph change gets the same check rather than inheriting this
+/// answer.
+const BOX_TOP: char = '▀';
+const BOX_BOTTOM: char = '▄';
+const BOX_RIGHT: char = '▌';
 
 /// The KEY cell at its full width, flag character included. Twenty-six is
 /// `exp_backoff_restart_delay` plus its flag, the longest key the Flockfile
@@ -349,42 +388,14 @@ fn field_line(
     Line::from(spans)
 }
 
-/// The apply menu's own sentence.
+/// The one line the field list reserves under its title: the selected
+/// field's own help text while `h` has it open. [`None`] otherwise.
 ///
-/// Says "saved" in its first three words on purpose. Every one of these
-/// fields is already in the override store, so this is not a save prompt
-/// and must not read as one: leaving costs nothing, and the last clause
-/// says that too.
-fn menu_text(menu: PaneMenu) -> String {
-    let reload = menu.reload().label();
-    match menu.parked() {
-        1 => format!(
-            "1 saved field waits on the running sheep: L reload ({reload}), R restart, esc leave it parked"
-        ),
-        parked => format!(
-            "{parked} saved fields wait on the running sheep: L reload ({reload}), R restart, esc leave them parked"
-        ),
-    }
-}
-
-/// The one line the field list reserves under its title: the apply menu
-/// while it is up, else the selected field's own help text while `h` has
-/// it open. [`None`] when neither applies.
-///
-/// The menu outranks help: it is what the operator's next keystroke
-/// answers, and help is dismissed by a keystroke of the operator's own
-/// choosing, so it can wait for the slot back.
-///
-/// One line, and one already counted, so a menu costs the field list
-/// nothing: [`super::scroll`]'s walk sees the same budget either way.
-fn top_line(
-    pane: &ConfigPane,
-    menu: Option<&PaneMenu>,
-    palette: Palette,
-) -> Option<(String, Style)> {
-    if let Some(menu) = menu {
-        return Some((menu_text(*menu), palette.attention()));
-    }
+/// The close dialog used to draw here too, as the apply menu this pane
+/// replaced. It draws over the whole field list instead now
+/// ([`draw_pane`]), since it answers a question about the pane's own
+/// close rather than a per-field one.
+fn top_line(pane: &ConfigPane, palette: Palette) -> Option<(String, Style)> {
     if pane.help_open()
         && let Some(PaneRow::Field(index)) = pane.cursor()
         && let Some(field) = pane.fields().fields().get(index)
@@ -392,6 +403,393 @@ fn top_line(
         return Some((field.help.clone(), palette.muted()));
     }
     None
+}
+
+/// `""` for one, `"S"` for every other count: the plural suffix
+/// [`close_dialog_heading`] and [`close_dialog_naming_sentence`] both
+/// append to a bare noun.
+const fn plural(count: usize) -> &'static str {
+    if count == 1 { "" } else { "S" }
+}
+
+/// `"NEEDS"` for one, `"NEED"` for every other count: the noun `plural`
+/// inflects and the verb agreeing with it are two different words, and
+/// every fixture in this file happens to file two edits, which is exactly
+/// why a mismatched verb went unnoticed until a real screen showed one.
+const fn needs_or_need(count: usize) -> &'static str {
+    if count == 1 { "NEEDS" } else { "NEED" }
+}
+
+/// The column the heading's right clause starts at, when the row is wide
+/// enough to hold both clauses: `docs/lookout/design-files/README.md`'s
+/// own mock, which puts `catcher is online, pid 71578` there.
+const HEADING_SHEEP_COLUMN: usize = 36;
+
+/// The heading row: the question on the left, the sheep it is about on
+/// the right.
+///
+/// The right clause goes first when `body` cannot hold both. The left
+/// clause is the question itself, and the pane's own title band names the
+/// sheep too but is dimmed behind the box, which is the whole reason the
+/// right clause exists: an operator answering a question that restarts a
+/// process should not have to read around the dialog to learn which one.
+fn close_dialog_heading_row(dialog: &CloseDialog, body: u16) -> String {
+    let left = close_dialog_heading(dialog);
+    let right = close_dialog_sheep_clause(dialog);
+    let left_w = columns(&left);
+    // One space of separation at minimum, however far past the column the
+    // left clause runs.
+    let gap = HEADING_SHEEP_COLUMN.saturating_sub(left_w).max(1);
+    if left_w + gap + columns(&right) > usize::from(body) {
+        return left;
+    }
+    format!("{left}{}{right}", " ".repeat(gap))
+}
+
+/// `catcher is online, pid 71578`, or `catcher is online` for a sheep the
+/// shepherd runs several of, where no single pid is the answer.
+fn close_dialog_sheep_clause(dialog: &CloseDialog) -> String {
+    let state = format!("{} is {}", dialog.target_name(), dialog.status());
+    match dialog.pid() {
+        Some(pid) => format!("{state}, pid {pid}"),
+        None => state,
+    }
+}
+
+/// How many columns `text` occupies, the same count [`fit`] and
+/// [`clipped`] measure against.
+fn columns(text: &str) -> usize {
+    text.chars().map(char_columns).sum()
+}
+
+/// The question the heading asks, one of three depending on which half of
+/// it fired.
+fn close_dialog_heading(dialog: &CloseDialog) -> String {
+    match (dialog.unsent(), dialog.parked()) {
+        (0, parked) => format!("{parked} FIELD{} ALREADY WAITING", plural(parked)),
+        (unsent, 0) => format!(
+            "{unsent} EDIT{} {} A RESPAWN",
+            plural(unsent),
+            needs_or_need(unsent)
+        ),
+        (unsent, parked) => format!(
+            "{unsent} EDIT{} {} A RESPAWN, {parked} FIELD{} ALREADY DID",
+            plural(unsent),
+            needs_or_need(unsent),
+            plural(parked)
+        ),
+    }
+}
+
+/// The unsent fields, named in a sentence and truncated past three:
+/// `cwd and err_file take hold when the process starts again.` or `cwd,
+/// err_file and 3 more take hold when the process starts again.`
+fn close_dialog_naming_sentence(fields: &[String]) -> String {
+    let list = match fields {
+        [] => String::new(),
+        [one] => one.clone(),
+        [first, second] => format!("{first} and {second}"),
+        [first, second, third] => format!("{first}, {second} and {third}"),
+        [first, second, rest @ ..] => {
+            format!("{first}, {second} and {} more", rest.len())
+        }
+    };
+    let verb = if fields.len() == 1 { "takes" } else { "take" };
+    format!("{list} {verb} hold when the process starts again.")
+}
+
+/// The reload row's own sentence, one of four off `dialog.reload()` and
+/// `dialog.instances()`.
+///
+/// The `SO_REUSEPORT` caveat rides on both overlap lines: an app with no
+/// readiness probe overlaps either way, and needs it exactly as much as a
+/// `reuse_port` app does if it binds an address.
+fn close_dialog_reload_sentence(dialog: &CloseDialog) -> String {
+    let graceful = dialog.graceful_timeout();
+    match (dialog.reload(), dialog.instances()) {
+        (ReloadKind::Overlap, 1) => {
+            "the replacement starts alongside and takes over. No gap, if the app sets \
+             SO_REUSEPORT itself."
+                .to_owned()
+        }
+        (ReloadKind::Overlap, _) => {
+            "one instance at a time, each replacement alongside the one it replaces. No gap, \
+             if the app sets SO_REUSEPORT itself."
+                .to_owned()
+        }
+        (ReloadKind::Serial, 1) => format!(
+            "drains it, then starts the replacement. Up to {graceful}, so slower than a \
+             restart for the same gap."
+        ),
+        (ReloadKind::Serial, n) => format!(
+            "one instance at a time, each drained before its replacement starts. Up to \
+             {graceful} each, 1 of {n} down at a time."
+        ),
+    }
+}
+
+/// One option row, indented and styled the way every other pane line in
+/// this file is.
+fn close_dialog_option_line(text: String, palette: Palette, width: u16) -> Line<'static> {
+    Line::from(Span::styled(
+        format!("  {}", fit(&text, width)),
+        palette.ground(),
+    ))
+}
+
+/// `"L   reload           "`, aligned with the `R` and `c` rows' own
+/// label columns (all three are the same width): what
+/// [`close_dialog_reload_lines`] indents a continuation row under.
+const RELOAD_LABEL: &str = "L   reload           ";
+
+/// The reload row, wrapped rather than truncated.
+///
+/// [`fit`] truncates with an ellipsis, which is right for a table cell but
+/// wrong here: the sentence's own tail is the `SO_REUSEPORT` caveat
+/// (`close_dialog_reload_sentence`'s own doc), the correction the design
+/// added after refusing an earlier, uncaveated "No downtime, slower". A
+/// truncated row ships exactly the claim that correction exists to
+/// prevent. `docs/lookout/design-files/README.md`'s own mock wraps this
+/// row onto a continuation line indented under the label instead, for
+/// both the overlap and the serial sentence, so this does too, at every
+/// width: the box's own interior is a fixed 86 columns regardless of the
+/// terminal's, so this wraps even at a comfortable terminal width.
+fn close_dialog_reload_lines(
+    dialog: &CloseDialog,
+    palette: Palette,
+    body: u16,
+) -> Vec<Line<'static>> {
+    let label_w = u16::try_from(RELOAD_LABEL.chars().count()).unwrap_or(0);
+    let sentence = close_dialog_reload_sentence(dialog);
+    let available = usize::from(body.saturating_sub(label_w));
+    let indent = " ".repeat(usize::from(label_w));
+    wrap(&sentence, available)
+        .into_iter()
+        .enumerate()
+        .map(|(index, chunk)| {
+            let text = if index == 0 {
+                format!("{RELOAD_LABEL}{chunk}")
+            } else {
+                format!("{indent}{chunk}")
+            };
+            close_dialog_option_line(text, palette, body)
+        })
+        .collect()
+}
+
+/// What a row of the dialog is, so that a terminal too short for all of
+/// them sheds the ones it can afford to lose.
+///
+/// Ordered by what losing the row costs, cheapest last: [`shed_dialog_rows`]
+/// drops the greatest first. [`DialogRow::Key`] is the floor and is never
+/// dropped, since a key an operator cannot see is an answer they cannot
+/// give, and `esc` no longer writes on its own.
+///
+/// [`DialogRow::Naming`] goes before [`DialogRow::Continuation`], which
+/// is the call this order exists to record. Losing the naming sentence
+/// costs a whole, self-contained row whose fields are also named by the
+/// heading's count and by the pane's own pending section behind the box.
+/// Losing a continuation costs the second half of a row that is still on
+/// screen: the reload sentence's tail is the `SO_REUSEPORT` caveat, which
+/// is the condition on the only cost claim this dialog makes, and
+/// `docs/lookout/design-files/rulings.md` refused the frame's own
+/// uncaveated `No downtime, slower` over exactly that. At 90x8 this
+/// ordering keeps the sentence whole.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum DialogRow {
+    /// `R`, `L`, `c` and `esc`: the four rows that name a key.
+    Key,
+    /// The heading, naming both halves and the sheep.
+    Heading,
+    /// The reload sentence's own wrapped tail.
+    Continuation,
+    /// The sentence naming the fields a respawn is what applies.
+    Naming,
+    /// `Everything else you changed is already live.`
+    Live,
+    /// A separator.
+    Blank,
+}
+
+/// The dialog's rows: what a terminal under [`BOX_FLOOR`] columns gets
+/// full width, and what the boxed form draws inside its own border.
+///
+/// `now` is the caller's own clock, against which the `esc` row states
+/// what is left of [`CONFIRM_EXPIRY`] since `dialog.at()`: seconds and a
+/// ten-cell gauge, saying the same thing twice on purpose, since the
+/// design's own rule is that colour and glyph never carry anything the
+/// words do not.
+#[must_use]
+pub(super) fn close_dialog_lines(
+    dialog: &CloseDialog,
+    palette: Palette,
+    width: u16,
+    now: Instant,
+) -> Vec<Line<'static>> {
+    close_dialog_rows(dialog, palette, width, now)
+        .into_iter()
+        .map(|(_, line)| line)
+        .collect()
+}
+
+/// [`close_dialog_lines`], each row carrying what it would cost to lose.
+fn close_dialog_rows(
+    dialog: &CloseDialog,
+    palette: Palette,
+    width: u16,
+    now: Instant,
+) -> Vec<(DialogRow, Line<'static>)> {
+    let body = body_width(width);
+    // `band`, not `attention`: every other band on this dashboard reverses
+    // its role's colour rather than merely tinting the text, and 12a's own
+    // rule is that colour is always redundant with the words, so `NO_COLOR`
+    // has to lose decoration, never information. `attention` alone drops
+    // both under `NO_COLOR`, since it carries no modifier at all.
+    let mut lines = vec![(
+        DialogRow::Heading,
+        Line::from(Span::styled(
+            format!("  {}", fit(&close_dialog_heading_row(dialog, body), body)),
+            palette.band(Role::Butter),
+        )),
+    )];
+    if dialog.unsent() > 0 {
+        let sentence = close_dialog_naming_sentence(dialog.unsent_fields());
+        lines.push((
+            DialogRow::Naming,
+            close_dialog_option_line(sentence, palette, body),
+        ));
+        if dialog.live() > 0 {
+            lines.push((
+                DialogRow::Live,
+                close_dialog_option_line(
+                    "Everything else you changed is already live.".to_owned(),
+                    palette,
+                    body,
+                ),
+            ));
+        }
+    }
+    lines.push((DialogRow::Blank, Line::from(Span::raw(""))));
+    lines.push((
+        DialogRow::Key,
+        close_dialog_option_line(
+            format!(
+                "R   restart now      stop, then start. The stop takes up to {}.",
+                dialog.kill_timeout()
+            ),
+            palette,
+            body,
+        ),
+    ));
+    lines.extend(
+        close_dialog_reload_lines(dialog, palette, body)
+            .into_iter()
+            .enumerate()
+            .map(|(index, line)| {
+                let kind = if index == 0 {
+                    DialogRow::Key
+                } else {
+                    DialogRow::Continuation
+                };
+                (kind, line)
+            }),
+    );
+    lines.push((
+        DialogRow::Key,
+        close_dialog_option_line(
+            "c   continue         write them and leave it running. They wait for a respawn."
+                .to_owned(),
+            palette,
+            body,
+        ),
+    ));
+    lines.push((DialogRow::Blank, Line::from(Span::raw(""))));
+    let elapsed = now.saturating_duration_since(dialog.at());
+    let remaining = CONFIRM_EXPIRY.saturating_sub(elapsed);
+    lines.push((
+        DialogRow::Key,
+        close_dialog_option_line(
+            format!(
+                "esc  keep editing, write nothing   \u{b7}   this prompt expires in {}s {}",
+                remaining.as_secs(),
+                cell::gauge(
+                    u64::try_from(remaining.as_millis()).unwrap_or(u64::MAX),
+                    Some(u64::try_from(CONFIRM_EXPIRY.as_millis()).unwrap_or(u64::MAX)),
+                    10
+                )
+            ),
+            palette,
+            body,
+        ),
+    ));
+    lines
+}
+
+/// Drops rows from `rows` until it is no taller than `height`, in
+/// [`DialogRow`]'s own order: the blank separators, then the two
+/// explanatory sentences, then the reload sentence's wrapped tail, then
+/// the heading.
+///
+/// The four [`DialogRow::Key`] rows survive every height, which is what
+/// the design means by flooring the borderless form: below six rows the
+/// field list this is drawn over cannot render either, and an operator
+/// with no key on screen has no way to answer and, since `esc` stopped
+/// writing on its own, no way to write. Shorter still than the four is a
+/// terminal `view::draw` refuses outright, but [`Buffer`] indexes with a
+/// panic rather than a clip, so the truncation at the end is the one that
+/// keeps a resize from taking the dashboard down.
+///
+/// A shed continuation ends its sentence early, so the row above it takes
+/// the ellipsis [`fit`] leaves on a cell cut for width. What the screen
+/// cannot show, it says, the same rule the bleats feed follows when it
+/// counts the lines it discarded.
+///
+/// `width` is the whole row's, [`GUTTER`] included, since that is what a
+/// marked row must still fit inside.
+fn shed_dialog_rows(rows: &mut Vec<(DialogRow, Line<'static>)>, height: u16, width: u16) {
+    let height = usize::from(height);
+    while rows.len() > height {
+        let sheddable = rows
+            .iter()
+            .enumerate()
+            .filter(|(_, (kind, _))| *kind != DialogRow::Key)
+            .max_by_key(|(index, (kind, _))| (*kind, *index))
+            .map(|(index, _)| index);
+        let Some(index) = sheddable else { break };
+        let cut = rows.remove(index).0 == DialogRow::Continuation;
+        // The last continuation is always the one shed, so the row above
+        // it is the rest of the same sentence: an earlier continuation, or
+        // the `L` row itself.
+        if cut && let Some((_, line)) = index.checked_sub(1).and_then(|above| rows.get_mut(above)) {
+            mark_cut(line, width);
+        }
+    }
+    rows.truncate(height);
+}
+
+/// Ends `line` with an ellipsis, inside `width` columns.
+///
+/// A no-op on a row that already carries one, which a row [`fit`] cut for
+/// width does: one marker says the row was cut, and two say nothing more.
+fn mark_cut(line: &mut Line<'static>, width: u16) {
+    // The loop below cannot clear at a width of zero, since popping an
+    // empty string is a no-op, and it would spin. Unreachable through the
+    // one call site, which is fed the same `area.width` `view::draw`
+    // refuses below `MIN_TERM_WIDTH`, so this says out loud what a second
+    // call site would have to keep true.
+    debug_assert!(width > 0, "mark_cut needs a column to put the marker in");
+    let Some(span) = line.spans.last_mut() else {
+        return;
+    };
+    let mut text = span.content.trim_end().to_owned();
+    if text.ends_with('\u{2026}') {
+        return;
+    }
+    while columns(&text) + 1 > usize::from(width) {
+        text.pop();
+    }
+    text.push('\u{2026}');
+    span.content = text.into();
 }
 
 /// The list sub-screen: one array field's elements, and a row to add one on.
@@ -659,9 +1057,9 @@ fn column_header_line(palette: Palette, width: u16, show_lands: bool) -> Line<'s
 /// (`docs/lookout/design-files/README.md`, the 1e frame's row 45) to the
 /// four the pane actually draws (see [`field_line`]).
 ///
-/// Names no key: `status.rs`'s `esc write & close` is the one place that
-/// wording lives, and a second copy here would only need to be kept in
-/// sync with it.
+/// Names no key: `status.rs`'s `esc close` is the one place that wording
+/// lives, and a second copy here would only need to be kept in sync with
+/// it.
 ///
 /// `* yours` rather than `* overridden`, because the status bar has said
 /// `* yours` on every screen that draws the glyph since before this pane
@@ -971,12 +1369,11 @@ fn grouped_body_lines(
 /// hairline, and the legend.
 fn grouped_pane_lines(
     pane: &ConfigPane,
-    menu: Option<&PaneMenu>,
     palette: Palette,
     width: u16,
     budget: usize,
 ) -> Vec<Line<'static>> {
-    grouped_pane_lines_with_panel(pane, menu, palette, width, budget, None)
+    grouped_pane_lines_with_panel(pane, palette, width, budget, None)
 }
 
 /// [`grouped_pane_lines`], with the cursor's own field's [`panel_lines`]
@@ -996,14 +1393,13 @@ fn grouped_pane_lines(
 /// never calls this and keeps today's single column.
 fn grouped_pane_with_panel_lines(
     pane: &ConfigPane,
-    menu: Option<&PaneMenu>,
     palette: Palette,
     width: u16,
     panel_w: u16,
     budget: usize,
 ) -> Vec<Line<'static>> {
     let panel = panel_lines(pane, palette, panel_w);
-    grouped_pane_lines_with_panel(pane, menu, palette, width, budget, Some((panel, panel_w)))
+    grouped_pane_lines_with_panel(pane, palette, width, budget, Some((panel, panel_w)))
 }
 
 /// The body shared by [`grouped_pane_lines`] and
@@ -1014,7 +1410,6 @@ fn grouped_pane_with_panel_lines(
 /// is the one region tall enough and narrow enough to hold both.
 fn grouped_pane_lines_with_panel(
     pane: &ConfigPane,
-    menu: Option<&PaneMenu>,
     palette: Palette,
     width: u16,
     budget: usize,
@@ -1045,7 +1440,7 @@ fn grouped_pane_lines_with_panel(
         remaining -= 1;
     }
     if remaining > 1 {
-        if let Some((text, style)) = top_line(pane, menu, palette) {
+        if let Some((text, style)) = top_line(pane, palette) {
             lines.push(Line::from(Span::styled(
                 format!("  {}", fit(&text, body_width(width))),
                 style,
@@ -1180,12 +1575,12 @@ fn push_footer_line(
 /// [`super::scroll`] for why the viewport's offset is a starting point
 /// here, not an answer.
 ///
-/// `menu` is the apply offer, which takes the one line under the title
-/// rather than a line of its own.
+/// The close dialog is not drawn here: it overlays the whole field list
+/// (`draw_pane`), rather than taking the one line under the title the
+/// apply menu this pane replaced used to.
 #[must_use]
 pub fn pane_lines(
     pane: &ConfigPane,
-    menu: Option<&PaneMenu>,
     palette: Palette,
     width: u16,
     height: u16,
@@ -1203,12 +1598,12 @@ pub fn pane_lines(
     }
     if has_groups(pane) {
         if let Some(panel_w) = panel_width(width) {
-            return grouped_pane_with_panel_lines(pane, menu, palette, width, panel_w, budget);
+            return grouped_pane_with_panel_lines(pane, palette, width, panel_w, budget);
         }
-        return grouped_pane_lines(pane, menu, palette, width, budget);
+        return grouped_pane_lines(pane, palette, width, budget);
     }
     let panel = panel_width(width).map(|panel_w| (panel_lines(pane, palette, panel_w), panel_w));
-    ungrouped_pane_lines_with_panel(pane, menu, palette, width, budget, panel)
+    ungrouped_pane_lines_with_panel(pane, palette, width, budget, panel)
 }
 
 /// The body [`pane_lines`] draws for a pane with no groups, which is a
@@ -1226,7 +1621,6 @@ pub fn pane_lines(
 /// reserved out of the budget before the body claims what is left.
 fn ungrouped_pane_lines_with_panel(
     pane: &ConfigPane,
-    menu: Option<&PaneMenu>,
     palette: Palette,
     width: u16,
     budget: usize,
@@ -1242,10 +1636,10 @@ fn ungrouped_pane_lines_with_panel(
     // is a committed file with 40 properties, but a dog answers `--schema`
     // for itself) leaves the title as the whole pane.
     let mut body_budget = budget - 1;
-    // The apply menu, or `h`'s help text, on the line under the title.
-    // Subtracted from the budget rather than appended, per `body_from`'s
-    // own doc on markers. See `top_line`.
-    if let Some((text, style)) = top_line(pane, menu, palette)
+    // `h`'s help text, on the line under the title. Subtracted from the
+    // budget rather than appended, per `body_from`'s own doc on markers.
+    // See `top_line`.
+    if let Some((text, style)) = top_line(pane, palette)
         && body_budget > 0
     {
         lines.push(Line::from(Span::styled(
@@ -1747,32 +2141,182 @@ pub fn draw_pane(app: &App, pane: &ConfigPane, area: Rect, buffer: &mut Buffer) 
     if area.width == 0 || area.height == 0 {
         return;
     }
-    let lines = pane_lines(
-        pane,
-        app.pane_menu().as_ref(),
-        app.palette(),
-        area.width,
-        area.height,
-    );
+    let lines = pane_lines(pane, app.palette(), area.width, area.height);
     for (offset, line) in lines.iter().enumerate().take(usize::from(area.height)) {
         let offset = u16::try_from(offset).unwrap_or(0);
         buffer.set_line(area.x, area.y + offset, line, area.width);
     }
+    if let Some(dialog) = app.close_dialog() {
+        // The pane draws first and is then muted whole, so 1e's own render
+        // is untouched and its four pinned snapshots do not move.
+        //
+        // Two calls, not one: `Buffer::set_style` (ratatui-core 0.1.2,
+        // `buffer/buffer.rs:405`) patches a cell rather than replacing it,
+        // so a single `palette.muted()` call would leave the title band's
+        // reverse video and the selected row's own ground sitting under the
+        // new ink. `Style::reset()` clears both back to the terminal's own
+        // default first; `palette.muted()` then repaints the one ink the
+        // dialog leaves the pane in. Under `NO_COLOR` the second call is a
+        // no-op (`Palette::muted` has no colour to give), so only the reset
+        // runs and the pane behind goes completely flat, which is the right
+        // outcome there: the border and the reverse-video heading are what
+        // carry the separation on their own.
+        buffer.set_style(area, Style::reset());
+        buffer.set_style(area, app.palette().muted());
+        draw_close_dialog(dialog, app.palette(), app.now(), area, buffer);
+    }
+}
+
+/// Whether a dialog `width` columns wide draws boxed, or gives way to the
+/// borderless form.
+const fn dialog_is_boxed(width: u16) -> bool {
+    width >= BOX_FLOOR
+}
+
+/// The dialog on top of the muted pane: boxed at [`BOX_FLOOR`] and above,
+/// full width with no border below it, and full width with no border at
+/// any width when the box is taller than the rows there are.
+///
+/// A box cannot shed rows the way the borderless form can, since its
+/// border pair is what makes it a box, and half a box is worse than none.
+/// So a terminal too short for the whole box gives way to the borderless
+/// form, which is the same answer the width rule already gives one column
+/// under [`BOX_FLOOR`].
+fn draw_close_dialog(
+    dialog: &CloseDialog,
+    palette: Palette,
+    now: Instant,
+    area: Rect,
+    buffer: &mut Buffer,
+) {
+    if dialog_is_boxed(area.width) {
+        let lines = close_dialog_lines(dialog, palette, BOX_WIDTH, now);
+        if boxed_dialog_height(&lines) <= area.height {
+            draw_boxed_close_dialog(&lines, palette, area, buffer);
+            return;
+        }
+    }
+    draw_borderless_close_dialog(dialog, palette, now, area, buffer);
+}
+
+/// The full-width, borderless form: bottom-anchored over the field list,
+/// the same rows a terminal under [`BOX_FLOOR`] always drew before this
+/// task, so a gallery scene one column below the floor still gets the form
+/// it exists to show rather than a clipped box.
+///
+/// [`shed_dialog_rows`] is what keeps this inside `area`: a narrow
+/// terminal wraps the reload sentence over more rows, so the form is
+/// tallest exactly where there is least room for it.
+fn draw_borderless_close_dialog(
+    dialog: &CloseDialog,
+    palette: Palette,
+    now: Instant,
+    area: Rect,
+    buffer: &mut Buffer,
+) {
+    let mut rows = close_dialog_rows(dialog, palette, area.width, now);
+    shed_dialog_rows(&mut rows, area.height, area.width);
+    let top = area.y
+        + area
+            .height
+            .saturating_sub(u16::try_from(rows.len()).unwrap_or(0));
+    for (offset, (_, line)) in rows.iter().enumerate() {
+        let offset = u16::try_from(offset).unwrap_or(0);
+        blank_row(buffer, area.x, top + offset, area.width);
+        buffer.set_line(area.x, top + offset, line, area.width);
+    }
+}
+
+/// The boxed form: [`BOX_WIDTH`] cells wide, centred in `area`, its rows
+/// vertically centred too.
+///
+/// `lines` comes from the caller, which has already measured them against
+/// The rows a boxed dialog occupies: its own lines plus a border above
+/// and below.
+///
+/// Both the fit check and the draw read this rather than each doing the
+/// addition, because they did it differently once. The check saturated
+/// from a `u16::MAX` fallback and the draw added plainly from a `0` one,
+/// so a `lines.len()` past `u16::MAX` would have refused to draw in one
+/// place and drawn a two-row box in the other. Neither is reachable with
+/// a dialog of a dozen rows, which is why nothing caught it; one function
+/// is what stops it coming back.
+fn boxed_dialog_height(lines: &[Line<'static>]) -> u16 {
+    u16::try_from(lines.len())
+        .unwrap_or(u16::MAX)
+        .saturating_add(2)
+}
+
+/// The boxed form: [`BOX_WIDTH`] cells wide, centred in `area`, its rows
+/// vertically centred too.
+///
+/// `lines` comes from the caller, which has already measured them against
+/// `area.height` to decide this form fits at all.
+fn draw_boxed_close_dialog(
+    lines: &[Line<'static>],
+    palette: Palette,
+    area: Rect,
+    buffer: &mut Buffer,
+) {
+    let box_height = boxed_dialog_height(lines);
+    let rows = box_height.saturating_sub(2);
+    let margin = area.width.saturating_sub(BOX_WIDTH + 2) / 2;
+    let box_x = area.x + margin;
+    let box_y = area.y + area.height.saturating_sub(box_height) / 2;
+    let line_style = palette.line();
+
+    buffer.set_string(
+        box_x,
+        box_y,
+        format!(
+            "{BOX_TOP_LEFT}{}{BOX_TOP_RIGHT}",
+            BOX_TOP.to_string().repeat(usize::from(BOX_WIDTH))
+        ),
+        line_style,
+    );
+    for (offset, line) in lines.iter().enumerate() {
+        let offset = u16::try_from(offset).unwrap_or(0);
+        let y = box_y + 1 + offset;
+        buffer.set_string(box_x, y, BOX_LEFT.to_string(), line_style);
+        blank_row(buffer, box_x + 1, y, BOX_WIDTH);
+        buffer.set_line(box_x + 1, y, line, BOX_WIDTH);
+        buffer.set_string(box_x + 1 + BOX_WIDTH, y, BOX_RIGHT.to_string(), line_style);
+    }
+    buffer.set_string(
+        box_x,
+        box_y + 1 + rows,
+        format!(
+            "{BOX_BOTTOM_LEFT}{}{BOX_BOTTOM_RIGHT}",
+            BOX_BOTTOM.to_string().repeat(usize::from(BOX_WIDTH))
+        ),
+        line_style,
+    );
+}
+
+/// `width` cells of plain space at `(x, y)`, reset back to the terminal's
+/// own default: the dialog itself is never muted, only the pane behind it.
+///
+/// [`Buffer::set_line`] only ever writes as many cells as its `Line` carries
+/// content for, so a blank separator row (`Line::from(Span::raw(""))`,
+/// [`close_dialog_lines`]'s own two of them) writes nothing and would leave
+/// whatever the field list drew there showing through, muted, in the
+/// middle of what is meant to read as a solid dialog. Called ahead of every
+/// row this module draws the dialog's own lines into, boxed or not.
+fn blank_row(buffer: &mut Buffer, x: u16, y: u16, width: u16) {
+    buffer.set_string(x, y, " ".repeat(usize::from(width)), Style::reset());
 }
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
-
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
     use super::super::MIN_TERM_WIDTH;
     use super::super::fixtures;
+    use super::super::flock::MIN_HEIGHT;
     use super::*;
     use crate::lookout::app::{Effect, KeyPress, Msg};
     use crate::lookout::frames::render_text;
-    use crate::lookout::pane::ReloadKind;
     use crate::output::width::visible_width;
 
     /// The pane the rest of this module renders: `web`, with two overridden
@@ -1794,12 +2338,471 @@ mod tests {
             .collect()
     }
 
+    /// Bounded on purpose. A frame-wide `contains("respawn")` passes off
+    /// 1e's own legend row, which is drawn underneath this dialog and says
+    /// the word. Assert on the dialog's rows, never on the frame.
+    #[test]
+    fn the_dialog_names_both_halves_in_its_heading() {
+        let dialog = fixtures::close_dialog_with(2, 1);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+        let heading = text_of(&lines)[0].trim().to_string();
+        assert!(
+            heading.starts_with("2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID"),
+            "{heading:?}"
+        );
+    }
+
+    /// The other half of the heading, and the only place the dialog says
+    /// which sheep it is about: the pane's own title band says so too, but
+    /// it is dimmed behind the box by the time this question is asked.
+    #[test]
+    fn the_heading_names_the_sheep_its_state_and_its_pid() {
+        let dialog = fixtures::close_dialog_with(1, 0);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+        let heading = text_of(&lines)[0].trim().to_string();
+        assert!(heading.ends_with("web is online, pid 71578"), "{heading:?}");
+    }
+
+    /// The other half of `running_state`'s answer: several instances name
+    /// no one pid, so the clause names the sheep and its state and stops
+    /// there, rather than trailing a `pid` with nothing after it.
+    #[test]
+    fn a_sheep_with_no_single_pid_gets_a_heading_that_names_none() {
+        let dialog = fixtures::close_dialog_without_a_pid();
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+        let heading = text_of(&lines)[0].trim().to_string();
+        assert!(heading.ends_with("web is online"), "{heading:?}");
+        assert!(!heading.contains("pid"), "{heading:?}");
+    }
+
+    /// The right clause is the first thing to go when the row cannot hold
+    /// both: the left clause is the question itself. Swept at every width
+    /// the dialog draws at, so a clause that overran the border or
+    /// collided with the question would show up as a row wider than its
+    /// own body.
+    #[test]
+    fn a_narrow_heading_drops_the_sheep_and_keeps_the_question() {
+        for width in [MIN_TERM_WIDTH, 40, 51, 60, 69, 70, BOX_WIDTH, 89, 120, 160] {
+            let dialog = fixtures::close_dialog_with(2, 1);
+            let lines = close_dialog_lines(&dialog, fixtures::plain(), width, dialog.at());
+            let heading = text_of(&lines)[0].clone();
+            assert!(
+                visible_width(&heading) <= usize::from(width),
+                "{width}: {heading:?}"
+            );
+            let trimmed = heading.trim();
+            assert!(
+                trimmed.starts_with("2 EDIT"),
+                "the question survives at {width}: {heading:?}"
+            );
+            // 43 for the question, 2 for the gutter, 1 for the gap and 24
+            // for `web is online, pid 71578`: the clause draws from 70
+            // columns up and is gone below that, never truncated.
+            //
+            // 69 and 70 are in the list above for that sentence alone. The
+            // widths either side of them ran 60 and then 86, so the edge
+            // this line names sat in a gap the loop stepped over, and the
+            // assertion encoded the rule without ever exercising it.
+            let named = heading.contains("web is online, pid 71578");
+            assert_eq!(named, width >= 70, "{width}: {heading:?}");
+        }
+    }
+
+    /// The noun and the verb are two different words `plural` and
+    /// `needs_or_need` each inflect on their own; every other fixture in
+    /// this file files two edits, which is exactly why a verb that never
+    /// agreed with a singular subject went unnoticed until a real screen
+    /// showed one.
+    #[test]
+    fn a_single_edit_gets_a_singular_verb() {
+        let dialog = fixtures::close_dialog_with(1, 0);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+        assert!(
+            text_of(&lines)[0]
+                .trim()
+                .starts_with("1 EDIT NEEDS A RESPAWN"),
+            "{:?}",
+            text_of(&lines)[0]
+        );
+    }
+
+    #[test]
+    fn a_serial_reload_does_not_promise_no_gap() {
+        let dialog = fixtures::close_dialog_reloading(ReloadKind::Serial, 1);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+        let reload = fixtures::row_starting_with(&lines, "L");
+        assert!(reload.contains("slower than a restart"), "{reload}");
+        assert!(!reload.contains("No gap"), "{reload}");
+    }
+
+    #[test]
+    fn an_overlapping_reload_carries_the_reuse_port_caveat() {
+        let dialog = fixtures::close_dialog_reloading(ReloadKind::Overlap, 1);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+        let reload = fixtures::row_starting_with(&lines, "L");
+        assert!(
+            reload.contains("if the app sets SO_REUSEPORT itself"),
+            "{reload}"
+        );
+    }
+
+    /// The caveat's own last word, not a `contains` on a prefix of it: a
+    /// row truncated with `fit`'s ellipsis would still pass
+    /// `contains("No gap")`, which is exactly the bug this test exists to
+    /// catch. Every width here is one the box or the borderless form
+    /// actually draws at (the box's own interior is a fixed [`BOX_WIDTH`]
+    /// regardless of the terminal, so a wide terminal still wraps).
+    #[test]
+    fn the_reload_sentence_wraps_rather_than_truncates_at_every_width() {
+        for width in [BOX_WIDTH, BOX_FLOOR - 1, MIN_TERM_WIDTH, 160] {
+            for kind in [ReloadKind::Overlap, ReloadKind::Serial] {
+                for instances in [1, 3] {
+                    let dialog = fixtures::close_dialog_reloading(kind, instances);
+                    let sentence = close_dialog_reload_sentence(&dialog);
+                    let last_word = sentence.split_whitespace().next_back().unwrap();
+                    let lines = close_dialog_lines(&dialog, fixtures::plain(), width, dialog.at());
+                    let joined = text_of(&lines).join(" ");
+                    assert!(
+                        joined.contains(last_word),
+                        "width {width}, {kind:?}, {instances} instances: {joined}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// `docs/terminology.md:20`. The frame calls instances lambs; four
+    /// places in the bundle do.
+    #[test]
+    fn no_line_calls_an_instance_a_lamb() {
+        for kind in [ReloadKind::Overlap, ReloadKind::Serial] {
+            for instances in [1, 3] {
+                let dialog = fixtures::close_dialog_reloading(kind, instances);
+                let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+                for row in text_of(&lines) {
+                    assert!(!row.contains("lamb"), "{row}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_restart_row_states_the_sheeps_own_kill_timeout() {
+        let dialog = fixtures::close_dialog_with(1, 0);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+        let restart = fixtures::row_starting_with(&lines, "R");
+        assert!(restart.contains("5s"), "{restart}");
+    }
+
+    /// The sentence draws when the filed set holds a live field alongside
+    /// the one that needs a respawn, so an operator reading the dialog is
+    /// not left thinking nothing else they changed took effect.
+    #[test]
+    fn everything_else_is_already_live_draws_beside_a_live_edit() {
+        let dialog = fixtures::close_dialog_with_live_edit(true);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+        assert!(
+            text_of(&lines)
+                .iter()
+                .any(|line| line.contains("Everything else you changed is already live")),
+            "{:?}",
+            text_of(&lines)
+        );
+    }
+
+    /// The other direction: a filed set that is entirely `cwd` (needs a
+    /// respawn, nothing else) draws no such claim. A sentence that always
+    /// draws would pass the test above without saying anything.
+    #[test]
+    fn everything_else_is_already_live_does_not_draw_with_nothing_else_filed() {
+        let dialog = fixtures::close_dialog_with_live_edit(false);
+        let lines = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+        assert!(
+            !text_of(&lines)
+                .iter()
+                .any(|line| line.contains("Everything else you changed is already live")),
+            "{:?}",
+            text_of(&lines)
+        );
+    }
+
+    /// The countdown is redundant on purpose: the seconds and the gauge say
+    /// the same thing twice, so both have to move together as `now`
+    /// advances toward `CONFIRM_EXPIRY`.
+    #[test]
+    fn the_gauge_shortens_as_now_advances() {
+        let dialog = fixtures::close_dialog_with(1, 0);
+        let fresh = close_dialog_lines(&dialog, fixtures::plain(), 120, dialog.at());
+        let fresh_row = fixtures::row_starting_with(&fresh, "esc");
+        let fresh_filled = fresh_row.matches('\u{2588}').count();
+
+        let halfway = dialog.at() + CONFIRM_EXPIRY / 2;
+        let later = close_dialog_lines(&dialog, fixtures::plain(), 120, halfway);
+        let later_row = fixtures::row_starting_with(&later, "esc");
+        let later_filled = later_row.matches('\u{2588}').count();
+
+        assert_eq!(fresh_filled, 10, "{fresh_row}");
+        assert_eq!(later_filled, 5, "{later_row}");
+    }
+
+    #[test]
+    fn the_box_draws_at_its_floor_and_not_one_column_below() {
+        assert!(dialog_is_boxed(BOX_FLOOR));
+        assert!(!dialog_is_boxed(BOX_FLOOR - 1));
+    }
+
+    #[test]
+    fn the_borderless_form_spans_the_whole_width_and_never_clips() {
+        let rendered = fixtures::render_dialog(89, 48);
+        let heading = fixtures::row_containing(&rendered, "NEEDS A RESPAWN");
+        assert!(
+            !heading.contains('▐'),
+            "no border below the floor: {heading}"
+        );
+        assert!(
+            visible_width(&heading) <= 89,
+            "clipped or overran: {heading}"
+        );
+    }
+
+    /// Every size the dashboard claims to support, through the real
+    /// `view::draw` rather than a pane-local fixture: the fixture hands
+    /// the pane a `Rect` as tall as the terminal, and the rows the dialog
+    /// overran were the ones `draw` keeps back for the title band and the
+    /// status bar.
+    ///
+    /// [`Buffer`]'s own `Index` panics rather than clipping, so a dialog
+    /// taller than the rows it was given takes the whole dashboard down
+    /// with it. Both forms are swept: the box gives way to the borderless
+    /// form when it cannot fit, and the borderless form sheds rows.
+    ///
+    /// The four rows that name a key are what makes the answer reachable,
+    /// and `esc` no longer writes on its own, so a dialog missing one of
+    /// them leaves an operator with no way to answer and no way to write.
+    #[test]
+    fn the_dialog_fits_every_size_the_dashboard_supports_and_stays_answerable() {
+        for width in [MIN_TERM_WIDTH, 40, 51, 89, 90, 120, 160] {
+            for height in MIN_HEIGHT..=24 {
+                let rendered = render_text(&fixtures::render_dialog(width, height));
+                for needle in ["restart now", "reload", "continue", "keep editing"] {
+                    assert!(
+                        rendered.contains(needle),
+                        "{width}x{height} lost {needle:?}:\n{rendered}"
+                    );
+                }
+                // The frame above hides a one-row overrun: the status bar
+                // is drawn after the pane and repaints the row a dialog
+                // one too tall reached into. This draws the pane alone
+                // into a buffer of exactly its own rows, where the same
+                // overrun is the panic it really is.
+                let _ = fixtures::draw_pane_with_dialog(width, height);
+            }
+        }
+    }
+
+    /// The shedding order's own claim, which is a different one from the
+    /// marker's: when exactly one of the naming sentence and the reload
+    /// continuation can survive, the continuation is what survives.
+    ///
+    /// 90x8 is the captured case, six body rows against the seven the
+    /// dialog wants. Asserted as both halves at once, the sentence whole
+    /// AND the naming row gone, because either half alone passes with the
+    /// order flipped: a cut caveat is still marked, politely, by
+    /// [`mark_cut`].
+    ///
+    /// The tail this protects is the `SO_REUSEPORT` caveat, the condition
+    /// on the only cost claim the dialog makes, and the thing
+    /// `docs/lookout/design-files/rulings.md` refused the frame's own
+    /// `No downtime, slower` over.
+    #[test]
+    fn the_reload_caveat_outlives_the_naming_sentence() {
+        let app = fixtures::app_with_close_dialog();
+        let dialog = app.close_dialog().expect("the dialog is up");
+        let whole = close_dialog_reload_sentence(dialog);
+        let naming = close_dialog_naming_sentence(dialog.unsent_fields());
+
+        let rendered = render_text(&fixtures::render_dialog(90, 8));
+        let rows = reload_rows(&rendered);
+        let last = rows.last().expect("the reload row draws at every size");
+        assert!(
+            rows.join(" ").contains(&whole),
+            "the caveat is what survives: {rows:?}"
+        );
+        assert!(
+            !last.ends_with('\u{2026}'),
+            "nothing was cut, so nothing is marked: {rows:?}"
+        );
+        assert!(
+            !rendered.contains(&naming),
+            "the naming sentence is what went instead:\n{rendered}"
+        );
+    }
+
+    /// The marker's own claim: at a height where the continuation cannot
+    /// survive whatever the order, the row above it says so.
+    ///
+    /// 90x7 is one row shorter than the case above, so the sentence is
+    /// past saving there; 33x6 is the floor, where only the four key rows
+    /// fit at all.
+    #[test]
+    fn a_continuation_that_cannot_survive_leaves_the_cut_marked() {
+        for (width, height) in [(90u16, 7u16), (MIN_TERM_WIDTH, MIN_HEIGHT)] {
+            let rendered = render_text(&fixtures::render_dialog(width, height));
+            let rows = reload_rows(&rendered);
+            assert_eq!(rows.len(), 1, "{width}x{height}: {rows:?}");
+            let last = rows.last().expect("the reload row draws at every size");
+            assert!(
+                last.ends_with('\u{2026}'),
+                "{width}x{height}: the cut is unmarked: {rows:?}"
+            );
+        }
+    }
+
+    /// The invariant over every size, under both claims above: a cut is
+    /// never silent. Asserted on the joined rows, never on a prefix, since
+    /// a `contains` on the first row passes on exactly the broken output
+    /// this came from (`No gap, if the app`, and the sentence stops).
+    #[test]
+    fn a_shed_reload_continuation_leaves_the_cut_marked() {
+        let app = fixtures::app_with_close_dialog();
+        let dialog = app.close_dialog().expect("the dialog is up");
+        let whole = close_dialog_reload_sentence(dialog);
+        for width in [MIN_TERM_WIDTH, 40, 51, 89, 90, 120, 160] {
+            for height in MIN_HEIGHT..=24 {
+                let rendered = render_text(&fixtures::render_dialog(width, height));
+                let rows = reload_rows(&rendered);
+                let joined = rows.join(" ");
+                // Either the whole sentence is there, or some row says it
+                // was cut: a shed continuation marks the row above it, and
+                // a word longer than the column marks its own row. Never a
+                // prefix check, which passes on the broken output.
+                assert!(
+                    joined.contains(&whole) || rows.iter().any(|row| row.ends_with('\u{2026}')),
+                    "{width}x{height}: the caveat went missing unmarked: {rows:?}"
+                );
+            }
+        }
+    }
+
+    /// The reload sentence's own rows in `frame`: the `L` row and the
+    /// continuations indented under it, up to the `c` row that ends them.
+    ///
+    /// Read from inside the border when there is one, since the muted
+    /// pane behind the box keeps drawing to the right of it.
+    ///
+    /// # Panics
+    ///
+    /// If no `L` row is on screen, which every size draws one of.
+    #[track_caller]
+    fn reload_rows(frame: &str) -> Vec<String> {
+        let mut rows = Vec::new();
+        for line in frame.lines() {
+            let text = dialog_interior(line);
+            if rows.is_empty() {
+                if text.starts_with("L   reload") {
+                    rows.push(text);
+                }
+                continue;
+            }
+            if text.starts_with("c   continue") || text.is_empty() {
+                break;
+            }
+            rows.push(text);
+        }
+        assert!(!rows.is_empty(), "no reload row in:\n{frame}");
+        rows
+    }
+
+    /// One frame row's dialog content: what the box holds, or the whole
+    /// row when the borderless form is drawn.
+    fn dialog_interior(line: &str) -> String {
+        let inside = match (line.find(BOX_LEFT), line.rfind(BOX_RIGHT)) {
+            (Some(left), Some(right)) if left < right => &line[left + BOX_LEFT.len_utf8()..right],
+            _ => line,
+        };
+        inside.trim().to_owned()
+    }
+
+    /// Dimming changes style and leaves every character alone, so a test
+    /// that asserts text here is asserting nothing.
+    #[test]
+    fn the_pane_behind_the_dialog_is_muted() {
+        let buffer = fixtures::draw_pane_with_dialog(160, 48);
+        let behind = buffer[(2, 4)].style();
+        assert_eq!(behind.fg, fixtures::plain_dimmed().fg);
+    }
+
+    /// Muting is a colour operation: under `NO_COLOR` there is no ink to
+    /// dim with, so only the reset half of the mute pass does anything and
+    /// the pane behind goes completely flat, no reverse video and no
+    /// background, rather than staying lit. The border and the
+    /// reverse-video heading carry the separation on their own then.
+    #[test]
+    fn no_color_flattens_the_pane_behind_instead_of_leaving_it_lit() {
+        let buffer = fixtures::draw_pane_with_dialog_and_palette(160, 48, fixtures::no_color());
+        // The title band: `title_band_line` styles its whole row
+        // `REVERSED`, the one modifier the mute pass has to clear even
+        // when there is no colour to dim with.
+        let title_band = buffer[(2, 0)].style();
+        assert_eq!(title_band.add_modifier, ratatui::style::Modifier::empty());
+    }
+
+    /// The cell at `(x, y)` in `buffer`'s own rendered text where row `y`
+    /// contains `needle`, `x` being the column `needle` starts at plus
+    /// `offset`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no row contains `needle`, a fixture bug rather than a
+    /// failure the test is about.
+    #[track_caller]
+    fn cell_in_row_containing(buffer: &Buffer, needle: &str, offset: u16) -> ratatui::style::Style {
+        let text = render_text(buffer);
+        let (y, line) = text
+            .lines()
+            .enumerate()
+            .find(|(_, line)| line.contains(needle))
+            .unwrap_or_else(|| panic!("no row contains {needle:?}"));
+        let x = line.find(needle).unwrap_or(0);
+        let x = u16::try_from(x).unwrap_or(0) + offset;
+        let y = u16::try_from(y).unwrap_or(0);
+        buffer[(x, y)].style()
+    }
+
+    /// 12a's own rule: colour is always redundant with the text, so
+    /// `NO_COLOR` loses decoration and never information. The heading's
+    /// only decoration is the `REVERSED` band every other chip on this
+    /// dashboard carries; a heading styled with `attention` alone (a bare
+    /// foreground colour) would lose it entirely under `NO_COLOR`, since
+    /// `attention` sets no modifier for `NO_COLOR` to leave behind.
+    #[test]
+    fn the_heading_stays_a_reversed_band_under_no_color() {
+        let buffer = fixtures::draw_pane_with_dialog_and_palette(160, 48, fixtures::no_color());
+        let heading = cell_in_row_containing(&buffer, "NEEDS A RESPAWN", 0);
+        assert!(
+            heading
+                .add_modifier
+                .contains(ratatui::style::Modifier::REVERSED)
+        );
+    }
+
+    /// The three the check found. `▐` is Neutral and the four corners are
+    /// too; `▀`, `▄` and `▌` are East-Asian Ambiguous, and a terminal that
+    /// doubles the right edge shifts every interior row. Recorded rather
+    /// than fixed, since no Neutral right-half block exists to swap in.
+    #[test]
+    fn the_border_vocabulary_is_the_one_that_was_checked() {
+        for glyph in ['▛', '▜', '▙', '▟', '▐', '▀', '▄', '▌'] {
+            assert_eq!(char_columns(glyph), 1, "{glyph}");
+        }
+    }
+
     /// The whole pane at a comfortable width, unbounded. The snapshot is the
     /// assertion: it pins the title, the four section headers in order, all
     /// 40 rows, the two flags and the cost cell beside each one.
     #[test]
     fn a_sheep_pane_at_a_comfortable_width() {
-        let lines = pane_lines(&web_pane(), None, fixtures::plain(), 120, 0);
+        let lines = pane_lines(&web_pane(), fixtures::plain(), 120, 0);
         insta::assert_snapshot!("sheep_pane_wide", text_of(&lines).join("\n"));
     }
 
@@ -1814,7 +2817,7 @@ mod tests {
         // field. `move_to_key` reaches `user`, `process`'s own last field,
         // directly.
         pane.move_to_key("user");
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 9));
+        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 9));
         assert!(text.len() <= 9, "{text:?}");
         assert!(text.iter().any(|line| line.contains("above")), "{text:?}");
         assert!(
@@ -1830,7 +2833,7 @@ mod tests {
     fn every_pane_line_fits_the_width_it_was_drawn_for() {
         let pane = web_pane();
         for width in super::super::MIN_TERM_WIDTH..=200 {
-            for line in text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0)) {
+            for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
                 assert!(
                     visible_width(&line) <= usize::from(width),
                     "width {width} drew {}: {line:?}",
@@ -1888,7 +2891,7 @@ mod tests {
         let mut pane = web_pane();
         let mut lines = Vec::new();
         for _ in 0..GROUP_ORDER.len() {
-            lines.extend(pane_lines(&pane, None, palette, 89, 0));
+            lines.extend(pane_lines(&pane, palette, 89, 0));
             pane.next_group();
         }
         lines
@@ -2006,7 +3009,7 @@ mod tests {
         let mut all_text = Vec::new();
         for _ in 0..GROUP_ORDER.len() {
             pane.move_to_last();
-            let text = text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0));
+            let text = text_of(&pane_lines(&pane, fixtures::plain(), width, 0));
             rows.extend(rows_of(&text));
             all_text.extend(text);
             pane.next_group();
@@ -2036,12 +3039,18 @@ mod tests {
         assert_eq!(glyph("watch"), Some(' '));
     }
 
-    /// The whole frame at `height`, through the same `note_body_rows` and
-    /// `draw` the event loop runs before each one.
+    /// The whole frame at `height`, 120 columns wide, through the same
+    /// `note_body_rows` and `draw` the event loop runs before each one.
     fn screen_at(app: &mut crate::lookout::app::App, height: u16) -> String {
-        let area = Rect::new(0, 0, 120, height);
+        screen_of(app, 120, height)
+    }
+
+    /// [`screen_at`] at a width of the caller's own choosing.
+    fn screen_of(app: &mut crate::lookout::app::App, width: u16, height: u16) -> String {
+        let area = Rect::new(0, 0, width, height);
         app.note_body_rows(super::super::body_rows(area));
-        let mut terminal = Terminal::new(TestBackend::new(120, height)).unwrap();
+        app.note_body_width(width);
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         terminal
             .draw(|frame| super::super::draw(app, frame))
             .unwrap();
@@ -2105,7 +3114,7 @@ mod tests {
             for cursor in [0usize, 7, 20, 38] {
                 pane.move_to_first();
                 pane.move_by(isize::try_from(cursor).unwrap());
-                let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, height));
+                let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
                 assert!(
                     text.len() <= usize::from(height),
                     "height {height}, cursor {cursor}: {text:?}"
@@ -2122,7 +3131,7 @@ mod tests {
         let mut pane = web_pane();
         pane.move_to_key("autorestart");
         pane.cycle();
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
         assert!(
             !text.iter().any(|line| line.contains("enter confirms")),
             "{text:?}"
@@ -2140,7 +3149,7 @@ mod tests {
         let mut pane = web_pane();
         pane.move_to_key("max_memory");
         pane.toggle_help();
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
         assert!(
             text.iter()
                 .any(|line| line.contains("Restart the app if it climbs above this much memory")),
@@ -2158,7 +3167,7 @@ mod tests {
         pane.move_to_key("max_memory");
         pane.toggle_help();
         pane.toggle_help();
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 89, 0));
+        let text = text_of(&pane_lines(&pane, fixtures::plain(), 89, 0));
         assert!(
             !text.iter().any(|line| line.contains("Restart the app")),
             "{text:?}"
@@ -2174,7 +3183,7 @@ mod tests {
         pane.move_to_key("autorestart");
         pane.toggle_help();
         pane.cycle();
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
         assert!(
             text.iter()
                 .any(|line| line.contains("Restarts the process automatically")),
@@ -2192,7 +3201,7 @@ mod tests {
         pane.move_to_key("max_memory");
         pane.toggle_help();
         for width in super::super::MIN_TERM_WIDTH..=200 {
-            for line in text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0)) {
+            for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
                 assert!(
                     visible_width(&line) <= usize::from(width),
                     "width {width}: {line:?}"
@@ -2200,110 +3209,12 @@ mod tests {
             }
         }
         for height in 1..=30u16 {
-            let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, height));
+            let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
             assert!(
                 text.len() <= usize::from(height),
                 "height {height}: {text:?}"
             );
         }
-    }
-
-    /// The menu, opened the way an operator opens it: `esc` on a pane the
-    /// running sheep has not caught up with.
-    fn app_at_the_menu() -> crate::lookout::app::App {
-        let mut app = fixtures::app_in_sheep_pane_with_two_parked_fields();
-        app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.pane_menu().is_some(), "esc offered the menu");
-        app
-    }
-
-    #[test]
-    fn the_menu_takes_the_line_under_the_title_and_names_all_three_keys() {
-        let mut app = app_at_the_menu();
-        let text = screen_at(&mut app, 30);
-        let line = text
-            .lines()
-            .find(|line| line.contains("saved fields"))
-            .expect("the menu is drawn");
-        assert!(line.contains("2 saved fields wait"), "{line:?}");
-        for clause in [
-            "L reload (overlapping)",
-            "R restart",
-            "esc leave them parked",
-        ] {
-            assert!(line.contains(clause), "{clause} missing from {line:?}");
-        }
-    }
-
-    #[test]
-    fn one_parked_field_reads_in_the_singular() {
-        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
-        app.update(Msg::Key(KeyPress::Escape));
-        let text = screen_at(&mut app, 30);
-        assert!(text.contains("1 saved field waits"), "{text}");
-        assert!(text.contains("esc leave it parked"), "{text}");
-    }
-
-    /// The menu must not read as a save prompt: every field it counts is
-    /// already in the override store.
-    #[test]
-    fn the_menu_never_says_anything_is_at_risk() {
-        let mut app = app_at_the_menu();
-        let screen = screen_at(&mut app, 30);
-        let line = screen
-            .lines()
-            .find(|line| line.contains("saved fields"))
-            .expect("the menu is drawn")
-            .to_lowercase();
-        for word in ["discard", "unsaved", "are you sure", "lose"] {
-            assert!(!line.contains(word), "{word} has no business in {line:?}");
-        }
-    }
-
-    /// The menu shares the slot the confirm and the help text already
-    /// share, so the field list is laid out against the same budget with
-    /// it open as without.
-    #[test]
-    fn the_menu_costs_the_field_list_no_line() {
-        let mut open = fixtures::app_in_sheep_pane_with_two_parked_fields();
-        let mut closed = fixtures::app_in_sheep_pane_with_two_parked_fields();
-        open.update(Msg::Key(KeyPress::Escape));
-        for height in [super::super::flock::MIN_HEIGHT, 7, 8, 12, 20, 30] {
-            let with = screen_at(&mut open, height);
-            let without = screen_at(&mut closed, height);
-            assert_eq!(
-                with.lines().count(),
-                without.lines().count(),
-                "height {height}"
-            );
-            assert_eq!(marked(&with), 1, "height {height}:\n{with}");
-        }
-    }
-
-    #[test]
-    fn the_menu_line_fits_every_width_the_pane_claims_to_support() {
-        let mut app = app_at_the_menu();
-        for width in super::super::MIN_TERM_WIDTH..=200 {
-            let area = Rect::new(0, 0, width, 30);
-            app.note_body_rows(super::super::body_rows(area));
-            let mut terminal = Terminal::new(TestBackend::new(width, 30)).unwrap();
-            terminal
-                .draw(|frame| super::super::draw(&app, frame))
-                .unwrap();
-            for line in render_text(terminal.backend().buffer()).lines() {
-                assert!(
-                    visible_width(line) <= usize::from(width),
-                    "width {width}: {line:?}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn a_sheep_pane_with_the_apply_menu_open() {
-        let menu = PaneMenu::new(2, ReloadKind::Serial, Instant::now());
-        let lines = pane_lines(&web_pane(), Some(&menu), fixtures::plain(), 120, 0);
-        insta::assert_snapshot!("sheep_pane_apply_menu", text_of(&lines).join("\n"));
     }
 
     /// The pane's cursor, walked onto `key` the way an operator walks it.
@@ -2333,7 +3244,6 @@ mod tests {
             // COST cell, which is exactly what this test reads.
             let text = text_of(&pane_lines(
                 app.config_pane().unwrap(),
-                None,
                 fixtures::plain(),
                 89,
                 0,
@@ -2356,7 +3266,16 @@ mod tests {
             assert!(row.contains(column), "{key}: {row:?}");
 
             app.update(Msg::Key(KeyPress::Cycle));
-            let Effect::SendAll(mut batch) = app.update(Msg::Key(KeyPress::Escape)) else {
+            // `app_in_sheep_pane_with_control` parks `kill_signal`
+            // unconditionally, so `esc` only asks; `c` is what actually
+            // gets the write onto the wire.
+            let _ = app.update(Msg::Key(KeyPress::Escape));
+            let effect = if app.close_dialog().is_some() {
+                app.update(Msg::Key(KeyPress::Continue))
+            } else {
+                Effect::None
+            };
+            let Effect::SendAll(mut batch) = effect else {
                 panic!("{key}: closing the pane sends");
             };
             app.update(Msg::Replied {
@@ -2383,7 +3302,7 @@ mod tests {
         for typed in "/srv".chars() {
             pane.type_char(typed);
         }
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
         let row = text
             .iter()
             .find(|line| line.contains(" cwd"))
@@ -2417,7 +3336,7 @@ mod tests {
     /// contract exists to prevent.
     #[test]
     fn a_dog_pane_at_a_comfortable_width() {
-        let text = text_of(&pane_lines(&bark_pane(), None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&bark_pane(), fixtures::plain(), 120, 0));
         assert!(
             !text.iter().any(|line| line.contains("hooks.example")),
             "a secret is never rendered: {text:?}"
@@ -2439,7 +3358,7 @@ mod tests {
             for cursor in [0usize, 2, 4] {
                 pane.move_to_first();
                 pane.move_by(isize::try_from(cursor).unwrap());
-                let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, height));
+                let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
                 assert!(
                     text.len() <= usize::from(height),
                     "height {height}, cursor {cursor}: {text:?}"
@@ -2454,7 +3373,7 @@ mod tests {
     fn every_dog_pane_line_fits_the_width_it_was_drawn_for() {
         let pane = bark_pane();
         for width in super::super::MIN_TERM_WIDTH..=200 {
-            for line in text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0)) {
+            for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
                 assert!(
                     visible_width(&line) <= usize::from(width),
                     "width {width} drew {}: {line:?}",
@@ -2475,7 +3394,7 @@ mod tests {
     #[test]
     fn the_env_rows_draw_at_a_comfortable_width() {
         let pane = web_pane();
-        let rows = fixtures::config_pane_env_rows_for_tests(&pane, None);
+        let rows = fixtures::config_pane_env_rows_for_tests(&pane);
         assert!(rows.iter().any(|row| row.contains("DB_HOST")), "{rows:?}");
         assert!(rows.iter().any(|row| row.contains("LOG_LEVEL")), "{rows:?}");
         assert!(
@@ -2501,7 +3420,7 @@ mod tests {
             pane.type_env_char(typed);
         }
         pane.apply_env_typing();
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
         assert!(!text.join("\n").contains("hunter2"), "{text:?}");
     }
 
@@ -2526,7 +3445,7 @@ mod tests {
                 .insert("DB_PASSWORD".to_string(), "hunter2".to_string());
             shep_core::protocol::SheepConfigView::new(config, Vec::new(), Vec::new())
         });
-        let rows = fixtures::config_pane_env_rows_for_tests(&pane, None);
+        let rows = fixtures::config_pane_env_rows_for_tests(&pane);
         assert!(
             rows.iter().any(|row| row.contains("DB_PASSWORD")),
             "{rows:?}"
@@ -2548,7 +3467,7 @@ mod tests {
             pane.type_env_char(typed);
         }
         for width in super::super::MIN_TERM_WIDTH..=200 {
-            for line in text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0)) {
+            for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
                 assert!(
                     visible_width(&line) <= usize::from(width),
                     "width {width} drew {}: {line:?}",
@@ -2560,7 +3479,7 @@ mod tests {
 
     #[test]
     fn the_title_names_the_target_and_no_longer_calls_it_read_only() {
-        let text = text_of(&pane_lines(&web_pane(), None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&web_pane(), fixtures::plain(), 120, 0));
         // Named once, on the title band: `title_line` no longer draws a
         // second row repeating it (see `title_band_line`'s own doc).
         assert!(text[0].contains("web"), "{:?}", text[0]);
@@ -2585,7 +3504,7 @@ mod tests {
         let mut pane = pane.clone();
         pane.move_to_key("args");
         pane.open_list();
-        text_of(&pane_lines(&pane, None, fixtures::plain(), width, height))
+        text_of(&pane_lines(&pane, fixtures::plain(), width, height))
     }
 
     /// The dashboard with `web` selected and its list sub-screen open on
@@ -2707,7 +3626,7 @@ mod tests {
     #[test]
     fn the_field_row_masks_both_halves_of_a_secrets_edited_value() {
         let pane = secret_dog_pane_with_an_edit();
-        let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, 0));
+        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
         let row = text
             .iter()
             .find(|line| line.contains(" token"))
@@ -2752,7 +3671,6 @@ mod tests {
     fn the_list_screen_masks_a_secret_arrays_elements() {
         let text = text_of(&pane_lines(
             &secret_list_dog_pane(),
-            None,
             fixtures::plain(),
             120,
             0,
@@ -2798,7 +3716,7 @@ mod tests {
                 .unwrap()
                 .set_rows(usize::from(height.saturating_sub(1)));
             for step in 0..=total {
-                let text = text_of(&pane_lines(&pane, None, fixtures::plain(), 120, height));
+                let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
                 assert!(
                     text.len() <= usize::from(height),
                     "height {height}, step {step}: {text:?}"
@@ -2807,7 +3725,7 @@ mod tests {
             }
         }
         for width in super::super::MIN_TERM_WIDTH..=200 {
-            for line in text_of(&pane_lines(&pane, None, fixtures::plain(), width, 0)) {
+            for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
                 assert!(
                     visible_width(&line) <= usize::from(width),
                     "width {width} drew {}: {line:?}",
@@ -3086,12 +4004,12 @@ mod tests {
     fn the_panel_draws_beside_the_field_list_at_the_design_target() {
         let app = fixtures::app_in_sheep_pane();
         let pane = app.config_pane().expect("the pane is open");
-        let at_target = text_of(&pane_lines(pane, None, fixtures::plain(), 160, 48));
+        let at_target = text_of(&pane_lines(pane, fixtures::plain(), 160, 48));
         assert!(
             at_target.iter().any(|line| line.contains("FOCUSED")),
             "the panel never drew at the design target: {at_target:?}"
         );
-        let below_floor = text_of(&pane_lines(pane, None, fixtures::plain(), 89, 48));
+        let below_floor = text_of(&pane_lines(pane, fixtures::plain(), 89, 48));
         assert!(
             !below_floor.iter().any(|line| line.contains("FOCUSED")),
             "the panel must not draw below its own floor: {below_floor:?}"
@@ -3108,7 +4026,7 @@ mod tests {
         let app = fixtures::app_in_sheep_pane();
         let pane = app.config_pane().expect("the pane is open");
         for width in [160, 200] {
-            for line in pane_lines(pane, None, fixtures::plain(), width, 48) {
+            for line in pane_lines(pane, fixtures::plain(), width, 48) {
                 let cols = line_columns(&line);
                 assert!(
                     cols <= usize::from(width),
@@ -3182,7 +4100,7 @@ mod tests {
     /// [`fixtures::draw_lines`], which draws the bleats pane instead.
     fn config_pane_lines_for_tests(app: &App, width: u16, height: u16) -> Vec<Line<'static>> {
         let pane = app.config_pane().expect("the pane is open");
-        pane_lines(pane, None, fixtures::plain(), width, height)
+        pane_lines(pane, fixtures::plain(), width, height)
     }
 
     /// The drop order the whole ladder rests on: where both the panel and

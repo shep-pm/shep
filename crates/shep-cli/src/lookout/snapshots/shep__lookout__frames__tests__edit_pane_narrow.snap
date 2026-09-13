@@ -49,4 +49,4 @@ shep lookout   /home/ada/.shep                                            6 in t
                                                                                         
                                                                                         
                                                                                         
-esc write & close   j/k select   g/G first/last   r refresh   space cyc… control enabled
+esc close   j/k select   g/G first/last   r refresh   space cycle   e e… control enabled

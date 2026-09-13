@@ -7,9 +7,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all forty-six scenes through the same coloured
+frames.ansi renders all fifty scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same forty-six scenes through the flattened NO_COLOR palette
+renders the same fifty scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -32,11 +32,17 @@ it read and dropped are counted exactly; bytes below its 64 KiB window were
 never read at all, so those are reported in bytes, because nothing counted the
 lines in them and guessing would be worse than saying so.
 
-The last four frames are the editing pane, `e` from the dashboard, on a
-sheep's own row: fresh at the 160x48 design target, the same pane with two
-edits filed (one of them needing a respawn), and the same fresh pane at 120
-and at 88 columns, where the explanation panel and the LANDS column trade
-places as the width falls.
+Four frames show the editing pane, `e` from the dashboard, on a sheep's own
+row: fresh at the 160x48 design target, the same pane with two edits filed
+(one of them needing a respawn), and the same fresh pane at 120 and at 88
+columns, where the explanation panel and the LANDS column trade places as
+the width falls.
+
+The last four are the close dialog `esc` raises over that pane when a change
+is filed the running child cannot take. Boxed and centred at the 160x48
+target, the same at 90 where the border only just fits, borderless at 89 one
+column below its floor, and the parked-only heading on a sheep whose fields
+were written before the pane was opened.
 
 Before those are the four sheep-pane scenes, `↵` on a sheep, then the
 secrets pane, `S`, and before them the full-screen bleats pane, `b` from
@@ -1161,6 +1167,7 @@ user                        (unset)                                         │
 ────────────────────────────────────────────────────────────────────────────│                                                                                   
 logging                                                                     │                                                                                   
 err_file                    (unset)                                         │                                                                                   
+level_rules                 (default)                                       │                                                                                   
 merge_logs                  (default)                                       │                                                                                   
 out_file                    (unset)                                         │                                                                                   
                                                                             │                                                                                   
@@ -1169,7 +1176,6 @@ inputs                                                                      │
 args                        ["--port","8080"]                               │                                                                                   
 channel                     (default)                                       │                                                                                   
 environment                 (unset)                                         │                                                                                   
-stdin                       (default)                                       │                                                                                   
                                                                                                                                                                 
 esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                                      control enabled
 
@@ -1213,6 +1219,7 @@ user                        (unset)
 ────────────────────────────────────────────────────────────────────────────                                                               
 logging                                                                                                                                    
 err_file                    (unset)                                                                                                        
+level_rules                 (default)                                                                                                      
 merge_logs                  (default)                                                                                                      
 out_file                    (unset)                                                                                                        
                                                                                                                                            
@@ -1221,7 +1228,6 @@ inputs
 args                        ["--port","8080"]                                                                                              
 channel                     (default)                                                                                                      
 environment                 (unset)                                                                                                        
-stdin                       (default)                                                                                                      
                                                                                                                                            
 esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                 control enabled
 
@@ -1265,6 +1271,7 @@ user                        (unset)
 ────────────────────────────────────────────────────────────────────────────                       
 logging                                                                                            
 err_file                    (unset)                                                                
+level_rules                 (default)                                                              
 merge_logs                  (default)                                                              
 out_file                    (unset)                                                                
                                                                                                    
@@ -1273,7 +1280,6 @@ inputs
 args                        ["--port","8080"]                                                      
 channel                     (default)                                                              
 environment                 (unset)                                                                
-stdin                       (default)                                                              
                                                                                                    
 esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log  … control enabled
 
@@ -1329,7 +1335,7 @@ shep lookout   /home/ada/.shep                                                  
   env                                                                                     VALIDATION                                                            
    DATABASE_URL               (set)                                                       █ an absolute or relative path, expanded from cwd                     
    NODE_ENV                   (set)                                                       █ ~ expands, $VARS do not                                             
-   + add a key                                                                            █ refused: a path the daemon's user cannot enter                      
+   + add a key                                                                            █ a directory that does not exist yet: warned                         
                                                                                                                                                                 
                                                                                           NEIGHBOURS                                                            
                                                                                           script  resolved against this cwd                                     
@@ -1356,7 +1362,7 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
-esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked  … control enabled
+esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked   q quit   control enabled
 
 === edit_pane_edited  (160x48) ===
 The same pane with two edits filed: cwd, which needs a respawn, and max_memory, which lands at once. The pending edits section lists both under the active group's own fields, and the title band reads 2 edits.
@@ -1408,7 +1414,7 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
-esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked  … control enabled
+esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked   q quit   control enabled
 
 === edit_pane_squeezed  (120x48) ===
 The same fresh pane at 120 columns: narrow enough that LANDS gives way to the explanation panel, which still names the focused field's own cost in words.
@@ -1434,7 +1440,7 @@ shep lookout   /home/ada/.shep                                                  
    DATABASE_URL               (set)                                 VALIDATION                                          
    NODE_ENV                   (set)                                 █ an absolute or relative path, expanded from cwd   
    + add a key                                                      █ ~ expands, $VARS do not                           
-                                                                    █ refused: a path the daemon's user cannot enter    
+                                                                    █ a directory that does not exist yet: warned       
                                                                                                                         
                                                                     NEIGHBOURS                                          
                                                                     script  resolved against this cwd                   
@@ -1460,7 +1466,7 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                         
                                                                                                                         
                                                                                                                         
-esc write & close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default … control enabled
+esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo… control enabled
 
 === edit_pane_narrow  (88x48) ===
 The same fresh pane at 88 columns: narrow enough that the explanation panel is gone, so LANDS is back, since nothing else on screen carries cost.
@@ -1512,4 +1518,212 @@ shep lookout   /home/ada/.shep                                            6 in t
                                                                                         
                                                                                         
                                                                                         
-esc write & close   j/k select   g/G first/last   r refresh   space cyc… control enabled
+esc close   j/k select   g/G first/last   r refresh   space cycle   e e… control enabled
+
+=== close_dialog  (160x48) ===
+esc pressed with cwd and err_file edited and listen_timeout already parked from before: the close dialog names both counts, boxed and centred at 160x48 over the dimmed editing pane.
+
+shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
+                                                                                                                                                                
+ ██ api  (sheep config)  2 edits                                                                                                                                
+   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab next group   1…8 jump                                                     
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS                                                                             
+>  err_file                   (unset) -> /var/log/api/err.log                 respawn    FOCUSED  err_file  text                                                
+ ~ level_rules                []                                              now         Where stderr goes. Defaults to a file under $SHEP_HOME/logs           
+   merge_logs                 false                                           respawn                                                                           
+   out_file                   (unset)                                         respawn     now     (unset)                                                       
+                                                                                          default (none)                                                        
+  pending edits                                                                           example /var/log/my-first-sheep/err.log                               
+    cwd  (unset) -> /srv/api                                                                                                                                    
+    err_file  (unset) -> /var/log/api/err.log                                             ▲ respawn  the sheep must stop and start again                        
+                                                                                                                         pick the timing when you close the pane
+  env                                                                                                                                                           
+   DATABASE_URL               (set)                                                       ──────────────────────────────────────────────────────────────────────
+   NODE_ENV                   (set)                                                       VALIDATION                                                            
+   + add a key                                                                            █ a path, relative paths follow cwd                                   
+                                    ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                                    
+                                    ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                ▌: warned                            
+                                    ▐  cwd and err_file take hold when the process starts again.                           ▌                                    
+                                    ▐                                                                                      ▌le across instances without merge_l…
+                                    ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌                                    
+                                    ▐  L   reload           the replacement starts alongside and takes over. No gap, if the▌                                    
+                                    ▐                       app sets SO_REUSEPORT itself.                                  ▌n rule                              
+                                    ▐  c   continue         write them and leave it running. They wait for a respawn.      ▌ne file on purpose                  
+  ──────────────────────────────────▐                                                                                      ▌────────────────────────────────────
+  = read-only, set it in the Flockfi▐  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        ▌ou, not yet written                 
+                                    ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟                                    
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+the dialog owns the keyboard until it is answered or it expires                                                                                  control enabled
+
+=== close_dialog_floor  (90x48) ===
+The same dialog at 90 columns, exactly the floor its border needs: 86 interior cells plus a border cell and a margin cell each side.
+
+shep lookout   /home/ada/.shep                                              6 in the flock
+                                                                                          
+ ██ api  (sheep config)  2 edits                                                          
+   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab nex…
+  ────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                                       
+>  err_file                   (unset) -… FOCUSED  err_file  text                          
+ ~ level_rules                []          Where stderr goes. Defaults to a file under     
+   merge_logs                 false       $SHEP_HOME/logs                                 
+   out_file                   (unset)                                                     
+                                          now     (unset)                                 
+  pending edits                           default (none)                                  
+    cwd  (unset) -> /srv/api              example /var/log/my-first-sheep/err.log         
+    err_file  (unset) -> /var/log/api…                                                    
+                                          ▲ respawn  the sheep must stop and start again  
+  env                                              pick the timing when you close the pane
+   DATABASE_URL               (set)                                                       
+   NODE_ENV                   (set)       ────────────────────────────────────────────────
+   + add a key                            VALIDATION                                      
+ ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜ 
+ ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                ▌ 
+ ▐  cwd and err_file take hold when the process starts again.                           ▌ 
+ ▐                                                                                      ▌ 
+ ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌…
+ ▐  L   reload           the replacement starts alongside and takes over. No gap, if the▌ 
+ ▐                       app sets SO_REUSEPORT itself.                                  ▌ 
+ ▐  c   continue         write them and leave it running. They wait for a respawn.      ▌ 
+ ▐                                                                                      ▌…
+ ▐  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        ▌─
+ ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟…
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+the dialog owns the keyboard until it is answered or it expires            control enabled
+
+=== close_dialog_narrow  (89x48) ===
+The same dialog one column under the floor, at 89: the border is dropped and the dialog draws full width instead of clipping.
+
+shep lookout   /home/ada/.shep                                             6 in the flock
+                                                                                         
+ ██ api  (sheep config)  2 edits                                                         
+   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab ne…
+  ───────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                            LANDS     
+>  err_file                   (unset) -> /var/log/api/err.log                  respawn   
+ ~ level_rules                []                                               now       
+   merge_logs                 false                                            respawn   
+   out_file                   (unset)                                          respawn   
+                                                                                         
+  pending edits                                                                          
+    cwd  (unset) -> /srv/api                                                             
+    err_file  (unset) -> /var/log/api/err.log                                            
+                                                                                         
+  env                                                                                    
+   DATABASE_URL               (set)                                                      
+   NODE_ENV                   (set)                                                      
+   + add a key                                                                           
+  ───────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a…
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                   
+  cwd and err_file take hold when the process starts again.                              
+                                                                                         
+  R   restart now      stop, then start. The stop takes up to 1600ms.                    
+  L   reload           the replacement starts alongside and takes over. No gap, if the   
+                       app sets SO_REUSEPORT itself.                                     
+  c   continue         write them and leave it running. They wait for a respawn.         
+                                                                                         
+  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████           
+the dialog owns the keyboard until it is answered or it expires           control enabled
+
+=== close_dialog_parked  (160x48) ===
+esc pressed with no edit of the operator's own, only listen_timeout already parked: the heading names the parked half alone.
+
+shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
+                                                                                                                                                                
+ ██ api  (sheep config)                                                                                                                                         
+   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab next group   1…8 jump                                                     
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS                                                                             
+>  cwd                        (unset)                                         respawn    FOCUSED  cwd  text                                                     
+   depends_on                 []                                              next start  Where the process runs. Without it, the daemon's own directory        
+   fold                       (unset)                                         now                                                                               
+   group                      (unset)                                         respawn     now     (unset)                                                       
+ = instances                  1                                               read-only   default (none)                                                        
+   interpreter                (unset)                                         respawn     example /srv/app                                                      
+ = name                       api                                             read-only                                                                         
+   reuse_port                 false                                           now         ▲ respawn  the sheep must stop and start again                        
+   script                     ./api/server.js                                 respawn                                    pick the timing when you close the pane
+   user                       (unset)                                         respawn                                                                           
+                                                                                          ──────────────────────────────────────────────────────────────────────
+  env                                                                                     VALIDATION                                                            
+   DATABASE_URL               (set)                                                       █ an absolute or relative path, expanded from cwd                     
+   NODE_ENV                   (set) ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                                    
+   + add a key                      ▐  1 FIELD ALREADY WAITING             api is online, pid 48219                        ▌yet: warned                         
+                                    ▐                                                                                      ▌                                    
+                                    ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌                                    
+                                    ▐  L   reload           the replacement starts alongside and takes over. No gap, if the▌                                    
+                                    ▐                       app sets SO_REUSEPORT itself.                                  ▌ too                                
+                                    ▐  c   continue         write them and leave it running. They wait for a respawn.      ▌re                                  
+  ──────────────────────────────────▐                                                                                      ▌────────────────────────────────────
+  = read-only, set it in the Flockfi▐  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        ▌ou, not yet written                 
+                                    ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟                                    
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+the dialog owns the keyboard until it is answered or it expires                                                                                  control enabled

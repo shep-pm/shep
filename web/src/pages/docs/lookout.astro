@@ -1091,9 +1091,10 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       </li>
       <li>
         <code>Esc</code> closes whatever is innermost: a sub-screen back to
-        the field list, then help if it's open, then an offer to reload or
-        restart when something is parked, and last the pane itself, writing
-        the whole change set as it closes. It never quits lookout.
+        the field list, then help if it's open, then a question if anything
+        the running child hasn't taken is outstanding, and last the pane
+        itself, writing the whole change set as it closes. It never quits
+        lookout.
       </li>
     </ul>
     <p>
@@ -1104,16 +1105,18 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       <code>instances</code> included.
     </p>
     <p class="fine">
-      A field the running child already holds parks until the next spawn. The
-      status bar says which of the two happened. <code>Esc</code> on a pane
-      with anything still parked offers to close the gap there and then:{" "}
-      <code>L</code> reloads the sheep, <code>R</code> restarts it, and{" "}
-      <code>Esc</code> again leaves the fields parked. Nothing is at risk
-      either way, since every one of them is already sitting in the
-      override store; the offer only decides when the running sheep catches
-      up. It shows up only with the gate open. <code>shep reload
-      &lt;sheep&gt;</code> promotes the same fields from the CLI, any time
-      after.
+      A field a write cannot reach in the running child parks until the next
+      spawn, since the child was given its value at exec and holds it. If
+      an edit still filed needs a respawn, or a field is already parked from
+      an earlier write, <code>Esc</code> asks before it closes: restart now,
+      reload, or leave it running with the edits parked. <code>L</code>{" "}
+      reloads the sheep, <code>R</code> restarts it, <code>c</code> writes
+      and leaves it running, and <code>Esc</code> again keeps editing and
+      writes nothing. The restart or reload only fires once its write has
+      landed, so it never respawns into the config it was meant to replace.
+      The dialog shows up only with the gate open. <code>shep reload
+      &lt;sheep&gt;</code> promotes an already-parked field from the CLI,
+      any time after.
     </p>
     <p>
       A sheep's env keys sit in the field list itself, beneath whichever
