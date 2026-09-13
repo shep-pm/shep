@@ -272,7 +272,7 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
                             }
                             Err(lost) => {
                                 eprintln!("shep dog bark: {lost}");
-                                break exit_for(&lost);
+                                break super::exit_for(&lost);
                             }
                         },
                         // Matched on the variant rather than on the dog's
@@ -314,19 +314,6 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
                 }
             }
         }
-    }
-}
-
-/// The exit code a dog that gave up on its shepherd reports.
-///
-/// Named rather than `Success`, because a dog that stopped because nothing
-/// answered is not a dog that finished. The wildcard is what
-/// [`LinkLost`]'s `non_exhaustive` asks for: a variant added later is some
-/// other way of not reaching a shepherd until someone says otherwise.
-fn exit_for(lost: &LinkLost) -> ExitCode {
-    match lost {
-        LinkLost::Refused { .. } => ExitCode::ProtocolMismatch,
-        _ => ExitCode::DaemonUnreachable,
     }
 }
 
