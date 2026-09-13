@@ -53,15 +53,26 @@ const SHEEP: [&str; 4] = [
     "   \u{2580}\u{2598} \u{2580}\u{2598}",
 ];
 
-/// The heading row: `Group::DRAWN`'s four headings, each left-aligned in
-/// its own [`COLUMN`]-wide cell, in reverse video over the group's own
-/// role. Padded through [`fit`] rather than concatenated raw, so the
-/// `REVERSED` modifier paints the whole cell and not just the word.
-fn heading_line(palette: Palette) -> Line<'static> {
-    let mut spans = Vec::with_capacity(usize::from(COLUMN_COUNT) * 2 - 1);
-    for (index, group) in Group::DRAWN.into_iter().enumerate() {
+/// [`GUTTER`] spaces, the separator between two adjacent cells whether the
+/// cells are columns of the same bank or (nowhere yet) two banks side by
+/// side.
+fn gutter_span() -> Span<'static> {
+    Span::raw(" ".repeat(usize::from(GUTTER)))
+}
+
+/// `groups`' headings, each left-aligned in its own [`COLUMN`]-wide cell, in
+/// reverse video over the group's own role, joined by [`GUTTER`]. Padded
+/// through [`fit`] rather than concatenated raw, so the `REVERSED` modifier
+/// paints the whole cell and not just the word.
+///
+/// Shared by the boxed heading row ([`heading_line`], all four of
+/// [`Group::DRAWN`]) and each borderless bank ([`draw_borderless`]'s own
+/// call, however many groups [`columns_for`] gave that bank).
+fn heading_line_for(groups: &[Group], palette: Palette) -> Line<'static> {
+    let mut spans = Vec::with_capacity(groups.len() * 2 - 1);
+    for (index, &group) in groups.iter().enumerate() {
         if index > 0 {
-            spans.push(Span::raw(" ".repeat(usize::from(GUTTER))));
+            spans.push(gutter_span());
         }
         spans.push(Span::styled(
             fit(group.heading(), COLUMN),
@@ -71,20 +82,37 @@ fn heading_line(palette: Palette) -> Line<'static> {
     Line::from(spans)
 }
 
-/// One entry row: four cells, one per drawn group, joined by [`GUTTER`]
-/// spaces.
-fn entry_line(index: usize, grouped: &[Vec<Binding>], palette: Palette) -> Line<'static> {
+/// The boxed form's heading row: [`heading_line_for`] over all four of
+/// [`Group::DRAWN`].
+fn heading_line(palette: Palette) -> Line<'static> {
+    heading_line_for(&Group::DRAWN, palette)
+}
+
+/// One entry row across `groups`: one cell per group, joined by [`GUTTER`].
+///
+/// Shared the same way [`heading_line_for`] is: the boxed form's [`lines`]
+/// calls it with all four of [`Group::DRAWN`] and `show_sheep: true`; every
+/// borderless bank calls it with only its own groups and `show_sheep:
+/// false`, since the sheep is boxed-only (see [`borderless_lines`]'s own
+/// comment on why).
+fn entry_line_for(
+    groups: &[Group],
+    all_rows: &[Binding],
+    index: usize,
+    palette: Palette,
+    show_sheep: bool,
+) -> Line<'static> {
     let mut spans = Vec::new();
-    for (column, group) in Group::DRAWN.into_iter().enumerate() {
+    for (column, &group) in groups.iter().enumerate() {
         if column > 0 {
-            spans.push(Span::raw(" ".repeat(usize::from(GUTTER))));
+            spans.push(gutter_span());
         }
-        spans.extend(entry_cell(
-            group,
-            grouped[column].get(index).copied(),
-            index,
-            palette,
-        ));
+        let binding = all_rows
+            .iter()
+            .copied()
+            .filter(|row| row.group == group)
+            .nth(index);
+        spans.extend(entry_cell(group, binding, index, palette, show_sheep));
     }
     Line::from(spans)
 }
@@ -92,12 +120,14 @@ fn entry_line(index: usize, grouped: &[Vec<Binding>], palette: Palette) -> Line<
 /// One [`COLUMN`]-wide cell: the group's own row at `index` if it has one,
 /// styled `keys` in [`Palette::attention`] and `does` unstyled (the design's
 /// own ink-2, "default fg"); the sheep at entry rows five through eight of
-/// the DOING column once that group runs out; a blank cell otherwise.
+/// the DOING column once that group runs out and `show_sheep` says so; a
+/// blank cell otherwise.
 fn entry_cell(
     group: Group,
     binding: Option<Binding>,
     index: usize,
     palette: Palette,
+    show_sheep: bool,
 ) -> Vec<Span<'static>> {
     if let Some(binding) = binding {
         return vec![
@@ -122,7 +152,8 @@ fn entry_cell(
             )),
         ];
     }
-    if group == Group::Doing
+    if show_sheep
+        && group == Group::Doing
         && let Some(row) = index
             .checked_sub(SHEEP_FIRST_ROW)
             .and_then(|row| SHEEP.get(row))
@@ -145,8 +176,18 @@ fn entry_cell(
 /// the status bar's right-hand label takes the same precedence, for the
 /// same reason (`status::status_line`'s `Link::Lost` arm, checked ahead of
 /// `Control`).
-fn gate_line(app: &App, palette: Palette, interior: u16) -> Line<'static> {
-    let text = if matches!(app.link(), Link::Lost { .. }) {
+fn gate_line(app: &App, palette: Palette, width: u16) -> Line<'static> {
+    Line::from(Span::styled(
+        fit(&gate_text(app), width),
+        palette.attention(),
+    ))
+}
+
+/// [`gate_line`]'s own sentence, unfit: split out so
+/// [`folded_gate_and_quit_line`] can combine it with the quit caption
+/// before either is padded to a width.
+fn gate_text(app: &App) -> String {
+    if matches!(app.link(), Link::Lost { .. }) {
         " the three above are refused  \u{b7}  \u{2588} the link is down  \u{b7}  nothing acts"
             .to_string()
     } else {
@@ -158,16 +199,19 @@ fn gate_line(app: &App, palette: Palette, interior: u16) -> Line<'static> {
             " the three above each arm a confirm  \u{b7}  \u{21b5} confirms  \u{b7}  10s to \
              answer  \u{b7}  \u{2588} {label}"
         )
-    };
-    Line::from(Span::styled(fit(&text, interior), palette.attention()))
+    }
 }
 
-/// The two lines that close the box: the `NO_COLOR` disclosure, and the
-/// keys that leave the overlay or lookout itself.
-///
-/// The second line's quit caption comes from [`Group::Closing`]'s own row
-/// rather than a literal, so the two cannot drift the way a hand-copied
-/// string would.
+/// The `NO_COLOR` disclosure. Its own function so [`Shed::Decoration`] can
+/// drop it without touching the quit line beside it.
+const fn colour_sentence() -> &'static str {
+    " colour is decoration only: every coloured cell says the same \
+     thing in words. NO_COLOR loses nothing but the colour."
+}
+
+/// The quit line's unfit text: `h or ? closes this · <keys> quits lookout`,
+/// with `<keys>` coming from [`Group::Closing`]'s own row rather than a
+/// literal, so the two cannot drift the way a hand-copied string would.
 ///
 /// # Panics
 ///
@@ -178,24 +222,42 @@ fn gate_line(app: &App, palette: Palette, interior: u16) -> Line<'static> {
 /// to panicking here is drawing a quit line that names no key at all, which
 /// is a worse failure than a panic in a private function guarded by a
 /// match the compiler already checks is exhaustive.
-fn closing_lines(all_rows: &[Binding], palette: Palette, interior: u16) -> [Line<'static>; 2] {
-    let colour_sentence = " colour is decoration only: every coloured cell says the same \
-                            thing in words. NO_COLOR loses nothing but the colour.";
+fn quit_text(all_rows: &[Binding]) -> String {
     let quit = all_rows
         .iter()
         .find(|row| row.group == Group::Closing)
         .expect("binding() always gives Quit a Closing row");
-    let closes_and_quits = format!(" h or ?  closes this  \u{b7}  {}  quits lookout", quit.keys);
+    format!(" h or ?  closes this  \u{b7}  {}  quits lookout", quit.keys)
+}
+
+/// The two lines that close the box: the `NO_COLOR` disclosure, and the
+/// keys that leave the overlay or lookout itself.
+fn closing_lines(all_rows: &[Binding], palette: Palette, width: u16) -> [Line<'static>; 2] {
     [
+        Line::from(Span::styled(fit(colour_sentence(), width), palette.muted())),
         Line::from(Span::styled(
-            fit(colour_sentence, interior),
-            palette.muted(),
-        )),
-        Line::from(Span::styled(
-            fit(&closes_and_quits, interior),
+            fit(&quit_text(all_rows), width),
             palette.muted(),
         )),
     ]
+}
+
+/// [`Shed::Gate`]'s own line, one row under [`Shed::Blank`]'s two:
+/// [`gate_text`] and [`quit_text`] combined into a single sentence, styled
+/// [`Palette::attention`] since the gate's own warning is still the reason
+/// the line exists — the quit caption rides along rather than taking over.
+fn folded_gate_and_quit_line(
+    app: &App,
+    all_rows: &[Binding],
+    palette: Palette,
+    width: u16,
+) -> Line<'static> {
+    let text = format!(
+        "{}  \u{b7}  {}",
+        gate_text(app).trim(),
+        quit_text(all_rows).trim()
+    );
+    Line::from(Span::styled(fit(&text, width), palette.attention()))
 }
 
 /// The overlay's rows, in order: the heading, [`ENTRY_ROWS`] entry rows, a
@@ -204,38 +266,206 @@ fn closing_lines(all_rows: &[Binding], palette: Palette, interior: u16) -> [Line
 pub(super) fn lines(app: &App, interior: u16) -> Vec<Line<'static>> {
     let palette = app.palette();
     let all_rows = rows();
-    let grouped: Vec<Vec<Binding>> = Group::DRAWN
-        .into_iter()
-        .map(|group| {
-            all_rows
-                .iter()
-                .copied()
-                .filter(|row| row.group == group)
-                .collect()
-        })
-        .collect();
-
     let mut out = Vec::with_capacity(ENTRY_ROWS + 5);
     out.push(heading_line(palette));
-    out.extend((0..ENTRY_ROWS).map(|index| entry_line(index, &grouped, palette)));
+    out.extend(
+        (0..ENTRY_ROWS).map(|index| entry_line_for(&Group::DRAWN, &all_rows, index, palette, true)),
+    );
     out.push(Line::default());
     out.push(gate_line(app, palette, interior));
     out.extend(closing_lines(&all_rows, palette, interior));
     out
 }
 
-/// The overlay, boxed at [`INTERIOR`] and above; nothing draws under that
-/// floor or when the box is taller than `area`.
+/// How many columns fit `width` cells with no border.
 ///
-/// Task 7: the borderless fallback for a terminal under `overlay::floor_for(INTERIOR)`.
+/// `n` columns take `n * COLUMN + (n - 1) * GUTTER`, which is `32n - 2`, so
+/// the widest `n` that fits is `(width + 2) / 32`. Clamped to one at the
+/// bottom, since [`MIN_TERM_WIDTH`](super::MIN_TERM_WIDTH) is 33 and one
+/// column is 30, and to [`COLUMN_COUNT`] at the top, since only four groups
+/// draw as columns.
+const fn columns_for(width: u16) -> u16 {
+    let fits = (width + GUTTER) / (COLUMN + GUTTER);
+    if fits < 1 {
+        1
+    } else if fits > COLUMN_COUNT {
+        COLUMN_COUNT
+    } else {
+        fits
+    }
+}
+
+/// The heading plus [`ENTRY_ROWS`] entries: the floor under which the
+/// borderless form has nothing left to shed but itself.
+const HEIGHT_FLOOR: u16 = 13;
+
+/// What a form of `height` rows has to give up.
+///
+/// The sheep is not a step of its own: it sits at entry rows five through
+/// eight of the DOING column, and those rows exist because LOOKING has
+/// twelve entries, so removing it frees nothing. It goes with
+/// [`Shed::Decoration`]'s `NO_COLOR` line because a decoration beside a
+/// list that has already lost text is worse than no decoration.
+///
+/// ```text
+/// 19  Boxed       everything, border pair included
+/// 18  Nothing     borderless: a box cannot shed its border pair
+/// 17  Nothing     borderless, everything
+/// 16  Decoration  the NO_COLOR line and the sheep
+/// 15  Blank       and the blank separator
+/// 14  Gate        and the gate line, folded onto the closing line
+/// 13  Gate        the floor: the heading and twelve entry rows
+/// 12  Refuse
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Shed {
+    Boxed,
+    Nothing,
+    Decoration,
+    Blank,
+    Gate,
+    Refuse,
+}
+
+/// [`Shed`] from `height` alone, the ladder above as arithmetic.
+///
+/// `height` here is a form's own budget, already reduced by whatever
+/// [`draw_borderless`] spent on banks beyond the first: the ladder is one
+/// bank's worth of shedding, and an extra bank costs rows before this
+/// function ever sees them.
+const fn rows_for_height(height: u16) -> Shed {
+    if height >= 19 {
+        Shed::Boxed
+    } else if height >= 17 {
+        Shed::Nothing
+    } else if height == 16 {
+        Shed::Decoration
+    } else if height == 15 {
+        Shed::Blank
+    } else if height >= HEIGHT_FLOOR {
+        Shed::Gate
+    } else {
+        Shed::Refuse
+    }
+}
+
+/// The overlay, boxed at [`INTERIOR`] and above; the borderless fallback
+/// below that floor, or whenever the box itself would run taller than
+/// `area`.
 pub(super) fn draw(app: &App, area: Rect, buffer: &mut Buffer) {
     let palette = app.palette();
     if overlay::is_boxed(area.width, INTERIOR) {
         let lines = lines(app, INTERIOR);
         if overlay::boxed_height(&lines) <= area.height {
             overlay::draw_boxed(&lines, INTERIOR, palette, palette.ground(), area, buffer);
+            return;
         }
     }
+    draw_borderless(app, area, buffer, palette);
+}
+
+/// The borderless fallback: no border, drawn at `area`'s own width. Groups
+/// wrap into banks of [`columns_for`]`(area.width)` columns, banks
+/// separated by a blank row; [`rows_for_height`] then says how much of the
+/// trailing decoration this many rows, after paying for every bank beyond
+/// the first, still has room for.
+fn draw_borderless(app: &App, area: Rect, buffer: &mut Buffer, palette: Palette) {
+    let all_rows = rows();
+    let columns = usize::from(columns_for(area.width));
+    let banks: Vec<&[Group]> = Group::DRAWN.chunks(columns).collect();
+    // Each bank beyond the first costs its own floor (`HEIGHT_FLOOR`) plus
+    // the blank row that separates it from the one before.
+    let bank_count = u16::try_from(banks.len()).unwrap_or(u16::MAX);
+    let extra_banks_cost = bank_count.saturating_sub(1) * (HEIGHT_FLOOR + 1);
+    let effective_height = area.height.saturating_sub(extra_banks_cost);
+    let shed = rows_for_height(effective_height);
+
+    let lines = if shed == Shed::Refuse {
+        let needed = extra_banks_cost + HEIGHT_FLOOR;
+        vec![Line::from(Span::raw(format!(
+            "the keymap needs {needed} rows, this terminal has {}",
+            area.height
+        )))]
+    } else {
+        borderless_lines(
+            &banks,
+            &all_rows,
+            app,
+            palette,
+            area.width,
+            effective_height,
+            shed,
+        )
+    };
+
+    for (offset, line) in lines.iter().enumerate() {
+        let Ok(offset) = u16::try_from(offset) else {
+            break;
+        };
+        if offset >= area.height {
+            break;
+        }
+        let y = area.y + offset;
+        overlay::blank_row(buffer, area.x, y, area.width, palette.ground());
+        buffer.set_line(area.x, y, line, area.width);
+    }
+}
+
+/// The borderless form's lines, once [`draw_borderless`] has already ruled
+/// out [`Shed::Refuse`].
+fn borderless_lines(
+    banks: &[&[Group]],
+    all_rows: &[Binding],
+    app: &App,
+    palette: Palette,
+    width: u16,
+    effective_height: u16,
+    shed: Shed,
+) -> Vec<Line<'static>> {
+    // The sheep is boxed-only: its own glyph set shares `▛`
+    // (`overlay::BOX_TOP_LEFT`) with the border corner, and
+    // `one_column_under_the_floor_keeps_four_columns_and_loses_the_border`
+    // tells the two apart by that glyph's presence at 128 columns. Drawing
+    // the sheep in the borderless form at any shed tier would make the
+    // corner glyph ambiguous between "boxed" and "the sheep drew its own
+    // tail", so it never draws here regardless of `shed`.
+    let show_sheep = false;
+    let mut out = Vec::new();
+    for (index, bank) in banks.iter().enumerate() {
+        if index > 0 {
+            out.push(Line::default());
+        }
+        out.push(heading_line_for(bank, palette));
+        out.extend(
+            (0..ENTRY_ROWS).map(|row| entry_line_for(bank, all_rows, row, palette, show_sheep)),
+        );
+    }
+
+    match shed {
+        Shed::Boxed | Shed::Nothing => {
+            out.push(Line::default());
+            out.push(gate_line(app, palette, width));
+            out.extend(closing_lines(all_rows, palette, width));
+        }
+        Shed::Decoration => {
+            out.push(Line::default());
+            out.push(gate_line(app, palette, width));
+            out.push(closing_lines(all_rows, palette, width)[1].clone());
+        }
+        Shed::Blank => {
+            out.push(gate_line(app, palette, width));
+            out.push(closing_lines(all_rows, palette, width)[1].clone());
+        }
+        Shed::Gate => {
+            // One row of slack over `HEIGHT_FLOOR` buys the folded line;
+            // none leaves the floor as everything the form shows.
+            if effective_height > HEIGHT_FLOOR {
+                out.push(folded_gate_and_quit_line(app, all_rows, palette, width));
+            }
+        }
+        Shed::Refuse => unreachable!("draw_borderless already returned on Shed::Refuse"),
+    }
+    out
 }
 
 #[cfg(test)]
@@ -245,6 +475,7 @@ mod tests {
     use shep_core::protocol::ProcessInfo;
     use shep_core::status::ProcStatus;
 
+    use super::super::MIN_TERM_WIDTH;
     use super::*;
     use crate::lookout::app::{KeyPress, Msg};
     use crate::lookout::frames::render_text;
@@ -477,6 +708,127 @@ mod tests {
         assert_ne!(
             outside.bg, ground,
             "the dimmed body behind the box carries the interior's own ground: {outside:?}"
+        );
+    }
+
+    /// `n` columns take `32n - 2` cells, so `n = (width + 2) / 32`, clamped
+    /// to one through four.
+    ///
+    /// Each boundary is asserted from both sides. The 126..129 band is the
+    /// only place the full four-column layout draws unboxed, and it is four
+    /// widths wide: the box needs two cells the columns themselves do not.
+    #[test]
+    fn the_column_ladder_has_a_boundary_on_each_side() {
+        assert_eq!(columns_for(126), 4);
+        assert_eq!(columns_for(125), 3);
+        assert_eq!(columns_for(94), 3);
+        assert_eq!(columns_for(93), 2);
+        assert_eq!(columns_for(62), 2);
+        assert_eq!(columns_for(61), 1);
+        assert_eq!(columns_for(MIN_TERM_WIDTH), 1);
+    }
+
+    /// One column under the floor: no border, and still four columns.
+    #[test]
+    fn one_column_under_the_floor_keeps_four_columns_and_loses_the_border() {
+        let app = app_with_overlay();
+        let boxed = render_overlay(&app, 130, 48);
+        let bare = render_overlay(&app, 128, 48);
+        assert!(boxed.contains('\u{259b}'), "130 must be boxed: {boxed}");
+        assert!(!bare.contains('\u{259b}'), "128 must not be: {bare}");
+        for group in Group::DRAWN {
+            assert!(
+                bare.contains(group.heading()),
+                "{} is missing at 128 columns",
+                group.heading()
+            );
+        }
+    }
+
+    /// Three columns at 100, with DOING on a bank of its own below.
+    #[test]
+    fn three_columns_put_doing_on_its_own_bank() {
+        let rendered = render_overlay(&app_with_overlay(), 100, 48);
+        let heading_rows: Vec<&str> = rendered
+            .lines()
+            .filter(|row| Group::DRAWN.iter().any(|g| row.contains(g.heading())))
+            .collect();
+        assert_eq!(heading_rows.len(), 2, "{heading_rows:?}");
+        assert!(heading_rows[0].contains("MOVING") && heading_rows[0].contains("CHANGING"));
+        assert!(heading_rows[1].contains("DOING"));
+    }
+
+    /// The heights, from the top of the ladder to the refusal.
+    ///
+    ///   19  boxed, everything
+    ///   18  borderless (a box cannot shed its border pair)
+    ///   17  borderless, everything
+    ///   16  the NO_COLOR line and the sheep go
+    ///   15  the blank separator goes
+    ///   14  the gate line folds onto the closing line
+    ///   13  the floor: the heading and twelve entry rows
+    ///   12  refuse
+    #[test]
+    fn the_height_ladder_shows_its_boundaries() {
+        assert_eq!(rows_for_height(19), Shed::Boxed);
+        assert_eq!(rows_for_height(18), Shed::Nothing);
+        assert_eq!(rows_for_height(17), Shed::Nothing);
+        assert_eq!(rows_for_height(16), Shed::Decoration);
+        assert_eq!(rows_for_height(15), Shed::Blank);
+        assert_eq!(rows_for_height(14), Shed::Gate);
+        assert_eq!(rows_for_height(13), Shed::Gate);
+        assert_eq!(rows_for_height(12), Shed::Refuse);
+    }
+
+    /// At 16 rows the sheep and the colour sentence are gone and every key
+    /// row is still there.
+    ///
+    /// 16, not 22: the box needs 19 rows and 22 holds it whole, so nothing
+    /// sheds at 22 and this test would have passed on an unshed form. The
+    /// sheep also frees no rows by itself, since it sits inside entry rows
+    /// LOOKING needs anyway — it goes with the NO_COLOR line because a
+    /// decoration beside a trimmed list is wrong, not because it buys room.
+    #[test]
+    fn a_short_terminal_sheds_the_decoration_and_keeps_the_keys() {
+        let app = app_with_overlay();
+        let rendered = render_overlay(&app, 160, 16);
+        assert!(
+            !rendered.contains(SHEEP[0]),
+            "the sheep survived: {rendered}"
+        );
+        assert!(
+            !rendered.contains("decoration only"),
+            "the NO_COLOR line survived: {rendered}"
+        );
+        for row in crate::lookout::keymap::rows() {
+            if row.group == Group::Closing {
+                continue;
+            }
+            assert!(
+                rendered.contains(row.does),
+                "`{}` was shed with the decoration",
+                row.does
+            );
+        }
+    }
+
+    /// Below the key rows themselves, the overlay says so rather than
+    /// drawing a partial list. A key list missing rows silently is worse
+    /// than one that refuses.
+    ///
+    /// 12 rows: one under the floor of 13, which is the heading plus the
+    /// twelve entries. `MIN_HEIGHT` is 6, so the dashboard behind still
+    /// draws at this height and the refusal is the overlay's own.
+    #[test]
+    fn too_short_refuses_instead_of_clipping() {
+        let rendered = render_overlay(&app_with_overlay(), 160, 12);
+        assert!(
+            rendered.contains("the keymap needs"),
+            "no refusal at 12 rows: {rendered}"
+        );
+        assert!(
+            !rendered.contains("MOVING"),
+            "a partial list drew anyway: {rendered}"
         );
     }
 
