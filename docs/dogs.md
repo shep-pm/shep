@@ -880,6 +880,30 @@ does, so its answer can still read as connected for that moment, and a
 live connection can drop again immediately. Ask for what you want, and
 come back while your budget lasts.
 
+**Bound that retry loop yourself.** `connected_within` answers `Ok` for a
+link that is already up without consulting the budget at all, which is
+what makes it cheap to call in a loop. It also means it cannot be the
+thing that ends one. A shepherd that answers the handshake and then fails
+whatever you ask it, which a shepherd slow enough to miss your request's
+deadline does, leaves a loop written this way running for as long as that
+shepherd stays up:
+
+```rust
+// Wrong. Nothing here stops while the link is up and the work keeps failing.
+loop {
+    let left = budget.saturating_sub(started.elapsed());
+    client.connected_within(left).await?;
+    match client.subscribe(topics.clone()).await {
+        Ok(stream) => return Ok(stream),
+        Err(_) => continue,
+    }
+}
+```
+
+Check the budget at the top of your own loop and return when it is spent.
+shep's bark dog had this exact bug during development, and a dog with it
+stays online on every column a listing has while doing nothing at all.
+
 ## When a dog stops answering
 
 A dog that is running but never handshakes gets one restart from disk and
