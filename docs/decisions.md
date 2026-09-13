@@ -33,13 +33,13 @@ go for the full argument. The commit that removed them names itself.
 - [whistle](#whistle) (18)
 - [Config and packaging](#config-and-packaging) (5)
 - [serve, dev and runtime](#serve-dev-and-runtime) (8)
-- [Output and first run](#output-and-first-run) (8)
+- [Output and first run](#output-and-first-run) (9)
 - [Config overrides](#config-overrides) (9)
 - [Dog config store](#dog-config-store) (1)
 - [CI flakes, and the log line a stop could lose](#ci-flakes-and-the-log-line-a-stop-could-lose) (4)
 - [CI and releases](#ci-and-releases) (2)
 - [Config pane writes](#config-pane-writes) (1)
-- [Boot ordering](#boot-ordering) (6)
+- [Boot ordering](#boot-ordering) (8)
 - [Following the flock](#following-the-flock) (3)
 
 ## Core types and the daemon's shape
@@ -1766,6 +1766,14 @@ visible_width() strips CSI escape sequences and counts remaining chars; it delib
 **Why:** Padding by len() or chars().count() on a styled cell (colour escapes included) pushes every later table border to the right - three hand-drawn mockups made exactly this mistake during design. The floor at char-count rather than display-width is deliberate: shep names are operator-chosen ASCII-typical identifiers, a real display-width dependency is unjustified for a case nobody has hit, and a property test will catch it the day someone does.
 
 `docs/writing-plans/plans/2026-08-18-pretty-cli.md:578`
+
+### Table output keeps a message's line breaks; `--format json` collapses them
+
+`emit_error` and `emit_notice` pick a sanitiser by format. JSON gets `terminal_safe::sanitise`, which substitutes a space for every `\n` and collapses the runs of whitespace that leaves. A message carrying nothing unprintable at all returns byte for byte, so ordinary double spaces survive it. A table gets `sanitise_multiline`, which spares `\n` alone, then indents every line after the first by two spaces and drops trailing whitespace that `writeln!` would print as a blank line. Messages are written with a plain `\n` and carry no indent of their own.
+
+**Why:** Several refusals are written as a lead line plus indented remedy lines, and one sanitiser for both formats rendered every one of them as a single run-on line. The cost is a remedy an operator cannot copy. `refuse_version_skew` had already bypassed the emitter to escape the collapse, and hand-rolled its own sanitising to stay safe, which is a shape the next author copies without the second half. Rewriting the messages to read as one line was the alternative: it loses the copyable remedy, and it contradicts `version_skew_instruction`, which was already rendering one line for JSON and two for a table. The indent is what makes a kept `\n` safe rather than only useful. Only the first line of a table message starts at column 0, so a newline arriving inside an interpolated value cannot produce a line that reads as shep's own or that a script anchoring on `error[` at the start of a line will match. It holds for every error type at once: twenty of them in `shep-cli` interpolate values into their `Display`, none of them knows this rule, and none of them has to. Two defences rather than one, because the values in `HomeRefusal` are also collapsed at composition, which keeps the `mkdir` remedy a single shell word. Beyond the indent, what the looser sanitiser gives up is nothing else: `\r`, `\t`, `\u{1b}`, `\u{9b}`, the bidi overrides and every invisible format character still go, so nothing reaching a terminal through either emitter can move the cursor or rewrite a row already drawn. A string an untrusted host worded is collapsed at the seam that captures it instead, in `fetch.rs` for the `Location` header and TLS peer names, in `dog_index.rs` for every field of a fetched entry, and in `refuse_version_skew` for `daemon_version`.
+
+`crates/shep-cli/src/terminal_safe.rs`, `crates/shep-cli/src/output/mod.rs`
 
 ### The first-run welcome prints to stderr (suppressed under --format json / non-terminal); `shep welcome` itself prints to stdout unconditionally
 

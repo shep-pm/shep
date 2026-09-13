@@ -602,6 +602,59 @@ struct ErrorBody<'a> {
     message: &'a str,
 }
 
+/// The two strings an emitter prints, both cleaned: `code` stripped of
+/// anything that could drive a terminal, `message` in the shape `fmt`
+/// renders.
+///
+/// Both emitters go through here, so the two cannot sanitise differently.
+fn safe_parts(fmt: Format, code: &str, message: &str) -> (String, String) {
+    (
+        crate::terminal_safe::sanitise(code).0,
+        safe_message(fmt, message),
+    )
+}
+
+/// `message` with everything that could drive a terminal stripped, in the
+/// shape `fmt` renders.
+///
+/// The seam every emitted message passes through, which is why the
+/// guarantee lives here rather than at each caller. JSON collapses to one
+/// line: `jq -r .error.message` unescapes a control byte straight back
+/// onto a terminal. A table keeps the line breaks shep wrote, indents every
+/// one of them, and loses its trailing whitespace, which the caller's
+/// `writeln!` would otherwise print as a blank line.
+fn safe_message(fmt: Format, message: &str) -> String {
+    match fmt {
+        Format::Json => crate::terminal_safe::sanitise(message).0,
+        Format::Table => {
+            let clean = crate::terminal_safe::sanitise_multiline(message).0;
+            indent_continuations(clean.trim_end())
+        }
+    }
+}
+
+/// `message` with every line after the first indented by two spaces.
+///
+/// Only the first line of a table message starts at column 0, so a newline
+/// inside an interpolated value cannot forge a line that reads as shep's own
+/// or that a script anchoring `error[` there will match. It holds because
+/// `code` is sanitised too, printing ahead of it on that same line. The base
+/// indent is this function's, and a message adds its own only to nest a line
+/// under a label. An empty line stays empty rather than gaining whitespace.
+fn indent_continuations(message: &str) -> String {
+    let mut out = String::with_capacity(message.len());
+    for (n, line) in message.split('\n').enumerate() {
+        if n > 0 {
+            out.push('\n');
+            if !line.is_empty() {
+                out.push_str("  ");
+            }
+        }
+        out.push_str(line);
+    }
+    out
+}
+
 /// Renders a failure to `err` in `fmt`. `code` is `ExitCode::code_str()`.
 ///
 /// `code` is a string this function only prints, not the exit code, but
@@ -617,12 +670,8 @@ pub fn emit_error(
     code: &str,
     message: &str,
 ) -> io::Result<()> {
-    // Sanitised once here, the only place every caller passes through. Both
-    // formats: `jq -r .error.message` would unescape a hostile message
-    // right back onto a terminal. `code` is never sanitised, since every
-    // caller passes a literal or `ExitCode::code_str()`.
-    let (message, _) = crate::terminal_safe::sanitise(message);
-    let message = message.as_str();
+    let (code, message) = safe_parts(fmt, code, message);
+    let (code, message) = (code.as_str(), message.as_str());
     match fmt {
         Format::Json => {
             let envelope = ErrorEnvelope {
@@ -679,9 +728,8 @@ pub fn emit_notice(
     code: &str,
     message: &str,
 ) -> io::Result<()> {
-    // Sanitised for the reason [`emit_error`] is, one function up.
-    let (message, _) = crate::terminal_safe::sanitise(message);
-    let message = message.as_str();
+    let (code, message) = safe_parts(fmt, code, message);
+    let (code, message) = (code.as_str(), message.as_str());
     match fmt {
         Format::Json => {
             let envelope = NoticeEnvelope {
@@ -1473,6 +1521,118 @@ mod tests {
             .unwrap();
             insta::assert_snapshot!(format!("error_{name}"), String::from_utf8(out).unwrap());
         }
+    }
+
+    /// fails if a refusal's layout stops depending on the format. The
+    /// remedy line is the point: an operator copies it, and a JSON consumer
+    /// gets the same facts with no layout to parse around. The message is
+    /// written with a plain `\n`; the indent in the table snapshot comes
+    /// from the emitter.
+    #[test]
+    fn a_multiline_refusal_keeps_its_lines_in_a_table_and_loses_them_in_json() {
+        let written = "no flock at /tmp/x\nto set up a flock there deliberately: mkdir -p /tmp/x";
+        for (fmt, name) in [(Format::Table, "table"), (Format::Json, "json")] {
+            let mut out = Vec::new();
+            emit_error(&mut out, fmt, ExitCode::Usage.code_str(), written).unwrap();
+            insta::assert_snapshot!(
+                format!("error_multiline_{name}"),
+                String::from_utf8(out).unwrap()
+            );
+        }
+    }
+
+    /// fails if a value carrying a newline can start a line of its own. Only
+    /// the first line of a table message begins at column 0, so a forged
+    /// `error[...]` lands indented and neither reads as shep's nor matches a
+    /// script anchoring on the start of a line. This is what makes keeping
+    /// `\n` safe rather than only useful, and it holds for every error type
+    /// without one of them having to know the rule.
+    #[test]
+    fn an_interpolated_newline_cannot_start_a_line_of_its_own() {
+        let forged = "could not read /tmp/a\nerror[internal]: shepherd compromised";
+        let mut out = Vec::new();
+        emit_error(
+            &mut out,
+            Format::Table,
+            ExitCode::Failure.code_str(),
+            forged,
+        )
+        .unwrap();
+        let text = String::from_utf8(out).unwrap();
+        let mut lines = text.lines();
+        assert_eq!(
+            lines.next(),
+            Some("error[failure]: could not read /tmp/a"),
+            "{text:?}"
+        );
+        for line in lines {
+            assert!(
+                line.starts_with("  ") || line.is_empty(),
+                "a line started at column 0: {line:?} in {text:?}"
+            );
+        }
+    }
+
+    /// fails if `code` can start a line. It prints ahead of the message on
+    /// the first line, which is the one line `indent_continuations` cannot
+    /// reach, so a newline there would forge a diagnostic at column 0 and the
+    /// indent would never see it. Every caller passes a literal today; this
+    /// is what keeps that from being load-bearing.
+    #[test]
+    fn a_newline_in_the_code_cannot_start_a_line_either() {
+        for (what, mut out) in [("error", Vec::new()), ("notice", Vec::new())] {
+            let forged = "usage\nnotice[ok]: forged";
+            if what == "error" {
+                emit_error(&mut out, Format::Table, forged, "a message").unwrap();
+            } else {
+                emit_notice(&mut out, Format::Table, forged, "a message").unwrap();
+            }
+            let text = String::from_utf8(out).unwrap();
+            assert_eq!(text.lines().count(), 1, "{what}: {text:?}");
+            assert!(
+                text.starts_with(&format!("{what}[usage notice[ok]: forged]: ")),
+                "{what}: the newline must collapse inside the code: {text:?}"
+            );
+        }
+    }
+
+    /// fails if a paragraph break gains trailing whitespace. `refuse_version_skew`
+    /// separates its three parts with blank lines, and two spaces on one of
+    /// them is invisible until it reaches a diff or a terminal that shows it.
+    #[test]
+    fn a_blank_line_between_paragraphs_stays_empty() {
+        let mut out = Vec::new();
+        emit_error(
+            &mut out,
+            Format::Table,
+            ExitCode::VersionSkew.code_str(),
+            "lead\n\nmiddle\n\ntail",
+        )
+        .unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert!(
+            !text.contains("\n  \n"),
+            "blank line carried an indent: {text:?}"
+        );
+        assert!(text.contains("\n\n  middle\n\n  tail"), "{text:?}");
+    }
+
+    /// fails if a message's own trailing newline reaches the stream, where
+    /// `writeln!` would add a second and print a blank line. `toml_edit`
+    /// ends its parse errors with one.
+    #[test]
+    fn a_message_that_ends_in_a_newline_does_not_print_a_blank_line() {
+        let mut out = Vec::new();
+        emit_error(
+            &mut out,
+            Format::Table,
+            ExitCode::InvalidConfig.code_str(),
+            "invalid table header\nexpected `.`, `]`\n",
+        )
+        .unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.ends_with("]`\n"), "{text:?}");
+        assert!(!text.ends_with("\n\n"), "{text:?}");
     }
 
     #[test]
