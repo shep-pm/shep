@@ -842,6 +842,8 @@ impl AppConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::config::{LevelRule, LineLevel, NormalizeError};
     use crate::values::{MemSize, UpDuration};
 
     #[test]
@@ -1171,5 +1173,454 @@ target = "http://127.0.0.1:8080/healthz"
                 );
             }
         }
+    }
+
+    /// Where a per-field `refuses` clause is enforced.
+    ///
+    /// A panel naming a refusal nothing makes is the defect this table
+    /// exists to stop, so a claim is either exercised against `normalize`
+    /// or carries the reason it cannot be.
+    enum Proof {
+        /// `normalize` refuses this config, with an error this predicate
+        /// accepts.
+        Refused {
+            /// A sheep whose only fault is the one the claim names.
+            /// Boxed so this arm does not set the size of every row.
+            value: Box<AppConfig>,
+            /// The variant the refusal must arrive as.
+            matches: fn(&NormalizeError) -> bool,
+        },
+        /// Enforced somewhere `normalize` cannot reach, named here so the
+        /// gap stays a decision rather than an oversight.
+        Elsewhere(&'static str),
+    }
+
+    /// One clause of one field's `refuses` list, with its proof.
+    struct RefusalClaim {
+        /// The Flockfile field carrying the clause.
+        field: &'static str,
+        /// The clause, character for character as the schema writes it.
+        refusal: &'static str,
+        /// What makes it true.
+        proof: Proof,
+    }
+
+    /// A claim `normalize` proves.
+    fn refused(
+        field: &'static str,
+        refusal: &'static str,
+        value: AppConfig,
+        matches: fn(&NormalizeError) -> bool,
+    ) -> RefusalClaim {
+        RefusalClaim {
+            field,
+            refusal,
+            proof: Proof::Refused {
+                value: Box::new(value),
+                matches,
+            },
+        }
+    }
+
+    /// A claim enforced past `normalize`, with `where` naming the enforcer.
+    fn elsewhere(field: &'static str, refusal: &'static str, place: &'static str) -> RefusalClaim {
+        RefusalClaim {
+            field,
+            refusal,
+            proof: Proof::Elsewhere(place),
+        }
+    }
+
+    /// A minimal sheep with one thing changed, so a row carries only the
+    /// value its own claim is about.
+    fn sheep(edit: impl FnOnce(&mut AppConfig)) -> AppConfig {
+        let mut app = AppConfig::minimal("web", "./srv");
+        edit(&mut app);
+        app
+    }
+
+    /// A probe of `kind` with everything else at its default.
+    fn probe(kind: ProbeKind, target: &str) -> ProbeConfig {
+        ProbeConfig {
+            kind,
+            target: target.to_owned(),
+            interval: UpDuration::from_millis(10_000),
+            timeout: UpDuration::from_millis(5_000),
+            failure_threshold: 3,
+        }
+    }
+
+    /// Every `refuses` clause in the schema, paired with what enforces it.
+    ///
+    /// Ordered by field, then as the field writes them.
+    ///
+    /// Refusals only. Most fields have nothing validating them, so proving
+    /// an `accepts` clause by handing `normalize` a value it never inspects
+    /// would pass whatever the clause said.
+    fn refusal_claims() -> Vec<RefusalClaim> {
+        vec![
+            refused(
+                "args",
+                "an unclosed {{ token",
+                sheep(|a| a.args = vec!["{{name".to_owned()]),
+                |e| matches!(e, NormalizeError::BadTemplate { .. }),
+            ),
+            refused(
+                "args",
+                "a token shep does not define",
+                sheep(|a| a.args = vec!["{{slot}}".to_owned()]),
+                |e| matches!(e, NormalizeError::BadTemplate { .. }),
+            ),
+            refused(
+                "cron_restart",
+                "a field outside its valid range",
+                sheep(|a| a.cron_restart = Some("99 * * * *".to_owned())),
+                |e| matches!(e, NormalizeError::InvalidCron { .. }),
+            ),
+            refused(
+                "cron_restart",
+                "a sixth seconds field, or L, W, # or ?",
+                sheep(|a| a.cron_restart = Some("0 0 * * * *".to_owned())),
+                |e| matches!(e, NormalizeError::InvalidCron { .. }),
+            ),
+            refused(
+                "cron_restart",
+                "a pattern croner cannot parse",
+                sheep(|a| a.cron_restart = Some("every tuesday".to_owned())),
+                |e| matches!(e, NormalizeError::InvalidCron { .. }),
+            ),
+            refused(
+                "cron_timezone",
+                "a name outside the IANA database",
+                sheep(|a| a.cron_timezone = Some("Mars/Olympus".to_owned())),
+                |e| matches!(e, NormalizeError::InvalidTimezone { .. }),
+            ),
+            refused(
+                "depends_on",
+                "this sheep's own name",
+                sheep(|a| a.depends_on = vec!["web".to_owned()]),
+                |e| matches!(e, NormalizeError::SelfDependency(_)),
+            ),
+            refused(
+                "depends_on",
+                "a name:slot instance reference",
+                sheep(|a| a.depends_on = vec!["api:0".to_owned()]),
+                |e| matches!(e, NormalizeError::InstanceDependency { .. }),
+            ),
+            elsewhere(
+                "env",
+                "a float, since 1.10 would arrive as 1.1",
+                "EnvValue's Deserialize, before normalize sees the table",
+            ),
+            refused(
+                "env",
+                "SHEP_INSTANCE, SHEP_NAME, or SHEP_ENVIRONMENT, which shep sets itself",
+                sheep(|a| {
+                    a.env.insert("SHEP_NAME".to_owned(), "web".to_owned());
+                }),
+                |e| matches!(e, NormalizeError::ReservedEnvVar { .. }),
+            ),
+            refused(
+                "env",
+                "an unclosed {{ token",
+                sheep(|a| {
+                    a.env.insert("GREETING".to_owned(), "{{name".to_owned());
+                }),
+                |e| matches!(e, NormalizeError::BadTemplate { .. }),
+            ),
+            refused(
+                "environment",
+                "all, the store's every-environment slot",
+                sheep(|a| a.environment = Some(crate::secrets::ALL_ENVIRONMENTS.to_owned())),
+                |e| matches!(e, NormalizeError::InvalidEnvironment { .. }),
+            ),
+            refused(
+                "environment",
+                "a name outside letters, digits, dot, underscore, or dash",
+                sheep(|a| a.environment = Some("staging!".to_owned())),
+                |e| matches!(e, NormalizeError::InvalidEnvironment { .. }),
+            ),
+            refused(
+                "err_file",
+                "a {{secret:...}} token",
+                sheep(|a| a.err_file = Some("/var/log/{{secret:tenant}}.log".to_owned())),
+                |e| matches!(e, NormalizeError::SecretInLogPath { .. }),
+            ),
+            refused(
+                "err_file",
+                "one path for every instance, without merge_logs",
+                sheep(|a| {
+                    a.instances = 2;
+                    a.err_file = Some("/var/log/web-err.log".to_owned());
+                }),
+                |e| matches!(e, NormalizeError::SharedLogPath { .. }),
+            ),
+            elsewhere(
+                "group",
+                "a name with no group entry",
+                "shep-daemon's privilege::resolve, at spawn",
+            ),
+            elsewhere(
+                "group",
+                "another group, unless the shepherd runs as root",
+                "shep-daemon's privilege::resolve, at spawn",
+            ),
+            refused(
+                "ignore_watch",
+                "a pattern globset cannot compile",
+                sheep(|a| a.ignore_watch = vec!["[".to_owned()]),
+                |e| matches!(e, NormalizeError::InvalidWatchGlob { .. }),
+            ),
+            refused(
+                "kill_signal",
+                "a signal outside that list",
+                sheep(|a| a.kill_signal = Some("SIGKILL".to_owned())),
+                |e| matches!(e, NormalizeError::InvalidKillSignal { .. }),
+            ),
+            refused(
+                "level_rules",
+                "an empty pattern, which would claim every line",
+                sheep(|a| {
+                    a.level_rules = vec![LevelRule {
+                        pattern: String::new(),
+                        level: LineLevel::Error,
+                    }];
+                }),
+                |e| matches!(e, NormalizeError::InvalidLevelRule { .. }),
+            ),
+            refused(
+                "level_rules",
+                "a pattern regex cannot compile",
+                sheep(|a| {
+                    a.level_rules = vec![LevelRule {
+                        pattern: "[unterminated".to_owned(),
+                        level: LineLevel::Error,
+                    }];
+                }),
+                |e| matches!(e, NormalizeError::InvalidLevelRule { .. }),
+            ),
+            refused(
+                "liveness_probe",
+                "a failure_threshold of 0",
+                sheep(|a| {
+                    let mut p = probe(ProbeKind::Tcp, "127.0.0.1:8080");
+                    p.failure_threshold = 0;
+                    a.liveness_probe = Some(p);
+                }),
+                |e| matches!(e, NormalizeError::ZeroFailureThreshold { .. }),
+            ),
+            refused(
+                "liveness_probe",
+                "an interval below its own floor",
+                sheep(|a| {
+                    let mut p = probe(ProbeKind::Tcp, "127.0.0.1:8080");
+                    p.interval = UpDuration::from_millis(500);
+                    a.liveness_probe = Some(p);
+                }),
+                |e| matches!(e, NormalizeError::IntervalBelowMinimum { .. }),
+            ),
+            refused(
+                "name",
+                "a path separator or a colon",
+                sheep(|a| a.name = "web/api".to_owned()),
+                |e| matches!(e, NormalizeError::InvalidName(_)),
+            ),
+            refused(
+                "name",
+                "a bare . or ..",
+                sheep(|a| a.name = "..".to_owned()),
+                |e| matches!(e, NormalizeError::InvalidName(_)),
+            ),
+            refused(
+                "out_file",
+                "a {{secret:...}} token",
+                sheep(|a| a.out_file = Some("/var/log/{{secret:tenant}}.log".to_owned())),
+                |e| matches!(e, NormalizeError::SecretInLogPath { .. }),
+            ),
+            refused(
+                "out_file",
+                "one path for every instance, without merge_logs",
+                sheep(|a| {
+                    a.instances = 2;
+                    a.out_file = Some("/var/log/web-out.log".to_owned());
+                }),
+                |e| matches!(e, NormalizeError::SharedLogPath { .. }),
+            ),
+            refused(
+                "readiness_probe",
+                "a failure_threshold of 0",
+                sheep(|a| {
+                    let mut p = probe(ProbeKind::Tcp, "127.0.0.1:8080");
+                    p.failure_threshold = 0;
+                    a.readiness_probe = Some(p);
+                }),
+                |e| matches!(e, NormalizeError::ZeroFailureThreshold { .. }),
+            ),
+            refused(
+                "readiness_probe",
+                "an interval below its own floor",
+                sheep(|a| {
+                    let mut p = probe(ProbeKind::Tcp, "127.0.0.1:8080");
+                    p.interval = UpDuration::from_millis(0);
+                    a.readiness_probe = Some(p);
+                }),
+                |e| matches!(e, NormalizeError::IntervalBelowMinimum { .. }),
+            ),
+            elsewhere(
+                "user",
+                "a name with no passwd entry",
+                "shep-daemon's privilege::resolve, at spawn",
+            ),
+            elsewhere(
+                "user",
+                "another user, unless the shepherd runs as root",
+                "shep-daemon's privilege::resolve, at spawn",
+            ),
+            refused(
+                "watch_options",
+                "a pattern globset cannot compile",
+                sheep(|a| a.watch_options = vec!["[".to_owned()]),
+                |e| matches!(e, NormalizeError::InvalidWatchGlob { .. }),
+            ),
+        ]
+    }
+
+    /// fails if a field claims a refusal `normalize` does not make. The
+    /// static tables behind the same panel are parser-backed in
+    /// `shep-cli`'s `lookout::validation`; a per-field clause is only
+    /// backed here.
+    #[test]
+    fn every_per_field_refusal_is_one_normalize_really_makes() {
+        for claim in refusal_claims() {
+            let Proof::Refused { value, matches } = claim.proof else {
+                continue;
+            };
+            let field = claim.field;
+            let refusal = claim.refusal;
+            match crate::config::normalize(*value) {
+                Ok(_) => panic!("{field} says it refuses {refusal}, and normalize accepted it"),
+                Err(err) => assert!(
+                    matches(&err),
+                    "{field}'s \"{refusal}\" was refused as {err:?}, which is not the variant \
+                     the table names"
+                ),
+            }
+        }
+    }
+
+    /// fails if a clause starts or stops leaning on an enforcer outside
+    /// this crate. The list is written twice on purpose: without a second
+    /// copy, `Proof::Elsewhere` is a free pass past the test above.
+    #[test]
+    fn the_clauses_enforced_outside_normalize_are_the_ones_named() {
+        let claims = refusal_claims();
+        let outside: Vec<(&str, &str, &str)> = claims
+            .iter()
+            .filter_map(|claim| match claim.proof {
+                Proof::Elsewhere(place) => Some((claim.field, claim.refusal, place)),
+                Proof::Refused { .. } => None,
+            })
+            .collect();
+        assert_eq!(
+            outside,
+            vec![
+                (
+                    "env",
+                    "a float, since 1.10 would arrive as 1.1",
+                    "EnvValue's Deserialize, before normalize sees the table",
+                ),
+                (
+                    "group",
+                    "a name with no group entry",
+                    "shep-daemon's privilege::resolve, at spawn",
+                ),
+                (
+                    "group",
+                    "another group, unless the shepherd runs as root",
+                    "shep-daemon's privilege::resolve, at spawn",
+                ),
+                (
+                    "user",
+                    "a name with no passwd entry",
+                    "shep-daemon's privilege::resolve, at spawn",
+                ),
+                (
+                    "user",
+                    "another user, unless the shepherd runs as root",
+                    "shep-daemon's privilege::resolve, at spawn",
+                ),
+            ]
+        );
+    }
+
+    /// fails if a value the panel offers with one keypress is one
+    /// `normalize` turns around. A suggestion is a literal fill, so it is
+    /// the one claim a config can be checked against directly.
+    #[test]
+    fn every_suggested_value_is_one_normalize_accepts() {
+        let schema = crate::config::flockfile_schema_json().to_value();
+        let props = schema
+            .pointer("/$defs/AppConfig/properties")
+            .and_then(serde_json::Value::as_object)
+            .expect("app config properties must exist");
+        for (field, prop) in props {
+            let Some(values) = prop["init"]["suggest"].as_array() else {
+                continue;
+            };
+            for value in values {
+                let value = value.as_str().expect("a suggestion is a string");
+                let app = sheep(|a| match field.as_str() {
+                    "cron_restart" => a.cron_restart = Some(value.to_owned()),
+                    "kill_signal" => a.kill_signal = Some(value.to_owned()),
+                    other => panic!("{other} suggests values that this test cannot place"),
+                });
+                assert!(
+                    crate::config::normalize(app).is_ok(),
+                    "{field} suggests `{value}`, which normalize refuses"
+                );
+            }
+        }
+    }
+
+    /// fails if the schema and the table have drifted apart in either
+    /// direction: a new clause with no proof, or a proof for a clause no
+    /// field writes any more.
+    #[test]
+    fn the_refusal_table_and_the_schema_name_the_same_clauses() {
+        let schema = crate::config::flockfile_schema_json().to_value();
+        let props = schema
+            .pointer("/$defs/AppConfig/properties")
+            .and_then(serde_json::Value::as_object)
+            .expect("app config properties must exist");
+        let in_schema: Vec<(&str, &str)> = props
+            .iter()
+            .filter_map(|(field, prop)| Some((field.as_str(), prop["init"]["refuses"].as_array()?)))
+            .flat_map(|(field, clauses)| {
+                clauses.iter().map(move |clause| {
+                    (
+                        field,
+                        clause.as_str().expect("a refusal clause is a string"),
+                    )
+                })
+            })
+            .collect();
+
+        let claims = refusal_claims();
+        let proved: Vec<(&str, &str)> = claims.iter().map(|c| (c.field, c.refusal)).collect();
+
+        let unproved: Vec<_> = in_schema
+            .iter()
+            .filter(|clause| !proved.contains(clause))
+            .collect();
+        let stale: Vec<_> = proved
+            .iter()
+            .filter(|clause| !in_schema.contains(clause))
+            .collect();
+        assert!(
+            unproved.is_empty() && stale.is_empty(),
+            "a refusal and its proof live together, in refusal_claims in this file.\n  \
+             claimed by a field, proved nowhere: {unproved:?}\n  \
+             proved here, claimed by no field: {stale:?}"
+        );
     }
 }
