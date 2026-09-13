@@ -16,6 +16,11 @@ if [ ! -f "$canonical" ]; then
   # This example is meant to be copied, and a copy lands somewhere with no
   # shep checkout above it. Nothing to compare against is not drift.
   echo "go-chatty: no shep checkout above this directory; skipping the wire check" >&2
+elif [ ! -f channel/wire.go ]; then
+  # diff exits 2 for a missing file, same as for a difference, so without
+  # this the absent case is reported as a drifted one and the advice is wrong.
+  echo "go-chatty: channel/wire.go is missing; copy it from $canonical" >&2
+  exit 1
 elif ! diff -u "$canonical" channel/wire.go; then
   echo "go-chatty: channel/wire.go has drifted from $canonical; copy it again" >&2
   exit 1
