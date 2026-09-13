@@ -419,7 +419,7 @@ pub struct AppConfig {
         "accepts": ["a path, relative paths follow cwd",
                     "{{instance}} and {{name}} expand"],
         "refuses": ["a {{secret:...}} token",
-                    "the same path as err_file across instances without merge_logs"],
+                    "one path for every instance, without merge_logs"],
         "neighbours": [{"field": "err_file",   "note": "shares the same collision rule"},
                        {"field": "merge_logs", "note": "lets instances share one file on purpose"}]
     })))]
@@ -432,7 +432,7 @@ pub struct AppConfig {
         "accepts": ["a path, relative paths follow cwd",
                     "{{instance}} and {{name}} expand"],
         "refuses": ["a {{secret:...}} token",
-                    "the same path as out_file across instances without merge_logs"],
+                    "one path for every instance, without merge_logs"],
         "neighbours": [{"field": "out_file",   "note": "shares the same collision rule"},
                        {"field": "merge_logs", "note": "lets instances share one file on purpose"}]
     })))]

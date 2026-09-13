@@ -289,7 +289,7 @@
             ],
             "refuses": [
               "a {{secret:...}} token",
-              "the same path as out_file across instances without merge_logs"
+              "one path for every instance, without merge_logs"
             ]
           }
         },
@@ -609,7 +609,7 @@
             ],
             "refuses": [
               "a {{secret:...}} token",
-              "the same path as err_file across instances without merge_logs"
+              "one path for every instance, without merge_logs"
             ]
           }
         },
