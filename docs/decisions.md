@@ -654,13 +654,13 @@ A dog reads its [dog.<name>] section exactly once, at connect time; there is no 
 
 `docs/writing-plans/plans/2026-08-12-shep-phase9-dogs.md:106`
 
-### A supervised dog's on-remove hook uses tokio::process with concurrent stdout/stderr draining, not std::process + a poll loop - *unverified*
+### A supervised dog's on-remove hook uses tokio::process with concurrent stdout/stderr draining, not std::process + a poll loop
 
 The planned hook runner spawns a dog binary with `on-remove` as its sole argv and awaits it under a timeout via tokio::process::Command::output(), rather than following vet_binary's existing std::process + try_wait poll pattern.
 
 **Why:** vet_binary can get away with std::process because it nulls all three stdio handles and never reads a byte, so it can't deadlock; the hook runner DOES read the dog's output, and a double that returns canned output can't reveal that a real child writing more than one pipe buffer with no concurrent reader would simply hang forever until killed at the budget, silently losing its own output. tokio::process::Command::output() under a timeout drains both pipes concurrently, which is the actual problem being solved; doing the equivalent with std::process would need two reader threads or a temp file. A dog refusing the hook's unknown argument (the ordinary case, since every dog that exists today predates this hook and shep-log-rotate is a real example) is deliberately modeled as HookOutcome::Refused, not a failure.
 
-`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:334 (NOT yet shipped - crates/shep-cli/src/commands/hook.rs does not exist in the current tree)`
+`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:334`. Shipped 2026-09-13 as `crates/shep-cli/src/commands/hook.rs`, the runner alone: which verb fires the hook was never ruled on, so nothing calls it and the module carries a dead-code allow naming that. Outcomes are `Ran`, `Refused`, `TimedOut` and `NotSpawned`. `a_dog_that_fills_both_pipes_is_drained_rather_than_deadlocked` is the deadlock proof: a fixture writing a quarter of a mebibyte to each pipe, which reports `TimedOut` in four runs out of four when the drain is made sequential. Each stream is capped separately at 4KiB so a chatty stdout cannot push a dog's explanation off stderr; the budget, not the cap, is what bounds how much a spewing dog writes.
 
 ### adopt is a distinct verb from enable --exec, kept only as a hidden alias
 

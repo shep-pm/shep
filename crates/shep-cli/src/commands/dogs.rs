@@ -494,7 +494,7 @@ pub fn vet_binary_within(
 /// the CLI does not reach into. The lists are duplicated: if the daemon's
 /// allowlist grows, this one has to follow, or a candidate is vetted under
 /// conditions its supervised run will not have.
-fn probe_env() -> Vec<(String, String)> {
+pub(crate) fn probe_env() -> Vec<(String, String)> {
     #[cfg(unix)]
     const INHERITED: &[&str] = &["HOME", "USER", "LANG", "TZ"];
     #[cfg(unix)]
