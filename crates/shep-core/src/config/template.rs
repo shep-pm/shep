@@ -16,9 +16,9 @@
 //! lowercase `secret:` names the mechanism, and the uppercase key is an
 //! environment-variable-shaped name.
 //!
-//! The rule is convention rather than enforcement — [`crate::secrets`]
-//! accepts a key in any case — and it exists so a reader can predict what a
-//! token added later will look like.
+//! The rule is convention rather than enforcement, since [`crate::secrets`]
+//! accepts a key in any case. It exists so a reader can predict what a token
+//! added later will look like.
 //!
 //! Doubled braces avoid collision with single-brace content already in these
 //! values: JSON blobs, regex quantifiers, Go or Helm templates passed
@@ -570,6 +570,22 @@ mod tests {
             err.to_string().contains("{{SHEP_HOME}}"),
             "and the error shows the casing: {err}"
         );
+    }
+
+    /// The sibling of the test below, and the one with teeth: `holds_secret`
+    /// is what `normalize` refuses a log path on, so a `secret_reference`
+    /// that started accepting an empty key would widen that refusal with
+    /// nothing to say so.
+    #[test]
+    fn holds_secret_sees_a_reference_and_not_its_escape() {
+        assert!(holds_secret("{{secret:DB_PASSWORD}}"));
+        assert!(holds_secret("postgres://u:{{secret:PW}}@db/app"));
+        assert!(holds_secret("{{secret:vercel/API_KEY}}"));
+        assert!(!holds_secret("{{{{secret:DB_PASSWORD}}}}"));
+        assert!(!holds_secret("{{secret:}}"), "not a well-formed reference");
+        assert!(!holds_secret("{{sekret:K}}"), "not this grammar's prefix");
+        assert!(!holds_secret("{{name}}-out.log"));
+        assert!(!holds_secret("/var/log/out.log"));
     }
 
     #[test]

@@ -688,6 +688,11 @@ pub enum NormalizeError {
     ///
     /// The tilde's condition, one token over: nothing named a `$SHEP_HOME`
     /// and there was no home directory to put the default under.
+    ///
+    /// No operator reaches this. The CLI refuses when neither `--home`,
+    /// `$SHEP_HOME` nor `$HOME` resolves a root, before any config is
+    /// normalised, so this guards a library caller of
+    /// [`normalize_with_home`] that supplies its own directories.
     NoShepHome {
         /// The sheep name, so the error names which Flockfile entry to edit.
         name: String,
@@ -918,6 +923,40 @@ mod tests {
     /// refusal.
     fn shep_home_fixture() -> Option<&'static Path> {
         Some(Path::new("/home/ada/.shep"))
+    }
+
+    /// A resolved secret in a log path becomes a filename on disk and is
+    /// reported by `shep flock` and `shep describe`, so it is refused at
+    /// config time rather than rendered. Nothing pinned this before, in
+    /// either field.
+    #[test]
+    fn a_secret_in_either_log_path_is_refused() {
+        for (field, set) in [
+            (
+                "out_file",
+                (|app: &mut AppConfig| {
+                    app.out_file = Some("/var/log/{{secret:LOG_KEY}}.log".to_string());
+                }) as fn(&mut AppConfig),
+            ),
+            ("err_file", |app| {
+                app.err_file = Some("/var/log/{{secret:vercel/LOG_KEY}}.log".to_string());
+            }),
+        ] {
+            let mut app = AppConfig::minimal("web", "/srv/server.js");
+            set(&mut app);
+            let err = normalize_with_home(app, Some(Path::new("/home/ada")), shep_home_fixture())
+                .expect_err("a log path may not hold a secret");
+            assert!(
+                matches!(&err, NormalizeError::SecretInLogPath { field: got, .. } if *got == field),
+                "{field}: {err:?}"
+            );
+            let rendered = err.to_string();
+            assert!(rendered.contains(field), "names the field: {rendered}");
+            assert!(
+                !rendered.contains("LOG_KEY"),
+                "and never echoes the key back: {rendered}"
+            );
+        }
     }
 
     /// The token is refused where nothing could expand it, rather than

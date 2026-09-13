@@ -267,6 +267,15 @@ mod tests {
             None,
             "with neither, there is nothing to name"
         );
+        // The one behaviour that differs from `user_home`, which reads an
+        // empty value as unset. Untested, a regression that filtered
+        // `Some("")` the same way would leave the token and the layout
+        // pointing at different directories and nothing would say so.
+        assert_eq!(
+            super::shep_home(&|_| Some(String::new()), Some(ada)),
+            Some(PathBuf::new()),
+            "an empty value is taken at its word rather than read as unset"
+        );
         assert_eq!(
             super::ShepPaths::resolve(&named, ada).home,
             super::shep_home(&named, Some(ada)).expect("a home directory was given"),
