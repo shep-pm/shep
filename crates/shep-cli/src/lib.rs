@@ -1342,21 +1342,16 @@ pub(crate) fn refuse_version_skew(
             let instruction = version_skew_instruction(Format::Json);
             streams.fail(code, &format!("{summary}. {cause} {instruction}"));
         }
-        // Written straight to the stream, not through `Streams::fail`, whose
-        // `terminal_safe::sanitise` collapses every `\n` to a space: the
-        // remedy has to sit on a line of its own to be copied.
+        // Three paragraphs, because the remedy has to sit on a line of its
+        // own to be copied.
         Format::Table => {
             let cause = VERSION_SKEW_CAUSE.join("\n");
-            // `daemon_version` arrives over the socket and can carry an escape
-            // sequence that forges lines on the operator's terminal. This
-            // branch bypasses `emit_error`, so it sanitises that value itself.
+            // `daemon_version` arrives over the socket, and the table
+            // emitter keeps line breaks, so this collapses the one fragment
+            // a peer worded before it joins prose that does not.
             let summary = crate::terminal_safe::sanitise(&summary).0;
             let instruction = version_skew_instruction(Format::Table);
-            let _ = writeln!(
-                streams.err,
-                "error[{}]: {summary}\n\n{cause}\n\n{instruction}",
-                code.code_str()
-            );
+            streams.fail(code, &format!("{summary}\n\n{cause}\n\n{instruction}"));
         }
     }
     Err(code)
