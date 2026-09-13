@@ -71,12 +71,21 @@ pub const MIN_SUPPORTED: u32 = 8;
 mod tests {
     use super::{MIN_SUPPORTED, PROTOCOL_VERSION};
 
+    /// Fails whenever `PROTOCOL_VERSION` moves, which makes a bump a
+    /// deliberate edit rather than a reflex. It does not detect a shape
+    /// change that forgot to bump: the `*_wire_v9` snapshots do that, by
+    /// gaining or losing the key.
+    ///
+    /// A bump moves four things together, and only this one fails on its
+    /// own: the constant, this literal, the module doc's header and its
+    /// version list, and the three `*_wire_vN` snapshots with the names
+    /// that pin them.
+    ///
+    /// `depends_on` forced 5, `environment` 8, dropping `increment_var` 9.
+    /// The `Response::Reloading` and `Response::Restarted` retypes forced 6
+    /// and 7, an object not being an array.
     #[test]
     fn a_removed_app_config_field_forced_the_protocol_version_up() {
-        // fails if a field is added to or removed from `AppConfig` without
-        // the bump: `depends_on` forced 5, `environment` 8, and dropping
-        // `increment_var` 9. The retypes of `Response::Reloading` and
-        // `Response::Restarted` forced 6 and 7, an object not being an array.
         assert_eq!(PROTOCOL_VERSION, 9);
     }
 
