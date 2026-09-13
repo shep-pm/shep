@@ -47,6 +47,10 @@ def open_channel():
         return open(pipe, "rb+", buffering=0)
     fd = os.environ.get("SHEP_CHANNEL_FD")
     if fd:
+        # A refusal an operator can act on, rather than the traceback a bare
+        # int() would print.
+        if not fd.isdigit():
+            sys.exit(f"python-chatty: SHEP_CHANNEL_FD is {fd!r}, not a descriptor number")
         return os.fdopen(int(fd), "rb+", buffering=0)
     return None
 
@@ -112,6 +116,9 @@ def main():
             "app in the Flockfile, or wait_ready, or shutdown_with_message."
         )
 
+    # Warn and carry on, unlike the missing-channel case above, which exits.
+    # The contract asks an app to notice a wire it has never seen and say so,
+    # not to refuse one: a later version may still carry these messages.
     stamp = os.environ.get("SHEP_CHANNEL_VERSION")
     if stamp is not None and stamp != "1":
         say(f"python-chatty: shepherd speaks channel {stamp}, this app speaks 1")
@@ -134,6 +141,12 @@ def main():
             # the next one; dying here would also drop the action after it.
             say(f"python-chatty: could not read a message: {err}")
             continue
+        # Parsing is not the same as being a message. A bare number, list,
+        # string or null is all valid JSON and none of them is one of ours.
+        if not isinstance(message, dict):
+            say(f"python-chatty: ignoring a frame that is not an object: {line!r}")
+            continue
+
         kind = message.get("kind")
         if kind == "shutdown":
             say("python-chatty: the shepherd asked us to stop")
@@ -141,7 +154,13 @@ def main():
         if kind != "action":
             continue
 
-        name, params = message["name"], message.get("params")
+        # Every action carries both, so one that does not is not something
+        # this app can answer, and carries nowhere to send the answer.
+        name, ident = message.get("name"), message.get("id")
+        if not isinstance(name, str) or ident is None:
+            continue
+
+        params = message.get("params")
         if name == "metric":
             samples += 1
             metric = metric_name(params)
@@ -150,7 +169,7 @@ def main():
         else:
             body = reply_to(name, params) or f"unknown action: {name}"
 
-        send(channel, {"kind": "action-reply", "action": name, "body": body, "id": message["id"]})
+        send(channel, {"kind": "action-reply", "action": name, "body": body, "id": ident})
 
     # The shepherd going away is not a reason to stop. shep-channel leaves a
     # Rust app running for the same reason: a channel is something an app

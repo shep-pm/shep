@@ -33,6 +33,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -52,11 +53,13 @@ func openChannel() (*os.File, error) {
 		return os.OpenFile(pipe, os.O_RDWR, 0)
 	}
 	if fd := os.Getenv("SHEP_CHANNEL_FD"); fd != "" {
-		var n uintptr
-		if _, err := fmt.Sscanf(fd, "%d", &n); err != nil {
-			return nil, fmt.Errorf("SHEP_CHANNEL_FD is %q, not a number", fd)
+		// Not Sscanf: it stops at the first non-digit, so "3abc" parses as
+		// 3 and reports no error. ParseUint refuses the whole string.
+		n, err := strconv.ParseUint(fd, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("SHEP_CHANNEL_FD is %q, not a descriptor number", fd)
 		}
-		return os.NewFile(n, "shep-channel"), nil
+		return os.NewFile(uintptr(n), "shep-channel"), nil
 	}
 	return nil, fmt.Errorf("no shepherd channel. Set channel = true on this app " +
 		"in the Flockfile, or wait_ready, or shutdown_with_message")
@@ -108,6 +111,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Warn and carry on, unlike the missing-channel case above, which exits.
+	// The contract asks an app to notice a wire it has never seen and say
+	// so, not to refuse one: a later version may still carry these messages.
 	if stamp := os.Getenv("SHEP_CHANNEL_VERSION"); stamp != "" && stamp != channel.Version {
 		fmt.Fprintf(os.Stderr, "go-chatty: shepherd speaks channel %s, this app speaks %s\n",
 			stamp, channel.Version)

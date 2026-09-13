@@ -36,7 +36,13 @@ function openChannel() {
   }
   const fd = process.env.SHEP_CHANNEL_FD;
   if (fd) {
-    return new net.Socket({ fd: Number(fd), readable: true, writable: true });
+    // Number("abc") is NaN, and NaN reaches the Socket constructor as a
+    // TypeError nothing here would catch. Refuse it where it can be named.
+    const n = Number(fd);
+    if (!Number.isInteger(n) || n < 0) {
+      throw new Error(`SHEP_CHANNEL_FD is "${fd}", not a descriptor number`);
+    }
+    return new net.Socket({ fd: n, readable: true, writable: true });
   }
   return null;
 }
@@ -59,7 +65,15 @@ function parseLevel(params) {
   return LEVELS.includes(level) ? level : null;
 }
 
-const channel = openChannel();
+let channel;
+try {
+  channel = openChannel();
+} catch (err) {
+  // A refusal an operator can act on, rather than the stack trace an
+  // uncaught throw at module scope would print.
+  console.error(`node-chatty: ${err.message}`);
+  process.exit(1);
+}
 if (channel === null) {
   console.error(
     "node-chatty: no shepherd channel. Set channel = true on this app in " +
@@ -68,6 +82,9 @@ if (channel === null) {
   process.exit(1);
 }
 
+// Warn and carry on, unlike the missing-channel case above, which exits.
+// The contract asks an app to notice a wire it has never seen and say so,
+// not to refuse one: a later version may still carry these messages.
 const stamp = process.env.SHEP_CHANNEL_VERSION;
 if (stamp !== undefined && stamp !== "1") {
   console.error(`node-chatty: shepherd speaks channel ${stamp}, this app speaks 1`);
@@ -82,6 +99,12 @@ console.log(`node-chatty pid=${process.pid} ready on the shepherd channel`);
 // The reply body is what the operator reads back from shep trigger.
 let samples = 0;
 function handle(message) {
+  // Parsing is not the same as being a message. A bare number, list, string
+  // or null is all valid JSON and none of them is one of ours.
+  if (message === null || typeof message !== "object" || Array.isArray(message)) {
+    console.error("node-chatty: ignoring a frame that is not an object");
+    return;
+  }
   if (message.kind === "shutdown") {
     console.log("node-chatty: the shepherd asked us to stop");
     process.exit(0);
@@ -90,7 +113,13 @@ function handle(message) {
     return;
   }
 
+  // Every action carries both, so one that does not is not something this
+  // app can answer, and carries nowhere to send the answer.
   const { name, params, id } = message;
+  if (typeof name !== "string" || id === undefined) {
+    return;
+  }
+
   let body;
   if (name === "ping") {
     const up = Number(process.hrtime.bigint() - started) / 1e9;
