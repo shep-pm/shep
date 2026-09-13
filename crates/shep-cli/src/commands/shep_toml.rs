@@ -350,14 +350,15 @@ impl ShepToml {
         Ok(Self::open(path)?.adopted_dog_path(name))
     }
 
-    /// Forgets `name` in this file: out of `enabled_dogs`, out of
-    /// `adopted_dogs`, and `[dog.<name>]` removed if an un-migrated
-    /// `shep.toml` still carries one.
+    /// Forgets `name`'s adoption in this file: out of `enabled_dogs` and
+    /// out of `adopted_dogs`.
     ///
-    /// Half of a rehome. Striking the dog's configuration in `dogs.toml` is
-    /// `commands::dog_migration::forget_dog_section`, called right after
-    /// this: one file per writer, since this type owns `shep.toml` and only
-    /// that.
+    /// The whole of a rehome's config half. A `[dog.<name>]` an un-migrated
+    /// `shep.toml` still carries stays, as the `[<name>]` in `dogs.toml`
+    /// does: the settings an operator wrote are theirs, and `rehome`
+    /// forgets only where the binary lived. The difference from
+    /// [`Self::disable_dog`] is `adopted_dogs`, so recovery needs a fresh
+    /// `shep adopt <path>` rather than an `enable`.
     pub fn rehome_dog(&mut self, name: &str) {
         self.disable_dog(name);
         if let Some(adopted_dogs) = self
@@ -368,9 +369,6 @@ impl ShepToml {
             .and_then(Item::as_table_mut)
         {
             adopted_dogs.remove(name);
-        }
-        if let Some(dog) = self.doc.get_mut("dog").and_then(Item::as_table_mut) {
-            dog.remove(name);
         }
     }
 
@@ -808,7 +806,7 @@ mod tests {
         assert!(cfg.daemon.enabled_dogs.is_empty());
         assert!(
             written.contains("30s"),
-            "disable stops a dog; rehome is what forgets it"
+            "disable stops a dog; it never touches what the operator wrote"
         );
     }
 
@@ -827,10 +825,11 @@ mod tests {
         );
     }
 
-    /// Three places have to be empty afterwards: `[daemon] adopted_dogs`,
-    /// `enabled_dogs`, and `[dog.<name>]`.
+    /// Two places have to be empty afterwards, `[daemon] adopted_dogs` and
+    /// `enabled_dogs`, and one has to be untouched: a `[dog.<name>]` an
+    /// un-migrated file still carries.
     #[test]
-    fn rehoming_a_dog_forgets_it_entirely() {
+    fn rehoming_a_dog_forgets_its_adoption_and_keeps_its_settings() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("shep.toml");
         // Seeded by hand: no writer here creates a `[dog.<name>]` any more,
@@ -857,7 +856,10 @@ mod tests {
         let cfg = DaemonConfig::load(Some(&written), &|_| None).unwrap();
         assert!(cfg.daemon.enabled_dogs.is_empty());
         assert!(!cfg.daemon.adopted_dogs.contains_key("otel"));
-        assert!(!cfg.dog.contains_key("otel"));
+        assert!(
+            cfg.dog.contains_key("otel"),
+            "the settings an operator wrote survive a rehome: {written}"
+        );
     }
 
     #[test]

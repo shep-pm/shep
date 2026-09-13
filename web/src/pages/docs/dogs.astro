@@ -171,9 +171,8 @@ $ shep disable metrics`}</CodeBlock>
       provisioning script is safe: each takes an exclusive lock on{" "}
       <code>shep.toml</code> for its whole read-edit-write, so the second
       waits its turn. <code>dogs.toml</code> has its own lock on the same
-      terms, held by both of its writers (<code>rehome</code>, and the
-      migration a boot runs once), so two backgrounded rehomes both land
-      and neither fights a boot. A boot holding both takes{" "}
+      terms, held by both things that write it: the migration a boot runs
+      once, and the config pane's own edits. A boot holding both takes{" "}
       <code>shep.toml</code>'s first.
     </p>
 
@@ -450,12 +449,16 @@ sinks = ["oncall"]`}</CodeBlock>
     <VerbSignature verb="rehome" usage="shep rehome <name>">
       <p>
         <code>disable</code>'s counterpart for a third-party dog: stops it
-        if running and forgets it entirely, rather than leaving it
-        disabled-but-known. That is both files, the registration in{" "}
-        <code>shep.toml</code> and the dog's own <code>[&lt;name&gt;]</code>{" "}
-        section in <code>dogs.toml</code>, webhook URLs and all.{" "}
-        <code>disable</code> keeps that section on purpose;{" "}
-        <code>rehome</code> is the verb that does not.
+        if running and forgets where its binary lived, rather than leaving
+        it disabled-but-known. That is one file, the registration in{" "}
+        <code>shep.toml</code>. The dog's own <code>[&lt;name&gt;]</code>{" "}
+        section in <code>dogs.toml</code> stays, webhook URLs and all,
+        exactly as <code>disable</code> leaves it: those settings are
+        yours rather than the adoption's, so adopting the same dog again
+        finds them waiting. Delete that section by hand when you want them
+        gone. What <code>disable</code> keeps and this does not is the
+        adopted path, so bringing the dog back takes a fresh{" "}
+        <code>shep adopt</code>.
       </p>
     </VerbSignature>
     <CodeBlock>{`$ shep adopt ./bin/my-watchdog --name watchdog
@@ -515,9 +518,11 @@ watchdog  adopted  true      stopped`}</CodeBlock>
       A dog written against <code>shep-client</code> gets both halves from{" "}
       <code>ReconnectingClient::connect_as_dog</code>, which fills the name
       in and also re-establishes the connection when the shepherd is
-      replaced. <code>Client</code> does neither, deliberately: the CLI uses
-      it, and a <code>shep stop</code> that silently retried could stop a
-      sheep twice.
+      replaced. <code>Client</code> does neither on its own, deliberately:
+      the CLI uses it, and a <code>shep stop</code> that silently retried
+      could stop a sheep twice. It reconnects when asked, through{" "}
+      <code>Client::reconnect</code>, which reports whether the daemon now
+      answering is the one from before.
     </p>
     <p>
       That is what <code>shep daemon reload</code> asks of a dog. A dog is
@@ -825,10 +830,10 @@ protocol 6, or reinstall the dog against protocol 8, and restart it again`}</Cod
     </p>
     <CodeBlock>{`$ shep --version
 shep 0.1.24
-speaks protocol 8, accepts 8 and newer
+speaks protocol 9, accepts 8 and newer
 $ shep dog metrics --version
 shep-dog 0.1.24
-speaks protocol 8, accepts 8 and newer`}</CodeBlock>
+speaks protocol 9, accepts 8 and newer`}</CodeBlock>
     <p>
       Neither prints the <code>shep-protocol:</code> line an external dog's
       probe answers with, and that isn't a gap to close. The protocol a

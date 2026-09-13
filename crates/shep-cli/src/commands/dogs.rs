@@ -11,7 +11,7 @@
 //! is touched, so a failed RPC still leaves a config the next boot honours.
 //! `adopt` puts [`vet_binary`] ahead of both.
 
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::Receiver;
@@ -24,7 +24,7 @@ use shep_core::paths::{ShepPaths, user_home};
 use shep_core::protocol::{DogSource, MIN_SUPPORTED, Request, Response, SelectorSpec};
 
 use crate::cli::{AdoptArgs, BarksArgs};
-use crate::commands::dog_migration::{self, DogMigrationError};
+use crate::commands::dog_migration;
 use crate::commands::rpc::{client_error, unexpected_response};
 use crate::commands::shep_toml::{ShepToml, ShepTomlError};
 use crate::exit::ExitCode;
@@ -54,21 +54,6 @@ fn fail_config(streams: &mut Streams<'_>, err: &ShepTomlError) -> ExitCode {
     let code = match err {
         ShepTomlError::Io { .. } => ExitCode::Failure,
         ShepTomlError::Parse { .. } | ShepTomlError::WrongShape { .. } => ExitCode::InvalidConfig,
-    };
-    streams.fail(code, &err.to_string())
-}
-
-/// [`fail_config`] for the other file: renders a `dogs.toml` failure and
-/// picks its exit code.
-///
-/// The same split [`fail_config`] makes: a file that will not parse is
-/// [`ExitCode::InvalidConfig`], everything else [`ExitCode::Failure`].
-/// Wildcarded because [`DogMigrationError`] is `#[non_exhaustive]`, so a new
-/// variant lands as a plain failure rather than a compile error.
-fn fail_dogs_config(streams: &mut Streams<'_>, err: &DogMigrationError) -> ExitCode {
-    let code = match err {
-        DogMigrationError::Parse(_) => ExitCode::InvalidConfig,
-        _ => ExitCode::Failure,
     };
     streams.fail(code, &err.to_string())
 }
@@ -502,14 +487,19 @@ pub fn vet_binary_within(
     })
 }
 
-/// The environment the probe runs a candidate with: what the daemon would
-/// give the dog, and nothing else.
+/// The whole environment a dog is run with here: what the daemon would give
+/// it, and nothing else.
+///
+/// Every caller pairs this with `env_clear`, and both of them run a binary
+/// shep did not write: `ask`'s adopt probe, and `hook::run_on_remove`.
+/// `SHEP_HOME` and `SHEP_DOG_NAME` are in here rather than left to the
+/// caller so a third variable cannot reach one spawn and miss the other.
 ///
 /// Mirrors `shep_daemon::assemble::base_env`, which is private to a crate
 /// the CLI does not reach into. The lists are duplicated: if the daemon's
 /// allowlist grows, this one has to follow, or a candidate is vetted under
 /// conditions its supervised run will not have.
-fn probe_env() -> Vec<(String, String)> {
+pub(crate) fn dog_env(home: &Path, name: &str) -> Vec<(String, OsString)> {
     #[cfg(unix)]
     const INHERITED: &[&str] = &["HOME", "USER", "LANG", "TZ"];
     #[cfg(unix)]
@@ -536,12 +526,17 @@ fn probe_env() -> Vec<(String, String)> {
         .ok()
         .filter(|p| !p.is_empty())
         .unwrap_or_else(|| DEFAULT_PATH.to_string());
-    let mut env = vec![("PATH".to_string(), path)];
+    let mut env = vec![("PATH".to_string(), OsString::from(path))];
     env.extend(
         INHERITED
             .iter()
-            .filter_map(|key| std::env::var(key).ok().map(|v| ((*key).to_string(), v))),
+            .filter_map(|key| std::env::var_os(key).map(|v| ((*key).to_string(), v))),
     );
+    // Last, and as `OsString`: a home that is not UTF-8 still reaches the
+    // dog whole, and the two shep owns cannot be shadowed by an inherited
+    // one of the same name.
+    env.push(("SHEP_HOME".to_string(), home.as_os_str().to_owned()));
+    env.push(("SHEP_DOG_NAME".to_string(), OsString::from(name)));
     env
 }
 
@@ -572,9 +567,7 @@ fn ask(
     command
         .arg(flag)
         .env_clear()
-        .envs(probe_env())
-        .env("SHEP_HOME", home)
-        .env("SHEP_DOG_NAME", name)
+        .envs(dog_env(home, name))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
@@ -1282,14 +1275,14 @@ async fn adopt_after_config(
     }
 }
 
-/// `shep rehome <name>`: stops an adopted dog and forgets it entirely.
+/// `shep rehome <name>`: stops an adopted dog and forgets where its binary
+/// lived, leaving the settings an operator wrote for it.
 ///
-/// Two files, in this order: [`ShepToml::rehome_dog`] strikes the
-/// registration from `shep.toml`, then
-/// [`dog_migration::forget_dog_section`] strikes the configuration from
-/// `dogs.toml`. The second is here because [`ShepToml`] owns one file, and
-/// the other needs the staged-temp, `fsync` and `rename` path that keeps
-/// webhook credentials at `0600`.
+/// One file: [`ShepToml::rehome_dog`] strikes the registration from
+/// `shep.toml`. `dogs.toml` is only read, to say whether there was a
+/// section to keep, on the argument `disable` already makes for itself.
+/// Re-adopting the same dog finds its old configuration waiting; the
+/// difference from `disable` is that recovery needs a fresh `shep adopt`.
 pub async fn rehome(streams: &mut Streams<'_>, paths: &ShepPaths, name: &str) -> ExitCode {
     let source = match ShepToml::edit(&paths.daemon_config, |cfg| {
         // Read before `rehome_dog` erases it. `None` is legitimate: a name
@@ -1303,18 +1296,21 @@ pub async fn rehome(streams: &mut Streams<'_>, paths: &ShepPaths, name: &str) ->
         Ok(source) => source,
         Err(err) => return fail_config(streams, &err),
     };
-    // Non-zero rather than pressed on with: the dog is out of `shep.toml`
-    // by now, so a success would claim the webhook URLs were gone with them
-    // still on disk. No `config.dog.<name>` frame, unlike the other writers
-    // of `dogs.toml`: the daemon half below stops the dog.
-    if let Err(err) = dog_migration::forget_dog_section(&paths.dogs_config, name) {
-        return fail_dogs_config(streams, &err);
-    }
+    // This verb does not write `dogs.toml`, so an unreadable one costs
+    // the notice below and nothing more.
+    let kept = dog_migration::dog_section_exists(&paths.dogs_config, name).unwrap_or(false);
     let client = match connect_or_absent(paths, streams).await {
         Ok(client) => client,
         Err(code) => return code,
     };
-    rehome_after_config(streams, name, source, client.as_ref()).await
+    let code = rehome_after_config(streams, name, source, client.as_ref()).await;
+    if kept {
+        streams.aside(
+            "rehome",
+            &format!("kept [{name}] in dogs.toml; adopting {name} again finds those settings"),
+        );
+    }
+    code
 }
 
 /// `rehome`'s daemon half; see [`enable_after_config`] for the split and
@@ -2992,14 +2988,20 @@ mod tests {
         );
     }
 
-    /// The configuration half is two files: a `[dog.otel]` an un-migrated
-    /// `shep.toml` still carries, and the `[otel]` in `dogs.toml` where one
-    /// lives now. `metrics` is beside it to catch a rewrite that forgets
-    /// more than it was asked to.
+    /// Both places a dog's own settings can sit: a `[dog.otel]` an
+    /// un-migrated `shep.toml` still carries, and the `[otel]` in
+    /// `dogs.toml` where one lives now. Neither is the adoption, so
+    /// neither goes. `metrics` is beside it to catch a rewrite that
+    /// reaches further than it was asked to.
     #[tokio::test]
-    async fn rehome_forgets_everything_disable_deliberately_keeps() {
+    async fn rehome_keeps_the_settings_and_forgets_only_the_adoption() {
         let dir = tempfile::tempdir().unwrap();
         let paths = ShepPaths::resolve(&|_| None, dir.path());
+        std::fs::create_dir_all(&paths.home).unwrap();
+        // Seeded by hand: no writer creates a `[dog.<name>]` any more, but
+        // a `shep.toml` no daemon has booted against since the move still
+        // carries one, and that section is the operator's too.
+        std::fs::write(&paths.daemon_config, "[dog.otel]\ndebounce = \"30s\"\n").unwrap();
         ShepToml::edit(&paths.daemon_config, |seed| {
             seed.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"));
         })
@@ -3026,57 +3028,27 @@ mod tests {
             "rehome must forget the adopted_dogs entry disable deliberately keeps: {written}"
         );
         assert!(
-            !cfg.dog.contains_key("otel"),
-            "rehome must remove [dog.otel] too, unlike disable: {written}"
+            cfg.dog.contains_key("otel"),
+            "an un-migrated [dog.otel] is the operator's, not the adoption: {written}"
         );
         let dogs = std::fs::read_to_string(&paths.dogs_config).unwrap();
         let dogs = shep_core::config::DogsConfig::load(Some(&dogs)).unwrap();
         assert!(
-            !dogs.dog.contains_key("otel"),
-            "rehome must strike the section from dogs.toml, where a dog's config lives now"
+            dogs.dog.contains_key("otel"),
+            "rehome must leave the section in dogs.toml, where a dog's config lives now"
         );
         assert!(
             dogs.dog.contains_key("metrics"),
             "and must leave every other dog's section exactly where it was"
         );
-    }
-
-    /// `dogs.toml` holds webhook URLs, so it is `0600` and the rewrite
-    /// installs a staged inode carrying that mode rather than trusting the
-    /// mode it found.
-    #[tokio::test]
-    async fn rehoming_narrows_a_world_readable_dogs_toml() {
-        use std::os::unix::fs::PermissionsExt as _;
-
-        let dir = tempfile::tempdir().unwrap();
-        let paths = ShepPaths::resolve(&|_| None, dir.path());
-        ShepToml::edit(&paths.daemon_config, |seed| {
-            seed.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"));
-        })
-        .unwrap();
-        std::fs::write(
-            &paths.dogs_config,
-            "[otel]\nendpoint = \"127.0.0.1:4317\"\n",
-        )
-        .unwrap();
-        std::fs::set_permissions(&paths.dogs_config, std::fs::Permissions::from_mode(0o644))
-            .unwrap();
-
-        let mut out = Vec::new();
-        let mut err = Vec::new();
-        let code = rehome(&mut streams(&mut out, &mut err), &paths, "otel").await;
-
-        assert_eq!(code, ExitCode::Success);
-        let mode = std::fs::metadata(&paths.dogs_config)
-            .unwrap()
-            .permissions()
-            .mode()
-            & 0o777;
-        assert_eq!(mode, 0o600, "mode was {mode:o}");
+        assert!(
+            String::from_utf8(err).unwrap().contains("kept [otel]"),
+            "an operator who asked to forget a dog is told what stayed"
+        );
     }
 
     /// Rehoming a dog nobody ever configured must not invent an empty
-    /// `dogs.toml` or fail over its absence.
+    /// `dogs.toml`, fail over its absence, or claim it kept anything.
     #[tokio::test]
     async fn rehoming_with_no_dogs_toml_at_all_writes_none() {
         let dir = tempfile::tempdir().unwrap();
@@ -3093,7 +3065,11 @@ mod tests {
         assert_eq!(code, ExitCode::Success);
         assert!(
             !paths.dogs_config.exists(),
-            "nothing to strike, nothing written"
+            "nothing to keep, nothing written"
+        );
+        assert!(
+            !String::from_utf8(err).unwrap().contains("kept ["),
+            "there was no section, so there is nothing to say was kept"
         );
     }
 

@@ -4,7 +4,7 @@
  * Reference"). Every verb, its aliases, its usage line and its own
  * --help output — none of it hand-typed. The data comes from
  * web/src/data/cliReference.ts, which parses a checked-in dump of real
- * `shep --help` / `shep <verb> --help` output
+ * `shep --help` output, one run per verb and per subcommand of a verb,
  * (web/src/data/cli-reference.generated.txt, produced by
  * web/scripts/generate-cli-reference.sh). Re-run that script and rebuild
  * whenever a verb, an alias, or a flag changes in
@@ -73,7 +73,7 @@ const groups = [
   },
   {
     title: "Secrets",
-    verbs: ["secret"],
+    verbs: ["secret", "secret set", "secret get", "secret unset", "secret list"],
   },
   {
     title: "Interfaces",
@@ -101,12 +101,32 @@ const groups = [
   },
 ];
 
-const coveredCount = groups.reduce((n, g) => n + g.verbs.length, 0);
-if (coveredCount !== cliReference.verbs.length) {
+// Every verb the reference carries is filed under exactly one heading, and
+// every name filed is a verb it carries. This was a count check, which a
+// name filed twice while another goes missing passes: the two errors cancel,
+// and the missing verb is one the page silently does not have.
+const grouped = groups.flatMap((g) => g.verbs);
+const documented = cliReference.verbs.map((v) => v.name);
+const missing = documented.filter((name) => !grouped.includes(name));
+const unknown = grouped.filter((name) => !documented.includes(name));
+const duplicated = grouped.filter((name, i) => grouped.indexOf(name) !== i);
+// A name the reference itself carries twice is in `grouped` once and in
+// `documented` twice, so the three lists above all come back empty while the
+// verb renders twice on the page. Only the generator can do that, by holding
+// the same entry twice in `VERBS`, and no Rust test looks for it either.
+const referencedTwice = documented.filter((name, i) => documented.indexOf(name) !== i);
+if (
+  missing.length > 0 ||
+  unknown.length > 0 ||
+  duplicated.length > 0 ||
+  referencedTwice.length > 0
+) {
   throw new Error(
-    `src/pages/docs/cli.astro: groups cover ${coveredCount} verbs but ` +
-      `cliReference has ${cliReference.verbs.length} — a verb was added, ` +
-      `removed, or renamed without updating this page's groups.`,
+    `src/pages/docs/cli.astro: this page's groups must name every verb in ` +
+      `the CLI reference exactly once. Missing: ${JSON.stringify(missing)}. ` +
+      `Not a verb: ${JSON.stringify(unknown)}. ` +
+      `Filed twice: ${JSON.stringify(duplicated)}. ` +
+      `Carried twice by the reference itself: ${JSON.stringify(referencedTwice)}.`,
   );
 }
 ---

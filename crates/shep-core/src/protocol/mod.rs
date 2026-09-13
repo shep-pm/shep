@@ -1,10 +1,13 @@
-//! The client<->daemon wire protocol (version 8).
+//! The client<->daemon wire protocol (version 9).
 //!
 //! Typed request/response enums plus bus events. Framing lives in
 //! [`wire`]; a serialized shape change bumps [`PROTOCOL_VERSION`].
 //! Version 4 bumped on an addition. Version 5 bumped on a new `AppConfig`
-//! field: that struct is `deny_unknown_fields`, so the additive rule below
-//! does not cover it and an older daemon cannot decode `depends_on`.
+//! field: that struct was `deny_unknown_fields` then, so the additive rule
+//! below did not cover it and an older daemon could not decode
+//! `depends_on`. The denial has since moved to `Flockfile::parse`, so a
+//! field change now costs an older peer the field rather than the whole
+//! payload, and still bumps.
 //! Version 6 bumped on a retype: [`Response::Reloading`] became a struct
 //! variant to carry the apps a staged reload refused, so it serializes as
 //! an object where an older peer reads an array. Version 7 bumped on the
@@ -14,9 +17,10 @@
 //! the reason version 5 did. [`Request::PutSecrets`] rode in on the same
 //! commit and forced nothing: it is an additive variant, and a daemon that
 //! has never heard of it decodes [`Request::Unrecognized`] and refuses by
-//! name.
+//! name. Version 9 bumped on removing `increment_var`, the first shape
+//! change here to subtract a field rather than add one.
 //!
-//! A `*_wire_v8` test pins today's shape. A
+//! A `*_wire_v9` test pins today's shape. A
 //! `v1_*_fixture_still_deserializes` test pins an old peer's payload and
 //! never renames.
 
@@ -52,7 +56,13 @@ pub mod channel {
 /// renaming, or retyping anything serialized bumps it, recorded in the
 /// CHANGELOG. Byte fixtures in each protocol module pin the deserialize
 /// direction.
-pub const PROTOCOL_VERSION: u32 = 8;
+///
+/// `AppConfig` is the exception: every field change bumps, additive
+/// included. An older peer ignores a key it does not know, so it runs a
+/// config the operator did not write and says nothing. `environment`
+/// forced 8 after the denial had already moved to `Flockfile::parse`,
+/// which is the precedent.
+pub const PROTOCOL_VERSION: u32 = 9;
 
 /// The oldest protocol this build accepts from a peer.
 ///
@@ -67,16 +77,22 @@ pub const MIN_SUPPORTED: u32 = 8;
 mod tests {
     use super::{MIN_SUPPORTED, PROTOCOL_VERSION};
 
+    /// Fails whenever `PROTOCOL_VERSION` moves, which makes a bump a
+    /// deliberate edit rather than a reflex. It does not detect a shape
+    /// change that forgot to bump: the `*_wire_v9` snapshots do that, by
+    /// gaining or losing the key.
+    ///
+    /// A bump moves five things together, and only this one fails on its
+    /// own: the constant, this literal, this test's own name, the module
+    /// doc's header and its version list, and the three `*_wire_vN`
+    /// snapshots with the names that pin them.
+    ///
+    /// `depends_on` forced 5, `environment` 8, dropping `increment_var` 9.
+    /// The `Response::Reloading` and `Response::Restarted` retypes forced 6
+    /// and 7, an object not being an array.
     #[test]
-    fn a_new_app_config_field_forced_the_protocol_version_up() {
-        // fails if a field is added to `AppConfig` without the bump, the
-        // same way `depends_on` forced 5 and `environment` forced 8. That
-        // struct is `deny_unknown_fields`, so an older peer refuses the
-        // whole payload rather than ignoring a key it does not know, and
-        // the handshake is the only place that can say so. The retypes of
-        // `Response::Reloading` and `Response::Restarted` forced 6 and 7
-        // for the separate reason that an object is not an array.
-        assert_eq!(PROTOCOL_VERSION, 8);
+    fn a_removed_app_config_field_forced_the_protocol_version_up() {
+        assert_eq!(PROTOCOL_VERSION, 9);
     }
 
     #[test]

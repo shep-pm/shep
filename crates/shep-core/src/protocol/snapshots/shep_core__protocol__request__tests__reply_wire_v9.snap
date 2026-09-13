@@ -781,8 +781,7 @@ expression: replies
             "readiness_probe": null,
             "liveness_probe": null,
             "watch_options": [],
-            "cron_timezone": null,
-            "increment_var": null
+            "cron_timezone": null
           },
           "env_keys": [
             "DATABASE_URL"

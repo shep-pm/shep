@@ -316,7 +316,23 @@ anything:
   a shrug. The OS transport lives in one place, `shep_core::transport`.
 - **A dog's config lives in `$SHEP_HOME/dogs.toml`**, migrated once at boot from
   the old `[dog.<name>]` sections in `shep.toml`.
-- **Verb count is 41 generated and 42 listed**; the difference is `help`. Check
-  which question is being asked before changing either.
+- **"How many verbs" is three questions, and the numbers differ.** `shep
+  --help` lists every visible one. The docs-site generator covers all of
+  those but `help`, which has no page. Its `VERBS` array is longer still,
+  because a subcommand's own flags need their own `--help` block, so every
+  subcommand takes an entry alongside the command hosting it. That is why
+  the script's closing `N verbs` line is the largest of the three and counts
+  array entries rather than verbs.
+
+  No count is written here on purpose. This bullet said "41 generated and 42
+  listed" until 2026-09-13, by which time both had moved and the script was
+  printing a third number neither described. Tests in
+  `crates/shep-cli/src/cli.rs` hold the relationships instead, and they are
+  the answer to ask: `every_visible_verb_appears_in_exactly_one_help_group`
+  pins the listing against clap's own subcommands, and
+  `every_visible_verb_reaches_the_docs_site_generator` pins the generator
+  against every visible command path at every depth, hidden subtrees and
+  `help` left out. A new verb or subcommand fails one of them rather than
+  going quietly undocumented.
 
 What is built versus deferred: [docs/specs/deferred.md](docs/specs/deferred.md).
