@@ -94,6 +94,22 @@ if (stamp !== undefined && stamp !== "1") {
   console.error(`node-chatty: shepherd speaks channel ${stamp}, this app speaks 1`);
 }
 
+// A failure before the pipe is open is a channel that never existed, and an
+// operator can fix that. A failure afterwards is the shepherd going away,
+// which this app has already decided is not a reason to stop. Without the
+// handler at all, either one ends the process looking like a bug here.
+let live = !opened.opening;
+channel.on("connect", () => {
+  live = true;
+});
+channel.on("error", (err) => {
+  if (!live) {
+    console.error(`node-chatty: cannot open the shepherd channel: ${err.message}`);
+    process.exit(1);
+  }
+  console.error(`node-chatty: the channel failed: ${err.message}`);
+});
+
 const send = (message) => channel.write(`${JSON.stringify(message)}\n`);
 
 // Held until the pipe is actually connected. Announcing readiness into a
@@ -193,21 +209,6 @@ channel.on("data", (chunk) => {
 // Rust app running for the same reason: a channel is something an app has,
 // not what it is for, and a shepherd can be replaced under it. The timer
 // is what keeps this event loop alive once the socket is its only work.
-// A failure before the pipe is open is a channel that never existed, and an
-// operator can fix that. A failure afterwards is the shepherd going away,
-// which this app has already decided is not a reason to stop. Without the
-// handler at all, either one ends the process looking like a bug here.
-let live = !opened.opening;
-channel.on("connect", () => {
-  live = true;
-});
-channel.on("error", (err) => {
-  if (!live) {
-    console.error(`node-chatty: cannot open the shepherd channel: ${err.message}`);
-    process.exit(1);
-  }
-  console.error(`node-chatty: the channel failed: ${err.message}`);
-});
 channel.on("close", () => {
   console.log("node-chatty: the shepherd went away; still running");
   setInterval(() => {}, 1 << 30);

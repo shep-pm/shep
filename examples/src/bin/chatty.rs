@@ -41,16 +41,6 @@ fn main() {
     let started = Instant::now();
     let shepherd = shep_channel::serve();
 
-    // A stamp, not a negotiation. Saying so beats failing to parse a line
-    // later with nothing to connect that failure to.
-    match shepherd.version() {
-        Some(stamp) if stamp != CHANNEL_VERSION => {
-            eprintln!("chatty: shepherd speaks channel {stamp}, this app speaks {CHANNEL_VERSION}");
-        }
-        Some(_) => {}
-        None => {}
-    }
-
     // The crate hands back a working handle either way, so an ordinary app
     // needs no branch here. This one is the channel and nothing else, so it
     // refuses rather than running as a no-op, which is what the other three
@@ -61,6 +51,14 @@ fn main() {
              the Flockfile, or wait_ready, or shutdown_with_message."
         );
         std::process::exit(1);
+    }
+
+    // A stamp, not a negotiation. Saying so beats failing to parse a line
+    // later with nothing to connect that failure to.
+    if let Some(stamp) = shepherd.version()
+        && stamp != CHANNEL_VERSION
+    {
+        eprintln!("chatty: shepherd speaks channel {stamp}, this app speaks {CHANNEL_VERSION}");
     }
 
     shepherd.on_action("ping", move |_params, _name| {
