@@ -49,7 +49,8 @@ of them: it shipped, and its entry moved to "Not deferred" below.
 
 - HTTP/SSE MCP transport (whistle ships stdio-only first)
 - cgroup v2 enforcement (`enforce = "kernel"`) — `LimitEnforcer`'s polling
-  impl is the v1.0 tier
+  impl is the v1.0 tier. Sized 2026-09-06, together with the CPU half this
+  line never mentioned: see the subsection below.
 - `@shep/io` npm shim (built on demand)
 - vcs metadata (`vcs` feature, off by default)
 - `shep web` JSON status endpoint. Resolved, 2026-08-13: the metrics dog
@@ -57,6 +58,227 @@ of them: it shipped, and its entry moved to "Not deferred" below.
   scraper, and `shep web` was a hand-fetched JSON payload for a
   dashboard, an incompatible shape for an incompatible consumer. This
   stays its own deferred item rather than being folded into the dog.
+
+### Per-sheep resource limits, and where `enforce = "kernel"`'s cost sits, sized 2026-09-06
+
+Sized against the code, not built. The shape is two config fields carrying
+docker's semantics, chosen deliberately so nobody has to learn a shep-specific
+model:
+
+- **`max_cpu_cores`**, matching `docker --cpus=N`. The sheep's process tree
+  gets at most N cores' worth of CPU time per scheduling period, scheduled
+  wherever the kernel likes. Not affinity, and not core pinning.
+- **`max_memory` gaining an enforcement strategy**, matching
+  `docker --memory=2g`. The kernel caps the tree instead of shep sampling it
+  every `MEMORY_POLL_INTERVAL` and restarting it.
+
+**Affinity is the obvious first guess and it is the wrong one.** Pinning a
+sheep to a set of cores forces shep to choose *which* cores, and with several
+sheep that choice becomes a placement policy. Either every sheep stacks onto
+cores `0..N` and contends there while the rest of the machine idles, or shep
+becomes a scheduler making placement calls without being able to see anything
+else running on the host. A quota needs no placement decision at all: the
+kernel keeps scheduling the tree wherever it likes, and stops scheduling it
+once the slice is spent.
+
+#### The cost is one thing, and it is neither field
+
+Nothing in `crates/` creates, writes, or detects a cgroup. Grepping the
+workspace for `cgroup` returns three comments (`runner.rs:900`,
+`limits/mod.rs:54`, `lookout/source.rs:353`) and no code. The work is the
+container itself: a per-sheep cgroup created at spawn with the child moved
+into it before it forks anything, v2 versus v1/hybrid detection, delegation
+detection, and a clean refusal rather than a silent no-op when none of that is
+available. Call it phase 0. Against it, each field is one file write:
+`cpu.max` and `memory.max`.
+
+| Work | Size |
+| --- | --- |
+| Phase 0, the per-sheep cgroup | L |
+| `max_cpu_cores`, writing `cpu.max` | S |
+| `max_memory` with `enforce = "kernel"`, writing `memory.max` | M |
+
+**Windows already does exactly what phase 0 needs, which is the finding worth
+recording.** The spawn path calls `command.spawn()`
+(`crates/shep-daemon/src/tokio_runner.rs:705`), reads the pid, and immediately
+creates a job object and assigns the child to it (`tokio_runner.rs:716-738`).
+Its comment names the reason: "As early as containment can happen: the child
+exists and everything it spawns from here inherits the job." A cgroup goes at
+the identical point in the identical function, for the identical reason. The
+unix arm of that same function has only `command.process_group(0)`
+(`tokio_runner.rs:571-572`) and no per-sheep resource container.
+
+#### `LimitEnforcer` cannot be the seam, and the reason is timing
+
+`arm()` fires at the transition to `Online`, not at the spawn, and
+`went_online`'s own rustdoc says so: "Arming happens at the transition, not the
+spawn: a liveness probe armed against an app that has not finished starting
+fails its threshold and restarts the app before it ever comes up"
+(`crates/shep-daemon/src/supervisor.rs:7565-7590`). For the polling enforcer
+that costs nothing, because it sums a tree from outside and needs no
+cooperation from the child. A cgroup only accounts for a process that was
+already inside it before it forked, so arming seconds late means arming
+against descendants that have already escaped.
+
+So create the cgroup unconditionally for every sheep at spawn, configured
+limit or not, mirroring the Windows job that `Job::create` builds regardless
+(`crates/shep-daemon/src/sys_windows.rs:87-127`, whose own comment says the
+zeroed limit block is set explicitly because doing so "makes adding a limit
+later a one-line edit at a site that already handles its own errors").
+`arm()` then reduces to writing a limit into a container that already exists,
+which preserves `max_memory`'s current `ApplyGroup::Live` classification
+(`crates/shep-core/src/config/apply.rs:48`): a config change still reaches a
+running sheep through a re-arm, with no respawn.
+
+#### The trait's own doc contains a claim this design breaks
+
+`LimitEnforcer`'s rustdoc says the cgroup implementation "must replace the
+polling one without the engine noticing"
+(`crates/shep-daemon/src/limits/mod.rs:54-56`). That is false on one axis, and
+the axis is the restart budget.
+
+A polling breach does not merely skip `max_restarts`, it **resets** it.
+`extra_restart` delegates to `begin_manual` rather than `respawn`, which
+"keeps the kill ladder and the budget reset" (`supervisor.rs:1131-1136` and
+`supervisor.rs:7092-7094`), and the module doc states the rule plainly: "its
+restart does not count against `max_restarts`" (`limits/mod.rs:11-12`). A
+cgroup OOM kill arrives instead as an ordinary `SIGKILL` crash through the
+normal exit path, entirely outside the trait, and so it consumes the budget.
+An app that leaks and today restarts indefinitely would instead burn its
+`max_restarts` and get parked.
+
+Closing that means teaching the exit path to read the `oom_kill` counter in
+`memory.events` and reclassify the exit. That is new logic outside
+`LimitEnforcer`, not a swap behind it, and it is the kind of thing found late
+and expensively.
+
+Separately, extending `arm(&self, id, root_pid, limit: MemSize)` is a
+**breaking change**. The trait is public specifically so
+`crates/shep-daemon/tests/external_impls.rs:28-34` can implement it from
+outside the crate, and that test's `impl` block is the compile-time proof. CPU
+should not go through the trait in any case, since docker's `--cpus` has no
+breach event to report.
+
+#### CPU never kills. Memory does
+
+`cpu.max` takes `$MAX $PERIOD`, both in microseconds, and the CFS bandwidth
+controller simply stops scheduling the cgroup's tasks until the next period
+begins. Nothing dies, the tree runs slower. runc computes the same value the
+same way: quota is cores times period.
+
+`memory.max` is not the symmetric knob. Under Linux overcommit the kernel does
+not politely refuse the allocation that crosses the line. It reclaims, and
+when reclaim fails it invokes the cgroup-scoped OOM killer on a process it
+picks by its own heuristic, which need not be the one that allocated. Worth
+stating explicitly, because "cap it instead of restarting it" sounds like a
+graceful refusal and on Linux it is not. `memory.high` is the genuine
+throttle-without-killing knob, applying reclaim pressure and stalling the
+allocator rather than killing anything. It is a plausible later addition, not
+what `max_memory` should mean.
+
+#### Platforms, which decide the staging
+
+**Linux** gets real enforcement for both fields, entirely gated on phase 0.
+Delegation is the practical question of whether an ordinary user gets the
+feature at all:
+
+| shep runs as | cgroup write access |
+| --- | --- |
+| root | always works |
+| a systemd system unit | needs `Delegate=yes`, which the shipped unit does not set |
+| a user login session | whatever `user@.service` already delegated, which varies by systemd version |
+
+The shipped unit is rendered at
+`crates/shep-cli/src/commands/startup/unit.rs:57-71` and its `[Service]` block
+carries no `Delegate=`. Adding one also means updating the exact-string test
+at `unit.rs:393-407`, which pins the rendered unit verbatim. Where no writable
+cgroup subtree exists, shep should refuse the configured limit at load with a
+message naming the reason, and never accept the field while enforcing nothing.
+
+**Windows** gets real enforcement for both, and memory is the cheap half. It
+also matches the intent better than Linux does:
+`JOBOBJECT_EXTENDED_LIMIT_INFORMATION` is already allocated, zeroed and
+submitted in `Job::create`, and `JOB_OBJECT_LIMIT_JOB_MEMORY` makes the
+over-limit commit **fail** rather than terminating the process. CPU needs a
+second info class, `JobObjectCpuRateControlInformation`, with
+`ENABLE | HARD_CAP` rather than the weight-based mode, which expresses a
+relative priority and not a quota. Its rate is in hundredths of a percent of
+the whole machine rather than of one core, so `max_cpu_cores` needs a unit
+conversion against the host's processor count.
+
+**macOS** has no mechanism for either, and this has to be a documented
+refusal. `RLIMIT_AS` is defeated by ordinary virtual-address reservations, so
+a runtime that reserves a large arena up front trips it while using almost
+none of it. `RLIMIT_RSS` is not enforced by XNU. Jetsam memory watermarks need
+an entitlement Apple does not grant to third parties. The refusal belongs at
+the call site with its reasoning attached, in the style shep already uses for
+the Windows signal refusal at `tokio_runner.rs:215-276`.
+
+**The macOS consequence is the largest cost here and the least obvious.**
+macOS is shep's primary development platform, so none of the enforcement code
+can ever be exercised in the ordinary local edit-and-test loop. Every change
+needs a Linux host or the Windows box. That is a permanent iteration tax for
+the life of the feature rather than a one-time port, and it should shape the
+staging more than any individual API's difficulty.
+
+#### Smaller decisions, recorded so they are not reopened
+
+- **`enforce` is the right field name.** It is already published in this
+  file's own v1.1 line above.
+- **It should be a sibling enum**, following the `ProbeKind` precedent at
+  `crates/shep-core/src/config/app.rs:18-25`. Not a bool, and not a variant
+  nested inside `max_memory`: `MemSize` is a plain validated newtype
+  (`crates/shep-core/src/values.rs:39`) and is not built to carry a strategy
+  tag.
+- **`max_cpu_cores` wants a validated newtype** of its own, following
+  `MemSize` and `UpDuration` (`values.rs:39`, `values.rs:204`), rather than a
+  bare `f64` that silently accepts zero, a negative, or a NaN.
+- **Both fields need a row in the `FIELDS` table** at
+  `crates/shep-core/src/config/apply.rs:35`, which `is_classified` reads as
+  the anti-drift gate.
+- **`SCHEMA_VERSION` does not move.** The rule at
+  `crates/shep-cli/src/output/mod.rs:58-59` is that it is "bumped only for a
+  breaking change to any command's `data` shape. Additive fields do not bump
+  it", and a new key in a rendered config view is additive.
+- **`PROTOCOL_VERSION` is not as clear-cut.** Its own subsection below.
+
+#### The `PROTOCOL_VERSION` answer is not automatic, and the maintainer owns it
+
+Two documents disagree, and the disagreement is worth settling before either
+field is written rather than during review.
+
+The rule at `crates/shep-core/src/protocol/mod.rs:50-54` says "Additive
+optional fields (new serde-defaulted `Option<T>` fields, new variants behind
+`#[non_exhaustive]`) keep the version". `AppConfig` is `#[serde(default)]` and
+carries no serde `deny_unknown_fields`, so by that rule neither field bumps
+anything.
+
+The tripwire test `a_new_app_config_field_forced_the_protocol_version_up`
+(`protocol/mod.rs:70-80`) says the opposite for `AppConfig` specifically, and
+names two precedents where it held: `depends_on` forced 5, `environment`
+forced 8.
+
+**That test's stated reason is stale.** It argues from `AppConfig` being
+`deny_unknown_fields`, and the serde attribute has since moved to
+`Flockfile::parse` (`crates/shep-core/src/config/app.rs:88-101`, which ends
+"Do not restore the serde attribute here"). The old failure mode, an older
+peer refusing the whole payload, is gone.
+
+What replaced it is worse for this particular field. An older daemon handed
+`max_cpu_cores` ignores the key and runs the sheep with no CPU limit at all,
+silently. A silently dropped resource limit is a better argument for a bump
+than the additive rule is against one. Decide it deliberately rather than
+letting the additive rule settle it by default.
+
+#### Recommended order
+
+Phase 0, then memory, then CPU.
+
+Memory second, because it finishes the v1.1 item already committed above. CPU
+third, because it is nearly free once phase 0 exists. Starting with CPU
+because it looks like the smaller of the two does not work: it needs the same
+foundation, and doing it first buys a field whose only working platform is
+Windows.
 
 ## Named as v1.0 in spec §2/§9, not yet built
 
