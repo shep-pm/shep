@@ -388,8 +388,10 @@ side says why.
 A dog written against `shep-client` gets both halves from
 `ReconnectingClient::connect_as_dog`, which fills the name in and also
 re-establishes the connection when the shepherd is replaced. `Client` does
-neither, deliberately: the CLI uses it, and a `shep stop` that silently
-retried could stop a sheep twice.
+neither on its own, deliberately: the CLI uses it, and a `shep stop` that
+silently retried could stop a sheep twice. It reconnects when asked,
+through `Client::reconnect`, which reports whether the daemon now answering
+is the one from before.
 
 That is what `shep daemon reload` asks of a dog. A dog is carried across the
 reload the way a sheep is: the process is a child of a shepherd whose pid
@@ -646,10 +648,10 @@ question here for a contract to answer:
 ```
 $ shep --version
 shep 0.1.24
-speaks protocol 8, accepts 8 and newer
+speaks protocol 9, accepts 8 and newer
 $ shep dog metrics --version
 shep-dog 0.1.24
-speaks protocol 8, accepts 8 and newer
+speaks protocol 9, accepts 8 and newer
 ```
 
 Neither prints the `shep-protocol:` line an external dog's probe answers

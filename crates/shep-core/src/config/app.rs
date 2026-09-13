@@ -604,13 +604,6 @@ pub struct AppConfig {
         "neighbours": [{"field": "cron_restart", "note": "the pattern this zone is read against"}]
     })))]
     pub cron_timezone: Option<String>,
-    /// Removed. Set your own variable to `{{instance}}` in `env` instead.
-    ///
-    /// Kept only so `normalize` can reject it with that instruction: a
-    /// `deny_unknown_fields` serde error would name no replacement. Remove
-    /// in 0.2.
-    #[cfg_attr(feature = "schema", schemars(skip))]
-    pub increment_var: Option<String>,
 }
 
 /// One value an `env` table may carry: a string, or a bare boolean or whole
@@ -779,7 +772,6 @@ impl Default for AppConfig {
             liveness_probe: None,
             watch_options: Vec::new(),
             cron_timezone: None,
-            increment_var: None,
         }
     }
 }
@@ -939,6 +931,29 @@ env = { SOME_BOOL = true, PORT = 8080, NEG = -1, STR = "plain" }
         assert_eq!(app.env["PORT"], "8080");
         assert_eq!(app.env["NEG"], "-1");
         assert_eq!(app.env["STR"], "plain");
+    }
+
+    /// A protocol-8 peer still serializes `increment_var`, which this build
+    /// no longer has. It must deserialize and be dropped rather than error,
+    /// since `MIN_SUPPORTED` is 8 and an error here would refuse every peer
+    /// built before the field went.
+    ///
+    /// Fails if `deny_unknown_fields` comes back to this struct. It was
+    /// moved to `Flockfile::parse` on purpose, so a newer daemon can hand an
+    /// older client a config it does not fully understand. Why dropping the
+    /// field is safe rather than merely tolerated is in `docs/decisions.md`.
+    #[test]
+    fn a_protocol_8_payload_carrying_increment_var_still_deserializes() {
+        let src = r#"{ "name":"web","script":"./srv","increment_var":null }"#;
+        let app = serde_json::from_str::<AppConfig>(src)
+            .expect("a version-8 payload must not be refused for a field this build dropped");
+        assert_eq!(app.name, "web");
+        assert_eq!(app.script, "./srv");
+
+        let populated = r#"{ "name":"web","script":"./srv","increment_var":"WORKER_ID" }"#;
+        let app = serde_json::from_str::<AppConfig>(populated)
+            .expect("a populated one is ignored too, not refused");
+        assert_eq!(app.name, "web");
     }
 
     /// A float is refused rather than coerced. `f64` carries no trailing zero

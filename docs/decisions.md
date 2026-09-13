@@ -19,7 +19,7 @@ go for the full argument. The commit that removed them names itself.
 
 ## Contents
 
-- [Core types and the daemon's shape](#core-types-and-the-daemons-shape) (4)
+- [Core types and the daemon's shape](#core-types-and-the-daemons-shape) (5)
 - [The CLI surface](#the-cli-surface) (4)
 - [Supervision and lifecycle](#supervision-and-lifecycle) (17)
 - [The log plane](#the-log-plane) (8)
@@ -43,6 +43,16 @@ go for the full argument. The commit that removed them names itself.
 - [Following the flock](#following-the-flock) (3)
 
 ## Core types and the daemon's shape
+
+### increment_var is deleted, not kept as a refusal that names its replacement
+
+The field is gone from `AppConfig`. A Flockfile setting it now fails the parser's own unknown-key check instead of reaching `normalize`, which used to refuse it by name and print the line to write instead. `docs/migration.md` is where that replacement is written down now.
+
+**Why:** the refusal was carried so an operator upgrading mid-0.1.x would be told what to write. Nothing else ever read the field. pm2's `NODE_APP_INSTANCE` is imported as `NODE_APP_INSTANCE = "{{instance}}"` under `[app.env]`, so the last reader was a hand-written Flockfile carrying a field from older docs, and shep was pre-release when the replacement landed.
+
+`PROTOCOL_VERSION` moves 8 to 9: the field is serialized, and removing something serialized is what the constant is for. `MIN_SUPPORTED` stays at 8, because no peer can see the difference. `AppConfig` is `#[serde(default)]` and carries no serde `deny_unknown_fields`, so an older peer's extra key is ignored and a newer peer's missing one defaults to `None`. `SCHEMA_VERSION` does not move: no command's `--format json` payload carries an `AppConfig`. The generated Flockfile schema does not change either, the field having been `schemars(skip)` since it stopped being usable.
+
+`verified crates/shep-core/src/config/app.rs (AppConfig derives), crates/shep-core/src/protocol/mod.rs (PROTOCOL_VERSION, MIN_SUPPORTED), crates/shep-cli/src/commands/import/pm2/convert.rs (instance_var)`
 
 ### OwnedFd::from over into_raw_fd/from_raw_fd for channel adoption
 
@@ -516,9 +526,9 @@ A key is written only if it appears in some env_<name> map (by construction, onl
 
 `docs/writing-plans/plans/2026-08-12-shep-phase8-cutover.md:1400`
 
-### NODE_APP_INSTANCE becomes increment_var, never a literal env value
+### NODE_APP_INSTANCE becomes a template, never a literal env value
 
-The importer maps pm2's NODE_APP_INSTANCE env key to AppConfig's increment_var mechanism instead of copying its literal value into env.
+The importer writes pm2's NODE_APP_INSTANCE key back as NODE_APP_INSTANCE = "{{instance}}" under [app.env], rather than copying the value the dump recorded.
 
 **Why:** The dump only records instance 0's value; copying it verbatim would pin every instance to instance 0.
 
@@ -786,9 +796,9 @@ Sorting happens exactly once, inside the actor's snapshot_all, so every consumer
 
 D4 of the research argued shep-client's stream type must wrap connection-state transitions itself (an EventSub yielding ClientEvent::{Bus, Disconnected, Reconnected}), flagging that a bare Stream<Item=BusEvent> would block lookout's reconnect UX entirely.
 
-**Why:** lookout instead built its own local Shepherd trait (lookout/source.rs) to own reconnect+resubscribe together, without any change to shep-client. This is not merely superseded but explicitly named as still-open technical debt as of 2026-08-27's dog-prerequisites plan (Task 8): shep-client was expected to get a narrower reconnect() API (Client::reconnect/reconnect_within returning Reconnected::{SameDaemon,NewDaemon}) built for lookout/whistle's benefit. That API never shipped. What shipped instead, in phase 3 on 2026-08-31, is `ReconnectingClient` (shep-client/src/reconnect.rs), a distinct wrapper type rather than a mode on Client, so a one-shot CLI verb cannot silently acquire retry semantics. It exists for dogs crossing a daemon handover rather than for lookout. Either way, lookout's own ladder (250ms x2 capped at 4s) deliberately still does NOT converge onto that shared schedule (100ms x1.5 capped at 5s) or onto the new API, because its 5-attempt bound exists specifically to reach a 'frozen' UI state a plain backoff has no concept of.
+**Why:** lookout instead built its own local Shepherd trait (lookout/source.rs) to own reconnect+resubscribe together, without any change to shep-client. This is not merely superseded but explicitly named as still-open technical debt as of 2026-08-27's dog-prerequisites plan (Task 8): shep-client was expected to get a narrower reconnect() API (Client::reconnect/reconnect_within returning Reconnected::{SameDaemon,NewDaemon}) built for lookout/whistle's benefit. It shipped on 2026-09-13, beside ReconnectingClient in the same module and sharing its backoff schedule. What shipped instead, in phase 3 on 2026-08-31, is `ReconnectingClient` (shep-client/src/reconnect.rs), a distinct wrapper type rather than a mode on Client, so a one-shot CLI verb cannot silently acquire retry semantics. It exists for dogs crossing a daemon handover rather than for lookout. Either way, lookout's own ladder (250ms x2 capped at 4s) deliberately still does NOT converge onto that shared schedule (100ms x1.5 capped at 5s) or onto the new API, because its 5-attempt bound exists specifically to reach a 'frozen' UI state a plain backoff has no concept of.
 
-`docs/research/lookout-tui.md:117-129 (partially addressed by docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:2124, itself not yet shipped as of the current tree - grep for Client::reconnect finds nothing)`
+`docs/research/lookout-tui.md:117-129 (addressed by docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:2124, shipped 2026-09-13; lookout itself has not been moved onto it)`
 
 ### No `--all` flag anywhere in flock/dogs listings
 
@@ -838,13 +848,15 @@ shep flock prints the sheep table, then an always-visible Dogs table beneath it 
 
 `docs/writing-plans/plans/2026-08-12-shep-phase9-dogs.md:108-109`
 
-### shep-client gets an explicit, opt-in Client::reconnect (&mut self) API rather than a transparent retry inside request() - *unverified*
+### shep-client gets an explicit, opt-in Client::reconnect (&mut self) API rather than a transparent retry inside request()
 
 Ruled explicitly against making a dropped connection silently re-dial inside the ordinary request() call path; instead Client::reconnect()/reconnect_within() are new, separately-called methods returning Reconnected::{SameDaemon, NewDaemon} (distinguished via the pid already carried in HelloAck), and the documented remedy for a SUPERVISED dog specifically is to exit on RequestError::Closed rather than reconnect at all.
 
-**Why:** Instance ids are minted per daemon lifetime and never persisted (ProcessEntry has no Serialize); a request like `Delete{selector: Id(7)}` transparently re-dialed after a daemon restart could silently land on a totally different process (or none) under a NEW daemon where id 7 means something else - converting a loud, safe failure into a silent, wrong action, which is exactly the shape of shep-deploy's own worst production defects. `&mut self` (rather than interior mutability that would slide back toward transparent silent reconnection) also forces a caller to hold exclusive access at exactly the moment a connection's identity changes, deliberately trading away the crate's own documented Arc<Client>-sharing convenience for that safety property. A supervised dog reconnecting instead of exiting risks becoming a SECOND copy racing the new daemon's own freshly-autostarted instance of itself.
+**Why:** Instance ids are minted per daemon lifetime and never persisted (ProcessEntry has no Serialize); a request like `Delete{selector: Id(7)}` transparently re-dialed after a daemon restart could silently land on a totally different process (or none) under a NEW daemon where id 7 means something else - converting a loud, safe failure into a silent, wrong action, which is exactly the shape of shep-deploy's own worst production defects. `&mut self` (rather than interior mutability that would slide back toward transparent silent reconnection) also forces a caller to hold exclusive access at exactly the moment a connection's identity changes, deliberately trading away the crate's own documented Arc<Client>-sharing convenience for that safety property. The clearest evidence that this is the right signature came from a CodeRabbit thread on 2026-09-13 arguing that a predecessor request could still complete after reconnect_within returned: it cannot, because request takes &self and reconnect_within takes &mut self, so the borrow checker excludes the case rather than the actor's shutdown timing having to handle it. ReconnectingClient needs that guarantee and does not get it, since its swap happens in a supervisor task concurrently with &self requests, which is exactly why its own docs have to promise that in-flight requests fail. Client::reconnect never makes the promise because the signature makes it unnecessary. A supervised dog reconnecting instead of exiting risks becoming a SECOND copy racing the new daemon's own freshly-autostarted instance of itself.
 
-`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:2124 (NOT yet shipped - no Client::reconnect method exists in the current tree)`
+**On the pid:** it is the right discriminator, but not because a pid identifies a process. A handover is an `execve`, which KEEPS the pid (`crates/shep-daemon/src/handover/adopt.rs:34` says so in as many words), so a pid comparison reports SameDaemon straight across `shep daemon reload` - and that is correct, because the same handover blob carries `next_id` and every sheep with it (`crates/shep-daemon/src/handover/mod.rs:174`). The pid is preserved by exactly the transition that also preserves the id space, which is the whole argument. A handover the fitness gate refuses falls back to stop-and-start, and Windows has no `execve` at all, so both get a fresh process and a fresh id space: new pid, NewDaemon, correct again. The one gap is pid reuse inside a single reconnect window, which would need the OS to recycle the number in milliseconds; nothing on the wire today could tell that apart, and closing it would mean a new HelloAck field that the handover blob then has to carry too.
+
+`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:2124 (shipped 2026-09-13 in crates/shep-client/src/reconnect.rs)`
 
 ### shep.toml has exactly one writer (the CLI); the daemon only reads, and re-reads on every DogConfig request
 
