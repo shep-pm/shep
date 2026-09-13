@@ -7,9 +7,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all fifty scenes through the same coloured
+frames.ansi renders all fifty-eight scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same fifty scenes through the flattened NO_COLOR palette
+renders the same fifty-eight scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -421,7 +421,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
   refused   the shepherd did not answer: could not connect to `/home/ada/.shep/run/shep.sock`: Connection refused (os error 61)                                 
   since     2026-08-14 14:32:07, 9m 53s ago      the sheep themselves may well still be running; lookout cannot see them to say                                 
   try       shep muster, from another shell      then reopen lookout: it does not reconnect on its own                                                          
-q quit   j/k still moves   every other key is refused while the link is down                                                                            █ frozen
+q quit   h keymap   j/k still moves   every other key is refused while the link is down                                                                 █ frozen
 
 === refused  (120x30) ===
 `x` with actions gated off. The refusal is literal, nothing about damage gets charming, and the panes below carry on.
@@ -1477,6 +1477,7 @@ shep lookout   /home/ada/.shep                                            6 in t
    process   logging   inputs   restart   readiness   shutdown   watch   cron     tab n…
   ──────────────────────────────────────────────────────────────────────────────────────
   FIELD                       VALUE                                           LANDS     
+    Where the process runs. Without it, the daemon's own directory                      
 >  cwd                        (unset)                                         respawn   
    depends_on                 []                                              next start
    fold                       (unset)                                         now       
@@ -1494,7 +1495,6 @@ shep lookout   /home/ada/.shep                                            6 in t
    + add a key                                                                          
   ──────────────────────────────────────────────────────────────────────────────────────
   = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits …
-                                                                                        
                                                                                         
                                                                                         
                                                                                         
@@ -1633,6 +1633,7 @@ shep lookout   /home/ada/.shep                                             6 in 
    process   logging   inputs   restart   readiness   shutdown   watch   cron     tab ne…
   ───────────────────────────────────────────────────────────────────────────────────────
   FIELD                       VALUE                                            LANDS     
+    Where stderr goes. Defaults to a file under $SHEP_HOME/logs                          
 >  err_file                   (unset) -> /var/log/api/err.log                  respawn   
  ~ level_rules                []                                               now       
    merge_logs                 false                                            respawn   
@@ -1648,7 +1649,6 @@ shep lookout   /home/ada/.shep                                             6 in 
    + add a key                                                                           
   ───────────────────────────────────────────────────────────────────────────────────────
   = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a…
-                                                                                         
                                                                                          
                                                                                          
                                                                                          
@@ -1727,3 +1727,387 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                                                                 
                                                                                                                                                                 
 the dialog owns the keyboard until it is answered or it expires                                                                                  control enabled
+
+=== keymap  (160x48) ===
+`h` pressed at 160x48, the design target: boxed at 128 columns (126 interior plus one border cell each side), all four columns drawn whole, the sheep once in the DOING column's own rows, and the gate line reading control enabled over the dimmed dashboard behind it.
+
+shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
+                                                                                                                                                                
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 14.7%       ▁█   flock mem 716.0M …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                                                                
+  ID    NAME                  STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       UPTIME    FOLD        SMIT         
+   ██ FLOCK                                                                                                                                                     
+> 2     api                   online           48219    1         -          -              █  7.1%    ░░░░░░░░░░  241.0M    1h 28m    edge        -            
+  3     billing-reconciliat…  online           48230    0         -          -              ▂  0.8%    ░░░░░░░░░░  96.0M     1h 29m    -           -            
+  4     cron                  online           48233    0         -          -              ▁  0.1%    ░░░░░░░░░░  8.0M      1h 31m    -           -            
+  5     metrics               online           48240    0         -          -              ▁  0.4%    ░░░░░░░░░░  11.0M     1h 32m    -           -            
+  0     web                   online           48211    0         -          -              ▄  3.4%    ░░░░░░░░░░  182.0M    1h 25m    edge        -            
+  1     web                   online           48212    0         -          -              ▄  2.9%    ░░░░░░░░░░  178.0M    1h 26m    edge        -            
+                                                                                                                                                                
+                ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                
+                ▐MOVING                          LOOKING                         CHANGING                        DOING                         ▌                
+                ▐j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane    x            stop             ▌                
+                ▐g/G home/end first / last       b            feed, full screen  space        cycle a value      R            restart          ▌                
+                ▐J/K          next / prev sheep  F            gather by fold     d            restore default    L            reload           ▌                
+                ▐ctrl-d/u     page the feed      z            collapse a fold    u            undo the edit                                    ▌                
+                ▐←/→          environment tab    o            out / err / both   s            shepherd settings    ▟█████▙                     ▌                
+                ▐tab          next config group  m            minimum level      S            secrets             ▟███████▙                    ▌                
+                ▐1-8          jump to a group    f            follow the tail    D            delete a secret     ▜██▀ ▀██▛                    ▌                
+                ▐n/N          next / prev match  w            wrap long lines    c            leave it running      ▀▘ ▀▘                      ▌                
+                ▐↵            open selection     /            filter, or match   a-z 0-9      types into a box                                 ▌                
+                ▐esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop                                ▌                
+                ▐                                v            reveal for 10s                                                                   ▌                
+                ▐                                y            copy the value                                                                   ▌                
+                ▐                                                                                                                              ▌                
+                ▐ the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                    ▌                
+                ▐ colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          ▌                
+                ▐ h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                             ▌                
+                ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟                
+                                                                                                                                                                
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                                                          
+lambs  not read yet                                                                                                                                             
+out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                                                           
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ BLEATS api  … 1 earlier line not shown                                                                                                                      
+out  GET /healthz 200 3ms                                                                                                                                       
+out  GET /v1/orders 200 44ms                                                                                                                                    
+out  POST /v1/orders 201 88ms                                                                                                                                   
+out  GET /v1/orders/8821 200 9ms                                                                                                                                
+out  connection pool: 14/50 in use                                                                                                                              
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                              control enabled
+
+=== keymap_floor  (130x48) ===
+The same overlay at 130 columns, the narrowest the border can still hold: 130 = 128 (126 interior plus one border cell each side) plus one margin cell each side. One column narrower and the border is gone.
+
+shep lookout   /home/ada/.shep                                                                                      6 in the flock
+                                                                                                                                  
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 14.7…
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                                  
+  ID    NAME            STATUS           PID      RESTARTS  EXIT       CFG   CPU     MEM       UPTIME    FOLD        SMIT         
+   ██ FLOCK                                                                                                                       
+> 2     api             online           48219    1         -          -     7.1%    241.0M    1h 28m    edge        -            
+  3     billing-recon…  online           48230    0         -          -     0.8%    96.0M     1h 29m    -           -            
+  4     cron            online           48233    0         -          -     0.1%    8.0M      1h 31m    -           -            
+  5     metrics         online           48240    0         -          -     0.4%    11.0M     1h 32m    -           -            
+  0     web             online           48211    0         -          -     3.4%    182.0M    1h 25m    edge        -            
+  1     web             online           48212    0         -          -     2.9%    178.0M    1h 26m    edge        -            
+                                                                                                                                  
+ ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜ 
+ ▐MOVING                          LOOKING                         CHANGING                        DOING                         ▌ 
+ ▐j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane    x            stop             ▌ 
+ ▐g/G home/end first / last       b            feed, full screen  space        cycle a value      R            restart          ▌ 
+ ▐J/K          next / prev sheep  F            gather by fold     d            restore default    L            reload           ▌ 
+ ▐ctrl-d/u     page the feed      z            collapse a fold    u            undo the edit                                    ▌ 
+ ▐←/→          environment tab    o            out / err / both   s            shepherd settings    ▟█████▙                     ▌ 
+ ▐tab          next config group  m            minimum level      S            secrets             ▟███████▙                    ▌ 
+ ▐1-8          jump to a group    f            follow the tail    D            delete a secret     ▜██▀ ▀██▛                    ▌ 
+ ▐n/N          next / prev match  w            wrap long lines    c            leave it running      ▀▘ ▀▘                      ▌ 
+ ▐↵            open selection     /            filter, or match   a-z 0-9      types into a box                                 ▌ 
+ ▐esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop                                ▌ 
+ ▐                                v            reveal for 10s                                                                   ▌ 
+ ▐                                y            copy the value                                                                   ▌ 
+ ▐                                                                                                                              ▌ 
+ ▐ the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                    ▌ 
+ ▐ colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          ▌ 
+ ▐ h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                             ▌ 
+ ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟ 
+                                                                                                                                  
+                                                                                                                                  
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                            
+lambs  not read yet                                                                                                               
+out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                             
+                                                                                                                                  
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ BLEATS api  … 1 earlier line not shown                                                                                        
+out  GET /healthz 200 3ms                                                                                                         
+out  GET /v1/orders 200 44ms                                                                                                      
+out  POST /v1/orders 201 88ms                                                                                                     
+out  GET /v1/orders/8821 200 9ms                                                                                                  
+out  connection pool: 14/50 in use                                                                                                
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled
+
+=== keymap_borderless_wide  (128x48) ===
+128 columns, one below KeymapFloor's own 130: the border is gone, but columns_for(128) is still 4, so this is the widest form the overlay ever draws with all four columns and no frame around them.
+
+MOVING                          LOOKING                         CHANGING                        DOING                           
+j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane    x            stop               
+g/G home/end first / last       b            feed, full screen  space        cycle a value      R            restart            
+J/K          next / prev sheep  F            gather by fold     d            restore default    L            reload             
+ctrl-d/u     page the feed      z            collapse a fold    u            undo the edit                                      
+←/→          environment tab    o            out / err / both   s            shepherd settings                                  
+tab          next config group  m            minimum level      S            secrets                                            
+1-8          jump to a group    f            follow the tail    D            delete a secret                                    
+n/N          next / prev match  w            wrap long lines    c            leave it running                                   
+↵            open selection     /            filter, or match   a-z 0-9      types into a box                                   
+esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop                                  
+                                v            reveal for 10s                                                                     
+                                y            copy the value                                                                     
+                                                                                                                                
+ the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                      
+ colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.            
+ h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                               
+                                                                                                                                
+                                                                                                                                
+                                                                                                                                
+                                                                                                                                
+                                                                                                                                
+                                                                                                                                
+                                                                                                                                
+                                                                                                                                
+                                                                                                                                
+                                                                                                                                
+                                                                                                                                
+                                                                                                                                
+                                                                                                                                
+                                                                                                                                
+                                                                                                                                
+                                                                                                                                
+                                                                                                                                
+                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                          
+lambs  not read yet                                                                                                             
+out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                           
+                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ BLEATS api  … 1 earlier line not shown                                                                                      
+out  GET /healthz 200 3ms                                                                                                       
+out  GET /v1/orders 200 44ms                                                                                                    
+out  POST /v1/orders 201 88ms                                                                                                   
+out  GET /v1/orders/8821 200 9ms                                                                                                
+out  connection pool: 14/50 in use                                                                                              
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * yours   ! pa… control enabled
+
+=== keymap_narrow  (160x48) ===
+100 columns: columns_for(100) is 3, so MOVING, LOOKING and CHANGING share one bank and DOING drops to a bank of its own below a blank separator row.
+
+shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
+                                                                                                                                                                
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 14.7%       ▁█   flock mem 716.0M …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                                                                
+  ID    NAME                  STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       UPTIME    FOLD        SMIT         
+   ██ FLOCK                                                                                                                                                     
+> 2     api                   online           48219    1         -          -              █  7.1%    ░░░░░░░░░░  241.0M    1h 28m    edge        -            
+  3     billing-reconciliat…  online           48230    0         -          -              ▂  0.8%    ░░░░░░░░░░  96.0M     1h 29m    -           -            
+  4     cron                  online           48233    0         -          -              ▁  0.1%    ░░░░░░░░░░  8.0M      1h 31m    -           -            
+  5     metrics               online           48240    0         -          -              ▁  0.4%    ░░░░░░░░░░  11.0M     1h 32m    -           -            
+  0     web                   online           48211    0         -          -              ▄  3.4%    ░░░░░░░░░░  182.0M    1h 25m    edge        -            
+  1     web                   online           48212    0         -          -              ▄  2.9%    ░░░░░░░░░░  178.0M    1h 26m    edge        -            
+                                                                                                                                                                
+                ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                
+                ▐MOVING                          LOOKING                         CHANGING                        DOING                         ▌                
+                ▐j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane    x            stop             ▌                
+                ▐g/G home/end first / last       b            feed, full screen  space        cycle a value      R            restart          ▌                
+                ▐J/K          next / prev sheep  F            gather by fold     d            restore default    L            reload           ▌                
+                ▐ctrl-d/u     page the feed      z            collapse a fold    u            undo the edit                                    ▌                
+                ▐←/→          environment tab    o            out / err / both   s            shepherd settings    ▟█████▙                     ▌                
+                ▐tab          next config group  m            minimum level      S            secrets             ▟███████▙                    ▌                
+                ▐1-8          jump to a group    f            follow the tail    D            delete a secret     ▜██▀ ▀██▛                    ▌                
+                ▐n/N          next / prev match  w            wrap long lines    c            leave it running      ▀▘ ▀▘                      ▌                
+                ▐↵            open selection     /            filter, or match   a-z 0-9      types into a box                                 ▌                
+                ▐esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop                                ▌                
+                ▐                                v            reveal for 10s                                                                   ▌                
+                ▐                                y            copy the value                                                                   ▌                
+                ▐                                                                                                                              ▌                
+                ▐ the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                    ▌                
+                ▐ colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          ▌                
+                ▐ h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                             ▌                
+                ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟                
+                                                                                                                                                                
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                                                          
+lambs  not read yet                                                                                                                                             
+out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                                                           
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ BLEATS api  … 1 earlier line not shown                                                                                                                      
+out  GET /healthz 200 3ms                                                                                                                                       
+out  GET /v1/orders 200 44ms                                                                                                                                    
+out  POST /v1/orders 201 88ms                                                                                                                                   
+out  GET /v1/orders/8821 200 9ms                                                                                                                                
+out  connection pool: 14/50 in use                                                                                                                              
+q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                              control enabled
+
+=== keymap_two_column  (70x48) ===
+70 columns: columns_for(70) is 2, so the four groups split into two banks of two, MOVING and LOOKING on top and CHANGING and DOING below.
+
+MOVING                          LOOKING                               
+j/k  ↑/↓     select a row       h  ?         this keymap              
+g/G home/end first / last       b            feed, full screen        
+J/K          next / prev sheep  F            gather by fold           
+ctrl-d/u     page the feed      z            collapse a fold          
+←/→          environment tab    o            out / err / both         
+tab          next config group  m            minimum level            
+1-8          jump to a group    f            follow the tail          
+n/N          next / prev match  w            wrap long lines          
+↵            open selection     /            filter, or match         
+esc          back one level     r            refresh now              
+                                v            reveal for 10s           
+                                y            copy the value           
+                                                                      
+CHANGING                        DOING                                 
+e            the config pane    x            stop                     
+space        cycle a value      R            restart                  
+d            restore default    L            reload                   
+u            undo the edit                                            
+s            shepherd settings                                        
+S            secrets                                                  
+D            delete a secret                                          
+c            leave it running                                         
+a-z 0-9      types into a box                                         
+⌫ ↵ esc      erase, file, drop                                        
+                                                                      
+                                                                      
+                                                                      
+ the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer …
+ colour is decoration only: every coloured cell says the same thing i…
+ h or ?  closes this  ·  q  ctrl-c  quits lookout                     
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+──────────────────────────────────────────────────────────────────────
+ ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   …
+lambs  not read yet                                                   
+out  …/.shep/logs/api-2-out.log   │   err  …a/.shep/logs/api-2-err.log
+                                                                      
+──────────────────────────────────────────────────────────────────────
+ ██ BLEATS api  … 1 earlier line not shown                            
+out  GET /healthz 200 3ms                                             
+out  GET /v1/orders 200 44ms                                          
+out  POST /v1/orders 201 88ms                                         
+out  GET /v1/orders/8821 200 9ms                                      
+out  connection pool: 14/50 in use                                    
+q quit   j/k select   / filter   F folds   x stop   R… control enabled
+
+=== keymap_frozen  (160x48) ===
+The overlay raised after the link is already lost: the gate line names the dead link, not either control state, the same precedence the status bar's own right-hand label gives Link::Lost over Control.
+
+ THE SHEPHERD HAS DIED  ▖  these values are frozen as of 2026-08-14 14:32:07                                                 nothing here is live  ▖  q to quit 
+                                                                                                                                                                
+ shep lookout   /home/ada/.shep  ·  the dashboard stays up so you can read what it had  ·  it will not exit on its own                                          
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 14.7%       ▁█   flock mem 716.0M …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                                                                
+  ID    NAME                  STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       FROZEN    FOLD        SMIT         
+   ██ FLOCK                                                                                                                                                     
+> 2     api                   online           48219    1         -          -              █  7.1%    ░░░░░░░░░░  241.0M    1h 18m    edge        -            
+  3     billing-reconciliat…  online           48230    0         -          -              ▂  0.8%    ░░░░░░░░░░  96.0M     1h 19m    -           -            
+  4     cron                  online           48233    0         -          -              ▁  0.1%    ░░░░░░░░░░  8.0M      1h 21m    -           -            
+  5     metrics               online           48240    0         -          -              ▁  0.4%    ░░░░░░░░░░  11.0M     1h 22m    -           -            
+  0     web                   online           48211    0         -          -              ▄  3.4%    ░░░░░░░░░░  182.0M    1h 15m    edge        -            
+  1     web                   online           48212    0         -          -              ▄  2.9%    ░░░░░░░░░░  178.0M    1h 16m    edge        -            
+                ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                
+                ▐MOVING                          LOOKING                         CHANGING                        DOING                         ▌                
+                ▐j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane    x            stop             ▌                
+                ▐g/G home/end first / last       b            feed, full screen  space        cycle a value      R            restart          ▌                
+                ▐J/K          next / prev sheep  F            gather by fold     d            restore default    L            reload           ▌                
+                ▐ctrl-d/u     page the feed      z            collapse a fold    u            undo the edit                                    ▌                
+                ▐←/→          environment tab    o            out / err / both   s            shepherd settings    ▟█████▙                     ▌                
+                ▐tab          next config group  m            minimum level      S            secrets             ▟███████▙                    ▌                
+                ▐1-8          jump to a group    f            follow the tail    D            delete a secret     ▜██▀ ▀██▛                    ▌                
+                ▐n/N          next / prev match  w            wrap long lines    c            leave it running      ▀▘ ▀▘                      ▌                
+                ▐↵            open selection     /            filter, or match   a-z 0-9      types into a box                                 ▌                
+                ▐esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop                                ▌                
+                ▐                                v            reveal for 10s                                                                   ▌                
+                ▐                                y            copy the value                                                                   ▌                
+                ▐                                                                                                                              ▌                
+                ▐ the three above are refused  ·  █ the link is down  ·  nothing acts                                                          ▌                
+                ▐ colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          ▌                
+                ▐ h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                             ▌                
+                ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ THE LINK  5 redials over 7.75s, all refused   ·   lookout has stopped polling and stopped re-dialling                                                       
+  ladder    █ 250ms  █ 500ms  █ 1s  █ 2s  █ 4s                                                                                                                  
+  refused   the shepherd did not answer: could not connect to `/home/ada/.shep/run/shep.sock`: Connection refused (os error 61)                                 
+  since     2026-08-14 14:32:07, 9m 53s ago      the sheep themselves may well still be running; lookout cannot see them to say                                 
+  try       shep muster, from another shell      then reopen lookout: it does not reconnect on its own                                                          
+q quit   h keymap   j/k still moves   every other key is refused while the link is down                                                                 █ frozen
+
+=== keymap_read_only  (160x48) ===
+The overlay raised under --read-only: the gate line reads read-only where the design target's own reads control enabled.
+
+shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
+                                                                                                                                                                
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 14.7%       ▁█   flock mem 716.0M …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                                                                
+  ID    NAME                  STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       UPTIME    FOLD        SMIT         
+   ██ FLOCK                                                                                                                                                     
+> 2     api                   online           48219    1         -          -              █  7.1%    ░░░░░░░░░░  241.0M    1h 28m    edge        -            
+  3     billing-reconciliat…  online           48230    0         -          -              ▂  0.8%    ░░░░░░░░░░  96.0M     1h 29m    -           -            
+  4     cron                  online           48233    0         -          -              ▁  0.1%    ░░░░░░░░░░  8.0M      1h 31m    -           -            
+  5     metrics               online           48240    0         -          -              ▁  0.4%    ░░░░░░░░░░  11.0M     1h 32m    -           -            
+  0     web                   online           48211    0         -          -              ▄  3.4%    ░░░░░░░░░░  182.0M    1h 25m    edge        -            
+  1     web                   online           48212    0         -          -              ▄  2.9%    ░░░░░░░░░░  178.0M    1h 26m    edge        -            
+                                                                                                                                                                
+                ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                
+                ▐MOVING                          LOOKING                         CHANGING                        DOING                         ▌                
+                ▐j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane    x            stop             ▌                
+                ▐g/G home/end first / last       b            feed, full screen  space        cycle a value      R            restart          ▌                
+                ▐J/K          next / prev sheep  F            gather by fold     d            restore default    L            reload           ▌                
+                ▐ctrl-d/u     page the feed      z            collapse a fold    u            undo the edit                                    ▌                
+                ▐←/→          environment tab    o            out / err / both   s            shepherd settings    ▟█████▙                     ▌                
+                ▐tab          next config group  m            minimum level      S            secrets             ▟███████▙                    ▌                
+                ▐1-8          jump to a group    f            follow the tail    D            delete a secret     ▜██▀ ▀██▛                    ▌                
+                ▐n/N          next / prev match  w            wrap long lines    c            leave it running      ▀▘ ▀▘                      ▌                
+                ▐↵            open selection     /            filter, or match   a-z 0-9      types into a box                                 ▌                
+                ▐esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop                                ▌                
+                ▐                                v            reveal for 10s                                                                   ▌                
+                ▐                                y            copy the value                                                                   ▌                
+                ▐                                                                                                                              ▌                
+                ▐ the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ read-only                                          ▌                
+                ▐ colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          ▌                
+                ▐ h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                             ▌                
+                ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟                
+                                                                                                                                                                
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                                                          
+lambs  not read yet                                                                                                                                             
+out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                                                           
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ BLEATS api  … 1 earlier line not shown                                                                                                                      
+out  GET /healthz 200 3ms                                                                                                                                       
+out  GET /v1/orders 200 44ms                                                                                                                                    
+out  POST /v1/orders 201 88ms                                                                                                                                   
+out  GET /v1/orders/8821 200 9ms                                                                                                                                
+out  connection pool: 14/50 in use                                                                                                                              
+q quit   j/k select   g/G first/last   r refresh   / filter   F folds   s settings   e edit   * yours   ! parked                                       read-only
+
+=== keymap_short  (160x16) ===
+160x16, under the nineteen rows the box needs: the borderless form sheds down to its own Decoration tier, so the sheep and the NO_COLOR sentence are gone while every key row is still on screen.
+
+MOVING                          LOOKING                         CHANGING                        DOING                                                           
+j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane    x            stop                                               
+g/G home/end first / last       b            feed, full screen  space        cycle a value      R            restart                                            
+J/K          next / prev sheep  F            gather by fold     d            restore default    L            reload                                             
+ctrl-d/u     page the feed      z            collapse a fold    u            undo the edit                                                                      
+←/→          environment tab    o            out / err / both   s            shepherd settings                                                                  
+tab          next config group  m            minimum level      S            secrets                                                                            
+1-8          jump to a group    f            follow the tail    D            delete a secret                                                                    
+n/N          next / prev match  w            wrap long lines    c            leave it running                                                                   
+↵            open selection     /            filter, or match   a-z 0-9      types into a box                                                                   
+esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop                                                                  
+                                v            reveal for 10s                                                                                                     
+                                y            copy the value                                                                                                     
+                                                                                                                                                                
+ the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                                                      
+ h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                                                               

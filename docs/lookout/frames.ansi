@@ -7,9 +7,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all fifty scenes through the same coloured
+frames.ansi renders all fifty-eight scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same fifty scenes through the flattened NO_COLOR palette
+renders the same fifty-eight scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -432,7 +432,7 @@ The ladder ran out. The band says so in bark, the whole table and the host strip
 [0m[38;5;245m  refused   the shepherd did not answer: could not connect to `/home/ada/.shep/run/shep.sock`: Connection refused (os error 61)[0m                                 [0m
 [0m[38;5;245m  since     2026-08-14 14:32:07, 9m 53s ago      the sheep themselves may well still be running; lookout cannot see them to say[0m                                 [0m
 [0m[38;5;221m  try       [0m[38;5;245mshep muster, from another shell      then reopen lookout: it does not reconnect on its own[0m                                                          [0m
-[0m[38;5;221m[48;5;235mq quit   j/k still moves   every other key is refused while the link is down                                                                           [0m[38;5;245m[48;5;235m █ frozen[0m
+[0m[38;5;221m[48;5;235mq quit   h keymap   j/k still moves   every other key is refused while the link is down                                                                [0m[38;5;245m[48;5;235m █ frozen[0m
 
 
 === refused  (120x30) ===
@@ -1522,6 +1522,7 @@ The same fresh pane at 88 columns: narrow enough that the explanation panel is g
   [0m[48;5;235m process [0m[38;5;245m  logging   inputs   restart   readiness   shutdown   watch   cron     tab n…[0m
 [0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────[0m
 [0m[38;5;245m  FIELD                       VALUE                                           LANDS     [0m
+[0m[38;5;245m    Where the process runs. Without it, the daemon's own directory                      [0m
 [0m[38;5;221m[48;5;235m>[0m[48;5;235m  cwd                        (unset)                                         respawn   [0m
    depends_on                 []                                              next start[0m
    fold                       (unset)                                         now       [0m
@@ -1539,7 +1540,6 @@ The same fresh pane at 88 columns: narrow enough that the explanation panel is g
  [0m[38;5;245m  + add a key              [0m                                                            [0m
 [0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────[0m
 [0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits …[0m
-                                                                                        [0m
                                                                                         [0m
                                                                                         [0m
                                                                                         [0m
@@ -1681,6 +1681,7 @@ The same dialog one column under the floor, at 89: the border is dropped and the
 [0m[38;5;245m   process   logging   inputs   restart   readiness   shutdown   watch   cron     tab ne…[0m
 [0m[38;5;245m  ───────────────────────────────────────────────────────────────────────────────────────[0m
 [0m[38;5;245m  FIELD                       VALUE                                            LANDS     [0m
+[0m[38;5;245m    Where stderr goes. Defaults to a file under $SHEP_HOME/logs                          [0m
 [0m[38;5;245m>  err_file                   (unset) -> /var/log/api/err.log                  respawn   [0m
 [0m[38;5;245m ~ level_rules                []                                               now       [0m
 [0m[38;5;245m   merge_logs                 false                                            respawn   [0m
@@ -1696,7 +1697,6 @@ The same dialog one column under the floor, at 89: the border is dropped and the
 [0m[38;5;245m   + add a key                                                                           [0m
 [0m[38;5;245m  ───────────────────────────────────────────────────────────────────────────────────────[0m
 [0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a…[0m
-[0m[38;5;245m                                                                                         [0m
 [0m[38;5;245m                                                                                         [0m
 [0m[38;5;245m                                                                                         [0m
 [0m[38;5;245m                                                                                         [0m
@@ -1776,3 +1776,395 @@ esc pressed with no edit of the operator's own, only listen_timeout already park
 [0m[38;5;245m                                                                                                                                                                [0m
 [0m[38;5;245m                                                                                                                                                                [0m
 [0m[38;5;245m[48;5;235mthe dialog owns the keyboard until it is answered or it expires                                                                                  control enabled[0m
+
+
+=== keymap  (160x48) ===
+`h` pressed at 160x48, the design target: boxed at 128 columns (126 interior plus one border cell each side), all four columns drawn whole, the sheep once in the DOING column's own rows, and the gate line reading control enabled over the dimmed dashboard behind it.
+
+[0m[38;5;245mshep lookout   /home/ada/.shep                                                                                                                    6 in the flock[0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245mhost  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 14.7%       ▁█   flock mem 716.0M …[0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m  ID    NAME                  STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       UPTIME    FOLD        SMIT         [0m
+[0m[38;5;245m   ██ FLOCK                                                                                                                                                     [0m
+[0m[38;5;245m  2     api                   online           48219    1         -          -              █  7.1%    ░░░░░░░░░░  241.0M    1h 28m    edge        -            [0m
+[0m[38;5;245m  3     billing-reconciliat…  online           48230    0         -          -              ▂  0.8%    ░░░░░░░░░░  96.0M     1h 29m    -           -            [0m
+[0m[38;5;245m  4     cron                  online           48233    0         -          -              ▁  0.1%    ░░░░░░░░░░  8.0M      1h 31m    -           -            [0m
+[0m[38;5;245m  5     metrics               online           48240    0         -          -              ▁  0.4%    ░░░░░░░░░░  11.0M     1h 32m    -           -            [0m
+[0m[38;5;245m  0     web                   online           48211    0         -          -              ▄  3.4%    ░░░░░░░░░░  182.0M    1h 25m    edge        -            [0m
+[0m[38;5;245m  1     web                   online           48212    0         -          -              ▄  2.9%    ░░░░░░░░░░  178.0M    1h 26m    edge        -            [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[7m[38;5;29m[48;5;235mMOVING                        [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mLOOKING                       [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mCHANGING                      [0m[38;5;245m[48;5;235m  [0m[7m[38;5;166m[48;5;235mDOING                         [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mj/k  ↑/↓    [0m[38;5;245m[48;5;235m select a row       [0m[38;5;221m[48;5;235mh  ?        [0m[38;5;245m[48;5;235m this keymap        [0m[38;5;221m[48;5;235me           [0m[38;5;245m[48;5;235m the config pane    [0m[38;5;221m[48;5;235mx           [0m[38;5;245m[48;5;235m stop             [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mg/G home/end[0m[38;5;245m[48;5;235m first / last       [0m[38;5;221m[48;5;235mb           [0m[38;5;245m[48;5;235m feed, full screen  [0m[38;5;221m[48;5;235mspace       [0m[38;5;245m[48;5;235m cycle a value      [0m[38;5;221m[48;5;235mR           [0m[38;5;245m[48;5;235m restart          [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mJ/K         [0m[38;5;245m[48;5;235m next / prev sheep  [0m[38;5;221m[48;5;235mF           [0m[38;5;245m[48;5;235m gather by fold     [0m[38;5;221m[48;5;235md           [0m[38;5;245m[48;5;235m restore default    [0m[38;5;221m[48;5;235mL           [0m[38;5;245m[48;5;235m reload           [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mctrl-d/u    [0m[38;5;245m[48;5;235m page the feed      [0m[38;5;221m[48;5;235mz           [0m[38;5;245m[48;5;235m collapse a fold    [0m[38;5;221m[48;5;235mu           [0m[38;5;245m[48;5;235m undo the edit                                    [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235m←/→         [0m[38;5;245m[48;5;235m environment tab    [0m[38;5;221m[48;5;235mo           [0m[38;5;245m[48;5;235m out / err / both   [0m[38;5;221m[48;5;235ms           [0m[38;5;245m[48;5;235m shepherd settings    ▟█████▙                     [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mtab         [0m[38;5;245m[48;5;235m next config group  [0m[38;5;221m[48;5;235mm           [0m[38;5;245m[48;5;235m minimum level      [0m[38;5;221m[48;5;235mS           [0m[38;5;245m[48;5;235m secrets             ▟███████▙                    [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235m1-8         [0m[38;5;245m[48;5;235m jump to a group    [0m[38;5;221m[48;5;235mf           [0m[38;5;245m[48;5;235m follow the tail    [0m[38;5;221m[48;5;235mD           [0m[38;5;245m[48;5;235m delete a secret     ▜██▀ ▀██▛                    [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mn/N         [0m[38;5;245m[48;5;235m next / prev match  [0m[38;5;221m[48;5;235mw           [0m[38;5;245m[48;5;235m wrap long lines    [0m[38;5;221m[48;5;235mc           [0m[38;5;245m[48;5;235m leave it running      ▀▘ ▀▘                      [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235m↵           [0m[38;5;245m[48;5;235m open selection     [0m[38;5;221m[48;5;235m/           [0m[38;5;245m[48;5;235m filter, or match   [0m[38;5;221m[48;5;235ma-z 0-9     [0m[38;5;245m[48;5;235m types into a box                                 [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mesc         [0m[38;5;245m[48;5;235m back one level     [0m[38;5;221m[48;5;235mr           [0m[38;5;245m[48;5;235m refresh now        [0m[38;5;221m[48;5;235m⌫ ↵ esc     [0m[38;5;245m[48;5;235m erase, file, drop                                [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m                                [0m[38;5;221m[48;5;235mv           [0m[38;5;245m[48;5;235m reveal for 10s                                                                   [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m                                [0m[38;5;221m[48;5;235my           [0m[38;5;245m[48;5;235m copy the value                                                                   [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m                                                                                                                              [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235m the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                    [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                             [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟[0m[38;5;245m                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                                                          [0m
+[0m[38;5;245mlambs  not read yet                                                                                                                                             [0m
+[0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                                                           [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m ██ BLEATS api  … 1 earlier line not shown                                                                                                                      [0m
+[0m[38;5;245mout  GET /healthz 200 3ms                                                                                                                                       [0m
+[0m[38;5;245mout  GET /v1/orders 200 44ms                                                                                                                                    [0m
+[0m[38;5;245mout  POST /v1/orders 201 88ms                                                                                                                                   [0m
+[0m[38;5;245mout  GET /v1/orders/8821 200 9ms                                                                                                                                [0m
+[0m[38;5;245mout  connection pool: 14/50 in use                                                                                                                              [0m
+[0m[38;5;245mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                              control enabled[0m
+
+
+=== keymap_floor  (130x48) ===
+The same overlay at 130 columns, the narrowest the border can still hold: 130 = 128 (126 interior plus one border cell each side) plus one margin cell each side. One column narrower and the border is gone.
+
+[0m[38;5;245mshep lookout   /home/ada/.shep                                                                                      6 in the flock[0m
+[0m[38;5;245m                                                                                                                                  [0m
+[0m[38;5;245mhost  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 14.7…[0m
+[0m[38;5;245m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m                                                                                                                                  [0m
+[0m[38;5;245m  ID    NAME            STATUS           PID      RESTARTS  EXIT       CFG   CPU     MEM       UPTIME    FOLD        SMIT         [0m
+[0m[38;5;245m   ██ FLOCK                                                                                                                       [0m
+[0m[38;5;245m  2     api             online           48219    1         -          -     7.1%    241.0M    1h 28m    edge        -            [0m
+[0m[38;5;245m  3     billing-recon…  online           48230    0         -          -     0.8%    96.0M     1h 29m    -           -            [0m
+[0m[38;5;245m  4     cron            online           48233    0         -          -     0.1%    8.0M      1h 31m    -           -            [0m
+[0m[38;5;245m  5     metrics         online           48240    0         -          -     0.4%    11.0M     1h 32m    -           -            [0m
+[0m[38;5;245m  0     web             online           48211    0         -          -     3.4%    182.0M    1h 25m    edge        -            [0m
+[0m[38;5;245m  1     web             online           48212    0         -          -     2.9%    178.0M    1h 26m    edge        -            [0m
+[0m[38;5;245m                                                                                                                                  [0m
+[0m[38;5;245m [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[7m[38;5;29m[48;5;235mMOVING                        [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mLOOKING                       [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mCHANGING                      [0m[38;5;245m[48;5;235m  [0m[7m[38;5;166m[48;5;235mDOING                         [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[38;5;221m[48;5;235mj/k  ↑/↓    [0m[38;5;245m[48;5;235m select a row       [0m[38;5;221m[48;5;235mh  ?        [0m[38;5;245m[48;5;235m this keymap        [0m[38;5;221m[48;5;235me           [0m[38;5;245m[48;5;235m the config pane    [0m[38;5;221m[48;5;235mx           [0m[38;5;245m[48;5;235m stop             [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[38;5;221m[48;5;235mg/G home/end[0m[38;5;245m[48;5;235m first / last       [0m[38;5;221m[48;5;235mb           [0m[38;5;245m[48;5;235m feed, full screen  [0m[38;5;221m[48;5;235mspace       [0m[38;5;245m[48;5;235m cycle a value      [0m[38;5;221m[48;5;235mR           [0m[38;5;245m[48;5;235m restart          [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[38;5;221m[48;5;235mJ/K         [0m[38;5;245m[48;5;235m next / prev sheep  [0m[38;5;221m[48;5;235mF           [0m[38;5;245m[48;5;235m gather by fold     [0m[38;5;221m[48;5;235md           [0m[38;5;245m[48;5;235m restore default    [0m[38;5;221m[48;5;235mL           [0m[38;5;245m[48;5;235m reload           [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[38;5;221m[48;5;235mctrl-d/u    [0m[38;5;245m[48;5;235m page the feed      [0m[38;5;221m[48;5;235mz           [0m[38;5;245m[48;5;235m collapse a fold    [0m[38;5;221m[48;5;235mu           [0m[38;5;245m[48;5;235m undo the edit                                    [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[38;5;221m[48;5;235m←/→         [0m[38;5;245m[48;5;235m environment tab    [0m[38;5;221m[48;5;235mo           [0m[38;5;245m[48;5;235m out / err / both   [0m[38;5;221m[48;5;235ms           [0m[38;5;245m[48;5;235m shepherd settings    ▟█████▙                     [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[38;5;221m[48;5;235mtab         [0m[38;5;245m[48;5;235m next config group  [0m[38;5;221m[48;5;235mm           [0m[38;5;245m[48;5;235m minimum level      [0m[38;5;221m[48;5;235mS           [0m[38;5;245m[48;5;235m secrets             ▟███████▙                    [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[38;5;221m[48;5;235m1-8         [0m[38;5;245m[48;5;235m jump to a group    [0m[38;5;221m[48;5;235mf           [0m[38;5;245m[48;5;235m follow the tail    [0m[38;5;221m[48;5;235mD           [0m[38;5;245m[48;5;235m delete a secret     ▜██▀ ▀██▛                    [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[38;5;221m[48;5;235mn/N         [0m[38;5;245m[48;5;235m next / prev match  [0m[38;5;221m[48;5;235mw           [0m[38;5;245m[48;5;235m wrap long lines    [0m[38;5;221m[48;5;235mc           [0m[38;5;245m[48;5;235m leave it running      ▀▘ ▀▘                      [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[38;5;221m[48;5;235m↵           [0m[38;5;245m[48;5;235m open selection     [0m[38;5;221m[48;5;235m/           [0m[38;5;245m[48;5;235m filter, or match   [0m[38;5;221m[48;5;235ma-z 0-9     [0m[38;5;245m[48;5;235m types into a box                                 [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[38;5;221m[48;5;235mesc         [0m[38;5;245m[48;5;235m back one level     [0m[38;5;221m[48;5;235mr           [0m[38;5;245m[48;5;235m refresh now        [0m[38;5;221m[48;5;235m⌫ ↵ esc     [0m[38;5;245m[48;5;235m erase, file, drop                                [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[38;5;245m[48;5;235m                                [0m[38;5;221m[48;5;235mv           [0m[38;5;245m[48;5;235m reveal for 10s                                                                   [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[38;5;245m[48;5;235m                                [0m[38;5;221m[48;5;235my           [0m[38;5;245m[48;5;235m copy the value                                                                   [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[38;5;245m[48;5;235m                                                                                                                              [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[38;5;221m[48;5;235m the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                    [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[38;5;245m[48;5;235m colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[38;5;245m[48;5;235m h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                             [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟[0m[38;5;245m [0m
+[0m[38;5;245m                                                                                                                                  [0m
+[0m[38;5;245m                                                                                                                                  [0m
+[0m[38;5;245m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                            [0m
+[0m[38;5;245mlambs  not read yet                                                                                                               [0m
+[0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                             [0m
+[0m[38;5;245m                                                                                                                                  [0m
+[0m[38;5;245m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m ██ BLEATS api  … 1 earlier line not shown                                                                                        [0m
+[0m[38;5;245mout  GET /healthz 200 3ms                                                                                                         [0m
+[0m[38;5;245mout  GET /v1/orders 200 44ms                                                                                                      [0m
+[0m[38;5;245mout  POST /v1/orders 201 88ms                                                                                                     [0m
+[0m[38;5;245mout  GET /v1/orders/8821 200 9ms                                                                                                  [0m
+[0m[38;5;245mout  connection pool: 14/50 in use                                                                                                [0m
+[0m[38;5;245mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * yours   ! park… control enabled[0m
+
+
+=== keymap_borderless_wide  (128x48) ===
+128 columns, one below KeymapFloor's own 130: the border is gone, but columns_for(128) is still 4, so this is the widest form the overlay ever draws with all four columns and no frame around them.
+
+[0m[7m[38;5;29m[48;5;235mMOVING                        [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mLOOKING                       [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mCHANGING                      [0m[38;5;245m[48;5;235m  [0m[7m[38;5;166m[48;5;235mDOING                         [0m[38;5;245m[48;5;235m  [0m
+[0m[38;5;221m[48;5;235mj/k  ↑/↓    [0m[38;5;245m[48;5;235m select a row       [0m[38;5;221m[48;5;235mh  ?        [0m[38;5;245m[48;5;235m this keymap        [0m[38;5;221m[48;5;235me           [0m[38;5;245m[48;5;235m the config pane    [0m[38;5;221m[48;5;235mx           [0m[38;5;245m[48;5;235m stop               [0m
+[0m[38;5;221m[48;5;235mg/G home/end[0m[38;5;245m[48;5;235m first / last       [0m[38;5;221m[48;5;235mb           [0m[38;5;245m[48;5;235m feed, full screen  [0m[38;5;221m[48;5;235mspace       [0m[38;5;245m[48;5;235m cycle a value      [0m[38;5;221m[48;5;235mR           [0m[38;5;245m[48;5;235m restart            [0m
+[0m[38;5;221m[48;5;235mJ/K         [0m[38;5;245m[48;5;235m next / prev sheep  [0m[38;5;221m[48;5;235mF           [0m[38;5;245m[48;5;235m gather by fold     [0m[38;5;221m[48;5;235md           [0m[38;5;245m[48;5;235m restore default    [0m[38;5;221m[48;5;235mL           [0m[38;5;245m[48;5;235m reload             [0m
+[0m[38;5;221m[48;5;235mctrl-d/u    [0m[38;5;245m[48;5;235m page the feed      [0m[38;5;221m[48;5;235mz           [0m[38;5;245m[48;5;235m collapse a fold    [0m[38;5;221m[48;5;235mu           [0m[38;5;245m[48;5;235m undo the edit                                      [0m
+[0m[38;5;221m[48;5;235m←/→         [0m[38;5;245m[48;5;235m environment tab    [0m[38;5;221m[48;5;235mo           [0m[38;5;245m[48;5;235m out / err / both   [0m[38;5;221m[48;5;235ms           [0m[38;5;245m[48;5;235m shepherd settings                                  [0m
+[0m[38;5;221m[48;5;235mtab         [0m[38;5;245m[48;5;235m next config group  [0m[38;5;221m[48;5;235mm           [0m[38;5;245m[48;5;235m minimum level      [0m[38;5;221m[48;5;235mS           [0m[38;5;245m[48;5;235m secrets                                            [0m
+[0m[38;5;221m[48;5;235m1-8         [0m[38;5;245m[48;5;235m jump to a group    [0m[38;5;221m[48;5;235mf           [0m[38;5;245m[48;5;235m follow the tail    [0m[38;5;221m[48;5;235mD           [0m[38;5;245m[48;5;235m delete a secret                                    [0m
+[0m[38;5;221m[48;5;235mn/N         [0m[38;5;245m[48;5;235m next / prev match  [0m[38;5;221m[48;5;235mw           [0m[38;5;245m[48;5;235m wrap long lines    [0m[38;5;221m[48;5;235mc           [0m[38;5;245m[48;5;235m leave it running                                   [0m
+[0m[38;5;221m[48;5;235m↵           [0m[38;5;245m[48;5;235m open selection     [0m[38;5;221m[48;5;235m/           [0m[38;5;245m[48;5;235m filter, or match   [0m[38;5;221m[48;5;235ma-z 0-9     [0m[38;5;245m[48;5;235m types into a box                                   [0m
+[0m[38;5;221m[48;5;235mesc         [0m[38;5;245m[48;5;235m back one level     [0m[38;5;221m[48;5;235mr           [0m[38;5;245m[48;5;235m refresh now        [0m[38;5;221m[48;5;235m⌫ ↵ esc     [0m[38;5;245m[48;5;235m erase, file, drop                                  [0m
+[0m[38;5;245m[48;5;235m                                [0m[38;5;221m[48;5;235mv           [0m[38;5;245m[48;5;235m reveal for 10s                                                                     [0m
+[0m[38;5;245m[48;5;235m                                [0m[38;5;221m[48;5;235my           [0m[38;5;245m[48;5;235m copy the value                                                                     [0m
+[0m[38;5;245m[48;5;235m                                                                                                                                [0m
+[0m[38;5;221m[48;5;235m the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                      [0m
+[0m[38;5;245m[48;5;235m colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.            [0m
+[0m[38;5;245m[48;5;235m h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                               [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                          [0m
+[0m[38;5;245mlambs  not read yet                                                                                                             [0m
+[0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                           [0m
+[0m[38;5;245m                                                                                                                                [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m ██ BLEATS api  … 1 earlier line not shown                                                                                      [0m
+[0m[38;5;245mout  GET /healthz 200 3ms                                                                                                       [0m
+[0m[38;5;245mout  GET /v1/orders 200 44ms                                                                                                    [0m
+[0m[38;5;245mout  POST /v1/orders 201 88ms                                                                                                   [0m
+[0m[38;5;245mout  GET /v1/orders/8821 200 9ms                                                                                                [0m
+[0m[38;5;245mout  connection pool: 14/50 in use                                                                                              [0m
+[0m[38;5;245mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * yours   ! pa… control enabled[0m
+
+
+=== keymap_narrow  (160x48) ===
+100 columns: columns_for(100) is 3, so MOVING, LOOKING and CHANGING share one bank and DOING drops to a bank of its own below a blank separator row.
+
+[0m[38;5;245mshep lookout   /home/ada/.shep                                                                                                                    6 in the flock[0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245mhost  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 14.7%       ▁█   flock mem 716.0M …[0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m  ID    NAME                  STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       UPTIME    FOLD        SMIT         [0m
+[0m[38;5;245m   ██ FLOCK                                                                                                                                                     [0m
+[0m[38;5;245m  2     api                   online           48219    1         -          -              █  7.1%    ░░░░░░░░░░  241.0M    1h 28m    edge        -            [0m
+[0m[38;5;245m  3     billing-reconciliat…  online           48230    0         -          -              ▂  0.8%    ░░░░░░░░░░  96.0M     1h 29m    -           -            [0m
+[0m[38;5;245m  4     cron                  online           48233    0         -          -              ▁  0.1%    ░░░░░░░░░░  8.0M      1h 31m    -           -            [0m
+[0m[38;5;245m  5     metrics               online           48240    0         -          -              ▁  0.4%    ░░░░░░░░░░  11.0M     1h 32m    -           -            [0m
+[0m[38;5;245m  0     web                   online           48211    0         -          -              ▄  3.4%    ░░░░░░░░░░  182.0M    1h 25m    edge        -            [0m
+[0m[38;5;245m  1     web                   online           48212    0         -          -              ▄  2.9%    ░░░░░░░░░░  178.0M    1h 26m    edge        -            [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[7m[38;5;29m[48;5;235mMOVING                        [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mLOOKING                       [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mCHANGING                      [0m[38;5;245m[48;5;235m  [0m[7m[38;5;166m[48;5;235mDOING                         [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mj/k  ↑/↓    [0m[38;5;245m[48;5;235m select a row       [0m[38;5;221m[48;5;235mh  ?        [0m[38;5;245m[48;5;235m this keymap        [0m[38;5;221m[48;5;235me           [0m[38;5;245m[48;5;235m the config pane    [0m[38;5;221m[48;5;235mx           [0m[38;5;245m[48;5;235m stop             [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mg/G home/end[0m[38;5;245m[48;5;235m first / last       [0m[38;5;221m[48;5;235mb           [0m[38;5;245m[48;5;235m feed, full screen  [0m[38;5;221m[48;5;235mspace       [0m[38;5;245m[48;5;235m cycle a value      [0m[38;5;221m[48;5;235mR           [0m[38;5;245m[48;5;235m restart          [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mJ/K         [0m[38;5;245m[48;5;235m next / prev sheep  [0m[38;5;221m[48;5;235mF           [0m[38;5;245m[48;5;235m gather by fold     [0m[38;5;221m[48;5;235md           [0m[38;5;245m[48;5;235m restore default    [0m[38;5;221m[48;5;235mL           [0m[38;5;245m[48;5;235m reload           [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mctrl-d/u    [0m[38;5;245m[48;5;235m page the feed      [0m[38;5;221m[48;5;235mz           [0m[38;5;245m[48;5;235m collapse a fold    [0m[38;5;221m[48;5;235mu           [0m[38;5;245m[48;5;235m undo the edit                                    [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235m←/→         [0m[38;5;245m[48;5;235m environment tab    [0m[38;5;221m[48;5;235mo           [0m[38;5;245m[48;5;235m out / err / both   [0m[38;5;221m[48;5;235ms           [0m[38;5;245m[48;5;235m shepherd settings    ▟█████▙                     [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mtab         [0m[38;5;245m[48;5;235m next config group  [0m[38;5;221m[48;5;235mm           [0m[38;5;245m[48;5;235m minimum level      [0m[38;5;221m[48;5;235mS           [0m[38;5;245m[48;5;235m secrets             ▟███████▙                    [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235m1-8         [0m[38;5;245m[48;5;235m jump to a group    [0m[38;5;221m[48;5;235mf           [0m[38;5;245m[48;5;235m follow the tail    [0m[38;5;221m[48;5;235mD           [0m[38;5;245m[48;5;235m delete a secret     ▜██▀ ▀██▛                    [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mn/N         [0m[38;5;245m[48;5;235m next / prev match  [0m[38;5;221m[48;5;235mw           [0m[38;5;245m[48;5;235m wrap long lines    [0m[38;5;221m[48;5;235mc           [0m[38;5;245m[48;5;235m leave it running      ▀▘ ▀▘                      [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235m↵           [0m[38;5;245m[48;5;235m open selection     [0m[38;5;221m[48;5;235m/           [0m[38;5;245m[48;5;235m filter, or match   [0m[38;5;221m[48;5;235ma-z 0-9     [0m[38;5;245m[48;5;235m types into a box                                 [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mesc         [0m[38;5;245m[48;5;235m back one level     [0m[38;5;221m[48;5;235mr           [0m[38;5;245m[48;5;235m refresh now        [0m[38;5;221m[48;5;235m⌫ ↵ esc     [0m[38;5;245m[48;5;235m erase, file, drop                                [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m                                [0m[38;5;221m[48;5;235mv           [0m[38;5;245m[48;5;235m reveal for 10s                                                                   [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m                                [0m[38;5;221m[48;5;235my           [0m[38;5;245m[48;5;235m copy the value                                                                   [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m                                                                                                                              [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235m the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                    [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                             [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟[0m[38;5;245m                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                                                          [0m
+[0m[38;5;245mlambs  not read yet                                                                                                                                             [0m
+[0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                                                           [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m ██ BLEATS api  … 1 earlier line not shown                                                                                                                      [0m
+[0m[38;5;245mout  GET /healthz 200 3ms                                                                                                                                       [0m
+[0m[38;5;245mout  GET /v1/orders 200 44ms                                                                                                                                    [0m
+[0m[38;5;245mout  POST /v1/orders 201 88ms                                                                                                                                   [0m
+[0m[38;5;245mout  GET /v1/orders/8821 200 9ms                                                                                                                                [0m
+[0m[38;5;245mout  connection pool: 14/50 in use                                                                                                                              [0m
+[0m[38;5;245mq quit   j/k select   / filter   F folds   x stop   R restart   L reload   s settings   e edit   * yours   ! parked                              control enabled[0m
+
+
+=== keymap_two_column  (70x48) ===
+70 columns: columns_for(70) is 2, so the four groups split into two banks of two, MOVING and LOOKING on top and CHANGING and DOING below.
+
+[0m[7m[38;5;29m[48;5;235mMOVING                        [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mLOOKING                       [0m[38;5;245m[48;5;235m        [0m
+[0m[38;5;221m[48;5;235mj/k  ↑/↓    [0m[38;5;245m[48;5;235m select a row       [0m[38;5;221m[48;5;235mh  ?        [0m[38;5;245m[48;5;235m this keymap              [0m
+[0m[38;5;221m[48;5;235mg/G home/end[0m[38;5;245m[48;5;235m first / last       [0m[38;5;221m[48;5;235mb           [0m[38;5;245m[48;5;235m feed, full screen        [0m
+[0m[38;5;221m[48;5;235mJ/K         [0m[38;5;245m[48;5;235m next / prev sheep  [0m[38;5;221m[48;5;235mF           [0m[38;5;245m[48;5;235m gather by fold           [0m
+[0m[38;5;221m[48;5;235mctrl-d/u    [0m[38;5;245m[48;5;235m page the feed      [0m[38;5;221m[48;5;235mz           [0m[38;5;245m[48;5;235m collapse a fold          [0m
+[0m[38;5;221m[48;5;235m←/→         [0m[38;5;245m[48;5;235m environment tab    [0m[38;5;221m[48;5;235mo           [0m[38;5;245m[48;5;235m out / err / both         [0m
+[0m[38;5;221m[48;5;235mtab         [0m[38;5;245m[48;5;235m next config group  [0m[38;5;221m[48;5;235mm           [0m[38;5;245m[48;5;235m minimum level            [0m
+[0m[38;5;221m[48;5;235m1-8         [0m[38;5;245m[48;5;235m jump to a group    [0m[38;5;221m[48;5;235mf           [0m[38;5;245m[48;5;235m follow the tail          [0m
+[0m[38;5;221m[48;5;235mn/N         [0m[38;5;245m[48;5;235m next / prev match  [0m[38;5;221m[48;5;235mw           [0m[38;5;245m[48;5;235m wrap long lines          [0m
+[0m[38;5;221m[48;5;235m↵           [0m[38;5;245m[48;5;235m open selection     [0m[38;5;221m[48;5;235m/           [0m[38;5;245m[48;5;235m filter, or match         [0m
+[0m[38;5;221m[48;5;235mesc         [0m[38;5;245m[48;5;235m back one level     [0m[38;5;221m[48;5;235mr           [0m[38;5;245m[48;5;235m refresh now              [0m
+[0m[38;5;245m[48;5;235m                                [0m[38;5;221m[48;5;235mv           [0m[38;5;245m[48;5;235m reveal for 10s           [0m
+[0m[38;5;245m[48;5;235m                                [0m[38;5;221m[48;5;235my           [0m[38;5;245m[48;5;235m copy the value           [0m
+[0m[38;5;245m[48;5;235m                                                                      [0m
+[0m[7m[38;5;29m[48;5;235mCHANGING                      [0m[38;5;245m[48;5;235m  [0m[7m[38;5;166m[48;5;235mDOING                         [0m[38;5;245m[48;5;235m        [0m
+[0m[38;5;221m[48;5;235me           [0m[38;5;245m[48;5;235m the config pane    [0m[38;5;221m[48;5;235mx           [0m[38;5;245m[48;5;235m stop                     [0m
+[0m[38;5;221m[48;5;235mspace       [0m[38;5;245m[48;5;235m cycle a value      [0m[38;5;221m[48;5;235mR           [0m[38;5;245m[48;5;235m restart                  [0m
+[0m[38;5;221m[48;5;235md           [0m[38;5;245m[48;5;235m restore default    [0m[38;5;221m[48;5;235mL           [0m[38;5;245m[48;5;235m reload                   [0m
+[0m[38;5;221m[48;5;235mu           [0m[38;5;245m[48;5;235m undo the edit                                            [0m
+[0m[38;5;221m[48;5;235ms           [0m[38;5;245m[48;5;235m shepherd settings                                        [0m
+[0m[38;5;221m[48;5;235mS           [0m[38;5;245m[48;5;235m secrets                                                  [0m
+[0m[38;5;221m[48;5;235mD           [0m[38;5;245m[48;5;235m delete a secret                                          [0m
+[0m[38;5;221m[48;5;235mc           [0m[38;5;245m[48;5;235m leave it running                                         [0m
+[0m[38;5;221m[48;5;235ma-z 0-9     [0m[38;5;245m[48;5;235m types into a box                                         [0m
+[0m[38;5;221m[48;5;235m⌫ ↵ esc     [0m[38;5;245m[48;5;235m erase, file, drop                                        [0m
+[0m[38;5;245m[48;5;235m                                                                      [0m
+[0m[38;5;245m[48;5;235m                                                                      [0m
+[0m[38;5;245m[48;5;235m                                                                      [0m
+[0m[38;5;221m[48;5;235m the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer …[0m
+[0m[38;5;245m[48;5;235m colour is decoration only: every coloured cell says the same thing i…[0m
+[0m[38;5;245m[48;5;235m h or ?  closes this  ·  q  ctrl-c  quits lookout                     [0m
+[0m[38;5;245m                                                                      [0m
+[0m[38;5;245m                                                                      [0m
+[0m[38;5;245m                                                                      [0m
+[0m[38;5;245m                                                                      [0m
+[0m[38;5;245m──────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   …[0m
+[0m[38;5;245mlambs  not read yet                                                   [0m
+[0m[38;5;245mout  …/.shep/logs/api-2-out.log   │   err  …a/.shep/logs/api-2-err.log[0m
+[0m[38;5;245m                                                                      [0m
+[0m[38;5;245m──────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m ██ BLEATS api  … 1 earlier line not shown                            [0m
+[0m[38;5;245mout  GET /healthz 200 3ms                                             [0m
+[0m[38;5;245mout  GET /v1/orders 200 44ms                                          [0m
+[0m[38;5;245mout  POST /v1/orders 201 88ms                                         [0m
+[0m[38;5;245mout  GET /v1/orders/8821 200 9ms                                      [0m
+[0m[38;5;245mout  connection pool: 14/50 in use                                    [0m
+[0m[38;5;245mq quit   j/k select   / filter   F folds   x stop   R… control enabled[0m
+
+
+=== keymap_frozen  (160x48) ===
+The overlay raised after the link is already lost: the gate line names the dead link, not either control state, the same precedence the status bar's own right-hand label gives Link::Lost over Control.
+
+[0m[38;5;245m THE SHEPHERD HAS DIED  ▖  these values are frozen as of 2026-08-14 14:32:07                                                 nothing here is live  ▖  q to quit [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m shep lookout   /home/ada/.shep  ·  the dashboard stays up so you can read what it had  ·  it will not exit on its own                                          [0m
+[0m[38;5;245mhost  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 14.7%       ▁█   flock mem 716.0M …[0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m  ID    NAME                  STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       FROZEN    FOLD        SMIT         [0m
+[0m[38;5;245m   ██ FLOCK                                                                                                                                                     [0m
+[0m[38;5;245m  2     api                   online           48219    1         -          -              █  7.1%    ░░░░░░░░░░  241.0M    1h 18m    edge        -            [0m
+[0m[38;5;245m  3     billing-reconciliat…  online           48230    0         -          -              ▂  0.8%    ░░░░░░░░░░  96.0M     1h 19m    -           -            [0m
+[0m[38;5;245m  4     cron                  online           48233    0         -          -              ▁  0.1%    ░░░░░░░░░░  8.0M      1h 21m    -           -            [0m
+[0m[38;5;245m  5     metrics               online           48240    0         -          -              ▁  0.4%    ░░░░░░░░░░  11.0M     1h 22m    -           -            [0m
+[0m[38;5;245m  0     web                   online           48211    0         -          -              ▄  3.4%    ░░░░░░░░░░  182.0M    1h 15m    edge        -            [0m
+[0m[38;5;245m  1     web                   online           48212    0         -          -              ▄  2.9%    ░░░░░░░░░░  178.0M    1h 16m    edge        -            [0m
+[0m[38;5;245m                [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[7m[38;5;29m[48;5;235mMOVING                        [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mLOOKING                       [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mCHANGING                      [0m[38;5;245m[48;5;235m  [0m[7m[38;5;166m[48;5;235mDOING                         [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mj/k  ↑/↓    [0m[38;5;245m[48;5;235m select a row       [0m[38;5;221m[48;5;235mh  ?        [0m[38;5;245m[48;5;235m this keymap        [0m[38;5;221m[48;5;235me           [0m[38;5;245m[48;5;235m the config pane    [0m[38;5;221m[48;5;235mx           [0m[38;5;245m[48;5;235m stop             [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mg/G home/end[0m[38;5;245m[48;5;235m first / last       [0m[38;5;221m[48;5;235mb           [0m[38;5;245m[48;5;235m feed, full screen  [0m[38;5;221m[48;5;235mspace       [0m[38;5;245m[48;5;235m cycle a value      [0m[38;5;221m[48;5;235mR           [0m[38;5;245m[48;5;235m restart          [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mJ/K         [0m[38;5;245m[48;5;235m next / prev sheep  [0m[38;5;221m[48;5;235mF           [0m[38;5;245m[48;5;235m gather by fold     [0m[38;5;221m[48;5;235md           [0m[38;5;245m[48;5;235m restore default    [0m[38;5;221m[48;5;235mL           [0m[38;5;245m[48;5;235m reload           [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mctrl-d/u    [0m[38;5;245m[48;5;235m page the feed      [0m[38;5;221m[48;5;235mz           [0m[38;5;245m[48;5;235m collapse a fold    [0m[38;5;221m[48;5;235mu           [0m[38;5;245m[48;5;235m undo the edit                                    [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235m←/→         [0m[38;5;245m[48;5;235m environment tab    [0m[38;5;221m[48;5;235mo           [0m[38;5;245m[48;5;235m out / err / both   [0m[38;5;221m[48;5;235ms           [0m[38;5;245m[48;5;235m shepherd settings    ▟█████▙                     [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mtab         [0m[38;5;245m[48;5;235m next config group  [0m[38;5;221m[48;5;235mm           [0m[38;5;245m[48;5;235m minimum level      [0m[38;5;221m[48;5;235mS           [0m[38;5;245m[48;5;235m secrets             ▟███████▙                    [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235m1-8         [0m[38;5;245m[48;5;235m jump to a group    [0m[38;5;221m[48;5;235mf           [0m[38;5;245m[48;5;235m follow the tail    [0m[38;5;221m[48;5;235mD           [0m[38;5;245m[48;5;235m delete a secret     ▜██▀ ▀██▛                    [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mn/N         [0m[38;5;245m[48;5;235m next / prev match  [0m[38;5;221m[48;5;235mw           [0m[38;5;245m[48;5;235m wrap long lines    [0m[38;5;221m[48;5;235mc           [0m[38;5;245m[48;5;235m leave it running      ▀▘ ▀▘                      [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235m↵           [0m[38;5;245m[48;5;235m open selection     [0m[38;5;221m[48;5;235m/           [0m[38;5;245m[48;5;235m filter, or match   [0m[38;5;221m[48;5;235ma-z 0-9     [0m[38;5;245m[48;5;235m types into a box                                 [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mesc         [0m[38;5;245m[48;5;235m back one level     [0m[38;5;221m[48;5;235mr           [0m[38;5;245m[48;5;235m refresh now        [0m[38;5;221m[48;5;235m⌫ ↵ esc     [0m[38;5;245m[48;5;235m erase, file, drop                                [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m                                [0m[38;5;221m[48;5;235mv           [0m[38;5;245m[48;5;235m reveal for 10s                                                                   [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m                                [0m[38;5;221m[48;5;235my           [0m[38;5;245m[48;5;235m copy the value                                                                   [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m                                                                                                                              [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235m the three above are refused  ·  █ the link is down  ·  nothing acts                                                          [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                             [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟[0m[38;5;245m                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m ██ THE LINK  5 redials over 7.75s, all refused   ·   lookout has stopped polling and stopped re-dialling                                                       [0m
+[0m[38;5;245m  ladder    █ 250ms  █ 500ms  █ 1s  █ 2s  █ 4s                                                                                                                  [0m
+[0m[38;5;245m  refused   the shepherd did not answer: could not connect to `/home/ada/.shep/run/shep.sock`: Connection refused (os error 61)                                 [0m
+[0m[38;5;245m  since     2026-08-14 14:32:07, 9m 53s ago      the sheep themselves may well still be running; lookout cannot see them to say                                 [0m
+[0m[38;5;245m  try       shep muster, from another shell      then reopen lookout: it does not reconnect on its own                                                          [0m
+[0m[38;5;245mq quit   h keymap   j/k still moves   every other key is refused while the link is down                                                                 █ frozen[0m
+
+
+=== keymap_read_only  (160x48) ===
+The overlay raised under --read-only: the gate line reads read-only where the design target's own reads control enabled.
+
+[0m[38;5;245mshep lookout   /home/ada/.shep                                                                                                                    6 in the flock[0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245mhost  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 14.7%       ▁█   flock mem 716.0M …[0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m  ID    NAME                  STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       UPTIME    FOLD        SMIT         [0m
+[0m[38;5;245m   ██ FLOCK                                                                                                                                                     [0m
+[0m[38;5;245m  2     api                   online           48219    1         -          -              █  7.1%    ░░░░░░░░░░  241.0M    1h 28m    edge        -            [0m
+[0m[38;5;245m  3     billing-reconciliat…  online           48230    0         -          -              ▂  0.8%    ░░░░░░░░░░  96.0M     1h 29m    -           -            [0m
+[0m[38;5;245m  4     cron                  online           48233    0         -          -              ▁  0.1%    ░░░░░░░░░░  8.0M      1h 31m    -           -            [0m
+[0m[38;5;245m  5     metrics               online           48240    0         -          -              ▁  0.4%    ░░░░░░░░░░  11.0M     1h 32m    -           -            [0m
+[0m[38;5;245m  0     web                   online           48211    0         -          -              ▄  3.4%    ░░░░░░░░░░  182.0M    1h 25m    edge        -            [0m
+[0m[38;5;245m  1     web                   online           48212    0         -          -              ▄  2.9%    ░░░░░░░░░░  178.0M    1h 26m    edge        -            [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[7m[38;5;29m[48;5;235mMOVING                        [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mLOOKING                       [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mCHANGING                      [0m[38;5;245m[48;5;235m  [0m[7m[38;5;166m[48;5;235mDOING                         [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mj/k  ↑/↓    [0m[38;5;245m[48;5;235m select a row       [0m[38;5;221m[48;5;235mh  ?        [0m[38;5;245m[48;5;235m this keymap        [0m[38;5;221m[48;5;235me           [0m[38;5;245m[48;5;235m the config pane    [0m[38;5;221m[48;5;235mx           [0m[38;5;245m[48;5;235m stop             [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mg/G home/end[0m[38;5;245m[48;5;235m first / last       [0m[38;5;221m[48;5;235mb           [0m[38;5;245m[48;5;235m feed, full screen  [0m[38;5;221m[48;5;235mspace       [0m[38;5;245m[48;5;235m cycle a value      [0m[38;5;221m[48;5;235mR           [0m[38;5;245m[48;5;235m restart          [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mJ/K         [0m[38;5;245m[48;5;235m next / prev sheep  [0m[38;5;221m[48;5;235mF           [0m[38;5;245m[48;5;235m gather by fold     [0m[38;5;221m[48;5;235md           [0m[38;5;245m[48;5;235m restore default    [0m[38;5;221m[48;5;235mL           [0m[38;5;245m[48;5;235m reload           [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mctrl-d/u    [0m[38;5;245m[48;5;235m page the feed      [0m[38;5;221m[48;5;235mz           [0m[38;5;245m[48;5;235m collapse a fold    [0m[38;5;221m[48;5;235mu           [0m[38;5;245m[48;5;235m undo the edit                                    [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235m←/→         [0m[38;5;245m[48;5;235m environment tab    [0m[38;5;221m[48;5;235mo           [0m[38;5;245m[48;5;235m out / err / both   [0m[38;5;221m[48;5;235ms           [0m[38;5;245m[48;5;235m shepherd settings    ▟█████▙                     [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mtab         [0m[38;5;245m[48;5;235m next config group  [0m[38;5;221m[48;5;235mm           [0m[38;5;245m[48;5;235m minimum level      [0m[38;5;221m[48;5;235mS           [0m[38;5;245m[48;5;235m secrets             ▟███████▙                    [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235m1-8         [0m[38;5;245m[48;5;235m jump to a group    [0m[38;5;221m[48;5;235mf           [0m[38;5;245m[48;5;235m follow the tail    [0m[38;5;221m[48;5;235mD           [0m[38;5;245m[48;5;235m delete a secret     ▜██▀ ▀██▛                    [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mn/N         [0m[38;5;245m[48;5;235m next / prev match  [0m[38;5;221m[48;5;235mw           [0m[38;5;245m[48;5;235m wrap long lines    [0m[38;5;221m[48;5;235mc           [0m[38;5;245m[48;5;235m leave it running      ▀▘ ▀▘                      [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235m↵           [0m[38;5;245m[48;5;235m open selection     [0m[38;5;221m[48;5;235m/           [0m[38;5;245m[48;5;235m filter, or match   [0m[38;5;221m[48;5;235ma-z 0-9     [0m[38;5;245m[48;5;235m types into a box                                 [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235mesc         [0m[38;5;245m[48;5;235m back one level     [0m[38;5;221m[48;5;235mr           [0m[38;5;245m[48;5;235m refresh now        [0m[38;5;221m[48;5;235m⌫ ↵ esc     [0m[38;5;245m[48;5;235m erase, file, drop                                [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m                                [0m[38;5;221m[48;5;235mv           [0m[38;5;245m[48;5;235m reveal for 10s                                                                   [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m                                [0m[38;5;221m[48;5;235my           [0m[38;5;245m[48;5;235m copy the value                                                                   [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m                                                                                                                              [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;221m[48;5;235m the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ read-only                                          [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▐[0m[38;5;245m[48;5;235m h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                             [0m[38;5;238m▌[0m[38;5;245m                [0m
+[0m[38;5;245m                [0m[38;5;238m▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟[0m[38;5;245m                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                                                          [0m
+[0m[38;5;245mlambs  not read yet                                                                                                                                             [0m
+[0m[38;5;245mout  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                                                           [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m ██ BLEATS api  … 1 earlier line not shown                                                                                                                      [0m
+[0m[38;5;245mout  GET /healthz 200 3ms                                                                                                                                       [0m
+[0m[38;5;245mout  GET /v1/orders 200 44ms                                                                                                                                    [0m
+[0m[38;5;245mout  POST /v1/orders 201 88ms                                                                                                                                   [0m
+[0m[38;5;245mout  GET /v1/orders/8821 200 9ms                                                                                                                                [0m
+[0m[38;5;245mout  connection pool: 14/50 in use                                                                                                                              [0m
+[0m[38;5;245mq quit   j/k select   g/G first/last   r refresh   / filter   F folds   s settings   e edit   * yours   ! parked                                       read-only[0m
+
+
+=== keymap_short  (160x16) ===
+160x16, under the nineteen rows the box needs: the borderless form sheds down to its own Decoration tier, so the sheep and the NO_COLOR sentence are gone while every key row is still on screen.
+
+[0m[7m[38;5;29m[48;5;235mMOVING                        [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mLOOKING                       [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mCHANGING                      [0m[38;5;245m[48;5;235m  [0m[7m[38;5;166m[48;5;235mDOING                         [0m[38;5;245m[48;5;235m                                  [0m
+[0m[38;5;221m[48;5;235mj/k  ↑/↓    [0m[38;5;245m[48;5;235m select a row       [0m[38;5;221m[48;5;235mh  ?        [0m[38;5;245m[48;5;235m this keymap        [0m[38;5;221m[48;5;235me           [0m[38;5;245m[48;5;235m the config pane    [0m[38;5;221m[48;5;235mx           [0m[38;5;245m[48;5;235m stop                                               [0m
+[0m[38;5;221m[48;5;235mg/G home/end[0m[38;5;245m[48;5;235m first / last       [0m[38;5;221m[48;5;235mb           [0m[38;5;245m[48;5;235m feed, full screen  [0m[38;5;221m[48;5;235mspace       [0m[38;5;245m[48;5;235m cycle a value      [0m[38;5;221m[48;5;235mR           [0m[38;5;245m[48;5;235m restart                                            [0m
+[0m[38;5;221m[48;5;235mJ/K         [0m[38;5;245m[48;5;235m next / prev sheep  [0m[38;5;221m[48;5;235mF           [0m[38;5;245m[48;5;235m gather by fold     [0m[38;5;221m[48;5;235md           [0m[38;5;245m[48;5;235m restore default    [0m[38;5;221m[48;5;235mL           [0m[38;5;245m[48;5;235m reload                                             [0m
+[0m[38;5;221m[48;5;235mctrl-d/u    [0m[38;5;245m[48;5;235m page the feed      [0m[38;5;221m[48;5;235mz           [0m[38;5;245m[48;5;235m collapse a fold    [0m[38;5;221m[48;5;235mu           [0m[38;5;245m[48;5;235m undo the edit                                                                      [0m
+[0m[38;5;221m[48;5;235m←/→         [0m[38;5;245m[48;5;235m environment tab    [0m[38;5;221m[48;5;235mo           [0m[38;5;245m[48;5;235m out / err / both   [0m[38;5;221m[48;5;235ms           [0m[38;5;245m[48;5;235m shepherd settings                                                                  [0m
+[0m[38;5;221m[48;5;235mtab         [0m[38;5;245m[48;5;235m next config group  [0m[38;5;221m[48;5;235mm           [0m[38;5;245m[48;5;235m minimum level      [0m[38;5;221m[48;5;235mS           [0m[38;5;245m[48;5;235m secrets                                                                            [0m
+[0m[38;5;221m[48;5;235m1-8         [0m[38;5;245m[48;5;235m jump to a group    [0m[38;5;221m[48;5;235mf           [0m[38;5;245m[48;5;235m follow the tail    [0m[38;5;221m[48;5;235mD           [0m[38;5;245m[48;5;235m delete a secret                                                                    [0m
+[0m[38;5;221m[48;5;235mn/N         [0m[38;5;245m[48;5;235m next / prev match  [0m[38;5;221m[48;5;235mw           [0m[38;5;245m[48;5;235m wrap long lines    [0m[38;5;221m[48;5;235mc           [0m[38;5;245m[48;5;235m leave it running                                                                   [0m
+[0m[38;5;221m[48;5;235m↵           [0m[38;5;245m[48;5;235m open selection     [0m[38;5;221m[48;5;235m/           [0m[38;5;245m[48;5;235m filter, or match   [0m[38;5;221m[48;5;235ma-z 0-9     [0m[38;5;245m[48;5;235m types into a box                                                                   [0m
+[0m[38;5;221m[48;5;235mesc         [0m[38;5;245m[48;5;235m back one level     [0m[38;5;221m[48;5;235mr           [0m[38;5;245m[48;5;235m refresh now        [0m[38;5;221m[48;5;235m⌫ ↵ esc     [0m[38;5;245m[48;5;235m erase, file, drop                                                                  [0m
+[0m[38;5;245m[48;5;235m                                [0m[38;5;221m[48;5;235mv           [0m[38;5;245m[48;5;235m reveal for 10s                                                                                                     [0m
+[0m[38;5;245m[48;5;235m                                [0m[38;5;221m[48;5;235my           [0m[38;5;245m[48;5;235m copy the value                                                                                                     [0m
+[0m[38;5;245m[48;5;235m                                                                                                                                                                [0m
+[0m[38;5;221m[48;5;235m the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                                                      [0m
+[0m[38;5;245m[48;5;235m h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                                                               [0m
