@@ -59,9 +59,9 @@ fn main() {
         )
     });
 
-    // Emitting a sample from inside a handler keeps this app single
-    // threaded. A metrics ticker would need a thread of its own, which is
-    // the arrangement the contract's Windows section warns about.
+    // The crate's outbox never blocks the caller, so a handler can emit a
+    // sample. The hand-rolled examples do the same from their read loop,
+    // for a different reason: a ticker there would be a second thread.
     let emitter = shepherd.clone();
     let samples = AtomicU64::new(0);
     shepherd.on_action("metric", move |params, _name| {

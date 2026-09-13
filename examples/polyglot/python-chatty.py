@@ -36,9 +36,11 @@ def open_channel():
     path to open; unix gets a descriptor it already holds.
 
     Binary and unbuffered, for two separate reasons. Text mode on Windows
-    would translate every "\\n" this app writes into "\\r\\n". And a
+    would translate every "\\n" this app writes into "\\r\\n". And a unix
     channel is not seekable, which rules out Python's buffered read-write
-    object: open(path, "r+") raises UnsupportedOperation on a pipe.
+    object: open(path, "r+") raises UnsupportedOperation there. A Windows
+    named pipe does report seekable, so this spelling is the one that
+    works on both.
     """
     pipe = os.environ.get("SHEP_CHANNEL_PIPE")
     if pipe:
