@@ -16,9 +16,11 @@
 //
 // Three things a hand-roll has to get right, all of them below:
 //
-//  1. Reply to every action, including a name this app has never heard
-//     of. Silence and a slow handler look the same from the shepherd's
-//     side, so an operator's typo costs them the whole action_timeout.
+//  1. Reply to every action this app can answer, including one whose
+//     name it has never heard of. Silence and a slow handler look the
+//     same from the shepherd's side, so an operator's typo costs them
+//     the whole action_timeout. A frame carrying no name or no id is not
+//     answerable: there is nothing to name and nowhere to send it.
 //  2. Echo the action's id on the reply. Without it shep matches replies
 //     by name and by order, which goes wrong once two of one name are
 //     outstanding.
@@ -36,11 +38,16 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"shep-examples-go-chatty/channel"
 )
 
 var levels = []string{"trace", "debug", "info", "warn", "error"}
+
+// What an unparsable level gets back. Says the rest is dropped rather
+// than inviting arguments this app does not read.
+const usage = "usage: level <trace|debug|info|warn|error> [rest is ignored]"
 
 // openChannel returns the one file this app reads and writes, or an error
 // naming what would have opened one.
@@ -100,20 +107,26 @@ func metricName(params *string) string {
 // This one splits on whitespace and reads the first word, which means a
 // level can never contain a space. An app needing one would put JSON in
 // this string instead.
-func parseLevel(params *string) string {
+// The remainder comes back with the level so the reply can say it was
+// dropped, because an app that silently ignores half of what it was handed
+// is the thing this action exists to warn about.
+func parseLevel(params *string) (level, rest string) {
 	if params == nil {
-		return ""
+		return "", ""
 	}
-	words := strings.Fields(*params)
-	if len(words) == 0 {
-		return ""
+	text := strings.TrimSpace(*params)
+	first, rest := text, ""
+	if i := strings.IndexFunc(text, unicode.IsSpace); i >= 0 {
+		// Sliced, not Fields plus Join: rejoining would report a tab as a
+		// space, and the whole point is saying what was actually dropped.
+		first, rest = text[:i], strings.TrimSpace(text[i:])
 	}
-	for _, level := range levels {
-		if words[0] == level {
-			return level
+	for _, known := range levels {
+		if first == known {
+			return known, rest
 		}
 	}
-	return ""
+	return "", ""
 }
 
 func main() {
@@ -191,10 +204,13 @@ func main() {
 			})
 			body = fmt.Sprintf("sent %s=%d", metric, samples)
 		case name == "level":
-			if level := parseLevel(message.Params); level != "" {
+			switch level, rest := parseLevel(message.Params); {
+			case level == "":
+				body = usage
+			case rest == "":
 				body = "log level is now " + level
-			} else {
-				body = "usage: level <" + strings.Join(levels, "|") + "> [key=value ...]"
+			default:
+				body = fmt.Sprintf("log level is now %s, ignored %q", level, rest)
 			}
 		default:
 			body = "unknown action: " + name

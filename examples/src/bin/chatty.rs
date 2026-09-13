@@ -77,13 +77,18 @@ fn main() {
     shepherd.on_action("metric", move |params, _name| {
         let name = metric_name(params).to_owned();
         let value = samples.fetch_add(1, Ordering::Relaxed) + 1;
-        emitter.metric(name.clone(), value as f64);
-        format!("sent {name}={value}")
+        // The body borrows the name, then the name moves into the sample.
+        // `metric` takes `impl Into<String>`, so handing it a reference
+        // would allocate a second string rather than avoid the first.
+        let body = format!("sent {name}={value}");
+        emitter.metric(name, value as f64);
+        body
     });
 
     shepherd.on_action("level", |params, _name| match parse_level(params) {
-        Some(level) => format!("log level is now {level}"),
-        None => "usage: level <trace|debug|info|warn|error> [key=value ...]".to_owned(),
+        Some((level, "")) => format!("log level is now {level}"),
+        Some((level, rest)) => format!("log level is now {level}, ignored {rest:?}"),
+        None => USAGE.to_owned(),
     });
 
     shepherd.on_shutdown(|| {
@@ -106,6 +111,10 @@ fn main() {
     }
 }
 
+/// What an unparsable `level` gets back. Says the rest is dropped rather
+/// than inviting arguments this app does not read.
+const USAGE: &str = "usage: level <trace|debug|info|warn|error> [rest is ignored]";
+
 /// Names the metric one `metric` action should send.
 ///
 /// `params` reaches an app exactly as the operator typed it, so an empty
@@ -118,17 +127,22 @@ fn metric_name(params: Option<&str>) -> &str {
     }
 }
 
-/// Reads a level out of one action's `params`, in this app's own grammar.
+/// Reads a level out of one action's `params`, with whatever followed it.
 ///
 /// `params` is one opaque string and shep never splits it, so every app
 /// owns the grammar for its own actions. This one is whitespace separated
 /// and reads the first word, which means a level can never contain a
 /// space. An app needing one would carry JSON in this string instead.
-fn parse_level(params: Option<&str>) -> Option<&str> {
-    let level = params?.split_whitespace().next()?;
+///
+/// The remainder comes back so the reply can say it was dropped, because
+/// an app that silently ignores half of what it was handed is the thing
+/// this action exists to warn about.
+fn parse_level(params: Option<&str>) -> Option<(&str, &str)> {
+    let text = params?.trim();
+    let (level, rest) = text.split_once(char::is_whitespace).unwrap_or((text, ""));
     ["trace", "debug", "info", "warn", "error"]
         .contains(&level)
-        .then_some(level)
+        .then(|| (level, rest.trim()))
 }
 
 #[cfg(test)]
@@ -137,9 +151,19 @@ mod tests {
 
     #[test]
     fn a_known_level_is_read_from_the_first_word() {
-        assert_eq!(parse_level(Some("debug")), Some("debug"));
-        assert_eq!(parse_level(Some("debug rate=0.5")), Some("debug"));
-        assert_eq!(parse_level(Some("  warn  ")), Some("warn"));
+        assert_eq!(parse_level(Some("debug")), Some(("debug", "")));
+        assert_eq!(parse_level(Some("  warn  ")), Some(("warn", "")));
+    }
+
+    /// The reply names the remainder, so an operator can see the app read
+    /// one word of what they typed and dropped the rest.
+    #[test]
+    fn what_followed_the_level_comes_back_with_it() {
+        assert_eq!(
+            parse_level(Some("debug rate=0.5")),
+            Some(("debug", "rate=0.5"))
+        );
+        assert_eq!(parse_level(Some("info  a  b ")), Some(("info", "a  b")));
     }
 
     #[test]

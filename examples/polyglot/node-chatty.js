@@ -7,9 +7,11 @@
 //
 // Three things a hand-roll has to get right, all of them below:
 //
-//   1. Reply to every action, including a name this app has never heard
-//      of. Silence and a slow handler look the same from the shepherd's
-//      side, so an operator's typo costs them the whole action_timeout.
+//   1. Reply to every action this app can answer, including one whose
+//      name it has never heard of. Silence and a slow handler look the
+//      same from the shepherd's side, so an operator's typo costs them
+//      the whole action_timeout. A frame carrying no name or no id is
+//      not answerable: nothing to name, nowhere to send it.
 //   2. Echo the action's id on the reply. Without it shep matches replies
 //      by name and by order, which goes wrong once two of one name are
 //      outstanding.
@@ -21,6 +23,9 @@
 const net = require("node:net");
 
 const LEVELS = ["trace", "debug", "info", "warn", "error"];
+// What an unparsable level gets back. Says the rest is dropped rather
+// than inviting arguments this app does not read.
+const USAGE = "usage: level <trace|debug|info|warn|error> [rest is ignored]";
 const started = process.hrtime.bigint();
 
 // Exactly one of the two variables is ever set, so branch on which one is
@@ -63,9 +68,19 @@ function metricName(params) {
 // This one splits on whitespace and reads the first word, which means a
 // level can never contain a space. An app needing one would put JSON in
 // this string instead.
+// The remainder comes back with the level so the reply can say it was
+// dropped, because an app that silently ignores half of what it was handed
+// is the thing this action exists to warn about.
 function parseLevel(params) {
-  const level = (params ?? "").trim().split(/\s+/)[0];
-  return LEVELS.includes(level) ? level : null;
+  // Sliced at the first space, not split into words and rejoined: rejoining
+  // would report a tab as a space, and the point is saying what was dropped.
+  const text = (params ?? "").trim();
+  const cut = text.search(/\s/);
+  const level = cut === -1 ? text : text.slice(0, cut);
+  if (!LEVELS.includes(level)) {
+    return null;
+  }
+  return { level, rest: cut === -1 ? "" : text.slice(cut).trim() };
 }
 
 let opened;
@@ -170,10 +185,14 @@ function handle(message) {
     send({ kind: "metric", name: metric, value: samples });
     body = `sent ${metric}=${samples}`;
   } else if (name === "level") {
-    const level = parseLevel(params);
-    body = level
-      ? `log level is now ${level}`
-      : `usage: level <${LEVELS.join("|")}> [key=value ...]`;
+    const parsed = parseLevel(params);
+    if (parsed === null) {
+      body = USAGE;
+    } else if (parsed.rest === "") {
+      body = `log level is now ${parsed.level}`;
+    } else {
+      body = `log level is now ${parsed.level}, ignored ${JSON.stringify(parsed.rest)}`;
+    }
   } else {
     body = `unknown action: ${name}`;
   }

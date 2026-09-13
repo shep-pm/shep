@@ -7,9 +7,11 @@ the same app in Rust, where the shep-channel crate does this part.
 
 Three things a hand-roll has to get right, all of them below:
 
-  1. Reply to every action, including a name this app has never heard of.
-     Silence and a slow handler look the same from the shepherd's side,
-     so an operator's typo costs them the whole action_timeout.
+  1. Reply to every action this app can answer, including one whose name
+     it has never heard of. Silence and a slow handler look the same from
+     the shepherd's side, so an operator's typo costs them the whole
+     action_timeout. A frame carrying no name or no id is not answerable:
+     nothing to name, nowhere to send it.
   2. Echo the action's id on the reply. Without it shep matches replies
      by name and by order, which goes wrong once two of one name are
      outstanding.
@@ -25,6 +27,9 @@ import sys
 import time
 
 LEVELS = ("trace", "debug", "info", "warn", "error")
+# What an unparsable level gets back. Says the rest is dropped rather
+# than inviting arguments this app does not read.
+USAGE = "usage: level <trace|debug|info|warn|error> [rest is ignored]"
 STARTED = time.monotonic()
 
 
@@ -135,13 +140,19 @@ def parse_level(params):
     This one splits on whitespace and reads the first word, which means a
     level can never contain a space. An app needing one would put JSON in
     this string instead.
+
+    The remainder comes back with the level so the reply can say it was
+    dropped, because an app that silently ignores half of what it was
+    handed is the thing this action exists to warn about.
     """
     if not params:
         return None
-    words = params.split()
+    # split(None, 1), not split(): the second keeps every word and would
+    # report a tab as a space, and the point is saying what was dropped.
+    words = params.strip().split(None, 1)
     if not words or words[0] not in LEVELS:
         return None
-    return words[0]
+    return words[0], words[1].strip() if len(words) > 1 else ""
 
 
 def reply_to(action, params):
@@ -155,10 +166,16 @@ def reply_to(action, params):
     if action == "ping":
         return f"pong from python pid={os.getpid()}, up {time.monotonic() - STARTED:.1f}s"
     if action == "level":
-        level = parse_level(params)
-        if level is None:
-            return f"usage: level <{'|'.join(LEVELS)}> [key=value ...]"
-        return f"log level is now {level}"
+        parsed = parse_level(params)
+        if parsed is None:
+            return USAGE
+        level, rest = parsed
+        if not rest:
+            return f"log level is now {level}"
+        # json.dumps, not !r: it quotes and escapes the way the Rust, Go and
+        # JavaScript examples do. ensure_ascii=False because the other three
+        # leave non-ASCII alone, and all four have to reply the same bytes.
+        return f"log level is now {level}, ignored {json.dumps(rest, ensure_ascii=False)}"
     return None
 
 
