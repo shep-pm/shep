@@ -16,10 +16,10 @@ phase before deciding what came next.
 
 ## Reading the frames
 
-- `frames.txt`, fifty scenes rendered through the flattened `NO_COLOR`
+- `frames.txt`, fifty-eight scenes rendered through the flattened `NO_COLOR`
   palette, the one an operator with `$NO_COLOR` set or a 16-colour terminal
   actually gets. Open it in any editor.
-- `frames.ansi`, the same fifty scenes rendered through the coloured
+- `frames.ansi`, the same fifty-eight scenes rendered through the coloured
   palette the pinned snapshot tests use. Read it with `less -R` so the
   escape codes render instead of printing literally.
 
@@ -30,8 +30,10 @@ gutter both survive `NO_COLOR`, but the meadow/sky/bark roles are gone.
 
 Both files are generated, not hand-written, and both come from the same
 scene list the pinned snapshot tests read (`Scene::ALL` in
-`crates/shep-cli/src/lookout/frames.rs`) — so they cannot drift from what
-the test suite checks. Regenerate them with:
+`crates/shep-cli/src/lookout/frames.rs`), so a layout change cannot drift
+past them unnoticed: the ordinary suite reddens first. Adding a scene can,
+because these files are then missing a frame rather than wrong about one,
+and nothing reddens. Regenerate them in the same commit that adds a scene:
 
 ```bash
 cargo test -p shep --lib --all-features -- --ignored write_the_gallery
@@ -51,10 +53,11 @@ cargo test -p shep --lib --all-features -- --ignored write_the_gallery
   would be lying about a specific sheep by name. The detail band and the
   bleats feed give their rows to the link panel, which names the ladder it
   climbed, quotes the last dial's own error, counts how long ago that was,
-  and says what is left to try. lookout never exits on its own — the
-  operator quits with `q`. `r` is refused with the rest of the keymap:
-  `run_link` has already returned by then, so nothing survives to answer a
-  redial, and the panel says `shep muster` instead.
+  and says what is left to try. lookout never exits on its own: the
+  operator quits with `q`. `h` still opens the keymap and `j`/`k` still move
+  over values that are already history. `r` is refused with the rest of
+  them: `run_link` has already returned by then, so nothing survives to
+  answer a redial, and the panel says `shep muster` instead.
   A shepherd that was **never** running is a different case: that connect
   attempt happens before raw mode is entered, and a failure there is the
   ordinary `daemon_unreachable` refusal every other verb gives, not eight
@@ -317,3 +320,39 @@ debt.
 - **The dialog draws as a box over the pane it belongs to**, dimmed
   underneath it, at 90 columns and above. Below that it draws full width
   with no border rather than clipping.
+
+## What 1k settled
+
+- **`h` and `?` both open it, from every body.** `h` was the config pane's
+  field help until that became unconditional, which freed the key. The
+  overlay is a `bool` on `App` rather than a third `InputMode`: `map_key`
+  has exactly two modes, and an overlay that swallows keys is a reducer
+  concern rather than a keyboard-edge one.
+- **Its rows come from `map_key`, not from a list beside it.** `binding()`
+  is an exhaustive match over `KeyPress` with no wildcard arm, so a new
+  variant does not compile until it has a row, and `rows()` builds the list
+  by pushing a probe list of keys through `map_key` itself. A binding
+  cannot reach the reducer without also reaching the overlay.
+- **It owns the keyboard while it is up**, because the box covers the table
+  a movement key would otherwise scroll underneath it. `h`, `?` and `esc`
+  close it, `q` and Ctrl-C still quit, and every other key is swallowed. A
+  close dialog is the one screen it will not open over, since that question
+  owns the keyboard until it is answered, and an armed confirm is cancelled
+  by `h` the way any other key cancels it.
+- **It opens with the link down**, which is where a key list is wanted
+  most, so `FROZEN_HINT` names it. That hint's last clause is a claim about
+  every key it does not list, so naming `h` and keeping the clause true had
+  to happen together.
+- **The gate line stops answering about the control gate once the link is
+  gone.** With the link live it names `control enabled` or `read-only`;
+  with the link lost it says so instead, because `x`, `R` and `L` then
+  refuse for a reason `Control` does not carry. Both control strings are
+  shared with the status bar rather than retyped.
+- **The box wants 130 columns and 19 rows**, the interior plus a border
+  cell and a margin cell each side, which is the same expression 1g's floor
+  comes out of. Below 130 it draws full width with no border, dropping a
+  column at a time as the terminal narrows. Under 13 rows it refuses and
+  names the height it needs rather than drawing part of the list.
+- **The sheep is boxed-only.** It carries no information, and the
+  borderless form is the degraded rendering, so decoration goes before
+  content.

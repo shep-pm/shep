@@ -50,9 +50,12 @@ const BOX_RIGHT: char = '▌';
 /// 86 gives 90 and 1k's 126 gives 130, and
 /// `draw_boxed`'s own `margin` arithmetic comes out at 1 at either floor.
 ///
-/// `docs/lookout/design-files/rulings.md` states 132 for 1k, which is a
+/// `docs/lookout/design-files/README.md` states 132 for 1k, which is a
 /// two-cell margin 1g does not ask for. Corrected there rather than
 /// special-cased here, so this stays one expression for both frames.
+///
+/// That file, not `rulings.md`: the rulings never give 1k a width, so the
+/// 132 is a frame's own arithmetic slip rather than a ruling to overturn.
 pub(super) const fn floor_for(interior: u16) -> u16 {
     interior + 4
 }
@@ -180,8 +183,8 @@ mod tests {
     /// The floor is the interior plus a border cell and a margin cell each
     /// side. 1g's own floor is 90 over an 86-cell interior and 1k's is 130
     /// over a 126-cell one, and both come out of this one expression: the
-    /// rulings state 132 for 1k, which would be a two-cell margin neither
-    /// frame asks for.
+    /// design's own README states 132 for 1k, which would be a two-cell
+    /// margin neither frame asks for.
     #[test]
     fn both_frames_floors_come_out_of_one_expression() {
         assert_eq!(floor_for(86), 90, "1g");

@@ -7,9 +7,9 @@ every key lookout binds, grouped by what the key does.
 
 `docs/lookout/design-files/rulings.md` is the authority on which of the bundle's
 claims survive contact with shipped shep. Where a frame and a ruling disagree,
-the ruling wins. The rulings list 1k among the frames that go ahead as drawn,
-and set its width floor at 132 columns, which is the one number in them this spec
-corrects rather than follows (see Layout).
+the ruling wins. The rulings list 1k among the frames that go ahead as drawn.
+The 132-column floor this spec corrects (see Layout) is not theirs: it comes
+from the design's own README, and the rulings give 1k no width at all.
 
 ## The bundle is complete, and this frame is last on purpose
 
@@ -198,17 +198,23 @@ interior  1 heading + 12 entry + 1 blank + 1 gate + 2 closing = 17
 floor     130 = 126 interior + 2 border + 1 margin each side
 ```
 
-**The floor is 130, and the rulings' 132 is wrong.** 1g's `BOX_FLOOR` is
+**The floor is 130, and the 132 is wrong.** 1g's `BOX_FLOOR` is
 `BOX_WIDTH + 4`: 86 interior plus two border cells plus one margin cell each side
 is 90, and `draw_boxed_close_dialog`'s `margin = (width - (BOX_WIDTH + 2)) / 2`
 comes out at 1 there. The same formula over a 126-cell interior gives 130. The
-rulings say 132, which would be a two-cell margin that 1g does not ask for and
-this frame has no reason to.
+design's own README says 132 at line 332, which would be a two-cell margin that
+1g does not ask for and this frame has no reason to.
 
-So both floors stay one expression, `interior + 4`, and `rulings.md` and
-`docs/lookout/design-files/README.md:332` are corrected rather than honoured. The
+**That file, not `rulings.md`.** This spec said the rulings state 132 and they
+do not: they give 1k no width at all. So the 132 is a frame's own arithmetic
+slip rather than a ruling to overturn, which makes correcting it a smaller act
+than the paragraph above first claimed. Found while doing the docs pass, and the
+same wrong citation had reached `view/overlay.rs`'s own doc comment.
+
+So both floors stay one expression, `interior + 4`, and
+`docs/lookout/design-files/README.md:332` is corrected rather than honoured. The
 rulings win where they and a frame disagree about behaviour; an arithmetic slip
-is not a disagreement. Two frames' floors coming out of two formulas is the thing
+in a frame is not a disagreement. Two frames' floors coming out of two formulas is the thing
 a later reader gets wrong, and it is cheaper to fix the number than to carry the
 explanation.
 
@@ -515,11 +521,9 @@ passes at every width in the table.
   moved and the help is automatic — and both need rewriting.
 - **`docs/lookout/design-files/README.md:317`** gets `g` → `S` and `l` → `b`, and
   the `h` or `?` claim becomes true. Line 332's `132 columns` becomes `130`.
-- **`docs/lookout/design-files/rulings.md`** gets a correction paragraph in the
-  form its 1h section already uses, recording that the 132-column floor it states
-  is 130: `interior + 4`, the same expression 1g's `BOX_FLOOR` uses. The rulings
-  are the authority on which claims survive contact with shipped shep, so a
-  number they get wrong is corrected there rather than worked around here.
+- **`docs/lookout/design-files/rulings.md`** needs nothing. This spec said it
+  states a 132-column floor for 1k; it does not, and gives 1k no width at all.
+  The 132 is at `README.md:332`, corrected in place above.
 - **`docs/lookout/README.md`** documents the overlay and the amended
   `FROZEN_HINT`.
 - **`web/scripts/generate-cli-reference.sh`** is run and its diff checked. No
