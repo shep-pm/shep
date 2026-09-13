@@ -14516,10 +14516,24 @@ mod tests {
     /// screen. It used to take two: `h`'s field help was a rung above the
     /// close dialog's question in `Escape`'s cascade, and the blurb is
     /// unconditional now, so there is no rung to spend.
+    ///
+    /// 89 columns, one under `panel_width`'s floor, is what makes the
+    /// blurb the only thing drawing the cursor's own help: at 160 the
+    /// panel would draw it and the render below would pass regardless of
+    /// which rung `Escape` used to spend.
     #[test]
     fn esc_leaves_the_pane_on_one_press_with_a_blurb_showing() {
         let mut app = fixtures::app_in_sheep_pane_with_nothing_parked();
-        assert!(app.config_pane().is_some());
+        let pane = app.config_pane().expect("the pane is open");
+        let Some(PaneRow::Field(index)) = pane.cursor() else {
+            panic!("the cursor is not on a field");
+        };
+        let help = pane.fields().fields()[index].help.clone();
+        let lines = crate::lookout::view::pane::pane_lines(pane, fixtures::plain(), 89, 40);
+        assert!(
+            fixtures::render_all(&lines).contains(&help),
+            "the blurb is not on screen before esc"
+        );
         let _ = app.update(Msg::Key(KeyPress::Escape));
         assert!(
             app.config_pane().is_none(),
