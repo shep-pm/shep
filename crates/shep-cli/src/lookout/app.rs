@@ -130,8 +130,18 @@ pub enum KeyPress {
     /// there: an operator should not have to remember two keys for one
     /// job. `Escape` is the only key that closes a pane or a sub-screen.
     Edit,
-    /// `h`: shows the selected field's own help text, in the config pane.
-    /// Pressing it again, or `Escape`, dismisses it. Bound nowhere else.
+    /// `h` or `?`: opens the keymap overlay, from any body. Pressing either
+    /// again, or `Escape`, closes it. Refused only while a close dialog is
+    /// up, which owns the keyboard until it is answered.
+    ///
+    /// This ran ahead of the reducer for one commit: the overlay's own state
+    /// arrives with `App::keymap_open`, and until then every body answers
+    /// this with `Effect::None`. Said plainly rather than left to read as an
+    /// error, since editing the same comment twice is the only alternative.
+    ///
+    /// It used to toggle the config pane's field help. That text is
+    /// unconditional now, wherever the explanation panel cannot draw it, so
+    /// no key shows it: see `view::pane::top_lines`.
     Help,
     /// `d`: arms the removal of the element under the cursor, on the config
     /// pane's list sub-screen. On a config field, restores the default by

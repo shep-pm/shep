@@ -73,7 +73,13 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Left => Some(KeyPress::TabPrev),
         KeyCode::Right => Some(KeyPress::TabNext),
         KeyCode::Char('e') => Some(KeyPress::Edit),
-        KeyCode::Char('h') => Some(KeyPress::Help),
+        // Two keys, one meaning, which is what the design asked for. `h`
+        // was the config pane's field help until that became unconditional
+        // (`view::pane::top_lines`); `?` is new here. Both are plain keys:
+        // crossterm delivers `?` as `Char('?')` with SHIFT set on most
+        // layouts, and SHIFT is not filtered in this branch, so the shifted
+        // form lands on the same arm.
+        KeyCode::Char('h' | '?') => Some(KeyPress::Help),
         KeyCode::Char(' ') => Some(KeyPress::Cycle),
         KeyCode::Char('d') => Some(KeyPress::Remove),
         KeyCode::Char('D') => Some(KeyPress::SecretDelete),
@@ -427,6 +433,38 @@ mod tests {
         assert_eq!(map_key(&ctrl_u, InputMode::Normal), Some(KeyPress::PageUp));
         assert_eq!(map_key(&ctrl_d, InputMode::Text), None);
         assert_eq!(map_key(&ctrl_u, InputMode::Text), None);
+    }
+
+    /// `?` is the keymap's second key, and `/` is untouched.
+    ///
+    /// They are the same physical key on most layouts, so an arm that took
+    /// `?` by matching the unshifted position would have taken the name
+    /// filter with it. The `/` assertion is not idle: `Char('/')` sits
+    /// ABOVE this arm and wins by order alone, so an arm written below it
+    /// cannot break the filter, and one written above it can.
+    #[test]
+    fn question_mark_opens_the_keymap_and_slash_still_filters() {
+        assert_eq!(
+            map_key(&key(KeyCode::Char('?')), InputMode::Normal),
+            Some(KeyPress::Help)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('/')), InputMode::Normal),
+            Some(KeyPress::FilterStart)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('?')), InputMode::Text),
+            Some(KeyPress::TextChar('?')),
+            "a question mark typed into a box is a character"
+        );
+    }
+
+    /// And the shifted form reaches the same arm, which is how a real
+    /// keyboard sends it.
+    #[test]
+    fn a_shifted_question_mark_still_opens_the_keymap() {
+        let shifted = Event::Key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::SHIFT));
+        assert_eq!(map_key(&shifted, InputMode::Normal), Some(KeyPress::Help));
     }
 
     #[test]
