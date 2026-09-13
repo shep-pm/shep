@@ -857,6 +857,22 @@ pub struct ProcessInfo {
     // stale between polls.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub level_rules: Vec<LevelRule>,
+    /// How long the shepherd gives ONE swap of this instance before it
+    /// gives up on it: this instance's own `listen_timeout` plus its
+    /// `graceful_timeout` plus the shepherd's slack, in milliseconds.
+    ///
+    /// `Some` only on the rows of a reload's acceptance
+    /// ([`Response::Reloading`]), and only for an instance that reload will
+    /// try to replace. `None` everywhere else, which covers a listing with
+    /// no reload in flight, an instance a reload is skipping, and a peer
+    /// daemon that predates the field.
+    ///
+    /// Per instance, not per app: a client that inferred it from its own
+    /// copy of the Flockfile would be reading a file the shepherd may have
+    /// moved past. Additive, like [`Self::max_memory`] before it, so
+    /// neither `PROTOCOL_VERSION` nor `SCHEMA_VERSION` moves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reload_deadline_ms: Option<u64>,
 }
 
 /// Orders one flock listing the way every operator-facing surface presents
@@ -910,6 +926,7 @@ impl ProcessInfo {
                 overridden: None,
                 max_memory: None,
                 level_rules: Vec::new(),
+                reload_deadline_ms: None,
             },
         }
     }
@@ -1059,6 +1076,13 @@ impl ProcessInfoBuilder {
     /// Sets the sheep's declared level rules; empty when it declares none.
     pub fn level_rules(mut self, level_rules: Vec<LevelRule>) -> Self {
         self.info.level_rules = level_rules;
+        self
+    }
+
+    /// Sets one swap's own deadline in milliseconds; `None` on every row
+    /// but a reload's, and on a row that reload will not replace.
+    pub fn reload_deadline_ms(mut self, reload_deadline_ms: Option<u64>) -> Self {
+        self.info.reload_deadline_ms = reload_deadline_ms;
         self
     }
 
@@ -2000,6 +2024,10 @@ mod tests {
                 pattern: r"\[ERROR\]".to_string(),
                 level: crate::config::LineLevel::Error,
             }],
+            // `None` here so the key is absent from the pinned bytes; the
+            // serialized shape of a real one is pinned on its own, by
+            // `a_reload_deadline_is_absent_from_the_wire_until_a_reload_sets_one`.
+            reload_deadline_ms: None,
         }
     }
 
@@ -3286,6 +3314,40 @@ mod tests {
             .max_memory(Some(52 * 1024 * 1024))
             .build();
         assert_eq!(capped.max_memory, Some(54_525_952));
+    }
+
+    /// Absent rather than `null` when there is no reload, so a listing's
+    /// payload is the shape it always was and `SCHEMA_VERSION` stays put.
+    /// Present as a plain number when a reload sets one, which is the only
+    /// place a client reads it.
+    #[test]
+    fn a_reload_deadline_is_absent_from_the_wire_until_a_reload_sets_one() {
+        let quiet = ProcessInfo::builder(1, "web", ProcStatus::Online).build();
+        let json = serde_json::to_string(&quiet).expect("serialize");
+        assert!(
+            !json.contains("reload_deadline_ms"),
+            "a row with no reload carries no key at all: {json}"
+        );
+
+        let reloading = ProcessInfo::builder(1, "web", ProcStatus::Online)
+            .reload_deadline_ms(Some(16_000))
+            .build();
+        let json = serde_json::to_string(&reloading).expect("serialize");
+        assert!(
+            json.contains(r#""reload_deadline_ms":16000"#),
+            "a reload's own row carries the number: {json}"
+        );
+        let back: ProcessInfo = serde_json::from_str(&json).expect("round trip");
+        assert_eq!(back.reload_deadline_ms, Some(16_000));
+    }
+
+    /// The field is additive, so a payload written before it existed has to
+    /// decode with the deadline absent rather than fail the whole envelope.
+    #[test]
+    fn an_older_daemons_process_info_decodes_without_a_reload_deadline() {
+        let older = r#"{"id":1,"name":"web","status":"online","restarts":0,"uptime_ms":0}"#;
+        let info: ProcessInfo = serde_json::from_str(older).expect("an older payload decodes");
+        assert_eq!(info.reload_deadline_ms, None);
     }
 
     #[test]

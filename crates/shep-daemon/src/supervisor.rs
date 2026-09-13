@@ -5664,7 +5664,17 @@ impl<R: ProcessRunner> Actor<R> {
                     .sheep
                     .get(id)
                     .expect("handle_reload: `matched` holds ids read off this map a moment ago");
-                to_info(&slot.entry, &self.smits)
+                let mut info = to_info(&slot.entry, &self.smits);
+                // Only where a swap is actually coming: the queue below is
+                // built on the same predicate, so a row carrying a number
+                // is a row this reload will try to replace. A number beside
+                // an instance nothing will touch would have a reader
+                // waiting out a deadline for a swap that was never queued.
+                info.reload_deadline_ms = reload_eligible(slot).then(|| {
+                    u64::try_from(swap_budget(slot.entry.spec.config()).as_millis())
+                        .unwrap_or(u64::MAX)
+                });
+                info
             })
             .collect();
         // The table `shep reload` prints, so it takes the order every
@@ -6372,9 +6382,7 @@ impl<R: ProcessRunner> Actor<R> {
             .entry
             .spec
             .config();
-        let deadline = app.listen_timeout.as_duration()
-            + app.graceful_timeout.as_duration()
-            + RELOAD_DEADLINE_SLACK;
+        let deadline = swap_budget(app);
 
         let stamp = self.next_deadline;
         self.next_deadline += 1;
@@ -7802,6 +7810,19 @@ impl From<ExitOutcome> for ExitInfo {
             signal: outcome.signal,
         }
     }
+}
+
+/// How long ONE swap of an instance is given: its own `listen_timeout`,
+/// then its `graceful_timeout`, then [`RELOAD_DEADLINE_SLACK`].
+///
+/// One source for two readers, [`Actor::arm_reload_deadline`], which arms
+/// the watchdog with it, and [`Actor::handle_reload`], which reports it on
+/// [`ProcessInfo::reload_deadline_ms`]. A second copy could tell a dog a
+/// number the shepherd was not keeping to.
+fn swap_budget(config: &AppConfig) -> Duration {
+    config.listen_timeout.as_duration()
+        + config.graceful_timeout.as_duration()
+        + RELOAD_DEADLINE_SLACK
 }
 
 /// Whether this instance's status lets a reload replace it.

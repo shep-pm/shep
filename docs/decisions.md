@@ -638,13 +638,13 @@ ProcessEntry gains dog: Option<DogSource>; ProcessInfo carries it onto the wire,
 
 `docs/writing-plans/plans/2026-08-12-shep-phase9-dogs.md:95`
 
-### A reload's own deadline is exposed per-instance on ProcessInfo, not as a sibling field on Response::Reloading - *unverified* - **superseded**
+### A reload's own deadline is exposed per-instance on ProcessInfo, not as a sibling field on Response::Reloading - **superseded in part**
 
 An external ledger recorded the maintainer's decision as "the reload deadline rides the reload response, as an additive field, no PROTOCOL_VERSION bump needed" - re-deriving from the actual wire shape found that premise WRONG and switched the design to a new ProcessInfo::reload_deadline_ms: Option<u64> field instead, still additive, still version 1.
 
 **Why:** Response::Reloading(Vec<ProcessInfo>) is a tuple variant under #[serde(tag="kind", content="data")]; giving it a sibling field would turn `data` from a JSON array into an object, which shep's own documented wire-evolution rule classifies as a retype requiring a PROTOCOL_VERSION bump - and since the handshake compares versions for strict equality, that would stop every published client talking to every published daemon over one advisory number. Putting the deadline on ProcessInfo instead is strictly better, not merely a workaround: it's computed per-replacement-instance from that instance's own registered listen_timeout+graceful_timeout+slack (exactly what arm_reload_deadline already computes internally), so it hands a dog the real per-instance number rather than one it would otherwise have to infer from a possibly-stale Flockfile copy, and it closes the instance-counting gap too since one field appears per ProcessInfo already returned.
 
-`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:1261 (NOT yet shipped - no reload_deadline_ms field exists on ProcessInfo in the current tree)`. Replaced by: "The handshake takes a floor, not a strict match" below, for the "since the handshake compares versions for strict equality" clause in the Why. Everything else about this entry, the retype-forces-a-bump reasoning and the choice to put the deadline on ProcessInfo, still holds.
+`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:1261`. Shipped 2026-09-13 as `ProcessInfo::reload_deadline_ms`, `Option<u64>` under `skip_serializing_if`, so the key is absent rather than null and neither PROTOCOL_VERSION nor SCHEMA_VERSION moves. The daemon sets it in `handle_reload` for the instances that reload will try to swap, and nowhere else: a row nothing is queued for carries no number, since one would promise a replacement that is not coming. `supervisor::swap_budget` is the single source the watchdog arms from and the reply reports, so the two cannot disagree. Replaced by: "The handshake takes a floor, not a strict match" below, for the "since the handshake compares versions for strict equality" clause in the Why. Everything else about this entry, the retype-forces-a-bump reasoning and the choice to put the deadline on ProcessInfo, still holds.
 
 ### A running dog does not see a config change until disable+enable
 
