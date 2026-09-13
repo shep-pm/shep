@@ -56,6 +56,12 @@ pub mod channel {
 /// renaming, or retyping anything serialized bumps it, recorded in the
 /// CHANGELOG. Byte fixtures in each protocol module pin the deserialize
 /// direction.
+///
+/// `AppConfig` is the exception: every field change bumps, additive
+/// included. An older peer ignores a key it does not know, so it runs a
+/// config the operator did not write and says nothing. `environment`
+/// forced 8 after the denial had already moved to `Flockfile::parse`,
+/// which is the precedent.
 pub const PROTOCOL_VERSION: u32 = 9;
 
 /// The oldest protocol this build accepts from a peer.
@@ -76,10 +82,10 @@ mod tests {
     /// change that forgot to bump: the `*_wire_v9` snapshots do that, by
     /// gaining or losing the key.
     ///
-    /// A bump moves four things together, and only this one fails on its
-    /// own: the constant, this literal, the module doc's header and its
-    /// version list, and the three `*_wire_vN` snapshots with the names
-    /// that pin them.
+    /// A bump moves five things together, and only this one fails on its
+    /// own: the constant, this literal, this test's own name, the module
+    /// doc's header and its version list, and the three `*_wire_vN`
+    /// snapshots with the names that pin them.
     ///
     /// `depends_on` forced 5, `environment` 8, dropping `increment_var` 9.
     /// The `Response::Reloading` and `Response::Restarted` retypes forced 6
