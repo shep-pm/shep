@@ -608,10 +608,7 @@ struct ErrorBody<'a> {
 /// anything that could drive a terminal, `message` in the shape `fmt`
 /// renders.
 ///
-/// One function rather than four lines in each emitter, because the two have
-/// to agree and have drifted once already. `emit_error` carried the comment
-/// explaining why `code` was exempt from sanitising and `emit_notice`
-/// carried nothing, which is how the exemption outlived the reason for it.
+/// Both emitters go through here, so the two cannot sanitise differently.
 fn safe_parts(fmt: Format, code: &str, message: &str) -> (String, String) {
     (
         crate::terminal_safe::sanitise(code).0,
@@ -640,19 +637,12 @@ fn safe_message(fmt: Format, message: &str) -> String {
 
 /// `message` with every line after the first indented by two spaces.
 ///
-/// The indent is what makes a kept `\n` safe rather than merely useful. Only
-/// the first line of a table message starts at column 0, so a newline
-/// reaching here inside an interpolated value cannot forge a line that reads
-/// as shep's own or that a script keying on `error[` at the start of a line
-/// will match. Messages are written with plain `\n` and no indent of their
-/// own, because this owns it.
-///
-/// An empty line stays empty: indenting it would emit trailing whitespace on
-/// a line a reader sees as a paragraph break.
-///
-/// The guarantee holds only because `code` is sanitised too. It prints ahead
-/// of the message on that first line, so a newline in it would start a line
-/// this never sees.
+/// Only the first line of a table message starts at column 0, so a newline
+/// inside an interpolated value cannot forge a line that reads as shep's own
+/// or that a script anchoring `error[` there will match. It holds because
+/// `code` is sanitised too, printing ahead of the message on that same line.
+/// Messages carry no indent of their own. An empty line stays empty, since
+/// indenting one leaves trailing whitespace on a paragraph break.
 fn indent_continuations(message: &str) -> String {
     let mut out = String::with_capacity(message.len());
     for (n, line) in message.split('\n').enumerate() {
