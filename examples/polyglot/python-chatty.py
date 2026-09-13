@@ -145,7 +145,13 @@ def parse_level(params):
 
 
 def reply_to(action, params):
-    """The body the operator reads back from shep trigger."""
+    """The body the operator reads back, or None for a name this app
+    does not know.
+
+    None rather than an empty string, and the caller tests for it rather
+    than for falsiness, so a reply body that is legitimately empty stays
+    a reply instead of turning into "unknown action".
+    """
     if action == "ping":
         return f"pong from python pid={os.getpid()}, up {time.monotonic() - STARTED:.1f}s"
     if action == "level":
@@ -222,7 +228,9 @@ def main():
             send(channel, {"kind": "metric", "name": metric, "value": samples})
             body = f"sent {metric}={samples}"
         else:
-            body = reply_to(name, params) or f"unknown action: {name}"
+            body = reply_to(name, params)
+            if body is None:
+                body = f"unknown action: {name}"
 
         send(channel, {"kind": "action-reply", "action": name, "body": body, "id": ident})
 
