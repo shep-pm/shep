@@ -90,9 +90,9 @@ fn entry_line(index: usize, grouped: &[Vec<Binding>], palette: Palette) -> Line<
 }
 
 /// One [`COLUMN`]-wide cell: the group's own row at `index` if it has one,
-/// styled `keys` in [`Palette::attention`] and `does` in [`Palette::ground`];
-/// the sheep at entry rows five through eight of the DOING column once
-/// that group runs out; a blank cell otherwise.
+/// styled `keys` in [`Palette::attention`] and `does` unstyled (the design's
+/// own ink-2, "default fg"); the sheep at entry rows five through eight of
+/// the DOING column once that group runs out; a blank cell otherwise.
 fn entry_cell(
     group: Group,
     binding: Option<Binding>,
@@ -102,14 +102,22 @@ fn entry_cell(
     if let Some(binding) = binding {
         return vec![
             Span::styled(fit(binding.keys, KEY_CELL), palette.attention()),
-            Span::styled(
-                format!(
-                    "{}{}",
-                    " ".repeat(usize::from(GAP)),
-                    fit(binding.does, TEXT_CELL)
-                ),
-                palette.ground(),
-            ),
+            // Unstyled: the design's own colour table gives ordinary cell
+            // text as ink-2, "default fg", and there is no `Palette`
+            // method for it because unstyled is how it renders.
+            // `palette.ground()` paints a background
+            // (`Palette::ground`'s own doc: "the one painted background"),
+            // and painting only this span would band the description
+            // column while the key column and the headings beside it sat
+            // on the terminal's own background. Frame 1g's own interior
+            // stays `Style::reset()` (`overlay::blank_row`) for the same
+            // reason: 1g's design also calls for a ground, and 1g shipped
+            // without it.
+            Span::raw(format!(
+                "{}{}",
+                " ".repeat(usize::from(GAP)),
+                fit(binding.does, TEXT_CELL)
+            )),
         ];
     }
     if group == Group::Doing
