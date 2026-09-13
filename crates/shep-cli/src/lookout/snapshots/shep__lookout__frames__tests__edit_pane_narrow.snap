@@ -1,6 +1,5 @@
 ---
 source: crates/shep-cli/src/lookout/frames.rs
-assertion_line: 2900
 expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                            6 in the flock
