@@ -110,12 +110,23 @@ const documented = cliReference.verbs.map((v) => v.name);
 const missing = documented.filter((name) => !grouped.includes(name));
 const unknown = grouped.filter((name) => !documented.includes(name));
 const duplicated = grouped.filter((name, i) => grouped.indexOf(name) !== i);
-if (missing.length > 0 || unknown.length > 0 || duplicated.length > 0) {
+// A name the reference itself carries twice is in `grouped` once and in
+// `documented` twice, so the three lists above all come back empty while the
+// verb renders twice on the page. Only the generator can do that, by holding
+// the same entry twice in `VERBS`, and no Rust test looks for it either.
+const referencedTwice = documented.filter((name, i) => documented.indexOf(name) !== i);
+if (
+  missing.length > 0 ||
+  unknown.length > 0 ||
+  duplicated.length > 0 ||
+  referencedTwice.length > 0
+) {
   throw new Error(
     `src/pages/docs/cli.astro: this page's groups must name every verb in ` +
       `the CLI reference exactly once. Missing: ${JSON.stringify(missing)}. ` +
       `Not a verb: ${JSON.stringify(unknown)}. ` +
-      `Filed twice: ${JSON.stringify(duplicated)}.`,
+      `Filed twice: ${JSON.stringify(duplicated)}. ` +
+      `Carried twice by the reference itself: ${JSON.stringify(referencedTwice)}.`,
   );
 }
 ---
