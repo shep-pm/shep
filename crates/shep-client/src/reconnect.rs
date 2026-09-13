@@ -1208,6 +1208,81 @@ mod tests {
         );
     }
 
+    /// fails if the verdict follows `daemon_version` rather than the pid.
+    ///
+    /// `shep daemon reload` onto a NEW build is still an execve, so it keeps
+    /// the pid and carries the id counter across while the version changes.
+    /// A version comparison would call that a new daemon and have every
+    /// caller discard ids that are still perfectly good.
+    ///
+    /// Every other case here uses `ack_from`, which derives the version from
+    /// the pid, so the two fields always move together and neither could
+    /// tell these two rules apart.
+    #[tokio::test]
+    async fn an_upgrade_handover_keeps_its_pid_and_reports_same_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let upgraded = |version: &str| HelloAck {
+            daemon_version: version.to_string(),
+            protocol: PROTOCOL_VERSION,
+            pid: 11,
+            min_supported: None,
+        };
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(upgraded("0.8.0")),
+                Handshake::Accept(upgraded("0.9.0")),
+            ],
+        );
+        let mut client = Client::connect(&path).await.unwrap();
+
+        shepherds.cut().await;
+        let verdict = tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("the reconnect must not hang")
+            .expect("the successor accepted this handshake");
+
+        assert_eq!(verdict, Reconnected::SameDaemon);
+        assert_eq!(
+            client.daemon().daemon_version,
+            "0.9.0",
+            "the ack must still follow the build now answering"
+        );
+    }
+
+    /// fails if the verdict follows `daemon_version` rather than the pid, in
+    /// the other direction: a daemon stopped and started again on the SAME
+    /// build mints its ids from a fresh space, so a version comparison would
+    /// wave a caller through to reuse ids that now mean nothing.
+    #[tokio::test]
+    async fn a_restart_onto_the_same_build_reports_new_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let same_build = |pid: u32| HelloAck {
+            daemon_version: "0.9.0".to_string(),
+            protocol: PROTOCOL_VERSION,
+            pid,
+            min_supported: None,
+        };
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(same_build(11)),
+                Handshake::Accept(same_build(22)),
+            ],
+        );
+        let mut client = Client::connect(&path).await.unwrap();
+
+        shepherds.cut().await;
+        let verdict = tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("the reconnect must not hang")
+            .expect("the successor accepted this handshake");
+
+        assert_eq!(verdict, Reconnected::NewDaemon);
+    }
+
     /// fails if a cancelled reconnect leaves the handle on neither
     /// connection. The old one is held until a new one has handshaken, so a
     /// caller whose future loses a `select!` race still has the connection
