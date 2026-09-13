@@ -1,12 +1,13 @@
-//! Moving `[dog.<name>]` out of `shep.toml` and into `dogs.toml`, once,
-//! and the one write path `dogs.toml` has.
+//! Moving `[dog.<name>]` out of `shep.toml` and into `dogs.toml`, once.
 //!
 //! [`migrate_dog_sections`] runs at the top of every daemon boot and does
-//! nothing on all but the first. It is the only writer, and it holds
-//! `dogs.toml`'s own [`ConfigLock`] across the whole read-modify-write,
-//! since it rewrites the entire file; while both locks are held,
-//! `shep.toml`'s is the outer one. `RawDaemonConfig` keeps its `dog` field
-//! so an un-migrated file still parses under `deny_unknown_fields`.
+//! nothing on all but the first. It is one of two writers `dogs.toml` has:
+//! the other is `shep_daemon::dogs::set_dog_section`, which the config pane
+//! reaches through `Request::SetDogConfig`. Both rewrite the whole file, so
+//! both hold `dogs.toml`'s own [`ConfigLock`] across the read-modify-write;
+//! while both locks are held, `shep.toml`'s is the outer one.
+//! `RawDaemonConfig` keeps its `dog` field so an un-migrated file still
+//! parses under `deny_unknown_fields`.
 
 use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
@@ -77,9 +78,10 @@ pub(crate) fn migrate_dog_sections(paths: &ShepPaths) -> Result<Vec<String>, Dog
             return Err(DogMigrationError::SectionsUnreadable { names: missing });
         }
         // Take `dogs.toml`'s lock, so the read and merge below are one
-        // transaction against a second boot running this same function.
-        // It nests inside `shep.toml`'s, which `try_edit` holds, and that
-        // order is the only one anything takes.
+        // transaction against the other writers: a second boot here, and
+        // `dogs::set_dog_section` behind the config pane. It nests inside
+        // `shep.toml`'s, which `try_edit` holds, and that order is the only
+        // one anything takes.
         let _dogs_lock =
             ConfigLock::acquire(&paths.dogs_config).map_err(DogMigrationError::Lock)?;
         // A live document, not a `toml::Table`: a second migration writes into

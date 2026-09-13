@@ -171,9 +171,9 @@ $ shep disable metrics`}</CodeBlock>
       provisioning script is safe: each takes an exclusive lock on{" "}
       <code>shep.toml</code> for its whole read-edit-write, so the second
       waits its turn. <code>dogs.toml</code> has its own lock on the same
-      terms, held by the one thing that writes it, the migration a boot
-      runs once. A boot holding both takes <code>shep.toml</code>'s
-      first.
+      terms, held by both things that write it: the migration a boot runs
+      once, and the config pane's own edits. A boot holding both takes{" "}
+      <code>shep.toml</code>'s first.
     </p>
 
     <h2>When a dog starts</h2>

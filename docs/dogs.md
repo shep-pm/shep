@@ -94,12 +94,13 @@ second waits its turn instead of writing back a document it read before
 the first one's edit landed.
 
 `dogs.toml` has a lock of its own on the same terms, and it needs one for
-the same reason: its one writer rewrites the whole file rather than a
-line of it. That writer is the once-per-home migration a boot runs, and
-it holds the lock across its whole read-edit-write, so two boots at once
-cannot undo each other. A boot that holds both locks takes `shep.toml`'s
-first. Nothing else shep runs writes this file; `shep rehome` reads it
-and leaves it alone.
+the same reason: both of its writers rewrite the whole file rather than a
+line of it. Those two are the once-per-home migration a boot runs, and the
+config pane's own edits, which reach `set_dog_section` over
+`Request::SetDogConfig`. Each holds the lock across its whole
+read-edit-write, so a boot and a pane edit at once cannot undo each other.
+A boot that holds both locks takes `shep.toml`'s first. `shep rehome` is
+not a writer: it reads this file and leaves it alone.
 
 ## Configuration
 
