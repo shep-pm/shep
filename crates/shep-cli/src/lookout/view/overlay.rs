@@ -16,8 +16,14 @@ use super::super::theme::Palette;
 
 /// The border's four corners, checked against `unicodedata.east_asian_width`
 /// and found Neutral, same as [`BOX_LEFT`].
-const BOX_TOP_LEFT: char = '▛';
-const BOX_TOP_RIGHT: char = '▜';
+///
+/// `pub(super)`: `keymap`'s own tests build the boxed top border's full
+/// shape (`BOX_TOP_LEFT` + `INTERIOR` copies of `BOX_TOP` + `BOX_TOP_RIGHT`)
+/// from these directly, rather than checking any one glyph in isolation —
+/// several of them (`▛ ▜ ▙ ▟ ▀`) also appear in the keymap's own sheep art,
+/// so a single-glyph check proves nothing about the border specifically.
+pub(super) const BOX_TOP_LEFT: char = '▛';
+pub(super) const BOX_TOP_RIGHT: char = '▜';
 const BOX_BOTTOM_LEFT: char = '▙';
 const BOX_BOTTOM_RIGHT: char = '▟';
 
@@ -34,7 +40,7 @@ const BOX_LEFT: char = '▐';
 /// `the_border_vocabulary_is_the_one_that_was_checked` pins the set so a
 /// later glyph change gets the same check rather than inheriting this
 /// answer.
-const BOX_TOP: char = '▀';
+pub(super) const BOX_TOP: char = '▀';
 const BOX_BOTTOM: char = '▄';
 const BOX_RIGHT: char = '▌';
 

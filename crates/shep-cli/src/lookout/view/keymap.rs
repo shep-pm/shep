@@ -301,17 +301,17 @@ const HEIGHT_FLOOR: u16 = 13;
 
 /// What a form of `height` rows has to give up.
 ///
-/// The sheep is not a step of its own: it sits at entry rows five through
-/// eight of the DOING column, and those rows exist because LOOKING has
-/// twelve entries, so removing it frees nothing. It goes with
-/// [`Shed::Decoration`]'s `NO_COLOR` line because a decoration beside a
-/// list that has already lost text is worse than no decoration.
+/// The sheep is not a step of this ladder at all: it is boxed-only at every
+/// tier, [`borderless_lines`]'s own doc says why. It is not a shedding step
+/// because it frees nothing to shed either way — it sits at entry rows five
+/// through eight of the DOING column, and those rows exist because LOOKING
+/// has twelve entries.
 ///
 /// ```text
 /// 19  Boxed       everything, border pair included
 /// 18  Nothing     borderless: a box cannot shed its border pair
 /// 17  Nothing     borderless, everything
-/// 16  Decoration  the NO_COLOR line and the sheep
+/// 16  Decoration  the NO_COLOR line goes
 /// 15  Blank       and the blank separator
 /// 14  Gate        and the gate line, folded onto the closing line
 /// 13  Gate        the floor: the heading and twelve entry rows
@@ -422,13 +422,13 @@ fn borderless_lines(
     effective_height: u16,
     shed: Shed,
 ) -> Vec<Line<'static>> {
-    // The sheep is boxed-only: its own glyph set shares `▛`
-    // (`overlay::BOX_TOP_LEFT`) with the border corner, and
-    // `one_column_under_the_floor_keeps_four_columns_and_loses_the_border`
-    // tells the two apart by that glyph's presence at 128 columns. Drawing
-    // the sheep in the borderless form at any shed tier would make the
-    // corner glyph ambiguous between "boxed" and "the sheep drew its own
-    // tail", so it never draws here regardless of `shed`.
+    // The sheep is boxed-only, at every shed tier, not just from
+    // `Shed::Decoration` down: it is the one element in the whole TUI that
+    // carries no information, and the borderless form only exists because
+    // the frame itself could not be drawn. A decoration is the first thing
+    // to go once the frame is gone — the same reasoning that drops it
+    // alongside the `NO_COLOR` line once the *text* starts being trimmed,
+    // just one step earlier, at the point the box itself is trimmed.
     let show_sheep = false;
     let mut out = Vec::new();
     for (index, bank) in banks.iter().enumerate() {
@@ -728,14 +728,31 @@ mod tests {
         assert_eq!(columns_for(MIN_TERM_WIDTH), 1);
     }
 
+    /// The boxed form's own top border row: the top-left corner, `INTERIOR`
+    /// copies of the top glyph, and the top-right corner, run together with
+    /// no gap. A full-width run, not a single glyph: five of the eight
+    /// border glyphs (`▛ ▜ ▙ ▟ ▀`) also appear in the sheep's own art
+    /// (`SHEEP[2]` alone carries `▜`, `▀` and `▛`), so a check for any one
+    /// of them in isolation would pass or fail on the sheep's presence
+    /// rather than the border's.
+    fn top_border_row() -> String {
+        format!(
+            "{}{}{}",
+            overlay::BOX_TOP_LEFT,
+            overlay::BOX_TOP.to_string().repeat(usize::from(INTERIOR)),
+            overlay::BOX_TOP_RIGHT
+        )
+    }
+
     /// One column under the floor: no border, and still four columns.
     #[test]
     fn one_column_under_the_floor_keeps_four_columns_and_loses_the_border() {
         let app = app_with_overlay();
         let boxed = render_overlay(&app, 130, 48);
         let bare = render_overlay(&app, 128, 48);
-        assert!(boxed.contains('\u{259b}'), "130 must be boxed: {boxed}");
-        assert!(!bare.contains('\u{259b}'), "128 must not be: {bare}");
+        let border = top_border_row();
+        assert!(boxed.contains(&border), "130 must be boxed: {boxed}");
+        assert!(!bare.contains(&border), "128 must not be: {bare}");
         for group in Group::DRAWN {
             assert!(
                 bare.contains(group.heading()),
@@ -785,9 +802,9 @@ mod tests {
     ///
     /// 16, not 22: the box needs 19 rows and 22 holds it whole, so nothing
     /// sheds at 22 and this test would have passed on an unshed form. The
-    /// sheep also frees no rows by itself, since it sits inside entry rows
-    /// LOOKING needs anyway — it goes with the NO_COLOR line because a
-    /// decoration beside a trimmed list is wrong, not because it buys room.
+    /// sheep is absent here for a reason this test does not exercise: it is
+    /// boxed-only at every height, not something the `Decoration` tier
+    /// sheds (see [`borderless_lines`]'s own comment).
     #[test]
     fn a_short_terminal_sheds_the_decoration_and_keeps_the_keys() {
         let app = app_with_overlay();
