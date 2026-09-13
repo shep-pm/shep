@@ -3095,9 +3095,17 @@ mod tests {
             .iter()
             .find(|row| row.contains("FIELD") && row.contains("VALUE"))
             .expect("no column header");
+        // Anchored on the longest word in the help text, not its first.
+        // A first word like "Set" or "The" also appears in other rows, so
+        // the old anchor could have measured the indent of something else
+        // entirely and still passed.
+        let anchor = help
+            .split_whitespace()
+            .max_by_key(|word| word.len())
+            .expect("help is empty");
         let blurb = rows
             .iter()
-            .find(|row| row.contains(help.split_whitespace().next().expect("help is empty")))
+            .find(|row| row.contains(anchor))
             .expect("no blurb row");
         assert_eq!(
             indent(blurb),
@@ -3164,10 +3172,14 @@ mod tests {
         pane.fields().fields()[index].help.clone()
     }
 
-    /// The hard constraint this item's brief calls out: a line drawn into
-    /// the fixed slot under the title is still one line counted against
-    /// the same budget every other line in the pane is, at every width
-    /// and height the pane claims to draw at.
+    /// The hard constraint this item's brief calls out: the blurb rows
+    /// under the title are counted against the same budget every other
+    /// line in the pane is, at every width and height the pane claims to
+    /// draw at.
+    ///
+    /// "A line drawn into the fixed slot" until 072b6ff8: the slot held one
+    /// line while `h` toggled it, and holds as many as the help text wraps
+    /// to now that it is unconditional.
     #[test]
     fn help_text_still_respects_the_width_and_height_budgets() {
         let mut pane = web_pane();

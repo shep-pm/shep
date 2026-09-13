@@ -561,7 +561,7 @@ impl Scene {
                 "The same overlay at 130 columns, the narrowest the border can still hold: 130 = 128 (126 interior plus one border cell each side) plus one margin cell each side. One column narrower and the border is gone."
             }
             Self::KeymapBorderlessWide => {
-                "128 columns, one below KeymapFloor's own 130: the border is gone, but columns_for(128) is still 4, so this is the widest form the overlay ever draws with all four columns and no frame around them."
+                "128 columns, two below KeymapFloor's own 130: the border is gone, but columns_for(128) is still 4, so this is the widest form the overlay ever draws with all four columns and no frame around them."
             }
             Self::KeymapNarrow => {
                 "100 columns: columns_for(100) is 3, so MOVING, LOOKING and CHANGING share one bank and DOING drops to a bank of its own below a blank separator row."

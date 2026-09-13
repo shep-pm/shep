@@ -498,7 +498,10 @@ mod tests {
     ///   floor    130 = 128 + 1 margin each side
     #[test]
     fn the_columns_sum_to_the_interior() {
-        assert_eq!(COLUMN, KEY_CELL + GAP + TEXT_CELL);
+        // Literals, not the defining expression: COLUMN *is*
+        // KEY_CELL + GAP + TEXT_CELL, so comparing them constant-folds to
+        // 30 == 30 and would survive all three being wrong together.
+        assert_eq!((KEY_CELL, GAP, TEXT_CELL), (12, 1, 17));
         assert_eq!(
             COLUMN * COLUMN_COUNT + GUTTER * (COLUMN_COUNT - 1),
             INTERIOR
