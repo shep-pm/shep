@@ -176,8 +176,10 @@ pub enum LevelRuleError {
         /// entry to edit.
         level: LineLevel,
     },
-    /// More rules than [`MAX_LEVEL_RULES`]. Each costs a compiled regex, and
-    /// a client recompiles the whole list on every redraw.
+    /// More rules than this crate's ceiling on how many one app may declare.
+    /// Each costs a compiled regex, and a client recompiles the whole list
+    /// on every redraw, so the count is a per-frame cost. `limit` carries
+    /// the ceiling rather than the doc naming a private const.
     TooManyRules {
         /// How many the app declared.
         count: usize,
