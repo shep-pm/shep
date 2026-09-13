@@ -604,6 +604,30 @@ struct ErrorBody<'a> {
     message: &'a str,
 }
 
+/// `message` with everything that could drive a terminal stripped, in the
+/// shape `fmt` renders.
+///
+/// The one seam every emitted message passes through, which is why the
+/// guarantee lives here rather than at each caller. JSON collapses to a
+/// single line, because `jq -r .error.message` unescapes a control byte
+/// straight back onto a terminal and a consumer has no use for layout. A
+/// table keeps the line breaks shep wrote, so a remedy stays on a line of
+/// its own; a fragment an untrusted host worded is collapsed at the seam
+/// that captured it, ahead of this.
+///
+/// Either way the result carries no trailing whitespace, which the writing
+/// `writeln!` would turn into a blank line.
+fn safe_message(fmt: Format, message: &str) -> String {
+    match fmt {
+        Format::Json => crate::terminal_safe::sanitise(message).0,
+        Format::Table => {
+            let mut clean = crate::terminal_safe::sanitise_multiline(message).0;
+            clean.truncate(clean.trim_end().len());
+            clean
+        }
+    }
+}
+
 /// Renders a failure to `err` in `fmt`. `code` is `ExitCode::code_str()`.
 ///
 /// `code` is a string this function only prints, not the exit code, but
@@ -619,11 +643,9 @@ pub fn emit_error(
     code: &str,
     message: &str,
 ) -> io::Result<()> {
-    // Sanitised once here, the only place every caller passes through. Both
-    // formats: `jq -r .error.message` would unescape a hostile message
-    // right back onto a terminal. `code` is never sanitised, since every
-    // caller passes a literal or `ExitCode::code_str()`.
-    let (message, _) = crate::terminal_safe::sanitise(message);
+    // `code` is never sanitised, since every caller passes a literal or
+    // `ExitCode::code_str()`.
+    let message = safe_message(fmt, message);
     let message = message.as_str();
     match fmt {
         Format::Json => {
@@ -681,8 +703,7 @@ pub fn emit_notice(
     code: &str,
     message: &str,
 ) -> io::Result<()> {
-    // Sanitised for the reason [`emit_error`] is, one function up.
-    let (message, _) = crate::terminal_safe::sanitise(message);
+    let message = safe_message(fmt, message);
     let message = message.as_str();
     match fmt {
         Format::Json => {
@@ -1475,6 +1496,40 @@ mod tests {
             .unwrap();
             insta::assert_snapshot!(format!("error_{name}"), String::from_utf8(out).unwrap());
         }
+    }
+
+    /// fails if a refusal's layout stops depending on the format. The
+    /// remedy line is the point: an operator copies it, and a JSON consumer
+    /// gets the same facts with no layout to parse around.
+    #[test]
+    fn a_multiline_refusal_keeps_its_lines_in_a_table_and_loses_them_in_json() {
+        let written = "no flock at /tmp/x\n  to set up a flock there deliberately: mkdir -p /tmp/x";
+        for (fmt, name) in [(Format::Table, "table"), (Format::Json, "json")] {
+            let mut out = Vec::new();
+            emit_error(&mut out, fmt, ExitCode::Usage.code_str(), written).unwrap();
+            insta::assert_snapshot!(
+                format!("error_multiline_{name}"),
+                String::from_utf8(out).unwrap()
+            );
+        }
+    }
+
+    /// fails if a message's own trailing newline reaches the stream, where
+    /// `writeln!` would add a second and print a blank line. `toml_edit`
+    /// ends its parse errors with one.
+    #[test]
+    fn a_message_that_ends_in_a_newline_does_not_print_a_blank_line() {
+        let mut out = Vec::new();
+        emit_error(
+            &mut out,
+            Format::Table,
+            ExitCode::InvalidConfig.code_str(),
+            "invalid table header\nexpected `.`, `]`\n",
+        )
+        .unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.ends_with("]`\n"), "{text:?}");
+        assert!(!text.ends_with("\n\n"), "{text:?}");
     }
 
     #[test]
