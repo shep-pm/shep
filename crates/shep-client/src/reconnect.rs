@@ -111,6 +111,7 @@ pub enum LinkState {
 ///
 /// Non-exhaustive: expect more variants.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use = "which of the two it was decides whether a dog exits unreachable or refused"]
 #[non_exhaustive]
 pub enum LinkLost {
     /// The wait ran out with the supervisor still dialling.
