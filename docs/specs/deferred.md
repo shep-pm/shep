@@ -87,8 +87,8 @@ Nothing in `crates/` creates, writes, or detects a cgroup. Grepping the
 workspace for `cgroup` returns three comments and no code
 (`crates/shep-daemon/src/runner.rs:900`,
 `crates/shep-daemon/src/limits/mod.rs:54`, and
-`crates/shep-cli/src/lookout/source.rs:353`). The work is the
-container itself: a per-sheep cgroup created at spawn with the child moved
+`crates/shep-cli/src/lookout/source.rs:353`). The work is the container
+itself: a per-sheep cgroup created at spawn with the child moved
 into it before it forks anything, v2 versus v1/hybrid detection, delegation
 detection, and a clean refusal rather than a silent no-op when none of that is
 available. Call it phase 0. Against it, each field is one file write:
@@ -170,6 +170,14 @@ controller simply stops scheduling the cgroup's tasks until the next period
 begins. Nothing dies, the tree runs slower. runc computes the same value the
 same way: quota is cores times period.
 
+Note which way that scales, because Windows scales the other way and doing
+Linux first is how the wrong model gets carried across. On Linux more than one
+core is a quota **above** the period: two cores at the default 100000us period
+is `200000 100000`, and the number grows without a ceiling. On Windows the
+ceiling is the whole machine, so more than one core is a **larger fraction** of
+a fixed 10000. One conversion multiplies by the core count, the other divides by
+the host's.
+
 `memory.max` is not the symmetric knob. Under Linux overcommit the kernel does
 not politely refuse the allocation that crosses the line. It reclaims, and
 when reclaim fails it invokes the cgroup-scoped OOM killer on a process it
@@ -215,8 +223,8 @@ the host has. One core is therefore not a fixed number, and `max_cpu_cores`
 cannot be scaled without knowing how many processors the host has. The
 conversion is `cores * 10000 / processor_count`, which is what moby computes
 for `--cpus` on Windows, so `max_cpu_cores = 2` on an eight-processor host
-writes 2500 and not 20000. The cap is the tell: if the rate were per-core, expressing
-two cores would need a value above 10000, and the API refuses one.
+writes 2500 and not 20000. The cap is the tell: if the rate were per-core,
+expressing two cores would need a value above 10000, and the API refuses one.
 
 **macOS** has no mechanism for either, and this has to be a documented
 refusal. `RLIMIT_AS` is defeated by ordinary virtual-address reservations, so
