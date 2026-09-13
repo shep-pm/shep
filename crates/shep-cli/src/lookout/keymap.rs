@@ -19,15 +19,45 @@ use crate::vocabulary::Role;
 /// The box is nineteen rows: a border pair, a heading row, twelve entries,
 /// a blank, the gate line, and two closing lines. Zero spare, which
 /// `every_group_fits_its_column` is what guards.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Task 6's overlay drawer reads this; the drawer is not built yet"
+    )
+)]
 pub(super) const ENTRY_ROWS: usize = 12;
 
 /// How wide the key-caption cell is.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Task 6's overlay drawer reads this; the drawer is not built yet"
+    )
+)]
 pub(super) const KEY_CELL: u16 = 12;
 
 /// How wide the sentence cell is.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Task 6's overlay drawer reads this; the drawer is not built yet"
+    )
+)]
 pub(super) const TEXT_CELL: u16 = 17;
 
 /// One of the overlay's four columns, grouped by what the keys in it do.
+#[cfg_attr(
+    not(test),
+    // `allow`, not `expect`: this is dead only through `Group::heading`,
+    // `Group::role` and `rows`, which each carry their own `expect`.
+    // Whether a compiler propagates that reachability is a toolchain
+    // detail (see fix(cli) 52ae420d), so this stays `allow` rather than
+    // risk an unfulfilled `expect` on whichever toolchain does not.
+    allow(dead_code, reason = "Task 6's overlay drawer reads this; the drawer is not built yet")
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Group {
     Moving,
@@ -44,10 +74,21 @@ pub(super) enum Group {
 impl Group {
     /// The four that draw as columns, left to right. [`Self::Closing`] is
     /// not among them.
+    #[cfg_attr(
+        not(test),
+        allow(
+            dead_code,
+            reason = "dead only through `rows`, which carries its own `expect`"
+        )
+    )]
     pub(super) const DRAWN: [Self; 4] = [Self::Moving, Self::Looking, Self::Changing, Self::Doing];
 
     /// The column's heading, or `""` for [`Self::Closing`], which has no
     /// column to head.
+    #[expect(
+        dead_code,
+        reason = "Task 6's overlay drawer reads this; the drawer is not built yet"
+    )]
     pub(super) const fn heading(self) -> &'static str {
         match self {
             Self::Moving => "MOVING",
@@ -60,6 +101,10 @@ impl Group {
 
     /// The heading's colour role. `Doing` is bark because its three keys
     /// are the destructive ones; the rest are meadow.
+    #[expect(
+        dead_code,
+        reason = "Task 6's overlay drawer reads this; the drawer is not built yet"
+    )]
     pub(super) const fn role(self) -> Role {
         match self {
             Self::Doing => Role::Bark,
@@ -73,6 +118,13 @@ impl Group {
 /// `keys` is at most [`KEY_CELL`] characters and `does` at most
 /// [`TEXT_CELL`]; `the_cells_fit_their_widths` asserts both rather than
 /// leaving a long one to be cut on screen.
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "dead only through `rows`, which carries its own `expect`"
+    )
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Binding {
     pub keys: &'static str,
@@ -86,6 +138,13 @@ pub(super) struct Binding {
 /// [`KeyPress`] and [`ActionVerb`] have to grow a row here before they
 /// compile. That is the whole guard against a binding that dispatches and
 /// does not print.
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "dead only through `rows`, which carries its own `expect`"
+    )
+)]
 const fn binding(press: &KeyPress) -> Binding {
     // `row` keeps each arm to one line, so a reader checks thirty-five
     // captions rather than thirty-five struct literals.
@@ -107,7 +166,7 @@ const fn binding(press: &KeyPress) -> Binding {
         KeyPress::NextGroup => row("tab", Group::Moving, "next config group"),
         KeyPress::Group(_) => row("1-8", Group::Moving, "jump to a group"),
         KeyPress::MatchNext | KeyPress::MatchPrev => row("n/N", Group::Moving, "next / prev match"),
-        KeyPress::Confirm => row("enter", Group::Moving, "open selection"),
+        KeyPress::Confirm => row("\u{21b5}", Group::Moving, "open selection"),
         KeyPress::Escape => row("esc", Group::Moving, "back one level"),
 
         KeyPress::Help => row("h  ?", Group::Looking, "this keymap"),
@@ -157,6 +216,13 @@ const fn binding(press: &KeyPress) -> Binding {
 /// digits. `every_key_map_key_binds_is_in_the_probe` sweeps the whole
 /// keyboard against this, so a key missing here is a test failure rather
 /// than a row missing from the box.
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "dead only through `rows`, which carries its own `expect`"
+    )
+)]
 const PROBE: &[(KeyCode, KeyModifiers)] = &[
     (KeyCode::Char('j'), KeyModifiers::NONE),
     (KeyCode::Char('g'), KeyModifiers::NONE),
@@ -196,15 +262,20 @@ const PROBE: &[(KeyCode, KeyModifiers)] = &[
     (KeyCode::Char('q'), KeyModifiers::NONE),
 ];
 
-/// Every row the overlay draws, grouped, in the order each column lists
-/// them.
-///
-/// Built by running [`PROBE`] through [`map_key`], so nothing here names a
-/// key the reducer does not dispatch on.
-pub(super) fn rows() -> Vec<Binding> {
+/// [`rows`], generalised over which probe entries to run, so
+/// `every_probe_entry_binds_something` can ask "what would this draw
+/// without entry N" without a second copy of the loop.
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "dead only through `rows`, which carries its own `expect`"
+    )
+)]
+fn rows_from(probe: &[(KeyCode, KeyModifiers)]) -> Vec<Binding> {
     let mut out: Vec<Binding> = Vec::new();
     for group in Group::DRAWN.into_iter().chain([Group::Closing]) {
-        for (code, modifiers) in PROBE {
+        for (code, modifiers) in probe {
             let event = Event::Key(KeyEvent::new(*code, *modifiers));
             let Some(press) =
                 map_key(&event, InputMode::Normal).or_else(|| map_key(&event, InputMode::Text))
@@ -218,6 +289,22 @@ pub(super) fn rows() -> Vec<Binding> {
         }
     }
     out
+}
+
+/// Every row the overlay draws, grouped, in the order each column lists
+/// them.
+///
+/// Built by running [`PROBE`] through [`map_key`], so nothing here names a
+/// key the reducer does not dispatch on.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Task 6's overlay drawer reads this; the drawer is not built yet"
+    )
+)]
+pub(super) fn rows() -> Vec<Binding> {
+    rows_from(PROBE)
 }
 
 #[cfg(test)]
@@ -270,20 +357,52 @@ mod tests {
 
     /// And the reverse: `PROBE` cannot accumulate keys that stopped being
     /// bound.
+    ///
+    /// `map_key`'s `InputMode::Text` branch binds every non-ALT `Char` as
+    /// `TextChar`, so `normal.is_some() || text.is_some()` alone is
+    /// satisfied by any printable character whether or not it is still
+    /// bound in `Normal` — the realistic way a `PROBE` entry goes stale.
+    /// Classifying by the *observed* press does not fix this: a letter
+    /// that lost its `Normal` binding collapses to exactly the same
+    /// `TextChar` the text-only representative produces, so no property
+    /// of the resulting [`KeyPress`] tells the two apart.
+    ///
+    /// What does tell them apart is [`rows`] itself: an entry that does
+    /// not bind in `Normal` is only legitimate if it is the *only* one
+    /// standing for its row — remove it and that row would disappear.
+    /// `Char('a')` is necessary this way, since nothing else produces the
+    /// `a-z 0-9` row; a stray unclaimed letter added later is not, since
+    /// `Char('a')` (or whichever entry already claims the row) still
+    /// covers it without the new one. This is derived from [`rows_from`]
+    /// rather than a second list of which entries are text-only.
     #[test]
     fn every_probe_entry_binds_something() {
-        for (code, modifiers) in PROBE {
-            let normal = map_key(
-                &Event::Key(KeyEvent::new(*code, *modifiers)),
-                InputMode::Normal,
-            );
-            let text = map_key(
-                &Event::Key(KeyEvent::new(*code, *modifiers)),
-                InputMode::Text,
-            );
+        for (index, (code, modifiers)) in PROBE.iter().enumerate() {
+            let event = Event::Key(KeyEvent::new(*code, *modifiers));
+            let normal = map_key(&event, InputMode::Normal);
+            let text = map_key(&event, InputMode::Text);
+            let press = normal.or(text).unwrap_or_else(|| {
+                panic!("{code:?} with {modifiers:?} is in PROBE and binds nothing")
+            });
+            if normal.is_some() {
+                continue;
+            }
+            let without_this: Vec<(KeyCode, KeyModifiers)> = PROBE
+                .iter()
+                .enumerate()
+                .filter(|(seen, _)| *seen != index)
+                .map(|(_, entry)| *entry)
+                .collect();
+            let row = binding(&press);
+            let still_covered = rows_from(&without_this)
+                .iter()
+                .any(|seen| seen.keys == row.keys);
             assert!(
-                normal.is_some() || text.is_some(),
-                "{code:?} with {modifiers:?} is in PROBE and binds nothing"
+                !still_covered,
+                "{code:?} with {modifiers:?} does not bind in InputMode::Normal, and \
+                 its row ({}) is already covered without it, so it adds nothing \
+                 the way a text-only representative would",
+                row.keys
             );
         }
     }
@@ -359,12 +478,21 @@ mod tests {
     /// Catches the drift the derivation cannot: a caption edited to name a
     /// key that was never bound. Single-character captions only, since a
     /// caption like `g/G home/end` names four keys in one cell.
+    ///
+    /// ASCII only: a single non-ASCII character is a symbol standing for a
+    /// named `KeyCode` rather than something anyone types — `\u{21b5}` for
+    /// `Enter`, `\u{232b}` for `Backspace` — so looking it up as
+    /// `Char(that_symbol)` is the wrong query and would fail for a caption
+    /// that is correct. `view/status.rs`'s secrets hint (line ~429) writes
+    /// this same `\u{21b5}` glyph for the identical job, confirming the
+    /// glyph is the shipped convention rather than a mistake to route
+    /// around here.
     #[test]
     fn a_single_character_caption_names_a_bound_key() {
         for row in rows() {
             let mut chars = row.keys.chars();
             let Some(only) = chars.next() else { continue };
-            if chars.next().is_some() {
+            if chars.next().is_some() || !only.is_ascii() {
                 continue;
             }
             assert!(
