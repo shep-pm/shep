@@ -33,7 +33,7 @@ go for the full argument. The commit that removed them names itself.
 - [whistle](#whistle) (18)
 - [Config and packaging](#config-and-packaging) (5)
 - [serve, dev and runtime](#serve-dev-and-runtime) (8)
-- [Output and first run](#output-and-first-run) (8)
+- [Output and first run](#output-and-first-run) (9)
 - [Config overrides](#config-overrides) (9)
 - [Dog config store](#dog-config-store) (1)
 - [CI flakes, and the log line a stop could lose](#ci-flakes-and-the-log-line-a-stop-could-lose) (4)
