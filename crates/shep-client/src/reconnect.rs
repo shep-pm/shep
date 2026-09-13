@@ -112,12 +112,14 @@ impl Client {
 
     /// Re-establishes this connection, retrying until `budget` is spent.
     ///
-    /// A successor still coming up is retried, from [`RECONNECT_MIN_DELAY`]
-    /// doubling to [`RECONNECT_MAX_DELAY`]; a refusal is not. An
-    /// [`EventStream`] taken before this call belongs to the connection that
-    /// died, so a caller wanting events past it subscribes again. `&mut self`
-    /// holds the handle exclusively while its identity can change, which a
-    /// shared [`Client`] cannot offer.
+    /// Meant for a connection that has already ended, as [`Self::closed`]
+    /// reports; a live one is replaced only once the new handshake finishes,
+    /// and its in-flight requests fail. A successor still coming up is
+    /// retried, from [`RECONNECT_MIN_DELAY`] doubling to
+    /// [`RECONNECT_MAX_DELAY`]; a refusal is not. An [`EventStream`] taken
+    /// before this call belongs to the old connection, so a caller wanting
+    /// events past it subscribes again. `&mut self` holds the handle
+    /// exclusively while its identity can change.
     ///
     /// # Example
     ///
@@ -146,6 +148,12 @@ impl Client {
     ///   same daemon again cannot change its answer.
     /// - Anything else [`Self::connect_with_timeout`] reports, once `budget`
     ///   leaves no room for a further attempt.
+    ///
+    /// # Cancellation safety
+    ///
+    /// Safe to cancel. The old connection is held until a new one has
+    /// handshaken, so dropping this future leaves the handle on the
+    /// connection it already had rather than on neither.
     pub async fn reconnect_within(
         &mut self,
         budget: Duration,
@@ -1197,6 +1205,52 @@ mod tests {
                 .all(|hello| hello.dog_name.is_none()),
             "an unnamed client must stay unnamed: {:?}",
             shepherds.hellos()
+        );
+    }
+
+    /// fails if a cancelled reconnect leaves the handle on neither
+    /// connection. The old one is held until a new one has handshaken, so a
+    /// caller whose future loses a `select!` race still has the connection
+    /// it started with.
+    ///
+    /// The fake serves one connection at a time, so the second handshake
+    /// cannot finish while the first is still open. That is what holds the
+    /// reconnect open long enough for the 1ms budget to cancel it, and the
+    /// elapsed timeout is the assertion that it really was still in flight.
+    #[tokio::test]
+    async fn a_cancelled_reconnect_leaves_the_handle_on_its_old_connection() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Accept(ack_from(22)),
+            ],
+        );
+        let mut client = Client::connect(&path).await.unwrap();
+
+        let cancelled =
+            tokio::time::timeout(Duration::from_millis(1), client.reconnect_within(BOUND)).await;
+        assert!(
+            cancelled.is_err(),
+            "the reconnect must still have been in flight when it was cancelled"
+        );
+
+        assert_eq!(
+            client.daemon().pid,
+            11,
+            "a cancelled reconnect must not disturb the connection in hand"
+        );
+        let served = tokio::time::timeout(BOUND, client.request(Request::Ping))
+            .await
+            .expect("the old connection must still answer");
+        assert!(served.is_ok(), "after the cancelled reconnect: {served:?}");
+        assert_eq!(
+            shepherds.accepted(),
+            1,
+            "the fake serves one connection at a time, so the cancelled dial \
+             never got past the backlog"
         );
     }
 
