@@ -1771,6 +1771,19 @@ mod tests {
         assert!(text.contains("match /po+l/ (regex)"), "got {text:?}");
     }
 
+    /// A literal matcher's chip is the typed text and nothing after it.
+    /// The two assertions around this one read a suffix they expect, so
+    /// neither can see a suffix that should not be there; this one anchors
+    /// on the brackets `feed_header_text` draws around each chip, which
+    /// anything appended would fall outside of.
+    #[test]
+    fn the_headers_match_chip_carries_nothing_after_a_literal() {
+        let mut feed = BleatsPane::new(RowKey::Sheep(1));
+        feed.set_match("pool".to_string());
+        let text = feed_header_text(&feed, 0);
+        assert!(text.contains("[match pool]"), "got {text:?}");
+    }
+
     /// A pattern that fails to compile says so on the chip, rather than the
     /// embedded feed just going quiet with no explanation until the
     /// operator presses `b` to reach the full-screen pane's own chip.

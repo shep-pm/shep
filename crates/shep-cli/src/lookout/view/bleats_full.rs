@@ -803,6 +803,29 @@ mod tests {
         assert!(text.contains("match pool"), "got {text}");
     }
 
+    /// A literal matcher's chip is the typed text and nothing after it. The
+    /// assertion above reads `match pool` out of the whole row, which a
+    /// chip carrying a suffix satisfies just as well, so this one compares
+    /// the chip's own span: `chip_labels` writes the text and
+    /// `filter_row_line` pads it, and anything appended in either breaks
+    /// the comparison.
+    #[test]
+    fn a_literal_matcher_chip_carries_nothing_after_the_typed_text() {
+        let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        app.update(Msg::Key(KeyPress::Bleats));
+        app.bleats_pane_mut_for_tests()
+            .expect("the key above opened the pane")
+            .set_match("pool".to_string());
+        let lines = draw_lines(&app, 160, 40);
+        let chips: Vec<&str> = lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .map(|span| span.content.as_ref())
+            .filter(|text| text.contains("match pool"))
+            .collect();
+        assert_eq!(chips, vec![" match pool "]);
+    }
+
     /// A `/…/`-delimited matcher's chip says it is a regex.
     #[test]
     fn a_regex_matcher_chip_names_itself_a_regex() {
