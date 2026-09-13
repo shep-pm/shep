@@ -1690,6 +1690,18 @@ mod tests {
         assert!(text.contains("no flock at /tmp/my shep home"), "{text}");
     }
 
+    /// fails if the offer to drop `--home` stops naming the path a unix
+    /// operator would type. The Windows spelling is pinned below and this
+    /// side was not pinned at all.
+    #[cfg(not(windows))]
+    #[test]
+    fn the_missing_home_refusal_names_the_unix_default_home() {
+        let text = HomeRefusal::Missing(PathBuf::from("/srv/api")).to_string();
+        // The trailing newline anchors it: without one, a constant of
+        // `~/.shepXYZ` still contains `~/.shep` and the test passes.
+        assert!(text.contains("the default is ~/.shep\n"), "{text}");
+    }
+
     /// fails if an apostrophe in a path breaks out of the quoting and turns
     /// the rest of the hint into shell the operator did not mean to run.
     #[cfg(not(windows))]
@@ -1718,7 +1730,7 @@ mod tests {
         );
         assert!(!text.contains("mkdir -p"), "{text}");
         assert!(
-            text.contains(r"%USERPROFILE%\.shep"),
+            text.contains(concat!(r"%USERPROFILE%\.shep", "\n")),
             "the default has to be spelled the way it is typed here: {text}"
         );
         assert!(!text.contains("~/.shep"), "{text}");
