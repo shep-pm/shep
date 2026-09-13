@@ -20,10 +20,10 @@ publish = false
 # public API, so `src/bin/*.rs` is autodiscovered with no `[[bin]]` table
 # needed per binary.
 
-# `chatty.rs` is the only binary here with a dependency of its own. The
-# workspace takes shep-channel with `default-features = false`, for
-# shep-core's sake; an app wants the client, and a member may raise a
-# workspace dependency's features.
+# `chatty.rs` needs shep-channel, and needs a feature the workspace does
+# not give it. The workspace takes shep-channel with
+# `default-features = false`, for shep-core's sake; an app wants the
+# client, and a member may raise a workspace dependency's features.
 [dependencies]
 shep-channel = { workspace = true, features = ["client"] }
 
