@@ -65,6 +65,16 @@ def say(text):
     print(text, flush=True)
 
 
+def metric_name(params):
+    """Names the metric one `metric` action should send.
+
+    params reaches an app exactly as the operator typed it, so an empty or
+    blank one is ordinary rather than a mistake. Both fall back, since a
+    metric named "" is worse on the bus than no custom name at all.
+    """
+    return (params or "").strip() or "triggers"
+
+
 def parse_level(params):
     """Reads a log level out of one action's params, in this app's grammar.
 
@@ -127,7 +137,7 @@ def main():
         name, params = message["name"], message.get("params")
         if name == "metric":
             samples += 1
-            metric = params or "triggers"
+            metric = metric_name(params)
             send(channel, {"kind": "metric", "name": metric, "value": samples})
             body = f"sent {metric}={samples}"
         else:

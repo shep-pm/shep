@@ -65,7 +65,7 @@ fn main() {
     let emitter = shepherd.clone();
     let samples = AtomicU64::new(0);
     shepherd.on_action("metric", move |params, _name| {
-        let name = params.unwrap_or("triggers").to_owned();
+        let name = metric_name(params).to_owned();
         let value = samples.fetch_add(1, Ordering::Relaxed) + 1;
         emitter.metric(name.clone(), value as f64);
         format!("sent {name}={value}")
@@ -96,6 +96,18 @@ fn main() {
     }
 }
 
+/// Names the metric one `metric` action should send.
+///
+/// `params` reaches an app exactly as the operator typed it, so an empty
+/// or blank one is ordinary rather than a mistake. Both fall back, since
+/// a metric named `""` is worse on the bus than no custom name at all.
+fn metric_name(params: Option<&str>) -> &str {
+    match params.map(str::trim) {
+        Some(name) if !name.is_empty() => name,
+        _ => "triggers",
+    }
+}
+
 /// Reads a level out of one action's `params`, in this app's own grammar.
 ///
 /// `params` is one opaque string and shep never splits it, so every app
@@ -107,4 +119,40 @@ fn parse_level(params: Option<&str>) -> Option<&str> {
     ["trace", "debug", "info", "warn", "error"]
         .contains(&level)
         .then_some(level)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{metric_name, parse_level};
+
+    #[test]
+    fn a_known_level_is_read_from_the_first_word() {
+        assert_eq!(parse_level(Some("debug")), Some("debug"));
+        assert_eq!(parse_level(Some("debug rate=0.5")), Some("debug"));
+        assert_eq!(parse_level(Some("  warn  ")), Some("warn"));
+    }
+
+    #[test]
+    fn an_unknown_or_missing_level_is_refused() {
+        assert_eq!(parse_level(None), None);
+        assert_eq!(parse_level(Some("")), None);
+        assert_eq!(parse_level(Some("   ")), None);
+        assert_eq!(parse_level(Some("shout")), None);
+        assert_eq!(parse_level(Some("rate=0.5 debug")), None);
+    }
+
+    /// `shep trigger chatty metric ""` reaches an app as `Some("")`, which
+    /// named the metric `""` on the wire until this fell back.
+    #[test]
+    fn a_blank_metric_name_falls_back_rather_than_naming_nothing() {
+        assert_eq!(metric_name(None), "triggers");
+        assert_eq!(metric_name(Some("")), "triggers");
+        assert_eq!(metric_name(Some("   ")), "triggers");
+    }
+
+    #[test]
+    fn a_real_metric_name_survives_with_its_padding_trimmed() {
+        assert_eq!(metric_name(Some("queue-depth")), "queue-depth");
+        assert_eq!(metric_name(Some("  queue-depth  ")), "queue-depth");
+    }
 }

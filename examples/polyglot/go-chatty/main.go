@@ -62,6 +62,21 @@ func openChannel() (*os.File, error) {
 		"in the Flockfile, or wait_ready, or shutdown_with_message")
 }
 
+// metricName names the metric one `metric` action should send.
+//
+// params reaches an app exactly as the operator typed it, so an empty or
+// blank one is ordinary rather than a mistake. Both fall back, since a
+// metric named "" is worse on the bus than no custom name at all.
+func metricName(params *string) string {
+	if params == nil {
+		return "triggers"
+	}
+	if name := strings.TrimSpace(*params); name != "" {
+		return name
+	}
+	return "triggers"
+}
+
 // parseLevel reads a log level out of one action's params, in this app's
 // own grammar.
 //
@@ -143,10 +158,7 @@ func main() {
 			body = fmt.Sprintf("pong from go pid=%d, up %.1fs", os.Getpid(), time.Since(started).Seconds())
 		case name == "metric":
 			samples++
-			metric := "triggers"
-			if message.Params != nil {
-				metric = *message.Params
-			}
+			metric := metricName(message.Params)
 			send(channel.ChildMessage{
 				Kind:  channel.KindMetric,
 				Name:  str(metric),

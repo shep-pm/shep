@@ -41,6 +41,14 @@ function openChannel() {
   return null;
 }
 
+// Names the metric one `metric` action should send. params reaches an app
+// exactly as the operator typed it, so an empty or blank one is ordinary
+// rather than a mistake. Both fall back, since a metric named "" is worse
+// on the bus than no custom name at all.
+function metricName(params) {
+  return (params ?? "").trim() || "triggers";
+}
+
 // shep passes whatever the operator typed as a single string and never
 // looks inside it, so every app decides how its own actions are spelled.
 // This one splits on whitespace and reads the first word, which means a
@@ -89,7 +97,7 @@ function handle(message) {
     body = `pong from node pid=${process.pid}, up ${up.toFixed(1)}s`;
   } else if (name === "metric") {
     samples += 1;
-    const metric = params ?? "triggers";
+    const metric = metricName(params);
     send({ kind: "metric", name: metric, value: samples });
     body = `sent ${metric}=${samples}`;
   } else if (name === "level") {
