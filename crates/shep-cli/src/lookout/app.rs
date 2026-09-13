@@ -4760,7 +4760,20 @@ impl App {
                 }
                 return self.probe_dog_schema();
             }
-            KeyPress::Help => return self.open_keymap(),
+            // An armed candidate eats this too, on the same terms as
+            // `Refresh` and `Edit` above: a prompt left standing behind the
+            // overlay is a value the operator cannot see to confirm or
+            // cancel, so `h` cancels it and is consumed rather than also
+            // opening the overlay.
+            KeyPress::Help => {
+                if let Some(settings) = self.settings_mut()
+                    && settings.is_armed()
+                {
+                    settings.pending = None;
+                    return Effect::None;
+                }
+                return self.open_keymap();
+            }
             // Unreachable from here, named so a new variant cannot fall
             // silently into an arm that ignores it.
             KeyPress::Action(_)
@@ -14825,6 +14838,27 @@ mod tests {
         assert!(app.action().is_some());
         let _ = app.update(Msg::Key(KeyPress::Help));
         assert!(app.action().is_none(), "h did not cancel the confirm");
+        assert!(
+            !app.keymap_open(),
+            "h cancelled and also opened the overlay"
+        );
+    }
+
+    /// `Help` joins its siblings' `is_armed()` check: a candidate armed with
+    /// `Cycle` is cancelled and consumed rather than left standing behind a
+    /// box the operator cannot see past, the same ruling
+    /// `h_cancels_an_armed_confirm_instead_of_opening_the_overlay` already
+    /// pins for the dashboard's own confirm.
+    #[test]
+    fn h_cancels_an_armed_settings_candidate_instead_of_opening_the_overlay() {
+        let mut app = fixtures::app_in_settings_with_control();
+        let _ = app.update(Msg::Key(KeyPress::Cycle));
+        assert!(app.settings().unwrap().pending().is_some());
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(
+            app.settings().unwrap().pending().is_none(),
+            "h did not cancel the armed candidate"
+        );
         assert!(
             !app.keymap_open(),
             "h cancelled and also opened the overlay"
