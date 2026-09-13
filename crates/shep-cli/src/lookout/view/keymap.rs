@@ -877,6 +877,77 @@ mod tests {
         );
     }
 
+    /// A multi-bank width crossed against the height ladder.
+    ///
+    /// Every height-ladder test above runs at width 160, which is always
+    /// one bank; every bank-grouping test runs at height 48 or 100, always
+    /// above the ladder's own top. Neither exercises `extra_banks_cost` and
+    /// `effective_height` together, and those two are exactly the
+    /// arithmetic this task adds.
+    ///
+    /// Swept rather than picking two heights by hand, so the boundary is
+    /// found by the test: at every height in the sweep the overlay either
+    /// refuses cleanly (no heading drew, and it named the rows it needs) or
+    /// both banks drew whole (every heading, and every entry row `rows()`
+    /// produces). Nothing in between — a heading with no entries under it,
+    /// or entries with no heading — passes either check.
+    #[test]
+    fn a_multi_bank_width_crosses_the_height_ladder_cleanly() {
+        let app = app_with_overlay();
+        let width = 100;
+        // The same formula `draw_borderless` runs, from the same constants
+        // `the_column_ladder_has_a_boundary_on_each_side` and
+        // `the_height_ladder_shows_its_boundaries` already pin: two banks
+        // at this width (columns_for(100) == 3, four groups in chunks of
+        // three), so one bank beyond the first, costing its own floor plus
+        // the separator row before it. This is what makes the boundary
+        // below found rather than picked: it comes from the constants the
+        // ladder's own tests already check, not a height chosen by hand.
+        let bank_count =
+            u16::try_from(Group::DRAWN.chunks(usize::from(columns_for(width))).count())
+                .expect("four groups never chunk into more banks than fit a u16");
+        let boundary = bank_count.saturating_sub(1) * (HEIGHT_FLOOR + 1) + HEIGHT_FLOOR;
+
+        for height in 20..=35 {
+            let rendered = render_overlay(&app, width, height);
+            let headings_present = Group::DRAWN
+                .iter()
+                .filter(|group| rendered.contains(group.heading()))
+                .count();
+            let refused = rendered.contains("the keymap needs");
+            let whole = headings_present == Group::DRAWN.len();
+
+            assert!(
+                refused != whole,
+                "height {height} is neither a clean refusal nor a whole draw \
+                 ({headings_present} of {} headings): {rendered}",
+                Group::DRAWN.len()
+            );
+            assert_eq!(
+                refused,
+                height < boundary,
+                "height {height} against a boundary of {boundary}: {rendered}"
+            );
+            if refused {
+                assert_eq!(
+                    headings_present, 0,
+                    "height {height} refused but still drew a heading: {rendered}"
+                );
+            } else {
+                for row in crate::lookout::keymap::rows() {
+                    if row.group == Group::Closing {
+                        continue;
+                    }
+                    assert!(
+                        rendered.contains(row.does),
+                        "height {height} drew the headings but not `{}`'s row: {rendered}",
+                        row.does
+                    );
+                }
+            }
+        }
+    }
+
     /// Renders one overlay and returns the screen as text.
     fn render_overlay(app: &App, width: u16, height: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
