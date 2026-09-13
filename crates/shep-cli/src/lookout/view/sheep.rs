@@ -467,7 +467,8 @@ fn feed_header_text(feed: &BleatsPane, hidden: usize) -> String {
 /// One chip's text per filter axis currently set on the embedded feed, in
 /// field order. Deliberately its own, smaller vocabulary rather than
 /// `view::bleats_full`'s private `chip_labels`: this row has 83 cells for
-/// the whole sentence, not a dedicated filter row underneath it.
+/// the whole sentence, not a dedicated filter row underneath it. The match
+/// axis's suffix is the one exception, shared as [`MatchKind::chip_suffix`].
 fn feed_chip_labels(filters: &Filters) -> Vec<String> {
     let mut chips = Vec::new();
     if let Some(stream) = filters.stream {
@@ -480,11 +481,7 @@ fn feed_chip_labels(filters: &Filters) -> Vec<String> {
         chips.push(format!("level\u{2265}{min}"));
     }
     if let Some(text) = &filters.matcher {
-        let suffix = match filters.match_kind() {
-            Some(MatchKind::Literal) | None => "",
-            Some(MatchKind::Regex) => " (regex)",
-            Some(MatchKind::Invalid) => " (invalid regex, matches nothing)",
-        };
+        let suffix = filters.match_kind().map_or("", MatchKind::chip_suffix);
         chips.push(format!("match {text}{suffix}"));
     }
     chips

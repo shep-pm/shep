@@ -49,6 +49,23 @@ pub enum MatchKind {
     Invalid,
 }
 
+impl MatchKind {
+    /// What a filter chip appends after the matcher's own text.
+    ///
+    /// Shared by both panes that draw a chip, so the regex states are
+    /// worded in one place. Only the suffix is shared: `view::sheep`'s
+    /// embedded feed words the stream and level axes shorter than
+    /// `view::bleats_full` does, on purpose.
+    #[must_use]
+    pub fn chip_suffix(self) -> &'static str {
+        match self {
+            Self::Literal => "",
+            Self::Regex => " (regex)",
+            Self::Invalid => " (invalid regex, matches nothing)",
+        }
+    }
+}
+
 /// How `Filters::matcher`'s typed text is actually matched against a line.
 ///
 /// Parsed fresh from [`Filters::matcher`] wherever it is needed
@@ -696,6 +713,20 @@ mod tests {
             .collect();
         assert_eq!(kept, vec!["GET get index.html 200"]);
         assert_eq!(pane.filters().match_kind(), Some(MatchKind::Literal));
+    }
+
+    /// The three suffixes, exact. Both panes that draw a filter chip word
+    /// them through here, and a render assertion reading `match pool` would
+    /// pass with a suffix appended too, so the empty one is pinned here
+    /// rather than only there.
+    #[test]
+    fn only_the_two_regex_states_carry_a_chip_suffix() {
+        assert_eq!(MatchKind::Literal.chip_suffix(), "");
+        assert_eq!(MatchKind::Regex.chip_suffix(), " (regex)");
+        assert_eq!(
+            MatchKind::Invalid.chip_suffix(),
+            " (invalid regex, matches nothing)"
+        );
     }
 
     /// The ranges a regex matcher reports are what the filter row highlights;
