@@ -538,8 +538,8 @@ impl core::fmt::Display for HomeRefusal {
             Self::Missing(path) => write!(
                 f,
                 "no flock at {path}\n  \
-                 did you mean to drop --home? the default is ~/.shep\n  \
-                 to set up a flock there deliberately: mkdir -p {quoted}",
+                 did you mean to drop --home? the default is {DEFAULT_HOME_SPELLING}\n  \
+                 to set up a flock there deliberately: {MKDIR_COMMAND} {quoted}",
                 path = path.display(),
                 quoted = shell_quoted(path),
             ),
@@ -558,8 +558,22 @@ impl core::fmt::Display for HomeRefusal {
 /// the empty invisible flock this refusal exists to prevent. Single quotes
 /// rather than backslashes because a path is one word and reads as one; an
 /// embedded `'` closes the quoting around an escaped one and reopens it.
+#[cfg(not(windows))]
 fn shell_quoted(path: &Path) -> String {
     format!("'{}'", path.display().to_string().replace('\'', r"'\''"))
+}
+
+/// `path` as one argument for [`MKDIR_COMMAND`], for a hint an operator
+/// copies straight into a shell.
+///
+/// Double quotes are the only wrap both shells honour. `cmd.exe` reads a
+/// single quote as an ordinary character. A Windows path cannot hold a `"`,
+/// so the wrap always closes and nothing inside it needs escaping. Neither
+/// shell's variable syntax is quoted by it, so `%TEMP%` or `$env:TEMP` in a
+/// path still expands.
+#[cfg(windows)]
+fn shell_quoted(path: &Path) -> String {
+    format!("\"{}\"", path.display())
 }
 
 impl core::error::Error for HomeRefusal {
@@ -1190,6 +1204,27 @@ pub(crate) const HOME_DIR_VAR: &str = "$HOME";
 #[cfg(windows)]
 pub(crate) const HOME_DIR_VAR: &str = "%USERPROFILE%";
 
+/// How an operator on this platform spells the default home, for the
+/// refusal that offers dropping `--home`.
+#[cfg(not(windows))]
+const DEFAULT_HOME_SPELLING: &str = "~/.shep";
+
+/// Names `%USERPROFILE%` for the same reason [`UNRESOLVED_HOME`] does, and
+/// spells the separator the way this platform prints one. `cmd.exe` expands
+/// no `~`.
+#[cfg(windows)]
+const DEFAULT_HOME_SPELLING: &str = r"%USERPROFILE%\.shep";
+
+/// The command that creates a directory and every parent it needs, for a
+/// remedy an operator copies into a shell.
+#[cfg(not(windows))]
+const MKDIR_COMMAND: &str = "mkdir -p";
+
+/// `-p` is neither shell's flag. `cmd.exe` and PowerShell both create the
+/// intermediate directories from `mkdir` alone.
+#[cfg(windows)]
+const MKDIR_COMMAND: &str = "mkdir";
+
 /// The one refusal shep gives for a home with no root, whichever knob named
 /// it: `knob` is the spelling to fix, `absolute` the same path against this
 /// process's directory when that could be read.
@@ -1642,6 +1677,7 @@ mod tests {
     /// a space rendered `mkdir -p /tmp/my shep`, which creates two
     /// directories and reports no error, leaving exactly the empty
     /// invisible flock this refusal exists to prevent.
+    #[cfg(not(windows))]
     #[test]
     fn the_mkdir_hint_survives_a_path_a_shell_would_split() {
         let refusal = HomeRefusal::Missing(PathBuf::from("/tmp/my shep home"));
@@ -1656,6 +1692,7 @@ mod tests {
 
     /// fails if an apostrophe in a path breaks out of the quoting and turns
     /// the rest of the hint into shell the operator did not mean to run.
+    #[cfg(not(windows))]
     #[test]
     fn an_apostrophe_in_a_path_cannot_escape_the_mkdir_hint() {
         let refusal = HomeRefusal::Missing(PathBuf::from("/tmp/rin's flock"));
@@ -1663,6 +1700,36 @@ mod tests {
         assert!(
             text.contains(r"mkdir -p '/tmp/rin'\''s flock'"),
             "an embedded quote must close and reopen: {text}"
+        );
+    }
+
+    /// fails if a Windows operator is handed a remedy from another
+    /// platform. `mkdir -p` parses in neither shell here, and a single
+    /// quote is an ordinary character to `cmd.exe`, so it would split the
+    /// path rather than hold it together.
+    #[cfg(windows)]
+    #[test]
+    fn the_missing_home_remedy_is_one_a_windows_shell_can_run() {
+        let refusal = HomeRefusal::Missing(PathBuf::from(r"C:\tmp\my shep home"));
+        let text = refusal.to_string();
+        assert!(
+            text.contains(r#"mkdir "C:\tmp\my shep home""#),
+            "the remedy must name one argument both shells accept: {text}"
+        );
+        assert!(!text.contains("mkdir -p"), "{text}");
+        assert!(
+            text.contains(r"%USERPROFILE%\.shep"),
+            "the default has to be spelled the way it is typed here: {text}"
+        );
+        assert!(!text.contains("~/.shep"), "{text}");
+
+        // A Windows path can hold an apostrophe, and the POSIX escaping
+        // would break it apart. Nothing inside a double-quoted wrap needs
+        // escaping, because a Windows path cannot hold a `"`.
+        let quoted = HomeRefusal::Missing(PathBuf::from(r"C:\tmp\rin's flock")).to_string();
+        assert!(
+            quoted.contains(r#"mkdir "C:\tmp\rin's flock""#),
+            "an apostrophe is an ordinary character in this wrap: {quoted}"
         );
     }
 
