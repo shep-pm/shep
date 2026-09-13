@@ -1210,7 +1210,7 @@ pub(crate) fn write_relative_refusal(
         given = given.display(),
     )?;
     match absolute {
-        Some(absolute) => write!(f, "\n  did you mean:  {}", absolute.display()),
+        Some(absolute) => write!(f, "\n  did you mean: {}", absolute.display()),
         None => Ok(()),
     }
 }
