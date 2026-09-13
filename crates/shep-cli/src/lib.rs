@@ -1161,8 +1161,11 @@ const HOME_KNOB: &str = "--home/%SHEP_HOME%";
 
 /// The variable behind the default home, named by the refusal for a root
 /// that came from there rather than from [`HOME_KNOB`].
+///
+/// `pub(crate)`: `commands::dev` falls back to the same directory and owes
+/// the same spelling when it refuses one.
 #[cfg(not(windows))]
-const HOME_DIR_VAR: &str = "$HOME";
+pub(crate) const HOME_DIR_VAR: &str = "$HOME";
 
 /// The variable behind the default home, named by the refusal for a root
 /// that came from there rather than from [`HOME_KNOB`].
@@ -1171,7 +1174,7 @@ const HOME_DIR_VAR: &str = "$HOME";
 /// Windows session sets no `HOME`, so although [`user_home`] reads that
 /// first, `%USERPROFILE%` is the first of the three that answers.
 #[cfg(windows)]
-const HOME_DIR_VAR: &str = "%USERPROFILE%";
+pub(crate) const HOME_DIR_VAR: &str = "%USERPROFILE%";
 
 /// The one refusal shep gives for a home with no root, whichever knob named
 /// it: `knob` is the spelling to fix, `absolute` the same path against this
@@ -2318,6 +2321,11 @@ mod tests {
         let Err(refusal) = resolve_paths(&global_with_home(Some("rel-home"))) else {
             panic!("a relative --home must not resolve a layout");
         };
+        assert!(
+            matches!(&refusal, HomeRefusal::Relative { knob, given, .. }
+                if *knob == HOME_KNOB && given == std::path::Path::new("rel-home")),
+            "a rootless home is its own refusal, not the unresolved one"
+        );
         assert_eq!(
             refusal.code(),
             ExitCode::Usage,
@@ -2346,7 +2354,10 @@ mod tests {
     #[test]
     fn a_drive_relative_home_is_refused_on_windows() {
         assert!(
-            resolve_paths(&global_with_home(Some(r"\shep"))).is_err(),
+            matches!(
+                resolve_paths(&global_with_home(Some(r"\shep"))),
+                Err(HomeRefusal::Relative { .. })
+            ),
             r"`\shep` resolves against whichever drive is current"
         );
     }
@@ -2365,6 +2376,15 @@ mod tests {
         let Err(refusal) = resolve_paths_in(&global_with_home(None), &rootless) else {
             panic!("a rootless home directory must not resolve a layout");
         };
+        // Pinned by variant, not by rendered text alone: `UNRESOLVED_HOME`
+        // also names `$HOME`, so the assertions below pass on a refusal that
+        // never noticed the rootless path.
+        assert!(
+            matches!(&refusal, HomeRefusal::Relative { knob, given, .. }
+                if *knob == HOME_DIR_VAR && given == std::path::Path::new("ada")),
+            "the refusal must carry the home directory as supplied, not the joined `.shep`"
+        );
+
         let rendered = refusal.to_string();
         assert!(
             rendered.contains(HOME_DIR_VAR),
@@ -2373,6 +2393,11 @@ mod tests {
         assert!(
             !rendered.contains(HOME_KNOB),
             "naming a knob the operator did not touch sends them to the wrong fix: {rendered}"
+        );
+        let cwd = std::env::current_dir().expect("a current directory");
+        assert!(
+            rendered.contains(&cwd.join("ada").display().to_string()),
+            "the remedy must name the absolute form of what was supplied: {rendered}"
         );
     }
 

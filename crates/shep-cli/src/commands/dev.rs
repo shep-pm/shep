@@ -47,9 +47,13 @@ const DEV_HOME_VAR: &str = "%SHEP_DEV_HOME%";
 enum DevHomeRefusal {
     /// Neither `$SHEP_DEV_HOME` nor a home directory resolved a root.
     Unresolved,
-    /// `$SHEP_DEV_HOME` named a path with no root.
+    /// Whichever of the two answered named a path with no root.
     Relative {
-        /// The path as the operator spelled it.
+        /// The spelling an operator has to fix: `$SHEP_DEV_HOME`, or the
+        /// home-directory variable when the `~/.shep-dev` fallback is what
+        /// supplied the root.
+        knob: &'static str,
+        /// The path as it was spelled.
         given: PathBuf,
         /// The same path joined onto this process's directory, for the
         /// remedy line. `None` when that directory could not be read.
@@ -62,14 +66,37 @@ impl core::fmt::Display for DevHomeRefusal {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Unresolved => f.write_str(UNRESOLVED_DEV_HOME),
-            Self::Relative { given, absolute } => {
-                crate::write_relative_refusal(f, DEV_HOME_VAR, given, absolute.as_deref())
-            }
+            Self::Relative {
+                knob,
+                given,
+                absolute,
+            } => crate::write_relative_refusal(f, knob, given, absolute.as_deref()),
         }
     }
 }
 
 impl core::error::Error for DevHomeRefusal {}
+
+/// Hands `candidate` back when it has a root, naming `knob` as the spelling
+/// to fix when it does not.
+///
+/// `shep dev`'s twin of `crate::require_absolute`, differing only in the
+/// error it returns: a dev session's refusals name `$SHEP_DEV_HOME`.
+///
+/// # Errors
+///
+/// [`DevHomeRefusal::Relative`], carrying `candidate` as typed and its
+/// absolute form when this process's own directory could be read.
+fn require_absolute(knob: &'static str, candidate: PathBuf) -> Result<PathBuf, DevHomeRefusal> {
+    if candidate.is_absolute() {
+        return Ok(candidate);
+    }
+    Err(DevHomeRefusal::Relative {
+        knob,
+        absolute: crate::absolute_form(&candidate),
+        given: candidate,
+    })
+}
 
 /// Where a dev flock lives: `$SHEP_DEV_HOME`, else `~/.shep-dev`.
 ///
@@ -87,28 +114,24 @@ impl core::error::Error for DevHomeRefusal {}
 ///
 /// # Errors
 ///
-/// - [`DevHomeRefusal::Relative`] if `$SHEP_DEV_HOME` named a path with no
-///   root. Gated here rather than in [`dev`], so the rule travels with the
-///   resolver that reads the variable.
+/// - [`DevHomeRefusal::Relative`] if whichever of the two answered named a
+///   path with no root. Gated here rather than in [`dev`], so the rule
+///   travels with the resolver that reads them.
 /// - [`DevHomeRefusal::Unresolved`] if neither named a root.
 fn dev_home(
     env: &impl Fn(&str) -> Option<String>,
     home_dir: Option<&Path>,
 ) -> Result<ShepPaths, DevHomeRefusal> {
+    // The rootless check is on each source rather than on the joined
+    // result: `~/.shep-dev` has to report `$HOME` as the thing to fix, and
+    // the joined path would quote `ada/.shep-dev` for a home directory of
+    // `ada`.
     let home = match env("SHEP_DEV_HOME") {
-        Some(dir) => {
-            let named = PathBuf::from(dir);
-            if named.is_relative() {
-                return Err(DevHomeRefusal::Relative {
-                    absolute: crate::absolute_form(&named),
-                    given: named,
-                });
-            }
-            named
+        Some(dir) => require_absolute(DEV_HOME_VAR, PathBuf::from(dir))?,
+        None => {
+            let dir = home_dir.ok_or(DevHomeRefusal::Unresolved)?;
+            require_absolute(crate::HOME_DIR_VAR, dir.to_path_buf())?.join(".shep-dev")
         }
-        None => home_dir
-            .ok_or(DevHomeRefusal::Unresolved)?
-            .join(".shep-dev"),
     };
     let inject = |key: &str| (key == "SHEP_HOME").then(|| home.to_string_lossy().into_owned());
     Ok(ShepPaths::resolve(&inject, &home))
@@ -228,8 +251,8 @@ mod tests {
             "SHEP_HOME" => Some("/srv/production".to_string()),
             _ => None,
         };
-        let paths = dev_home(&env, Some(Path::new("/home/ada"))).unwrap();
-        assert_eq!(paths.home, Path::new("/home/ada/.shep-dev"));
+        let paths = dev_home(&env, Some(Path::new(ABSOLUTE_HOME_DIR))).unwrap();
+        assert_eq!(paths.home, Path::new(ABSOLUTE_HOME_DIR).join(".shep-dev"));
 
         let env = |key: &str| match key {
             "SHEP_HOME" => Some("/srv/production".to_string()),
@@ -237,7 +260,9 @@ mod tests {
             _ => None,
         };
         assert_eq!(
-            dev_home(&env, Some(Path::new("/home/ada"))).unwrap().home,
+            dev_home(&env, Some(Path::new(ABSOLUTE_HOME_DIR)))
+                .unwrap()
+                .home,
             Path::new(ABSOLUTE_DEV_HOME)
         );
 
@@ -261,10 +286,13 @@ mod tests {
     #[test]
     fn a_relative_dev_home_is_refused_and_the_absolute_form_named() {
         let env = |key: &str| (key == "SHEP_DEV_HOME").then(|| "scratch/.shep-dev".to_string());
-        let Err(refusal) = dev_home(&env, Some(Path::new("/home/ada"))) else {
+        let Err(refusal) = dev_home(&env, Some(Path::new(ABSOLUTE_HOME_DIR))) else {
             panic!("a relative $SHEP_DEV_HOME must not resolve a layout");
         };
-        assert!(matches!(refusal, DevHomeRefusal::Relative { .. }));
+        assert!(
+            matches!(&refusal, DevHomeRefusal::Relative { knob, .. } if *knob == DEV_HOME_VAR),
+            "the variable that answered is the one an operator can fix"
+        );
 
         let rendered = refusal.to_string();
         assert!(
@@ -278,6 +306,41 @@ mod tests {
         );
     }
 
+    /// The fallback carries the same defect: with `$SHEP_DEV_HOME` unset,
+    /// `user_home` hands over whatever `$HOME` says, and a rootless one
+    /// would put `.shep-dev` under the directory `shep dev` happened to run
+    /// in.
+    ///
+    /// The refusal has to name that variable rather than `$SHEP_DEV_HOME`,
+    /// which the operator never set.
+    #[test]
+    fn a_rootless_fallback_home_directory_is_refused_and_names_its_own_variable() {
+        let no_dev_home = |_: &str| None;
+        let Err(refusal) = dev_home(&no_dev_home, Some(Path::new("ada"))) else {
+            panic!("a rootless home directory must not resolve a dev layout");
+        };
+        assert!(
+            matches!(&refusal, DevHomeRefusal::Relative { knob, given, .. }
+                if *knob == crate::HOME_DIR_VAR && given == Path::new("ada")),
+            "the refusal must carry the home directory as supplied, not the joined `.shep-dev`"
+        );
+
+        let rendered = refusal.to_string();
+        assert!(
+            rendered.contains(crate::HOME_DIR_VAR),
+            "an operator cannot fix $SHEP_DEV_HOME when they never set it: {rendered}"
+        );
+        assert!(
+            !rendered.contains(DEV_HOME_VAR),
+            "naming a variable the operator did not set sends them to the wrong fix: {rendered}"
+        );
+        let cwd = std::env::current_dir().expect("a current directory");
+        assert!(
+            rendered.contains(&cwd.join("ada").display().to_string()),
+            "the remedy must name the absolute form of what was supplied: {rendered}"
+        );
+    }
+
     /// A rooted path on the platform running the test: `Path::is_relative`
     /// answers yes to `/tmp/t1` on Windows, which has no drive prefix.
     #[cfg(not(windows))]
@@ -286,6 +349,16 @@ mod tests {
     /// A rooted path on the platform running the test.
     #[cfg(windows)]
     const ABSOLUTE_DEV_HOME: &str = r"C:\tmp\t1";
+
+    /// A rooted home directory on the platform running the test, for the
+    /// `~/.shep-dev` fallback. `/home/ada` has no drive prefix, so Windows
+    /// reads it as relative and the fallback gate refuses it.
+    #[cfg(not(windows))]
+    const ABSOLUTE_HOME_DIR: &str = "/home/ada";
+
+    /// A rooted home directory on the platform running the test.
+    #[cfg(windows)]
+    const ABSOLUTE_HOME_DIR: &str = r"C:\Users\ada";
 
     #[test]
     fn every_app_gets_watch_and_keeps_everything_else() {
