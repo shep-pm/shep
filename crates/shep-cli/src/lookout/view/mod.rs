@@ -12,6 +12,7 @@ pub mod detail;
 pub mod flock;
 pub mod host;
 pub mod link_panel;
+mod overlay;
 pub mod pane;
 pub mod scroll;
 pub mod secrets;

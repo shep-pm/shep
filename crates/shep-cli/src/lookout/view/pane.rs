@@ -29,6 +29,7 @@ use super::super::theme::Palette;
 use super::super::validation;
 use super::cell;
 use super::flock::{fit, mark};
+use super::overlay;
 use super::scroll::Attempt;
 use crate::output::width::char_columns;
 use crate::vocabulary::Role;
@@ -43,38 +44,6 @@ const GUTTER: u16 = 2;
 /// [`close_dialog_lines`] lays its rows out to when [`draw_close_dialog`]
 /// draws the boxed form.
 const BOX_WIDTH: u16 = 86;
-
-/// 86 interior plus a border cell each side is 88, plus a margin cell each
-/// side is 90. One column narrower and the border would have to clip, which
-/// `docs/lookout/design-files/README.md:332` refuses ("The 1g and 1k
-/// overlays need 90 and 132 columns; below that, draw them full-width with
-/// no border box rather than clipping"), so 89 draws the borderless form
-/// instead.
-const BOX_FLOOR: u16 = BOX_WIDTH + 4;
-
-/// The border's four corners, checked against `unicodedata.east_asian_width`
-/// and found Neutral, same as [`BOX_LEFT`].
-const BOX_TOP_LEFT: char = '▛';
-const BOX_TOP_RIGHT: char = '▜';
-const BOX_BOTTOM_LEFT: char = '▙';
-const BOX_BOTTOM_RIGHT: char = '▟';
-
-/// The left edge. Neutral, unlike the other three edge glyphs below.
-const BOX_LEFT: char = '▐';
-
-/// The top, bottom and right edges. All three are East-Asian Ambiguous,
-/// checked the same way the rulings ask `▌` to be. Kept anyway: `─` already
-/// draws every hairline rule in this pane at full width and `█░` fill every
-/// gauge, both Ambiguous too, so "no Ambiguous glyph" was never this
-/// codebase's bar. The right edge is the one with real exposure, since no
-/// Neutral right-half block exists to swap `▌` for and a terminal that
-/// doubles it shifts every interior row;
-/// `the_border_vocabulary_is_the_one_that_was_checked` pins the set so a
-/// later glyph change gets the same check rather than inheriting this
-/// answer.
-const BOX_TOP: char = '▀';
-const BOX_BOTTOM: char = '▄';
-const BOX_RIGHT: char = '▌';
 
 /// The KEY cell at its full width, flag character included. Twenty-six is
 /// `exp_backoff_restart_delay` plus its flag, the longest key the Flockfile
@@ -611,8 +580,9 @@ enum DialogRow {
     Blank,
 }
 
-/// The dialog's rows: what a terminal under [`BOX_FLOOR`] columns gets
-/// full width, and what the boxed form draws inside its own border.
+/// The dialog's rows: what a terminal under `overlay::floor_for(BOX_WIDTH)`
+/// columns gets full width, and what the boxed form draws inside its own
+/// border.
 ///
 /// `now` is the caller's own clock, against which the `esc` row states
 /// what is left of [`CONFIRM_EXPIRY`] since `dialog.at()`: seconds and a
@@ -2149,39 +2119,20 @@ pub fn draw_pane(app: &App, pane: &ConfigPane, area: Rect, buffer: &mut Buffer) 
     if let Some(dialog) = app.close_dialog() {
         // The pane draws first and is then muted whole, so 1e's own render
         // is untouched and its four pinned snapshots do not move.
-        //
-        // Two calls, not one: `Buffer::set_style` (ratatui-core 0.1.2,
-        // `buffer/buffer.rs:405`) patches a cell rather than replacing it,
-        // so a single `palette.muted()` call would leave the title band's
-        // reverse video and the selected row's own ground sitting under the
-        // new ink. `Style::reset()` clears both back to the terminal's own
-        // default first; `palette.muted()` then repaints the one ink the
-        // dialog leaves the pane in. Under `NO_COLOR` the second call is a
-        // no-op (`Palette::muted` has no colour to give), so only the reset
-        // runs and the pane behind goes completely flat, which is the right
-        // outcome there: the border and the reverse-video heading are what
-        // carry the separation on their own.
-        buffer.set_style(area, Style::reset());
-        buffer.set_style(area, app.palette().muted());
+        overlay::mute(buffer, area, app.palette());
         draw_close_dialog(dialog, app.palette(), app.now(), area, buffer);
     }
 }
 
-/// Whether a dialog `width` columns wide draws boxed, or gives way to the
-/// borderless form.
-const fn dialog_is_boxed(width: u16) -> bool {
-    width >= BOX_FLOOR
-}
-
-/// The dialog on top of the muted pane: boxed at [`BOX_FLOOR`] and above,
-/// full width with no border below it, and full width with no border at
-/// any width when the box is taller than the rows there are.
+/// The dialog on top of the muted pane: boxed at `overlay::floor_for(BOX_WIDTH)`
+/// and above, full width with no border below it, and full width with no
+/// border at any width when the box is taller than the rows there are.
 ///
 /// A box cannot shed rows the way the borderless form can, since its
 /// border pair is what makes it a box, and half a box is worse than none.
 /// So a terminal too short for the whole box gives way to the borderless
 /// form, which is the same answer the width rule already gives one column
-/// under [`BOX_FLOOR`].
+/// under `overlay::floor_for(BOX_WIDTH)`.
 fn draw_close_dialog(
     dialog: &CloseDialog,
     palette: Palette,
@@ -2189,10 +2140,10 @@ fn draw_close_dialog(
     area: Rect,
     buffer: &mut Buffer,
 ) {
-    if dialog_is_boxed(area.width) {
+    if overlay::is_boxed(area.width, BOX_WIDTH) {
         let lines = close_dialog_lines(dialog, palette, BOX_WIDTH, now);
-        if boxed_dialog_height(&lines) <= area.height {
-            draw_boxed_close_dialog(&lines, palette, area, buffer);
+        if overlay::boxed_height(&lines) <= area.height {
+            overlay::draw_boxed(&lines, BOX_WIDTH, palette, area, buffer);
             return;
         }
     }
@@ -2200,9 +2151,9 @@ fn draw_close_dialog(
 }
 
 /// The full-width, borderless form: bottom-anchored over the field list,
-/// the same rows a terminal under [`BOX_FLOOR`] always drew before this
-/// task, so a gallery scene one column below the floor still gets the form
-/// it exists to show rather than a clipped box.
+/// the same rows a terminal under `overlay::floor_for(BOX_WIDTH)` always
+/// drew before this task, so a gallery scene one column below the floor
+/// still gets the form it exists to show rather than a clipped box.
 ///
 /// [`shed_dialog_rows`] is what keeps this inside `area`: a narrow
 /// terminal wraps the reload sentence over more rows, so the form is
@@ -2222,88 +2173,9 @@ fn draw_borderless_close_dialog(
             .saturating_sub(u16::try_from(rows.len()).unwrap_or(0));
     for (offset, (_, line)) in rows.iter().enumerate() {
         let offset = u16::try_from(offset).unwrap_or(0);
-        blank_row(buffer, area.x, top + offset, area.width);
+        overlay::blank_row(buffer, area.x, top + offset, area.width);
         buffer.set_line(area.x, top + offset, line, area.width);
     }
-}
-
-/// The boxed form: [`BOX_WIDTH`] cells wide, centred in `area`, its rows
-/// vertically centred too.
-///
-/// `lines` comes from the caller, which has already measured them against
-/// The rows a boxed dialog occupies: its own lines plus a border above
-/// and below.
-///
-/// Both the fit check and the draw read this rather than each doing the
-/// addition, because they did it differently once. The check saturated
-/// from a `u16::MAX` fallback and the draw added plainly from a `0` one,
-/// so a `lines.len()` past `u16::MAX` would have refused to draw in one
-/// place and drawn a two-row box in the other. Neither is reachable with
-/// a dialog of a dozen rows, which is why nothing caught it; one function
-/// is what stops it coming back.
-fn boxed_dialog_height(lines: &[Line<'static>]) -> u16 {
-    u16::try_from(lines.len())
-        .unwrap_or(u16::MAX)
-        .saturating_add(2)
-}
-
-/// The boxed form: [`BOX_WIDTH`] cells wide, centred in `area`, its rows
-/// vertically centred too.
-///
-/// `lines` comes from the caller, which has already measured them against
-/// `area.height` to decide this form fits at all.
-fn draw_boxed_close_dialog(
-    lines: &[Line<'static>],
-    palette: Palette,
-    area: Rect,
-    buffer: &mut Buffer,
-) {
-    let box_height = boxed_dialog_height(lines);
-    let rows = box_height.saturating_sub(2);
-    let margin = area.width.saturating_sub(BOX_WIDTH + 2) / 2;
-    let box_x = area.x + margin;
-    let box_y = area.y + area.height.saturating_sub(box_height) / 2;
-    let line_style = palette.line();
-
-    buffer.set_string(
-        box_x,
-        box_y,
-        format!(
-            "{BOX_TOP_LEFT}{}{BOX_TOP_RIGHT}",
-            BOX_TOP.to_string().repeat(usize::from(BOX_WIDTH))
-        ),
-        line_style,
-    );
-    for (offset, line) in lines.iter().enumerate() {
-        let offset = u16::try_from(offset).unwrap_or(0);
-        let y = box_y + 1 + offset;
-        buffer.set_string(box_x, y, BOX_LEFT.to_string(), line_style);
-        blank_row(buffer, box_x + 1, y, BOX_WIDTH);
-        buffer.set_line(box_x + 1, y, line, BOX_WIDTH);
-        buffer.set_string(box_x + 1 + BOX_WIDTH, y, BOX_RIGHT.to_string(), line_style);
-    }
-    buffer.set_string(
-        box_x,
-        box_y + 1 + rows,
-        format!(
-            "{BOX_BOTTOM_LEFT}{}{BOX_BOTTOM_RIGHT}",
-            BOX_BOTTOM.to_string().repeat(usize::from(BOX_WIDTH))
-        ),
-        line_style,
-    );
-}
-
-/// `width` cells of plain space at `(x, y)`, reset back to the terminal's
-/// own default: the dialog itself is never muted, only the pane behind it.
-///
-/// [`Buffer::set_line`] only ever writes as many cells as its `Line` carries
-/// content for, so a blank separator row (`Line::from(Span::raw(""))`,
-/// [`close_dialog_lines`]'s own two of them) writes nothing and would leave
-/// whatever the field list drew there showing through, muted, in the
-/// middle of what is meant to read as a solid dialog. Called ahead of every
-/// row this module draws the dialog's own lines into, boxed or not.
-fn blank_row(buffer: &mut Buffer, x: u16, y: u16, width: u16) {
-    buffer.set_string(x, y, " ".repeat(usize::from(width)), Style::reset());
 }
 
 #[cfg(test)]
@@ -2454,7 +2326,12 @@ mod tests {
     /// regardless of the terminal, so a wide terminal still wraps).
     #[test]
     fn the_reload_sentence_wraps_rather_than_truncates_at_every_width() {
-        for width in [BOX_WIDTH, BOX_FLOOR - 1, MIN_TERM_WIDTH, 160] {
+        for width in [
+            BOX_WIDTH,
+            overlay::floor_for(BOX_WIDTH) - 1,
+            MIN_TERM_WIDTH,
+            160,
+        ] {
             for kind in [ReloadKind::Overlap, ReloadKind::Serial] {
                 for instances in [1, 3] {
                     let dialog = fixtures::close_dialog_reloading(kind, instances);
@@ -2547,8 +2424,9 @@ mod tests {
 
     #[test]
     fn the_box_draws_at_its_floor_and_not_one_column_below() {
-        assert!(dialog_is_boxed(BOX_FLOOR));
-        assert!(!dialog_is_boxed(BOX_FLOOR - 1));
+        let floor = overlay::floor_for(BOX_WIDTH);
+        assert!(overlay::is_boxed(floor, BOX_WIDTH));
+        assert!(!overlay::is_boxed(floor - 1, BOX_WIDTH));
     }
 
     #[test]
@@ -2715,9 +2593,13 @@ mod tests {
 
     /// One frame row's dialog content: what the box holds, or the whole
     /// row when the borderless form is drawn.
+    ///
+    /// `▐` and `▌` are the box's own left and right edge glyphs
+    /// ([`overlay::draw_boxed`]'s constants), spelled out rather than
+    /// named: this fixture reads rendered text, not `overlay` internals.
     fn dialog_interior(line: &str) -> String {
-        let inside = match (line.find(BOX_LEFT), line.rfind(BOX_RIGHT)) {
-            (Some(left), Some(right)) if left < right => &line[left + BOX_LEFT.len_utf8()..right],
+        let inside = match (line.find('▐'), line.rfind('▌')) {
+            (Some(left), Some(right)) if left < right => &line[left + '▐'.len_utf8()..right],
             _ => line,
         };
         inside.trim().to_owned()
@@ -2784,17 +2666,6 @@ mod tests {
                 .add_modifier
                 .contains(ratatui::style::Modifier::REVERSED)
         );
-    }
-
-    /// The three the check found. `▐` is Neutral and the four corners are
-    /// too; `▀`, `▄` and `▌` are East-Asian Ambiguous, and a terminal that
-    /// doubles the right edge shifts every interior row. Recorded rather
-    /// than fixed, since no Neutral right-half block exists to swap in.
-    #[test]
-    fn the_border_vocabulary_is_the_one_that_was_checked() {
-        for glyph in ['▛', '▜', '▙', '▟', '▐', '▀', '▄', '▌'] {
-            assert_eq!(char_columns(glyph), 1, "{glyph}");
-        }
     }
 
     /// The whole pane at a comfortable width, unbounded. The snapshot is the
