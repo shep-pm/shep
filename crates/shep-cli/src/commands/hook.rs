@@ -16,7 +16,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
-use super::dogs::probe_env;
+use super::dogs::dog_env;
 
 /// The whole argv a dog's hook is spawned with.
 pub(crate) const ON_REMOVE: &str = "on-remove";
@@ -97,10 +97,10 @@ impl fmt::Display for HookOutcome {
 
 /// Runs `binary`'s hook, bounded by `budget`.
 ///
-/// `home` and `name` are what the shepherd puts in `$SHEP_HOME` and
-/// `$SHEP_DOG_NAME`; the rest of the environment is cleared down to the
-/// same allowlist `dogs::vet_binary`'s probe uses, since this is a
-/// stranger's binary and the operator's environment is not its business.
+/// `home` and `name` reach the dog as `$SHEP_HOME` and `$SHEP_DOG_NAME`,
+/// through the same [`dog_env`] the adopt probe runs a candidate under:
+/// this is a stranger's binary, and the operator's own environment is not
+/// its business.
 ///
 /// Both pipes are read concurrently. `Command::output` is what does it: a
 /// dog that writes more than one pipe buffer to stderr while a sequential
@@ -117,9 +117,7 @@ pub(crate) async fn run_on_remove(
     command
         .arg(ON_REMOVE)
         .env_clear()
-        .envs(probe_env())
-        .env("SHEP_HOME", home)
-        .env("SHEP_DOG_NAME", name)
+        .envs(dog_env(home, name))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

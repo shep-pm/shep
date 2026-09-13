@@ -11,7 +11,7 @@
 //! is touched, so a failed RPC still leaves a config the next boot honours.
 //! `adopt` puts [`vet_binary`] ahead of both.
 
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::Receiver;
@@ -487,14 +487,19 @@ pub fn vet_binary_within(
     })
 }
 
-/// The environment the probe runs a candidate with: what the daemon would
-/// give the dog, and nothing else.
+/// The whole environment a dog is run with here: what the daemon would give
+/// it, and nothing else.
+///
+/// Every caller pairs this with `env_clear`, and both of them run a binary
+/// shep did not write: `ask`'s adopt probe, and `hook::run_on_remove`.
+/// `SHEP_HOME` and `SHEP_DOG_NAME` are in here rather than left to the
+/// caller so a third variable cannot reach one spawn and miss the other.
 ///
 /// Mirrors `shep_daemon::assemble::base_env`, which is private to a crate
 /// the CLI does not reach into. The lists are duplicated: if the daemon's
 /// allowlist grows, this one has to follow, or a candidate is vetted under
 /// conditions its supervised run will not have.
-pub(crate) fn probe_env() -> Vec<(String, String)> {
+pub(crate) fn dog_env(home: &Path, name: &str) -> Vec<(String, OsString)> {
     #[cfg(unix)]
     const INHERITED: &[&str] = &["HOME", "USER", "LANG", "TZ"];
     #[cfg(unix)]
@@ -521,12 +526,17 @@ pub(crate) fn probe_env() -> Vec<(String, String)> {
         .ok()
         .filter(|p| !p.is_empty())
         .unwrap_or_else(|| DEFAULT_PATH.to_string());
-    let mut env = vec![("PATH".to_string(), path)];
+    let mut env = vec![("PATH".to_string(), OsString::from(path))];
     env.extend(
         INHERITED
             .iter()
-            .filter_map(|key| std::env::var(key).ok().map(|v| ((*key).to_string(), v))),
+            .filter_map(|key| std::env::var_os(key).map(|v| ((*key).to_string(), v))),
     );
+    // Last, and as `OsString`: a home that is not UTF-8 still reaches the
+    // dog whole, and the two shep owns cannot be shadowed by an inherited
+    // one of the same name.
+    env.push(("SHEP_HOME".to_string(), home.as_os_str().to_owned()));
+    env.push(("SHEP_DOG_NAME".to_string(), OsString::from(name)));
     env
 }
 
@@ -557,9 +567,7 @@ fn ask(
     command
         .arg(flag)
         .env_clear()
-        .envs(probe_env())
-        .env("SHEP_HOME", home)
-        .env("SHEP_DOG_NAME", name)
+        .envs(dog_env(home, name))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
