@@ -4797,16 +4797,6 @@ impl App {
         Effect::None
     }
 
-    /// Everything the open pane has filed, as the requests that carry it,
-    /// leaving the pane holding nothing.
-    ///
-    /// Empty for no pane, for an empty set, and for a dog whose section
-    /// stopped parsing between the read and the keystroke, which is
-    /// reported rather than sent as an empty table.
-    ///
-    /// A sheep's set is one request per entry and a dog's is one request
-    /// for the lot: `Request::SetDogConfig` replaces the whole table, so
-    /// a batch of edits to one dog is one write. See
     /// One write ticket, and the counter moved past it.
     ///
     /// [`Self::take_pane_writes`] mints a batch's worth inline rather than
@@ -4818,6 +4808,16 @@ impl App {
         ticket
     }
 
+    /// Everything the open pane has filed, as the requests that carry it,
+    /// leaving the pane holding nothing.
+    ///
+    /// Empty for no pane, for an empty set, and for a dog whose section
+    /// stopped parsing between the read and the keystroke, which is
+    /// reported rather than sent as an empty table.
+    ///
+    /// A sheep's set is one request per entry and a dog's is one request
+    /// for the lot: `Request::SetDogConfig` replaces the whole table, so
+    /// a batch of edits to one dog is one write. See
     /// `ConfigPane::edited_section_with`.
     fn take_pane_writes(&mut self) -> Vec<Sent> {
         // `WriteAuthority::granted`, not `Self::authorize_write`: the gate
