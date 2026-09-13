@@ -130,7 +130,7 @@ pub struct AppConfig {
         "group": "inputs",
         "blurb": "Arguments passed to the script, as a list",
         "accepts": ["a list of strings, one argument each",
-                    "{{instance}}, {{name}}, and {{secret:key}} expand"],
+                    "{{instance}}, {{name}}, {{SHEP_HOME}} and {{secret:key}} expand"],
         "refuses": ["an unclosed {{ token", "a token shep does not define"]
     })))]
     pub args: Vec<String>,
@@ -172,10 +172,11 @@ pub struct AppConfig {
                 "blurb": "Environment variables for this app, layered over the daemon's own",
                 "accepts": ["a table of KEY = value pairs",
                             "a bare true or 8080, which arrives as text",
-                            "{{instance}}, {{name}}, and {{secret:key}} expand in a value"],
+                            "{{instance}}, {{name}}, {{SHEP_HOME}} and {{secret:key}} expand in a value"],
                 "refuses": ["a float, since 1.10 would arrive as 1.1",
                             "SHEP_INSTANCE, SHEP_NAME, or SHEP_ENVIRONMENT, which shep sets itself",
-                            "an unclosed {{ token"],
+                            "an unclosed {{ token",
+                            "a token shep does not define"],
                 "neighbours": [{"field": "environment", "note": "which environment {{secret:...}} reads from"}]
             },
             "additionalProperties" = {
@@ -418,32 +419,32 @@ pub struct AppConfig {
         "neighbours": [{"field": "user", "note": "resolved together at spawn"}]
     })))]
     pub group: Option<String>,
-    /// Stdout log file (default: `$SHEP_HOME/logs/<name>-<instance>-out.log`; `merge_logs` collapses to `<name>-out.log`)
+    /// Stdout log file (default: `{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log`; `merge_logs` collapses to `{{name}}-out.log`)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "example": "/var/log/my-first-sheep/out.log",
+        "example": "{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log",
         "group": "logging",
-        "blurb": "Where stdout goes. Defaults to a file under $SHEP_HOME/logs",
+        "blurb": "Where stdout goes. Written out, the default is {{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log",
         "accepts": ["a path, relative paths follow cwd",
-                    "{{instance}} and {{name}} expand",
+                    "{{instance}}, {{name}} and {{SHEP_HOME}} expand",
                     "a parent that does not exist yet: warned"],
         "refuses": ["a {{secret:...}} token",
                     "one path for every instance, without merge_logs"],
         "neighbours": [{"field": "err_file",   "note": "shares the same collision rule"},
-                       {"field": "merge_logs", "note": "lets instances share one file on purpose"}]
+                       {"field": "merge_logs", "note": "shares one file, unless this path spells {{instance}} out"}]
     })))]
     pub out_file: Option<String>,
-    /// Stderr log file (default: `$SHEP_HOME/logs/<name>-<instance>-err.log`; `merge_logs` collapses to `<name>-err.log`)
+    /// Stderr log file (default: `{{SHEP_HOME}}/logs/{{name}}-{{instance}}-err.log`; `merge_logs` collapses to `{{name}}-err.log`)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "example": "/var/log/my-first-sheep/err.log",
+        "example": "{{SHEP_HOME}}/logs/{{name}}-{{instance}}-err.log",
         "group": "logging",
-        "blurb": "Where stderr goes. Defaults to a file under $SHEP_HOME/logs",
+        "blurb": "Where stderr goes. Written out, the default is {{SHEP_HOME}}/logs/{{name}}-{{instance}}-err.log",
         "accepts": ["a path, relative paths follow cwd",
-                    "{{instance}} and {{name}} expand",
+                    "{{instance}}, {{name}} and {{SHEP_HOME}} expand",
                     "a parent that does not exist yet: warned"],
         "refuses": ["a {{secret:...}} token",
                     "one path for every instance, without merge_logs"],
         "neighbours": [{"field": "out_file",   "note": "shares the same collision rule"},
-                       {"field": "merge_logs", "note": "lets instances share one file on purpose"}]
+                       {"field": "merge_logs", "note": "shares one file, unless this path spells {{instance}} out"}]
     })))]
     pub err_file: Option<String>,
     /// Merge instance logs into one file pair
@@ -1342,6 +1343,14 @@ target = "http://127.0.0.1:8080/healthz"
                 "env",
                 "a float, since 1.10 would arrive as 1.1",
                 "EnvValue's Deserialize, before normalize sees the table",
+            ),
+            refused(
+                "env",
+                "a token shep does not define",
+                sheep(|a| {
+                    a.env.insert("WORKER".to_owned(), "{{slot}}".to_owned());
+                }),
+                |e| matches!(e, NormalizeError::BadTemplate { .. }),
             ),
             refused(
                 "env",
