@@ -78,10 +78,18 @@ pub(super) fn boxed_height(lines: &[Line<'static>]) -> u16 {
 ///
 /// `lines` comes from the caller, which has already measured them against
 /// `area.height` to decide this form fits at all.
+///
+/// `ground` is the interior's own background, passed straight to
+/// [`blank_row`] for every row: 1g passes [`Style::reset`], approximating
+/// nothing, and 1k passes `palette.ground()`, the paper-2 panel the design
+/// calls for. One parameter rather than two box drawers differing in it,
+/// the same reasoning this module's own doc gives for not duplicating the
+/// box at all.
 pub(super) fn draw_boxed(
     lines: &[Line<'static>],
     interior: u16,
     palette: Palette,
+    ground: Style,
     area: Rect,
     buffer: &mut Buffer,
 ) {
@@ -105,7 +113,7 @@ pub(super) fn draw_boxed(
         let offset = u16::try_from(offset).unwrap_or(0);
         let y = box_y + 1 + offset;
         buffer.set_string(box_x, y, BOX_LEFT.to_string(), line_style);
-        blank_row(buffer, box_x + 1, y, interior);
+        blank_row(buffer, box_x + 1, y, interior, ground);
         buffer.set_line(box_x + 1, y, line, interior);
         buffer.set_string(box_x + 1 + interior, y, BOX_RIGHT.to_string(), line_style);
     }
@@ -120,8 +128,8 @@ pub(super) fn draw_boxed(
     );
 }
 
-/// `width` cells of plain space at `(x, y)`, reset back to the terminal's
-/// own default: the dialog itself is never muted, only the pane behind it.
+/// `width` cells of plain space at `(x, y)`, in `style`: the dialog itself
+/// is never muted, only the pane behind it.
 ///
 /// [`Buffer::set_line`] only ever writes as many cells as its `Line` carries
 /// content for, so a blank separator row (`Line::from(Span::raw(""))`,
@@ -129,8 +137,15 @@ pub(super) fn draw_boxed(
 /// whatever the field list drew there showing through, muted, in the middle
 /// of what is meant to read as a solid dialog. Called ahead of every row
 /// this module draws the dialog's own lines into, boxed or not.
-pub(super) fn blank_row(buffer: &mut Buffer, x: u16, y: u16, width: u16) {
-    buffer.set_string(x, y, " ".repeat(usize::from(width)), Style::reset());
+///
+/// `style` is the caller's own choice of interior background: 1g passes
+/// [`Style::reset`] both here and through [`draw_boxed`], so its four
+/// pinned snapshots see no change; 1k passes `palette.ground()`.
+/// [`Buffer::set_line`] then patches each span's own style onto whatever
+/// `style` already set, so a foreground-only span (every span this module
+/// draws) leaves this row's background alone underneath it.
+pub(super) fn blank_row(buffer: &mut Buffer, x: u16, y: u16, width: u16, style: Style) {
+    buffer.set_string(x, y, " ".repeat(usize::from(width)), style);
 }
 
 /// Dims everything already drawn in `area`, so an overlay reads as a

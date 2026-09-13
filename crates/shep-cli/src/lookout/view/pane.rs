@@ -2169,7 +2169,7 @@ fn draw_close_dialog(
     if overlay::is_boxed(area.width, BOX_WIDTH) {
         let lines = close_dialog_lines(dialog, palette, BOX_WIDTH, now);
         if overlay::boxed_height(&lines) <= area.height {
-            overlay::draw_boxed(&lines, BOX_WIDTH, palette, area, buffer);
+            overlay::draw_boxed(&lines, BOX_WIDTH, palette, Style::reset(), area, buffer);
             return;
         }
     }
@@ -2199,7 +2199,7 @@ fn draw_borderless_close_dialog(
             .saturating_sub(u16::try_from(rows.len()).unwrap_or(0));
     for (offset, (_, line)) in rows.iter().enumerate() {
         let offset = u16::try_from(offset).unwrap_or(0);
-        overlay::blank_row(buffer, area.x, top + offset, area.width);
+        overlay::blank_row(buffer, area.x, top + offset, area.width, Style::reset());
         buffer.set_line(area.x, top + offset, line, area.width);
     }
 }

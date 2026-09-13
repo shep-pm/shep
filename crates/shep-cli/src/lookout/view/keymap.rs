@@ -109,10 +109,12 @@ fn entry_cell(
             // (`Palette::ground`'s own doc: "the one painted background"),
             // and painting only this span would band the description
             // column while the key column and the headings beside it sat
-            // on the terminal's own background. Frame 1g's own interior
-            // stays `Style::reset()` (`overlay::blank_row`) for the same
-            // reason: 1g's design also calls for a ground, and 1g shipped
-            // without it.
+            // on whatever `blank_row` had filled the rest of the row
+            // with instead. The interior's own paper-2 ground comes from
+            // `draw`'s call into `overlay::draw_boxed`, one background
+            // for the whole row, not per span: `Buffer::set_line` patches
+            // a span's own style onto that rather than replacing it, so
+            // this foreground-only span leaves the ground under it alone.
             Span::raw(format!(
                 "{}{}",
                 " ".repeat(usize::from(GAP)),
@@ -220,7 +222,7 @@ pub(super) fn draw(app: &App, area: Rect, buffer: &mut Buffer) {
     if overlay::is_boxed(area.width, INTERIOR) {
         let lines = lines(app, INTERIOR);
         if overlay::boxed_height(&lines) <= area.height {
-            overlay::draw_boxed(&lines, INTERIOR, palette, area, buffer);
+            overlay::draw_boxed(&lines, INTERIOR, palette, palette.ground(), area, buffer);
         }
     }
 }
@@ -415,6 +417,47 @@ mod tests {
         assert_eq!(behind.fg, fixtures::plain_dimmed().fg);
     }
 
+    /// The interior carries the design's own paper-2 ground, the same way
+    /// [`overlay::draw_boxed`] gives 1g's own box a ground when its caller
+    /// asks for one: a cell inside the box has a background, and a cell
+    /// outside it — the dimmed body behind — does not.
+    ///
+    /// In colour: [`Palette::ground`] is a no-op under [`fixtures::plain`],
+    /// so a plain-palette render would pass whether or not the ground
+    /// call ever reached `blank_row`.
+    #[test]
+    fn the_interior_carries_the_paper_two_ground() {
+        let app = coloured_app_with_overlay();
+        let mut terminal = Terminal::new(TestBackend::new(160, 48)).expect("terminal");
+        terminal
+            .draw(|frame| super::super::draw(&app, frame))
+            .expect("draw");
+        let buffer = terminal.backend().buffer();
+        // Row 20 is an entry row; column 20 sits inside MOVING's own cell,
+        // clear of the border glyphs at columns 16 and 143 (margin
+        // (160 - 128) / 2 = 16). Column 2 is the dimmed flock table behind
+        // the box, on the same row.
+        // `Style::reset()` sets `bg` to `Some(Color::Reset)` rather than
+        // `None` (it is a sentinel meant to overwrite whatever a `patch`
+        // would otherwise leave standing), so "has a ground" means "some
+        // colour other than `Color::Reset`", not merely `bg.is_some()`.
+        let ground = app.palette().ground().bg;
+        assert!(
+            !matches!(ground, None | Some(ratatui::style::Color::Reset)),
+            "fixtures::coloured() should give `Palette::ground` a real colour"
+        );
+        let inside = buffer[(20, 20)].style();
+        assert_eq!(
+            inside.bg, ground,
+            "the interior does not carry the paper-2 ground: {inside:?}"
+        );
+        let outside = buffer[(2, 20)].style();
+        assert_ne!(
+            outside.bg, ground,
+            "the dimmed body behind the box carries the interior's own ground: {outside:?}"
+        );
+    }
+
     /// Renders one overlay and returns the screen as text.
     fn render_overlay(app: &App, width: u16, height: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
@@ -426,13 +469,19 @@ mod tests {
 
     /// A healthy dashboard, control open, nothing frozen.
     fn healthy_app() -> App {
+        healthy_app_with_palette(fixtures::plain())
+    }
+
+    /// The same, at `palette`: what the ground test reads, since
+    /// [`Palette::ground`] is a no-op under [`fixtures::plain`].
+    fn healthy_app_with_palette(palette: Palette) -> App {
         let mut app = fixtures::app_with(
             vec![
                 ProcessInfo::builder(1, "web", ProcStatus::Online)
                     .pid(Some(48_001))
                     .build(),
             ],
-            fixtures::plain(),
+            palette,
         );
         app.set_control_for_tests(Control::Allowed);
         app
@@ -441,6 +490,14 @@ mod tests {
     /// A healthy dashboard with the overlay up.
     fn app_with_overlay() -> App {
         let mut app = healthy_app();
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        app
+    }
+
+    /// The same, in colour, for the one test that needs an actual
+    /// background to check against.
+    fn coloured_app_with_overlay() -> App {
+        let mut app = healthy_app_with_palette(fixtures::coloured());
         let _ = app.update(Msg::Key(KeyPress::Help));
         app
     }
