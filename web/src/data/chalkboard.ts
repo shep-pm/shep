@@ -81,7 +81,18 @@ export const board: ChalkboardGroup[] = [
 const QUEUED_HEADING = "## Named as v1.0 in spec §2/§9, not yet built";
 const CUT_HEADING = "## Committed to v1.1+ by design (spec §2)";
 
-/** The text of one `## ` section, throwing if deferred.md no longer has it. */
+/**
+ * The text of one `## ` section, heading included, throwing if deferred.md no
+ * longer has it.
+ *
+ * The section ends at the next heading of ANY depth, not the next `## `, so a
+ * `### ` subsection expanding on one item does not read as more items.
+ * `#{2,6}` and not `#{1,6}`: a `# ` after a `## ` would be a second document
+ * in one file and deferred.md has exactly one, at line 1, while `# ` is also
+ * what a shell comment looks like inside a fenced block. Neither parsed
+ * section fences anything today, and this is the bound that stays right if
+ * one does.
+ */
 function section(source: string, heading: string): string {
   const start = source.indexOf(heading);
   if (start === -1) {
@@ -90,9 +101,9 @@ function section(source: string, heading: string): string {
         `"${heading}" section this list is parsed from.`,
     );
   }
-  const body = source.slice(start + heading.length);
-  const end = body.search(/\n#{2,6} /);
-  return end === -1 ? body : body.slice(0, end);
+  const bodyStart = start + heading.length;
+  const end = source.slice(bodyStart).search(/\n#{2,6} /);
+  return end === -1 ? source.slice(start) : source.slice(start, bodyStart + end);
 }
 
 /**
