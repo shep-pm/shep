@@ -971,4 +971,42 @@ mod tests {
         assert!(pane.filters().match_ranges("pool").is_empty());
         assert!(!pane.drop_newest_chip(), "nothing left to drop");
     }
+
+    /// `n` steps toward the newest matching line only while the match axis
+    /// is set. With it clear there is no "matching line" to step between, so
+    /// the key must not quietly become a line-movement key.
+    ///
+    /// The guard reads the axis, so it is the match-axis state machine's
+    /// last untested door: nothing else exercised the `None` arm.
+    #[test]
+    fn n_steps_only_while_the_match_axis_is_set() {
+        let mut pane = BleatsPane::new(RowKey::Sheep(9));
+
+        pane.match_next();
+        assert!(pane.following(), "no axis set, so `n` spent no follow flag");
+        assert_eq!(pane.scroll_offset(), 0, "and moved nothing");
+
+        pane.scroll_up(3);
+        pane.set_match("/po+l/".to_string());
+        pane.match_next();
+        assert_eq!(pane.scroll_offset(), 2, "the axis is set, so `n` stepped");
+        assert!(!pane.following(), "a deliberate jump clears follow");
+    }
+
+    /// The axis dropping mid-session closes that door again, rather than
+    /// leaving `n` live off a matcher that is gone.
+    #[test]
+    fn n_stops_stepping_once_the_match_chip_is_dropped() {
+        let mut pane = BleatsPane::new(RowKey::Sheep(9));
+        pane.set_match("/po+l/".to_string());
+        pane.scroll_up(3);
+        assert!(pane.drop_newest_chip());
+
+        pane.match_next();
+        assert_eq!(
+            pane.scroll_offset(),
+            3,
+            "the axis is gone, so `n` did nothing"
+        );
+    }
 }
