@@ -9,18 +9,18 @@ shep lookout   /home/ada/.shep                                              6 in
   ────────────────────────────────────────────────────────────────────────────────────────
   FIELD                       VALUE                                                       
 >  err_file                   (unset) -… FOCUSED  err_file  text                          
-   merge_logs                 false       Where stderr goes. Defaults to a file under     
-   out_file                   (unset)     $SHEP_HOME/logs                                 
-                                                                                          
-  pending edits                           now     (unset)                                 
-    cwd  (unset) -> /srv/api              default (none)                                  
-    err_file  (unset) -> /var/log/api…    example /var/log/my-first-sheep/err.log         
-                                                                                          
-  env                                     ▲ respawn  the sheep must stop and start again  
-   DATABASE_URL               (set)                pick the timing when you close the pane
-   NODE_ENV                   (set)                                                       
-   + add a key                            ────────────────────────────────────────────────
-                                          VALIDATION                                      
+ ~ level_rules                []          Where stderr goes. Defaults to a file under     
+   merge_logs                 false       $SHEP_HOME/logs                                 
+   out_file                   (unset)                                                     
+                                          now     (unset)                                 
+  pending edits                           default (none)                                  
+    cwd  (unset) -> /srv/api              example /var/log/my-first-sheep/err.log         
+    err_file  (unset) -> /var/log/api…                                                    
+                                          ▲ respawn  the sheep must stop and start again  
+  env                                              pick the timing when you close the pane
+   DATABASE_URL               (set)                                                       
+   NODE_ENV                   (set)       ────────────────────────────────────────────────
+   + add a key                            VALIDATION                                      
  ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜ 
  ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                ▌ 
  ▐  cwd and err_file take hold when the process starts again.                           ▌ 

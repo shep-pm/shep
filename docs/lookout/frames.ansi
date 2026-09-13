@@ -1205,6 +1205,7 @@ The sheep pane on web, at its design size: 160 = 8 gutter + 140 body + 12 margin
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────│[0m                                                                                   [0m
 [0m[38;5;245mlogging[0m                                                                     [0m[38;5;245m│[0m                                                                                   [0m
 [0m[38;5;245merr_file                  [0m  [0m[38;5;245m(unset)                                         │[0m                                                                                   [0m
+[0m[38;5;245mlevel_rules               [0m  [0m[38;5;245m(default)                                       │[0m                                                                                   [0m
 [0m[38;5;245mmerge_logs                [0m  [0m[38;5;245m(default)                                       │[0m                                                                                   [0m
 [0m[38;5;245mout_file                  [0m  [0m[38;5;245m(unset)                                         │[0m                                                                                   [0m
                                                                             [0m[38;5;245m│[0m                                                                                   [0m
@@ -1213,7 +1214,6 @@ The sheep pane on web, at its design size: 160 = 8 gutter + 140 body + 12 margin
 [0m[38;5;245margs                      [0m  ["--port","8080"]                               [0m[38;5;245m│[0m                                                                                   [0m
 [0m[38;5;245mchannel                   [0m  [0m[38;5;245m(default)                                       │[0m                                                                                   [0m
 [0m[38;5;245menvironment               [0m  [0m[38;5;245m(unset)                                         │[0m                                                                                   [0m
-[0m[38;5;245mstdin                     [0m  [0m[38;5;245m(default)                                       │[0m                                                                                   [0m
                                                                                                                                                                 [0m
 [0m[38;5;221m[48;5;235mesc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                                     [0m[38;5;245m[48;5;235m control enabled[0m
 
@@ -1258,6 +1258,7 @@ rss 30.0M of 64.0M █████░░░░░                               
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────[0m                                                               [0m
 [0m[38;5;245mlogging[0m                                                                                                                                    [0m
 [0m[38;5;245merr_file                  [0m  [0m[38;5;245m(unset)                                         [0m                                                               [0m
+[0m[38;5;245mlevel_rules               [0m  [0m[38;5;245m(default)                                       [0m                                                               [0m
 [0m[38;5;245mmerge_logs                [0m  [0m[38;5;245m(default)                                       [0m                                                               [0m
 [0m[38;5;245mout_file                  [0m  [0m[38;5;245m(unset)                                         [0m                                                               [0m
                                                                                                                                            [0m
@@ -1266,7 +1267,6 @@ rss 30.0M of 64.0M █████░░░░░                               
 [0m[38;5;245margs                      [0m  ["--port","8080"]                                                                                              [0m
 [0m[38;5;245mchannel                   [0m  [0m[38;5;245m(default)                                       [0m                                                               [0m
 [0m[38;5;245menvironment               [0m  [0m[38;5;245m(unset)                                         [0m                                                               [0m
-[0m[38;5;245mstdin                     [0m  [0m[38;5;245m(default)                                       [0m                                                               [0m
                                                                                                                                            [0m
 [0m[38;5;221m[48;5;235mesc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                [0m[38;5;245m[48;5;235m control enabled[0m
 
@@ -1311,6 +1311,7 @@ rss 30.0M of 64.0M █████░░░░░                               
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────[0m                       [0m
 [0m[38;5;245mlogging[0m                                                                                            [0m
 [0m[38;5;245merr_file                  [0m  [0m[38;5;245m(unset)                                         [0m                       [0m
+[0m[38;5;245mlevel_rules               [0m  [0m[38;5;245m(default)                                       [0m                       [0m
 [0m[38;5;245mmerge_logs                [0m  [0m[38;5;245m(default)                                       [0m                       [0m
 [0m[38;5;245mout_file                  [0m  [0m[38;5;245m(unset)                                         [0m                       [0m
                                                                                                    [0m
@@ -1319,7 +1320,6 @@ rss 30.0M of 64.0M █████░░░░░                               
 [0m[38;5;245margs                      [0m  ["--port","8080"]                                                      [0m
 [0m[38;5;245mchannel                   [0m  [0m[38;5;245m(default)                                       [0m                       [0m
 [0m[38;5;245menvironment               [0m  [0m[38;5;245m(unset)                                         [0m                       [0m
-[0m[38;5;245mstdin                     [0m  [0m[38;5;245m(default)                                       [0m                       [0m
                                                                                                    [0m
 [0m[38;5;221m[48;5;235mesc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log  …[0m[38;5;245m[48;5;235m control enabled[0m
 
@@ -1576,18 +1576,18 @@ esc pressed with cwd and err_file edited and listen_timeout already parked from 
 [0m[38;5;245m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
 [0m[38;5;245m  FIELD                       VALUE                                           LANDS                                                                             [0m
 [0m[38;5;245m>  err_file                   (unset) -> /var/log/api/err.log                 respawn    FOCUSED  err_file  text                                                [0m
-[0m[38;5;245m   merge_logs                 false                                           respawn     Where stderr goes. Defaults to a file under $SHEP_HOME/logs           [0m
-[0m[38;5;245m   out_file                   (unset)                                         respawn                                                                           [0m
-[0m[38;5;245m                                                                                          now     (unset)                                                       [0m
-[0m[38;5;245m  pending edits                                                                           default (none)                                                        [0m
-[0m[38;5;245m    cwd  (unset) -> /srv/api                                                              example /var/log/my-first-sheep/err.log                               [0m
-[0m[38;5;245m    err_file  (unset) -> /var/log/api/err.log                                                                                                                   [0m
-[0m[38;5;245m                                                                                          ▲ respawn  the sheep must stop and start again                        [0m
-[0m[38;5;245m  env                                                                                                                    pick the timing when you close the pane[0m
-[0m[38;5;245m   DATABASE_URL               (set)                                                                                                                             [0m
-[0m[38;5;245m   NODE_ENV                   (set)                                                       ──────────────────────────────────────────────────────────────────────[0m
-[0m[38;5;245m   + add a key                                                                            VALIDATION                                                            [0m
-[0m[38;5;245m                                                                                          █ a path, relative paths follow cwd                                   [0m
+[0m[38;5;245m ~ level_rules                []                                              now         Where stderr goes. Defaults to a file under $SHEP_HOME/logs           [0m
+[0m[38;5;245m   merge_logs                 false                                           respawn                                                                           [0m
+[0m[38;5;245m   out_file                   (unset)                                         respawn     now     (unset)                                                       [0m
+[0m[38;5;245m                                                                                          default (none)                                                        [0m
+[0m[38;5;245m  pending edits                                                                           example /var/log/my-first-sheep/err.log                               [0m
+[0m[38;5;245m    cwd  (unset) -> /srv/api                                                                                                                                    [0m
+[0m[38;5;245m    err_file  (unset) -> /var/log/api/err.log                                             ▲ respawn  the sheep must stop and start again                        [0m
+[0m[38;5;245m                                                                                                                         pick the timing when you close the pane[0m
+[0m[38;5;245m  env                                                                                                                                                           [0m
+[0m[38;5;245m   DATABASE_URL               (set)                                                       ──────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m   NODE_ENV                   (set)                                                       VALIDATION                                                            [0m
+[0m[38;5;245m   + add a key                                                                            █ a path, relative paths follow cwd                                   [0m
 [0m[38;5;245m                                    [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m                                    [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[7m[38;5;221m  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                [0m[38;5;238m▌[0m[38;5;245m                                    [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  cwd and err_file take hold when the process starts again.                           [0m[38;5;238m▌[0m[38;5;245mle across instances without merge_l…[0m
@@ -1629,18 +1629,18 @@ The same dialog at 90 columns, exactly the floor its border needs: 86 interior c
 [0m[38;5;245m  ────────────────────────────────────────────────────────────────────────────────────────[0m
 [0m[38;5;245m  FIELD                       VALUE                                                       [0m
 [0m[38;5;245m>  err_file                   (unset) -… FOCUSED  err_file  text                          [0m
-[0m[38;5;245m   merge_logs                 false       Where stderr goes. Defaults to a file under     [0m
-[0m[38;5;245m   out_file                   (unset)     $SHEP_HOME/logs                                 [0m
-[0m[38;5;245m                                                                                          [0m
-[0m[38;5;245m  pending edits                           now     (unset)                                 [0m
-[0m[38;5;245m    cwd  (unset) -> /srv/api              default (none)                                  [0m
-[0m[38;5;245m    err_file  (unset) -> /var/log/api…    example /var/log/my-first-sheep/err.log         [0m
-[0m[38;5;245m                                                                                          [0m
-[0m[38;5;245m  env                                     ▲ respawn  the sheep must stop and start again  [0m
-[0m[38;5;245m   DATABASE_URL               (set)                pick the timing when you close the pane[0m
-[0m[38;5;245m   NODE_ENV                   (set)                                                       [0m
-[0m[38;5;245m   + add a key                            ────────────────────────────────────────────────[0m
-[0m[38;5;245m                                          VALIDATION                                      [0m
+[0m[38;5;245m ~ level_rules                []          Where stderr goes. Defaults to a file under     [0m
+[0m[38;5;245m   merge_logs                 false       $SHEP_HOME/logs                                 [0m
+[0m[38;5;245m   out_file                   (unset)                                                     [0m
+[0m[38;5;245m                                          now     (unset)                                 [0m
+[0m[38;5;245m  pending edits                           default (none)                                  [0m
+[0m[38;5;245m    cwd  (unset) -> /srv/api              example /var/log/my-first-sheep/err.log         [0m
+[0m[38;5;245m    err_file  (unset) -> /var/log/api…                                                    [0m
+[0m[38;5;245m                                          ▲ respawn  the sheep must stop and start again  [0m
+[0m[38;5;245m  env                                              pick the timing when you close the pane[0m
+[0m[38;5;245m   DATABASE_URL               (set)                                                       [0m
+[0m[38;5;245m   NODE_ENV                   (set)       ────────────────────────────────────────────────[0m
+[0m[38;5;245m   + add a key                            VALIDATION                                      [0m
 [0m[38;5;245m [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m [0m
 [0m[38;5;245m [0m[38;5;238m▐[0m[7m[38;5;221m  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                [0m[38;5;238m▌[0m[38;5;245m [0m
 [0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  cwd and err_file take hold when the process starts again.                           [0m[38;5;238m▌[0m[38;5;245m [0m
@@ -1682,6 +1682,7 @@ The same dialog one column under the floor, at 89: the border is dropped and the
 [0m[38;5;245m  ───────────────────────────────────────────────────────────────────────────────────────[0m
 [0m[38;5;245m  FIELD                       VALUE                                            LANDS     [0m
 [0m[38;5;245m>  err_file                   (unset) -> /var/log/api/err.log                  respawn   [0m
+[0m[38;5;245m ~ level_rules                []                                               now       [0m
 [0m[38;5;245m   merge_logs                 false                                            respawn   [0m
 [0m[38;5;245m   out_file                   (unset)                                          respawn   [0m
 [0m[38;5;245m                                                                                         [0m
@@ -1695,7 +1696,6 @@ The same dialog one column under the floor, at 89: the border is dropped and the
 [0m[38;5;245m   + add a key                                                                           [0m
 [0m[38;5;245m  ───────────────────────────────────────────────────────────────────────────────────────[0m
 [0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a…[0m
-[0m[38;5;245m                                                                                         [0m
 [0m[38;5;245m                                                                                         [0m
 [0m[38;5;245m                                                                                         [0m
 [0m[38;5;245m                                                                                         [0m

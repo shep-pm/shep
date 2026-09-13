@@ -9,6 +9,7 @@ shep lookout   /home/ada/.shep                                             6 in 
   ───────────────────────────────────────────────────────────────────────────────────────
   FIELD                       VALUE                                            LANDS     
 >  err_file                   (unset) -> /var/log/api/err.log                  respawn   
+ ~ level_rules                []                                               now       
    merge_logs                 false                                            respawn   
    out_file                   (unset)                                          respawn   
                                                                                          
@@ -22,7 +23,6 @@ shep lookout   /home/ada/.shep                                             6 in 
    + add a key                                                                           
   ───────────────────────────────────────────────────────────────────────────────────────
   = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a…
-                                                                                         
                                                                                          
                                                                                          
                                                                                          
