@@ -77,7 +77,10 @@ func openChannel() (*os.File, error) {
 			// owes it a Close as much as the succeeding one does. This
 			// example exits straight after, but it gets copied into code
 			// that will not.
-			f.Close()
+			// Discarded on purpose: the descriptor is already being refused,
+			// and a Close error on it tells the operator nothing they can act
+			// on. Written as `_ =` so the next reader sees a decision.
+			_ = f.Close()
 			return nil, fmt.Errorf("SHEP_CHANNEL_FD is %q, which is not an open descriptor", fd)
 		}
 		return f, nil
@@ -92,11 +95,10 @@ func openChannel() (*os.File, error) {
 // blank one is ordinary rather than a mistake. Both fall back, since a
 // metric named "" is worse on the bus than no custom name at all.
 func metricName(params *string) string {
-	if params == nil {
-		return "triggers"
-	}
-	if name := strings.TrimSpace(*params); name != "" {
-		return name
+	if params != nil {
+		if name := strings.TrimSpace(*params); name != "" {
+			return name
+		}
 	}
 	return "triggers"
 }

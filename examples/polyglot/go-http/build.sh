@@ -7,4 +7,5 @@
 set -eu
 cd "$(dirname "$0")"
 go build -o go-http .
-echo "built polyglot/go-http/go-http, the path this app's Flockfile entry names"
+echo "built examples/polyglot/go-http/go-http"
+echo "  its Flockfile entry names it polyglot/go-http/go-http, relative to examples/"
