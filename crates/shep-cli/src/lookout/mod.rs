@@ -534,7 +534,11 @@ where
             // with no deadline, so the handle goes into `inflight` rather than
             // being awaited here. `_authority` is a proof carried by the
             // effect, not a value this arm reads.
-            Effect::WriteSetting(edit, _authority) => {
+            Effect::WriteSetting {
+                edit,
+                ticket,
+                authority: _authority,
+            } => {
                 let path = daemon_config.clone();
                 let for_msg = edit.clone();
                 let handle = tokio::task::spawn_blocking(move || {
@@ -547,6 +551,7 @@ where
                         .and_then(|inner| inner.map_err(|err| err.to_string()));
                     Msg::SettingWritten {
                         edit: for_msg,
+                        ticket,
                         result,
                     }
                 }));
@@ -602,7 +607,11 @@ where
             // `ShepToml`'s own lock, which blocks with no deadline, so this
             // arm does not wait for it either. `_authority` is dropped as in
             // `Effect::WriteSetting`.
-            Effect::WriteDog(edit, _authority) => {
+            Effect::WriteDog {
+                edit,
+                ticket,
+                authority: _authority,
+            } => {
                 let path = daemon_config.clone();
                 let for_msg = edit.clone();
                 let handle = tokio::task::spawn_blocking(move || {
@@ -625,6 +634,7 @@ where
                         .and_then(|inner| inner);
                     Msg::DogWritten {
                         edit: for_msg,
+                        ticket,
                         result,
                     }
                 }));
