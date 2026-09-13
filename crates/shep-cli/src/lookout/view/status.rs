@@ -55,15 +55,21 @@ pub fn banner_line(app: &App, width: u16) -> Option<Line<'static>> {
 
 /// The key hint once the link is [`Link::Lost`].
 ///
-/// Two keys, because two keys still do something: `q` leaves, and `j`/`k`
-/// move a cursor over values that are already history. `r` is not among
-/// them, whatever the design's own copy says: it is refused like the rest
-/// (`App::on_key`), and `super::super::link::run_link` has already returned
-/// by the time a freeze lands, so no task survives to answer a redial. The
-/// last clause is the whole rest of the keymap, said once rather than
-/// discovered a keypress at a time.
-const FROZEN_HINT: &str =
-    "q quit   j/k still moves   every other key is refused while the link is down";
+/// Three keys, because three still do something: `q` leaves, `j`/`k` move a
+/// cursor over values that are already history, and `h` opens the keymap
+/// overlay, which is read only and wanted most on the screen where nothing
+/// else works. `r` is not among them, whatever the design's own copy says:
+/// it is refused like the rest (`App::on_key`), and
+/// `super::super::link::run_link` has already returned by the time a freeze
+/// lands, so no task survives to answer a redial. The last clause is the
+/// whole rest of the keymap, said once rather than discovered a keypress at
+/// a time.
+///
+/// That last clause is why `h` had to be named here the moment it stopped
+/// being refused. The sentence is a claim about every key it does not list,
+/// so a key that quietly started working would make it false.
+const FROZEN_HINT: &str = "q quit   h keymap   j/k still moves   \
+     every other key is refused while the link is down";
 
 /// The status bar's own label for [`Control::ReadOnly`], shared with the
 /// keymap overlay's gate line so the two cannot drift apart.
@@ -595,6 +601,28 @@ mod tests {
     use crate::commands::settings::SettingField;
     use crate::lookout::app::{ActionVerb, App, KeyPress, Msg};
     use crate::lookout::theme::Palette;
+
+    /// The frozen hint names the keymap it no longer refuses.
+    ///
+    /// Three assertions, and the second is the load-bearing one. The point
+    /// is not that a key got appended, it is that the sentence stays true:
+    /// its last clause is a claim about every key it does not list, so
+    /// naming `h` and keeping that clause have to happen together. A test
+    /// checking only for `h keymap` would pass on a hint that had quietly
+    /// dropped the refusal, and a test checking only the clause would pass
+    /// on the version that made it false.
+    #[test]
+    fn the_frozen_hint_names_the_keymap_it_no_longer_refuses() {
+        assert!(FROZEN_HINT.contains("h keymap"), "{FROZEN_HINT}");
+        assert!(
+            FROZEN_HINT.contains("every other key is refused while the link is down"),
+            "{FROZEN_HINT}"
+        );
+        assert!(
+            FROZEN_HINT.contains("q quit") && FROZEN_HINT.contains("j/k still moves"),
+            "{FROZEN_HINT}"
+        );
+    }
 
     /// The legend sits at the tail, and the hint truncates from the tail, so
     /// it survives only while the hint fits. The lowest tier that still draws
