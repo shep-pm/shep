@@ -604,6 +604,21 @@ struct ErrorBody<'a> {
     message: &'a str,
 }
 
+/// The two strings an emitter prints, both cleaned: `code` stripped of
+/// anything that could drive a terminal, `message` in the shape `fmt`
+/// renders.
+///
+/// One function rather than four lines in each emitter, because the two have
+/// to agree and have drifted once already. `emit_error` carried the comment
+/// explaining why `code` was exempt from sanitising and `emit_notice`
+/// carried nothing, which is how the exemption outlived the reason for it.
+fn safe_parts(fmt: Format, code: &str, message: &str) -> (String, String) {
+    (
+        crate::terminal_safe::sanitise(code).0,
+        safe_message(fmt, message),
+    )
+}
+
 /// `message` with everything that could drive a terminal stripped, in the
 /// shape `fmt` renders.
 ///
@@ -667,10 +682,8 @@ pub fn emit_error(
     code: &str,
     message: &str,
 ) -> io::Result<()> {
-    let code = crate::terminal_safe::sanitise(code).0;
-    let code = code.as_str();
-    let message = safe_message(fmt, message);
-    let message = message.as_str();
+    let (code, message) = safe_parts(fmt, code, message);
+    let (code, message) = (code.as_str(), message.as_str());
     match fmt {
         Format::Json => {
             let envelope = ErrorEnvelope {
@@ -727,10 +740,8 @@ pub fn emit_notice(
     code: &str,
     message: &str,
 ) -> io::Result<()> {
-    let code = crate::terminal_safe::sanitise(code).0;
-    let code = code.as_str();
-    let message = safe_message(fmt, message);
-    let message = message.as_str();
+    let (code, message) = safe_parts(fmt, code, message);
+    let (code, message) = (code.as_str(), message.as_str());
     match fmt {
         Format::Json => {
             let envelope = NoticeEnvelope {
