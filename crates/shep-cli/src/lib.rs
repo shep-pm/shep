@@ -391,6 +391,19 @@ fn require_absolute(knob: &'static str, candidate: &Path) -> Result<(), HomeRefu
     })
 }
 
+/// Reports a refusal that stopped a verb before it had a `$SHEP_HOME`, and
+/// hands back the status to exit with.
+///
+/// Four call sites end this way, two reaching it through [`resolve_paths`]
+/// and two through [`ensure_home`]. A refusal that printed differently
+/// depending on which one caught it would be a bug rather than a variation,
+/// and the two furthest apart sit 900 lines from each other.
+fn report_home_refusal(fmt: Format, refusal: &HomeRefusal) -> ExitCode {
+    let code = refusal.code();
+    emit_error_locked(fmt, code, &refusal.to_string());
+    code
+}
+
 /// What a rootless `candidate` would have meant from here, for a refusal's
 /// remedy line. `None` when this process's directory could not be read.
 ///
@@ -712,11 +725,7 @@ async fn run(
             if let Some(cli::DaemonCmd::Reload) = args.cmd {
                 let paths = match resolve_paths(&cli.global) {
                     Ok(paths) => paths,
-                    Err(refusal) => {
-                        let code = refusal.code();
-                        emit_error_locked(fmt, code, &refusal.to_string());
-                        return code;
-                    }
+                    Err(refusal) => return report_home_refusal(fmt, &refusal),
                 };
                 let mut out = std::io::stdout();
                 let mut err = std::io::stderr();
@@ -740,11 +749,7 @@ async fn run(
             let named_home = if cli.global.home.is_some() {
                 match ensure_home(&cli.global) {
                     Ok((paths, _)) => Some(paths.home),
-                    Err(refusal) => {
-                        let code = refusal.code();
-                        emit_error_locked(fmt, code, &refusal.to_string());
-                        return code;
-                    }
+                    Err(refusal) => return report_home_refusal(fmt, &refusal),
                 }
             } else {
                 None
@@ -819,11 +824,7 @@ async fn run(
 
     let (paths, home_is_new) = match ensure_home(&cli.global) {
         Ok(resolved) => resolved,
-        Err(refusal) => {
-            let code = refusal.code();
-            emit_error_locked(fmt, code, &refusal.to_string());
-            return code;
-        }
+        Err(refusal) => return report_home_refusal(fmt, &refusal),
     };
     if home_is_new {
         // Unconditional, unlike the welcome banner below: `shep welcome`
@@ -1610,11 +1611,7 @@ fn flock_connect_refusal_message(err: &shep_client::ConnectError) -> String {
 async fn run_daemon_command(fmt: Format, global: &GlobalArgs, args: &DaemonArgs) -> ExitCode {
     let paths = match resolve_paths(global) {
         Ok(paths) => paths,
-        Err(refusal) => {
-            let code = refusal.code();
-            emit_error_locked(fmt, code, &refusal.to_string());
-            return code;
-        }
+        Err(refusal) => return report_home_refusal(fmt, &refusal),
     };
     match run_daemon(paths, args).await {
         Ok(()) => ExitCode::Success,
@@ -2398,6 +2395,31 @@ mod tests {
         assert!(
             rendered.contains(&cwd.join("ada").display().to_string()),
             "the remedy must name the absolute form of what was supplied: {rendered}"
+        );
+    }
+
+    /// The `# Errors` promise that `--home` works "with none at all": no
+    /// `$HOME`, no `%USERPROFILE%`, nothing `user_home` reads.
+    ///
+    /// This is the arm that hands `resolve` an empty `home_dir` as a
+    /// placeholder, knowing `SHEP_HOME` answers first and the placeholder
+    /// goes unread. Nothing pinned it before, because every other test here
+    /// runs against a real environment where `$HOME` is set, so the arm that
+    /// prefers the home directory is the one they reach.
+    #[test]
+    fn an_explicit_home_resolves_with_no_home_directory_at_all() {
+        let nothing = |_: &str| None;
+        let paths = resolve_paths_in(&global_with_home(Some(EXPLICIT_HOME)), &nothing)
+            .expect("--home names a root on its own");
+        assert_eq!(
+            paths.home,
+            std::path::Path::new(EXPLICIT_HOME),
+            "the empty placeholder must not reach the resolved home"
+        );
+        assert!(
+            !paths.snapshot.starts_with(".shep"),
+            "a path rooted at the empty placeholder would start with `.shep`: {}",
+            paths.snapshot.display()
         );
     }
 
