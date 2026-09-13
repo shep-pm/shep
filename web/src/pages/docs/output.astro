@@ -404,6 +404,25 @@ Dogs
       <code>--format json</code> instead if a script depends on the shape.
     </p>
 
+    <h3 id="errors-and-notices">Errors and notices</h3>
+    <p>
+      These go to stderr, not stdout, so a pipe on stdout never carries them.
+      A refusal names its code on the first line and indents everything after
+      it:
+    </p>
+    <CodeBlock label="shep --home /tmp/no-such flock">{`error[usage]: no flock at /tmp/no-such
+  did you mean to drop --home? the default is ~/.shep
+  to set up a flock there deliberately: mkdir -p '/tmp/no-such'`}</CodeBlock>
+    <p>
+      Only that first line starts at column 0. So a script anchoring{" "}
+      <code>error[</code> or <code>notice[</code> to the start of a line gets
+      one match per diagnostic, however many lines it runs to. That is the
+      reason for the indent rather than a side effect of it: a path or a
+      filename shep quotes back at you cannot produce a line that reads as
+      shep's own. <code>--format json</code> puts the same text on one line
+      instead, and is still the thing to parse if you have the choice.
+    </p>
+
     <h2>Choosing how much</h2>
     <p>
       Three levels, set with <code>shep style</code>:
