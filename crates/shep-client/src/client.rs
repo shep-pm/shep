@@ -120,6 +120,24 @@ impl core::error::Error for RequestError {
     }
 }
 
+/// Which daemon answered a [`Client::reconnect`].
+///
+/// Identity is the daemon pid in [`HelloAck`], the one per-process fact the
+/// handshake carries. A handover `execve`s in place, so the pid and the
+/// instance-id counter cross it together and the two questions have one
+/// answer. A successor that reused its predecessor's pid would read as
+/// [`Self::SameDaemon`], and nothing in the handshake can rule that out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use = "a reconnect is worth making only if the caller reads which daemon answered"]
+pub enum Reconnected {
+    /// The same daemon process as before. Every id, name and fold means
+    /// what it meant: the instance-id counter crossed the handover.
+    SameDaemon,
+    /// A different daemon process. Ids were minted afresh, so one held from
+    /// before this call names a different sheep now, or none.
+    NewDaemon,
+}
+
 /// A live connection to the daemon.
 ///
 /// Backed by one actor task (see the crate's `actor` module) that owns the
@@ -130,12 +148,16 @@ pub struct Client {
     commands: mpsc::Sender<Command>,
     ack: HelloAck,
     socket: PathBuf,
+    /// The name this client announced itself as a dog under, re-sent on
+    /// every [`Self::reconnect`]. See [`Self::connect_as`].
+    dog_name: Option<String>,
 }
 
 impl fmt::Debug for Client {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Client")
             .field("socket", &self.socket)
+            .field("dog_name", &self.dog_name)
             .field("ack", &self.ack)
             .finish_non_exhaustive()
     }
@@ -192,6 +214,7 @@ impl Client {
             commands,
             ack,
             socket: socket.to_path_buf(),
+            dog_name: dog_name.map(str::to_owned),
         })
     }
 
@@ -220,6 +243,49 @@ impl Client {
     #[must_use]
     pub fn socket(&self) -> &Path {
         &self.socket
+    }
+
+    /// Re-dials [`Self::socket`] and handshakes again, bounded by
+    /// [`HANDSHAKE_TIMEOUT`].
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::reconnect_within`].
+    pub async fn reconnect(&mut self) -> Result<Reconnected, ConnectError> {
+        self.reconnect_within(HANDSHAKE_TIMEOUT).await
+    }
+
+    /// As [`Self::reconnect`], with a caller-supplied handshake timeout.
+    ///
+    /// Nothing calls this for you: [`Self::request`] reports a dead
+    /// connection and never re-dials. An id one daemon minted names a
+    /// different sheep under the next, so a silent retry could land a
+    /// `Stop` on the wrong one. `&mut self` keeps the choice the caller's,
+    /// since a shared `Arc<Client>` cannot reconnect. A supervised dog
+    /// exits on [`RequestError::Closed`] instead of calling this, rather
+    /// than race the shepherd's own restart of it.
+    ///
+    /// Any [`EventStream`] taken before this call is dead; subscribe again.
+    ///
+    /// # Errors
+    ///
+    /// The set [`Self::connect_with_timeout`] raises. On any of them this
+    /// client is unchanged, still holding the connection it had.
+    pub async fn reconnect_within(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<Reconnected, ConnectError> {
+        let fresh = Self::connect_as(&self.socket, timeout, self.dog_name.as_deref()).await?;
+        let same_daemon = fresh.ack.pid == self.ack.pid;
+        // Dropping the predecessor ends its actor task and its socket with
+        // it, exactly as `close` does. Installed only once the successor
+        // has handshaken, so a failure above leaves this client as it was.
+        *self = fresh;
+        Ok(if same_daemon {
+            Reconnected::SameDaemon
+        } else {
+            Reconnected::NewDaemon
+        })
     }
 
     /// Sends `body` with [`DEFAULT_DEADLINE`].
@@ -315,4 +381,193 @@ impl Client {
 /// above the wire range saturates at `u64::MAX` ms rather than overflowing.
 fn millis(d: Duration) -> u64 {
     u64::try_from(d.as_millis()).unwrap_or(u64::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use shep_core::protocol::PROTOCOL_VERSION;
+
+    use super::*;
+    use crate::testing::{Handovers, Handshake, control_address, fake_daemon_across_handovers};
+
+    /// Every bounded wait here uses one budget: generous against a loaded
+    /// CI runner, small enough that a stuck test fails rather than hangs.
+    const BOUND: Duration = Duration::from_secs(5);
+
+    /// An ack distinguishable per generation, so a test can tell which
+    /// daemon answered rather than only that one did.
+    fn ack_from(pid: u32) -> HelloAck {
+        HelloAck {
+            daemon_version: format!("0.0.{pid}"),
+            protocol: PROTOCOL_VERSION,
+            pid,
+            min_supported: None,
+        }
+    }
+
+    /// Cuts the accepted connection and waits for the client to notice, so
+    /// a reconnect dials into a listener with nobody on the other end.
+    ///
+    /// The wait is the forcing mechanism: `cut` only sends, and a reconnect
+    /// issued before the predecessor's socket dies would queue behind it in
+    /// the fake's single-connection accept loop.
+    async fn cut_and_settle(client: &Client, shepherds: &Handovers) {
+        shepherds.cut().await;
+        tokio::time::timeout(BOUND, client.closed())
+            .await
+            .expect("the cut connection must be reported closed");
+    }
+
+    /// fails if a reconnect across a handover reports a new daemon. A
+    /// handover `execve`s in place, so the ids the caller holds still name
+    /// the sheep they named, and a caller told otherwise would throw them
+    /// away and re-resolve every one.
+    #[tokio::test]
+    async fn a_reconnect_onto_the_same_pid_reports_the_same_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Accept(ack_from(11)),
+            ],
+        );
+        let mut client = Client::connect(&path).await.unwrap();
+
+        cut_and_settle(&client, &shepherds).await;
+        let outcome = tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("the reconnect must not hang")
+            .expect("the successor accepts");
+
+        assert_eq!(outcome, Reconnected::SameDaemon);
+        let served = tokio::time::timeout(BOUND, client.request(Request::Ping))
+            .await
+            .expect("the request after a reconnect must not hang");
+        assert!(served.is_ok(), "after the reconnect: {served:?}");
+    }
+
+    /// fails if a reconnect onto a restarted daemon is reported as the same
+    /// one. Ids are minted per daemon lifetime and never persisted, so a
+    /// caller that kept using them would address a different sheep, or none.
+    #[tokio::test]
+    async fn a_reconnect_onto_a_fresh_pid_reports_a_new_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Accept(ack_from(22)),
+            ],
+        );
+        let mut client = Client::connect(&path).await.unwrap();
+        assert_eq!(client.daemon().pid, 11);
+
+        cut_and_settle(&client, &shepherds).await;
+        let outcome = tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("the reconnect must not hang")
+            .expect("the successor accepts");
+
+        assert_eq!(outcome, Reconnected::NewDaemon);
+        assert_eq!(
+            client.daemon().daemon_version,
+            "0.0.22",
+            "the ack must come from the daemon now answering"
+        );
+    }
+
+    /// fails if a failed reconnect tears down the client it was called on.
+    /// The caller's next move is to try again, and a client left holding
+    /// neither connection could not say which socket or which dog it was.
+    #[tokio::test]
+    async fn a_failed_reconnect_leaves_the_client_as_it_was() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![Handshake::Accept(ack_from(11)), Handshake::Drop],
+        );
+        let mut client = Client::connect(&path).await.unwrap();
+
+        cut_and_settle(&client, &shepherds).await;
+        let refused = tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("a refused reconnect must fail, not hang");
+
+        assert!(
+            matches!(refused, Err(ConnectError::HandshakeClosed)),
+            "a successor that closes mid-handshake: {refused:?}"
+        );
+        assert_eq!(client.daemon().pid, 11, "the ack must be the one it had");
+        assert_eq!(client.socket(), path, "the socket must be the one it had");
+    }
+
+    /// fails if a dog's name reaches the first daemon and not the one it
+    /// reconnects to. The name is how a shepherd says which dog it refused,
+    /// and a predecessor is not around to be asked.
+    #[tokio::test]
+    async fn a_dogs_name_rides_its_reconnect() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Accept(ack_from(22)),
+            ],
+        );
+        let mut client = Client::connect_as(&path, HANDSHAKE_TIMEOUT, Some("metrics"))
+            .await
+            .unwrap();
+
+        cut_and_settle(&client, &shepherds).await;
+        let _ = tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("the reconnect must not hang")
+            .expect("the successor accepts");
+
+        let named: Vec<Option<String>> = shepherds
+            .hellos()
+            .into_iter()
+            .map(|hello| hello.dog_name)
+            .collect();
+        assert_eq!(
+            named,
+            vec![Some("metrics".to_string()), Some("metrics".to_string())],
+            "every generation must be told which dog is talking to it"
+        );
+    }
+
+    /// fails if a client that is not a dog invents a name on reconnect.
+    #[tokio::test]
+    async fn a_client_that_is_not_a_dog_stays_anonymous_across_a_reconnect() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Accept(ack_from(22)),
+            ],
+        );
+        let mut client = Client::connect(&path).await.unwrap();
+
+        cut_and_settle(&client, &shepherds).await;
+        let _ = tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("the reconnect must not hang")
+            .expect("the successor accepts");
+
+        assert!(
+            shepherds
+                .hellos()
+                .iter()
+                .all(|hello| hello.dog_name.is_none()),
+            "an unnamed client must stay unnamed: {:?}",
+            shepherds.hellos()
+        );
+    }
 }
