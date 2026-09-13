@@ -34,69 +34,22 @@ export interface CliReferenceData {
   verbs: CliVerb[];
 }
 
-// The verb order the generator script runs in — also the declaration order
-// in the Commands enum, and the order `shep --help` itself lists them.
-// Kept here (rather than re-derived from the generated file) so a missing
-// or misspelled `@@VERB:...@@` marker is a loud parse error, not a silently
-// short verb list.
+// Splits the generated file into its `@@VERB:<name>@@` blocks, in the order
+// the generator wrote them: the declaration order of the Commands enum, and
+// the order `shep --help` itself lists them. A quoted entry in the
+// generator's `VERBS` array is a path into the command tree, so a name here
+// can be two words. "secret set" is its own block, with its own flags.
 //
-// It was silently short by three anyway, from whenever `init`, `style` and
-// `welcome` shipped until 2026-09-03. Nothing caught it: this list is what
-// the page renders FROM, so a verb absent here is a verb the reference
-// simply does not have, and `cli.astro`'s own count check compares the
-// groups against this list rather than against the generated file, so the
-// two agreed with each other while both disagreed with the binary. The
-// generator's `VERBS` array has a Rust test holding it to the real command
-// tree (`every_visible_verb_reaches_the_docs_site_generator` in
-// crates/shep-cli/src/cli.rs); this list has nothing, and
-// the only thing standing between it and the same drift is the build error
-// you get when the groups and this list disagree.
-const VERB_NAMES = [
-  "start",
-  "add",
-  "serve",
-  "stop",
-  "restart",
-  "reload",
-  "delete",
-  "stock",
-  "flock",
-  "dogs",
-  "enable",
-  "disable",
-  "adopt",
-  "rehome",
-  "describe",
-  "trigger",
-  "signal",
-  "whisper",
-  "fold",
-  "bleats",
-  "lookout",
-  "whistle",
-  "reopen",
-  "flush",
-  "barks",
-  "set",
-  "get",
-  "unset",
-  "secret",
-  "ping",
-  "kill",
-  "save",
-  "muster",
-  "runtime",
-  "dev",
-  "import",
-  "import pm2",
-  "import env",
-  "startup",
-  "unstartup",
-  "completions",
-  "init",
-  "style",
-  "welcome",
-] as const;
+// The verb list is derived from these markers rather than kept here as a
+// second copy of that array. The copy agreed with the generator only by
+// hand, and for months it did not: short by three from whenever `init`,
+// `style` and `welcome` shipped until 2026-09-03, caught by nothing,
+// because this list is what the page renders FROM. Two Rust tests hold the
+// chain now. `every_visible_verb_reaches_the_docs_site_generator` walks the
+// binary's command tree against the generator's array, and
+// `every_listed_verb_has_a_block_in_the_committed_reference` fails when that
+// array names something the generated text below does not carry.
+const VERB_MARKER = /^@@VERB:(.+)@@$/m;
 
 function fail(message: string): never {
   throw new Error(`web/src/data/cliReference.ts: ${message}`);
@@ -130,13 +83,6 @@ function unwrapParagraphs(block: string): string[] {
         .join(" "),
     )
     .filter(Boolean);
-}
-
-/** Extracts the `[alias: x]` / `[aliases: x, y]` suffix clap prints on a Commands: entry, if any. */
-function parseAliases(entryText: string): string[] {
-  const match = entryText.match(/\[alias(?:es)?:\s*([^\]]+)]\s*$/);
-  if (!match) return [];
-  return match[1].split(",").map((s) => s.trim());
 }
 
 function parseVerbBlock(name: string, block: string): CliVerb {
@@ -217,29 +163,26 @@ function parse(source: string): CliReferenceData {
     fail("does not open with the @@TOPLEVEL@@ marker — re-run generate-cli-reference.sh.");
   }
 
-  const firstVerbMarker = `\n@@VERB:${VERB_NAMES[0]}@@\n`;
-  const firstVerbIndex = source.indexOf(firstVerbMarker);
-  if (firstVerbIndex === -1) {
-    fail(`missing marker for the first verb "${VERB_NAMES[0]}" — re-run generate-cli-reference.sh.`);
+  // Splitting on a pattern with one capture group interleaves the captures
+  // with the text between them, so this is [before, name, block, name, ...].
+  const [topLevelSection, ...sections] = source.split(VERB_MARKER);
+  if (sections.length === 0) {
+    fail("has no @@VERB:...@@ markers — re-run generate-cli-reference.sh.");
   }
-  const topLevelHelp = source.slice(TOP_LEVEL_MARKER.length, firstVerbIndex).trim();
+  const topLevelHelp = topLevelSection.slice(TOP_LEVEL_MARKER.length).trim();
 
-  const aliasesByVerb = parseAliasesFromTopLevel(topLevelHelp, VERB_NAMES);
+  const verbs: CliVerb[] = [];
+  for (let i = 0; i < sections.length; i += 2) {
+    verbs.push(parseVerbBlock(sections[i], sections[i + 1] ?? ""));
+  }
 
-  const verbs: CliVerb[] = VERB_NAMES.map((name, i) => {
-    const marker = `\n@@VERB:${name}@@\n`;
-    const start = source.indexOf(marker);
-    if (start === -1) {
-      fail(`missing marker for verb "${name}" — re-run generate-cli-reference.sh.`);
-    }
-    const blockStart = start + marker.length;
-    const nextName = VERB_NAMES[i + 1];
-    const end = nextName ? source.indexOf(`\n@@VERB:${nextName}@@\n`) : source.length;
-    const block = source.slice(blockStart, end === -1 ? source.length : end);
-    const verb = parseVerbBlock(name, block);
-    verb.aliases = aliasesByVerb.get(name) ?? [];
-    return verb;
-  });
+  const aliasesByVerb = parseAliasesFromTopLevel(
+    topLevelHelp,
+    verbs.map((v) => v.name),
+  );
+  for (const verb of verbs) {
+    verb.aliases = aliasesByVerb.get(verb.name) ?? [];
+  }
 
   return { topLevelHelp, verbs };
 }
