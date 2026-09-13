@@ -168,6 +168,16 @@ fn gate_line(app: &App, palette: Palette, interior: u16) -> Line<'static> {
 /// The second line's quit caption comes from [`Group::Closing`]'s own row
 /// rather than a literal, so the two cannot drift the way a hand-copied
 /// string would.
+///
+/// # Panics
+///
+/// Never, in practice: [`binding`] is an exhaustive match with no wildcard
+/// arm, and its `KeyPress::Quit` arm is the only one that returns a
+/// [`Group::Closing`] row, so [`rows`] always carries exactly one. The
+/// `.expect` stays rather than a silent fallback, because the alternative
+/// to panicking here is drawing a quit line that names no key at all, which
+/// is a worse failure than a panic in a private function guarded by a
+/// match the compiler already checks is exhaustive.
 fn closing_lines(all_rows: &[Binding], palette: Palette, interior: u16) -> [Line<'static>; 2] {
     let colour_sentence = " colour is decoration only: every coloured cell says the same \
                             thing in words. NO_COLOR loses nothing but the colour.";
