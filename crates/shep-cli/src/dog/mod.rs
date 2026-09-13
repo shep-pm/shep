@@ -528,6 +528,77 @@ mod tests {
 
     use super::*;
 
+    /// fails if the production adapter cannot arm a second subscription
+    /// after a handover.
+    ///
+    /// `bark::run_loop` is driven by a fake in bark's own tests, so this is
+    /// the only thing that exercises `ClientEvents` itself: the client and
+    /// topics held beside the stream, the wait for the link, and the
+    /// re-subscribe. Ten real reloads showed it working, which is evidence
+    /// rather than a guard.
+    #[tokio::test]
+    async fn the_bark_adapter_arms_a_second_subscription_after_a_handover() {
+        use bark::EventSource as _;
+
+        let dir = tempfile::tempdir().unwrap();
+        let socket = shep_client::testing::control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &socket,
+            vec![
+                Handshake::Accept(sample_ack()),
+                Handshake::Accept(sample_ack()),
+            ],
+        );
+        let client = ReconnectingClient::connect_as_dog(&socket, "bark")
+            .await
+            .unwrap();
+        let topics = vec!["process.*".to_owned(), "config.dog.bark".to_owned()];
+        let stream = client.subscribe(topics.clone()).await.unwrap();
+        let shepherd = Arc::new(ClientShepherd {
+            client,
+            dog: "bark".to_owned(),
+        });
+        let mut events = ClientEvents {
+            shepherd: Arc::clone(&shepherd),
+            topics,
+            stream,
+        };
+
+        // The handover, exactly: the accepted connection dies while the
+        // listener stays bound.
+        shepherds.cut().await;
+        let armed = tokio::time::timeout(Duration::from_secs(10), events.resubscribe())
+            .await
+            .expect("a re-subscribe must not outlive its own budget");
+        assert_eq!(armed, Ok(()), "a successor was there to subscribe to");
+
+        // `Ok` alone does not prove the adapter kept what it was handed. An
+        // adapter that answered `Ok` and left the dead stream in place
+        // satisfies every other assertion here, and a dead stream ends at
+        // once where a live one has nothing to say yet.
+        let ended = tokio::time::timeout(Duration::from_millis(250), events.next()).await;
+        assert!(
+            ended.is_err(),
+            "the armed stream ended straight away, so it is the dead one: {ended:?}"
+        );
+
+        assert_eq!(
+            shepherds.accepted(),
+            2,
+            "one connection before the handover and one after"
+        );
+        let asked: Vec<_> = shepherds
+            .hellos()
+            .iter()
+            .map(|hello| hello.dog_name.clone())
+            .collect();
+        assert_eq!(
+            asked,
+            vec![Some("bark".to_owned()), Some("bark".to_owned())],
+            "the second handshake must name the dog too, or a refusal is unactionable"
+        );
+    }
+
     /// A [`ShepPaths`] rooted at `dir`, with `socket` pointed wherever the
     /// caller's fake daemon actually bound. Flat, not nested under `run/`,
     /// so a test never has to create that directory.
