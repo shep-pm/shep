@@ -76,7 +76,9 @@ pub const RECONNECT_MAX_DELAY: Duration = Duration::from_secs(5);
 /// [`ReconnectingClient`], and [`Client::reconnect_within`]. Shared so a
 /// change to the schedule cannot reach one of them and miss the other.
 fn next_delay(current: Duration) -> Duration {
-    (current * 2).min(RECONNECT_MAX_DELAY)
+    // Saturating: `Duration`'s `Mul` panics on overflow, and a ladder that
+    // cannot overflow is one fewer precondition on a caller's own value.
+    current.saturating_mul(2).min(RECONNECT_MAX_DELAY)
 }
 
 /// What a [`ReconnectingClient`]'s supervisor is currently doing.
@@ -965,6 +967,10 @@ mod tests {
             walked,
             [50, 100, 200, 400, 800, 1600, 3200, 5000, 5000].map(Duration::from_millis)
         );
+
+        // A duration no ladder can reach today, so this pins the function
+        // as total rather than the loop as correct.
+        assert_eq!(next_delay(Duration::MAX), RECONNECT_MAX_DELAY);
     }
 
     /// fails if a reconnect that reached the very daemon it was talking to
