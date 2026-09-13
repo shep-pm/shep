@@ -298,6 +298,10 @@ pub enum Msg {
         /// The edit that was sent, echoed back: the cursor can have moved on
         /// while the write was in flight.
         edit: SettingEdit,
+        /// The ticket it went out with, echoed back: the screen can have
+        /// armed a second edit, or closed and reopened, while it was in
+        /// flight.
+        ticket: u64,
         /// Whether the write landed, or why it did not.
         result: Result<(), String>,
     },
@@ -325,6 +329,9 @@ pub enum Msg {
     DogWritten {
         /// The toggle that was sent, echoed back.
         edit: DogEdit,
+        /// The ticket it went out with, echoed back for
+        /// [`Self::SettingWritten`]'s reason.
+        ticket: u64,
         /// Whether the write landed and what it resolved to, or why it did
         /// not.
         result: Result<DogSource, String>,
@@ -449,7 +456,15 @@ pub enum Effect {
     /// Must run on `spawn_blocking`: `ConfigLock::acquire` blocks with no
     /// deadline, and the UI task's redraw, tick and bus drain would block with
     /// the write.
-    WriteSetting(SettingEdit, WriteAuthority),
+    WriteSetting {
+        /// The edit to apply.
+        edit: SettingEdit,
+        /// Which write this is, so its reply can only resolve the prompt it
+        /// belongs to. Minted per send, so no two are ever equal.
+        ticket: u64,
+        /// Proof the control gate was open.
+        authority: WriteAuthority,
+    },
     /// Probe one dog for its config schema; the answer lands as
     /// [`Msg::DogPane`].
     ///
@@ -474,7 +489,16 @@ pub enum Effect {
     /// Its own effect, not [`Self::WriteSetting`]: it ends in a request to the
     /// shepherd ([`Sent::Dog`]) where a scalar write ends in a notice.
     /// `spawn_blocking`, for [`Self::WriteSetting`]'s reason.
-    WriteDog(DogEdit, WriteAuthority),
+    WriteDog {
+        /// The toggle to apply.
+        edit: DogEdit,
+        /// Which write this is, for [`Self::WriteSetting`]'s reason. It
+        /// rides on to [`Sent::Dog`], so both halves of one toggle answer
+        /// under the same ticket.
+        ticket: u64,
+        /// Proof the control gate was open.
+        authority: WriteAuthority,
+    },
     /// Read the secret store, the provider cache and the roll; the result
     /// lands as [`Msg::Secrets`].
     ///
@@ -627,6 +651,10 @@ pub enum Sent {
         /// Where the binary comes from, exactly as the config write
         /// answered.
         source: DogSource,
+        /// The ticket the file half went out with, carried on so the
+        /// shepherd's answer resolves the prompt that toggle raised and no
+        /// other.
+        ticket: u64,
     },
     /// One sheep's effective config, for the config pane. Raised by `e` on
     /// the dashboard and by `r` from inside an open pane.
@@ -754,6 +782,7 @@ impl Sent {
                 name,
                 enable: true,
                 source,
+                ..
             } => Request::EnableDog {
                 name: name.clone(),
                 source: source.clone(),
@@ -927,8 +956,15 @@ pub struct Settings {
     /// refresh can shrink the dog list out from under a cursor already
     /// sitting past its new end.
     view: Viewport,
-    /// The screen's one in-flight edit, or `None`. One field rather than
-    /// several `Option`s, so typing, armed and sent cannot overlap.
+    /// The edit this screen is showing, or `None`. One field rather than
+    /// several `Option`s, so typing, armed and sent cannot overlap on
+    /// screen.
+    ///
+    /// Not the same as the one write in flight. [`Pending::Sent`] eats no
+    /// key, so a second edit can be armed and sent over it, and closing the
+    /// screen abandons it without cancelling anything: either leaves a
+    /// write with no prompt waiting for it. [`Self::resolve`] is what keeps
+    /// those answers off the edit that is here now.
     pending: Option<Pending>,
 }
 
@@ -969,6 +1005,11 @@ enum Pending {
         /// The same rendered question, so the prompt line does not change
         /// wording between the question and its own answer.
         text: String,
+        /// The write this is waiting on, by the ticket it went out with.
+        /// What [`Settings::resolve`] matches a reply against, so a reply
+        /// from a write the screen has moved on from cannot answer this
+        /// one.
+        ticket: u64,
     },
 }
 
@@ -1003,6 +1044,25 @@ impl Settings {
             Some(Pending::Sent { text, .. }) => Some(SettingsPrompt { text, sent: true }),
             Some(Pending::Typing { .. }) | None => None,
         }
+    }
+
+    /// Whether `ticket` names the write this screen is still waiting on,
+    /// clearing the prompt when it does.
+    ///
+    /// A reply whose ticket is not the one [`Pending::Sent`] holds belongs
+    /// to a write the screen has moved on from: a second edit armed over
+    /// the first, or a screen closed and reopened while the first was still
+    /// in flight. Both leave a write in flight with nothing on screen
+    /// waiting for it, and neither lets its answer touch the edit that is.
+    fn resolve(&mut self, ticket: u64) -> bool {
+        let mine = matches!(
+            self.pending,
+            Some(Pending::Sent { ticket: waiting, .. }) if waiting == ticket
+        );
+        if mine {
+            self.pending = None;
+        }
+        mine
     }
 
     /// Whether a candidate is waiting on `Enter`: the one state a stray key
@@ -1897,7 +1957,8 @@ pub struct App {
     /// Which keymap [`super::input::map_key`] is called with. Normal until `/`
     /// opens the box; the reducer, not the keymap, owns this state.
     mode: InputMode,
-    /// The next config-write ticket. Monotonic and never reused, so a reply
+    /// The next write ticket, shared by the config pane's batches and the
+    /// settings screen's one edit. Monotonic and never reused, so a reply
     /// can only name the write it belongs to.
     next_write_ticket: u64,
     link: Link,
@@ -2255,7 +2316,12 @@ impl App {
                 Sent::Action { verb, target, name } => {
                     self.on_action_reply(verb, target, &name, result)
                 }
-                Sent::Dog { name, enable, .. } => self.on_dog_reply(name, enable, result),
+                Sent::Dog {
+                    name,
+                    enable,
+                    ticket,
+                    ..
+                } => self.on_dog_reply(name, enable, ticket, result),
                 Sent::SheepConfig { name } => self.on_sheep_config(&name, result),
                 Sent::DogSection { name } => self.on_dog_section(&name, result),
                 Sent::SetDogSection { name, .. } => self.on_dog_section_set(&name, result),
@@ -2324,9 +2390,14 @@ impl App {
                     Effect::None
                 }
                 // The arm above, against the settings screen's pending line.
-                Sent::Dog { name, enable, .. } => {
+                Sent::Dog {
+                    name,
+                    enable,
+                    ticket,
+                    ..
+                } => {
                     if let Some(settings) = self.settings_mut() {
-                        settings.pending = None;
+                        settings.resolve(ticket);
                     }
                     let verb = if enable { "enable" } else { "disable" };
                     self.notice = Some(Notice {
@@ -2397,42 +2468,42 @@ impl App {
             // `Ok` re-reads rather than folding the write into the row, which
             // covers `Unset` too. `Err` reopens the editor for the two
             // free-text fields, so a long path need not be retyped.
-            Msg::SettingWritten { edit, result } => match result {
-                Ok(()) => {
-                    if let Some(settings) = self.settings_mut() {
-                        settings.pending = None;
-                    }
-                    Effect::LoadSettings
-                }
-                Err(message) => {
-                    // Split so no borrow of `self.body` is held across the
-                    // `self.notice` assignment below.
-                    if let Some((field, buffer)) = typed_text_of(&edit) {
-                        // Only when the editor is really back up. A dog
-                        // section can have replaced the settings screen with
-                        // a config pane while the write was in flight, and
-                        // `InputMode::Text` with no editor behind it sends
-                        // every later keystroke to a text handler that owns
-                        // nothing.
-                        let reopened = if let Some(settings) = self.settings_mut() {
-                            settings.pending = Some(Pending::Typing { field, buffer });
-                            true
-                        } else {
-                            false
-                        };
-                        if reopened {
+            //
+            // Both arms act on the screen only when this reply is the one it
+            // is waiting on. `Settings::resolve` answers that; a reply it
+            // refuses still reports itself and still re-reads, but leaves
+            // whatever is on screen alone. A dog section can also have
+            // replaced the settings screen with a config pane while the
+            // write was in flight, which `resolve` refuses for the same
+            // reason: `InputMode::Text` with no editor behind it sends every
+            // later keystroke to a text handler that owns nothing.
+            Msg::SettingWritten {
+                edit,
+                ticket,
+                result,
+            } => {
+                let mine = self
+                    .settings_mut()
+                    .is_some_and(|settings| settings.resolve(ticket));
+                match result {
+                    Ok(()) => self.reread_settings(),
+                    Err(message) => {
+                        // Split so no borrow of `self.body` is held across
+                        // the `self.notice` assignment below.
+                        if mine && let Some((field, buffer)) = typed_text_of(&edit) {
+                            if let Some(settings) = self.settings_mut() {
+                                settings.pending = Some(Pending::Typing { field, buffer });
+                            }
                             self.mode = InputMode::Text;
                         }
-                    } else if let Some(settings) = self.settings_mut() {
-                        settings.pending = None;
+                        self.notice = Some(Notice {
+                            text: message,
+                            grave: true,
+                        });
+                        Effect::None
                     }
-                    self.notice = Some(Notice {
-                        text: message,
-                        grave: true,
-                    });
-                    Effect::None
                 }
-            },
+            }
             // A dog's schema probe answered. `Ok` parks the schema and asks
             // the shepherd for the section; the pane is built once that
             // lands. `Err` gets no pane, and the refusal names the file to
@@ -2461,15 +2532,25 @@ impl App {
             // `Ok` raises the daemon half: `Cycle` arms, `Confirm` writes the
             // file, this arm asks the shepherd. `Err` never reaches it, since
             // there is nothing for the daemon half to agree with.
-            Msg::DogWritten { edit, result } => match result {
+            //
+            // `Ok` asks the shepherd whether or not the screen is still
+            // waiting on this ticket: the file already says the dog is on or
+            // off, so a daemon half dropped here would leave the two
+            // disagreeing. `Err` clears only the prompt this ticket raised.
+            Msg::DogWritten {
+                edit,
+                ticket,
+                result,
+            } => match result {
                 Ok(source) => Effect::Send(Sent::Dog {
                     name: edit.name,
                     enable: edit.enable,
                     source,
+                    ticket,
                 }),
                 Err(message) => {
                     if let Some(settings) = self.settings_mut() {
-                        settings.pending = None;
+                        settings.resolve(ticket);
                     }
                     self.notice = Some(Notice {
                         text: message,
@@ -2690,20 +2771,25 @@ impl App {
         Effect::None
     }
 
-    /// One dog toggle's answer: the `Pending::Sent` line clears, one sentence
-    /// lands in the status bar, and the screen re-reads `shep.toml`.
+    /// One dog toggle's answer: the `Pending::Sent` line this ticket raised
+    /// clears, one sentence lands in the status bar, and the screen re-reads
+    /// `shep.toml`.
     ///
-    /// [`Effect::LoadSettings`] on every arm, `Err` included: the file half has
-    /// already landed, so `DogView.enabled` is stale whatever the shepherd
-    /// said. No row is upserted; the next `ListFlock` repairs RUNNING.
+    /// The sentence lands whether or not the screen is still waiting on this
+    /// ticket, since the operator asked for this toggle either way. Only the
+    /// prompt is `ticket`'s to clear, and only [`Self::reread_settings`]
+    /// decides whether the re-read runs: the file half has already landed, so
+    /// `DogView.enabled` is stale whatever the shepherd said. No row is
+    /// upserted; the next `ListFlock` repairs RUNNING.
     fn on_dog_reply(
         &mut self,
         name: String,
         enable: bool,
+        ticket: u64,
         result: Result<Response, RequestError>,
     ) -> Effect {
         if let Some(settings) = self.settings_mut() {
-            settings.pending = None;
+            settings.resolve(ticket);
         }
         let verb = if enable { "enable" } else { "disable" };
         let prefix = format!("{verb} {name}");
@@ -2745,7 +2831,21 @@ impl App {
                 });
             }
         }
-        Effect::LoadSettings
+        self.reread_settings()
+    }
+
+    /// What a landed settings write answers with: re-read `shep.toml`, unless
+    /// the screen has an edit of its own in flight.
+    ///
+    /// [`Msg::Settings`] rebuilds the whole screen, so a re-read raised by a
+    /// reply the screen was no longer waiting on would throw away the edit it
+    /// is waiting on instead. That edit's own reply re-reads a moment later,
+    /// and carries both writes' work with it.
+    fn reread_settings(&self) -> Effect {
+        match self.settings() {
+            Some(settings) if settings.pending.is_some() => Effect::None,
+            _ => Effect::LoadSettings,
+        }
     }
 
     /// One `Request::SheepConfig` reply. Opens the pane, or refreshes an
@@ -4704,6 +4804,17 @@ impl App {
         Effect::None
     }
 
+    /// One write ticket, and the counter moved past it.
+    ///
+    /// [`Self::take_pane_writes`] mints a batch's worth inline rather than
+    /// calling this per entry, because it holds a borrow of `self.body`
+    /// across the loop.
+    fn take_write_ticket(&mut self) -> u64 {
+        let ticket = self.next_write_ticket;
+        self.next_write_ticket += 1;
+        ticket
+    }
+
     /// Everything the open pane has filed, as the requests that carry it,
     /// leaving the pane holding nothing.
     ///
@@ -5425,6 +5536,11 @@ impl App {
     /// `space` on one of the six scalar rows. Re-arms when a candidate is
     /// already armed, so a second `space` walks one step further along the
     /// cycle. Does nothing on the two free-text fields.
+    ///
+    /// Replaces a [`Pending::Sent`] outright rather than refusing over it:
+    /// the write it names is local file I/O the operator need not wait on,
+    /// and its answer can no longer reach the edit armed here. See
+    /// [`Settings::pending`].
     fn cycle_scalar(&mut self, field: SettingField) -> Effect {
         // See the comment in `Self::take_pane_writes`: a direct field
         // match, not `Self::settings_mut`, so `self.now` stays reachable
@@ -5456,7 +5572,8 @@ impl App {
     /// `enabled` bit, refusing in [`LINK_GONE`]'s words while the link is gone.
     ///
     /// The link check is this row's own, unlike [`Self::cycle_scalar`]: a
-    /// confirmed toggle ends in a request to the shepherd.
+    /// confirmed toggle ends in a request to the shepherd. Replaces a
+    /// [`Pending::Sent`] for that method's reason.
     fn cycle_dog(&mut self, index: usize) -> Effect {
         if matches!(self.link, Link::Lost { .. }) {
             self.notice = Some(Notice {
@@ -5533,14 +5650,28 @@ impl App {
             self.mode = InputMode::Text;
             return Effect::None;
         }
+        // Minted before the borrow below, and spent on either arm that
+        // sends: past the gate above, the pending edit is armed.
+        let ticket = self.take_write_ticket();
+        let Some(settings) = self.settings_mut() else {
+            return Effect::None;
+        };
         match settings.pending.take() {
             Some(Pending::Armed { edit, text, .. }) => {
-                settings.pending = Some(Pending::Sent { text });
-                Effect::WriteSetting(edit, authority)
+                settings.pending = Some(Pending::Sent { text, ticket });
+                Effect::WriteSetting {
+                    edit,
+                    ticket,
+                    authority,
+                }
             }
             Some(Pending::DogArmed { edit, text, .. }) => {
-                settings.pending = Some(Pending::Sent { text });
-                Effect::WriteDog(edit, authority)
+                settings.pending = Some(Pending::Sent { text, ticket });
+                Effect::WriteDog {
+                    edit,
+                    ticket,
+                    authority,
+                }
             }
             other => {
                 settings.pending = other;
@@ -11368,7 +11499,10 @@ mod tests {
             for key in *keys {
                 let effect = app.update(Msg::Key(*key));
                 assert!(
-                    !matches!(effect, Effect::WriteSetting(..) | Effect::WriteDog(..)),
+                    !matches!(
+                        effect,
+                        Effect::WriteSetting { .. } | Effect::WriteDog { .. }
+                    ),
                     "{what}: a read-only lookout reached {effect:?}"
                 );
                 refused |= app.notice().is_some_and(Notice::is_grave);
@@ -11419,7 +11553,10 @@ mod tests {
             let mut wrote = false;
             for key in *keys {
                 let effect = app.update(Msg::Key(*key));
-                wrote |= matches!(effect, Effect::WriteSetting(..) | Effect::WriteDog(..));
+                wrote |= matches!(
+                    effect,
+                    Effect::WriteSetting { .. } | Effect::WriteDog { .. }
+                );
             }
             assert!(wrote, "{what}: an open gate has to reach the write");
         }
@@ -11534,13 +11671,13 @@ mod tests {
         let effect = app.update(Msg::Key(KeyPress::Confirm));
         assert!(matches!(
             effect,
-            Effect::WriteSetting(
-                SettingEdit::Set {
+            Effect::WriteSetting {
+                edit: SettingEdit::Set {
                     field: SettingField::LogLevel,
                     ..
                 },
-                _
-            )
+                ..
+            }
         ));
         assert!(app.settings().unwrap().pending().unwrap().sent);
     }
@@ -11549,7 +11686,8 @@ mod tests {
     fn a_written_edit_updates_the_row_and_its_source() {
         let mut app = fixtures::app_in_settings_with_control();
         let _ = app.update(Msg::Key(KeyPress::Cycle));
-        let Effect::WriteSetting(edit, _) = app.update(Msg::Key(KeyPress::Confirm)) else {
+        let Effect::WriteSetting { edit, ticket, .. } = app.update(Msg::Key(KeyPress::Confirm))
+        else {
             panic!("Enter must send");
         };
         let SettingEdit::Set {
@@ -11561,6 +11699,7 @@ mod tests {
 
         let effect = app.update(Msg::SettingWritten {
             edit,
+            ticket,
             result: Ok(()),
         });
         assert_eq!(
@@ -11591,7 +11730,8 @@ mod tests {
             let _ = app.update(Msg::Key(KeyPress::TextBackspace));
         }
         let _ = app.update(Msg::Key(KeyPress::TextApply));
-        let Effect::WriteSetting(edit, _) = app.update(Msg::Key(KeyPress::Confirm)) else {
+        let Effect::WriteSetting { edit, ticket, .. } = app.update(Msg::Key(KeyPress::Confirm))
+        else {
             panic!("Enter must send");
         };
         assert!(matches!(
@@ -11603,6 +11743,7 @@ mod tests {
 
         let effect = app.update(Msg::SettingWritten {
             edit,
+            ticket,
             result: Ok(()),
         });
         assert_eq!(effect, Effect::LoadSettings);
@@ -11626,11 +11767,13 @@ mod tests {
         let before = app.settings().unwrap().cursor();
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         let _ = app.update(Msg::Key(KeyPress::TextApply));
-        let Effect::WriteSetting(edit, _) = app.update(Msg::Key(KeyPress::Confirm)) else {
+        let Effect::WriteSetting { edit, ticket, .. } = app.update(Msg::Key(KeyPress::Confirm))
+        else {
             panic!("Enter must send");
         };
         let _ = app.update(Msg::SettingWritten {
             edit,
+            ticket,
             result: Ok(()),
         });
         let _ = app.update(Msg::Settings {
@@ -11658,11 +11801,13 @@ mod tests {
         let mut app = fixtures::app_in_settings_with_control();
         let before = app.settings().unwrap().snapshot().log_level.clone();
         let _ = app.update(Msg::Key(KeyPress::Cycle));
-        let Effect::WriteSetting(edit, _) = app.update(Msg::Key(KeyPress::Confirm)) else {
+        let Effect::WriteSetting { edit, ticket, .. } = app.update(Msg::Key(KeyPress::Confirm))
+        else {
             panic!("Enter must send");
         };
         let _ = app.update(Msg::SettingWritten {
             edit,
+            ticket,
             result: Err("max_cron_sleep is 500ms, below the 1s floor".into()),
         });
 
@@ -11670,6 +11815,210 @@ mod tests {
         let notice = app.notice().unwrap();
         assert!(notice.is_grave());
         assert!(notice.to_string().contains("below the 1s floor"));
+    }
+
+    /// Two writes can be in flight at once: `Pending::Sent` eats no key, so
+    /// `space` arms a second edit over the first and `Enter` sends it. The
+    /// first write's answer must not resolve the second, which is the edit
+    /// the screen is actually showing a prompt for.
+    #[test]
+    fn a_superseded_reply_does_not_resolve_the_edit_that_replaced_it() {
+        let mut app = fixtures::app_in_settings_with_control();
+        let _ = app.update(Msg::Key(KeyPress::Cycle));
+        let Effect::WriteSetting {
+            edit: first,
+            ticket: first_ticket,
+            ..
+        } = app.update(Msg::Key(KeyPress::Confirm))
+        else {
+            panic!("Enter must send the first edit");
+        };
+
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let _ = app.update(Msg::Key(KeyPress::Cycle));
+        let Effect::WriteSetting {
+            edit: second,
+            ticket: second_ticket,
+            ..
+        } = app.update(Msg::Key(KeyPress::Confirm))
+        else {
+            panic!("Enter must send the second edit too");
+        };
+        assert_ne!(first_ticket, second_ticket, "two writes are two tickets");
+
+        let effect = app.update(Msg::SettingWritten {
+            edit: first,
+            ticket: first_ticket,
+            result: Ok(()),
+        });
+        assert_eq!(
+            effect,
+            Effect::None,
+            "a re-read here rebuilds the screen and throws the live edit away"
+        );
+        assert!(
+            app.settings().unwrap().pending().is_some_and(|p| p.sent),
+            "the second edit is still in flight and still says so"
+        );
+
+        let effect = app.update(Msg::SettingWritten {
+            edit: second,
+            ticket: second_ticket,
+            result: Ok(()),
+        });
+        assert_eq!(effect, Effect::LoadSettings, "its own reply re-reads");
+        assert!(app.settings().unwrap().pending().is_none());
+    }
+
+    /// The worst of the two: a refusal reopens the editor for a free-text
+    /// field, so a superseded one used to replace a live `Pending::Sent`
+    /// with a text editor. The live write's own answer then cleared it and
+    /// left `InputMode::Text` behind with nothing to type into, which is
+    /// the state `a_refused_settings_write_landing_over_a_dog_pane_does_not_arm_text_mode`
+    /// exists to keep out by the other door.
+    #[test]
+    fn a_superseded_refusal_does_not_reopen_the_editor_over_a_live_edit() {
+        let mut app = fixtures::app_in_settings_on(SettingField::Socket);
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+        let Effect::WriteSetting {
+            edit: socket,
+            ticket: socket_ticket,
+            ..
+        } = app.update(Msg::Key(KeyPress::Confirm))
+        else {
+            panic!("Enter must send the socket edit");
+        };
+
+        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
+        let _ = app.update(Msg::Key(KeyPress::Cycle));
+        let Effect::WriteSetting {
+            edit: level,
+            ticket: level_ticket,
+            ..
+        } = app.update(Msg::Key(KeyPress::Confirm))
+        else {
+            panic!("Enter must send the log level edit too");
+        };
+
+        let _ = app.update(Msg::SettingWritten {
+            edit: socket,
+            ticket: socket_ticket,
+            result: Err("the socket path is too long".into()),
+        });
+        assert_eq!(
+            app.mode(),
+            InputMode::Normal,
+            "no editor was opened, so no text mode is owed one"
+        );
+        assert!(app.settings().unwrap().typing().is_none());
+        assert!(
+            app.settings().unwrap().pending().is_some_and(|p| p.sent),
+            "the log level edit is still in flight"
+        );
+        assert!(
+            app.notice().unwrap().to_string().contains("too long"),
+            "the refusal is still reported"
+        );
+
+        let _ = app.update(Msg::SettingWritten {
+            edit: level,
+            ticket: level_ticket,
+            result: Ok(()),
+        });
+        assert_eq!(app.mode(), InputMode::Normal);
+        assert!(app.settings().unwrap().pending().is_none());
+    }
+
+    /// A dog's ticket has to survive two hops: the file half answers as
+    /// `Msg::DogWritten`, which raises `Sent::Dog`, and only the shepherd's
+    /// answer to that clears the prompt. An edit armed in between owns the
+    /// prompt by then.
+    #[test]
+    fn a_superseded_dog_reply_does_not_resolve_the_edit_that_replaced_it() {
+        let mut app = fixtures::app_in_settings_on_dog("metrics");
+        let _ = app.update(Msg::Key(KeyPress::Cycle));
+        let Effect::WriteDog { edit, ticket, .. } = app.update(Msg::Key(KeyPress::Confirm)) else {
+            panic!("Enter must send the file half");
+        };
+        let Effect::Send(dog) = app.update(Msg::DogWritten {
+            edit,
+            ticket,
+            result: Ok(DogSource::BuiltIn),
+        }) else {
+            panic!("a landed file half must raise the daemon half");
+        };
+
+        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
+        let _ = app.update(Msg::Key(KeyPress::Cycle));
+        let Effect::WriteSetting { ticket: scalar, .. } = app.update(Msg::Key(KeyPress::Confirm))
+        else {
+            panic!("Enter must send the scalar edit");
+        };
+        assert_ne!(ticket, scalar, "the toggle and the scalar are two writes");
+
+        let info = ProcessInfo::builder(50, "metrics", ProcStatus::Online)
+            .pid(Some(50_000))
+            .dog(Some(DogSource::BuiltIn))
+            .build();
+        let effect = app.update(Msg::Replied {
+            sent: dog,
+            result: Ok(Response::DogStarted(info)),
+        });
+        assert_eq!(effect, Effect::None, "the live edit survives a re-read");
+        assert!(
+            app.settings().unwrap().pending().is_some_and(|p| p.sent),
+            "the scalar edit is still in flight and still says so"
+        );
+        assert_eq!(
+            app.notice().map(ToString::to_string).as_deref(),
+            Some("enable metrics: the shepherd started it"),
+            "the toggle still reports what the shepherd did"
+        );
+    }
+
+    /// The door a refuse-to-arm guard could not close: `Escape` leaves the
+    /// screen without cancelling the write, and reopening it builds a fresh
+    /// `Settings` with nothing pending. The abandoned write's answer must
+    /// still not touch whatever the reopened screen has armed since.
+    #[test]
+    fn a_reply_for_a_write_the_screen_walked_away_from_touches_nothing() {
+        let mut app = fixtures::app_in_settings_on(SettingField::Socket);
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+        let Effect::WriteSetting {
+            edit: socket,
+            ticket: socket_ticket,
+            ..
+        } = app.update(Msg::Key(KeyPress::Confirm))
+        else {
+            panic!("Enter must send the socket edit");
+        };
+
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.settings().is_none(), "Escape leaves the screen");
+        let _ = app.update(Msg::Key(KeyPress::Settings));
+        let _ = app.update(Msg::Settings {
+            result: Ok(fixtures::settings_snapshot()),
+        });
+        let _ = app.update(Msg::Key(KeyPress::Cycle));
+        let Effect::WriteSetting { ticket: level, .. } = app.update(Msg::Key(KeyPress::Confirm))
+        else {
+            panic!("Enter must send the reopened screen's edit");
+        };
+        assert_ne!(socket_ticket, level, "a reopened screen mints its own");
+
+        let _ = app.update(Msg::SettingWritten {
+            edit: socket,
+            ticket: socket_ticket,
+            result: Err("the socket path is too long".into()),
+        });
+        assert_eq!(app.mode(), InputMode::Normal);
+        assert!(app.settings().unwrap().typing().is_none());
+        assert!(
+            app.settings().unwrap().pending().is_some_and(|p| p.sent),
+            "the reopened screen's own edit is untouched"
+        );
     }
 
     /// The divergence from the sheep confirm, which `disarm_on_link_change`
@@ -11872,11 +12221,13 @@ mod tests {
             let _ = app.update(Msg::Key(KeyPress::TextChar(c)));
         }
         let _ = app.update(Msg::Key(KeyPress::TextApply));
-        let Effect::WriteSetting(edit, _) = app.update(Msg::Key(KeyPress::Confirm)) else {
+        let Effect::WriteSetting { edit, ticket, .. } = app.update(Msg::Key(KeyPress::Confirm))
+        else {
             panic!("Enter must send");
         };
         let _ = app.update(Msg::SettingWritten {
             edit,
+            ticket,
             result: Err("max_cron_sleep is 500ms, below the 1s floor".into()),
         });
 
@@ -11886,6 +12237,11 @@ mod tests {
             .typing()
             .expect("the editor reopens");
         assert_eq!(buffer, "500ms");
+        assert_eq!(
+            app.mode(),
+            InputMode::Text,
+            "a reopened editor owns the keyboard, or the text is unreachable"
+        );
         assert!(
             app.notice()
                 .unwrap()
@@ -11975,11 +12331,12 @@ mod tests {
     fn a_written_dog_toggle_raises_the_daemon_half() {
         let mut app = fixtures::app_in_settings_on_dog("metrics");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
-        let Effect::WriteDog(edit, _) = app.update(Msg::Key(KeyPress::Confirm)) else {
+        let Effect::WriteDog { edit, ticket, .. } = app.update(Msg::Key(KeyPress::Confirm)) else {
             panic!("Enter must send the file half first");
         };
         let effect = app.update(Msg::DogWritten {
             edit,
+            ticket,
             result: Ok(DogSource::BuiltIn),
         });
         assert!(matches!(
@@ -11992,11 +12349,12 @@ mod tests {
     fn a_refused_file_half_never_reaches_the_shepherd() {
         let mut app = fixtures::app_in_settings_on_dog("metrics");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
-        let Effect::WriteDog(edit, _) = app.update(Msg::Key(KeyPress::Confirm)) else {
+        let Effect::WriteDog { edit, ticket, .. } = app.update(Msg::Key(KeyPress::Confirm)) else {
             panic!("Enter must send the file half first");
         };
         let effect = app.update(Msg::DogWritten {
             edit,
+            ticket,
             result: Err("permission denied".into()),
         });
         assert_eq!(
@@ -12040,11 +12398,12 @@ mod tests {
     fn armed_and_sent_dog(name: &str) -> (App, Sent) {
         let mut app = fixtures::app_in_settings_on_dog(name);
         let _ = app.update(Msg::Key(KeyPress::Cycle));
-        let Effect::WriteDog(edit, _) = app.update(Msg::Key(KeyPress::Confirm)) else {
+        let Effect::WriteDog { edit, ticket, .. } = app.update(Msg::Key(KeyPress::Confirm)) else {
             panic!("Enter must send the file half first");
         };
         let Effect::Send(sent) = app.update(Msg::DogWritten {
             edit,
+            ticket,
             result: Ok(DogSource::BuiltIn),
         }) else {
             panic!("a landed write must raise the daemon half");
@@ -12315,6 +12674,8 @@ mod tests {
                 field: SettingField::MaxCronSleep,
                 value: "500ms".to_string(),
             },
+            // Any ticket: there is no settings screen to hold one.
+            ticket: 0,
             result: Err("max_cron_sleep is 500ms, below the 1s floor".to_string()),
         });
 
