@@ -1,10 +1,13 @@
-//! The client<->daemon wire protocol (version 8).
+//! The client<->daemon wire protocol (version 9).
 //!
 //! Typed request/response enums plus bus events. Framing lives in
 //! [`wire`]; a serialized shape change bumps [`PROTOCOL_VERSION`].
 //! Version 4 bumped on an addition. Version 5 bumped on a new `AppConfig`
-//! field: that struct is `deny_unknown_fields`, so the additive rule below
-//! does not cover it and an older daemon cannot decode `depends_on`.
+//! field: that struct was `deny_unknown_fields` then, so the additive rule
+//! below did not cover it and an older daemon could not decode
+//! `depends_on`. The denial has since moved to `Flockfile::parse`, so a
+//! field change now costs an older peer the field rather than the whole
+//! payload, and still bumps.
 //! Version 6 bumped on a retype: [`Response::Reloading`] became a struct
 //! variant to carry the apps a staged reload refused, so it serializes as
 //! an object where an older peer reads an array. Version 7 bumped on the
@@ -14,7 +17,8 @@
 //! the reason version 5 did. [`Request::PutSecrets`] rode in on the same
 //! commit and forced nothing: it is an additive variant, and a daemon that
 //! has never heard of it decodes [`Request::Unrecognized`] and refuses by
-//! name.
+//! name. Version 9 bumped on removing `increment_var`, the first shape
+//! change here to subtract a field rather than add one.
 //!
 //! A `*_wire_v9` test pins today's shape. A
 //! `v1_*_fixture_still_deserializes` test pins an old peer's payload and
