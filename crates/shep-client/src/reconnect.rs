@@ -92,6 +92,10 @@ pub enum LinkState {
 pub enum Reconnected {
     /// The daemon now answering is the one that answered before, so an id
     /// minted before the connection dropped still names the same sheep.
+    ///
+    /// It says nothing about the connection. The old generation and the
+    /// subscription on it died under either verdict, so a caller wanting
+    /// events subscribes again whichever one it gets.
     SameDaemon,
     /// A different daemon is answering, minting ids from its own fresh
     /// space. Every id the caller still holds names nothing here.
