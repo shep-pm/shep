@@ -20,7 +20,7 @@
 #
 # Setup, once, per runtime you want to see:
 #
-#   $ examples/polyglot/setup-venv.sh       # python-app's own interpreter
+#   $ examples/polyglot/setup-venv.sh       # python's own interpreter
 #   $ examples/polyglot/go-http/build.sh     # go-http's compiled binary
 #
 # node and bun need no build step -- `interpreter` runs their source
@@ -91,28 +91,39 @@ name   = "go-http"
 script = "polyglot/go-http/go-http"
 args   = ["19097"]
 
-# --- 6. The shepherd channel ------------------------------------------------
-# node-chatty is examples/Flockfile.toml's chatty again, in JavaScript. It
-# frames the wire itself, because JavaScript has no shep client library the
-# way Rust does. The Rust one is worth reading beside it: it takes the
+# --- 6. The shepherd channel, twice -----------------------------------------
+# examples/Flockfile.toml's chatty again, once per runtime. Each frames the
+# wire itself, because neither language has a shep client library the way
+# Rust does. The Rust one is worth reading beside either: it takes the
 # shep-channel crate and is a third the length.
 #
-# The three fields below each open a channel on their own, and this entry
-# sets all three because it uses all three: `wait_ready` makes shep hold the
+# The three fields below each open a channel on their own, and both entries
+# set all three because they use all three: `wait_ready` makes shep hold the
 # start until the app writes `{"kind":"ready"}`, `shutdown_with_message`
 # sends a JSON shutdown instead of a signal, and `channel` says so outright
 # for anyone who wants neither.
 #
-#   $ shep trigger node-chatty ping
-#   $ shep trigger node-chatty metric queue-depth
-#   $ shep trigger node-chatty level "debug rate=0.5"
-#   $ shep trigger node-chatty nonsense   # replies "unknown action: nonsense"
+# Both answer the same actions, so the same triggers read the same way
+# against either:
+#
+#   $ shep trigger '*-chatty' ping
+#   $ shep trigger '*-chatty' metric queue-depth
+#   $ shep trigger '*-chatty' level "debug rate=0.5"
+#   $ shep trigger '*-chatty' nonsense    # replies "unknown action: nonsense"
 #
 # See docs/shepherd-channel.md for the contract.
 [[app]]
 name                  = "node-chatty"
 script                = "polyglot/node-chatty.js"
 interpreter           = "node"
+channel               = true
+wait_ready            = true
+shutdown_with_message = true
+
+[[app]]
+name                  = "python-chatty"
+script                = "polyglot/python-chatty.py"
+interpreter           = "polyglot/venv/bin/python3"
 channel               = true
 wait_ready            = true
 shutdown_with_message = true
