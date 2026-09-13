@@ -74,6 +74,18 @@ pub(crate) enum HookOutcome {
         /// The OS error, rendered, since it is only ever shown.
         reason: String,
     },
+    /// The dog ran and shep could not collect what it did: a pipe read
+    /// failed, or the wait did.
+    ///
+    /// Distinct from [`Self::NotSpawned`] because the two send a caller in
+    /// opposite directions. That one says the hook did not run and the
+    /// binary needs looking at; this one says the hook may well have done
+    /// its work and only the outcome was lost, which for a hook that
+    /// deletes something is the difference worth keeping.
+    Unread {
+        /// The OS error, rendered, since it is only ever shown.
+        reason: String,
+    },
 }
 
 impl fmt::Display for HookOutcome {
@@ -92,6 +104,10 @@ impl fmt::Display for HookOutcome {
                 write!(f, "did not finish its on-remove hook within {after:?}")
             }
             Self::NotSpawned { reason } => write!(f, "could not be run: {reason}"),
+            Self::Unread { reason } => write!(
+                f,
+                "ran its on-remove hook and shep could not read the outcome: {reason}"
+            ),
         }
     }
 }
@@ -156,7 +172,9 @@ pub(crate) async fn run_on_remove(
             let _ = child.kill().await;
             HookOutcome::TimedOut { after: budget }
         }
-        Ok(Err(err)) => HookOutcome::NotSpawned {
+        // Not `NotSpawned`: the spawn above succeeded, so this is a read
+        // or a wait that failed on a child that ran.
+        Ok(Err(err)) => HookOutcome::Unread {
             reason: err.to_string(),
         },
         Ok(Ok((out, err, status))) => {
@@ -470,6 +488,31 @@ mod tests {
         assert!(
             output.contains("clean") && output.contains("[2Jgone"),
             "and its printable tail must survive as inert text: {output:?}"
+        );
+    }
+
+    /// fails if a dog killed by a signal is reported as having exited with
+    /// a code. A hook that segfaults has no exit code at all, and the
+    /// `None` arm is what tells an operator to look for a crash rather
+    /// than for a refusal the dog chose.
+    #[tokio::test]
+    async fn a_dog_a_signal_stopped_has_no_exit_code() {
+        let dir = tempfile::tempdir().unwrap();
+        // Signals itself rather than relying on a fault: a real SIGSEGV
+        // depends on the platform's shell and would be a fixture that only
+        // sometimes reproduces what it claims.
+        let binary = dog(dir.path(), "crashing", "printf 'dying' >&2\nkill -ABRT $$");
+
+        let outcome = run(&binary, dir.path()).await;
+
+        let HookOutcome::Refused { code, output } = &outcome else {
+            panic!("a signalled dog is a refusal, got {outcome:?}");
+        };
+        assert_eq!(*code, None, "a signal leaves no exit code");
+        assert_eq!(output, "dying", "and what it managed to say still arrives");
+        assert_eq!(
+            outcome.to_string(),
+            "was stopped by a signal during the on-remove hook"
         );
     }
 
