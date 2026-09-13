@@ -102,15 +102,31 @@ Sizes below are relative to each other, not an estimate in days:
 | `max_cpu_cores`, writing `cpu.max` | S |
 | `max_memory` with `enforce = "kernel"`, writing `memory.max` | M |
 
-**Windows already does exactly what phase 0 needs, which is the finding worth
+**Windows already does most of what phase 0 needs, which is the finding worth
 recording.** The spawn path calls `command.spawn()`
 (`crates/shep-daemon/src/tokio_runner.rs:705`), reads the pid, and immediately
 creates a job object and assigns the child to it (`tokio_runner.rs:716-738`).
-Its comment names the reason: "As early as containment can happen: the child
-exists and everything it spawns from here inherits the job." A cgroup goes at
-the identical point in the identical function, for the identical reason. The
-unix arm of that same function has only `command.process_group(0)`
+The unix arm of that same function has only `command.process_group(0)`
 (`tokio_runner.rs:571-572`) and no per-sheep resource container.
+
+**The analogy stops one step short, and the gap is a race.** Read the Windows
+comment exactly: "the child exists and everything it spawns **from here**
+inherits the job". From here, not from birth. `spawn()` returns a process that
+is already running, so anything it forks between that return and the
+containment call is outside. On Windows that costs little, because a job is
+about reachability for `kill_tree` and a stray early grandchild is rare. On
+Linux it costs correctness: writing a pid to `cgroup.procs` moves that thread
+group and **not** its existing descendants, so an early fork stays in the
+parent cgroup and its memory is never counted against `memory.max`. A shell
+wrapper that execs a real program is the ordinary case, not a corner one.
+
+So phase 0 cannot copy the Windows site verbatim. The child has to join the
+cgroup before it can fork, which on unix means either `pre_exec`, where the
+child writes its own pid to `cgroup.procs` after fork and before exec, or
+`clone3`'s `CLONE_INTO_CGROUP`, which is atomic and needs Linux 5.7. `pre_exec`
+is the portable one and runs in the narrow post-fork window where almost
+nothing is safe to call, which is its own cost. Sizing phase 0 as L already
+assumed a real spawn-path change; this is what that change is.
 
 #### `LimitEnforcer` cannot be the seam, and the reason is timing
 
@@ -124,11 +140,16 @@ cooperation from the child. A cgroup only accounts for a process that was
 already inside it before it forked, so arming seconds late means arming
 against descendants that have already escaped.
 
-So create the cgroup unconditionally for every sheep at spawn, configured
-limit or not, mirroring the Windows job that `Job::create` builds regardless
-(`crates/shep-daemon/src/sys_windows.rs:87-127`, whose own comment says the
-zeroed limit block is set explicitly because doing so "makes adding a limit
-later a one-line edit at a site that already handles its own errors").
+So create the cgroup unconditionally for every sheep at spawn on Linux,
+configured limit or not. Unconditionally means every sheep on a host that has
+the machinery, never every sheep everywhere: macOS has no cgroups and refuses
+both fields outright, so there is nothing to create there and a sheep starts
+exactly as it does today. Windows already builds its job for every sheep with
+no limit set, and `Job::create`'s own comment says why the zeroed limit block
+is written out explicitly, that doing so "makes adding a limit later a one-line
+edit at a site that already handles its own errors"
+(`crates/shep-daemon/src/sys_windows.rs:87-127`).
+
 `arm()` then reduces to writing a limit into a container that already exists,
 which preserves `max_memory`'s current `ApplyGroup::Live` classification
 (`crates/shep-core/src/config/apply.rs:48`): a config change still reaches a
@@ -151,10 +172,30 @@ normal exit path, entirely outside the trait, and so it consumes the budget.
 An app that leaks and today restarts indefinitely would instead burn its
 `max_restarts` and get parked.
 
-Closing that means teaching the exit path to read the `oom_kill` counter in
-`memory.events` and reclassify the exit. That is new logic outside
-`LimitEnforcer`, not a swap behind it, and it is the kind of thing found late
-and expensively.
+**That is the better case. The worse one is that nothing arrives at all.** The
+cgroup OOM killer picks one victim by its own heuristic, and it need not be the
+pid shep supervises: kill a lamb and the sheep stays up, over its ceiling, with
+no exit to classify and no breach to report. Today's polling enforcer has no
+such hole, because it sums the tree and restarts the root whatever died. So the
+design needs `memory.oom.group=1`, which makes the kernel kill every process in
+the cgroup together and turns an OOM into exactly the root-pid exit the engine
+already understands. Setting it is one more file write in phase 0 and it is not
+optional: without it, the whole feature silently degrades to "sometimes".
+
+Closing that means teaching the exit path to decide whether an exit was this
+sheep's own OOM, and that is harder than reading one number. `memory.events`
+is hierarchical, so its `oom_kill` counts kills anywhere at or below the
+cgroup, and an ancestor or a host-wide OOM can raise a sheep's counter without
+the sheep's own `memory.max` ever being reached. `memory.events.local` is the
+one that excludes descendants. Both are cumulative counters rather than events,
+so a non-zero value proves nothing on its own and even a matching delta across
+an exit is correlation: read the local counter before the spawn and again at
+the exit, treat only a rise in that window as this sheep's OOM, and decide in
+advance what an ambiguous exit counts as. Conservative is to charge it to the
+budget, since the alternative is a crash loop that never parks.
+
+None of that is a swap behind `LimitEnforcer`. It is new logic in the exit
+path, and it is the kind of thing found late and expensively.
 
 Separately, extending `arm(&self, id, root_pid, limit: MemSize)` is a
 **breaking change**. The trait is public specifically so
@@ -178,10 +219,26 @@ ceiling is the whole machine, so more than one core is a **larger fraction** of
 a fixed 10000. One conversion multiplies by the core count, the other divides by
 the host's.
 
-`memory.max` is not the symmetric knob. Under Linux overcommit the kernel does
-not politely refuse the allocation that crosses the line. It reclaims, and
-when reclaim fails it invokes the cgroup-scoped OOM killer on a process it
-picks by its own heuristic, which need not be the one that allocated. Worth
+**Swap has to be named, because `memory.max` alone does not bound memory.**
+`memory.max` caps memory and says nothing about swap, so a sheep at its ceiling
+can keep going into `memory.swap.max`, which defaults to no limit. Docker does
+not leave this implicit either: `--memory=2g` with no `--memory-swap` allows
+2g of swap on top, for 4g of total footprint. Borrowing docker's flag without
+its swap default would give shep a ceiling that is not one. The recommendation
+is `memory.swap.max = 0`, so `max_memory` means what an operator reading the
+name expects and what today's polling enforcer already means, since that sums
+RSS and a swapped-out sheep looks under its limit either way. It diverges from
+docker's default deliberately, and the entry says so rather than inheriting a
+2x footprint by silence. Windows needs the same sentence for a different
+reason: `JOB_OBJECT_LIMIT_JOB_MEMORY` bounds committed virtual memory, not
+resident memory, so the same configured number does not mean the same thing on
+the two platforms and the docs page has to say which.
+
+`memory.max` is not the symmetric knob to `cpu.max`. Under Linux overcommit the
+kernel does not politely refuse the allocation that crosses the line. It
+reclaims, and when reclaim fails it invokes the cgroup-scoped OOM killer on a
+process it picks by its own heuristic, which need not be the one that
+allocated. Worth
 stating explicitly, because "cap it instead of restarting it" sounds like a
 graceful refusal and on Linux it is not. `memory.high` is the genuine
 throttle-without-killing knob, applying reclaim pressure and stalling the
@@ -203,9 +260,20 @@ feature at all:
 The shipped unit is rendered at
 `crates/shep-cli/src/commands/startup/unit.rs:57-71` and its `[Service]` block
 carries no `Delegate=`. Adding one also means updating the exact-string test
-at `unit.rs:393-407`, which pins the rendered unit verbatim. Where no writable
-cgroup subtree exists, shep should refuse the configured limit at load with a
-message naming the reason, and never accept the field while enforcing nothing.
+at `unit.rs:393-407`, which pins the rendered unit verbatim.
+
+**Writable is not the same question as enabled, and the refusal has to ask
+both.** A directory shep can write does not mean `cpu.max` and `memory.max`
+will exist in the cgroups it creates under it. In cgroup v2 a controller
+appears in a child only when the parent lists it in `cgroup.subtree_control`,
+which the parent can only do for controllers it has in its own
+`cgroup.controllers`, and the top-down rule means enabling one can simply fail.
+So phase 0's probe is three checks and not one: the subtree is writable, the
+controller is present in `cgroup.controllers`, and it is enabled in
+`cgroup.subtree_control` or can be. A limit accepted without all three is a
+limit shep cannot enforce. Where any of them fails, refuse the configured limit
+at load with a message naming which one and why, and never accept the field
+while enforcing nothing.
 
 **Windows** gets real enforcement for both, and memory is the cheap half. It
 also matches the intent better than Linux does:
@@ -225,6 +293,16 @@ conversion is `cores * 10000 / processor_count`, which is what moby computes
 for `--cpus` on Windows, so `max_cpu_cores = 2` on an eight-processor host
 writes 2500 and not 20000. The cap is the tell: if the rate were per-core,
 expressing two cores would need a value above 10000, and the API refuses one.
+
+`CpuRate` is also an integer, and that bites at the small end rather than the
+large one. `cores * 10000 / processor_count` floors, so a genuinely configured
+fraction can land on zero on a big host: 0.05 cores on a 128-processor machine
+computes 3, and 0.01 computes 0, which Windows rejects outright. Docker's
+`--cpus` takes fractions, so `max_cpu_cores` has to as well. Clamp the result
+into `1..=10000` rather than passing it through: a floor of 1 gives the
+smallest limit the API can express, which is the honest answer to asking for
+less than that, and the ceiling keeps a `max_cpu_cores` above the host's
+processor count from being refused when it should simply mean "all of it".
 
 **macOS** has no mechanism for either, and this has to be a documented
 refusal. `RLIMIT_AS` is defeated by ordinary virtual-address reservations, so
@@ -252,7 +330,12 @@ staging more than any individual API's difficulty.
   tag.
 - **`max_cpu_cores` wants a validated newtype** of its own, following
   `MemSize` and `UpDuration` (`values.rs:39`, `values.rs:204`), rather than a
-  bare `f64` that silently accepts zero, a negative, or a NaN.
+  bare `f64` that silently accepts zero, a negative, or a NaN. Fractions are
+  in, because `docker --cpus` takes them, so the type's job is to refuse
+  nonsense rather than to refuse non-integers. Refusing is not the whole
+  contract either: the per-platform conversions round, and the Windows one can
+  floor a valid fraction to a value the API rejects. The clamp belongs at the
+  conversion, not in the type.
 - **Both fields need a row in the `FIELDS` table** at
   `crates/shep-core/src/config/apply.rs:35`, which `is_classified` reads as
   the anti-drift gate.
