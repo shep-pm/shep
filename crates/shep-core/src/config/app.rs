@@ -934,19 +934,14 @@ env = { SOME_BOOL = true, PORT = 8080, NEG = -1, STR = "plain" }
     }
 
     /// A protocol-8 peer still serializes `increment_var`, which this build
-    /// no longer has. It must deserialize and be dropped rather than error.
-    ///
-    /// `MIN_SUPPORTED` is 8 and this is what a version-8 payload looks like,
-    /// so an error here would refuse every peer built before the field went.
-    /// The drop is safe rather than merely tolerated: the field carried no
-    /// behaviour on any build this daemon accepts. `normalize` has refused
-    /// it since `PROTOCOL_VERSION` was 2, so a peer at 8 cannot have sent a
-    /// populated one without its own build rejecting it first, and `null` is
-    /// the only value that ever reached the wire.
+    /// no longer has. It must deserialize and be dropped rather than error,
+    /// since `MIN_SUPPORTED` is 8 and an error here would refuse every peer
+    /// built before the field went.
     ///
     /// Fails if `deny_unknown_fields` comes back to this struct. It was
-    /// moved to `Flockfile::parse` on purpose, so that a newer daemon can
-    /// hand an older client a config it does not fully understand.
+    /// moved to `Flockfile::parse` on purpose, so a newer daemon can hand an
+    /// older client a config it does not fully understand. Why dropping the
+    /// field is safe rather than merely tolerated is in `docs/decisions.md`.
     #[test]
     fn a_protocol_8_payload_carrying_increment_var_still_deserializes() {
         let src = r#"{ "name":"web","script":"./srv","increment_var":null }"#;
