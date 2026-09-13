@@ -3341,22 +3341,16 @@ mod tests {
         assert_eq!(back.reload_deadline_ms, Some(16_000));
     }
 
-    /// The field is additive, so a payload written before it existed has to
-    /// decode with the deadline absent rather than fail the whole envelope.
-    #[test]
-    fn an_older_daemons_process_info_decodes_without_a_reload_deadline() {
-        let older = r#"{"id":1,"name":"web","status":"online","restarts":0,"uptime_ms":0}"#;
-        let info: ProcessInfo = serde_json::from_str(older).expect("an older payload decodes");
-        assert_eq!(info.reload_deadline_ms, None);
-    }
-
     #[test]
     fn an_older_daemons_process_info_still_decodes() {
-        // The field is additive, so a payload written before it existed has to
-        // decode with the ceiling absent rather than fail the whole envelope.
+        // Every additive field, asserted off one payload. A payload written
+        // before any of them existed has to decode with each absent rather
+        // than fail the whole envelope, and one fixture cannot drift from
+        // another.
         let older = r#"{"id":1,"name":"web","status":"online","restarts":0,"uptime_ms":0}"#;
         let info: ProcessInfo = serde_json::from_str(older).expect("an older payload decodes");
         assert_eq!(info.max_memory, None);
+        assert_eq!(info.reload_deadline_ms, None);
     }
 
     /// A dog written in another language speaks this wire directly and never
