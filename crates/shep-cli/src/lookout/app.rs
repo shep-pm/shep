@@ -3134,9 +3134,6 @@ impl App {
             .config_pane()
             .map(|pane| pane.edits().clone())
             .unwrap_or_default();
-        // Carried for the same reason as the cursor: a re-read must not
-        // dismiss a help note the operator has not dismissed.
-        let carried_help = self.config_pane().is_some_and(ConfigPane::help_open);
         let mut pane = ConfigPane::sheep(view);
         pane.adopt_edits(carried_edits);
         if let Some(carried) = carried {
@@ -3148,7 +3145,6 @@ impl App {
         if let Some((key, carried)) = carried_list {
             pane.adopt_list_view(&key, carried);
         }
-        pane.set_help_open(carried_help);
         self.body = Body::ConfigPane(pane);
         // The rebuilt pane carries no editor, so the keyboard must not
         // still think one is open.
@@ -3225,13 +3221,13 @@ impl App {
                 // Everything a refresh has to carry across, read before the
                 // rebuild replaces the pane: see `Self::on_sheep_config`,
                 // which states the argument for each. A dog pane has no env
-                // sub-screen, so only two of the three apply.
+                // sub-screen or list sub-screen, so only its view and its
+                // edits carry across.
                 let carried = self.config_pane().map(|pane| pane.view().clone());
                 let carried_edits = self
                     .config_pane()
                     .map(|pane| pane.edits().clone())
                     .unwrap_or_default();
-                let carried_help = self.config_pane().is_some_and(ConfigPane::help_open);
                 let mut pane = ConfigPane::dog(
                     probe.name,
                     probe.adopted_path,
@@ -3242,7 +3238,6 @@ impl App {
                 if let Some(carried) = carried {
                     pane.adopt_view(carried);
                 }
-                pane.set_help_open(carried_help);
                 // The settings screen is what a dog pane opens over, and this
                 // one assignment is what closes it: `Body` holds one
                 // variant, so the pane replaces it once there is something
@@ -4870,11 +4865,11 @@ impl App {
     ///
     /// Movement walks fields, `r` re-reads, `space` cycles the row under
     /// the cursor, `Enter` or `e` edits it, `u` undoes the newest edit,
-    /// `h` toggles the selected field's own help text, and `Escape`
-    /// closes help if it is open, else asks the close dialog's question if
-    /// there is one to ask, else writes everything filed and leaves.
-    /// Everything else is named rather than wildcarded, so a stray variant
-    /// cannot fall silently into an arm that ignores it.
+    /// and `Escape` asks the close dialog's question if there is one to
+    /// ask, else writes everything filed and leaves. `h` is inert here;
+    /// see `KeyPress::Help`'s arm below. Everything else is named rather
+    /// than wildcarded, so a stray variant cannot fall silently into an
+    /// arm that ignores it.
     ///
     /// Nothing is armed here and no key is eaten. A keystroke that edits
     /// files into the pane's own set and sends nothing, so a stray one
@@ -4892,24 +4887,22 @@ impl App {
         }
         match key {
             KeyPress::Quit => return Effect::Quit,
-            // Backs out one level at a time: help first, if it is open,
-            // else the close dialog's own question, else the pane.
-            // `Escape` closes rather than cascading to a filter clear or a
-            // quit, exactly as it does on the settings screen.
+            // Backs out one level at a time: the close dialog's own
+            // question first, if there is one, else the pane. `Escape`
+            // closes rather than cascading to a filter clear or a quit,
+            // exactly as it does on the settings screen.
             //
             // The dialog is asked before anything is taken: `esc` used to
             // write first and ask second, which missed the very edit that
             // made this pane's `Escape` worth asking about. Now nothing
             // leaves the pane until the question is answered, one way or
             // another.
+            //
+            // There used to be a rung above the dialog, closing the field
+            // help `h` had opened. The help is unconditional now, so an
+            // operator who could see a blurb no longer presses `esc` twice
+            // to leave the pane.
             KeyPress::Escape => {
-                let help_open = self.config_pane().is_some_and(ConfigPane::help_open);
-                if help_open {
-                    if let Some(pane) = self.config_pane_mut() {
-                        pane.close_help();
-                    }
-                    return Effect::None;
-                }
                 if let Some(dialog) = self.close_offer() {
                     self.close_dialog = Some(dialog);
                     return Effect::None;
@@ -4943,11 +4936,10 @@ impl App {
             // opened the pane with `e` should not have to learn a second
             // key to use it.
             KeyPress::Confirm | KeyPress::Edit => return self.confirm_field(),
-            KeyPress::Help => {
-                if let Some(pane) = self.config_pane_mut() {
-                    pane.toggle_help();
-                }
-            }
+            // Inert here until Task 5 routes it to the keymap overlay. The
+            // field help this used to toggle is unconditional now: see
+            // `view::pane::top_lines`.
+            KeyPress::Help => {}
             // `d` restores the field under the cursor to its default. Does
             // nothing on an env row or `+ add a key`: unsetting a key
             // entirely is a different act from restoring a default, and
@@ -14520,15 +14512,19 @@ mod tests {
         assert!(app.close_dialog().is_none());
     }
 
-    /// Help is dismissed before the dialog is asked, so `h` then `esc`
-    /// still puts the operator back on the field list.
+    /// `esc` leaves the config pane on the first press, with a blurb on
+    /// screen. It used to take two: `h`'s field help was a rung above the
+    /// close dialog's question in `Escape`'s cascade, and the blurb is
+    /// unconditional now, so there is no rung to spend.
     #[test]
-    fn escape_dismisses_help_before_it_asks_the_dialog() {
-        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
-        let _ = app.update(Msg::Key(KeyPress::Help));
+    fn esc_leaves_the_pane_on_one_press_with_a_blurb_showing() {
+        let mut app = fixtures::app_in_sheep_pane_with_nothing_parked();
+        assert!(app.config_pane().is_some());
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(!app.config_pane().unwrap().help_open());
-        assert!(app.close_dialog().is_none());
+        assert!(
+            app.config_pane().is_none(),
+            "one esc did not leave the pane"
+        );
     }
 
     /// The case the old menu missed: an edit made in this pane, on a sheep
@@ -14673,40 +14669,15 @@ mod tests {
         assert!(matches!(effect, Effect::None), "got {effect:?}");
     }
 
+    /// `h` is inert in the config pane now: the field help it used to
+    /// toggle draws unconditionally (`view::pane::top_lines`), and the
+    /// key itself is free for Task 5's keymap overlay.
     #[test]
-    fn h_toggles_help_and_escape_dismisses_it_before_closing_the_pane() {
+    fn h_does_nothing_in_the_config_pane() {
         let mut app = fixtures::app_in_sheep_pane();
         pane_to(&mut app, "max_memory");
-        let _ = app.update(Msg::Key(KeyPress::Help));
-        assert!(app.config_pane().unwrap().help_open());
-        // Escape dismisses help first; the pane is still open.
-        let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(!app.config_pane().unwrap().help_open());
-        assert!(
-            app.config_pane().is_some(),
-            "the first escape only closes help"
-        );
-        // A second `h` toggles it back open, and pressing it again closes it.
-        let _ = app.update(Msg::Key(KeyPress::Help));
-        assert!(app.config_pane().unwrap().help_open());
-        let _ = app.update(Msg::Key(KeyPress::Help));
-        assert!(!app.config_pane().unwrap().help_open());
-        // Escape with help already closed closes the pane, same as ever.
-        let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.config_pane().is_none());
-    }
-
-    /// `h` on an env row has no field to show help for, so `top_line`
-    /// draws nothing for it even though the flag it toggles is the same
-    /// one a field row uses: `h` is bound once, on the whole field list,
-    /// not per row.
-    #[test]
-    fn h_toggles_help_on_an_env_row_but_nothing_draws_it() {
-        let mut app = fixtures::app_in_sheep_pane_with_control();
-        let _ = app.update(Msg::Key(KeyPress::SelectLast));
-        assert_eq!(app.config_pane().unwrap().cursor(), Some(PaneRow::AddEnv));
         assert_eq!(app.update(Msg::Key(KeyPress::Help)), Effect::None);
-        assert!(app.config_pane().unwrap().help_open());
+        assert!(app.config_pane().is_some(), "h closed the pane");
     }
 
     #[test]

@@ -610,8 +610,6 @@ pub struct ConfigPane {
     /// [`Self::env_typing`]: each opens on a row of its own kind, and
     /// `Escape` closes whichever is up before the pane.
     list: Option<ListPane>,
-    /// Whether `h` is showing the selected field's own help text.
-    help_open: bool,
     /// The dog's `[<name>]` table as TOML text, and [`None`] for a sheep.
     ///
     /// Kept beside the parsed `values` rather than instead of them, because
@@ -759,7 +757,6 @@ impl ConfigPane {
             edits: Edits::default(),
             env_typing: None,
             list: None,
-            help_open: false,
             section: None,
         }
     }
@@ -824,7 +821,6 @@ impl ConfigPane {
             edits: Edits::default(),
             env_typing: None,
             list: None,
-            help_open: false,
             section: Some(section),
         }
     }
@@ -1182,30 +1178,6 @@ impl ConfigPane {
         if let Some(list) = self.list.as_mut() {
             list.set_elements(elements);
         }
-    }
-
-    /// Whether `h` is showing the selected field's own help text.
-    #[must_use]
-    pub fn help_open(&self) -> bool {
-        self.help_open
-    }
-
-    /// Flips it.
-    pub(super) fn toggle_help(&mut self) {
-        self.help_open = !self.help_open;
-    }
-
-    /// Dismisses it. A no-op when it is already closed, so `Escape` can
-    /// call this unconditionally.
-    pub(super) fn close_help(&mut self) {
-        self.help_open = false;
-    }
-
-    /// Carries a previous pane's help visibility across a rebuild, the
-    /// same reason [`Self::adopt_view`] carries the cursor: a re-read must
-    /// not dismiss a note the operator has not dismissed.
-    pub(super) fn set_help_open(&mut self, open: bool) {
-        self.help_open = open;
     }
 
     /// The key under the cursor, and why the pane will not edit it, when it
@@ -2391,24 +2363,6 @@ mod tests {
                 "{typed}"
             );
         }
-    }
-
-    #[test]
-    fn toggling_help_flips_it_and_closing_it_is_idempotent() {
-        let mut pane = ConfigPane::sheep(web());
-        assert!(!pane.help_open());
-        pane.toggle_help();
-        assert!(pane.help_open());
-        pane.toggle_help();
-        assert!(!pane.help_open());
-        pane.toggle_help();
-        pane.close_help();
-        assert!(!pane.help_open());
-        pane.close_help();
-        assert!(
-            !pane.help_open(),
-            "closing an already-closed help is a no-op"
-        );
     }
 
     /// `web()` carries one env key, `DB_HOST`, so its rows are one

@@ -357,21 +357,36 @@ fn field_line(
     Line::from(spans)
 }
 
-/// The one line the field list reserves under its title: the selected
-/// field's own help text while `h` has it open. [`None`] otherwise.
+/// The rows the field list reserves under its title: the selected field's
+/// own help text, wrapped, at widths where the explanation panel cannot
+/// draw it. Empty where the panel does.
 ///
-/// The close dialog used to draw here too, as the apply menu this pane
-/// replaced. It draws over the whole field list instead now
-/// ([`draw_pane`]), since it answers a question about the pane's own
-/// close rather than a per-field one.
-fn top_line(pane: &ConfigPane, palette: Palette) -> Option<(String, Style)> {
-    if pane.help_open()
-        && let Some(PaneRow::Field(index)) = pane.cursor()
-        && let Some(field) = pane.fields().fields().get(index)
-    {
-        return Some((field.help.clone(), palette.muted()));
+/// One route to a field's help, and it follows the cursor. `h` used to be
+/// the other, drawing the same `field.help` string on one line under the
+/// title, which duplicated `panel_for_field`'s own second region everywhere
+/// the panel drew and was the only route below `panel_width`'s floor of 90
+/// columns. Making this unconditional retired the key rather than leaving
+/// its meaning to depend on the terminal's width, and freed `h` for the
+/// keymap overlay the design always wanted on it.
+fn top_lines(pane: &ConfigPane, palette: Palette, width: u16) -> Vec<(String, Style)> {
+    if panel_width(width).is_some() {
+        return Vec::new();
     }
-    None
+    let Some(PaneRow::Field(index)) = pane.cursor() else {
+        return Vec::new();
+    };
+    let Some(field) = pane.fields().fields().get(index) else {
+        return Vec::new();
+    };
+    // Two columns for the indent this row draws with, the same budget
+    // `panel_for_field`'s own blurb wraps to.
+    wrap(
+        &field.help,
+        usize::from(BLURB_WRAP.min(width.saturating_sub(2))),
+    )
+    .into_iter()
+    .map(|row| (format!("  {row}"), palette.muted()))
+    .collect()
 }
 
 /// `""` for one, `"S"` for every other count: the plural suffix
@@ -1002,9 +1017,11 @@ fn hairline_line(palette: Palette, width: u16) -> Line<'static> {
 }
 
 /// The column header row: `KEY`, `VALUE` and `COST`, aligned over
-/// [`field_line`]'s own cells. Drawn in place of [`top_line`] when neither
-/// the apply menu nor `h`'s help text is up, so the slot under the tab row
-/// always says something.
+/// [`field_line`]'s own cells. Unconditional now: [`top_lines`] used to
+/// draw here instead of it while `h`'s help was open, and drew nothing
+/// otherwise, but a slot that could vanish under a wrapped blurb had
+/// nowhere left to put `LANDS`, so the header stays and the blurb takes
+/// the room below it.
 fn column_header_line(palette: Palette, width: u16, show_lands: bool) -> Line<'static> {
     let (key_w, value_w, cost_w) = widths(body_width(width), show_lands);
     let mut text = String::from("  ");
@@ -1410,14 +1427,17 @@ fn grouped_pane_lines_with_panel(
         remaining -= 1;
     }
     if remaining > 1 {
-        if let Some((text, style)) = top_line(pane, palette) {
-            lines.push(Line::from(Span::styled(
-                format!("  {}", fit(&text, body_width(width))),
-                style,
-            )));
-        } else {
-            lines.push(column_header_line(palette, left_width, show_lands));
+        lines.push(column_header_line(palette, left_width, show_lands));
+        remaining -= 1;
+    }
+    for (text, style) in top_lines(pane, palette, width) {
+        if remaining <= 1 {
+            break;
         }
+        lines.push(Line::from(Span::styled(
+            format!("  {}", fit(&text, body_width(width))),
+            style,
+        )));
         remaining -= 1;
     }
     if remaining == 0 {
@@ -1606,12 +1626,13 @@ fn ungrouped_pane_lines_with_panel(
     // is a committed file with 40 properties, but a dog answers `--schema`
     // for itself) leaves the title as the whole pane.
     let mut body_budget = budget - 1;
-    // `h`'s help text, on the line under the title. Subtracted from the
-    // budget rather than appended, per `body_from`'s own doc on markers.
-    // See `top_line`.
-    if let Some((text, style)) = top_line(pane, palette)
-        && body_budget > 0
-    {
+    // The selected field's own help text, on the lines under the title.
+    // Subtracted from the budget rather than appended, per `body_from`'s
+    // own doc on markers. See `top_lines`.
+    for (text, style) in top_lines(pane, palette, width) {
+        if body_budget == 0 {
+            break;
+        }
         lines.push(Line::from(Span::styled(
             format!("  {}", fit(&text, body_width(width))),
             style,
@@ -3013,53 +3034,72 @@ mod tests {
         );
     }
 
-    /// `max_memory`'s own blurb, read off the same schema `Field::help`
-    /// is built from.
+    /// At a width with no explanation panel, the field under the cursor
+    /// still has its help text on screen, with no key pressed.
+    ///
+    /// 89 columns is the widest terminal `panel_width` refuses: the panel
+    /// clamps to `PANEL_MIN` 50 and 89 - 50 is 39, one short of `LEFT_MIN`.
+    /// `h` used to be the only route to this text, which is why it survived
+    /// the panel that made it redundant everywhere else.
     #[test]
-    fn help_open_draws_the_selected_fields_own_text_under_the_title() {
-        let mut pane = web_pane();
-        pane.move_to_key("max_memory");
-        pane.toggle_help();
-        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
+    fn the_blurb_draws_at_a_width_with_no_panel() {
+        let pane = web_pane();
+        assert!(panel_width(89).is_none(), "89 must have no panel");
+        let lines = pane_lines(&pane, fixtures::plain(), 89, 40);
+        let help = first_field_help(&pane);
         assert!(
-            text.iter()
-                .any(|line| line.contains("Restart the app if it climbs above this much memory")),
-            "{text:?}"
+            text_of(&lines).iter().any(|row| row.contains(&help)),
+            "no blurb at 89 columns: {:?}",
+            text_of(&lines)
         );
     }
 
-    /// Below the panel's own floor: the panel prints the cursor's field's
-    /// blurb unconditionally, `h` or no `h`, so this has to run where the
-    /// panel does not draw at all to see the top line's own text disappear
-    /// on the second toggle.
+    /// And it describes the row the cursor is on, not the first field.
     #[test]
-    fn toggling_help_again_dismisses_it() {
+    fn the_blurb_follows_the_cursor_with_no_panel() {
         let mut pane = web_pane();
-        pane.move_to_key("max_memory");
-        pane.toggle_help();
-        pane.toggle_help();
-        let text = text_of(&pane_lines(&pane, fixtures::plain(), 89, 0));
+        let first = first_field_help(&pane);
+        pane.move_by(1);
+        let second = field_help_under_cursor(&pane);
+        assert_ne!(first, second, "the fixture needs two differing blurbs");
+        let lines = pane_lines(&pane, fixtures::plain(), 89, 40);
+        let rows = text_of(&lines);
         assert!(
-            !text.iter().any(|line| line.contains("Restart the app")),
-            "{text:?}"
+            rows.iter().any(|row| row.contains(&second)),
+            "the cursor moved and the blurb did not: {rows:?}"
+        );
+        assert!(
+            !rows.iter().any(|row| row.contains(&first)),
+            "the previous field's blurb is still on screen: {rows:?}"
         );
     }
 
-    /// Help keeps the shared slot through an edit: nothing competes for
-    /// it any more, so a filed edit must not blank a note the operator has
-    /// not dismissed.
+    /// At the design target the panel draws the blurb, and the fix must not
+    /// have added a second copy above the field list.
     #[test]
-    fn open_help_survives_a_filed_edit() {
-        let mut pane = web_pane();
-        pane.move_to_key("autorestart");
-        pane.toggle_help();
-        pane.cycle();
-        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
-        assert!(
-            text.iter()
-                .any(|line| line.contains("Restarts the process automatically")),
-            "{text:?}"
-        );
+    fn the_panel_is_the_only_blurb_where_it_draws() {
+        let pane = web_pane();
+        assert!(panel_width(160).is_some(), "160 must have a panel");
+        let lines = pane_lines(&pane, fixtures::plain(), 160, 48);
+        let help = first_field_help(&pane);
+        let hits = text_of(&lines)
+            .iter()
+            .filter(|row| row.contains(&help))
+            .count();
+        assert_eq!(hits, 1, "the blurb is on screen {hits} times, not once");
+    }
+
+    /// The `help` string of the field the pane's cursor starts on.
+    fn first_field_help(pane: &ConfigPane) -> String {
+        field_help_under_cursor(pane)
+    }
+
+    /// The `help` string of the field under the cursor, whichever it is.
+    fn field_help_under_cursor(pane: &ConfigPane) -> String {
+        let Some(PaneRow::Field(index)) = pane.cursor() else {
+            panic!("the cursor is not on a field");
+        };
+        pane.fields().fields()[index].help.clone()
     }
 
     /// The hard constraint this item's brief calls out: a line drawn into
@@ -3070,7 +3110,6 @@ mod tests {
     fn help_text_still_respects_the_width_and_height_budgets() {
         let mut pane = web_pane();
         pane.move_to_key("max_memory");
-        pane.toggle_help();
         for width in super::super::MIN_TERM_WIDTH..=200 {
             for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
                 assert!(
