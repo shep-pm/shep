@@ -27,4 +27,7 @@ docs/teach
 /examples/polyglot/venv/
 /examples/polyglot/go-http/go-http
 /examples/polyglot/go-chatty/go-chatty
+# Python writes this beside a module the moment anything imports it, which
+# a test of python-chatty.py does.
+__pycache__/
 /crates/shep-cli/completions/
