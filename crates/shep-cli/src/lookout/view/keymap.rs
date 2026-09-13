@@ -382,10 +382,18 @@ fn draw_borderless(app: &App, area: Rect, buffer: &mut Buffer, palette: Palette)
 
     let lines = if shed == Shed::Refuse {
         let needed = extra_banks_cost + HEIGHT_FLOOR;
-        vec![Line::from(Span::raw(format!(
-            "the keymap needs {needed} rows, this terminal has {}",
-            area.height
-        )))]
+        // `palette.refusal()`, the same bark-coloured style the secrets
+        // pane's own too-narrow refusal and the status bar use: the design
+        // reserves it for exactly this case, so an unstyled line here would
+        // read as ordinary body text while every other refusal in the app
+        // is marked.
+        vec![Line::from(Span::styled(
+            format!(
+                "the keymap needs {needed} rows, this terminal has {}",
+                area.height
+            ),
+            palette.refusal(),
+        ))]
     } else {
         borderless_lines(
             &banks,
@@ -846,6 +854,26 @@ mod tests {
         assert!(
             !rendered.contains("MOVING"),
             "a partial list drew anyway: {rendered}"
+        );
+
+        // Styled `palette.refusal()`, the same bark colour the secrets
+        // pane's own too-narrow refusal and the status bar use, not drawn
+        // as ordinary body text. `.contains` on the text above would pass
+        // whatever the style is, so this checks the buffer cell directly.
+        let app = coloured_app_with_overlay();
+        let mut terminal = Terminal::new(TestBackend::new(160, 12)).expect("terminal");
+        terminal
+            .draw(|frame| super::super::draw(&app, frame))
+            .expect("draw");
+        let refusal = app.palette().refusal().fg;
+        assert!(
+            refusal.is_some(),
+            "fixtures::coloured() should give Palette::refusal a real colour"
+        );
+        assert_eq!(
+            terminal.backend().buffer()[(0, 0)].style().fg,
+            refusal,
+            "the refusal line does not carry palette.refusal()'s own colour"
         );
     }
 
