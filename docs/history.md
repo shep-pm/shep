@@ -310,8 +310,9 @@ array has counted entries rather than verbs ever since, so the number
 largest of the three. `secret` then moved the other two. By 2026-09-13 the
 generator covered 42, the listing showed 43, and the script printed 44.
 
-No count is written down now, here or in `CLAUDE.md`. Two tests in
-`crates/shep-cli/src/cli.rs` hold the relationships instead:
+Those three are a dated measurement, not a figure either file keeps current.
+`CLAUDE.md` now describes the three questions and answers none of them, and two
+tests in `crates/shep-cli/src/cli.rs` hold the relationships instead:
 `every_visible_verb_appears_in_exactly_one_help_group` pins the listing to
 clap's own subcommands, and
 `every_visible_verb_reaches_the_docs_site_generator` pins the generator to
