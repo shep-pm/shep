@@ -84,13 +84,17 @@ once the slice is spent.
 #### The cost is one thing, and it is neither field
 
 Nothing in `crates/` creates, writes, or detects a cgroup. Grepping the
-workspace for `cgroup` returns three comments (`runner.rs:900`,
-`limits/mod.rs:54`, `lookout/source.rs:353`) and no code. The work is the
+workspace for `cgroup` returns three comments and no code
+(`crates/shep-daemon/src/runner.rs:900`,
+`crates/shep-daemon/src/limits/mod.rs:54`, and
+`crates/shep-cli/src/lookout/source.rs:353`). The work is the
 container itself: a per-sheep cgroup created at spawn with the child moved
 into it before it forks anything, v2 versus v1/hybrid detection, delegation
 detection, and a clean refusal rather than a silent no-op when none of that is
 available. Call it phase 0. Against it, each field is one file write:
 `cpu.max` and `memory.max`.
+
+Sizes below are relative to each other, not an estimate in days:
 
 | Work | Size |
 | --- | --- |
