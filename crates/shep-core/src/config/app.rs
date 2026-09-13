@@ -1243,14 +1243,15 @@ target = "http://127.0.0.1:8080/healthz"
         app
     }
 
-    /// A probe of `kind` with everything else at its default.
+    /// A probe of `kind` with everything else at its default, read from the
+    /// same functions serde fills a missing field from.
     fn probe(kind: ProbeKind, target: &str) -> ProbeConfig {
         ProbeConfig {
             kind,
             target: target.to_owned(),
-            interval: UpDuration::from_millis(10_000),
-            timeout: UpDuration::from_millis(5_000),
-            failure_threshold: 3,
+            interval: default_probe_interval(),
+            timeout: default_probe_timeout(),
+            failure_threshold: default_failure_threshold(),
         }
     }
 
@@ -1346,7 +1347,24 @@ target = "http://127.0.0.1:8080/healthz"
                 "env",
                 "SHEP_INSTANCE, SHEP_NAME, or SHEP_ENVIRONMENT, which shep sets itself",
                 sheep(|a| {
+                    a.env.insert("SHEP_INSTANCE".to_owned(), "0".to_owned());
+                }),
+                |e| matches!(e, NormalizeError::ReservedEnvVar { .. }),
+            ),
+            refused(
+                "env",
+                "SHEP_INSTANCE, SHEP_NAME, or SHEP_ENVIRONMENT, which shep sets itself",
+                sheep(|a| {
                     a.env.insert("SHEP_NAME".to_owned(), "web".to_owned());
+                }),
+                |e| matches!(e, NormalizeError::ReservedEnvVar { .. }),
+            ),
+            refused(
+                "env",
+                "SHEP_INSTANCE, SHEP_NAME, or SHEP_ENVIRONMENT, which shep sets itself",
+                sheep(|a| {
+                    a.env
+                        .insert("SHEP_ENVIRONMENT".to_owned(), "staging".to_owned());
                 }),
                 |e| matches!(e, NormalizeError::ReservedEnvVar { .. }),
             ),
@@ -1453,6 +1471,24 @@ target = "http://127.0.0.1:8080/healthz"
                 "name",
                 "a path separator or a colon",
                 sheep(|a| a.name = "web/api".to_owned()),
+                |e| matches!(e, NormalizeError::InvalidName(_)),
+            ),
+            refused(
+                "name",
+                "a path separator or a colon",
+                sheep(|a| a.name = r"web\api".to_owned()),
+                |e| matches!(e, NormalizeError::InvalidName(_)),
+            ),
+            refused(
+                "name",
+                "a path separator or a colon",
+                sheep(|a| a.name = "web:0".to_owned()),
+                |e| matches!(e, NormalizeError::InvalidName(_)),
+            ),
+            refused(
+                "name",
+                "a bare . or ..",
+                sheep(|a| a.name = ".".to_owned()),
                 |e| matches!(e, NormalizeError::InvalidName(_)),
             ),
             refused(
