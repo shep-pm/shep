@@ -14877,15 +14877,20 @@ mod tests {
         assert!(app.keymap_open());
     }
 
-    /// `h` typed into the filter box is a letter. Text mode is checked
-    /// ahead of the overlay branch, so the overlay can never open from
-    /// inside an open box.
+    /// The reducer-level property text mode's ordering actually provides: a
+    /// `Help` arriving while `mode == InputMode::Text` must not raise the
+    /// overlay, however it arrives. Sent directly rather than through
+    /// `TextChar`, which `map_key` already resolves before the reducer ever
+    /// sees it: `input.rs` covers that side, and it never emits `Help` in
+    /// text mode today. This is the reducer's own guard, kept correct
+    /// independent of whatever `map_key` does or is later changed to do.
     #[test]
-    fn h_in_a_filter_box_types_a_letter() {
+    fn help_in_text_mode_does_not_raise_the_overlay() {
         let mut app = fixtures::full_app();
         let _ = app.update(Msg::Key(KeyPress::FilterStart));
-        let _ = app.update(Msg::Key(KeyPress::TextChar('h')));
-        assert!(!app.keymap_open());
+        assert_eq!(app.mode(), InputMode::Text);
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(!app.keymap_open(), "h raised the overlay from text mode");
     }
 
     /// It opens from the three bodies `Confirm`, `Secrets` and `Bleats` set
