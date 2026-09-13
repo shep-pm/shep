@@ -228,7 +228,14 @@ fn every_group_fits_its_column()
 
 ## The rows
 
-Thirty-five rows, covering all forty-two `KeyPress` variants.
+Thirty-six rows, covering all forty-two `KeyPress` variants. Thirty-five draw in
+a column; the thirty-sixth is `q  ctrl-c`, on the closing line.
+
+That last one needs a group of its own. `binding()` is exhaustive, so `Quit` has
+to come out of it like every other variant, and it cannot come out as `Looking`,
+which is already at twelve of twelve rows. So `Group` has a fifth variant,
+`Closing`, which is not a column: `Group::DRAWN` is the four that are, and the
+row budget test iterates that rather than every variant.
 
 ```
 MOVING                        LOOKING                       CHANGING                      DOING
