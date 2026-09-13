@@ -177,45 +177,25 @@ func main() {
 	// that cap only moves the number. The contract sets no length, and
 	// shep-channel and the other two examples impose none either.
 	lines := bufio.NewReader(conn)
-	for {
-		line, err := lines.ReadString('\n')
-		// ReadString hands back what it read alongside io.EOF when the last
-		// line has no newline, so checking the error first would discard it.
-		// A shepherd killed mid-write ends exactly that way, and the message
-		// most likely to be sitting there is the shutdown.
-		if err != nil && line == "" {
-			if err != io.EOF {
-				fmt.Fprintln(os.Stderr, "go-chatty: could not read from the shepherd:", err)
-			}
-			break
-		}
-		last := err != nil
 
+	// Returns true when the shepherd asked this app to stop.
+	handle := func(line string) bool {
 		var message channel.ShepherdMessage
 		if err := json.Unmarshal([]byte(line), &message); err != nil {
 			fmt.Fprintln(os.Stderr, "go-chatty: could not read a message:", err)
-			if last {
-				break
-			}
-			continue
+			return false
 		}
 
 		if message.Kind == channel.KindShutdown {
 			fmt.Println("go-chatty: the shepherd asked us to stop")
-			return
+			return true
 		}
 		if message.Kind != channel.KindAction {
-			if last {
-				break
-			}
-			continue
+			return false
 		}
 		if message.Name == nil || message.ID == nil {
 			fmt.Fprintln(os.Stderr, "go-chatty: ignoring an action with no name or no id")
-			if last {
-				break
-			}
-			continue
+			return false
 		}
 
 		name := *message.Name
@@ -251,8 +231,22 @@ func main() {
 			Body:   str(body),
 			ID:     message.ID,
 		})
+		return false
+	}
 
-		if last {
+	for {
+		// ReadString hands back what it read alongside io.EOF when the last
+		// line has no newline, so the line is handled before the error is.
+		// A shepherd killed mid-write ends exactly that way, and the message
+		// most likely to be sitting there is the shutdown.
+		line, err := lines.ReadString('\n')
+		if line != "" && handle(line) {
+			return
+		}
+		if err != nil {
+			if err != io.EOF {
+				fmt.Fprintln(os.Stderr, "go-chatty: could not read from the shepherd:", err)
+			}
 			break
 		}
 	}
