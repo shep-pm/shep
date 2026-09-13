@@ -98,7 +98,8 @@
           "default": null,
           "init": {
             "accepts": [
-              "a five field cron pattern, croner's dialect"
+              "five fields: minute hour day month weekday",
+              "a nickname like @daily or @hourly"
             ],
             "blurb": "Restart on a schedule, written as a cron pattern",
             "example": "* * * * *",
@@ -111,6 +112,7 @@
             ],
             "refuses": [
               "a field outside its valid range",
+              "a sixth seconds field, or L, W, # or ?",
               "a pattern croner cannot parse"
             ],
             "suggest": [
@@ -291,7 +293,7 @@
             ],
             "refuses": [
               "a {{secret:...}} token",
-              "the same path as out_file across instances without merge_logs"
+              "one path for every instance, without merge_logs"
             ]
           }
         },
@@ -355,7 +357,8 @@
               }
             ],
             "refuses": [
-              "a name with no group entry"
+              "a name with no group entry",
+              "another group, unless the shepherd runs as root"
             ]
           }
         },
@@ -612,7 +615,7 @@
             ],
             "refuses": [
               "a {{secret:...}} token",
-              "the same path as err_file across instances without merge_logs"
+              "one path for every instance, without merge_logs"
             ]
           }
         },
@@ -760,7 +763,8 @@
               }
             ],
             "refuses": [
-              "a name with no passwd entry"
+              "a name with no passwd entry",
+              "another user, unless the shepherd runs as root"
             ]
           }
         },

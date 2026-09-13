@@ -24,7 +24,7 @@ shep lookout   /home/ada/.shep                                                  
                                     ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                                    
                                     ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                ▌: warned                            
                                     ▐  cwd and err_file take hold when the process starts again.                           ▌                                    
-                                    ▐                                                                                      ▌le across instances without merge_l…
+                                    ▐                                                                                      ▌ance, without merge_logs            
                                     ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌                                    
                                     ▐  L   reload           the replacement starts alongside and takes over. No gap, if the▌                                    
                                     ▐                       app sets SO_REUSEPORT itself.                                  ▌n rule                              
