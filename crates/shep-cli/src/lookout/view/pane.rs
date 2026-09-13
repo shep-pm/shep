@@ -2378,7 +2378,7 @@ mod tests {
     /// own body.
     #[test]
     fn a_narrow_heading_drops_the_sheep_and_keeps_the_question() {
-        for width in [MIN_TERM_WIDTH, 40, 51, 60, 89, BOX_WIDTH, 120, 160] {
+        for width in [MIN_TERM_WIDTH, 40, 51, 60, 69, 70, BOX_WIDTH, 89, 120, 160] {
             let dialog = fixtures::close_dialog_with(2, 1);
             let lines = close_dialog_lines(&dialog, fixtures::plain(), width, dialog.at());
             let heading = text_of(&lines)[0].clone();
@@ -2394,6 +2394,11 @@ mod tests {
             // 43 for the question, 2 for the gutter, 1 for the gap and 24
             // for `web is online, pid 71578`: the clause draws from 70
             // columns up and is gone below that, never truncated.
+            //
+            // 69 and 70 are in the list above for that sentence alone. The
+            // widths either side of them ran 60 and then 86, so the edge
+            // this line names sat in a gap the loop stepped over, and the
+            // assertion encoded the rule without ever exercising it.
             let named = heading.contains("web is online, pid 71578");
             assert_eq!(named, width >= 70, "{width}: {heading:?}");
         }
