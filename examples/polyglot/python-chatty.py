@@ -68,6 +68,15 @@ def open_channel():
     return None
 
 
+def wire(message):
+    """Encodes one message the way the other three examples encode it.
+
+    serde_json, encoding/json and JSON.stringify all emit compact JSON and
+    leave non-ASCII alone. json.dumps does neither by default.
+    """
+    return json.dumps(message, ensure_ascii=False, separators=(",", ":"))
+
+
 # Set once the shepherd stops accepting writes, so the first failure is
 # reported and the rest stay quiet.
 _shepherd_gone = False
@@ -101,7 +110,10 @@ def send(channel, message):
     """
     global _shepherd_gone
     try:
-        channel.write(json.dumps(message).encode() + b"\n")
+        # Not bare json.dumps: its defaults put a space after every colon and
+        # comma and escape non-ASCII, so Python's line differed from the three
+        # other examples byte for byte while decoding to the same message.
+        channel.write(wire(message).encode() + b"\n")
     except OSError as err:
         if not _shepherd_gone:
             _shepherd_gone = True
@@ -173,10 +185,9 @@ def reply_to(action, params):
         level, rest = parsed
         if not rest:
             return f"log level is now {level}"
-        # json.dumps, not !r: it quotes and escapes the way the Rust, Go and
-        # JavaScript examples do. ensure_ascii=False because the other three
-        # leave non-ASCII alone, and all four have to reply the same bytes.
-        return f"log level is now {level}, ignored {json.dumps(rest, ensure_ascii=False)}"
+        # wire(), not !r: it quotes and escapes the way the Rust, Go and
+        # JavaScript examples do, so all four reply with the same bytes.
+        return f"log level is now {level}, ignored {wire(rest)}"
     return None
 
 

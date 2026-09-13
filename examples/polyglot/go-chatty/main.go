@@ -34,6 +34,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -171,13 +172,22 @@ func main() {
 	// this app's own writes. A metrics ticker is the usual way to end up
 	// with two, so this app emits samples from the loop instead.
 	samples := 0
-	lines := bufio.NewScanner(conn)
-	// The 64KB default would end the loop on a long params, where none of
-	// the other three examples has a limit at all.
-	lines.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-	for lines.Scan() {
+	// A Reader, not a Scanner. Scan caps a line at 64KB by default and then
+	// ends the loop, which looks exactly like a clean end of stream; raising
+	// that cap only moves the number. The contract sets no length, and
+	// shep-channel and the other two examples impose none either.
+	lines := bufio.NewReader(conn)
+	for {
+		line, err := lines.ReadString('\n')
+		if err != nil {
+			if err != io.EOF {
+				fmt.Fprintln(os.Stderr, "go-chatty: could not read from the shepherd:", err)
+			}
+			break
+		}
+
 		var message channel.ShepherdMessage
-		if err := json.Unmarshal(lines.Bytes(), &message); err != nil {
+		if err := json.Unmarshal([]byte(line), &message); err != nil {
 			fmt.Fprintln(os.Stderr, "go-chatty: could not read a message:", err)
 			continue
 		}
@@ -223,12 +233,6 @@ func main() {
 			Body:   str(body),
 			ID:     message.ID,
 		})
-	}
-
-	// Scan stops on a read error and on a line past its buffer, and both
-	// look like a clean end without this.
-	if err := lines.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, "go-chatty: the channel ended badly:", err)
 	}
 
 	// The shepherd going away is not a reason to stop. shep-channel leaves a
