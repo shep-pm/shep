@@ -820,6 +820,66 @@ gives up on it, and the exit code or signal when its process stops.
 `shep bleats <name> --follow` sees the same lines live, marked the same
 way, interleaved with the dog's own output in arrival order.
 
+## When the shepherd goes away
+
+A dog's process outlives the shepherd that spawned it, and that is
+deliberate. `shep daemon reload` execs a successor over the same process:
+the listening socket crosses that exec, every accepted connection dies
+with the old image, and a dog notices only that its connection has ended.
+
+**A dog waits a bounded time for a shepherd to answer again, then exits if
+none does.** The wait is five seconds, the same `DOG_SILENCE_BUDGET` the
+shepherd allows a dog before acting on its silence.
+
+Both halves of that are load-bearing:
+
+- A dog that exits the moment its connection drops restarts once per
+  reload. `restarts` is the column you read to judge whether a dog is
+  healthy, so twenty reloads leave a healthy dog reporting twenty
+  restarts, and it loses whatever per-subject state it was keeping.
+- A dog that waits indefinitely is still running when an unrelated
+  shepherd binds that socket later. It attaches itself to that one,
+  beside that shepherd's own dog of the same kind, and doubles its alerts
+  quietly.
+
+A handover never comes near the budget. Measured over ten `shep daemon
+reload` runs against a three-sheep flock, the socket turned away a full
+connect, handshake and request for 38ms at the shortest and 254ms at the
+longest.
+
+An operator sees the difference in the `EXIT` column: a dog that gave up
+waiting exits `5`, and one a shepherd refused on protocol-version skew
+exits `6` without waiting at all, since the shepherd that refused is the
+party that can fix it.
+
+### Your own dog has to do this too
+
+`ReconnectingClient` reconnects for as long as it is alive, so the bound
+is yours to impose. Two calls do it:
+
+- `link_lost(budget)` resolves once the link has been down for a whole
+  budget without coming back. Its clock runs only while the link is down,
+  and it never resolves while the link is up, so it belongs in a
+  `select!` arm beside whatever your dog does normally. For a dog that
+  touches its client only when something asks it to, like the metrics
+  dog, this is the only thing that will ever tell it.
+- `connected_within(budget)` waits for the link to come back. Use it when
+  you have something to re-arm.
+
+A subscription belongs to one connection generation, so it does not
+survive a handover and nothing re-arms it for you. That is on purpose: a
+stream that quietly papered over the gap would be worse than one that
+ends, because you would have no way to know there was a gap. Subscribe
+again, and treat the gap as a gap. Whatever the bus carried while you had
+no subscription is gone, and the only way to learn what changed is to ask
+the shepherd.
+
+`connected_within` returning `Ok` tells you where to try, not that it will
+work. The supervisor learns a connection died a moment after the socket
+does, so its answer can still read as connected for that moment, and a
+live connection can drop again immediately. Ask for what you want, and
+come back while your budget lasts.
+
 ## When a dog stops answering
 
 A dog that is running but never handshakes gets one restart from disk and
