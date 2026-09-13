@@ -1755,6 +1755,14 @@ visible_width() strips CSI escape sequences and counts remaining chars; it delib
 
 `docs/writing-plans/plans/2026-08-18-pretty-cli.md:578`
 
+### Table output keeps a message's line breaks; `--format json` collapses them
+
+`emit_error` and `emit_notice` pick a sanitiser by format. JSON gets `terminal_safe::sanitise`, which substitutes a space for every `\n` and collapses runs of whitespace. A table gets `sanitise_multiline`, which spares `\n` alone and leaves the whitespace around it as written, then drops trailing whitespace that `writeln!` would print as a blank line.
+
+**Why:** Several refusals are written as a lead line plus indented remedy lines, and one sanitiser for both formats rendered every one of them as a single run-on line. The cost is a remedy an operator cannot copy. `refuse_version_skew` had already bypassed the emitter to escape the collapse, and hand-rolled its own sanitising to stay safe, which is a shape the next author copies without the second half. Rewriting the messages to read as one line was the alternative: it loses the copyable remedy, and it contradicts `version_skew_instruction`, which was already rendering one line for JSON and two for a table. A kept `\n` can forge a line of output, and that is the whole of what the looser sanitiser gives up: `\r`, `\t`, `\u{1b}`, `\u{9b}`, the bidi overrides and every invisible format character still go, so nothing reaching a terminal through either emitter can move the cursor or rewrite a row already drawn. A string an untrusted host worded is collapsed at the seam that captures it instead, in `fetch.rs` for the `Location` header and TLS peer names, in `dog_index.rs` for every field of a fetched entry, and in `refuse_version_skew` for `daemon_version`.
+
+`crates/shep-cli/src/terminal_safe.rs`, `crates/shep-cli/src/output/mod.rs`
+
 ### The first-run welcome prints to stderr (suppressed under --format json / non-terminal); `shep welcome` itself prints to stdout unconditionally
 
 on_first_run fires as a side effect on whichever command created the home, writing to stderr and skipped entirely when Format::Json or stderr isn't a terminal - but the home is still created either way. `shep welcome` as an explicit verb prints the same text to stdout with no terminal check and answers --format json with a real envelope.
