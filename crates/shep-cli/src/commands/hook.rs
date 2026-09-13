@@ -17,6 +17,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use super::dogs::dog_env;
+use crate::terminal_safe::sanitise;
 
 /// The whole argv a dog's hook is spawned with.
 pub(crate) const ON_REMOVE: &str = "on-remove";
@@ -102,11 +103,9 @@ impl fmt::Display for HookOutcome {
 /// this is a stranger's binary, and the operator's own environment is not
 /// its business.
 ///
-/// Both pipes are read concurrently. `Command::output` is what does it: a
-/// dog that writes more than one pipe buffer to stderr while a sequential
-/// reader is parked on stdout blocks on its own `write` forever, which
-/// arrives as [`HookOutcome::TimedOut`] and loses the output the hook was
-/// run to read.
+/// Both pipes are read concurrently, and whatever the dog printed is
+/// stripped of terminal escapes before it is kept. A dog still running at
+/// `budget` has its whole process group killed.
 pub(crate) async fn run_on_remove(
     binary: &Path,
     home: &Path,
@@ -121,26 +120,52 @@ pub(crate) async fn run_on_remove(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        // The timeout below drops this future, and the drop is the only
-        // thing that stops the child: without this it outlives the verb.
+        // Backstop for the paths below that do not reach the kill ladder,
+        // a panic between here and the timeout among them.
         .kill_on_drop(true);
-    // A group of the hook's own, so the kill reaches what it forked rather
+    // A group of the hook's own, so the sweep below has one to name rather
     // than the leader alone. Mirrors `dogs::ask`.
     #[cfg(unix)]
     command.process_group(0);
 
-    match tokio::time::timeout(budget, command.output()).await {
-        Err(_elapsed) => HookOutcome::TimedOut { after: budget },
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            return HookOutcome::NotSpawned {
+                reason: err.to_string(),
+            };
+        }
+    };
+    // Read while the handle is alive: after the ladder below there is no
+    // pid left to ask for, and this is the group the sweep names.
+    let leader = child.id();
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    // Bound the whole run, and let the borrow of `child` end at the
+    // semicolon so the timeout arm can still reach it.
+    let finished = tokio::time::timeout(budget, drain(&mut child, stdout, stderr)).await;
+
+    match finished {
+        Err(_elapsed) => {
+            // The group first, and while it still has members: a sweep
+            // after the leader is reaped names a pid the OS may have
+            // handed to somebody else. `dogs::kill_probe_tree` orders it
+            // the same way for the same reason.
+            kill_group(leader);
+            let _ = child.kill().await;
+            HookOutcome::TimedOut { after: budget }
+        }
         Ok(Err(err)) => HookOutcome::NotSpawned {
             reason: err.to_string(),
         },
-        Ok(Ok(finished)) => {
-            let output = format!("{}{}", capped(&finished.stdout), capped(&finished.stderr));
-            if finished.status.success() {
+        Ok(Ok((out, err, status))) => {
+            let output = format!("{}{}", capped(&out), capped(&err));
+            if status.success() {
                 HookOutcome::Ran { output }
             } else {
                 HookOutcome::Refused {
-                    code: finished.status.code(),
+                    code: status.code(),
                     output,
                 }
             }
@@ -148,15 +173,92 @@ pub(crate) async fn run_on_remove(
     }
 }
 
-/// The first [`HOOK_OUTPUT_LIMIT`] bytes of `raw`, read as UTF-8.
+/// Reads both pipes to end and then reaps `child`.
 ///
-/// The head rather than the tail: a dog that explains itself does so before
-/// it spews. Cutting a multi-byte character in half yields a replacement
-/// character rather than dropping the whole stream, which
-/// `read_to_string`'s all-or-nothing would.
+/// The two reads run together, which is the whole point: a dog that writes
+/// more than one pipe buffer to stderr while a sequential reader is parked
+/// on stdout blocks in its own `write` until the budget kills it, losing
+/// everything it wrote.
+///
+/// # Errors
+/// A read failed, or the wait did.
+async fn drain(
+    child: &mut tokio::process::Child,
+    stdout: Option<tokio::process::ChildStdout>,
+    stderr: Option<tokio::process::ChildStderr>,
+) -> std::io::Result<(Vec<u8>, Vec<u8>, std::process::ExitStatus)> {
+    let (out, err) = tokio::try_join!(read_head(stdout), read_head(stderr))?;
+    let status = child.wait().await?;
+    Ok((out, err, status))
+}
+
+/// Drains `src` to end, keeping only its first [`HOOK_OUTPUT_LIMIT`] bytes.
+///
+/// To end, not to the cap: a reader that stopped at the cap would leave a
+/// still-writing dog blocked on a full pipe, which is the deadlock this
+/// module exists to avoid. Reading on and discarding costs nothing and
+/// holds the kept bytes at a bound whatever the dog does.
+///
+/// `None` is a pipe that was never opened, which is no output.
+///
+/// # Errors
+/// The underlying read failed.
+async fn read_head<R: tokio::io::AsyncRead + Unpin>(src: Option<R>) -> std::io::Result<Vec<u8>> {
+    use tokio::io::AsyncReadExt as _;
+
+    let Some(mut src) = src else {
+        return Ok(Vec::new());
+    };
+    let mut kept = Vec::new();
+    let mut chunk = [0u8; 8 * 1024];
+    loop {
+        let read = src.read(&mut chunk).await?;
+        if read == 0 {
+            return Ok(kept);
+        }
+        let room = HOOK_OUTPUT_LIMIT.saturating_sub(kept.len());
+        kept.extend_from_slice(&chunk[..read.min(room)]);
+    }
+}
+
+/// SIGKILLs the process group `leader` leads, which `kill_on_drop` does
+/// not: that reaches the leader alone, so a dog that forked leaves the
+/// fork behind. `dogs::kill_probe_tree` sweeps the adopt probe's group for
+/// the same reason and on the same terms.
+///
+/// A descendant that calls `setsid` leaves the group and survives either
+/// way. Failure is never reported: an empty group answers `ESRCH` and the
+/// outcome is the same.
+#[cfg(unix)]
+fn kill_group(leader: Option<u32>) {
+    // POSIX holds a group id out of the pool while the group has members,
+    // so this cannot name a stranger's. `-0` is this process's own group,
+    // so zero must not pass.
+    if let Some(pid) = leader.and_then(|id| i32::try_from(id).ok())
+        && pid > 0
+    {
+        let group = nix::unistd::Pid::from_raw(-pid);
+        let _ = nix::sys::signal::kill(group, nix::sys::signal::Signal::SIGKILL);
+    }
+}
+
+/// Windows has no process group to sweep; `kill_on_drop` is the whole of it.
+#[cfg(windows)]
+fn kill_group(_leader: Option<u32>) {}
+
+/// `raw` as UTF-8, stripped of anything that could drive a terminal.
+///
+/// [`read_head`] has already bounded the length. Cutting a multi-byte
+/// character in half yields a replacement character rather than dropping
+/// the whole stream, which `read_to_string`'s all-or-nothing would.
+///
+/// Sanitised here rather than at whatever prints it, on the same terms as
+/// `dog_index` and `fetch`: the bytes are a third party's, and a caller
+/// that forgets is how an escape sequence reaches an operator's terminal.
+/// [`sanitise`] collapses runs of whitespace, so the output arrives as one
+/// line.
 fn capped(raw: &[u8]) -> String {
-    let end = raw.len().min(HOOK_OUTPUT_LIMIT);
-    String::from_utf8_lossy(&raw[..end]).into_owned()
+    sanitise(&String::from_utf8_lossy(raw)).0
 }
 
 // `/bin/sh` fixtures, and a process group the kill can reach.
@@ -317,6 +419,57 @@ mod tests {
         assert!(
             started.elapsed() < BOUND,
             "the budget, not the test's own bound, is what ended it"
+        );
+    }
+
+    /// fails if the kill at the budget reaches the dog and not what it
+    /// forked. `kill_on_drop` signals the leader alone, so a dog that
+    /// backgrounded any work leaves it running with nobody left to reap it.
+    ///
+    /// The grandchild writes its file after the budget has already expired,
+    /// so its absence is the sweep and not a race with it.
+    #[tokio::test]
+    async fn a_fork_the_dog_left_behind_is_swept_with_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dog(
+            dir.path(),
+            "forking",
+            "( sleep 4; : > \"$SHEP_HOME/grandchild\" ) &\n\
+             sleep 600",
+        );
+        let survivor = dir.path().join("grandchild");
+
+        let outcome = run(&binary, dir.path()).await;
+        assert_eq!(outcome, HookOutcome::TimedOut { after: TEST_BUDGET });
+
+        // Past the grandchild's own 4s, so a survivor has had its chance.
+        tokio::time::sleep(Duration::from_secs(4)).await;
+        assert!(
+            !survivor.exists(),
+            "a fork outliving the dog kept running after the budget killed it"
+        );
+    }
+
+    /// fails if a dog's output reaches an outcome carrying escape
+    /// sequences. Everything else shep prints from a third party goes
+    /// through the same sanitiser, and a hook's output is a third party's.
+    #[tokio::test]
+    async fn a_dogs_output_cannot_drive_the_terminal() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dog(dir.path(), "escaping", "printf 'clean\\033[2Jgone'");
+
+        let outcome = run(&binary, dir.path()).await;
+
+        let HookOutcome::Ran { output } = &outcome else {
+            panic!("expected a clean run, got {outcome:?}");
+        };
+        assert!(
+            !output.contains('\u{1b}'),
+            "the escape must be stripped: {output:?}"
+        );
+        assert!(
+            output.contains("clean") && output.contains("[2Jgone"),
+            "and its printable tail must survive as inert text: {output:?}"
         );
     }
 
