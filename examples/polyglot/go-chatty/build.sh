@@ -21,4 +21,4 @@ elif ! diff -u "$canonical" channel/wire.go; then
   exit 1
 fi
 go build -o go-chatty .
-echo "built polyglot/go-chatty/go-chatty"
+echo "built polyglot/go-chatty/go-chatty, the path this app's Flockfile entry names"

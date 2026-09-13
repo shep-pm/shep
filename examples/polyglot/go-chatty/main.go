@@ -179,16 +179,24 @@ func main() {
 	lines := bufio.NewReader(conn)
 	for {
 		line, err := lines.ReadString('\n')
-		if err != nil {
+		// ReadString hands back what it read alongside io.EOF when the last
+		// line has no newline, so checking the error first would discard it.
+		// A shepherd killed mid-write ends exactly that way, and the message
+		// most likely to be sitting there is the shutdown.
+		if err != nil && line == "" {
 			if err != io.EOF {
 				fmt.Fprintln(os.Stderr, "go-chatty: could not read from the shepherd:", err)
 			}
 			break
 		}
+		last := err != nil
 
 		var message channel.ShepherdMessage
 		if err := json.Unmarshal([]byte(line), &message); err != nil {
 			fmt.Fprintln(os.Stderr, "go-chatty: could not read a message:", err)
+			if last {
+				break
+			}
 			continue
 		}
 
@@ -197,10 +205,16 @@ func main() {
 			return
 		}
 		if message.Kind != channel.KindAction {
+			if last {
+				break
+			}
 			continue
 		}
 		if message.Name == nil || message.ID == nil {
 			fmt.Fprintln(os.Stderr, "go-chatty: ignoring an action with no name or no id")
+			if last {
+				break
+			}
 			continue
 		}
 
@@ -237,6 +251,10 @@ func main() {
 			Body:   str(body),
 			ID:     message.ID,
 		})
+
+		if last {
+			break
+		}
 	}
 
 	// The shepherd going away is not a reason to stop. shep-channel leaves a

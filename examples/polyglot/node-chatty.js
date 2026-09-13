@@ -233,6 +233,22 @@ channel.on("data", (chunk) => {
 // Rust app running for the same reason: a channel is something an app has,
 // not what it is for, and a shepherd can be replaced under it. The timer
 // is what keeps this event loop alive once the socket is its only work.
+// 'end', not 'close': it fires as soon as the shepherd stops sending, while
+// 'close' waits for this side to finish too and would hold a reply that the
+// tail below still owes. Whatever is left in pending had no newline, which
+// is how a shepherd killed mid-write ends, and the message most likely
+// sitting there is the shutdown.
+channel.on("end", () => {
+  const tail = pending.trim();
+  pending = "";
+  if (tail !== "") {
+    try {
+      handle(JSON.parse(tail));
+    } catch (err) {
+      console.error(`node-chatty: could not read the last message: ${err.message}`);
+    }
+  }
+});
 channel.on("close", () => {
   console.log("node-chatty: the shepherd went away; still running");
   setInterval(() => {}, 1 << 30);
