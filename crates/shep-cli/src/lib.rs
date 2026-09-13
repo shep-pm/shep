@@ -539,14 +539,27 @@ impl core::fmt::Display for HomeRefusal {
                 f,
                 "no flock at {path}\n  \
                  did you mean to drop --home? the default is ~/.shep\n  \
-                 to set up a flock there deliberately:  mkdir -p {path}",
+                 to set up a flock there deliberately: mkdir -p {quoted}",
                 path = path.display(),
+                quoted = shell_quoted(path),
             ),
             Self::Io { path, source } => {
                 write!(f, "could not create {}: {source}", path.display())
             }
         }
     }
+}
+
+/// `path` as one word a POSIX shell will not split, for a hint an operator
+/// copies straight into one.
+///
+/// Unquoted, `--home "/tmp/my shep"` rendered `mkdir -p /tmp/my shep`, which
+/// creates two directories, reports no error, and leaves the operator with
+/// the empty invisible flock this refusal exists to prevent. Single quotes
+/// rather than backslashes because a path is one word and reads as one; an
+/// embedded `'` closes the quoting around an escaped one and reopens it.
+fn shell_quoted(path: &Path) -> String {
+    format!("'{}'", path.display().to_string().replace('\'', r"'\''"))
 }
 
 impl core::error::Error for HomeRefusal {
@@ -1625,6 +1638,34 @@ async fn run_daemon_command(fmt: Format, global: &GlobalArgs, args: &DaemonArgs)
 
 #[cfg(test)]
 mod tests {
+    /// fails if the copyable remedy stops being one shell word. A path with
+    /// a space rendered `mkdir -p /tmp/my shep`, which creates two
+    /// directories and reports no error, leaving exactly the empty
+    /// invisible flock this refusal exists to prevent.
+    #[test]
+    fn the_mkdir_hint_survives_a_path_a_shell_would_split() {
+        let refusal = HomeRefusal::Missing(PathBuf::from("/tmp/my shep home"));
+        let text = refusal.to_string();
+        assert!(
+            text.contains("mkdir -p '/tmp/my shep home'"),
+            "the remedy must name one word: {text}"
+        );
+        // The line above it names the path as prose, and is not a command.
+        assert!(text.contains("no flock at /tmp/my shep home"), "{text}");
+    }
+
+    /// fails if an apostrophe in a path breaks out of the quoting and turns
+    /// the rest of the hint into shell the operator did not mean to run.
+    #[test]
+    fn an_apostrophe_in_a_path_cannot_escape_the_mkdir_hint() {
+        let refusal = HomeRefusal::Missing(PathBuf::from("/tmp/rin's flock"));
+        let text = refusal.to_string();
+        assert!(
+            text.contains(r"mkdir -p '/tmp/rin'\''s flock'"),
+            "an embedded quote must close and reopen: {text}"
+        );
+    }
+
     use super::*;
 
     /// A [`ShepPaths`] rooted at `root`, so the rule can be exercised without
