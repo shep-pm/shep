@@ -190,6 +190,7 @@ fn closing_lines(all_rows: &[Binding], palette: Palette, interior: u16) -> [Line
 
 /// The overlay's rows, in order: the heading, [`ENTRY_ROWS`] entry rows, a
 /// blank, the gate line, and the two closing lines.
+#[must_use]
 pub(super) fn lines(app: &App, interior: u16) -> Vec<Line<'static>> {
     let palette = app.palette();
     let all_rows = rows();
