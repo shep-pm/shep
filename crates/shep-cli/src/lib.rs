@@ -540,12 +540,15 @@ impl core::fmt::Display for HomeRefusal {
                 "no flock at {path}\n  \
                  did you mean to drop --home? the default is ~/.shep\n  \
                  to set up a flock there deliberately: mkdir -p {quoted}",
-                path = path.display(),
+                path = one_line(path),
                 quoted = shell_quoted(path),
             ),
-            Self::Io { path, source } => {
-                write!(f, "could not create {}: {source}", path.display())
-            }
+            Self::Io { path, source } => write!(
+                f,
+                "could not create {path}: {source}",
+                path = one_line(path),
+                source = crate::terminal_safe::sanitise(&source.to_string()).0,
+            ),
         }
     }
 }
@@ -559,7 +562,18 @@ impl core::fmt::Display for HomeRefusal {
 /// rather than backslashes because a path is one word and reads as one; an
 /// embedded `'` closes the quoting around an escaped one and reopens it.
 fn shell_quoted(path: &Path) -> String {
-    format!("'{}'", path.display().to_string().replace('\'', r"'\''"))
+    format!("'{}'", one_line(path).replace('\'', r"'\''"))
+}
+
+/// `path` as a single line, for composing into prose whose line breaks a
+/// table keeps.
+///
+/// A `--home` carrying a `\n` otherwise writes a line of its own choosing
+/// under `error[usage]:`, which a reader takes for shep's. The layout is
+/// shep's and stays multi-line; every value placed into it is collapsed
+/// here, the way `refuse_version_skew` collapses `daemon_version`.
+fn one_line(path: &Path) -> String {
+    crate::terminal_safe::sanitise(&path.display().to_string()).0
 }
 
 impl core::error::Error for HomeRefusal {
@@ -1207,10 +1221,10 @@ pub(crate) fn write_relative_refusal(
         "{knob} must be an absolute path, not {given}\n  \
          a relative home is read against whatever directory shep runs in, so the flock it \
          names is reachable from that one directory and nowhere else",
-        given = given.display(),
+        given = one_line(given),
     )?;
     match absolute {
-        Some(absolute) => write!(f, "\n  did you mean: {}", absolute.display()),
+        Some(absolute) => write!(f, "\n  did you mean: {}", one_line(absolute)),
         None => Ok(()),
     }
 }
@@ -1646,6 +1660,65 @@ mod tests {
         );
         // The line above it names the path as prose, and is not a command.
         assert!(text.contains("no flock at /tmp/my shep home"), "{text}");
+    }
+
+    /// fails if a path can add a line to a refusal. The table emitter keeps
+    /// shep's own line breaks, so a `\n` inside an interpolated value would
+    /// write a line under `error[usage]:` that reads as shep's own.
+    #[test]
+    fn a_newline_in_a_missing_home_cannot_forge_a_line() {
+        let hostile = PathBuf::from("/tmp/forge-a\nnotice[ok]: your flock is fine");
+        let text = HomeRefusal::Missing(hostile).to_string();
+        assert_eq!(
+            text.lines().count(),
+            3,
+            "the refusal has three lines of its own: {text:?}"
+        );
+        assert!(
+            !text.lines().any(|line| line.starts_with("notice[")),
+            "a line was forged: {text:?}"
+        );
+        assert!(
+            text.starts_with("no flock at /tmp/forge-a notice[ok]: your flock is fine\n"),
+            "the newline must become a space, not vanish: {text:?}"
+        );
+    }
+
+    /// fails if the relative-home refusal takes a line from its path. Same
+    /// defect as the missing-home one, two variants over, and the reason to
+    /// check it separately is that it interpolates twice.
+    #[test]
+    fn a_newline_in_a_relative_home_cannot_forge_a_line() {
+        let refusal = HomeRefusal::Relative {
+            knob: "--home/$SHEP_HOME",
+            given: PathBuf::from("forge-b\nerror[internal]: shepherd compromised"),
+            absolute: Some(PathBuf::from(
+                "/w/forge-b\nerror[internal]: shepherd compromised",
+            )),
+        };
+        let text = refusal.to_string();
+        assert_eq!(text.lines().count(), 3, "{text:?}");
+        assert!(
+            !text.lines().any(|line| line.starts_with("error[")),
+            "a line was forged: {text:?}"
+        );
+    }
+
+    /// fails if the io refusal lets either half add a line. Its `source` is
+    /// written by the OS rather than by an operator, and is collapsed for
+    /// the same reason: the layout is shep's and the values are not.
+    #[test]
+    fn neither_half_of_an_io_refusal_can_forge_a_line() {
+        let refusal = HomeRefusal::Io {
+            path: PathBuf::from("/tmp/forge-c\nnotice[ok]: created"),
+            source: std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "denied\nnotice[ok]: retried and it worked",
+            ),
+        };
+        let text = refusal.to_string();
+        assert_eq!(text.lines().count(), 1, "{text:?}");
+        assert!(!text.contains('\n'), "{text:?}");
     }
 
     /// fails if an apostrophe in a path breaks out of the quoting and turns
