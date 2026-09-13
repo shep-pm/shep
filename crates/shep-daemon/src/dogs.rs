@@ -302,7 +302,7 @@ pub fn set_dog_section(path: &Path, name: &str, section: &str) -> Result<(), Dog
 
     // Held across the read, the splice and the rename, and dropped on the
     // way out. Two writers that read before either wrote would lose one of
-    // the two sections whichever way the renames raced; `forget_dog_section`
+    // the two sections whichever way the renames raced; the boot migration
     // takes the same lock on the same path for the same reason. This
     // function takes no other lock, so it can never be the half of a
     // deadlock that holds `dogs.toml` and waits on `shep.toml`.

@@ -648,13 +648,13 @@ ProcessEntry gains dog: Option<DogSource>; ProcessInfo carries it onto the wire,
 
 `docs/writing-plans/plans/2026-08-12-shep-phase9-dogs.md:95`
 
-### A reload's own deadline is exposed per-instance on ProcessInfo, not as a sibling field on Response::Reloading - *unverified* - **superseded**
+### A reload's own deadline is exposed per-instance on ProcessInfo, not as a sibling field on Response::Reloading - **superseded in part**
 
 An external ledger recorded the maintainer's decision as "the reload deadline rides the reload response, as an additive field, no PROTOCOL_VERSION bump needed" - re-deriving from the actual wire shape found that premise WRONG and switched the design to a new ProcessInfo::reload_deadline_ms: Option<u64> field instead, still additive, still version 1.
 
 **Why:** Response::Reloading(Vec<ProcessInfo>) is a tuple variant under #[serde(tag="kind", content="data")]; giving it a sibling field would turn `data` from a JSON array into an object, which shep's own documented wire-evolution rule classifies as a retype requiring a PROTOCOL_VERSION bump - and since the handshake compares versions for strict equality, that would stop every published client talking to every published daemon over one advisory number. Putting the deadline on ProcessInfo instead is strictly better, not merely a workaround: it's computed per-replacement-instance from that instance's own registered listen_timeout+graceful_timeout+slack (exactly what arm_reload_deadline already computes internally), so it hands a dog the real per-instance number rather than one it would otherwise have to infer from a possibly-stale Flockfile copy, and it closes the instance-counting gap too since one field appears per ProcessInfo already returned.
 
-`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:1261 (NOT yet shipped - no reload_deadline_ms field exists on ProcessInfo in the current tree)`. Replaced by: "The handshake takes a floor, not a strict match" below, for the "since the handshake compares versions for strict equality" clause in the Why. Everything else about this entry, the retype-forces-a-bump reasoning and the choice to put the deadline on ProcessInfo, still holds.
+`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:1261`. Shipped 2026-09-13 as `ProcessInfo::reload_deadline_ms`, `Option<u64>` under `skip_serializing_if`, so the key is absent rather than null and neither PROTOCOL_VERSION nor SCHEMA_VERSION moves. The daemon sets it in `handle_reload` for the instances that reload will try to swap, and nowhere else: a row nothing is queued for carries no number, since one would promise a replacement that is not coming. `supervisor::swap_budget` is the single source the watchdog arms from and the reply reports, so the two cannot disagree. Replaced by: "The handshake takes a floor, not a strict match" below, for the "since the handshake compares versions for strict equality" clause in the Why. Everything else about this entry, the retype-forces-a-bump reasoning and the choice to put the deadline on ProcessInfo, still holds.
 
 ### A running dog does not see a config change until disable+enable
 
@@ -664,13 +664,13 @@ A dog reads its [dog.<name>] section exactly once, at connect time; there is no 
 
 `docs/writing-plans/plans/2026-08-12-shep-phase9-dogs.md:106`
 
-### A supervised dog's on-remove hook uses tokio::process with concurrent stdout/stderr draining, not std::process + a poll loop - *unverified*
+### A supervised dog's on-remove hook uses tokio::process with concurrent stdout/stderr draining, not std::process + a poll loop
 
 The planned hook runner spawns a dog binary with `on-remove` as its sole argv and awaits it under a timeout via tokio::process::Command::output(), rather than following vet_binary's existing std::process + try_wait poll pattern.
 
 **Why:** vet_binary can get away with std::process because it nulls all three stdio handles and never reads a byte, so it can't deadlock; the hook runner DOES read the dog's output, and a double that returns canned output can't reveal that a real child writing more than one pipe buffer with no concurrent reader would simply hang forever until killed at the budget, silently losing its own output. tokio::process::Command::output() under a timeout drains both pipes concurrently, which is the actual problem being solved; doing the equivalent with std::process would need two reader threads or a temp file. A dog refusing the hook's unknown argument (the ordinary case, since every dog that exists today predates this hook and shep-log-rotate is a real example) is deliberately modeled as HookOutcome::Refused, not a failure.
 
-`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:334 (NOT yet shipped - crates/shep-cli/src/commands/hook.rs does not exist in the current tree)`
+`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:334`. Shipped 2026-09-13 as `crates/shep-cli/src/commands/hook.rs`, the runner alone: which verb fires the hook was never ruled on, so nothing calls it and the module carries a dead-code allow naming that. Outcomes are `Ran`, `Refused`, `TimedOut` and `NotSpawned`. `a_dog_that_fills_both_pipes_is_drained_rather_than_deadlocked` is the deadlock proof: a fixture writing a quarter of a mebibyte to each pipe, which reports `TimedOut` in four runs out of four when the drain is made sequential. Each stream is capped separately at 4KiB so a chatty stdout cannot push a dog's explanation off stderr; the budget, not the cap, is what bounds how much a spewing dog writes.
 
 ### adopt is a distinct verb from enable --exec, kept only as a hidden alias
 
@@ -816,13 +816,13 @@ When a dog dies, the daemon's own bus watcher (at the edge of the supervisor, no
 
 `docs/writing-plans/plans/2026-08-12-shep-phase9-dogs.md:116`
 
-### rehome should keep [dog.<name>]'s operator-written settings, forgetting only the adoption - *unverified*
+### rehome keeps the dog's operator-written settings, forgetting only the adoption
 
 Currently rehome_dog deletes the dog's config table along with removing it from enabled_dogs/adopted_dogs; the maintainer approved (2026-08-26) changing it to forget only the adoption, leaving the [dog.<name>] table (including comments, since it's edited via toml_edit) untouched - so re-adopting the same dog finds its old configuration waiting rather than a blank table.
 
 **Why:** disable_dog's own doc already makes this exact argument for `disable` ("an operator who disables a dog to restart it must not lose the configuration they wrote for it"); the only reason rehome hadn't followed it is that "forget the dog entirely" was read as covering the operator's own file too. The two verbs would still differ meaningfully: disable leaves the binary path in adopted_dogs (so the next enable brings it straight back); rehome forgets that, so recovery needs a fresh `shep adopt <path>`.
 
-`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:91 (NOT yet shipped - crates/shep-cli/src/commands/shep_toml.rs:383-385 still deletes the [dog.<name>] table as of the current tree)`
+`docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:91`. Shipped 2026-09-13. Two deletions had to go, not the one the entry named: `ShepToml::rehome_dog` struck a `[dog.<name>]` an un-migrated shep.toml still carried, and `commands::dogs::rehome` struck the `[<name>]` in dogs.toml where one lives now, so keeping only the second would have made the outcome depend on whether a daemon had booted since the 2026-09-03 move. `dog_migration::forget_dog_section` went with them, leaving two writers on dogs.toml, the boot migration and dogs::set_dog_section behind the config pane; its two contention tests went too, and nothing now covers ConfigLock under concurrency. A rehome that leaves a section behind says so on stderr, because "forget an adopted dog entirely" no longer describes what the verb does.
 
 ### Restart-loop detection is two independent rule kinds
 

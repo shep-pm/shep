@@ -3271,6 +3271,134 @@ mod tests {
         );
     }
 
+    /// fails if a reload's reply hands every row the same number, or none.
+    /// The deadline is computed per instance from that instance's own
+    /// timeouts, so a dog reading it does not have to infer one from a
+    /// Flockfile copy the shepherd may already have moved past.
+    #[tokio::test(start_paused = true)]
+    async fn a_reloads_reply_carries_each_instances_own_swap_deadline() {
+        let h = harness(vec![ProcScript::never_exits(); 6]);
+        let mut web = AppConfig::minimal("web", "./web");
+        web.listen_timeout = UpDuration::from_millis(4_000);
+        web.graceful_timeout = UpDuration::from_millis(6_000);
+        let mut api = AppConfig::minimal("api", "./api");
+        api.listen_timeout = UpDuration::from_millis(1_000);
+        api.graceful_timeout = UpDuration::from_millis(2_000);
+        for (id, app) in [(1, api), (2, web)] {
+            let started =
+                reply_of(dispatch(envelope(id, Request::Start { apps: vec![app] }), &h.ctx).await);
+            assert!(started.result.is_ok(), "both come up: {started:?}");
+        }
+
+        let reply = reply_of(
+            dispatch(
+                envelope(
+                    3,
+                    Request::Reload {
+                        selector: SelectorSpec::All,
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        let Response::Reloading { accepted, .. } = reply.result.unwrap() else {
+            panic!("expected reloading")
+        };
+
+        // Sorted by name, so `api` is first. Each is its own two timeouts
+        // plus the shepherd's five seconds of slack.
+        let deadlines: Vec<(&str, Option<u64>)> = accepted
+            .iter()
+            .map(|info| (info.name.as_str(), info.reload_deadline_ms))
+            .collect();
+        assert_eq!(
+            deadlines,
+            vec![("api", Some(8_000)), ("web", Some(15_000))],
+            "each row carries the budget its own swap is bounded by"
+        );
+    }
+
+    /// fails if a listing reports a reload deadline. There is no swap
+    /// coming, so a reader waiting one out would wait for nothing.
+    #[tokio::test(start_paused = true)]
+    async fn a_plain_listing_carries_no_reload_deadline() {
+        let h = harness(vec![ProcScript::never_exits()]);
+        let started = reply_of(
+            dispatch(
+                envelope(
+                    1,
+                    Request::Start {
+                        apps: vec![AppConfig::minimal("web", "./web")],
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        assert!(started.result.is_ok(), "web comes up: {started:?}");
+
+        let listed = reply_of(dispatch(envelope(2, Request::ListFlock), &h.ctx).await);
+        let Response::Flock(flock) = listed.result.unwrap() else {
+            panic!("expected flock")
+        };
+        assert_eq!(flock[0].reload_deadline_ms, None);
+    }
+
+    /// fails if an instance a reload will not replace is handed a deadline
+    /// anyway. A stopped sheep is matched by the selector and reported in
+    /// the acceptance, but no swap is queued for it, so a number beside it
+    /// promises a replacement that is never coming.
+    #[tokio::test(start_paused = true)]
+    async fn an_instance_a_reload_skips_carries_no_deadline() {
+        let h = harness(vec![ProcScript::never_exits(); 2]);
+        let mut web = AppConfig::minimal("web", "./web");
+        web.listen_timeout = UpDuration::from_millis(4_000);
+        web.graceful_timeout = UpDuration::from_millis(6_000);
+        let started =
+            reply_of(dispatch(envelope(1, Request::Start { apps: vec![web] }), &h.ctx).await);
+        assert!(started.result.is_ok(), "web comes up: {started:?}");
+        let stopped = reply_of(
+            dispatch(
+                envelope(
+                    2,
+                    Request::Stop {
+                        selector: SelectorSpec::Name("web".to_string()),
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        assert!(stopped.result.is_ok(), "and goes down: {stopped:?}");
+
+        let reply = reply_of(
+            dispatch(
+                envelope(
+                    3,
+                    Request::Reload {
+                        selector: SelectorSpec::Name("web".to_string()),
+                    },
+                ),
+                &h.ctx,
+            )
+            .await,
+        );
+        let Response::Reloading { accepted, .. } = reply.result.unwrap() else {
+            panic!("expected reloading")
+        };
+        assert_eq!(accepted.len(), 1);
+        assert_ne!(
+            accepted[0].status,
+            ProcStatus::Online,
+            "the row is the stopped instance, which is what makes it skippable"
+        );
+        assert_eq!(
+            accepted[0].reload_deadline_ms, None,
+            "no swap is queued for it, so there is no deadline to report"
+        );
+    }
+
     /// fails if the walk's wait follows one hop only: with `web -> mid ->
     /// db` registered and a selector matching the two ends alone, `mid` is
     /// not matched, so a one-hop intersection answers that nothing is
