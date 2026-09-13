@@ -1064,16 +1064,17 @@ mod tests {
 
         // Without these the count above would hold over a pane drawing no
         // lines at all, which is how two of the first measurements of this
-        // looked cheap: a matcher that survives no line is never run. The
-        // span count is the second half: a body row whose match was
-        // highlighted is split into more spans than the stream tag plus one
-        // run of plain text.
-        assert_eq!(
-            drawn.len(),
-            50,
-            "the title, the filter row and 48 body rows"
-        );
-        let body = &drawn[2..];
+        // looked cheap: a matcher that survives no line is never run. Body
+        // rows are picked out by their own text rather than by skipping a
+        // header count, which would quietly review the wrong rows if the
+        // pane ever grew another header. The span count is the second half:
+        // a row whose match was highlighted is split into more spans than
+        // the stream tag plus one run of plain text.
+        let body: Vec<_> = drawn
+            .iter()
+            .filter(|line| render_all(std::slice::from_ref(*line)).contains("@example.com"))
+            .collect();
+        assert_eq!(body.len(), 48, "the feed filled every body row");
         assert!(
             body.iter().all(|line| line.spans.len() > 2),
             "every body row split its hit into its own span"
