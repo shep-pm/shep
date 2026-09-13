@@ -667,7 +667,8 @@ pub fn emit_error(
     code: &str,
     message: &str,
 ) -> io::Result<()> {
-    let code = &crate::terminal_safe::sanitise(code).0;
+    let code = crate::terminal_safe::sanitise(code).0;
+    let code = code.as_str();
     let message = safe_message(fmt, message);
     let message = message.as_str();
     match fmt {
@@ -726,7 +727,8 @@ pub fn emit_notice(
     code: &str,
     message: &str,
 ) -> io::Result<()> {
-    let code = &crate::terminal_safe::sanitise(code).0;
+    let code = crate::terminal_safe::sanitise(code).0;
+    let code = code.as_str();
     let message = safe_message(fmt, message);
     let message = message.as_str();
     match fmt {
