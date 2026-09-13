@@ -1,5 +1,6 @@
-//! One sanitiser for every string an untrusted host can put in front of
-//! an operator: [`sanitise`].
+//! Two sanitisers for text on its way to a terminal: [`sanitise`] for a
+//! string an untrusted host worded, [`sanitise_multiline`] for prose shep
+//! lays out in lines itself.
 //!
 //! Lives here, at a leaf both `crate::fetch` and `dog_index` can reach,
 //! rather than in either: a module cycle is the wrong way to share it.
@@ -19,13 +20,36 @@
 /// `false`: the flag must mean "carried control characters", not "had
 /// two spaces in a row".
 pub fn sanitise(field: &str) -> (String, bool) {
-    if !field.chars().any(is_unprintable) {
+    strip_unprintable(field, false)
+}
+
+/// [`sanitise`] with `\n` kept and whitespace left as written, so a line
+/// break and the two spaces indenting the line after it both survive.
+///
+/// The weaker of the two, and deliberately: a `\n` can forge a line of
+/// output. For text shep wrote and laid out, where a collapsed remedy is
+/// one the operator cannot copy; a string an untrusted host worded goes
+/// through [`sanitise`] at the seam that captures it. Everything that
+/// rewrites a row already drawn or drives the terminal still goes, `\r`,
+/// `\t`, `\u{1b}` and `\u{9b}` among them.
+///
+/// Reports `true` on the same terms [`sanitise`] does, counting a kept
+/// `\n` as nothing removed.
+pub fn sanitise_multiline(field: &str) -> (String, bool) {
+    strip_unprintable(field, true)
+}
+
+/// The body of both sanitisers. `keep_line_breaks` spares `\n` from the
+/// strip, and with it the runs of whitespace that would otherwise collapse.
+fn strip_unprintable(field: &str, keep_line_breaks: bool) -> (String, bool) {
+    let doomed = |ch: char| is_unprintable(ch) && !(keep_line_breaks && ch == '\n');
+    if !field.chars().any(doomed) {
         return (field.to_owned(), false);
     }
     let stripped: String = field
         .chars()
         .filter_map(|ch| {
-            if !is_unprintable(ch) {
+            if !doomed(ch) {
                 Some(ch)
             } else if is_line_or_space_like(ch) {
                 // A line break was separating two words; a plain deletion
@@ -36,6 +60,9 @@ pub fn sanitise(field: &str) -> (String, bool) {
             }
         })
         .collect();
+    if keep_line_breaks {
+        return (stripped, true);
+    }
     let cleaned = stripped.split_whitespace().collect::<Vec<_>>().join(" ");
     (cleaned, true)
 }
@@ -186,6 +213,51 @@ mod tests {
     fn a_stripped_line_break_leaves_a_space_behind() {
         let (clean, changed) = sanitise("line\nbreak");
         assert_eq!(clean, "line break");
+        assert!(changed);
+    }
+
+    /// fails if the multiline sanitiser flattens the layout it exists to
+    /// keep. The indent is load-bearing: a remedy line reads as a remedy
+    /// because it sits under the lead line, not beside it.
+    #[test]
+    fn a_multiline_message_keeps_its_breaks_and_its_indent() {
+        let written = "no flock at /tmp/x\n  did you mean to drop --home?";
+        let (clean, changed) = sanitise_multiline(written);
+        assert_eq!(clean, written);
+        assert!(!changed, "a kept newline is not something removed");
+    }
+
+    /// fails if `\n` bought anything else a passage. Each of these moves the
+    /// cursor or rewrites a row already drawn, which is the property the
+    /// looser sanitiser still has to hold.
+    #[test]
+    fn only_the_line_feed_survives_the_multiline_sanitiser() {
+        let hostile = [
+            ('\r', "a bare CR overwrites the line"),
+            ('\t', "a tab jumps the cursor to a column"),
+            ('\u{b}', "a vertical tab moves down a row"),
+            ('\u{c}', "a form feed clears the page"),
+            ('\u{1b}', "the escape introducer"),
+            ('\u{9b}', "the single-character CSI introducer"),
+            ('\u{85}', "next line"),
+            ('\u{2028}', "line separator"),
+            ('\u{2029}', "paragraph separator"),
+            ('\u{202e}', "right-to-left override"),
+        ];
+        for (ch, why) in hostile {
+            let (clean, changed) = sanitise_multiline(&format!("safe{ch}text"));
+            assert!(changed, "{why}: should have been reported as sanitised");
+            assert!(!clean.contains(ch), "{why}: survived in {clean:?}");
+        }
+    }
+
+    /// fails if a hostile escape rides into a table on the back of the
+    /// newline exemption. `\u{1b}[2J` is still an escape when it follows
+    /// one.
+    #[test]
+    fn an_escape_after_a_kept_newline_is_still_stripped() {
+        let (clean, changed) = sanitise_multiline("lead\n  \u{1b}[2Jremedy");
+        assert_eq!(clean, "lead\n  [2Jremedy");
         assert!(changed);
     }
 
