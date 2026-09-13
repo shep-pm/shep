@@ -215,6 +215,13 @@ ID  NAME    OUTCOME  DETAIL
 
 $ shep trigger chatty ping --format json
 {"schema_version":1,"command":"trigger","data":[{"id":5,"name":"chatty","outcome":{"kind":"replied","body":"handled ping params=None"}}]}`}</CodeBlock>
+    <p class="fine">
+      That sheep is the sample above, which answers every action the same
+      way. The repository ships a different app under the same name,{" "}
+      <code>examples/src/bin/chatty.rs</code>, which knows three actions and
+      refuses the rest by name. Run <code>reload-config</code> against that
+      one and it replies <code>unknown action: reload-config</code>.
+    </p>
 
     <h2>Custom actions: the part most worth reading closely</h2>
     <VerbSignature verb="trigger" usage="shep trigger <selector> <action> [params]">
