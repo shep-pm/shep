@@ -624,8 +624,8 @@ mod tests {
     ///
     /// Eight cases want exactly this and differ only in what they assert
     /// afterwards. Three do not use it: the refusal and spent-budget cases
-    /// assert on the error this unwraps, and the retry-ladder case names
-    /// the generation it expected to be answered by.
+    /// assert on the error this unwraps, and the retries-past-a-successor
+    /// case names the generation it expected to be answered by.
     async fn reconnect_ok(client: &mut Client) -> Reconnected {
         tokio::time::timeout(BOUND, client.reconnect())
             .await
