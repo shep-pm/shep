@@ -12119,6 +12119,11 @@ mod tests {
             .typing()
             .expect("the editor reopens");
         assert_eq!(buffer, "500ms");
+        assert_eq!(
+            app.mode(),
+            InputMode::Text,
+            "a reopened editor owns the keyboard, or the text is unreachable"
+        );
         assert!(
             app.notice()
                 .unwrap()
