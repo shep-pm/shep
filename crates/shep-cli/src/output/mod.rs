@@ -607,24 +607,19 @@ struct ErrorBody<'a> {
 /// `message` with everything that could drive a terminal stripped, in the
 /// shape `fmt` renders.
 ///
-/// The one seam every emitted message passes through, which is why the
-/// guarantee lives here rather than at each caller. JSON collapses to a
-/// single line, because `jq -r .error.message` unescapes a control byte
-/// straight back onto a terminal and a consumer has no use for layout. A
-/// table keeps the line breaks shep wrote, so a remedy stays on a line of
-/// its own; a fragment an untrusted host worded is collapsed at the seam
-/// that captured it, ahead of this.
-///
-/// Either way the result carries no trailing whitespace, which the writing
-/// `writeln!` would turn into a blank line.
+/// The seam every emitted message passes through, which is why the
+/// guarantee lives here rather than at each caller. JSON collapses to one
+/// line: `jq -r .error.message` unescapes a control byte straight back
+/// onto a terminal. A table keeps the line breaks shep wrote, and loses
+/// its trailing whitespace, which the caller's `writeln!` would otherwise
+/// print as a blank line.
 fn safe_message(fmt: Format, message: &str) -> String {
     match fmt {
         Format::Json => crate::terminal_safe::sanitise(message).0,
-        Format::Table => {
-            let mut clean = crate::terminal_safe::sanitise_multiline(message).0;
-            clean.truncate(clean.trim_end().len());
-            clean
-        }
+        Format::Table => crate::terminal_safe::sanitise_multiline(message)
+            .0
+            .trim_end()
+            .to_owned(),
     }
 }
 

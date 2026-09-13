@@ -1472,8 +1472,7 @@ pub(crate) fn refuse_version_skew(
             let instruction = version_skew_instruction(Format::Json);
             streams.fail(code, &format!("{summary}. {cause} {instruction}"));
         }
-        // Three paragraphs, because the remedy has to sit on a line of its
-        // own to be copied.
+        // The remedy has to sit on a line of its own to be copied.
         Format::Table => {
             let cause = VERSION_SKEW_CAUSE.join("\n");
             // `daemon_version` arrives over the socket, and the table
