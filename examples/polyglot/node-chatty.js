@@ -122,9 +122,24 @@ channel.on("data", (chunk) => {
   while ((cut = pending.indexOf("\n")) !== -1) {
     const line = pending.slice(0, cut);
     pending = pending.slice(cut + 1);
-    if (line.trim() !== "") {
+    if (line.trim() === "") {
+      continue;
+    }
+    try {
       handle(JSON.parse(line));
+    } catch (err) {
+      // The shepherd does not write these, so a frame that will not parse
+      // means a wire this app has never seen. Say so and read the next one;
+      // dying here would also drop the action after it.
+      console.error(`node-chatty: could not read a message: ${err.message}`);
     }
   }
 });
-channel.on("close", () => process.exit(0));
+// The shepherd going away is not a reason to stop. shep-channel leaves a
+// Rust app running for the same reason: a channel is something an app has,
+// not what it is for, and a shepherd can be replaced under it. The timer
+// is what keeps this event loop alive once the socket is its only work.
+channel.on("close", () => {
+  console.log("node-chatty: the shepherd went away; still running");
+  setInterval(() => {}, 1 << 30);
+});

@@ -182,6 +182,20 @@ func main() {
 			ID:     message.ID,
 		})
 	}
+
+	// Scan stops on a read error and on a line past its buffer, and both
+	// look like a clean end without this.
+	if err := lines.Err(); err != nil {
+		fmt.Fprintln(os.Stderr, "go-chatty: the channel ended badly:", err)
+	}
+
+	// The shepherd going away is not a reason to stop. shep-channel leaves a
+	// Rust app running for the same reason: a channel is something an app
+	// has, not what it is for, and a shepherd can be replaced under it.
+	fmt.Println("go-chatty: the shepherd went away; still running")
+	for {
+		time.Sleep(time.Hour)
+	}
 }
 
 func str(s string) *string { return &s }

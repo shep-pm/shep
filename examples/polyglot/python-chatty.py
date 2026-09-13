@@ -126,7 +126,14 @@ def main():
     # with two, so this app emits samples from the loop instead.
     samples = 0
     for line in iter(channel.readline, b""):
-        message = json.loads(line)
+        try:
+            message = json.loads(line)
+        except ValueError as err:
+            # The shepherd does not write these, so a frame that will not
+            # parse means a wire this app has never seen. Say so and read
+            # the next one; dying here would also drop the action after it.
+            say(f"python-chatty: could not read a message: {err}")
+            continue
         kind = message.get("kind")
         if kind == "shutdown":
             say("python-chatty: the shepherd asked us to stop")
@@ -144,6 +151,13 @@ def main():
             body = reply_to(name, params) or f"unknown action: {name}"
 
         send(channel, {"kind": "action-reply", "action": name, "body": body, "id": message["id"]})
+
+    # The shepherd going away is not a reason to stop. shep-channel leaves a
+    # Rust app running for the same reason: a channel is something an app
+    # has, not what it is for, and a shepherd can be replaced under it.
+    say("python-chatty: the shepherd went away; still running")
+    while True:
+        time.sleep(3600)
 
 
 if __name__ == "__main__":
