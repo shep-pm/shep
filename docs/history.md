@@ -354,7 +354,10 @@ What that means for anyone editing this workspace:
   the app writes.
 
 The instances redesign merged too: `increment_var` is removed, and refused
-with the replacement named rather than a bare serde error. Env values, args,
+with the replacement named rather than a bare serde error. That refusal was
+itself deleted later, once the pre-release window closed, so the field now
+gets the parser's own unrecognized-key error and `docs/migration.md` carries
+the replacement. Env values, args,
 `out_file` and `err_file` can now carry `{{instance}}` and `{{name}}`
 templates (doubled braces escape a literal brace), `SHEP_INSTANCE` and
 `SHEP_NAME` are always injected and can no longer be set by hand in
