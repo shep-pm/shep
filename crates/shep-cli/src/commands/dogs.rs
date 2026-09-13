@@ -1296,8 +1296,8 @@ pub async fn rehome(streams: &mut Streams<'_>, paths: &ShepPaths, name: &str) ->
         Ok(source) => source,
         Err(err) => return fail_config(streams, &err),
     };
-    // A `dogs.toml` this verb no longer writes must not fail it, so an
-    // unreadable one costs the notice below and nothing more.
+    // This verb does not write `dogs.toml`, so an unreadable one costs
+    // the notice below and nothing more.
     let kept = dog_migration::dog_section_exists(&paths.dogs_config, name).unwrap_or(false);
     let client = match connect_or_absent(paths, streams).await {
         Ok(client) => client,

@@ -76,9 +76,10 @@ pub(crate) fn migrate_dog_sections(paths: &ShepPaths) -> Result<Vec<String>, Dog
         if !missing.is_empty() || incoming.is_empty() {
             return Err(DogMigrationError::SectionsUnreadable { names: missing });
         }
-        // `dogs.toml`'s lock, so the read and merge below are one
-        // transaction against a second boot's. Nested inside `shep.toml`'s
-        // lock, which `try_edit` holds; that order is the only one taken.
+        // Take `dogs.toml`'s lock, so the read and merge below are one
+        // transaction against a second boot running this same function.
+        // It nests inside `shep.toml`'s, which `try_edit` holds, and that
+        // order is the only one anything takes.
         let _dogs_lock =
             ConfigLock::acquire(&paths.dogs_config).map_err(DogMigrationError::Lock)?;
         // A live document, not a `toml::Table`: a second migration writes into
