@@ -13,6 +13,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-13
+
+### Added
+
+- Draw frame 1l, the frozen lookout dashboard ([#197](https://github.com/shep-pm/shep/pull/197)) **(BREAKING)**
+- Open a pane on one sheep, and difference the CPU counter ([#202](https://github.com/shep-pm/shep/pull/202))
+- Redraw the config pane and batch its writes ([#206](https://github.com/shep-pm/shep/pull/206))
+- Give shep flock a --follow that redraws the listing
+- A host line above a followed listing
+- Let an app declare what its log levels look like ([#218](https://github.com/shep-pm/shep/pull/218))
+- Warn when cwd/script/out_file/err_file look wrong on disk ([#220](https://github.com/shep-pm/shep/pull/220))
+
+### Changed
+
+- Qwen audit group E, dog and bark duplication ([#208](https://github.com/shep-pm/shep/pull/208))
+- Export the Flockfile discovery order ([#213](https://github.com/shep-pm/shep/pull/213))
+- One spelling per rule in the CLI runtime ([#210](https://github.com/shep-pm/shep/pull/210))
+- Name the --follow interval floor, per IR-26
+
+### Fixed
+
+- Reserve the truncation notice's real height, not one row
+- Say "1 more line", not "1 more lines"
+- Stop a follow whose terminal has gone, and clip its notice
+- Name the log file a read could not find ([#225](https://github.com/shep-pm/shep/pull/225))
+- Match a settings reply by its own ticket ([#228](https://github.com/shep-pm/shep/pull/228))
+
+
 ## [0.7.4] - 2026-09-12
 
 

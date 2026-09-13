@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-13
+
+### Added
+
+- Open a pane on one sheep, and difference the CPU counter ([#202](https://github.com/shep-pm/shep/pull/202))
+- Redraw the config pane and batch its writes ([#206](https://github.com/shep-pm/shep/pull/206))
+- Let an app declare what its log levels look like
+- Carry an app's level rules on ProcessInfo
+- Cap how many level rules one app may declare **(BREAKING)**
+- Warn when cwd/script/out_file/err_file look wrong on disk ([#220](https://github.com/shep-pm/shep/pull/220))
+
+### Changed
+
+- Drop LevelMatcher::is_empty, and unrender two rationales
+
+
 ## [0.7.4] - 2026-09-12
 
 ### Added
