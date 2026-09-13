@@ -441,6 +441,53 @@ mod tests {
         assert_eq!(q.pipe_name(), r"\\.\pipe\shep-srv-shep-23b467803966a71a");
     }
 
+    /// The truncation, and the trim that has to follow it.
+    ///
+    /// Both cases above use a home far under the 64-byte stem cap, so
+    /// nothing reached the slice or the second `trim_end_matches`. This home
+    /// is built so the cut lands exactly on a separator: without that second
+    /// trim the stem would end in a dash and the name would carry a double
+    /// one before its digest.
+    #[test]
+    fn a_stem_longer_than_the_cap_is_cut_and_retrimmed() {
+        let long = format!("/{}/bbbb", "a".repeat(63));
+        let env = |key: &str| (key == "SHEP_HOME").then(|| long.clone());
+        let name = ShepPaths::resolve(&env, Path::new("/home/ada")).pipe_name();
+
+        let stem = name
+            .strip_prefix(r"\\.\pipe\shep-")
+            .expect("the fixed prefix")
+            .rsplit_once('-')
+            .expect("a digest after the stem")
+            .0;
+        assert_eq!(
+            stem,
+            "a".repeat(63),
+            "cut at the cap, then the dash removed"
+        );
+        assert!(
+            !name.contains("--"),
+            "a dash left by the cut would double against the digest's own: {name}"
+        );
+    }
+
+    /// Two homes that differ only past the cut still get their own pipe.
+    ///
+    /// The stem cannot tell them apart by construction, so this is the
+    /// digest's job alone, and the digest is taken over the whole home
+    /// rather than the truncated stem.
+    #[test]
+    fn two_homes_differing_only_past_the_cap_stay_distinct() {
+        let base = "a".repeat(70);
+        let one = format!("/{base}/one");
+        let two = format!("/{base}/two");
+        let env_one = |key: &str| (key == "SHEP_HOME").then(|| one.clone());
+        let env_two = |key: &str| (key == "SHEP_HOME").then(|| two.clone());
+        let a = ShepPaths::resolve(&env_one, Path::new("/home/ada")).pipe_name();
+        let b = ShepPaths::resolve(&env_two, Path::new("/home/ada")).pipe_name();
+        assert_ne!(a, b, "two homes, two pipes, whatever the cut discarded");
+    }
+
     /// The sanitizer is not injective: `\`, `:` and `-` all become `-`. A
     /// collision would not error; it would refuse the second daemon as
     /// already running.
