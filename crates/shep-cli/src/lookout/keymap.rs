@@ -19,45 +19,15 @@ use crate::vocabulary::Role;
 /// The box is nineteen rows: a border pair, a heading row, twelve entries,
 /// a blank, the gate line, and two closing lines. Zero spare, which
 /// `every_group_fits_its_column` is what guards.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Task 6's overlay drawer reads this; the drawer is not built yet"
-    )
-)]
 pub(super) const ENTRY_ROWS: usize = 12;
 
 /// How wide the key-caption cell is.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Task 6's overlay drawer reads this; the drawer is not built yet"
-    )
-)]
 pub(super) const KEY_CELL: u16 = 12;
 
 /// How wide the sentence cell is.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Task 6's overlay drawer reads this; the drawer is not built yet"
-    )
-)]
 pub(super) const TEXT_CELL: u16 = 17;
 
 /// One of the overlay's four columns, grouped by what the keys in it do.
-#[cfg_attr(
-    not(test),
-    // `allow`, not `expect`: this is dead only through `Group::heading`,
-    // `Group::role` and `rows`, which each carry their own `expect`.
-    // Whether a compiler propagates that reachability is a toolchain
-    // detail (see fix(cli) 52ae420d), so this stays `allow` rather than
-    // risk an unfulfilled `expect` on whichever toolchain does not.
-    allow(dead_code, reason = "Task 6's overlay drawer reads this; the drawer is not built yet")
-)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Group {
     Moving,
@@ -74,21 +44,10 @@ pub(super) enum Group {
 impl Group {
     /// The four that draw as columns, left to right. [`Self::Closing`] is
     /// not among them.
-    #[cfg_attr(
-        not(test),
-        allow(
-            dead_code,
-            reason = "dead only through `rows`, which carries its own `expect`"
-        )
-    )]
     pub(super) const DRAWN: [Self; 4] = [Self::Moving, Self::Looking, Self::Changing, Self::Doing];
 
     /// The column's heading, or `""` for [`Self::Closing`], which has no
     /// column to head.
-    #[expect(
-        dead_code,
-        reason = "Task 6's overlay drawer reads this; the drawer is not built yet"
-    )]
     pub(super) const fn heading(self) -> &'static str {
         match self {
             Self::Moving => "MOVING",
@@ -101,10 +60,6 @@ impl Group {
 
     /// The heading's colour role. `Doing` is bark because its three keys
     /// are the destructive ones; the rest are meadow.
-    #[expect(
-        dead_code,
-        reason = "Task 6's overlay drawer reads this; the drawer is not built yet"
-    )]
     pub(super) const fn role(self) -> Role {
         match self {
             Self::Doing => Role::Bark,
@@ -118,13 +73,6 @@ impl Group {
 /// `keys` is at most [`KEY_CELL`] characters and `does` at most
 /// [`TEXT_CELL`]; `the_cells_fit_their_widths` asserts both rather than
 /// leaving a long one to be cut on screen.
-#[cfg_attr(
-    not(test),
-    allow(
-        dead_code,
-        reason = "dead only through `rows`, which carries its own `expect`"
-    )
-)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Binding {
     pub keys: &'static str,
@@ -138,13 +86,6 @@ pub(super) struct Binding {
 /// [`KeyPress`] and [`ActionVerb`] have to grow a row here before they
 /// compile. That is the whole guard against a binding that dispatches and
 /// does not print.
-#[cfg_attr(
-    not(test),
-    allow(
-        dead_code,
-        reason = "dead only through `rows`, which carries its own `expect`"
-    )
-)]
 const fn binding(press: &KeyPress) -> Binding {
     // `row` keeps each arm to one line, so a reader checks thirty-five
     // captions rather than thirty-five struct literals.
@@ -216,13 +157,6 @@ const fn binding(press: &KeyPress) -> Binding {
 /// digits. `every_key_map_key_binds_is_in_the_probe` sweeps the whole
 /// keyboard against this, so a key missing here is a test failure rather
 /// than a row missing from the box.
-#[cfg_attr(
-    not(test),
-    allow(
-        dead_code,
-        reason = "dead only through `rows`, which carries its own `expect`"
-    )
-)]
 const PROBE: &[(KeyCode, KeyModifiers)] = &[
     (KeyCode::Char('j'), KeyModifiers::NONE),
     (KeyCode::Char('g'), KeyModifiers::NONE),
@@ -265,13 +199,6 @@ const PROBE: &[(KeyCode, KeyModifiers)] = &[
 /// [`rows`], generalised over which probe entries to run, so
 /// `every_probe_entry_binds_something` can ask "what would this draw
 /// without entry N" without a second copy of the loop.
-#[cfg_attr(
-    not(test),
-    allow(
-        dead_code,
-        reason = "dead only through `rows`, which carries its own `expect`"
-    )
-)]
 fn rows_from(probe: &[(KeyCode, KeyModifiers)]) -> Vec<Binding> {
     let mut out: Vec<Binding> = Vec::new();
     for group in Group::DRAWN.into_iter().chain([Group::Closing]) {
@@ -296,13 +223,6 @@ fn rows_from(probe: &[(KeyCode, KeyModifiers)]) -> Vec<Binding> {
 ///
 /// Built by running [`PROBE`] through [`map_key`], so nothing here names a
 /// key the reducer does not dispatch on.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Task 6's overlay drawer reads this; the drawer is not built yet"
-    )
-)]
 pub(super) fn rows() -> Vec<Binding> {
     rows_from(PROBE)
 }

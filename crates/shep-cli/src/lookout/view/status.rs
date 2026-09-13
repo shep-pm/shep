@@ -65,6 +65,14 @@ pub fn banner_line(app: &App, width: u16) -> Option<Line<'static>> {
 const FROZEN_HINT: &str =
     "q quit   j/k still moves   every other key is refused while the link is down";
 
+/// The status bar's own label for [`Control::ReadOnly`], shared with the
+/// keymap overlay's gate line so the two cannot drift apart.
+pub(super) const READ_ONLY_LABEL: &str = "read-only";
+
+/// The status bar's own label for [`Control::Allowed`], shared with the
+/// keymap overlay's gate line so the two cannot drift apart.
+pub(super) const CONTROL_ENABLED_LABEL: &str = "control enabled";
+
 /// The bottom line: eight slots, highest priority first: the settings
 /// screen's armed or in-flight edit, a dashboard confirm, the settings
 /// screen's free-text editor, the filter box, a notice, an in-flight
@@ -275,8 +283,8 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         "\u{2588} following"
     } else {
         match app.control() {
-            Control::ReadOnly => "read-only",
-            Control::Allowed => "control enabled",
+            Control::ReadOnly => READ_ONLY_LABEL,
+            Control::Allowed => CONTROL_ENABLED_LABEL,
         }
     };
     let right_len = u16::try_from(right.chars().count()).unwrap_or(0);

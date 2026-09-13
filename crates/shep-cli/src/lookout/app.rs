@@ -6813,13 +6813,6 @@ impl App {
     }
 
     /// Whether the keymap overlay is up, for `view` to draw.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Task 6's overlay drawer reads this; the drawer is not built yet"
-        )
-    )]
     #[must_use]
     pub const fn keymap_open(&self) -> bool {
         self.keymap_open

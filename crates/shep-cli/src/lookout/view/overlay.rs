@@ -180,9 +180,13 @@ mod tests {
     /// too; `▀`, `▄` and `▌` are East-Asian Ambiguous, and a terminal that
     /// doubles the right edge shifts every interior row. Recorded rather
     /// than fixed, since no Neutral right-half block exists to swap in.
+    /// `▘` (U+2598) joined for the keymap overlay's sheep and `⌫`
+    /// (U+232B) for its text-mode row: both are below the rulings' U+2600
+    /// ceiling but absent from the design's own vocabulary table, so
+    /// neither inherits this test's answer without being in it.
     #[test]
     fn the_border_vocabulary_is_the_one_that_was_checked() {
-        for glyph in ['▛', '▜', '▙', '▟', '▐', '▀', '▄', '▌'] {
+        for glyph in ['▛', '▜', '▙', '▟', '▐', '▀', '▄', '▌', '▘', '⌫'] {
             assert_eq!(char_columns(glyph), 1, "{glyph}");
         }
     }

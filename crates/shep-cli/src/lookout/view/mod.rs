@@ -11,6 +11,7 @@ pub mod cell;
 pub mod detail;
 pub mod flock;
 pub mod host;
+mod keymap;
 pub mod link_panel;
 mod overlay;
 pub mod pane;
@@ -27,6 +28,7 @@ pub mod status;
 pub mod fixtures;
 
 use ratatui::Frame;
+use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -247,6 +249,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
         };
         sheep::draw(app, pane, body, buffer);
         buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
+        draw_keymap_overlay(app, area, buffer, palette);
         return;
     }
 
@@ -278,6 +281,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
             };
             pane::draw_pane(app, pane, body, buffer);
             buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
+            draw_keymap_overlay(app, area, buffer, palette);
             return;
         }
         Body::Settings(settings) => {
@@ -289,6 +293,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
             };
             settings::draw_settings(app, settings, body, buffer);
             buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
+            draw_keymap_overlay(app, area, buffer, palette);
             return;
         }
         Body::Bleats(pane) => {
@@ -300,6 +305,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
             };
             bleats_full::draw(app, pane, body, buffer);
             buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
+            draw_keymap_overlay(app, area, buffer, palette);
             return;
         }
         Body::Secrets(pane) => {
@@ -311,6 +317,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
             };
             secrets::draw(app, pane, body, buffer);
             buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
+            draw_keymap_overlay(app, area, buffer, palette);
             return;
         }
         Body::Sheep(_) => unreachable!("handled above, ahead of the roomy blank row"),
@@ -488,6 +495,23 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     }
 
     buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
+    draw_keymap_overlay(app, area, buffer, palette);
+}
+
+/// Last, over everything: the overlay covers whatever body is showing,
+/// unlike 1g's dialog, which only ever covers the config pane and so draws
+/// from inside `view::pane::draw_pane`.
+///
+/// [`App::keymap_open`]'s own doc says the overlay is "reached from every
+/// body's own `Help` arm", so this call sits at every one of `draw`'s exit
+/// points rather than only the final one: `Body::Sheep`, `ConfigPane`,
+/// `Settings`, `Bleats` and `Secrets` each return before reaching the
+/// bottom of this function, and the overlay has to cover them too.
+fn draw_keymap_overlay(app: &App, area: Rect, buffer: &mut Buffer, palette: Palette) {
+    if app.keymap_open() {
+        overlay::mute(buffer, area, palette);
+        keymap::draw(app, area, buffer);
+    }
 }
 
 /// The title row: a full-width reverse-video band naming the mode.
