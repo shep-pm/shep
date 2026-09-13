@@ -402,6 +402,14 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       sequences somewhere nobody will read them.
     </Callout>
 
+    <Callout variant="note">
+      If all you want is the flock table kept current, <code
+        >shep flock --follow</code
+      > redraws it in place with no panes and no action gate. Covered under <a
+        href="/docs/output">terminal output</a
+      >.
+    </Callout>
+
     <h2>Start it</h2>
     <CodeBlock>{startCmds}</CodeBlock>
     <p class="fine">
@@ -584,11 +592,13 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       <code>m</code> cycles a minimum level, and <code>/</code> opens a box
       for a text or regex match, with matches highlighted. A level is a
       bare word like <code>WARN</code>, or a <code>level=warn</code> pair,
-      so the filter works on logfmt output too. A line with no
-      detectable level always shows, whatever the minimum is: most app
-      output carries no level word at all, and hiding it would defeat the
-      reason the pane exists. The filter row names which axes are set and
-      counts how many lines in the current window survive them.
+      so the filter works on logfmt output too. An app that writes neither
+      can declare its own patterns, with{" "}
+      <a href="/docs/logs"><code>level_rules</code></a> in its Flockfile. A
+      line with no detectable level always shows, whatever the minimum is:
+      most app output carries no level word at all, and hiding it would
+      defeat the reason the pane exists. The filter row names which axes are
+      set and counts how many lines in the current window survive them.
     </p>
     <CodeBlock label="100×14, filtered and wrapped">{bleatsFull}</CodeBlock>
     <p>
@@ -1001,6 +1011,15 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       immediately, because shep reads it at muster. The status bar after the
       write is the one that reports what actually happened, and the{" "}
       <code>!</code> flag on the row carries it afterwards.
+    </p>
+    <p class="fine">
+      <code>cwd</code>, <code>script</code>, <code>out_file</code> and{" "}
+      <code>err_file</code> get one more line on that status bar when the
+      shepherd looks at the path and it looks wrong: a directory that
+      isn't there, or a script it can't find. The write still lands. A
+      deploy that hasn't created the directory yet is a real config, not a
+      typo, so this is a warning next to the write rather than a refusal
+      of it.
     </p>
     <p>
       A tab row above the fields names all eight groups. <code>Tab</code>{" "}

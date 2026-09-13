@@ -83,7 +83,10 @@ pub struct ProcessEntry {
     /// [`assemble`](crate::assemble::assemble) built.
     ///
     /// Carried here so `ProcessInfo` can report it without re-deriving the
-    /// `merge_logs`-dependent default. Fixed at registration.
+    /// `merge_logs`-dependent default. Set at registration and refreshed by
+    /// every respawn, since `out_file` is `ApplyGroup::NeedsRespawn`: a
+    /// config load leaves this at the old value until the respawn that
+    /// promotes [`Self::pending`] moves the child onto the new one.
     pub out_file: PathBuf,
     /// Where this instance's stderr is appended, resolved exactly as
     /// [`Self::out_file`].

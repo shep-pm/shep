@@ -1934,19 +1934,19 @@ mod tests {
         };
         assert_eq!(flagged('*'), ["reuse_port", "max_restarts"]);
         assert_eq!(flagged('!'), ["kill_signal"]);
-        // 40, not 41: `env` no longer draws its own field row, folded into
+        // 41, not 42: `env` no longer draws its own field row, folded into
         // the env rows below the field list instead.
         assert_eq!(
             rows_of(&text).len(),
-            40,
+            41,
             "every field but env is drawn at 89"
         );
     }
 
     /// `=` is shep refusing the write outright; `~` is only this pane
-    /// having no widget for the shape. The two probes shep writes happily
-    /// carry `~`, so their cost cell must say `respawn` or `now`, never
-    /// `read-only`.
+    /// having no widget for the shape. The two probes and the level rules
+    /// shep writes happily carry `~`, so their cost cell must say `respawn`
+    /// or `now`, never `read-only`.
     #[test]
     fn a_refused_field_and_one_the_pane_has_no_widget_for_get_different_glyphs() {
         let text = text_of(&all_group_lines(fixtures::plain()));
@@ -1958,9 +1958,12 @@ mod tests {
                 .collect()
         };
         assert_eq!(glyphed('='), ["instances", "name"]);
-        assert_eq!(glyphed('~'), ["liveness_probe", "readiness_probe"]);
-        // 40, not 41: `env` no longer draws its own field row.
-        assert_eq!(glyphed(' ').len(), 40 - 2 - 2);
+        assert_eq!(
+            glyphed('~'),
+            ["level_rules", "liveness_probe", "readiness_probe"]
+        );
+        // 41, not 42: `env` no longer draws its own field row.
+        assert_eq!(glyphed(' ').len(), 41 - 2 - 3);
     }
 
     /// `kill_timeout` and `exp_backoff_restart_delay` default to 1600ms
@@ -2362,6 +2365,7 @@ mod tests {
                     name: "web".to_string(),
                     key: key.to_string(),
                     pending,
+                    warning: None,
                 }),
             });
             let bar = crate::lookout::view::status::status_line(&app, 200).to_string();
@@ -3039,14 +3043,20 @@ mod tests {
 
     /// Colour is never the only carrier: a refused form has to read as
     /// refused with every colour stripped.
+    ///
+    /// `name` rather than `cwd`: `cwd`'s own "cannot enter" claim moved to
+    /// an accepted form once a bad `cwd` started earning a warning instead
+    /// of a refusal (`SetSheepField`'s `warning`), and `name`'s refusals are
+    /// still a hard `normalize` rule with nothing advisory about them.
     #[test]
     fn a_refused_form_reads_as_refused_without_colour() {
-        let app = fixtures::app_with_plain_palette_in_sheep_pane();
+        let mut app = fixtures::app_with_plain_palette_in_sheep_pane();
+        fixtures::select_field(&mut app, "name");
         let panel = fixtures::config_pane_panel_for_tests(&app, 160);
         let refusal = panel
             .iter()
-            .find(|row| row.contains("cannot enter"))
-            .expect("cwd states a refusal");
+            .find(|row| row.contains("path separator"))
+            .expect("name states a refusal");
         assert!(refusal.contains("refused"), "{refusal}");
     }
 

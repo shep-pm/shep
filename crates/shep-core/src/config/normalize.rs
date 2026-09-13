@@ -12,7 +12,7 @@ use std::collections::BTreeSet;
 use globset::Glob;
 
 use crate::config::{
-    AppConfig, CronParseError, CronSchedule, KillSignal, ProbeConfig, ProbeTarget,
+    AppConfig, CronParseError, CronSchedule, KillSignal, LevelMatcher, ProbeConfig, ProbeTarget,
 };
 use crate::secrets;
 use crate::values::UpDuration;
@@ -202,6 +202,7 @@ fn expand_paths(app: &mut AppConfig, home: Option<&Path>) -> Result<(), Normaliz
 /// - [`NormalizeError::WatchWithoutCwd`]: `watch` is `true` with no `cwd` set.
 /// - [`NormalizeError::ZeroWatchDelay`]: `watch_delay` is `0`.
 /// - [`NormalizeError::InvalidWatchGlob`]: a `watch_options` or `ignore_watch` pattern globset will not compile.
+/// - [`NormalizeError::InvalidLevelRule`]: a `level_rules` entry has an empty pattern, one regex will not compile, or the list is longer than the ceiling on how many rules an app may declare.
 /// - [`NormalizeError::BadTemplate`]: an `env`/`args`/log-path value carries an undefined or unclosed `{{...}}` token.
 /// - [`NormalizeError::SecretInLogPath`]: `out_file` or `err_file` carries a `{{secret:...}}`.
 /// - [`NormalizeError::SharedLogPath`]: `out_file` or `err_file` renders to the same path for two instances.
@@ -381,6 +382,14 @@ pub fn normalize_with_home(
     // happens.
     validate_watch_globs(&app.name, "watch_options", &app.watch_options)?;
     validate_watch_globs(&app.name, "ignore_watch", &app.ignore_watch)?;
+    // Compiled to reject, and the result discarded: whichever client
+    // classifies this sheep's lines compiles its own. A pattern refused
+    // here can never reach one, which is the point of refusing it at config
+    // time rather than at render time, where nobody would read the message.
+    LevelMatcher::compile(&app.level_rules).map_err(|err| NormalizeError::InvalidLevelRule {
+        name: app.name.clone(),
+        reason: err.to_string(),
+    })?;
     let mut seen = BTreeSet::new();
     let mut deduped = Vec::with_capacity(app.depends_on.len());
     for target in &app.depends_on {
@@ -705,6 +714,16 @@ pub enum NormalizeError {
         /// globset's own rendered reason.
         reason: String,
     },
+    /// A `level_rules` entry shep cannot use: an empty pattern, which would
+    /// claim every line, or one the regex engine refuses. Carries the sheep
+    /// name and the rejection rendered.
+    InvalidLevelRule {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+        /// [`crate::config::LevelRuleError`]'s own rendering, so this variant
+        /// does not restate a grammar it does not own.
+        reason: String,
+    },
     /// A value carries a `{{...}}` that is not a template token, or a `{{`
     /// it never closes. Carries the sheep name, which field held it, and the
     /// rejection rendered.
@@ -855,6 +874,9 @@ impl fmt::Display for NormalizeError {
                 f,
                 "sheep `{name}` has an invalid {field} pattern `{pattern}`: {reason}"
             ),
+            Self::InvalidLevelRule { name, reason } => {
+                write!(f, "sheep `{name}` has an invalid level rule: {reason}")
+            }
             Self::BadTemplate {
                 name,
                 field,
@@ -889,6 +911,7 @@ impl core::error::Error for NormalizeError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{LevelRule, LevelRuleError, LineLevel};
 
     /// A shep home for the cases below that never mention one, so a fixture
     /// growing a `{{SHEP_HOME}}` later reads as the token rather than as a
@@ -1703,6 +1726,65 @@ target = "http://127.0.0.1:8080/healthz"
         app.watch = true;
         app.cwd = Some("/srv/web".to_string());
         assert!(normalize(app).is_ok());
+    }
+
+    #[test]
+    fn level_rules_survive_normalization_in_the_order_they_were_written() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.level_rules = vec![
+            LevelRule {
+                pattern: r"\[ERROR\]".to_string(),
+                level: LineLevel::Error,
+            },
+            LevelRule {
+                pattern: r"\[WARN\]".to_string(),
+                level: LineLevel::Warn,
+            },
+        ];
+        let resolved = normalize(app.clone()).unwrap();
+        assert_eq!(resolved.config().level_rules, app.level_rules);
+    }
+
+    /// The whole reason patterns are compiled here: a Flockfile that reaches
+    /// the shepherd with a pattern nobody can compile would fail at draw
+    /// time, in a client, where the message reaches nobody.
+    #[test]
+    fn a_level_rule_pattern_that_will_not_compile_is_rejected() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.level_rules = vec![LevelRule {
+            pattern: "[unclosed".to_string(),
+            level: LineLevel::Error,
+        }];
+        let err = normalize(app).unwrap_err();
+        let rendered = err.to_string();
+        for expected in ["web", "[unclosed"] {
+            assert!(
+                rendered.contains(expected),
+                "{expected} missing: {rendered}"
+            );
+        }
+    }
+
+    /// An empty pattern matches every line, so the rule would claim the feed
+    /// and leave every rule after it dead.
+    #[test]
+    fn an_empty_level_rule_pattern_is_rejected() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.level_rules = vec![LevelRule {
+            pattern: String::new(),
+            level: LineLevel::Warn,
+        }];
+        let err = normalize(app).unwrap_err();
+        assert_eq!(
+            err,
+            NormalizeError::InvalidLevelRule {
+                name: "web".to_string(),
+                reason: LevelRuleError::EmptyPattern {
+                    level: LineLevel::Warn
+                }
+                .to_string(),
+            }
+        );
     }
 
     #[test]

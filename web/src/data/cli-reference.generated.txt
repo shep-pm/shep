@@ -806,6 +806,18 @@ List the flock
 Usage: shep flock [OPTIONS]
 
 Options:
+      --follow
+          Keep the listing current: redraw it in place until Ctrl+C
+          
+          One listing to start, then a fresh one every `--interval` seconds while the shepherd stays
+          reachable, each one painted over the last. A summary of the machine rides above the
+          tables. Ctrl+C leaves an exit of zero, a stopped shepherd leaves the code its refusal
+          carries: an interrupted follow and a dead shepherd must not read as the same thing.
+          
+          Needs a live shepherd: a saved roll is a single moment, and a follow's whole reason is the
+          moments after it. Needs a terminal too, and refuses `--format json`, since neither has
+          anywhere to put a redraw.
+
       --format <FORMAT>
           Output format
 
@@ -814,6 +826,15 @@ Options:
           - json:  A versioned JSON envelope, one object per invocation
           
           [default: table]
+
+      --interval <SECONDS>
+          Seconds between redraws, with `--follow`
+          
+          The floor is one second, which is also the default. Below it the listing costs the
+          shepherd more than it tells the operator, and `sysinfo` reports no CPU at all over a
+          window that short.
+          
+          [default: 1]
 
   -q, --quiet
           Suppress non-essential output

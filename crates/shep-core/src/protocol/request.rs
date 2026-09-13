@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::config::{AppConfig, DeclaredApp, ResetDepth};
+use crate::config::{AppConfig, DeclaredApp, LevelRule, ResetDepth};
 use crate::status::ProcStatus;
 
 /// Client's opening frame
@@ -702,7 +702,8 @@ pub struct ExitInfo {
 // wire format: changing this is a breaking change. No `Eq`: `cpu_percent` is
 // an `f32`. Paths travel as `String`, since serde's `PathBuf` refuses a
 // non-UTF-8 path and would blank a whole `Reply`. Every added field is an
-// `Option`, so a peer built before it sends no key and `None` reads as unknown.
+// `Option` or a defaulted collection, so a peer built before it sends no key
+// and the empty reading means unknown.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProcessInfo {
@@ -844,6 +845,18 @@ pub struct ProcessInfo {
     /// `MEM/CEIL` gauge is the only reader; `None` draws an all-tail bar
     /// rather than guessing a denominator.
     pub max_memory: Option<u64>,
+    /// How this sheep's own log lines announce their level, from its
+    /// [`AppConfig::level_rules`](crate::config::AppConfig::level_rules).
+    ///
+    /// Empty both when the sheep declares none and when the peer daemon
+    /// predates the field, which read the same way: a client classifying
+    /// this sheep's lines falls back to its own reading of them. The key is
+    /// absent from the payload entirely when the list is empty.
+    // On the listing rather than behind a fetch of its own: a client reads
+    // this on every line it draws, and a listing it already polls cannot go
+    // stale between polls.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub level_rules: Vec<LevelRule>,
 }
 
 /// Orders one flock listing the way every operator-facing surface presents
@@ -896,6 +909,7 @@ impl ProcessInfo {
                 pending: None,
                 overridden: None,
                 max_memory: None,
+                level_rules: Vec::new(),
             },
         }
     }
@@ -1039,6 +1053,12 @@ impl ProcessInfoBuilder {
     /// ceiling configured.
     pub fn max_memory(mut self, max_memory: Option<u64>) -> Self {
         self.info.max_memory = max_memory;
+        self
+    }
+
+    /// Sets the sheep's declared level rules; empty when it declares none.
+    pub fn level_rules(mut self, level_rules: Vec<LevelRule>) -> Self {
+        self.info.level_rules = level_rules;
         self
     }
 
@@ -1579,6 +1599,24 @@ pub enum Response {
         /// `shep reload <name>` is what promotes it. A client rendering
         /// this says so, the same rule [`SheepApplied::pending`] carries.
         pending: bool,
+        /// A `cwd`, `script`, `out_file` or `err_file` that looks wrong on
+        /// disk, `None` for every other field and for one of these four
+        /// that looks fine.
+        ///
+        /// Advisory, not a second way to say no: the write above still
+        /// landed. `normalize` cannot see the filesystem (a daemon and a
+        /// CLI normalizing the same config may run as different users), so
+        /// this is checked once, daemon-side, after the value is already
+        /// accepted, and a directory a deploy script has not created yet is
+        /// a real config the write must not refuse. The window between this
+        /// check and the respawn that actually needs the path is the same
+        /// one `check_log_ancestry`'s own doc comment names for its check
+        /// (`docs/specs/deferred.md`).
+        ///
+        /// Additive: absent rather than `null` on a peer built before this
+        /// field existed, so `PROTOCOL_VERSION` does not move for it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        warning: Option<String>,
     },
     /// Answer to `SetDogConfig`: the section was written and the topic
     /// published.
@@ -1955,6 +1993,13 @@ mod tests {
             pending: None,
             overridden: None,
             max_memory: Some(512 * 1024 * 1024),
+            // Populated where its list-shaped neighbours above are not:
+            // nothing else on the wire pins a `LevelRule`'s field names or a
+            // `LineLevel` spelling, and an empty list would prove neither.
+            level_rules: vec![crate::config::LevelRule {
+                pattern: r"\[ERROR\]".to_string(),
+                level: crate::config::LineLevel::Error,
+            }],
         }
     }
 
@@ -2018,6 +2063,10 @@ mod tests {
                 signal: None,
             }))
             .max_memory(Some(512 * 1024 * 1024))
+            .level_rules(vec![crate::config::LevelRule {
+                pattern: r"\[ERROR\]".to_string(),
+                level: crate::config::LineLevel::Error,
+            }])
             .build();
 
         // `sample_info()` is a struct literal on purpose: it is the one
@@ -3132,6 +3181,11 @@ mod tests {
                     name: "web".to_string(),
                     key: "script".to_string(),
                     pending: true,
+                    // `None` on purpose: this is the row every earlier
+                    // version's fixture already pinned, and `warning` must
+                    // stay invisible on the wire for that value or the
+                    // additive claim above is false.
+                    warning: None,
                 }),
             },
             Reply {
@@ -3418,6 +3472,58 @@ mod tests {
         let err = r#"{"id":2,"result":{"Err":{"code":"not_found","message":"no sheep"}}}"#;
         let reply: Reply = serde_json::from_str(err).unwrap();
         assert_eq!(reply.result.unwrap_err().code, RpcErrorCode::NotFound);
+    }
+
+    /// The additive claim on `SheepFieldSet::warning` has three halves and
+    /// the reply fixture pins only the first. `None` staying off the wire is
+    /// what makes the field additive at all; `Some` surviving a round trip is
+    /// what makes it useful; and a payload with no `warning` key reading back
+    /// as `None` is what lets a daemon built before the field answer a client
+    /// built after it.
+    ///
+    /// The third pins the behaviour, not the attribute. Measured by removing
+    /// `#[serde(default)]` and re-running: it still passes, because serde
+    /// already reads a missing `Option` field as `None` without being asked.
+    /// So the attribute is belt-and-braces and this test would not notice its
+    /// removal. What it does notice is the field being renamed, retyped, or
+    /// made required, which is what would actually break an older peer.
+    #[test]
+    fn the_set_field_warning_is_additive_in_both_directions() {
+        let quiet = Response::SheepFieldSet {
+            name: "web".to_string(),
+            key: "script".to_string(),
+            pending: true,
+            warning: None,
+        };
+        let json = serde_json::to_string(&quiet).unwrap();
+        assert!(
+            !json.contains("warning"),
+            "a `None` warning must not reach the wire at all: {json}"
+        );
+
+        let loud = Response::SheepFieldSet {
+            name: "web".to_string(),
+            key: "cwd".to_string(),
+            pending: true,
+            warning: Some("/srv/app does not exist yet".to_string()),
+        };
+        let json = serde_json::to_string(&loud).unwrap();
+        let back: Response = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, loud, "a warning must survive the round trip: {json}");
+
+        let older =
+            r#"{"kind":"sheep_field_set","data":{"name":"web","key":"script","pending":true}}"#;
+        let back: Response = serde_json::from_str(older).unwrap();
+        assert_eq!(
+            back,
+            Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "script".to_string(),
+                pending: true,
+                warning: None,
+            },
+            "a peer that predates the field must still deserialize"
+        );
     }
 
     #[test]

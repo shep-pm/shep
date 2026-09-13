@@ -78,7 +78,12 @@ const verbTable: { pm2: string; shep: string; note?: string }[] = [
   {
     pm2: "pm2 monit",
     shep: "shep lookout",
-    note: "alias: dash (a fuller dashboard, not a straight swap)",
+    note: "alias: dash (a fuller dashboard, not a straight swap). shep flock --follow redraws the same table in place, if that is all you want",
+  },
+  {
+    pm2: "pm2-server-monit",
+    shep: "shep flock --follow",
+    note: "a separately installed pm2 module. In shep the host line comes with the followed listing",
   },
   { pm2: "-", shep: "shep enable / disable / adopt / rehome", note: "dogs have no pm2 analogue" },
   { pm2: "-", shep: "shep set / get / unset", note: "the KV store; nothing in pm2 does this" },

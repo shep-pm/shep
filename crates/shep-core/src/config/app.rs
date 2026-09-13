@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 // use schemars::generate
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::config::LevelRule;
 use crate::values::{MemSize, UpDuration};
 
 /// How a health probe checks a sheep
@@ -118,8 +119,8 @@ pub struct AppConfig {
         "group": "process",
         "blurb": "The script that shep should use to launch your app",
         "accepts": ["an absolute or relative path, expanded from cwd",
-                    "~ expands, $VARS do not"],
-        "refuses": ["a path the daemon's user cannot enter"],
+                    "~ expands, $VARS do not",
+                    "a script shep cannot resolve yet: warned"],
         "neighbours": [{"field": "cwd",         "note": "resolved against this cwd"},
                        {"field": "interpreter", "note": "picks what runs this script"}]
     })))]
@@ -139,8 +140,8 @@ pub struct AppConfig {
         "group": "process",
         "blurb": "Where the process runs. Without it, the daemon's own directory",
         "accepts": ["an absolute or relative path, expanded from cwd",
-                    "~ expands, $VARS do not"],
-        "refuses": ["a path the daemon's user cannot enter"],
+                    "~ expands, $VARS do not",
+                    "a directory that does not exist yet: warned"],
         "neighbours": [{"field": "script",        "note": "resolved against this cwd"},
                        {"field": "out_file",      "note": "relative paths follow it too"},
                        {"field": "watch_options", "note": "globs are rooted here"}]
@@ -418,7 +419,8 @@ pub struct AppConfig {
         "group": "logging",
         "blurb": "Where stdout goes. Written out, the default is {{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log",
         "accepts": ["a path, relative paths follow cwd",
-                    "{{instance}}, {{name}} and {{SHEP_HOME}} expand"],
+                    "{{instance}}, {{name}} and {{SHEP_HOME}} expand",
+                    "a parent that does not exist yet: warned"],
         "refuses": ["a {{secret:...}} token",
                     "the same path as err_file across instances without merge_logs"],
         "neighbours": [{"field": "err_file",   "note": "shares the same collision rule"},
@@ -431,7 +433,8 @@ pub struct AppConfig {
         "group": "logging",
         "blurb": "Where stderr goes. Written out, the default is {{SHEP_HOME}}/logs/{{name}}-{{instance}}-err.log",
         "accepts": ["a path, relative paths follow cwd",
-                    "{{instance}}, {{name}} and {{SHEP_HOME}} expand"],
+                    "{{instance}}, {{name}} and {{SHEP_HOME}} expand",
+                    "a parent that does not exist yet: warned"],
         "refuses": ["a {{secret:...}} token",
                     "the same path as out_file across instances without merge_logs"],
         "neighbours": [{"field": "out_file",   "note": "shares the same collision rule"},
@@ -444,6 +447,26 @@ pub struct AppConfig {
         "blurb": "Put every instance's output in one pair of files"
     })))]
     pub merge_logs: bool,
+    /// How this app's own lines announce their level, for a client that
+    /// filters by one.
+    ///
+    /// Ordered: rules are tried as written and the first match wins.
+    /// Declaring any replaces the reader's built-in guess for this app
+    /// rather than adding to it, so a line matching no rule announces no
+    /// level. Nothing here hides a line: an unclassified line survives
+    /// every level filter.
+    #[cfg_attr(feature = "schema", schemars(extend("init" = {
+        "example": "[{ pattern = '\\[ERROR\\]', level = 'error' }]",
+        "group": "logging",
+        "blurb": "What this app's own log levels look like, for filtering",
+        "accepts": ["a list of { pattern, level } rules, tried in order",
+                    "a regex matched against the whole line, (?i) folds case",
+                    "a level of trace, debug, info, warn, or error"],
+        "refuses": ["an empty pattern, which would claim every line",
+                    "a pattern regex cannot compile"],
+        "neighbours": [{"field": "out_file", "note": "the lines these rules read"}]
+    })))]
+    pub level_rules: Vec<LevelRule>,
     /// Open the shepherd channel on fd 3 for this app on its own, without
     /// needing `wait_ready` or `shutdown_with_message` to imply it.
     ///
@@ -741,6 +764,7 @@ impl Default for AppConfig {
             out_file: None,
             err_file: None,
             merge_logs: false,
+            level_rules: Vec::new(),
             channel: false,
             stdin: false,
             wait_ready: false,

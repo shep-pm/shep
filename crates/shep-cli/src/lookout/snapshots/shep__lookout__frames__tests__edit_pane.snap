@@ -22,7 +22,7 @@ shep lookout   /home/ada/.shep                                                  
   env                                                                                     VALIDATION                                                            
    DATABASE_URL               (set)                                                       █ an absolute or relative path, expanded from cwd                     
    NODE_ENV                   (set)                                                       █ ~ expands, $VARS do not                                             
-   + add a key                                                                            █ refused: a path the daemon's user cannot enter                      
+   + add a key                                                                            █ a directory that does not exist yet: warned                         
                                                                                                                                                                 
                                                                                           NEIGHBOURS                                                            
                                                                                           script  resolved against this cwd                                     

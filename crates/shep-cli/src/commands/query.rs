@@ -10,7 +10,12 @@
 //! still issues `Request::Ping` as the liveness check.
 
 use std::collections::BTreeMap;
+use std::io::{self, Write as _};
+use std::time::Duration;
 
+use crossterm::QueueableCommand as _;
+use crossterm::cursor::{Hide, MoveTo, Show};
+use crossterm::terminal::{Clear, ClearType};
 use shep_client::Client;
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{ProcessInfo, Request, Response, SelectorSpec};
@@ -27,10 +32,15 @@ use crate::dog_index::{self, AvailableDog, DogSourceKind};
 use crate::exit::ExitCode;
 use crate::fetch;
 use crate::flourish;
+use crate::host::{HostSample, HostWatch};
+use crate::lookout::term;
+use crate::output::width;
 use crate::output::{
     AvailableDogRows, DescribedSecret, DogRows, RolledSheep, RolledSheepRows, SecretStatus,
     Streams, emit, emit_described, emit_flock, write_outcome,
 };
+use crate::shutdown::Interrupt;
+use crate::style::Presentation;
 
 /// `describe` and `fold`'s shared body: one `Request::Describe` against
 /// `selector`, rendered through [`emit_described`] as the sheep table and
@@ -284,6 +294,211 @@ fn sheep_flourish(listing: &[ProcessInfo]) -> Option<String> {
         .then(|| flourish::all_asleep(sheep.len()))
 }
 
+/// `shep flock --follow`: the same listing, painted over itself every
+/// `interval` until the operator interrupts it or the shepherd goes.
+///
+/// Each redraw is one `Request::ListFlock` rendered into a buffer and then
+/// written over the screen in a single write. Rendering before clearing is
+/// what keeps the terminal from sitting blank for the length of the round
+/// trip. The main screen, not the alternate one, so the last frame is still
+/// there afterwards. No flourish, which redrawn every second is noise.
+///
+/// An interrupt ends the follow at [`ExitCode::Success`], a shepherd that
+/// goes away mid-follow ends it carrying that refusal's own code. The two
+/// must not read as the same thing.
+///
+/// Why each of those beat its alternative: `docs/decisions.md`, "Following
+/// the flock".
+pub(crate) async fn flock_follow(
+    client: &Client,
+    streams: &mut Streams<'_>,
+    interval: Duration,
+) -> ExitCode {
+    let mut interrupt = match Interrupt::install() {
+        Ok(interrupt) => interrupt,
+        Err(err) => {
+            let message = format!("listening for an interrupt: {err}");
+            return streams.fail(ExitCode::Failure, &message);
+        }
+    };
+    // The hook covers a panic, the guard covers every other way out of this
+    // function, and `term::restore` is documented idempotent because a panic
+    // fires both. The guard shows the cursor and stops there: hiding it is
+    // the only change this verb makes to the terminal, where `lookout` also
+    // takes raw mode and the alternate screen.
+    term::install_panic_hook();
+    let _cursor = term::RestoreGuard::with_action(|| {
+        let _ = crossterm::execute!(io::stdout(), Show);
+    });
+    let _ = streams.out.queue(Hide);
+
+    let mut host = HostWatch::install();
+    let mut ticker = tokio::time::interval(interval);
+    // A shepherd slower to answer than the interval would otherwise bank
+    // every tick it missed and redraw them back to back the moment it
+    // answered. `Delay` measures the next interval from the redraw that just
+    // finished, so a slow shepherd slows the cadence instead of bursting it.
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {}
+            _ = interrupt.recv() => return ExitCode::Success,
+        }
+        // The request is raced too, so a shepherd that stops answering does
+        // not hold the terminal until it does.
+        let listing = tokio::select! {
+            listing = client.request(Request::ListFlock) => listing,
+            _ = interrupt.recv() => return ExitCode::Success,
+        };
+        let procs = match listing {
+            Ok(Response::Flock(procs)) => procs,
+            Ok(_unrecognised) => return unexpected_response(streams),
+            Err(err) => return client_error(streams, &err),
+        };
+        let frame = follow_frame(procs, streams.style, host.as_mut().map(HostWatch::sample));
+        let frame = match crossterm::terminal::size() {
+            Ok((columns, rows)) => fit_rows(&frame, columns, rows),
+            // A terminal that will not say how big it is gets the frame
+            // whole. Scrolling beats hiding a sheep.
+            Err(_unmeasured) => frame,
+        };
+        // Not discarded. A follow whose terminal has gone (the emulator
+        // closed, an ssh session dropped) writes into a dead descriptor
+        // forever otherwise, and keeps asking the shepherd for a listing it
+        // cannot paint. `write_outcome` keeps a broken pipe at
+        // `ExitCode::Success`, which is the reader leaving rather than a
+        // failure.
+        let painted = paint(streams.out, &frame);
+        if painted.is_err() {
+            return write_outcome(painted);
+        }
+    }
+}
+
+/// One redraw's four writes, as one `io::Result`.
+///
+/// Separate so the loop above reads as "paint, and stop if that failed"
+/// rather than four discarded results in a row.
+fn paint(out: &mut dyn io::Write, frame: &str) -> io::Result<()> {
+    out.queue(MoveTo(0, 0))?;
+    out.queue(Clear(ClearType::FromCursorDown))?;
+    write!(out, "{frame}")?;
+    out.flush()
+}
+
+/// One redraw's worth of text: the host line, then the tables [`flock`]
+/// would have printed.
+///
+/// The host line goes above rather than below so it holds still while the
+/// tables under it change length, and so it is the last thing [`fit_rows`]
+/// gives up.
+fn follow_frame(
+    listing: Vec<ProcessInfo>,
+    style: Presentation,
+    host: Option<HostSample>,
+) -> String {
+    let mut frame = Vec::new();
+    if let Some(host) = host {
+        // Writing to a `Vec` cannot fail, here or below.
+        let _ = writeln!(frame, "{}\n", host.line());
+    }
+    let _ = emit_flock(&mut frame, Format::Table, "flock", listing, style);
+    String::from_utf8_lossy(&frame).into_owned()
+}
+
+/// Trims `frame` to what a terminal `columns` wide and `rows` tall shows,
+/// saying how much it dropped.
+///
+/// Rows, not lines: a line wider than the terminal wraps onto more than one
+/// of them, so counting lines would overrun a narrow window and leave every
+/// redraw scrolling. One row is held back for the cursor the redraw leaves
+/// behind, and the notice's own height for the notice.
+///
+/// The notice wraps like anything else, which is why its height is measured
+/// rather than assumed to be one. Giving a kept line back to make room was
+/// the earlier answer and it does not hold: at 30 columns the notice takes
+/// two rows and the line handed back was worth one, so the frame overran by
+/// one row and the window scrolled on every redraw. Measured at 12, 16, 20,
+/// 24 and 30 columns. Reserving the worst case, every line dropped, costs at
+/// most one row more than the final count needs, and no circularity.
+///
+/// A size of nothing is not a window of nothing. A pty that has never been
+/// told how big it is reports zero, and `script(1)` hands `--follow` exactly
+/// that: measured 2026-09-12, where trimming to it printed the notice alone,
+/// every second, and no flock at all. Sizes that leave no room to trim get
+/// the frame whole, the same answer a terminal that will not measure gets.
+fn fit_rows(frame: &str, columns: u16, rows: u16) -> String {
+    let (columns, budget) = (usize::from(columns), usize::from(rows).saturating_sub(1));
+    if columns == 0 || budget == 0 {
+        return frame.to_owned();
+    }
+    let lines: Vec<&str> = frame.lines().collect();
+    // Widest the notice can get, since more dropped lines means more digits.
+    let reserve = line_rows(&notice(lines.len()), columns);
+    let fill = budget.saturating_sub(reserve);
+    let mut used = 0;
+    let mut kept = 0;
+    for line in &lines {
+        let height = line_rows(line, columns);
+        if used + height > fill {
+            break;
+        }
+        used += height;
+        kept += 1;
+    }
+    if kept == lines.len() {
+        return frame.to_owned();
+    }
+    let mut fitted = lines[..kept].join("\n");
+    if kept > 0 {
+        fitted.push('\n');
+    }
+    // `budget - used` rather than the whole notice: a window too narrow to
+    // hold it is the one case the reservation above cannot satisfy, and
+    // printing it whole overruns the budget and scrolls the screen, which is
+    // the single thing this function exists to prevent. Clipped, the frame
+    // stays inside its rows and the operator still reads the leading digits,
+    // which is the part that says how much is missing.
+    fitted.push_str(&clip_rows(
+        &notice(lines.len() - kept),
+        columns,
+        budget.saturating_sub(used),
+    ));
+    fitted.push('\n');
+    fitted
+}
+
+/// `text` cut to at most `rows` rows at `columns` wide.
+///
+/// Only [`fit_rows`]'s notice reaches this, and only on a window too narrow
+/// to print it whole.
+fn clip_rows(text: &str, columns: usize, rows: usize) -> String {
+    let ceiling = rows.saturating_mul(columns);
+    if width::visible_width(text) <= ceiling {
+        return text.to_owned();
+    }
+    text.chars().take(ceiling).collect()
+}
+
+/// What a trimmed frame says in place of the lines it dropped.
+///
+/// A function rather than a literal because [`fit_rows`] measures this twice:
+/// once at its widest to reserve the rows, and once with the count it settled
+/// on.
+fn notice(dropped: usize) -> String {
+    // Singular is reachable: `dropped` is at least one wherever the notice
+    // prints at all, and a follow redraws this once a second.
+    let lines = if dropped == 1 { "line" } else { "lines" };
+    format!("{dropped} more {lines} than this terminal shows")
+}
+
+/// How many terminal rows `line` occupies once it wraps at `columns`.
+///
+/// An empty line still occupies one.
+fn line_rows(line: &str, columns: usize) -> usize {
+    width::visible_width(line).div_ceil(columns).max(1)
+}
+
 /// Lists the dogs and nothing else: the same `Request::ListFlock` [`flock`]
 /// sends, filtered to the entries carrying a `dog` marker
 ///
@@ -531,6 +746,157 @@ mod tests {
     /// Bounds every `envelopes.recv()` here: a verb that never reaches the
     /// wire must fail by assertion, not by hanging the job.
     const RECV_TIMEOUT: Duration = Duration::from_secs(5);
+
+    /// fails if a frame that fits gets trimmed anyway. Three lines in a
+    /// window with rows to spare come back byte-identical, trailing newline
+    /// and all.
+    /// fails if the notice's own height stops being reserved. It wraps like
+    /// any other line, so at 30 columns it is two rows and the old "hand one
+    /// kept line back" reservation bought one. Measured overruns before the
+    /// fix: 12x3, 12x5, 16x3, 20x3, 24x3 and 30x3.
+    ///
+    /// Including the window too narrow to hold the notice whole, which is
+    /// the case that used to be skipped here: it is clipped now rather than
+    /// allowed to overrun.
+    #[test]
+    fn a_trimmed_frame_never_overruns_the_rows_it_was_given() {
+        let frame: String = (0..40)
+            .map(|n| format!("sheep-{n:02}  online  1234  0.5%  12.3 MB  0d 0h 1m\n"))
+            .collect();
+        for columns in [12u16, 16, 20, 24, 30, 38, 40, 60, 80, 120] {
+            for rows in [3u16, 4, 5, 8, 12, 24, 40] {
+                let out = fit_rows(&frame, columns, rows);
+                let used: usize = out
+                    .lines()
+                    .map(|line| line_rows(line, usize::from(columns)))
+                    .sum();
+                let budget = usize::from(rows).saturating_sub(1);
+                assert!(
+                    used <= budget,
+                    "{columns}x{rows}: used {used} rows against a budget of {budget}"
+                );
+            }
+        }
+    }
+
+    /// fails if the notice goes back to one spelling. Dropping exactly one
+    /// line is the common case on a window one row short, and it redraws
+    /// every second.
+    #[test]
+    fn the_notice_counts_one_dropped_line_in_the_singular() {
+        let frame = "one\ntwo\nthree\n";
+
+        // Four rows: one held for the cursor, one for the notice, two for
+        // content, so exactly one line drops and the word is singular.
+        assert_eq!(
+            fit_rows(frame, 80, 4),
+            "one\ntwo\n1 more line than this terminal shows\n"
+        );
+        // Three rows leaves one for content, so two drop and it is plural.
+        assert_eq!(
+            fit_rows(frame, 80, 3),
+            "one\n2 more lines than this terminal shows\n"
+        );
+    }
+
+    #[test]
+    fn a_frame_that_fits_is_left_alone() {
+        let frame = "one\ntwo\nthree\n";
+
+        assert_eq!(fit_rows(frame, 80, 24), frame);
+    }
+
+    /// fails if the fit counts lines instead of rows. Four lines is four
+    /// lines, but at ten columns each of these wraps onto three, so twelve
+    /// rows of content do not go into a window of eight.
+    #[test]
+    fn a_wrapped_line_costs_more_than_one_row() {
+        let wide = "0123456789012345678901234";
+        let frame = format!("{wide}\n{wide}\n{wide}\n{wide}\n");
+
+        let fitted = fit_rows(&frame, 10, 8);
+
+        assert_eq!(
+            fitted, "0123456789012345678901234\n3 more lines than this terminal shows\n",
+            "the notice reserves its own four rows at ten columns, leaving three of the seven \
+             for content, which is one wrapped line"
+        );
+    }
+
+    /// fails if the notice steals the row of a line it is reporting, or if
+    /// the count goes wrong. Ten lines into a window six rows tall keeps
+    /// four and says so.
+    #[test]
+    fn a_frame_too_tall_says_how_much_it_dropped() {
+        let frame = (0..10)
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let fitted = fit_rows(&frame, 80, 6);
+
+        assert_eq!(
+            fitted,
+            "0\n1\n2\n3\n6 more lines than this terminal shows\n"
+        );
+    }
+
+    /// fails if a pty that has never been told its size swallows the flock.
+    /// `script(1)` reports zero rows and zero columns, and trimming to that
+    /// left nothing on screen but the notice, once a second.
+    #[test]
+    fn a_terminal_reporting_no_size_gets_the_frame_whole() {
+        let frame = "a\nb\nc\n";
+
+        assert_eq!(fit_rows(frame, 0, 0), frame, "no size at all");
+        assert_eq!(fit_rows(frame, 80, 0), frame, "no rows");
+        assert_eq!(fit_rows(frame, 0, 24), frame, "no columns");
+        assert_eq!(
+            fit_rows(frame, 80, 1),
+            frame,
+            "one row leaves nothing to trim to once the cursor has its own"
+        );
+    }
+
+    /// fails if the host line stops leading the frame. It has to be first:
+    /// it holds still while the tables under it change length, and it is
+    /// what survives a window too short for the rest.
+    #[test]
+    fn a_followed_frame_leads_with_the_host_line() {
+        let host = HostSample {
+            cpu_percent: Some(11.0),
+            memory_used_bytes: 39_963_869_184,
+            memory_total_bytes: 51_539_607_552,
+            disk_bytes_per_second: Some((0, 0)),
+            network_bytes_per_second: Some((0, 0)),
+        };
+
+        let frame = follow_frame(vec![sample_info()], Presentation::BARE, Some(host));
+
+        let mut lines = frame.lines();
+        assert!(lines.next().unwrap().starts_with("host  cpu 11%"));
+        assert_eq!(lines.next().unwrap(), "");
+        assert!(frame.contains("web"), "the table still follows: {frame}");
+    }
+
+    /// fails if a target `sysinfo` cannot read starts printing a blank host
+    /// line instead of no host line.
+    #[test]
+    fn a_frame_without_a_host_sample_is_the_tables_alone() {
+        let frame = follow_frame(vec![sample_info()], Presentation::BARE, None);
+
+        assert!(!frame.contains("host  cpu"), "{frame}");
+        assert!(frame.contains("web"), "{frame}");
+    }
+
+    /// fails if the flourish comes back into a followed frame. It is art
+    /// above an empty flock, and a redraw every second turns it into noise.
+    #[test]
+    fn a_followed_frame_of_an_empty_flock_carries_no_flourish() {
+        let frame = follow_frame(Vec::new(), Presentation::BARE, None);
+
+        assert!(!frame.contains("no sheep in the flock yet"), "{frame}");
+    }
 
     #[tokio::test]
     async fn flock_asks_the_daemon_to_list_the_whole_flock() {

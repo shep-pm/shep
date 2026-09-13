@@ -63,7 +63,8 @@ use crate::probes::ready::{Readiness, ReadinessSource, await_ready};
 use crate::runner::AdoptSpec;
 use crate::runner::{
     ExitOutcome, FlushError, LogCtl, Preflight, ProcIo, ProcessRunner, ReopenError, RunnerError,
-    RunningProcess, SpawnSpec, StdinWrite, check_log_ancestry, open_log_path,
+    RunningProcess, SpawnSpec, StdinWrite, check_log_ancestry, cwd_advisory, log_path_advisory,
+    open_log_path,
 };
 use crate::secrets::ProviderSecrets;
 
@@ -718,7 +719,8 @@ impl core::error::Error for SupervisorError {}
 /// value yet.
 ///
 /// `Debug` is derived (IR-41): [`ResolvedApp`] wraps an [`AppConfig`], whose
-/// own manual `Debug` redacts `env`, and a bool.
+/// own manual `Debug` redacts `env`, and the rest is a bool and an
+/// operator-facing string with no value from a live flock in it.
 #[derive(Debug, Clone)]
 pub(crate) struct FieldSet {
     /// The app as it now stands, for `rpc.rs` to hand the registry: the
@@ -728,6 +730,9 @@ pub(crate) struct FieldSet {
     pub(crate) app: ResolvedApp,
     /// `true` when the running child does not have the value yet.
     pub(crate) pending: bool,
+    /// The `warning` [`shep_core::protocol::Response::SheepFieldSet`]
+    /// answers with, computed here where the filesystem is in reach.
+    pub(crate) warning: Option<String>,
 }
 
 /// What a [`Command::SetSheepEnvBatch`] did.
@@ -3934,6 +3939,12 @@ impl<R: ProcessRunner> Actor<R> {
                 slot.entry.pid = Some(pid);
                 slot.entry.started_at = Some(tokio::time::Instant::now());
                 slot.entry.restarts += 1;
+                // `out_file`/`err_file` are `ApplyGroup::NeedsRespawn`: this
+                // respawn is when they take effect. `to_info` reads these
+                // fields, not `spec`, so a moved path reaches an operator
+                // only once it moves here too.
+                slot.entry.out_file = spec.out_file;
+                slot.entry.err_file = spec.err_file;
                 // A different process under the same id, so an earlier reload's
                 // verdict about the last one does not apply to it.
                 slot.ready_failed = false;
@@ -4442,6 +4453,14 @@ impl<R: ProcessRunner> Actor<R> {
         });
         for id in survivors.iter().chain(orphaned_by_failed_spawn.iter()) {
             if let Some(slot) = self.sheep.get_mut(id) {
+                // `out_file`/`err_file` need no refresh here: `stored` only
+                // moves `instances`, and no token an accepted log path may
+                // carry reads that. `normalize` refuses a `{{secret:...}}`
+                // in either field (`SecretInLogPath`), which leaves
+                // `{{instance}}` and `{{name}}`; a survivor's own `instance`
+                // is untouched by a scale and its name cannot move. Note it
+                // is `normalize` that narrows this and not `render`, which
+                // resolves secret references too.
                 slot.entry.spec = stored.clone();
                 match &mut slot.entry.pending {
                     // A slot already owed a config keeps it, with the count
@@ -4949,6 +4968,14 @@ impl<R: ProcessRunner> Actor<R> {
     /// force the moment it lands, the same carve-out `apply_one` makes. A
     /// [`ApplyGroup::NeedsRespawn`] field only parks.
     ///
+    /// # `warning`, the one field this can answer besides `pending`
+    ///
+    /// `cwd`, `script`, `out_file` and `err_file` get a filesystem check
+    /// nothing before this ran anywhere: `normalize` cannot see the
+    /// filesystem, and a spawn is the daemon's own first look. A problem
+    /// here never refuses the write; it names what the next respawn will
+    /// otherwise fail on with a bare OS error. See [`FieldSet::warning`].
+    ///
     /// # Errors
     ///
     /// - [`SupervisorError::IsADog`] - the name is a dog's. Raised before
@@ -5035,6 +5062,49 @@ impl<R: ProcessRunner> Actor<R> {
         let merged = normalize(edited)
             .map_err(|err| SupervisorError::InvalidField(format!("{key}: {err}")))?;
 
+        // Advisory, never a second way to refuse the write above: the
+        // validation has already accepted the value. Not that the override
+        // store has been written, which happens further down; what is
+        // settled here is that nothing below will refuse. `normalize` cannot make
+        // this call itself (`normalize_with_home`'s own doc gives the
+        // reason: the CLI and the daemon can normalize the same config as
+        // different users), and the gap between this check and the respawn
+        // that actually needs the path is the same one `check_log_ancestry`
+        // documents for its own check-then-open window
+        // (`docs/specs/deferred.md`). `cwd` and `script` share one spec and
+        // one `preflight` call because each one's resolution already
+        // depends on the other; `out_file`/`err_file` need neither `cwd`
+        // nor one another.
+        //
+        // The two arms each build their own spec rather than hoisting one
+        // above the `match`, which would look tidier and cost more: most
+        // keys reach `_ => None`, and `describe` renders every template and
+        // resolves every secret reference the config carries. Duplicated
+        // lines here buy that work being skipped on every field but these
+        // four.
+        let warning = match key {
+            "cwd" | "script" => {
+                let view = self.secret_view(&merged);
+                let spec = describe(&merged, 0, &self.paths, None, &view);
+                spec.cwd.as_deref().and_then(cwd_advisory).or_else(|| {
+                    match self.runner.preflight(&spec) {
+                        Preflight::Impossible(reason) | Preflight::Doubtful(reason) => Some(reason),
+                        Preflight::Unknown => None,
+                    }
+                })
+            }
+            "out_file" | "err_file" => {
+                let view = self.secret_view(&merged);
+                let spec = describe(&merged, 0, &self.paths, None, &view);
+                log_path_advisory(if key == "out_file" {
+                    &spec.out_file
+                } else {
+                    &spec.err_file
+                })
+            }
+            _ => None,
+        };
+
         // The one field that moved, if it moved at all. A value identical
         // to what is already intended still records the override (the
         // operator has spoken for the key, which is the whole point of
@@ -5119,6 +5189,7 @@ impl<R: ProcessRunner> Actor<R> {
         Ok(Some(FieldSet {
             app: parked.unwrap_or_else(|| next_spec.unwrap_or(merged)),
             pending: !in_force,
+            warning,
         }))
     }
 
@@ -7716,6 +7787,9 @@ fn to_info(entry: &ProcessEntry, smits: &Smits) -> ProcessInfo {
         // correct, so this listing path does no I/O.
         .overridden((!entry.overridden.is_empty()).then(|| entry.overridden.clone()))
         .max_memory(entry.spec.config().max_memory.map(MemSize::bytes))
+        // Cloned per row rather than fetched on demand: a client classifies
+        // every line it draws, and an empty list costs the wire nothing.
+        .level_rules(entry.spec.config().level_rules.clone())
         .build()
 }
 
@@ -8502,7 +8576,7 @@ async fn run_sheep<P: RunningProcess>(
 
 #[cfg(test)]
 mod tests {
-    use shep_core::config::{AppConfig, ProbeConfig, ProbeKind, normalize};
+    use shep_core::config::{AppConfig, LevelRule, LineLevel, ProbeConfig, ProbeKind, normalize};
     use shep_core::protocol::DogSource;
     use shep_core::status::ProcStatus;
     use shep_core::values::{MemSize, UpDuration};
@@ -19790,6 +19864,100 @@ mod tests {
         );
     }
 
+    /// Without this refresh, `to_info` keeps naming a respawned child's old
+    /// log path forever: `out_file`/`err_file` are `ApplyGroup::NeedsRespawn`,
+    /// so a restart is the one moment they take effect, and every reader
+    /// built on `to_info` (`shep describe`, the muster roll) inherits it.
+    #[tokio::test(start_paused = true)]
+    async fn restart_refreshes_the_reported_log_paths_from_the_new_spec() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
+
+        let mut file = AppConfig::minimal("web", "./srv");
+        file.out_file = Some("/var/log/moved-out.log".to_string());
+        file.err_file = Some("/var/log/moved-err.log".to_string());
+        apply_config(
+            &mut actor,
+            vec![declared_app(
+                file,
+                &["name", "script", "out_file", "err_file"],
+            )],
+            ResetDepth::None,
+        )
+        .await;
+        assert!(
+            actor.sheep[&0].entry.pending.is_some(),
+            "the fixture must really park the change, or this case proves nothing"
+        );
+
+        let (reply, _answer) = oneshot::channel();
+        actor.begin_manual(
+            ProcessSelector::Name("web".to_string()),
+            ManualKind::Restart,
+            CommandOrigin::Operator,
+            ReplyKind::Info(reply),
+        );
+        actor.handle_exited(
+            0,
+            ExitOutcome {
+                code: Some(0),
+                signal: None,
+            },
+        );
+
+        let after = to_info(&actor.sheep[&0].entry, &actor.smits);
+        assert_eq!(
+            after.out_file.as_deref(),
+            Some("/var/log/moved-out.log"),
+            "the restarted child writes to the moved path; the listing must say so"
+        );
+        assert_eq!(
+            after.err_file.as_deref(),
+            Some("/var/log/moved-err.log"),
+            "and the same for stderr"
+        );
+    }
+
+    /// The mirror case: a load parks a moved `out_file`/`err_file`, but the
+    /// child has not respawned yet and is still appending to the old path.
+    /// Reporting the parked path early would be this same bug pointed the
+    /// other way, naming a file nothing writes to yet.
+    #[tokio::test(start_paused = true)]
+    async fn a_parked_log_path_change_does_not_reach_the_listing_before_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
+        let logs = actor.paths.logs.clone();
+
+        let mut file = AppConfig::minimal("web", "./srv");
+        file.out_file = Some("/var/log/moved-out.log".to_string());
+        file.err_file = Some("/var/log/moved-err.log".to_string());
+        apply_config(
+            &mut actor,
+            vec![declared_app(
+                file,
+                &["name", "script", "out_file", "err_file"],
+            )],
+            ResetDepth::None,
+        )
+        .await;
+        assert!(
+            actor.sheep[&0].entry.pending.is_some(),
+            "the fixture must really park the change, or this case proves nothing"
+        );
+
+        let still_reported = to_info(&actor.sheep[&0].entry, &actor.smits);
+        assert_eq!(
+            still_reported.out_file.as_deref(),
+            logs.join("web-0-out.log").to_str(),
+            "the child is still writing to the old path until it respawns"
+        );
+        assert_eq!(
+            still_reported.err_file.as_deref(),
+            logs.join("web-0-err.log").to_str(),
+            "and the same for stderr"
+        );
+    }
+
     /// A pending field an operator cannot see is a silent divergence.
     #[tokio::test(start_paused = true)]
     async fn to_info_reports_the_pending_fields_names_only() {
@@ -19832,6 +20000,32 @@ mod tests {
         let entry = &actor.sheep[&0].entry;
         let info = to_info(entry, &actor.smits);
         assert_eq!(info.max_memory, Some(CEILING_BYTES));
+    }
+
+    /// The rules reach a client through the listing and nothing else, so a
+    /// row that drops them leaves the client reading lines the app already
+    /// explained. Two rules, since order is the contract and one proves no
+    /// order.
+    #[tokio::test(start_paused = true)]
+    async fn to_info_carries_a_sheep_s_declared_level_rules_in_order() {
+        let rules = vec![
+            LevelRule {
+                pattern: r"\[ERROR\]".to_string(),
+                level: LineLevel::Error,
+            },
+            LevelRule {
+                pattern: r"\[WARN\]".to_string(),
+                level: LineLevel::Warn,
+            },
+        ];
+        let dir = tempfile::tempdir().unwrap();
+        let (actor, _enforcer) = actor_over(
+            &dir,
+            &[app_with("web", |app| app.level_rules = rules.clone())],
+        );
+
+        let entry = &actor.sheep[&0].entry;
+        assert_eq!(to_info(entry, &actor.smits).level_rules, rules);
     }
 
     /// A dog's `AppConfig::minimal` sets no ceiling, so its `ProcessInfo`

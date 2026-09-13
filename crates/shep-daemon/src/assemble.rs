@@ -58,24 +58,30 @@ pub fn instance_slots(existing: &[u32], count: u32) -> Vec<u32> {
 }
 
 /// The env every spawned child starts from, before the app's own `env` map
-/// is folded on top (app config always wins on conflict).
+/// is folded on top (app config always wins on conflict), plus `PATH`:
+/// without one, a bare program or interpreter name can never be found by
+/// exec, so it's seeded unconditionally rather than left to `keys`.
 ///
-/// Without a `PATH` here, a bare program or interpreter name can never be
-/// found by exec. Reads the daemon's own environment once, so this stays a
-/// pure function of process state, not I/O.
-fn base_env() -> BTreeMap<String, String> {
+/// [`build`] calls this with the platform-selected [`INHERITED`] and a
+/// `std::env::var` reader; a test can pass [`INHERITED_WINDOWS`] and a fake
+/// reader instead, on any host, without touching real process env.
+/// Mutating that from a test is unsound under a parallel test binary, and
+/// `std::env::set_var` is itself `unsafe` since edition 2024.
+fn inherited_env(
+    keys: &[&str],
+    env_reader: &dyn Fn(&str) -> Option<String>,
+) -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();
-    // An empty PATH ("PATH=") is treated as absent: `Ok("")` would
+    // An empty PATH ("PATH=") is treated as absent: `Some("")` would
     // otherwise slip through `unwrap_or_else`, and an empty PATH resolves a
     // bare program against the cwd instead of searching.
-    let path = std::env::var("PATH")
-        .ok()
+    let path = env_reader("PATH")
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| DEFAULT_PATH.to_string());
     env.insert("PATH".to_string(), path);
-    for key in INHERITED {
-        if let Ok(value) = std::env::var(key) {
-            env.insert(key.to_string(), value);
+    for key in keys {
+        if let Some(value) = env_reader(key) {
+            env.insert((*key).to_string(), value);
         }
     }
     env
@@ -92,8 +98,7 @@ const DEFAULT_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
 const DEFAULT_PATH: &str = r"C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem";
 
 /// Variables inherited from the daemon's own environment, on top of `PATH`.
-#[cfg(unix)]
-const INHERITED: &[&str] = &["HOME", "USER", "LANG", "TZ"];
+const INHERITED_UNIX: &[&str] = &["HOME", "USER", "LANG", "TZ"];
 
 /// Variables inherited from the daemon's own environment, on top of `PATH`.
 ///
@@ -102,8 +107,22 @@ const INHERITED: &[&str] = &["HOME", "USER", "LANG", "TZ"];
 /// resolve and run `.cmd` files at all. `TEMP`/`TMP` and the
 /// `USERPROFILE`/`APPDATA`/`LOCALAPPDATA` trio are where most runtimes keep
 /// per-user state. Still a closed allowlist, not inherit-everything.
-#[cfg(windows)]
-const INHERITED: &[&str] = &[
+///
+/// `PYTHONUTF8`/`PYTHONIOENCODING` are here for one specific failure: a
+/// non-console stdio handle (a pipe, which is what every spawned child gets)
+/// makes CPython up to 3.14 fall back to the legacy ANSI code page for
+/// `sys.stdout`/`sys.stderr` on Windows, and any non-ASCII byte an app prints
+/// then raises `UnicodeEncodeError`. CPython 3.15 turns UTF-8 mode on by
+/// default (PEP 686), so these two matter for an older interpreter and for
+/// anything that sets `PYTHONUTF8=0`. Neither has a unix equivalent to piggyback
+/// on. `LANG` is what decides a child's stdio encoding there and
+/// [`INHERITED_UNIX`] forwards it, which is not the same as setting one: a
+/// daemon started with no `LANG`, or with one naming a non-UTF-8 locale,
+/// hands that to its children. Windows has no variable in that role to
+/// forward at all. Setting either in the daemon's own environment now
+/// reaches every spawned app; an app can still set them itself, per-app, in
+/// its Flockfile `env`.
+const INHERITED_WINDOWS: &[&str] = &[
     "SystemRoot",
     "windir",
     "SystemDrive",
@@ -121,7 +140,22 @@ const INHERITED: &[&str] = &[
     "OS",
     "LANG",
     "TZ",
+    "PYTHONUTF8",
+    "PYTHONIOENCODING",
 ];
+
+/// The list [`build`] actually reads on this build. Picked with `cfg!`
+/// rather than `#[cfg(...)]` gating [`INHERITED_UNIX`]/[`INHERITED_WINDOWS`]
+/// themselves: both stay referenced on every target this way, so a test can
+/// run either platform's list (and [`inherited_env`]'s filtering) on any
+/// host, the same way this crate's unit-file renderers are pinned by text
+/// on a Mac without a systemd host, and `-D warnings` never calls the other
+/// platform's list dead code.
+const INHERITED: &[&str] = if cfg!(windows) {
+    INHERITED_WINDOWS
+} else {
+    INHERITED_UNIX
+};
 
 /// Which of an app's fields carried a `{{secret:...}}` that would not
 /// resolve, and why.
@@ -220,6 +254,10 @@ pub fn assemble(
                 }
             })
         },
+        InheritedEnv {
+            keys: INHERITED,
+            reader: &|key: &str| std::env::var(key).ok(),
+        },
     )
 }
 
@@ -266,6 +304,10 @@ pub(crate) fn describe(
                     }),
             )
         },
+        InheritedEnv {
+            keys: INHERITED,
+            reader: &|key: &str| std::env::var(key).ok(),
+        },
     );
     match built {
         Ok(spec) => spec,
@@ -273,9 +315,18 @@ pub(crate) fn describe(
     }
 }
 
+/// [`inherited_env`]'s two arguments bundled into one: a key list plus a
+/// reader, so [`build`] takes one parameter for this instead of two, and a
+/// test can substitute both without touching real process env.
+struct InheritedEnv<'a> {
+    keys: &'a [&'a str],
+    reader: &'a dyn Fn(&str) -> Option<String>,
+}
+
 /// [`assemble`] and [`describe`] over one body: `render` is handed each
 /// templated value with the field name to blame, and decides what an
-/// unresolvable `{{secret:...}}` costs.
+/// unresolvable `{{secret:...}}` costs. Both callers in this module pass
+/// [`INHERITED`] and a `std::env::var` closure as `inherited`.
 ///
 /// # Errors
 ///
@@ -287,6 +338,7 @@ fn build<E>(
     credentials: Option<Credentials>,
     environment: &str,
     mut render: impl FnMut(&str, &str) -> Result<String, E>,
+    inherited: InheritedEnv<'_>,
 ) -> Result<SpawnSpec, E> {
     let config = app.config();
     let name = config.name.clone();
@@ -311,7 +363,7 @@ fn build<E>(
     // Anything not seeded here is invisible to the child: tokio_runner.rs
     // calls env_clear() then envs(&spec.env). Each value renders through the
     // grammar as it is inserted.
-    let mut env = base_env();
+    let mut env = inherited_env(inherited.keys, inherited.reader);
     for (key, value) in &config.env {
         let value = render(value, key)?;
         env.insert(key.clone(), value);
@@ -825,6 +877,49 @@ mod tests {
         assert!(
             !path.is_empty(),
             "an empty PATH is exactly the ENOENT failure mode"
+        );
+    }
+
+    // Goes through `build`, the function `assemble`/`describe` actually call,
+    // rather than asserting on `INHERITED_WINDOWS.contains(...)` directly: a
+    // list-membership assert would stay green even if `build` stopped
+    // reading its `inherited` argument at all. Passes `INHERITED_WINDOWS`
+    // explicitly so this runs on any host rather than only in CI's Windows
+    // job, the same way this crate's other unit-file renderers are pinned
+    // by text without needing the OS they render for.
+    #[test]
+    fn windows_stdio_encoding_vars_reach_spec_env() {
+        let app_config = AppConfig {
+            name: "web".to_string(),
+            script: "app.js".to_string(),
+            interpreter: Some("none".to_string()),
+            ..Default::default()
+        };
+        let app = normalize(app_config).unwrap();
+        let fake_env = |key: &str| match key {
+            "PYTHONUTF8" => Some("1".to_string()),
+            "PYTHONIOENCODING" => Some("utf-8".to_string()),
+            _ => None,
+        };
+
+        let spec = build::<Infallible>(
+            &app,
+            0,
+            &test_paths(),
+            None,
+            "production",
+            |value, _field| Ok(value.to_string()),
+            InheritedEnv {
+                keys: INHERITED_WINDOWS,
+                reader: &fake_env,
+            },
+        )
+        .expect("no template in this app can fail to render");
+
+        assert_eq!(spec.env.get("PYTHONUTF8").map(String::as_str), Some("1"));
+        assert_eq!(
+            spec.env.get("PYTHONIOENCODING").map(String::as_str),
+            Some("utf-8")
         );
     }
 
