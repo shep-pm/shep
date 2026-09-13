@@ -26,13 +26,12 @@ pub fn sanitise(field: &str) -> (String, bool) {
 /// [`sanitise`] with `\n` kept and whitespace left as written, so a line
 /// break and the two spaces indenting the line after it both survive.
 ///
-/// The weaker of the two, and deliberately: a kept `\n` can forge a line
-/// of output, so a string an untrusted host worded goes through
-/// [`sanitise`] at the seam that captures it instead. Nothing else is
-/// spared. What still cannot reach a terminal is everything that moves the
-/// cursor or rewrites a row already drawn, `\r`, `\t`, `\u{1b}` and
-/// `\u{9b}` among them. Reports `true` on [`sanitise`]'s terms, counting a
-/// kept `\n` as nothing removed.
+/// `\n` is the only character spared, and the weaker guarantee is
+/// deliberate: a kept `\n` can forge a line of output, so a string an
+/// untrusted host worded goes through [`sanitise`] at its own seam
+/// instead. Everything that moves the cursor or rewrites a drawn row
+/// still goes, `\r`, `\t`, `\u{1b}` and `\u{9b}` among them. Reports
+/// `true` on [`sanitise`]'s terms, counting a kept `\n` as nothing removed.
 pub fn sanitise_multiline(field: &str) -> (String, bool) {
     strip_unprintable(field, true)
 }
