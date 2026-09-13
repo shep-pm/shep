@@ -39,7 +39,7 @@ go for the full argument. The commit that removed them names itself.
 - [CI flakes, and the log line a stop could lose](#ci-flakes-and-the-log-line-a-stop-could-lose) (4)
 - [CI and releases](#ci-and-releases) (2)
 - [Config pane writes](#config-pane-writes) (1)
-- [Boot ordering](#boot-ordering) (6)
+- [Boot ordering](#boot-ordering) (8)
 - [Following the flock](#following-the-flock) (3)
 
 ## Core types and the daemon's shape
