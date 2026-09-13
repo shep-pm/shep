@@ -313,18 +313,39 @@ Banks stack, separated by a blank row, so the rows get taller as the terminal
 gets narrower — tallest exactly where there is least room, the same shape
 `shed_dialog_rows` already handles for 1g.
 
-Shedding order, when the height will not hold the form:
+**The sheep frees no rows, so it cannot shed first.** It sits at entry rows 5
+through 8 of the DOING column, and those rows exist because LOOKING has twelve
+entries. Removing it changes nothing about the form's height. Three pieces
+actually cost a row each:
 
-1. **the sheep.** The design calls it "the one decoration in the whole TUI that
-   holds no information", which makes it the only thing here that can go without
-   the overlay saying something false.
-2. **the `NO_COLOR` line.** A statement about the design, not about a key.
-3. **the gate sentence's tail**, down to the control label alone.
+```
+heading        1
+entry rows    12   <- the sheep lives inside these; shedding it frees 0
+blank          1
+gate line      1
+closing        2
+              17   borderless
+              19   boxed (a border cell above and below)
+```
 
-Below that, the overlay refuses with a sentence naming the height it needs rather
-than drawing a partial key list, the way the secrets pane refuses a narrow
-terminal rather than clipping it. A key list missing rows silently is worse than
-one that says it cannot fit.
+Shedding order, by what each step frees:
+
+1. **the `NO_COLOR` line, and the sheep with it.** One row. The sheep frees
+   nothing on its own, but a decoration sitting beside a list that has already
+   lost text is worse than no decoration, so it goes with the first trim rather
+   than outliving the sentence about colour.
+2. **the blank separator.** One row.
+3. **the gate line**, folded onto the surviving closing line. One row.
+
+That gives 17, 16, 15 and 14, with a floor of 13: the heading and the twelve
+entry rows, which is the list itself. Below 13 the overlay refuses with a
+sentence naming the height it needs rather than drawing a partial key list, the
+way the secrets pane refuses a narrow terminal rather than clipping it. A key
+list missing rows silently is worse than one that says it cannot fit.
+
+Boxed needs 19, so an 18-row terminal gives way to the borderless form — the same
+answer 1g already gives, for the same reason: a box cannot shed its border pair
+and half a box is worse than none.
 
 ## The frozen dashboard
 
@@ -460,7 +481,7 @@ pinning what it exists to show rather than only that the overlay drew:
 | `KeymapTwoColumn` | 70 × 48 | two columns, two banks |
 | `KeymapFrozen` | 160 × 48 | the gate line naming the dead link, not the control label |
 | `KeymapReadOnly` | 160 × 48 | `█ read-only` in the gate line |
-| `KeymapShort` | 160 × 20 | the sheep shed, the key rows intact |
+| `KeymapShort` | 160 × 16 | the sheep and the colour sentence shed, the key rows intact |
 
 `KeymapFloor` and `KeymapBorderlessWide` are two columns apart on purpose: 130 is
 the narrowest box and 128 the widest borderless form that still carries all four

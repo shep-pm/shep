@@ -958,7 +958,7 @@ In `map_key`'s `Normal` match, replace the `h` arm:
         KeyCode::Char('h' | '?') => Some(KeyPress::Help),
 ```
 
-Update the doc comment on `KeyPress::Help` in `app.rs` in the same commit, since it still describes the field help:
+Update the doc comment on `KeyPress::Help` in `app.rs` in the same commit, since it still describes the field help. It describes behaviour Task 5 delivers, so for one commit it runs ahead of the reducer; that is the right trade against editing the same comment twice, and no mid-branch commit ships:
 
 ```rust
     /// `h` or `?`: opens the keymap overlay, from any body. Pressing either
@@ -1324,15 +1324,24 @@ mod tests {
     /// Every row `keymap::rows` produces reaches the screen. The point of
     /// deriving them is lost if the drawer silently drops the tail of a
     /// column.
+    ///
+    /// `Group::Closing` is checked by its caption rather than its `does`,
+    /// which is the four letters `quit` and would be satisfied by the
+    /// closing line's own `quits lookout` whatever the drawer did with the
+    /// row.
     #[test]
     fn every_derived_row_is_drawn() {
         let app = app_with_overlay();
         let rendered = render_overlay(&app, 160, 48);
         for row in crate::lookout::keymap::rows() {
+            let wanted = if row.group == Group::Closing {
+                row.keys
+            } else {
+                row.does
+            };
             assert!(
-                rendered.contains(row.does),
-                "`{}` ({}) never reached the screen",
-                row.does,
+                rendered.contains(wanted),
+                "`{wanted}` ({}) never reached the screen",
                 row.keys
             );
         }
@@ -1597,32 +1606,70 @@ git commit -m "feat(lookout): draw the keymap overlay over the dimmed body"
         assert!(heading_rows[1].contains("DOING"));
     }
 
-    /// The sheep sheds first, and every key row survives it. The design
-    /// calls the sheep the one decoration that holds no information, which
-    /// is what makes it the only thing here that can go silently.
+    /// The heights, from the top of the ladder to the refusal.
+    ///
+    ///   19  boxed, everything
+    ///   18  borderless (a box cannot shed its border pair)
+    ///   17  borderless, everything
+    ///   16  the NO_COLOR line and the sheep go
+    ///   15  the blank separator goes
+    ///   14  the gate line folds onto the closing line
+    ///   13  the floor: the heading and twelve entry rows
+    ///   12  refuse
     #[test]
-    fn a_short_terminal_sheds_the_sheep_and_keeps_the_keys() {
+    fn the_height_ladder_shows_its_boundaries() {
+        assert_eq!(rows_for_height(19), Shed::Boxed);
+        assert_eq!(rows_for_height(18), Shed::Nothing);
+        assert_eq!(rows_for_height(17), Shed::Nothing);
+        assert_eq!(rows_for_height(16), Shed::Decoration);
+        assert_eq!(rows_for_height(15), Shed::Blank);
+        assert_eq!(rows_for_height(14), Shed::Gate);
+        assert_eq!(rows_for_height(13), Shed::Gate);
+        assert_eq!(rows_for_height(12), Shed::Refuse);
+    }
+
+    /// At 16 rows the sheep and the colour sentence are gone and every key
+    /// row is still there.
+    ///
+    /// 16, not 22: the box needs 19 rows and 22 holds it whole, so nothing
+    /// sheds at 22 and this test would have passed on an unshed form. The
+    /// sheep also frees no rows by itself, since it sits inside entry rows
+    /// LOOKING needs anyway — it goes with the NO_COLOR line because a
+    /// decoration beside a trimmed list is wrong, not because it buys room.
+    #[test]
+    fn a_short_terminal_sheds_the_decoration_and_keeps_the_keys() {
         let app = app_with_overlay();
-        let rendered = render_overlay(&app, 160, 22);
+        let rendered = render_overlay(&app, 160, 16);
         assert!(!rendered.contains(SHEEP[0]), "the sheep survived: {rendered}");
+        assert!(
+            !rendered.contains("decoration only"),
+            "the NO_COLOR line survived: {rendered}"
+        );
         for row in crate::lookout::keymap::rows() {
+            if row.group == Group::Closing {
+                continue;
+            }
             assert!(
                 rendered.contains(row.does),
-                "`{}` was shed with the sheep",
+                "`{}` was shed with the decoration",
                 row.does
             );
         }
     }
 
-    /// Below what the key rows themselves need, the overlay says so rather
-    /// than drawing a partial list. A key list missing rows silently is
-    /// worse than one that refuses.
+    /// Below the key rows themselves, the overlay says so rather than
+    /// drawing a partial list. A key list missing rows silently is worse
+    /// than one that refuses.
+    ///
+    /// 12 rows: one under the floor of 13, which is the heading plus the
+    /// twelve entries. `MIN_HEIGHT` is 6, so the dashboard behind still
+    /// draws at this height and the refusal is the overlay's own.
     #[test]
     fn too_short_refuses_instead_of_clipping() {
-        let rendered = render_overlay(&app_with_overlay(), 160, 8);
+        let rendered = render_overlay(&app_with_overlay(), 160, 12);
         assert!(
             rendered.contains("the keymap needs"),
-            "no refusal at 8 rows: {rendered}"
+            "no refusal at 12 rows: {rendered}"
         );
         assert!(
             !rendered.contains("MOVING"),
@@ -1657,7 +1704,43 @@ const fn columns_for(width: u16) -> u16 {
 }
 ```
 
-Groups wrap into banks of `columns_for(width)`, banks separated by a blank row. Shed, in this order, while the form is taller than `area.height`: the sheep, then the `NO_COLOR` line, then the gate line's tail down to the label alone. Below that, draw one line naming the height the key rows need and stop.
+Groups wrap into banks of `columns_for(width)`, banks separated by a blank row.
+
+Then the height ladder, as an enum rather than a chain of `if`s, so the test above can assert each boundary without rendering:
+
+```rust
+/// What a form of `height` rows has to give up.
+///
+/// The sheep is not a step of its own: it sits at entry rows five through
+/// eight of the DOING column, and those rows exist because LOOKING has
+/// twelve entries, so removing it frees nothing. It goes with
+/// [`Shed::Decoration`]'s `NO_COLOR` line because a decoration beside a
+/// list that has already lost text is worse than no decoration.
+///
+/// ```text
+/// 19  Boxed       everything, border pair included
+/// 18  Nothing     borderless: a box cannot shed its border pair
+/// 17  Nothing     borderless, everything
+/// 16  Decoration  the NO_COLOR line and the sheep
+/// 15  Blank       and the blank separator
+/// 14  Gate        and the gate line, folded onto the closing line
+/// 13  Gate        the floor: the heading and twelve entry rows
+/// 12  Refuse
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Shed {
+    Boxed,
+    Nothing,
+    Decoration,
+    Blank,
+    Gate,
+    Refuse,
+}
+
+const fn rows_for_height(height: u16) -> Shed { /* the ladder above */ }
+```
+
+`Shed::Refuse` draws one line naming the height the key rows need and stops.
 
 - [ ] **Step 4: Run the tests and look at it**
 
@@ -1671,7 +1754,8 @@ Then capture the real binary at 100×48 and at 70×48 with `tui-screen-capture`,
 - `the_column_ladder_has_a_boundary_on_each_side` — change the divisor to `COLUMN`.
 - `one_column_under_the_floor_keeps_four_columns_and_loses_the_border` — set the floor to `INTERIOR + 6`, which is the rulings' 132, and watch 130 stop being boxed.
 - `three_columns_put_doing_on_its_own_bank` — put all four groups on one bank regardless of width.
-- `a_short_terminal_sheds_the_sheep_and_keeps_the_keys` — shed an entry row before the sheep.
+- `the_height_ladder_shows_its_boundaries` — move the `Decoration` boundary to 17.
+- `a_short_terminal_sheds_the_decoration_and_keeps_the_keys` — shed an entry row instead of the closing line.
 - `too_short_refuses_instead_of_clipping` — draw what fits instead of refusing.
 
 - [ ] **Step 6: Commit**
@@ -1774,7 +1858,7 @@ git commit -m "fix(lookout): name the keymap in the frozen hint that claims to r
 | `KeymapTwoColumn` | `keymap_two_column` | 70 × 48 | `Allowed` | two columns, two banks |
 | `KeymapFrozen` | `keymap_frozen` | 160 × 48 | `Allowed` | the gate line naming the dead link |
 | `KeymapReadOnly` | `keymap_read_only` | 160 × 48 | `ReadOnly` | `█ read-only` in the gate line |
-| `KeymapShort` | `keymap_short` | 160 × 22 | `Allowed` | the sheep shed, every key row intact |
+| `KeymapShort` | `keymap_short` | 160 × 16 | `Allowed` | the sheep and the colour sentence shed, every key row intact |
 
 `Scene::control`'s match is `Self::Refused => ReadOnly, _ => Allowed` today, so `KeymapReadOnly` joins the first arm.
 
