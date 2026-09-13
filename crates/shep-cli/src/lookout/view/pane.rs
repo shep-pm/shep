@@ -3284,6 +3284,7 @@ mod tests {
                     name: "web".to_string(),
                     key: key.to_string(),
                     pending,
+                    warning: None,
                 }),
             });
             let bar = crate::lookout::view::status::status_line(&app, 200).to_string();
@@ -3960,14 +3961,20 @@ mod tests {
 
     /// Colour is never the only carrier: a refused form has to read as
     /// refused with every colour stripped.
+    ///
+    /// `name` rather than `cwd`: `cwd`'s own "cannot enter" claim moved to
+    /// an accepted form once a bad `cwd` started earning a warning instead
+    /// of a refusal (`SetSheepField`'s `warning`), and `name`'s refusals are
+    /// still a hard `normalize` rule with nothing advisory about them.
     #[test]
     fn a_refused_form_reads_as_refused_without_colour() {
-        let app = fixtures::app_with_plain_palette_in_sheep_pane();
+        let mut app = fixtures::app_with_plain_palette_in_sheep_pane();
+        fixtures::select_field(&mut app, "name");
         let panel = fixtures::config_pane_panel_for_tests(&app, 160);
         let refusal = panel
             .iter()
-            .find(|row| row.contains("cannot enter"))
-            .expect("cwd states a refusal");
+            .find(|row| row.contains("path separator"))
+            .expect("name states a refusal");
         assert!(refusal.contains("refused"), "{refusal}");
     }
 

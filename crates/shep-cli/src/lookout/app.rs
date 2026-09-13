@@ -3242,6 +3242,10 @@ impl App {
     ///
     /// `pending` is the shepherd's answer, not this pane's guess: it knows
     /// about fields like `autostart` that `apply_group` cannot derive.
+    ///
+    /// `warning` rides the same sentence rather than a second notice: the
+    /// write still landed, so this is one more clause about it, on the same
+    /// terms `pending`'s own `", and waits for..."` clause already sets.
     fn on_field_applied(
         &mut self,
         name: &str,
@@ -3250,19 +3254,22 @@ impl App {
         result: Result<Response, RequestError>,
     ) -> Effect {
         match result {
-            Ok(Response::SheepFieldSet { pending, .. }) => {
+            Ok(Response::SheepFieldSet {
+                pending, warning, ..
+            }) => {
                 let key_text = match value.safe_summary() {
                     Some(v) => format!("{key} set to {v}"),
                     None => format!("{key} is set"),
                 };
-                self.notice = Some(Notice {
-                    text: if pending {
-                        format!("{name}: {key_text}, and waits for `shep reload {name}`")
-                    } else {
-                        format!("{name}: {key_text}")
-                    },
-                    grave: false,
-                });
+                let mut text = if pending {
+                    format!("{name}: {key_text}, and waits for `shep reload {name}`")
+                } else {
+                    format!("{name}: {key_text}")
+                };
+                if let Some(warning) = warning {
+                    text = format!("{text}; {warning}");
+                }
+                self.notice = Some(Notice { text, grave: false });
                 Effect::Send(Sent::SheepConfig {
                     name: name.to_owned(),
                 })
@@ -15174,6 +15181,7 @@ mod tests {
                     name: "web".to_owned(),
                     key: "autorestart".to_owned(),
                     pending,
+                    warning: None,
                 }),
             });
             assert_eq!(
@@ -15187,6 +15195,38 @@ mod tests {
             assert!(!notice.is_grave(), "{notice:?}");
             assert!(notice.to_string().contains(wanted), "{notice:?}");
         }
+    }
+
+    /// A `cwd`/`script`/`out_file`/`err_file` warning rides the same
+    /// notice as the write it came back on, not a second one: the write
+    /// still landed, and `grave` stays `false` since this is advisory.
+    #[test]
+    fn a_path_warning_rides_the_same_notice_as_the_write() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        pane_to(&mut app, "cwd");
+        fixtures::type_into_the_open_editor(&mut app, "/does/not/exist");
+        let mut batch = wire_batch(app.update(Msg::Key(KeyPress::Escape)));
+        let effect = app.update(Msg::Replied {
+            sent: batch.remove(0),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_owned(),
+                key: "cwd".to_owned(),
+                pending: true,
+                warning: Some("/does/not/exist does not exist yet".to_owned()),
+            }),
+        });
+        // The re-read still goes out. This is the only test that answers
+        // with a warning at all, so discarding the effect here would let a
+        // refactor gate the re-read on there not being one.
+        assert!(
+            matches!(effect, Effect::Send(Sent::SheepConfig { .. })),
+            "{effect:?}"
+        );
+        let notice = app.notice().expect("the outcome is reported");
+        assert!(!notice.is_grave(), "{notice:?}");
+        let text = notice.to_string();
+        assert!(text.contains("shep reload"), "{text}");
+        assert!(text.contains("does not exist yet"), "{text}");
     }
 
     /// Every refusal this door can meet is an `Err`, which is why
