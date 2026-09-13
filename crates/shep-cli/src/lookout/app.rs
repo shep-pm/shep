@@ -14139,13 +14139,25 @@ mod tests {
     #[test]
     fn esc_from_the_dialog_leaves_the_edits_filed() {
         let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        // Raise the dialog, dismiss it, raise it again. The fixture parks
+        // nothing, so the third `esc` can only find a dialog if an edit
+        // survived the second. That is weaker than the claim below, which
+        // is why the set itself is read rather than inferred.
         app.update(Msg::Key(KeyPress::Escape));
         app.update(Msg::Key(KeyPress::Escape));
         app.update(Msg::Key(KeyPress::Escape));
         assert!(
             app.close_dialog().is_some(),
-            "the second esc found the same two edits still filed"
+            "the third esc found edits still filed"
         );
+        let edits = app.config_pane().expect("the pane is still open").edits();
+        assert_eq!(edits.len(), 2, "both edits survived, not merely one");
+        for key in ["cwd", "max_memory"] {
+            assert!(
+                edits.get(&EditKey::Field(key.to_owned())).is_some(),
+                "{key} is still filed"
+            );
+        }
     }
 
     /// An expiry is an `esc`, never a `c`. A dialog nobody answered is not
