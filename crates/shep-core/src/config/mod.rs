@@ -17,7 +17,7 @@ pub mod scaffold;
 pub mod template;
 
 pub use app::{AppConfig, ProbeConfig, ProbeKind};
-pub use apply::{ApplyGroup, ResetDepth, apply_group};
+pub use apply::{ApplyGroup, ResetDepth, apply_group, reaches_running};
 pub use cron::{CronParseError, CronSchedule, CronScheduleError};
 pub use daemon::{DaemonConfig, DaemonConfigError, DaemonOverrides, LogLevel, parse_daemon_bool};
 pub use dogs::{DogsConfig, DogsConfigError};

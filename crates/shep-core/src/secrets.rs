@@ -848,12 +848,23 @@ mod tests {
             .env
             .insert("C".into(), "{{name}}-{{secret:vercel/TWO}}".into());
         config.args = vec!["--x={{secret:ONE}}".into()];
+        // Both log paths, and for opposite reasons. `err_file` carries a
+        // reference nothing else in this config names, so dropping the
+        // log-path scan fails here rather than passing quietly; `out_file`
+        // carries positional tokens only, so a scan that ran would still
+        // return nothing for it.
+        config.err_file = Some("{{secret:THREE}}.log".into());
+        config.out_file = Some("{{SHEP_HOME}}/logs/{{instance}}.log".into());
 
         let found = references(&config);
         assert_eq!(
             found,
-            BTreeSet::from(["ONE".to_string(), "vercel/TWO".to_string()]),
-            "deduplicated, and no positional tokens"
+            BTreeSet::from([
+                "ONE".to_string(),
+                "THREE".to_string(),
+                "vercel/TWO".to_string(),
+            ]),
+            "every field scanned, deduplicated, and no positional tokens"
         );
     }
 

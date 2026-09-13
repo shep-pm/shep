@@ -782,11 +782,14 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                 // survive a `shep daemon reload` and vanish on a cold
                 // restart.
                 Ok(Some(set)) => {
+                    let pending = set.pending;
+                    let warning = set.warning;
                     ctx.registry.record(&[set.app]);
                     reply(Ok(Response::SheepFieldSet {
                         name,
                         key,
-                        pending: set.pending,
+                        pending,
+                        warning,
                     }))
                 }
                 Ok(None) => reply(Err(RpcError {
@@ -4803,6 +4806,106 @@ mod tests {
             ["max_restarts", "script"],
             "both are the operator's"
         );
+    }
+
+    /// The write still lands on a `cwd` that does not exist: `warning` is
+    /// advisory, never a second way to refuse. `harness`'s own `ShepPaths`
+    /// point into a real tempdir but skip `boot`'s `mkdir`s, so a directory
+    /// under it that this test never created is a real absence, not a
+    /// fixture quirk.
+    #[tokio::test(start_paused = true)]
+    async fn a_cwd_that_does_not_exist_writes_and_warns() {
+        let h = harness(vec![ProcScript::never_exits()]);
+        start_web_with_a_secret(&h.ctx).await;
+
+        let missing = h.ctx.paths.home.join("not-created-yet");
+        let reply = set_field(
+            &h.ctx,
+            2,
+            "web",
+            "cwd",
+            serde_json::json!(missing.display().to_string()),
+        )
+        .await;
+        let Ok(Response::SheepFieldSet { warning, .. }) = reply else {
+            panic!("{reply:?}")
+        };
+        let warning = warning.expect("a cwd that is not there warns");
+        assert!(warning.contains("does not exist"), "{warning}");
+        assert!(
+            warning.contains(&missing.display().to_string()),
+            "{warning}"
+        );
+
+        // Advisory: the value is still on the sheep's parked config.
+        let view = sheep_config_view(&h.ctx, 3, "web").await;
+        assert_eq!(view.config.cwd.as_deref(), Some(missing.to_str().unwrap()));
+    }
+
+    /// The negative case beside the one above: a `cwd` that is really
+    /// there warns nothing, and neither does an unrelated field share a
+    /// stale complaint about a `cwd` nobody touched this time.
+    #[tokio::test(start_paused = true)]
+    async fn an_existing_cwd_and_an_unrelated_field_warn_nothing() {
+        let h = harness(vec![ProcScript::never_exits()]);
+        start_web_with_a_secret(&h.ctx).await;
+
+        let reply = set_field(
+            &h.ctx,
+            2,
+            "web",
+            "cwd",
+            serde_json::json!(h.ctx.paths.home.display().to_string()),
+        )
+        .await;
+        let Ok(Response::SheepFieldSet { warning, .. }) = reply else {
+            panic!("{reply:?}")
+        };
+        assert_eq!(warning, None, "the shepherd's own home really exists");
+
+        let reply = set_field(&h.ctx, 3, "web", "max_restarts", serde_json::json!(40)).await;
+        let Ok(Response::SheepFieldSet { warning, .. }) = reply else {
+            panic!("{reply:?}")
+        };
+        assert_eq!(warning, None, "max_restarts carries no path to check");
+    }
+
+    /// `log_path_advisory`'s wiring through this door: an explicit
+    /// `out_file` whose directory does not exist warns, and the same path
+    /// once its directory is real does not.
+    #[tokio::test(start_paused = true)]
+    async fn an_out_file_whose_directory_is_missing_warns() {
+        let h = harness(vec![ProcScript::never_exits()]);
+        start_web_with_a_secret(&h.ctx).await;
+
+        let missing = h.ctx.paths.home.join("not-created-yet").join("web.log");
+        let reply = set_field(
+            &h.ctx,
+            2,
+            "web",
+            "out_file",
+            serde_json::json!(missing.display().to_string()),
+        )
+        .await;
+        let Ok(Response::SheepFieldSet { warning, .. }) = reply else {
+            panic!("{reply:?}")
+        };
+        let warning = warning.expect("a missing log directory warns");
+        assert!(warning.contains("does not exist"), "{warning}");
+
+        std::fs::create_dir_all(missing.parent().unwrap()).unwrap();
+        let reply = set_field(
+            &h.ctx,
+            3,
+            "web",
+            "out_file",
+            serde_json::json!(missing.display().to_string()),
+        )
+        .await;
+        let Ok(Response::SheepFieldSet { warning, .. }) = reply else {
+            panic!("{reply:?}")
+        };
+        assert_eq!(warning, None, "the directory is real now");
     }
 
     /// One of two cases where `pending` carries information `apply_group`

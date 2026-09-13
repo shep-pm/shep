@@ -22,7 +22,7 @@ use super::facts::{
     BarkListing, BarkRow, BleatTail, FlockListing, HostRow, MetricsReading, SheepRow,
 };
 use super::shepherd;
-use crate::commands::bleats::read_tail;
+use crate::commands::bleats::{missing_log_note, read_tail};
 use crate::dog::metrics::sample_host;
 
 /// The argument every sheep-scoped tool takes.
@@ -143,14 +143,15 @@ impl Whistle {
         let Some(info) = flock.first() else {
             return Err(unexpected_response());
         };
-        let (out, out_truncated) = tail_stream(info.out_file.as_deref(), limit)?;
-        let (err, err_truncated) = tail_stream(info.err_file.as_deref(), limit)?;
+        let out = tail_stream(info.out_file.as_deref(), limit, "out")?;
+        let err = tail_stream(info.err_file.as_deref(), limit, "err")?;
         Ok(Json(BleatTail {
             name: info.name.clone(),
             id: info.id,
-            out,
-            err,
-            truncated: out_truncated || err_truncated,
+            truncated: out.truncated || err.truncated,
+            notes: [out.note, err.note].into_iter().flatten().collect(),
+            out: out.lines,
+            err: err.lines,
         }))
     }
 
@@ -175,17 +176,51 @@ impl Whistle {
     }
 }
 
-/// One sheep's log tail for one stream (`out` or `err`).
+/// What one stream's tail yielded.
 ///
-/// A `None` path or a missing file both read as an empty, non-truncated
-/// tail. Any other I/O failure is a refusal naming the path.
-fn tail_stream(path: Option<&str>, limit: usize) -> Result<(Vec<String>, bool), CallToolResult> {
+/// A struct rather than a tuple: two of the three are what a model reads to
+/// decide whether an empty `lines` means anything.
+struct StreamTail {
+    /// The lines that survived both of `read_tail`'s bounds, oldest first.
+    lines: Vec<String>,
+    /// Whether either bound cut them short.
+    truncated: bool,
+    /// Why there are no lines, when the file was not there.
+    note: Option<String>,
+}
+
+/// One sheep's log tail for one stream, `stream` being `"out"` or `"err"`.
+///
+/// A `None` path reads as an empty tail with nothing to say: the shepherd
+/// reported no path at all. A file that is not there carries a note naming
+/// the path this process tried. Any other I/O failure is a refusal.
+///
+/// # Errors
+/// The file could be named but not read: a permission refusal, a directory
+/// where a file was expected, an I/O fault mid-read.
+fn tail_stream(
+    path: Option<&str>,
+    limit: usize,
+    stream: &str,
+) -> Result<StreamTail, CallToolResult> {
     let Some(path) = path else {
-        return Ok((Vec::new(), false));
+        return Ok(StreamTail {
+            lines: Vec::new(),
+            truncated: false,
+            note: None,
+        });
     };
     match read_tail(Path::new(path), limit) {
-        Ok(result) => Ok(result),
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok((Vec::new(), false)),
+        Ok((lines, truncated)) => Ok(StreamTail {
+            lines,
+            truncated,
+            note: None,
+        }),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(StreamTail {
+            lines: Vec::new(),
+            truncated: false,
+            note: Some(missing_log_note(stream, Path::new(path))),
+        }),
         Err(err) => Err(shepherd::own_refusal(
             "log_unreadable",
             format!("failed to read {path}: {err}"),
@@ -370,6 +405,63 @@ mod tests {
         assert!(
             result.0.err.is_empty(),
             "no err_file means an empty tail, not an error"
+        );
+        // Both files read, so the key is still on the wire and still empty:
+        // a model told nothing and a model told nothing is wrong differ.
+        assert_eq!(
+            serde_json::to_value(&result.0).unwrap()["notes"],
+            serde_json::json!([])
+        );
+
+        served.await.expect("the fake daemon task must not panic");
+    }
+
+    /// A model reading `out: []` has to be able to tell a quiet sheep from
+    /// a path that resolves elsewhere under the shepherd than it does here.
+    #[tokio::test]
+    async fn tail_bleats_says_which_file_it_could_not_find() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = shep_client::testing::control_address(dir.path());
+
+        let mut info = shep_client::testing::sample_info();
+        info.out_file = Some("logs/out.log".to_string());
+        info.err_file = None;
+
+        let served = shep_client::testing::serve_one_request(
+            &socket,
+            matching_ack(),
+            Response::Described(vec![info]),
+        )
+        .await;
+
+        let whistle = whistle_at(socket, dir.path().join("barks.jsonl"));
+        let result = tokio::time::timeout(
+            TEST_TIMEOUT,
+            whistle.tail_bleats(Parameters(TailParams {
+                name: "web".to_string(),
+                lines: None,
+            })),
+        )
+        .await
+        .expect("tail_bleats must return within the test timeout")
+        .expect("a file that is not there is not a tool error");
+
+        assert!(result.0.out.is_empty());
+        assert_eq!(
+            result.0.notes.len(),
+            1,
+            "one note for the one stream with a path: {:?}",
+            result.0.notes
+        );
+        assert!(
+            result.0.notes[0].contains("out_file is relative"),
+            "the note must say why the shepherd's file is a different one: {:?}",
+            result.0.notes
+        );
+        assert_eq!(
+            serde_json::to_value(&result.0).unwrap()["notes"],
+            serde_json::json!([result.0.notes[0]]),
+            "the note has to reach `structuredContent`, not just the struct"
         );
 
         served.await.expect("the fake daemon task must not panic");
