@@ -7730,6 +7730,9 @@ fn to_info(entry: &ProcessEntry, smits: &Smits) -> ProcessInfo {
         // correct, so this listing path does no I/O.
         .overridden((!entry.overridden.is_empty()).then(|| entry.overridden.clone()))
         .max_memory(entry.spec.config().max_memory.map(MemSize::bytes))
+        // Cloned per row rather than fetched on demand: a client classifies
+        // every line it draws, and an empty list costs the wire nothing.
+        .level_rules(entry.spec.config().level_rules.clone())
         .build()
 }
 
@@ -8516,7 +8519,7 @@ async fn run_sheep<P: RunningProcess>(
 
 #[cfg(test)]
 mod tests {
-    use shep_core::config::{AppConfig, ProbeConfig, ProbeKind, normalize};
+    use shep_core::config::{AppConfig, LevelRule, LineLevel, ProbeConfig, ProbeKind, normalize};
     use shep_core::protocol::DogSource;
     use shep_core::status::ProcStatus;
     use shep_core::values::{MemSize, UpDuration};
@@ -19940,6 +19943,32 @@ mod tests {
         let entry = &actor.sheep[&0].entry;
         let info = to_info(entry, &actor.smits);
         assert_eq!(info.max_memory, Some(CEILING_BYTES));
+    }
+
+    /// The rules reach a client through the listing and nothing else, so a
+    /// row that drops them leaves the client reading lines the app already
+    /// explained. Two rules, since order is the contract and one proves no
+    /// order.
+    #[tokio::test(start_paused = true)]
+    async fn to_info_carries_a_sheep_s_declared_level_rules_in_order() {
+        let rules = vec![
+            LevelRule {
+                pattern: r"\[ERROR\]".to_string(),
+                level: LineLevel::Error,
+            },
+            LevelRule {
+                pattern: r"\[WARN\]".to_string(),
+                level: LineLevel::Warn,
+            },
+        ];
+        let dir = tempfile::tempdir().unwrap();
+        let (actor, _enforcer) = actor_over(
+            &dir,
+            &[app_with("web", |app| app.level_rules = rules.clone())],
+        );
+
+        let entry = &actor.sheep[&0].entry;
+        assert_eq!(to_info(entry, &actor.smits).level_rules, rules);
     }
 
     /// A dog's `AppConfig::minimal` sets no ceiling, so its `ProcessInfo`

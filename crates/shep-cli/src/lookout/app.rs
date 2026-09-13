@@ -24,7 +24,7 @@ use shep_core::secrets::ALL_ENVIRONMENTS;
 use shep_core::status::ProcStatus;
 
 use super::field::{FieldKind, FieldSet};
-use super::level::Level;
+use super::level::{Classifier, Level};
 use super::pane::{ConfigPane, FieldValue, Lock, PaneEdit, PaneRow, PaneTarget, ReloadKind};
 use super::pane_bleats::BleatsPane;
 use super::pane_sheep::SheepPane;
@@ -6367,6 +6367,17 @@ impl App {
         }
     }
 
+    /// How the lines in [`Self::feed`] are read: the rules their own sheep
+    /// declares, or this client's reading of a line when it declares none.
+    ///
+    /// Off [`Self::feed_row`], so the rules and the lines always come from
+    /// the same sheep, and off the listing, so an edit reaches the pane on
+    /// the next poll rather than when it is next opened.
+    #[must_use]
+    pub fn feed_classifier(&self) -> Classifier {
+        Classifier::new(self.feed_row().map_or(&[], |row| &row.info.level_rules))
+    }
+
     /// The selected row's app name: a sheep's own, or a group row's.
     ///
     /// Unlike [`Self::selected_row`] this answers for a group too: a config
@@ -7103,6 +7114,7 @@ mod tests {
     use super::*;
     use crate::lookout::pane::ListRow;
     use crate::lookout::secrets::{SecretRow, Source};
+    use shep_core::config::LevelRule;
     use shep_core::protocol::{ProcessEventKind, RpcError, RpcErrorCode};
 
     use super::super::view::fixtures;
@@ -7651,7 +7663,7 @@ mod tests {
             panic!("the sheep pane is not open")
         };
         pane.feed()
-            .visible(&app.feed().lines)
+            .visible(&app.feed().lines, &app.feed_classifier())
             .into_iter()
             .map(|line| line.text.clone())
             .collect()
@@ -7665,6 +7677,105 @@ mod tests {
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         apply_match(&mut app, "boom");
         assert!(feed_rows(&app).iter().all(|row| row.contains("boom")));
+    }
+
+    /// An app that declares `rules`, with `lines` already read off its log,
+    /// and its sheep pane open. The rules arrive on the listing row, which
+    /// is the only way a real one ever gets them.
+    fn fixture_with_declared_levels(rules: Vec<LevelRule>, lines: &[&str]) -> App {
+        let t0 = Instant::now();
+        let mut app = App::new(
+            Palette::detect(None, None, None),
+            Control::ReadOnly,
+            "/home/ada/.shep".to_string(),
+            t0,
+        );
+        app.update(Msg::Snapshot {
+            rows: vec![
+                ProcessInfo::builder(1, "alpha", ProcStatus::Online)
+                    .pid(Some(1001))
+                    .uptime_ms(60_000)
+                    .level_rules(rules)
+                    .build(),
+            ],
+            at: t0,
+        });
+        app.update(Msg::Bleats {
+            tail: super::super::tail::Tail {
+                lines: lines
+                    .iter()
+                    .map(|text| super::super::tail::TailLine {
+                        stream: Stream::Out,
+                        text: (*text).to_string(),
+                    })
+                    .collect(),
+                missed_lines: 0,
+                missed_bytes: 0,
+                read_bytes: 0,
+                note: None,
+            },
+        });
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        app
+    }
+
+    /// Presses `m` until the feed's minimum sits at `wanted`, the way an
+    /// operator reaches one, and fails rather than looping if the cycle
+    /// stops passing through it.
+    fn cycle_min_level_to(app: &mut App, wanted: Level) {
+        for _ in 0..6 {
+            let _ = app.update(Msg::Key(KeyPress::LevelCycle));
+            if let Body::Sheep(pane) = app.body()
+                && pane.feed().filters().min_level == Some(wanted)
+            {
+                return;
+            }
+        }
+        panic!("the level cycle never reached {wanted}");
+    }
+
+    /// The whole point of the field: the built-in reading classifies neither
+    /// of these lines, so under it both survive any minimum. The rules
+    /// classify both, and the minimum then tells them apart.
+    #[test]
+    fn a_declared_rule_classifies_a_line_the_built_in_reading_misses() {
+        let mut app = fixture_with_declared_levels(
+            vec![
+                LevelRule {
+                    pattern: r#""severity":"ERROR""#.to_string(),
+                    level: Level::Error,
+                },
+                LevelRule {
+                    pattern: r#""severity":"DEBUG""#.to_string(),
+                    level: Level::Debug,
+                },
+            ],
+            &[
+                r#"{"severity":"ERROR","msg":"boom"}"#,
+                r#"{"severity":"DEBUG","msg":"tick"}"#,
+            ],
+        );
+        cycle_min_level_to(&mut app, Level::Warn);
+        let rows = feed_rows(&app);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert!(rows[0].contains("boom"), "{rows:?}");
+    }
+
+    /// Declared rules replace the built-in reading rather than adding to it.
+    /// `WARN pool exhausted` is a line that reading classifies and no rule
+    /// here matches, so it stays unclassified and survives a floor above it.
+    /// Under a fallback it would read as `Warn` and be filtered out.
+    #[test]
+    fn a_declared_rule_set_replaces_the_built_in_reading() {
+        let mut app = fixture_with_declared_levels(
+            vec![LevelRule {
+                pattern: "^E/".to_string(),
+                level: Level::Error,
+            }],
+            &["WARN pool exhausted", "E/tag boom"],
+        );
+        cycle_min_level_to(&mut app, Level::Error);
+        assert_eq!(feed_rows(&app).len(), 2);
     }
 
     /// `b` hands the same pane the whole screen, carrying its filters.
@@ -12107,7 +12218,7 @@ mod tests {
         });
         let pane = app.config_pane().expect("the reply opens the pane");
         assert_eq!(pane.target().name(), "web");
-        assert_eq!(pane.fields().len(), 41);
+        assert_eq!(pane.fields().len(), 42);
     }
 
     /// `s` then `e` fire two reads; if the settings one lands first it opens

@@ -86,7 +86,24 @@ json5 = { version = "0.4.1", default-features = false }
 # Floor 1.9: regex 1.8's compiled-size accounting lets
 # `selector_spec_oversized_regex_is_rejected`'s huge pattern slip under the
 # 1 MiB size_limit; 1.9 rejects it.
-regex = { version = "1.9", default-features = false, features = ["std", "unicode-perl"] }
+#
+# `unicode-case` is what makes `(?i)` compile, and every regex shep accepts is
+# one an operator wrote: `level_rules`, a `/…/` selector, lookout's match box.
+# Without the feature the pattern is refused outright, whatever the version and
+# whatever the pattern. Measured against 1.9.0 and 1.13.1 with this same
+# feature list, both answering `Unicode-aware case insensitivity matching is
+# not available`, ASCII-only pattern included. Only `(?i-u)`, which asks for
+# non-Unicode folding by name, compiles without it.
+#
+# This comment used to say 1.9 refused `(?i)` and 1.13 accepted it, so an
+# operator's luck depended on what their build resolved. That is not what
+# happens: no version accepted it, which is why `-Z minimal-versions` was not
+# the only place this was broken.
+regex = { version = "1.9", default-features = false, features = [
+    "std",
+    "unicode-case",
+    "unicode-perl",
+] }
 # Floor 0.4.11: `watch/mod.rs`'s `own_log_ignores` calls `globset::escape`,
 # added in 0.4.11.
 globset = { version = "0.4.11", default-features = false }

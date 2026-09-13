@@ -39,6 +39,7 @@ user                        (unset)
 ────────────────────────────────────────────────────────────────────────────                       
 logging                                                                                            
 err_file                    (unset)                                                                
+level_rules                 (default)                                                              
 merge_logs                  (default)                                                              
 out_file                    (unset)                                                                
                                                                                                    
@@ -47,6 +48,5 @@ inputs
 args                        ["--port","8080"]                                                      
 channel                     (default)                                                              
 environment                 (unset)                                                                
-stdin                       (default)                                                              
                                                                                                    
 esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log  … control enabled

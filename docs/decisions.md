@@ -22,7 +22,7 @@ go for the full argument. The commit that removed them names itself.
 - [Core types and the daemon's shape](#core-types-and-the-daemons-shape) (4)
 - [The CLI surface](#the-cli-surface) (4)
 - [Supervision and lifecycle](#supervision-and-lifecycle) (17)
-- [The log plane](#the-log-plane) (6)
+- [The log plane](#the-log-plane) (8)
 - [Reload](#reload) (9)
 - [Custom actions and the shepherd channel](#custom-actions-and-the-shepherd-channel) (9)
 - [The pm2 cutover](#the-pm2-cutover) (18)
@@ -250,6 +250,16 @@ normalize() rejects watch=true when the app sets no cwd (NormalizeError::WatchWi
 
 ## The log plane
 
+### A sheep's declared level rules replace shep's own reading, they do not extend it
+
+`AppConfig::level_rules` is an ordered list of `{ pattern, level }` regex rules. Declaring any of them turns off the built-in reading of a level word for that sheep, so a line no rule matches announces no level at all.
+
+**Why:** the friendlier alternative, falling back to the built-in reading for a line no rule matches, cannot express "stop guessing". An operator declares rules either because shep sees no level in their lines or because it sees the wrong one, and the second case needs the guess gone. Re-stating a couple of built-in shapes under this rule is laborious; losing the ability to turn the guess off is not recoverable at all. It also makes the Flockfile the whole answer to how a sheep's lines are read, with no second source to go looking for.
+
+A line that still announces no level survives every level filter, which is the bleats pane's decision 3 and is unchanged by any of this. Rules narrow what gets a level, never what gets shown.
+
+`verified crates/shep-core/src/config/level.rs (LevelMatcher), crates/shep-cli/src/lookout/level.rs (Classifier), crates/shep-cli/src/lookout/pane_bleats.rs (Filters::keeps)`
+
 ### flush truncates AFTER flushing pending writes, not before
 
 shep flush's log-clearing sequence flushes buffered writes to disk first, then truncates.
@@ -265,6 +275,16 @@ shep flush truncates ProcessEntry::out_file/err_file (the paths the actor holds)
 **Why:** tokio::fs::File genuinely buffers: a write already dispatched to the blocking pool can land at offset 0 immediately after a bare truncate if flush-then-truncate isn't ordered. And truncating by current inode rather than by path would truncate a rotator's freshly-renamed archive instead of the live file if run right after an external rename.
 
 `docs/writing-plans/plans/2026-08-09-shep-phase5-log-plane.md:290`
+
+### Level rules ride ProcessInfo rather than a fetch of their own
+
+A sheep's `level_rules` are copied onto every `ProcessInfo` the shepherd builds, skipped on the wire when empty. Lookout reads them off the listing it already polls.
+
+**Why:** a client classifies a line, and the rules live on `AppConfig`, which no client holds. A fetch when the pane opens would hold one answer for as long as the pane stayed open, so an edit through the config pane would not reach it; the muster roll is a saved file and goes stale by design. The listing refreshes on its own cadence and carries the rules with it. `max_memory` is the same shape, added for one lookout gauge.
+
+Additive, so none of `PROTOCOL_VERSION`, `MIN_SUPPORTED` or `SCHEMA_VERSION` moves: an older peer sends no key and the empty list reads as no rules, which is also what a sheep declaring none means.
+
+`verified crates/shep-core/src/protocol/request.rs (ProcessInfo::level_rules, ProcessInfoBuilder::level_rules), crates/shep-daemon/src/supervisor.rs (to_info), crates/shep-cli/src/lookout/app.rs (App::feed_classifier)`
 
 ### reopen uses a push channel with a synchronous ack, not a generation counter
 

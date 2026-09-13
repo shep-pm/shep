@@ -36,6 +36,16 @@ ID  NAME   STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM  UPTIME  FOLD  SMIT
 0   web:0  online  54244  0         -     -    -    -    43s     -     -
 1   web:1  online  54338  1         -     -    -    -    37s     -     -`;
 
+const levelRules = `[[app]]
+name = "api"
+script = "./api"
+
+level_rules = [
+  { pattern = '"severity":"ERROR"', level = "error" },
+  { pattern = '"severity":"WARN"', level = "warn" },
+  { pattern = '"severity":"INFO"', level = "info" },
+]`;
+
 const logrotate = `/home/shepherd/.shep/logs/*.log {
     daily
     rotate 7
@@ -176,6 +186,36 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
       last 256 KiB of the file, read one file at a time. Peak memory for that
       path is one window regardless of how large the flock or the log is.
     </p>
+
+    <h2>Telling shep what a level looks like</h2>
+    <p>
+      lookout's minimum-level filter reads the level out of the line itself: a
+      bare word like <code>WARN</code> near the start, or a{" "}
+      <code>level=warn</code> pair. That covers logfmt and most Go and Rust
+      services, and nothing at all for an app writing JSON or a Java line
+      that puts its level sixth.
+    </p>
+    <p>
+      <code>level_rules</code> lets an app say what its own lines look like.
+      Each rule is a regex and a level, tried in the order written, first match
+      wins.
+    </p>
+    <CodeBlock label="Flockfile.toml">{levelRules}</CodeBlock>
+    <p>
+      The pattern is matched against the whole line, exactly as written:{" "}
+      <code>(?i)</code> folds case, and nothing is anchored for you. One that
+      will not compile is refused when the Flockfile loads, not when a line is
+      drawn. So is a list of more than 64 rules: lookout rebuilds the whole
+      list every time it redraws the feed, so the length is a per-frame cost
+      rather than a one-off one. Five levels and a few spellings each stays
+      far under it.
+    </p>
+    <Callout variant="note">
+      Declaring any rule replaces shep's own reading for that app rather than
+      adding to it, so the file is the whole answer to how its lines are read.
+      A line no rule matches carries no level, and a line with no level always
+      shows, whatever the minimum is.
+    </Callout>
 
     <h2>Handing them to a rotator</h2>
     <VerbSignature verb="reopen" usage="shep reopen [selector]">
