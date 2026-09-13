@@ -55,8 +55,25 @@ def open_channel():
     return None
 
 
+# Set once the shepherd stops accepting writes, so the first failure is
+# reported and the rest stay quiet.
+_shepherd_gone = False
+
+
 def send(channel, message):
-    channel.write(json.dumps(message).encode() + b"\n")
+    """Writes one message, or says once that the shepherd stopped listening.
+
+    A failed write means the same thing a closed channel does, so it gets
+    the same answer: say so and carry on. The read loop ends on its own
+    next pass.
+    """
+    global _shepherd_gone
+    try:
+        channel.write(json.dumps(message).encode() + b"\n")
+    except OSError as err:
+        if not _shepherd_gone:
+            _shepherd_gone = True
+            warn(f"python-chatty: could not write to the shepherd: {err}")
 
 
 def say(text):
@@ -67,6 +84,11 @@ def say(text):
     an empty log and look hung.
     """
     print(text, flush=True)
+
+
+def warn(text):
+    """The same, for something that went wrong, so shep files it as stderr."""
+    print(text, file=sys.stderr, flush=True)
 
 
 def metric_name(params):
@@ -121,7 +143,7 @@ def main():
     # not to refuse one: a later version may still carry these messages.
     stamp = os.environ.get("SHEP_CHANNEL_VERSION")
     if stamp is not None and stamp != "1":
-        say(f"python-chatty: shepherd speaks channel {stamp}, this app speaks 1")
+        warn(f"python-chatty: shepherd speaks channel {stamp}, this app speaks 1")
 
     send(channel, {"kind": "ready"})
     send(channel, {"kind": "metric", "name": "starts", "value": 1})
@@ -139,12 +161,12 @@ def main():
             # The shepherd does not write these, so a frame that will not
             # parse means a wire this app has never seen. Say so and read
             # the next one; dying here would also drop the action after it.
-            say(f"python-chatty: could not read a message: {err}")
+            warn(f"python-chatty: could not read a message: {err}")
             continue
         # Parsing is not the same as being a message. A bare number, list,
         # string or null is all valid JSON and none of them is one of ours.
         if not isinstance(message, dict):
-            say(f"python-chatty: ignoring a frame that is not an object: {line!r}")
+            warn(f"python-chatty: ignoring a frame that is not an object: {line!r}")
             continue
 
         kind = message.get("kind")

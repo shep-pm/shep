@@ -119,15 +119,19 @@ func main() {
 			stamp, channel.Version)
 	}
 
+	// A failed write means the same thing a closed channel does, so it gets
+	// the same answer: say so once and carry on. The read loop below ends on
+	// its own next pass. Reporting every failure would bury the first one.
+	gone := false
 	send := func(message channel.ChildMessage) {
 		line, err := json.Marshal(message)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "go-chatty: could not encode a message:", err)
 			return
 		}
-		if _, err := conn.Write(append(line, '\n')); err != nil {
-			fmt.Fprintln(os.Stderr, "go-chatty: the shepherd went away:", err)
-			os.Exit(1)
+		if _, err := conn.Write(append(line, '\n')); err != nil && !gone {
+			gone = true
+			fmt.Fprintln(os.Stderr, "go-chatty: could not write to the shepherd:", err)
 		}
 	}
 
@@ -142,6 +146,9 @@ func main() {
 	// with two, so this app emits samples from the loop instead.
 	samples := 0
 	lines := bufio.NewScanner(conn)
+	// The 64KB default would end the loop on a long params, where none of
+	// the other three examples has a limit at all.
+	lines.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for lines.Scan() {
 		var message channel.ShepherdMessage
 		if err := json.Unmarshal(lines.Bytes(), &message); err != nil {
