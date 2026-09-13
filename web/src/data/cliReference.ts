@@ -7,10 +7,11 @@
  * the first time a flag changes and nobody remembers to update prose too.
  *
  * Source of truth: web/src/data/cli-reference.generated.txt, produced by
- * web/scripts/generate-cli-reference.sh running `shep --help` and
- * `shep <verb> --help` for every verb against target/release/shep. Re-run
- * that script after any change to the verb list, its aliases, or any verb's
- * flags — see the script's own header for the exact command.
+ * web/scripts/generate-cli-reference.sh running `shep --help` against
+ * target/release/shep once per verb, and once more per subcommand of a verb
+ * that hosts them. Re-run that script after any change to the verb list, its
+ * aliases, or any verb's flags — see the script's own header for the exact
+ * command.
  */
 // `?raw` (see web/src/data/lexicon.ts's header comment) inlines the file's
 // text content at build time.
@@ -173,7 +174,7 @@ function parse(source: string): CliReferenceData {
 
   const verbs: CliVerb[] = [];
   for (let i = 0; i < sections.length; i += 2) {
-    verbs.push(parseVerbBlock(sections[i], sections[i + 1] ?? ""));
+    verbs.push(parseVerbBlock(sections[i], sections[i + 1]));
   }
 
   const aliasesByVerb = parseAliasesFromTopLevel(
