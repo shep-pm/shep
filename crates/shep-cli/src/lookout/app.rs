@@ -201,6 +201,10 @@ pub enum KeyPress {
     Group(u8),
     /// `u`: undoes the config pane's last change.
     Undo,
+    /// `c` in the close dialog: write the set and leave the sheep running.
+    /// Bound nowhere else, the way [`Self::Undo`] is read only by the
+    /// config pane.
+    Continue,
 }
 
 /// Everything that can change the dashboard.
@@ -820,6 +824,27 @@ impl Sent {
             },
         }
     }
+
+    /// The ticket a pane write minted itself with, or [`None`] for a
+    /// variant no pane ever produces.
+    ///
+    /// What [`App::resolve_held_write`] matches a reply against, rather
+    /// than trusting whatever a counter says is outstanding: two writes in
+    /// flight from two different close-dialog answers are otherwise
+    /// indistinguishable to a count, and a reply belonging to neither
+    /// [`App::held`] batch must never be read as belonging to it.
+    fn ticket(&self) -> Option<u64> {
+        match self {
+            Self::ApplyField { ticket, .. }
+            | Self::SetDogSection { ticket, .. }
+            | Self::SetEnv { ticket, .. } => Some(*ticket),
+            Self::Lambs { .. }
+            | Self::Action { .. }
+            | Self::Dog { .. }
+            | Self::SheepConfig { .. }
+            | Self::DogSection { .. } => None,
+        }
+    }
 }
 
 /// One dog toggle, ready for the file half: [`Effect::WriteDog`] carries one
@@ -1424,45 +1449,160 @@ struct Action {
     stage: Stage,
 }
 
-/// The offer a pane makes on its way out when the running sheep has not
-/// taken every field yet.
+/// The question `esc` asks when a pane closes over changes the running
+/// child has not taken.
 ///
-/// Nothing is at risk while it is up: a pane edit reaches the override
-/// store on the keystroke that makes it, so leaving costs nothing and the
-/// menu says so. What it buys is the operator not walking away from parked
-/// config without knowing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PaneMenu {
+/// Raised by [`App::close_offer`], answered by [`App::on_close_dialog_key`],
+/// and expired by the same [`CONFIRM_EXPIRY`] every other prompt gets.
+///
+/// Everything is carried rather than recomputed: the unsent names are
+/// taken from the pane when the dialog goes up, and `parked` is the
+/// shepherd's own answer from the last fetch.
+///
+/// `Debug` is derived (IR-41): field names the operator is already
+/// reading on screen, two counts, an instance count, two durations
+/// rendered for display, a reload mode, a name, a status, a pid and a
+/// time. No value of any field, and no env value, since the wire never
+/// sends one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloseDialog {
+    unsent: Vec<String>,
     parked: usize,
+    live: usize,
     reload: ReloadKind,
+    instances: u32,
+    kill_timeout: String,
+    graceful_timeout: String,
+    name: String,
+    status: ProcStatus,
+    pid: Option<u32>,
     at: Instant,
 }
 
-impl PaneMenu {
-    /// One, over `parked` fields and the reload `reload`.
+impl CloseDialog {
+    /// One, over `unsent` filed edits and `parked` fields, reading
+    /// everything else off `pane`: which reload it would get, its own
+    /// `kill_timeout` and `graceful_timeout`, its name, and how many other
+    /// filed edits (`live`) the running sheep already takes without one.
+    ///
+    /// `status` and `pid` are the one pair a [`ConfigPane`] cannot answer,
+    /// since only the flock map carries them, and the heading names both:
+    /// an operator answering a question that restarts a process should not
+    /// have to read the dimmed pane behind the box to learn which one.
     #[must_use]
-    pub(super) const fn new(parked: usize, reload: ReloadKind, at: Instant) -> Self {
-        Self { parked, reload, at }
+    pub(super) fn new(
+        unsent: Vec<String>,
+        parked: usize,
+        pane: &ConfigPane,
+        status: ProcStatus,
+        pid: Option<u32>,
+        at: Instant,
+    ) -> Self {
+        Self {
+            unsent,
+            parked,
+            live: pane.live_edit_count(),
+            reload: pane.reload_kind(),
+            // `value` renders the pane's own map as JSON and `instances`
+            // is a plain `u32` every `AppConfig` carries, so the parse
+            // cannot fail for a sheep. The only target without the field
+            // is a dog, and `close_offer` refuses a dog before it builds
+            // one of these. A fallback that ever fired would understate
+            // how many processes the reload row is describing, which is
+            // the one number that row exists to give.
+            instances: pane.value("instances").parse().unwrap_or(1),
+            kill_timeout: pane.display_value("kill_timeout"),
+            graceful_timeout: pane.display_value("graceful_timeout"),
+            name: pane.target().name().to_owned(),
+            status,
+            pid,
+            at,
+        }
     }
 
-    /// When it opened. A menu that outlives `CONFIRM_EXPIRY` is dropped by
-    /// the tick, so a later keypress cannot answer a question nobody is
+    /// When it opened. A dialog that outlives `CONFIRM_EXPIRY` is dropped
+    /// by the tick, so a later keypress cannot answer a question nobody is
     /// still looking at.
     #[must_use]
-    pub const fn at(self) -> Instant {
+    pub const fn at(&self) -> Instant {
         self.at
     }
 
-    /// How many fields the running sheep has not taken yet.
+    /// How many filed edits a respawn is what applies. The heading's own
+    /// number; [`Self::unsent_fields`] is the sentence underneath it.
     #[must_use]
-    pub const fn parked(self) -> usize {
+    pub fn unsent(&self) -> usize {
+        self.unsent.len()
+    }
+
+    /// Those edits' own field names, in the set's key order.
+    #[must_use]
+    pub fn unsent_fields(&self) -> &[String] {
+        &self.unsent
+    }
+
+    /// How many fields the shepherd already parked, from the last fetch.
+    #[must_use]
+    pub const fn parked(&self) -> usize {
         self.parked
     }
 
-    /// Which reload this sheep would get, so `L` can name its cost.
+    /// How many other filed edits the running sheep already takes without
+    /// a respawn. What "everything else you changed is already live" draws
+    /// on: zero when the whole filed set needs one.
     #[must_use]
-    pub const fn reload(self) -> ReloadKind {
+    pub const fn live(&self) -> usize {
+        self.live
+    }
+
+    /// Which reload this sheep would get, so `L`'s row can name its cost.
+    #[must_use]
+    pub const fn reload(&self) -> ReloadKind {
         self.reload
+    }
+
+    /// How many instances a reload or restart would reach.
+    #[must_use]
+    pub const fn instances(&self) -> u32 {
+        self.instances
+    }
+
+    /// The sheep's own `kill_timeout`, resolved for display: what `R`'s row
+    /// names as the stop's own grace before SIGKILL.
+    #[must_use]
+    pub fn kill_timeout(&self) -> &str {
+        &self.kill_timeout
+    }
+
+    /// The sheep's own `graceful_timeout`, resolved the same way: the drain
+    /// window a serial reload gets.
+    #[must_use]
+    pub fn graceful_timeout(&self) -> &str {
+        &self.graceful_timeout
+    }
+
+    /// The sheep this dialog is asking about.
+    ///
+    /// Unread by this frame's own render: `close_dialog_lines` names no
+    /// target, only what changed. [`App::answer_close`] reads it, since a
+    /// held verb has to name the sheep after the dialog itself is gone.
+    #[must_use]
+    pub fn target_name(&self) -> &str {
+        &self.name
+    }
+
+    /// What the flock reported this sheep doing when the dialog went up.
+    #[must_use]
+    pub const fn status(&self) -> ProcStatus {
+        self.status
+    }
+
+    /// The OS pid this sheep runs under, when there is exactly one running
+    /// instance to name. [`None`] for a sheep the shepherd runs several of,
+    /// where no single pid is the answer.
+    #[must_use]
+    pub const fn pid(&self) -> Option<u32> {
+        self.pid
     }
 }
 
@@ -1486,6 +1626,29 @@ pub struct ActionState<'a> {
 /// Ten seconds: a prompt left armed while the operator walks away is the same
 /// fat finger by a slower route. Rides `Msg::Tick`, so it needs no timer.
 pub const CONFIRM_EXPIRY: Duration = Duration::from_secs(10);
+
+/// A verb the close dialog chose, waiting on the writes it must follow.
+///
+/// `tickets` names the writes still outstanding, by the same [`u64`]
+/// [`Sent::ticket`] mints them with, rather than merely counting them: two
+/// close-dialog answers can each have a batch in flight at once (a second
+/// `R`/`L` is refused, but its writes still go, per
+/// [`App::answer_close`]'s own doc), and a bare count cannot tell a reply
+/// from the other session apart from one of this session's own. `landed`
+/// is whether any ticket in this set was accepted. The action goes once
+/// the set is empty, and only if something landed: a batch refused in
+/// full leaves nothing for a respawn to apply.
+///
+/// `Debug` is derived (IR-41): a verb, a ticket set, a bool, a name, a
+/// time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HeldAction {
+    verb: ActionVerb,
+    name: String,
+    tickets: HashSet<u64>,
+    landed: bool,
+    at: Instant,
+}
 
 /// The sentence `r` and the action keys both give when the link is gone.
 const LINK_GONE: &str = "the shepherd is gone: nothing left to ask";
@@ -2021,12 +2184,18 @@ pub struct App {
     /// probed once at open and reused on every re-read, so `r` never
     /// respawns the dog's binary. Cleared alongside `config_target`.
     dog_target: Option<DogProbe>,
-    /// The apply offer over the open pane, or `None`.
+    /// The close dialog over the open pane, or `None`.
     ///
-    /// Opened by `Escape` on a pane with parked fields and the gate open,
-    /// and it owns the keyboard while it is up. Cleared with the pane, so
-    /// no menu can outlive the fields it counted.
-    pane_menu: Option<PaneMenu>,
+    /// Raised by `Escape` on a pane carrying changes the running child has
+    /// not taken, and it owns the keyboard while it is up. Cleared with the
+    /// pane, so no dialog can outlive the edits it counted.
+    close_dialog: Option<CloseDialog>,
+    /// The verb the close dialog chose, waiting on its own writes to answer.
+    ///
+    /// Set by [`Self::answer_close`] alongside the batch that must land
+    /// first, and cleared on the reply that finishes it or on
+    /// [`CONFIRM_EXPIRY`], the same as the dialog it followed from.
+    held: Option<HeldAction>,
     /// The resolved style level and which layer chose it. Defaulted here and
     /// overridden through [`Self::set_style`], so the STYLE LEVEL row reads the
     /// same answer the rest of the CLI does.
@@ -2135,7 +2304,8 @@ impl App {
             config_target: None,
             config_for: None,
             dog_target: None,
-            pane_menu: None,
+            close_dialog: None,
+            held: None,
             style: (StyleLevel::Full, StyleSource::Default),
             cpu_history: HashMap::new(),
             flock_cpu: VecDeque::new(),
@@ -2217,11 +2387,19 @@ impl App {
                     if expired {
                         self.action = None;
                     }
-                    let stale = self.pane_menu.as_ref().is_some_and(|menu| {
-                        now.saturating_duration_since(menu.at()) >= CONFIRM_EXPIRY
+                    let stale = self.close_dialog.as_ref().is_some_and(|dialog| {
+                        now.saturating_duration_since(dialog.at()) >= CONFIRM_EXPIRY
                     });
                     if stale {
-                        self.pane_menu = None;
+                        self.close_dialog = None;
+                    }
+                    // A reply that never comes cannot strand the verb: it
+                    // rides the same clock as the dialog it followed from.
+                    let stale_held = self.held.as_ref().is_some_and(|held| {
+                        now.saturating_duration_since(held.at) >= CONFIRM_EXPIRY
+                    });
+                    if stale_held {
+                        self.held = None;
                     }
                 }
                 // The tick's own `now` again, for the same reason: how long
@@ -2326,11 +2504,28 @@ impl App {
                 Sent::DogSection { name } => self.on_dog_section(&name, result),
                 Sent::SetDogSection { name, .. } => self.on_dog_section_set(&name, result),
                 Sent::ApplyField {
-                    name, key, value, ..
-                } => self.on_field_applied(&name, &key, &value, result),
+                    name,
+                    ticket,
+                    key,
+                    value,
+                    ..
+                } => {
+                    let landed = result.is_ok();
+                    let effect = self.on_field_applied(&name, &key, &value, result);
+                    self.resolve_held_write(ticket, landed).unwrap_or(effect)
+                }
                 Sent::SetEnv {
-                    name, key, value, ..
-                } => self.on_env_set(&name, &key, value.is_some(), result),
+                    name,
+                    ticket,
+                    key,
+                    value,
+                    ..
+                } => {
+                    let landed = result.is_ok();
+                    let was_set = value.is_some();
+                    let effect = self.on_env_set(&name, &key, was_set, result);
+                    self.resolve_held_write(ticket, landed).unwrap_or(effect)
+                }
             },
             Msg::Unsent { sent } => match sent {
                 Sent::Action { verb, target, name } => {
@@ -2426,7 +2621,7 @@ impl App {
                     // settings and this reply is the stale one. Adopting it
                     // would replace the pane with a settings screen the
                     // operator has moved on from, and leave `config_target`
-                    // and `pane_menu` describing a screen that is no longer
+                    // and `close_dialog` describing a screen that is no longer
                     // up. The `Body` enum stops the two coexisting; it does
                     // not stop this handler overwriting one with the other,
                     // which is the same race `on_sheep_config` had in the
@@ -3367,7 +3562,8 @@ impl App {
             | KeyPress::StepDown
             | KeyPress::NextGroup
             | KeyPress::Group(_)
-            | KeyPress::Undo => Effect::None,
+            | KeyPress::Undo
+            | KeyPress::Continue => Effect::None,
             // The read, not the open: the screen opens only once
             // `Msg::Settings` lands.
             KeyPress::Settings => Effect::LoadSettings,
@@ -3613,7 +3809,8 @@ impl App {
             // has neither a group to walk nor an edit set to take back.
             | KeyPress::NextGroup
             | KeyPress::Group(_)
-            | KeyPress::Undo => Effect::None,
+            | KeyPress::Undo
+            | KeyPress::Continue => Effect::None,
         }
     }
 
@@ -4180,7 +4377,8 @@ impl App {
             // group to switch to and nothing filed to take back.
             | KeyPress::NextGroup
             | KeyPress::Group(_)
-            | KeyPress::Undo => Effect::None,
+            | KeyPress::Undo
+            | KeyPress::Continue => Effect::None,
         }
     }
 
@@ -4359,11 +4557,13 @@ impl App {
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::SecretDelete => Effect::None,
-            // `NextGroup`/`Group`/`Undo` belong to the config pane: no other
-            // screen has groups to walk or a filed edit set to undo.
+            // `NextGroup`/`Group`/`Undo`/`Continue` belong to the config
+            // pane: no other screen has groups to walk, a filed edit set
+            // to undo, or a close dialog to answer.
             | KeyPress::NextGroup
             | KeyPress::Group(_)
-            | KeyPress::Undo => Effect::None,
+            | KeyPress::Undo
+            | KeyPress::Continue => Effect::None,
         }
     }
 
@@ -4547,11 +4747,13 @@ impl App {
             | KeyPress::MatchNext
             | KeyPress::MatchPrev
             | KeyPress::Bleats
-            // `NextGroup`/`Group`/`Undo` belong to the config pane: no other
-            // screen has groups to walk or a filed edit set to undo.
+            // `NextGroup`/`Group`/`Undo`/`Continue` belong to the config
+            // pane: no other screen has groups to walk, a filed edit set
+            // to undo, or a close dialog to answer.
             | KeyPress::NextGroup
             | KeyPress::Group(_)
-            | KeyPress::Undo => {}
+            | KeyPress::Undo
+            | KeyPress::Continue => {}
         }
         Effect::None
     }
@@ -4669,17 +4871,18 @@ impl App {
     /// Movement walks fields, `r` re-reads, `space` cycles the row under
     /// the cursor, `Enter` or `e` edits it, `u` undoes the newest edit,
     /// `h` toggles the selected field's own help text, and `Escape`
-    /// closes help if it is open, else writes everything filed and
-    /// leaves. Everything else is named rather than wildcarded, so a
-    /// stray variant cannot fall silently into an arm that ignores it.
+    /// closes help if it is open, else asks the close dialog's question if
+    /// there is one to ask, else writes everything filed and leaves.
+    /// Everything else is named rather than wildcarded, so a stray variant
+    /// cannot fall silently into an arm that ignores it.
     ///
     /// Nothing is armed here and no key is eaten. A keystroke that edits
     /// files into the pane's own set and sends nothing, so a stray one
     /// costs an `u` rather than a write to a running sheep.
     fn on_pane_key(&mut self, key: KeyPress) -> Effect {
         self.notice = None;
-        if self.pane_menu.is_some() {
-            return self.on_pane_menu_key(key);
+        if self.close_dialog.is_some() {
+            return self.on_close_dialog_key(key);
         }
         if self.config_pane().is_some_and(|pane| pane.list().is_some()) {
             return self.on_list_key(key);
@@ -4690,15 +4893,15 @@ impl App {
         match key {
             KeyPress::Quit => return Effect::Quit,
             // Backs out one level at a time: help first, if it is open,
-            // else the pane. `Escape` closes rather than cascading to a
-            // filter clear or a quit, exactly as it does on the settings
-            // screen.
+            // else the close dialog's own question, else the pane.
+            // `Escape` closes rather than cascading to a filter clear or a
+            // quit, exactly as it does on the settings screen.
             //
-            // This is the one door a config edit leaves by. The set goes
-            // out whether the pane leaves the screen on this keypress or
-            // stops to offer the parked-field menu, because the operator
-            // asked to write on this key and a menu about the shepherd's
-            // own parked fields is a separate question.
+            // The dialog is asked before anything is taken: `esc` used to
+            // write first and ask second, which missed the very edit that
+            // made this pane's `Escape` worth asking about. Now nothing
+            // leaves the pane until the question is answered, one way or
+            // another.
             KeyPress::Escape => {
                 let help_open = self.config_pane().is_some_and(ConfigPane::help_open);
                 if help_open {
@@ -4707,12 +4910,12 @@ impl App {
                     }
                     return Effect::None;
                 }
-                let writes = self.take_pane_writes();
-                if let Some(menu) = self.apply_offer() {
-                    self.pane_menu = Some(menu);
-                } else {
-                    self.close_pane();
+                if let Some(dialog) = self.close_offer() {
+                    self.close_dialog = Some(dialog);
+                    return Effect::None;
                 }
+                let writes = self.take_pane_writes();
+                self.close_pane();
                 if !writes.is_empty() {
                     return Effect::SendAll(writes);
                 }
@@ -4766,7 +4969,10 @@ impl App {
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::SecretDelete
-            | KeyPress::Collapse => {}
+            | KeyPress::Collapse
+            // Bound only in the close dialog; with none up, `c` is a stray
+            // key the same way an action key is.
+            | KeyPress::Continue => {}
             KeyPress::StreamCycle
             | KeyPress::LevelCycle
             | KeyPress::PageDown
@@ -4947,41 +5153,80 @@ impl App {
     /// ever one screen to close to, and it is this one.
     fn close_pane(&mut self) {
         self.body = Body::FlockTable;
-        self.pane_menu = None;
+        self.close_dialog = None;
         self.config_target = None;
         self.config_for = None;
         self.dog_target = None;
         self.release_text_mode_if_unowned();
     }
 
-    /// The offer this pane's `Escape` makes, or [`None`] when it just leaves.
+    /// The question this pane's `Escape` asks, or [`None`] when it just
+    /// writes and leaves.
     ///
-    /// Silent with nothing parked, so reading a pane never costs a
-    /// keystroke, and silent behind a closed gate, where the two keys it
-    /// offers would be refused anyway.
-    fn apply_offer(&self) -> Option<PaneMenu> {
+    /// Silent behind a closed gate, where every key it offers would be
+    /// refused; silent on a dog, which has no apply table to classify an
+    /// edit with; and silent on a sheep that is not running, where nothing
+    /// holds the old config and `R` would start it rather than replace it.
+    fn close_offer(&self) -> Option<CloseDialog> {
         if self.control == Control::ReadOnly {
             return None;
         }
         let pane = self.config_pane()?;
+        let PaneTarget::Sheep { name } = pane.target() else {
+            return None;
+        };
+        let (status, pid) = self.running_state(name)?;
+        let unsent = pane.unsent_fields_needing_a_respawn();
         let parked = pane.parked_count();
-        (parked > 0).then(|| PaneMenu::new(parked, pane.reload_kind(), self.now))
+        if unsent.is_empty() && parked == 0 {
+            return None;
+        }
+        Some(CloseDialog::new(
+            unsent, parked, pane, status, pid, self.now,
+        ))
     }
 
-    /// The menu's own keymap: `L` reloads, `R` restarts, and anything else
-    /// that backs out leaves the fields parked.
+    /// Every instance of `name` the flock reports running.
     ///
-    /// `Escape` closes the pane rather than only the menu: it is the second
-    /// press of the two the operator meant as "leave", and a menu that ate
-    /// it would need a third.
-    fn on_pane_menu_key(&mut self, key: KeyPress) -> Effect {
+    /// `Stopping` does not count: the drainee and its replacement hold the
+    /// same slot ([`crate::lookout::pane::ReloadKind`]'s own reasoning), and
+    /// a sheep with every instance stopping holds no config a respawn would
+    /// replace.
+    fn running_instances<'a>(&'a self, name: &'a str) -> impl Iterator<Item = &'a Row> {
+        self.flock.values().filter(move |row| {
+            row.info.name == name
+                && matches!(
+                    row.info.status,
+                    ProcStatus::Online | ProcStatus::Starting | ProcStatus::WaitingRestart
+                )
+        })
+    }
+
+    /// What the close dialog's heading says about the sheep itself: the
+    /// status of the first running instance, and its pid when it is the
+    /// only one. Several instances name no single pid, so the heading
+    /// names none.
+    fn running_state(&self, name: &str) -> Option<(ProcStatus, Option<u32>)> {
+        let mut running = self.running_instances(name);
+        let first = running.next()?;
+        let alone = running.next().is_none();
+        Some((first.info.status, if alone { first.info.pid } else { None }))
+    }
+
+    /// The dialog's own keymap: `R` and `L` write and hold their verb until
+    /// the writes are answered ([`Self::answer_close`]), `c` writes and
+    /// holds nothing. `Escape` closes the dialog and not the pane, which is
+    /// the difference from the menu this replaces: `esc` here means keep
+    /// editing, so the filed set stays filed and nothing is written.
+    fn on_close_dialog_key(&mut self, key: KeyPress) -> Effect {
         match key {
             KeyPress::Quit => Effect::Quit,
             KeyPress::Action(verb @ (ActionVerb::Reload | ActionVerb::Restart)) => {
-                self.apply_parked(verb)
+                self.answer_close(Some(verb))
             }
+            KeyPress::Continue => self.answer_close(None),
             KeyPress::Escape => {
-                self.close_pane();
+                self.close_dialog = None;
                 Effect::None
             }
             KeyPress::Action(ActionVerb::Stop)
@@ -5020,54 +5265,129 @@ impl App {
             | KeyPress::MatchNext
             | KeyPress::MatchPrev
             | KeyPress::Bleats
-            // `NextGroup`/`Group`/`Undo` belong to the config pane: no other
-            // screen has groups to walk or a filed edit set to undo.
+            // `NextGroup`/`Group`/`Undo` belong to the config pane: no
+            // other screen has groups to walk or a filed edit set to undo.
             | KeyPress::NextGroup
             | KeyPress::Group(_)
             | KeyPress::Undo => Effect::None,
         }
     }
 
-    /// Sends the menu's chosen verb against the pane's own sheep and closes
-    /// the pane behind it.
+    /// Writes the pane's filed set and closes both the dialog and the
+    /// pane, for `R`, `L` and `c` alike.
     ///
-    /// The same [`Sent::Action`] the dashboard's `arm` and `confirm` build,
-    /// so [`Self::on_action_reply`] answers it unchanged. The menu is the
-    /// confirm, so there is no second one.
-    fn apply_parked(&mut self, verb: ActionVerb) -> Effect {
-        // Read rather than left to `apply_offer`: the gate is one write to
-        // `pane_menu` away from not covering this, and a send is not the
-        // place to find that out.
-        if self.control == Control::ReadOnly {
-            self.notice = Some(Notice {
-                text: READ_ONLY_REFUSAL.to_string(),
-                grave: true,
-            });
-            return Effect::None;
-        }
-        if let Some(text) = self.link_refusal() {
-            self.notice = Some(Notice { text, grave: true });
-            return Effect::None;
-        }
-        if self.action.is_some() {
+    /// `c` (`verb` is [`None`]) just sends the batch. `R`/`L` hold the verb
+    /// on [`Self::held`] until every write in the batch is answered, per
+    /// "write, then act" in the design: sending it alongside the writes
+    /// risks the shepherd answering the action before a write it depended
+    /// on, which respawns into the config the pane was just fixing. A batch
+    /// with nothing to wait for (parked fields only, nothing filed) sends
+    /// the verb at once instead; there is nothing for it to outrun.
+    ///
+    /// The writes always go: they are the operator's own edits, and the
+    /// transport already orders them safely against whatever else is
+    /// outstanding. What refuses is only the verb, and only when one is
+    /// already in flight, held or armed: [`Self::held`] already occupied,
+    /// or [`Self::action`] already sent by an earlier confirm. Holding a
+    /// second verb there would let the first batch's own replies fire it,
+    /// same conflict [`Self::arm`] and [`Self::arm_sheep_pane`] refuse by
+    /// the front door.
+    fn answer_close(&mut self, verb: Option<ActionVerb>) -> Effect {
+        let name = self
+            .close_dialog
+            .as_ref()
+            .map(|dialog| dialog.target_name().to_owned());
+        let writes = self.take_pane_writes();
+        self.close_pane();
+        let (Some(verb), Some(name)) = (verb, name) else {
+            return Effect::SendAll(writes);
+        };
+        if self.held.is_some() || self.action.is_some() {
             self.notice = Some(Notice {
                 text: "one action is already in flight".to_string(),
                 grave: true,
             });
-            return Effect::None;
+            return Effect::SendAll(writes);
         }
-        let Some(name) = self
-            .config_pane()
-            .map(|pane| pane.target().name().to_owned())
-        else {
-            return Effect::None;
+        // Nothing goes to a shepherd that is gone. The menu this dialog
+        // replaced refused here through `apply_parked`, and losing that
+        // refusal alongside it would have sent a restart into a dead link
+        // with nothing on screen saying it never left. The writes still
+        // go, for the same reason a refused verb's writes do: they are the
+        // operator's own work and the batch reports its own failure.
+        if let Some(text) = self.link_refusal() {
+            self.notice = Some(Notice { text, grave: true });
+            return Effect::SendAll(writes);
+        }
+        if writes.is_empty() {
+            return self.send_held_action(verb, name);
+        }
+        let tickets = writes.iter().filter_map(Sent::ticket).collect();
+        self.held = Some(HeldAction {
+            verb,
+            name,
+            tickets,
+            landed: false,
+            at: self.now,
+        });
+        Effect::SendAll(writes)
+    }
+
+    /// One pane write's answer, matched against the held batch by its own
+    /// ticket rather than merely counted off it.
+    ///
+    /// `None` when nothing is held, or when this reply's ticket names no
+    /// write the held batch went out with (the second half of
+    /// [`Self::answer_close`]'s refusal: a second session's writes still
+    /// go, unheld, so their replies must never be read as this session's
+    /// own). Either way the caller's own effect stands unchanged. `Some`
+    /// overrides it: a batch still waiting on other tickets yields
+    /// [`Effect::None`], since the pane closed with the write and nothing
+    /// downstream needs its own chained re-read; the last ticket yields
+    /// the verb, sent through [`Self::send_held_action`], or a notice when
+    /// every write in the batch was refused.
+    fn resolve_held_write(&mut self, ticket: u64, landed: bool) -> Option<Effect> {
+        let still_waiting = {
+            let held = self.held.as_mut()?;
+            if !held.tickets.remove(&ticket) {
+                return None;
+            }
+            held.landed |= landed;
+            !held.tickets.is_empty()
         };
+        if still_waiting {
+            return Some(Effect::None);
+        }
+        let held = self.held.take().expect("checked Some above");
+        if !held.landed {
+            // The per-field handler already set a notice naming which write
+            // and why: reuse it rather than replace it, so the one thing an
+            // operator needs most (the reason) is not the thing this frame
+            // clobbers to say the action did not go out.
+            let reason = self.notice.as_ref().map_or_else(
+                || format!("{}: every write was refused", held.name),
+                |notice| notice.text.clone(),
+            );
+            self.notice = Some(Notice {
+                text: format!("{reason}, so {} did not go out", held.verb.label()),
+                grave: true,
+            });
+            return Some(Effect::None);
+        }
+        Some(self.send_held_action(held.verb, held.name))
+    }
+
+    /// Sends `verb` at `name`, the same lookup and bookkeeping
+    /// [`Self::confirm`] uses once an action is already past its question:
+    /// pinned as [`Stage::Sent`] so the in-flight gate still sees it, and
+    /// silent (no send) with a notice if the sheep left the flock while its
+    /// writes were in flight.
+    fn send_held_action(&mut self, verb: ActionVerb, name: String) -> Effect {
         let Some((target, count)) = self.flock_target(&name) else {
             self.notice = Some(Notice {
                 text: format!("{name}: it is no longer in the flock"),
                 grave: true,
             });
-            self.close_pane();
             return Effect::None;
         };
         self.action = Some(Action {
@@ -5078,7 +5398,6 @@ impl App {
             at: self.now,
             stage: Stage::Sent,
         });
-        self.close_pane();
         Effect::Send(Sent::Action { verb, target, name })
     }
 
@@ -5347,7 +5666,10 @@ impl App {
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::SecretDelete
-            | KeyPress::Collapse => {}
+            | KeyPress::Collapse
+            // Bound only in the close dialog; with none up on a list
+            // sub-screen, `c` is a stray key the same way an action key is.
+            | KeyPress::Continue => {}
             KeyPress::StreamCycle
             | KeyPress::LevelCycle
             | KeyPress::PageDown
@@ -5731,7 +6053,14 @@ impl App {
             });
             return Effect::None;
         };
-        if self.action.is_some() {
+        // `self.held` as well as `self.action`, the same pair
+        // `answer_close` refuses on and in the same sentence: a verb the
+        // close dialog is holding until its writes land has not gone out
+        // yet, so `self.action` is still empty, and arming a second one
+        // here would have `send_held_action` overwrite it on the reply
+        // that releases it. [`Self::arm_sheep_pane`] is the only other
+        // door that arms from a keypress, and it refuses on the same pair.
+        if self.action.is_some() || self.held.is_some() {
             self.notice = Some(Notice {
                 text: "one action is already in flight".to_string(),
                 grave: true,
@@ -5785,16 +6114,20 @@ impl App {
     /// replaced it while the pane still names the first. Refuses instead.
     ///
     /// The ladder is [`Self::confirm_refusal`]'s own gate and link, then one
-    /// action already in flight, same order [`Self::arm`] uses for those
-    /// two; [`Self::arm`]'s "nothing selected" case cannot happen here,
-    /// since the pane would not be open without a sheep, so its place is
-    /// taken by the pinned sheep having left instead.
+    /// action already in flight or held, same order [`Self::arm`] uses for
+    /// those two; [`Self::arm`]'s "nothing selected" case cannot happen
+    /// here, since the pane would not be open without a sheep, so its place
+    /// is taken by the pinned sheep having left instead.
     fn arm_sheep_pane(&mut self, verb: ActionVerb) -> Effect {
         if let Some(text) = self.confirm_refusal() {
             self.notice = Some(Notice { text, grave: true });
             return Effect::None;
         }
-        if self.action.is_some() {
+        // [`Self::arm`]'s own pair, for the reason given there: a verb the
+        // close dialog is holding has not gone out yet, so `self.action` is
+        // still empty. These two are the whole set of doors that arm from a
+        // keypress.
+        if self.action.is_some() || self.held.is_some() {
             self.notice = Some(Notice {
                 text: "one action is already in flight".to_string(),
                 grave: true,
@@ -7170,10 +7503,18 @@ impl App {
         self.sheep_pane_mut().map(SheepPane::feed_mut)
     }
 
-    /// The apply offer over the open pane, or `None`.
+    /// The close dialog over the open pane, or `None`.
     #[must_use]
-    pub fn pane_menu(&self) -> Option<PaneMenu> {
-        self.pane_menu
+    pub fn close_dialog(&self) -> Option<&CloseDialog> {
+        self.close_dialog.as_ref()
+    }
+
+    /// The verb a close dialog's `R` or `L` chose, waiting on its own
+    /// writes to answer, or `None` once it has fired, been dropped or
+    /// expired.
+    #[cfg(test)]
+    fn held_action(&self) -> Option<&HeldAction> {
+        self.held.as_ref()
     }
 
     /// The resolved style level and which layer chose it, which the STYLE LEVEL
@@ -12630,7 +12971,7 @@ mod tests {
     /// the operator two actions past caring about it. `Msg::Settings` wrote
     /// `body` unconditionally, so the reply replaced the pane, reset the
     /// cursor as if opening, and forced `InputMode::Normal` while
-    /// `config_target` and `pane_menu` went on describing a pane that was
+    /// `config_target` and `close_dialog` went on describing a pane that was
     /// no longer on screen.
     #[test]
     fn a_settings_read_landing_after_a_config_pane_leaves_the_pane_up() {
@@ -13504,10 +13845,8 @@ mod tests {
     #[test]
     fn every_env_value_renders_as_set_and_never_as_itself() {
         let app = fixtures::app_in_sheep_pane_with_env(&[("NODE_ENV", "production")]);
-        let rows = fixtures::config_pane_env_rows_for_tests(
-            app.config_pane().expect("the pane is open"),
-            app.pane_menu().as_ref(),
-        );
+        let rows =
+            fixtures::config_pane_env_rows_for_tests(app.config_pane().expect("the pane is open"));
         assert!(rows.iter().any(|row| row.contains("NODE_ENV")), "{rows:?}");
         assert!(
             rows.iter().all(|row| !row.contains("production")),
@@ -13613,89 +13952,557 @@ mod tests {
         let _ = app.update(Msg::Key(KeyPress::Escape));
         assert!(
             app.config_pane().is_none(),
-            "no menu when nothing is parked"
+            "no dialog when nothing is parked"
         );
-        assert!(app.pane_menu().is_none());
+        assert!(app.close_dialog().is_none());
     }
 
     #[test]
-    fn escape_on_a_parked_pane_offers_the_menu_and_escape_again_leaves() {
+    fn escape_on_a_parked_pane_asks_and_escape_again_keeps_the_pane() {
         let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
         let _ = app.update(Msg::Key(KeyPress::Escape));
         assert!(
             app.config_pane().is_some(),
-            "the pane stays up behind the menu"
+            "the pane stays up behind the dialog"
         );
-        assert!(app.pane_menu().is_some(), "the menu is open");
+        assert!(app.close_dialog().is_some(), "the dialog is open");
 
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.config_pane().is_none(), "escape twice leaves");
-        assert!(app.pane_menu().is_none());
+        assert!(
+            app.config_pane().is_some(),
+            "escape twice keeps the pane: the second esc answers the dialog, not the pane"
+        );
+        assert!(app.close_dialog().is_none());
     }
 
     #[test]
-    fn the_menu_counts_the_parked_fields_once() {
+    fn the_dialog_counts_the_parked_fields_once() {
         let mut app = fixtures::app_in_sheep_pane_with_two_parked_fields();
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert_eq!(app.pane_menu().expect("the menu is open").parked(), 2);
+        assert_eq!(app.close_dialog().expect("the dialog is open").parked(), 2);
         assert_eq!(
             app.config_pane().expect("a pane").parked_count(),
             2,
-            "the pane and the menu agree"
+            "the pane and the dialog agree"
         );
     }
 
     #[test]
-    fn the_menu_reads_which_reload_this_sheep_would_get() {
+    fn the_dialog_reads_which_reload_this_sheep_would_get() {
         let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
         let _ = app.update(Msg::Key(KeyPress::Escape));
         assert_eq!(
-            app.pane_menu().expect("the menu is open").reload(),
+            app.close_dialog().expect("the dialog is open").reload(),
             ReloadKind::Overlap,
             "the fixture sets no readiness probe"
         );
     }
 
     #[test]
-    fn the_menu_never_opens_while_the_gate_is_closed() {
+    fn the_dialog_never_opens_while_the_gate_is_closed() {
         let mut app = fixtures::app_in_sheep_pane();
         assert!(app.config_pane().expect("a pane").parked_count() > 0);
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.pane_menu().is_none(), "read-only can apply nothing");
+        assert!(app.close_dialog().is_none(), "read-only can apply nothing");
         assert!(app.config_pane().is_none());
     }
 
+    /// A parked field alone (nothing filed to write) has nothing for `R` to
+    /// wait on, so the restart goes at once rather than holding for a batch
+    /// that is empty.
     #[test]
-    fn l_from_the_menu_reloads_the_sheep_and_leaves() {
+    fn r_over_a_parked_field_alone_sends_the_restart_at_once() {
         let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        let request = wire(app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload))));
+        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
         assert!(
-            matches!(request, Request::Reload { .. }),
-            "expected Reload, got {request:?}"
+            matches!(
+                effect,
+                Effect::Send(Sent::Action {
+                    verb: ActionVerb::Restart,
+                    ..
+                })
+            ),
+            "got {effect:?}"
         );
         assert!(app.config_pane().is_none());
-        assert!(app.pane_menu().is_none());
+        assert!(app.close_dialog().is_none());
+    }
+
+    /// Order is the whole point: a restart sent before the write lands
+    /// respawns into the old config.
+    #[test]
+    fn r_sends_every_write_before_the_restart() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        let Effect::SendAll(batch) = effect else {
+            panic!("expected a batch, got {effect:?}");
+        };
+        assert_eq!(batch.len(), 2, "the two writes and no action yet");
+        assert!(
+            batch
+                .iter()
+                .all(|sent| !matches!(sent, Sent::Action { .. }))
+        );
     }
 
     #[test]
-    fn r_from_the_menu_restarts_the_sheep_and_leaves() {
-        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
-        let _ = app.update(Msg::Key(KeyPress::Escape));
-        let request = wire(app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart))));
+    fn the_restart_goes_once_the_last_write_is_answered() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let Effect::SendAll(batch) = app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)))
+        else {
+            panic!("expected a batch");
+        };
+        let first = app.update(Msg::Replied {
+            sent: batch[0].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "cwd".to_string(),
+                pending: false,
+                warning: None,
+            }),
+        });
+        assert!(matches!(first, Effect::None), "not yet: {first:?}");
+        let second = app.update(Msg::Replied {
+            sent: batch[1].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "max_memory".to_string(),
+                pending: false,
+                warning: None,
+            }),
+        });
         assert!(
-            matches!(request, Request::Restart { .. }),
-            "expected Restart, got {request:?}"
+            matches!(
+                second,
+                Effect::Send(Sent::Action {
+                    verb: ActionVerb::Restart,
+                    ..
+                })
+            ),
+            "got {second:?}"
         );
-        assert!(app.config_pane().is_none());
+    }
+
+    /// A refused field alongside an accepted one still needs the restart the
+    /// accepted one was waiting for.
+    #[test]
+    fn a_partly_refused_batch_still_restarts() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let Effect::SendAll(batch) = app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)))
+        else {
+            panic!("expected a batch");
+        };
+        app.update(Msg::Replied {
+            sent: batch[0].clone(),
+            result: Err(fixtures::invalid_config()),
+        });
+        let last = app.update(Msg::Replied {
+            sent: batch[1].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "max_memory".to_string(),
+                pending: false,
+                warning: None,
+            }),
+        });
+        assert!(
+            matches!(last, Effect::Send(Sent::Action { .. })),
+            "got {last:?}"
+        );
+    }
+
+    /// Bouncing a healthy process to apply nothing is the one outcome with
+    /// a cost and no benefit.
+    #[test]
+    fn a_wholly_refused_batch_does_not_restart() {
+        let mut app = fixtures::app_in_sheep_pane_with_one_edit();
+        app.update(Msg::Key(KeyPress::Escape));
+        let Effect::SendAll(batch) = app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)))
+        else {
+            panic!("expected a batch");
+        };
+        let last = app.update(Msg::Replied {
+            sent: batch[0].clone(),
+            result: Err(fixtures::invalid_config()),
+        });
+        assert!(matches!(last, Effect::None), "got {last:?}");
+        let notice = app.notice().map(ToString::to_string).unwrap_or_default();
+        assert!(
+            notice.contains("no such directory"),
+            "the field's own refusal is not lost: {notice:?}"
+        );
+        assert!(
+            notice.contains("restart did not go out"),
+            "and it says the action did not go out: {notice:?}"
+        );
+    }
+
+    /// `L` takes the same wait-for-the-writes path as `R`, and must reach
+    /// the shepherd as its own verb rather than `Restart`'s: no test drove
+    /// this key from inside the dialog before this task.
+    #[test]
+    fn l_sends_reload_and_not_restart_once_the_writes_land() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let Effect::SendAll(batch) = app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload)))
+        else {
+            panic!("expected a batch");
+        };
+        let first = app.update(Msg::Replied {
+            sent: batch[0].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "cwd".to_string(),
+                pending: false,
+                warning: None,
+            }),
+        });
+        assert!(matches!(first, Effect::None), "not yet: {first:?}");
+        let second = app.update(Msg::Replied {
+            sent: batch[1].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "max_memory".to_string(),
+                pending: false,
+                warning: None,
+            }),
+        });
+        assert!(
+            matches!(
+                second,
+                Effect::Send(Sent::Action {
+                    verb: ActionVerb::Reload,
+                    ..
+                })
+            ),
+            "got {second:?}, expected Reload and not Restart"
+        );
+    }
+
+    /// `c` never holds a verb, so its writes' own replies are unaffected by
+    /// anything this task adds: whatever the per-field reply handler
+    /// returns stands, and it is never `Sent::Action`.
+    #[test]
+    fn c_writes_and_sends_no_action() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let effect = app.update(Msg::Key(KeyPress::Continue));
+        assert!(matches!(effect, Effect::SendAll(_)), "got {effect:?}");
+        assert!(app.config_pane().is_none(), "the pane closed");
+        assert!(app.held_action().is_none(), "`c` never holds a verb");
+        let Effect::SendAll(batch) = effect else {
+            unreachable!()
+        };
+        let done = app.update(Msg::Replied {
+            sent: batch[batch.len() - 1].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "max_memory".to_string(),
+                pending: false,
+                warning: None,
+            }),
+        });
+        assert!(
+            !matches!(done, Effect::Send(Sent::Action { .. })),
+            "no action follows a c: {done:?}"
+        );
+    }
+
+    /// `arm` refuses on the same pair `answer_close` does. A verb the
+    /// dialog is holding has not gone out, so `self.action` is still empty
+    /// and only `self.held` says the operator is mid-answer; a dashboard
+    /// `R` armed past it would be overwritten by `send_held_action` on the
+    /// reply that releases the held one.
+    #[test]
+    fn the_dashboard_refuses_a_verb_while_the_dialog_still_holds_one() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        assert!(app.held_action().is_some(), "the verb is held");
+
+        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload)));
+        assert!(matches!(effect, Effect::None), "got {effect:?}");
+        assert!(app.action().is_none(), "nothing armed past the held verb");
+        assert!(
+            app.notice()
+                .is_some_and(|n| n.to_string().contains("already in flight")),
+            "got {:?}",
+            app.notice()
+        );
+    }
+
+    /// Nothing goes to a shepherd that is gone.
+    ///
+    /// `the_apply_menu_refuses_on_a_dead_link_like_every_other_action`
+    /// pinned this for the menu this dialog replaced, and went with it.
+    /// The refusal went too: `confirm_refusal` gates `arm` and
+    /// `arm_sheep_pane`, and the dialog answers through `answer_close`,
+    /// which reached neither. So `R` on a dead link sent a restart with
+    /// nothing on screen saying it never left.
+    ///
+    /// The writes still go out, the same as when a verb is refused for
+    /// being second: they are the operator's own work and the batch
+    /// reports its own failure. What must not go is the action.
+    #[test]
+    fn the_dialog_refuses_a_verb_on_a_dead_link_like_every_other_action() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Retrying { attempt: 3 });
+        app.update(Msg::Key(KeyPress::Escape));
+        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload)));
+        assert!(
+            !matches!(effect, Effect::Send(Sent::Action { .. })),
+            "nothing goes to a shepherd that is gone: {effect:?}"
+        );
+        assert!(app.held_action().is_none(), "and no verb waits to go later");
+        let said = app.notice().map(ToString::to_string).unwrap_or_default();
+        assert!(said.contains("attempt 3"), "{said}");
+    }
+
+    /// The sibling door. `arm_sheep_pane` keeps its own copy of the
+    /// refusal ladder, so a held verb has to be refused there as well or
+    /// the fix reaches one of the two doors that arm from a keypress.
+    #[test]
+    fn the_sheep_pane_refuses_a_verb_while_the_dialog_still_holds_one() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        assert!(app.held_action().is_some(), "the verb is held");
+
+        app.update(Msg::Key(KeyPress::Confirm));
+        assert!(app.sheep_pane().is_some(), "the sheep pane is open");
+        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload)));
+        assert!(matches!(effect, Effect::None), "got {effect:?}");
+        assert!(app.action().is_none(), "nothing armed past the held verb");
+        assert_eq!(
+            app.notice().map(|n| n.to_string()).as_deref(),
+            Some("one action is already in flight")
+        );
+    }
+
+    /// Several instances name no one pid, so the heading names none. The
+    /// `api` row alongside is the control: it proves the fixture really
+    /// carries pids, without which the `web` assertion would pass on a
+    /// flock that had none to offer.
+    #[test]
+    fn a_sheep_with_two_running_instances_offers_no_single_pid() {
+        let mut app = allowed();
+        let at = app.now();
+        app.update(Msg::Snapshot {
+            rows: vec![
+                sheep(1, "web", ProcStatus::Online),
+                sheep(4, "web", ProcStatus::Online),
+                sheep(2, "api", ProcStatus::Online),
+            ],
+            at,
+        });
+        assert_eq!(app.running_state("web"), Some((ProcStatus::Online, None)));
+        assert_eq!(
+            app.running_state("api"),
+            Some((ProcStatus::Online, Some(1002))),
+            "one instance still names its pid"
+        );
+    }
+
+    /// A reply that never comes cannot strand the verb.
+    #[test]
+    fn a_held_verb_expires() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        let later = app.now() + CONFIRM_EXPIRY;
+        app.update(Msg::Tick { now: later });
+        assert!(app.held_action().is_none(), "it expired");
+    }
+
+    /// The gap that let a second held verb through: two `R` answers in a
+    /// row, with the first batch's replies still outstanding when the
+    /// second is asked. The bug was `self.held` being overwritten by the
+    /// second session, so the first session's own replies (an unrelated
+    /// batch, and the wrong count) resolved the second session's verb
+    /// early. Proof of the fix: the first write's reply alone must not
+    /// finish anything (the held count is still the first batch's own two,
+    /// not the second batch's one), and the second session's `R` never
+    /// gets an action at all, in flight or otherwise.
+    #[test]
+    fn a_second_r_never_holds_over_the_first() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let Effect::SendAll(first_batch) =
+            app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)))
+        else {
+            panic!("expected the first batch");
+        };
+        assert_eq!(first_batch.len(), 2);
+
+        // Reopen the pane, file another edit, and answer the dialog again
+        // while the first batch's replies are still outstanding.
+        app.update(Msg::Key(KeyPress::Edit));
+        app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "web".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(
+                fixtures::sheep_config_view(),
+            ))),
+        });
+        fixtures::file_edit(&mut app, "cwd", "/srv/second");
+        app.update(Msg::Key(KeyPress::Escape));
+        let second_answer = app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)));
+        assert!(
+            matches!(second_answer, Effect::SendAll(ref batch) if batch.len() == 1),
+            "the edit still goes out: {second_answer:?}"
+        );
+        assert!(
+            app.notice()
+                .is_some_and(|n| n.to_string().contains("already in flight")),
+            "got {:?}",
+            app.notice()
+        );
+
+        // The first write's own reply must not finish anything: the held
+        // count is still the first batch's own two, not the second
+        // batch's one that a bug would have overwritten it with.
+        let first_reply = app.update(Msg::Replied {
+            sent: first_batch[0].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "cwd".to_string(),
+                pending: false,
+                warning: None,
+            }),
+        });
+        assert!(
+            matches!(first_reply, Effect::None),
+            "fired early: {first_reply:?}"
+        );
+
+        // The first batch's own second reply completes it, correctly: this
+        // is the first session's own action, not the second's.
+        let second_reply = app.update(Msg::Replied {
+            sent: first_batch[1].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "max_memory".to_string(),
+                pending: false,
+                warning: None,
+            }),
+        });
+        assert!(
+            matches!(
+                second_reply,
+                Effect::Send(Sent::Action {
+                    verb: ActionVerb::Restart,
+                    ..
+                })
+            ),
+            "got {second_reply:?}"
+        );
+    }
+
+    /// The reopened door into the same bug: the refused session's own
+    /// write still goes out (per `answer_close`'s own doc, edits are never
+    /// held back), and its reply must not count toward the held session's
+    /// batch just because it is the only thing held at the time. A bare
+    /// counter cannot tell the two apart; a ticket can.
+    #[test]
+    fn a_refused_sessions_reply_does_not_count_toward_the_held_batch() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let Effect::SendAll(first_batch) =
+            app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)))
+        else {
+            panic!("expected the first batch");
+        };
+        assert_eq!(first_batch.len(), 2, "session A holds on two writes");
+
+        app.update(Msg::Key(KeyPress::Edit));
+        app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "web".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(
+                fixtures::sheep_config_view(),
+            ))),
+        });
+        fixtures::file_edit(&mut app, "cwd", "/srv/second");
+        app.update(Msg::Key(KeyPress::Escape));
+        let Effect::SendAll(second_batch) =
+            app.update(Msg::Key(KeyPress::Action(ActionVerb::Restart)))
+        else {
+            panic!("expected session B's write to still go out");
+        };
+        assert_eq!(
+            second_batch.len(),
+            1,
+            "session B holds on nothing, but writes"
+        );
+
+        // Session B's own reply lands first. It must be entirely inert:
+        // not held, so it cannot bring session A's batch any closer to
+        // done.
+        let after_b = app.update(Msg::Replied {
+            sent: second_batch[0].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "cwd".to_string(),
+                pending: false,
+                warning: None,
+            }),
+        });
+        assert!(
+            !matches!(after_b, Effect::Send(Sent::Action { .. })),
+            "session B holds no verb to send: {after_b:?}"
+        );
+
+        // Only one of session A's own two writes has answered. Nothing
+        // must have gone out yet, from either session.
+        let after_a_first = app.update(Msg::Replied {
+            sent: first_batch[0].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "cwd".to_string(),
+                pending: false,
+                warning: None,
+            }),
+        });
+        assert!(
+            matches!(after_a_first, Effect::None),
+            "session A's own batch still has one outstanding: {after_a_first:?}"
+        );
+
+        // Session A's second and last write answers. Now, and only now,
+        // its restart goes.
+        let after_a_second = app.update(Msg::Replied {
+            sent: first_batch[1].clone(),
+            result: Ok(Response::SheepFieldSet {
+                name: "web".to_string(),
+                key: "max_memory".to_string(),
+                pending: false,
+                warning: None,
+            }),
+        });
+        assert!(
+            matches!(
+                after_a_second,
+                Effect::Send(Sent::Action {
+                    verb: ActionVerb::Restart,
+                    ..
+                })
+            ),
+            "got {after_a_second:?}"
+        );
     }
 
     /// `TextAbandon` drops the env editor and leaves the pane exactly as
     /// `Escape` leaves the field editor: open, on the same row, nothing
-    /// filed. `Escape` from there walks the menu then the pane, the same
-    /// as it does for any other row.
+    /// filed. `Escape` from there asks the dialog's question, and a second
+    /// `Escape` answers it by closing the dialog, not the pane.
     #[test]
-    fn abandoning_the_env_editor_leaves_the_pane_then_escape_walks_the_menu_then_the_pane() {
+    fn abandoning_the_env_editor_leaves_the_pane_then_escape_asks_the_dialog() {
         let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
         let _ = app.update(Msg::Key(KeyPress::SelectLast));
         assert_eq!(app.config_pane().unwrap().cursor(), Some(PaneRow::AddEnv));
@@ -13705,22 +14512,165 @@ mod tests {
         assert_eq!(app.mode(), InputMode::Normal);
         assert!(app.config_pane().is_some(), "the pane stays open");
         assert!(app.config_pane().unwrap().edits().is_empty());
-        assert!(app.pane_menu().is_none());
+        assert!(app.close_dialog().is_none());
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.pane_menu().is_some());
+        assert!(app.close_dialog().is_some());
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.config_pane().is_none());
+        assert!(app.config_pane().is_some(), "the second esc keeps the pane");
+        assert!(app.close_dialog().is_none());
     }
 
-    /// Help is dismissed before the menu is offered, so `h` then `esc`
+    /// Help is dismissed before the dialog is asked, so `h` then `esc`
     /// still puts the operator back on the field list.
     #[test]
-    fn escape_dismisses_help_before_it_offers_the_menu() {
+    fn escape_dismisses_help_before_it_asks_the_dialog() {
         let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
         let _ = app.update(Msg::Key(KeyPress::Help));
         let _ = app.update(Msg::Key(KeyPress::Escape));
         assert!(!app.config_pane().unwrap().help_open());
-        assert!(app.pane_menu().is_none());
+        assert!(app.close_dialog().is_none());
+    }
+
+    /// The case the old menu missed: an edit made in this pane, on a sheep
+    /// with nothing parked before it opened.
+    #[test]
+    fn esc_with_a_respawn_edit_asks_before_it_writes() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.close_dialog().is_some(), "the dialog is up");
+        assert!(
+            matches!(effect, Effect::None),
+            "nothing is written until the dialog is answered, got {effect:?}"
+        );
+        assert!(app.config_pane().is_some(), "the pane is still open");
+    }
+
+    #[test]
+    fn esc_with_only_live_edits_writes_and_closes_with_no_dialog() {
+        // `app_in_sheep_pane` parks `kill_signal` unconditionally
+        // (`sheep_config_view`'s own default), which alone would raise the
+        // dialog regardless of what is filed. This test is about the
+        // unsent half alone, so it needs a pane starting with nothing
+        // parked.
+        let mut app = fixtures::app_in_sheep_pane_with_nothing_parked();
+        // `max_restarts` is `ApplyGroup::Live`.
+        fixtures::file_edit(&mut app, "max_restarts", "9");
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.close_dialog().is_none());
+        assert!(app.config_pane().is_none(), "the pane closed");
+        assert!(matches!(effect, Effect::SendAll(_)), "got {effect:?}");
+    }
+
+    /// Nothing holds the old config, so there is nothing to respawn, and `R`
+    /// on a stopped sheep would start it.
+    #[test]
+    fn no_dialog_for_a_stopped_sheep() {
+        let mut app = fixtures::app_in_sheep_pane_on_a_stopped_sheep();
+        fixtures::file_edit(&mut app, "cwd", "/srv/app");
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        assert!(
+            app.close_dialog().is_none(),
+            "a stopped sheep is not asked about"
+        );
+        assert!(matches!(effect, Effect::SendAll(_)), "got {effect:?}");
+    }
+
+    /// A `Stopping` sheep's drainee and its replacement hold the same
+    /// instance slot, so it is excluded from `App::sheep_is_running`
+    /// alongside `Stopped`: no live config for a respawn to replace, and
+    /// `R` would race the reload already under way rather than restart
+    /// anything.
+    #[test]
+    fn no_dialog_for_a_sheep_mid_drain() {
+        let mut app = fixtures::app_in_sheep_pane_on_a_draining_sheep();
+        fixtures::file_edit(&mut app, "cwd", "/srv/app");
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        assert!(
+            app.close_dialog().is_none(),
+            "a sheep mid-drain is not asked about"
+        );
+        assert!(matches!(effect, Effect::SendAll(_)), "got {effect:?}");
+    }
+
+    #[test]
+    fn no_dialog_for_a_dog() {
+        let mut app = fixtures::app_in_dog_pane();
+        fixtures::file_edit(&mut app, "poll", "45s");
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.close_dialog().is_none());
+        assert!(matches!(effect, Effect::SendAll(_)), "got {effect:?}");
+    }
+
+    /// The parked half: no edit of the operator's own, fields the shepherd
+    /// is already holding.
+    #[test]
+    fn esc_over_parked_fields_alone_still_asks() {
+        // `app_in_sheep_pane` is read-only by default, and a closed gate
+        // is a separate reason for no dialog (`read_only_is_never_asked`).
+        // This test is about the parked half alone, so it needs the gate
+        // open and nothing filed.
+        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        let dialog = app.close_dialog().expect("one field is parked");
+        assert_eq!(dialog.unsent(), 0);
+        assert_eq!(dialog.parked(), 1);
+        assert!(matches!(effect, Effect::None), "got {effect:?}");
+    }
+
+    #[test]
+    fn read_only_is_never_asked() {
+        let mut app = fixtures::app_in_sheep_pane_read_only();
+        app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.close_dialog().is_none());
+        assert!(app.config_pane().is_none(), "read-only still closes");
+    }
+
+    #[test]
+    fn esc_from_the_dialog_writes_nothing_and_keeps_the_pane() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.close_dialog().is_none(), "the dialog closed");
+        assert!(app.config_pane().is_some(), "the pane did not");
+        assert!(matches!(effect, Effect::None), "got {effect:?}");
+    }
+
+    /// The edits survive it: `esc` is `keep editing`, not `discard`.
+    #[test]
+    fn esc_from_the_dialog_leaves_the_edits_filed() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        // Raise the dialog, dismiss it, raise it again. The fixture parks
+        // nothing, so the third `esc` can only find a dialog if an edit
+        // survived the second. That is weaker than the claim below, which
+        // is why the set itself is read rather than inferred.
+        app.update(Msg::Key(KeyPress::Escape));
+        app.update(Msg::Key(KeyPress::Escape));
+        app.update(Msg::Key(KeyPress::Escape));
+        assert!(
+            app.close_dialog().is_some(),
+            "the third esc found edits still filed"
+        );
+        let edits = app.config_pane().expect("the pane is still open").edits();
+        assert_eq!(edits.len(), 2, "both edits survived, not merely one");
+        for key in ["cwd", "max_memory"] {
+            assert!(
+                edits.get(&EditKey::Field(key.to_owned())).is_some(),
+                "{key} is still filed"
+            );
+        }
+    }
+
+    /// An expiry is an `esc`, never a `c`. A dialog nobody answered is not
+    /// consent to write.
+    #[test]
+    fn the_dialog_expires_without_writing() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Key(KeyPress::Escape));
+        let later = app.now() + CONFIRM_EXPIRY;
+        let effect = app.update(Msg::Tick { now: later });
+        assert!(app.close_dialog().is_none(), "it expired");
+        assert!(app.config_pane().is_some(), "the pane is still open");
+        assert!(matches!(effect, Effect::None), "got {effect:?}");
     }
 
     #[test]
@@ -13891,6 +14841,25 @@ mod tests {
         });
     }
 
+    /// `esc`, and `c` right behind it if that raised the close dialog
+    /// instead of writing outright.
+    ///
+    /// What every write-on-close test in this module wants now: every
+    /// sheep fixture here parks `kill_signal` unconditionally
+    /// (`sheep_config_view`'s own default), so a bare `esc` only asks. `c`
+    /// is what actually gets the write onto the wire, the same as an
+    /// operator continuing past the dialog would; harmless when nothing
+    /// asked, since [`App::close_dialog`] is `None` and this returns
+    /// `esc`'s own effect unchanged.
+    fn close_writing(app: &mut App) -> Effect {
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        if app.close_dialog().is_some() {
+            app.update(Msg::Key(KeyPress::Continue))
+        } else {
+            effect
+        }
+    }
+
     /// The request an effect would put on the wire, or a panic naming what
     /// came back instead. The seam this test module cares about: the
     /// reducer's own `Sent` is an echo tag, and `Sent::request` is what the
@@ -13946,7 +14915,7 @@ mod tests {
                 1,
                 "{key}: space files an edit and sends nothing"
             );
-            let request = one_wire(app.update(Msg::Key(KeyPress::Escape)));
+            let request = one_wire(close_writing(&mut app));
             let Request::SetSheepField {
                 name,
                 key: sent,
@@ -13982,7 +14951,7 @@ mod tests {
             }
             let _ = app.update(Msg::Key(KeyPress::TextApply));
             assert_eq!(app.mode(), InputMode::Normal, "{key}: the editor closes");
-            let request = one_wire(app.update(Msg::Key(KeyPress::Escape)));
+            let request = one_wire(close_writing(&mut app));
             let Request::SetSheepField {
                 key: sent, value, ..
             } = request
@@ -14024,7 +14993,7 @@ mod tests {
         let _ = app.update(Msg::Key(KeyPress::TextApply));
 
         // Both leave together, on the `Escape` that closes the pane.
-        let requests = wire_all(app.update(Msg::Key(KeyPress::Escape)));
+        let requests = wire_all(close_writing(&mut app));
         assert_eq!(
             requests,
             vec![
@@ -14087,7 +15056,7 @@ mod tests {
         let mut app = fixtures::app_in_sheep_pane_with_control();
         pane_to(&mut app, "autorestart");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
-        let mut batch = wire_batch(app.update(Msg::Key(KeyPress::Escape)));
+        let mut batch = wire_batch(close_writing(&mut app));
         let sent = batch.remove(0);
         // The pane is reopened and the operator starts typing while the
         // first write is still out.
@@ -14176,7 +15145,7 @@ mod tests {
         assert_eq!(app.config_pane().unwrap().edits().len(), 1);
         assert_eq!(filed_value(&app, "max_restarts"), serde_json::json!(16));
 
-        let request = one_wire(app.update(Msg::Key(KeyPress::Escape)));
+        let request = one_wire(close_writing(&mut app));
         let Request::SetSheepField { key, value, .. } = request else {
             panic!("expected SetSheepField, got {request:?}");
         };
@@ -14296,7 +15265,7 @@ mod tests {
     #[test]
     fn escape_sends_every_filed_edit_at_once() {
         let mut app = fixtures::app_in_sheep_pane_with_two_edits();
-        let effect = app.update(Msg::Key(KeyPress::Escape));
+        let effect = close_writing(&mut app);
         let Effect::SendAll(sent) = effect else {
             panic!("wanted a batch, got {effect:?}");
         };
@@ -14336,7 +15305,7 @@ mod tests {
     #[test]
     fn a_refused_write_notices_after_the_pane_has_closed() {
         let mut app = fixtures::app_in_sheep_pane_with_two_edits();
-        let Effect::SendAll(mut sent) = app.update(Msg::Key(KeyPress::Escape)) else {
+        let Effect::SendAll(mut sent) = close_writing(&mut app) else {
             panic!("wanted a batch");
         };
         let first = sent.remove(0);
@@ -14398,7 +15367,7 @@ mod tests {
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         pane_to(&mut app, "watch");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
-        let requests = wire_all(app.update(Msg::Key(KeyPress::Escape)));
+        let requests = wire_all(close_writing(&mut app));
         let named: Vec<String> = requests
             .iter()
             .map(|request| match request {
@@ -14557,7 +15526,7 @@ mod tests {
         pane_to(&mut app, "watch");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let _ = app.update(Msg::Key(KeyPress::Undo));
-        let requests = wire_all(app.update(Msg::Key(KeyPress::Escape)));
+        let requests = wire_all(close_writing(&mut app));
         let named: Vec<String> = requests
             .iter()
             .map(|request| match request {
@@ -14577,7 +15546,7 @@ mod tests {
             let mut app = fixtures::app_in_sheep_pane_with_control();
             pane_to(&mut app, "autorestart");
             let _ = app.update(Msg::Key(KeyPress::Cycle));
-            let mut batch = wire_batch(app.update(Msg::Key(KeyPress::Escape)));
+            let mut batch = wire_batch(close_writing(&mut app));
             let effect = app.update(Msg::Replied {
                 sent: batch.remove(0),
                 result: Ok(Response::SheepFieldSet {
@@ -14608,7 +15577,12 @@ mod tests {
         let mut app = fixtures::app_in_sheep_pane_with_control();
         pane_to(&mut app, "cwd");
         fixtures::type_into_the_open_editor(&mut app, "/does/not/exist");
-        let mut batch = wire_batch(app.update(Msg::Key(KeyPress::Escape)));
+        // `cwd` needs a respawn, so `esc` raises the close dialog rather
+        // than writing on the keypress. `c` is the answer that writes and
+        // leaves the sheep alone, which is the same batch this test always
+        // read, reached through the question the dialog now asks first.
+        app.update(Msg::Key(KeyPress::Escape));
+        let mut batch = wire_batch(app.update(Msg::Key(KeyPress::Continue)));
         let effect = app.update(Msg::Replied {
             sent: batch.remove(0),
             result: Ok(Response::SheepFieldSet {
@@ -14640,7 +15614,7 @@ mod tests {
         let mut app = fixtures::app_in_sheep_pane_with_control();
         pane_to(&mut app, "autorestart");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
-        let mut batch = wire_batch(app.update(Msg::Key(KeyPress::Escape)));
+        let mut batch = wire_batch(close_writing(&mut app));
         let effect = app.update(Msg::Replied {
             sent: batch.remove(0),
             result: Err(fixtures::a_refusal()),
@@ -14668,7 +15642,7 @@ mod tests {
             let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
         }
         let _ = app.update(Msg::Key(KeyPress::TextApply));
-        let field = app.update(Msg::Key(KeyPress::Escape));
+        let field = close_writing(&mut app);
         assert_eq!(
             format!("{field:?}"),
             "SendAll([ApplyField { name: \"web\", ticket: 0, key: \"cwd\", \
@@ -14688,9 +15662,9 @@ mod tests {
         }
         let _ = app.update(Msg::Key(KeyPress::TextApply));
         // One `Escape`, not two: there is no sub-screen level to back out
-        // of any more, so the write goes out on the same keypress that
-        // closes the field list (or offers its menu).
-        let env = app.update(Msg::Key(KeyPress::Escape));
+        // of any more, so the write goes out once the close dialog it
+        // raises (this fixture parks `kill_signal`) is answered.
+        let env = close_writing(&mut app);
         assert_eq!(
             format!("{env:?}"),
             "SendAll([SetEnv { name: \"web\", ticket: 0, key: \"DB_HOST\", \
@@ -14709,7 +15683,7 @@ mod tests {
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         pane_to(&mut app, "watch");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
-        let first = wire_batch(app.update(Msg::Key(KeyPress::Escape)));
+        let first = wire_batch(close_writing(&mut app));
         assert_ne!(first[0], first[1], "two entries are two tickets");
 
         // The same lookout, a second pane. `app_in_sheep_pane_with_control`
@@ -14727,7 +15701,7 @@ mod tests {
         });
         pane_to(&mut app, "autorestart");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
-        let second = wire_batch(app.update(Msg::Key(KeyPress::Escape)));
+        let second = wire_batch(close_writing(&mut app));
         assert_ne!(
             first[0], second[0],
             "a second close does not reuse the first's tickets"
@@ -14747,42 +15721,27 @@ mod tests {
             1,
             "the edit survives the rebuild"
         );
-        let request = one_wire(app.update(Msg::Key(KeyPress::Escape)));
+        let request = one_wire(close_writing(&mut app));
         let Request::SetSheepField { key, .. } = request else {
             panic!("{request:?}");
         };
         assert_eq!(key, "autorestart");
     }
 
-    /// A menu nobody answered is a question nobody is still looking at, and
-    /// `L` an hour later must not reload a sheep.
+    /// A dialog nobody answered is not consent to write, and `L` an hour
+    /// later must not reload a sheep.
     #[test]
-    fn the_apply_menu_expires_like_every_other_armed_thing() {
+    fn the_close_dialog_expires_like_every_other_armed_thing() {
         let mut app = fixtures::app_in_sheep_pane_with_control();
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.pane_menu().is_some(), "the menu opened");
+        assert!(app.close_dialog().is_some(), "the dialog opened");
 
         let later = Instant::now() + CONFIRM_EXPIRY;
         let _ = app.update(Msg::Tick { now: later });
-        assert!(app.pane_menu().is_none(), "it did not expire");
+        assert!(app.close_dialog().is_none(), "it did not expire");
 
         let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload)));
         assert_eq!(effect, Effect::None, "a stale L reloads nothing");
-    }
-
-    #[test]
-    fn the_apply_menu_refuses_on_a_dead_link_like_every_other_action() {
-        let mut app = fixtures::app_in_sheep_pane_with_control();
-        let _ = app.update(Msg::Retrying { attempt: 3 });
-        let _ = app.update(Msg::Key(KeyPress::Escape));
-        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload)));
-        assert_eq!(
-            effect,
-            Effect::None,
-            "nothing goes to a shepherd that is gone"
-        );
-        let said = app.notice().map(ToString::to_string).unwrap_or_default();
-        assert!(said.contains("attempt 3"), "{said}");
     }
 
     /// The pane-level test reaches `begin_typing` directly, so it passes
@@ -15047,7 +16006,7 @@ mod tests {
             app.update(Msg::Key(KeyPress::TextChar(typed)));
         }
         app.update(Msg::Key(KeyPress::TextApply));
-        let batch = wire_batch(app.update(Msg::Key(KeyPress::Escape)));
+        let batch = wire_batch(close_writing(&mut app));
         let [Sent::SetDogSection { name, toml, .. }] = batch.as_slice() else {
             panic!("closing the pane sends the section: {batch:?}");
         };
@@ -15231,7 +16190,7 @@ mod tests {
         // One field, one entry, however many keystrokes reached it, and
         // every one of them is in the array the wire carries.
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        let request = one_wire(app.update(Msg::Key(KeyPress::Escape)));
+        let request = one_wire(close_writing(&mut app));
         let Request::SetSheepField { key, value, .. } = request else {
             panic!("expected SetSheepField, got {request:?}");
         };

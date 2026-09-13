@@ -63,17 +63,17 @@ impl Edit {
 
     /// What sending it costs, and [`None`] for a dog, which has no
     /// `apply_group` table.
+    ///
+    /// Frame 1g's close dialog was expected to read this and does not: the
+    /// dialog names fields (`ConfigPane::unsent_fields_needing_a_respawn`
+    /// calls `reaches_running` directly), it does not rank a maximum. This
+    /// stays for the tests in this module, which read a filed edit's own
+    /// impact directly; `ConfigPane::cost` is what the COST column renders.
     #[cfg_attr(
         not(test),
-        // `allow`, not `expect`: this is dead only through
-        // `Edits::worst_impact`, and whether a compiler propagates that is a
-        // toolchain detail. Rust 1.97 does and 1.93 does not, so an `expect`
-        // here is fulfilled on one and an error on the other. `worst_impact`
-        // itself is dead on both and keeps its `expect`; remove this when that
-        // one goes.
         allow(
             dead_code,
-            reason = "frame 1g's close dialog reads it; that frame is not built yet"
+            reason = "read by this module's own tests; no non-test caller reads it"
         )
     )]
     #[must_use]
@@ -155,61 +155,6 @@ impl Edits {
     pub fn into_writes(self) -> Vec<PaneEdit> {
         self.entries.into_values().map(|entry| entry.edit).collect()
     }
-
-    /// The heaviest impact in the set, and [`None`] when the set is empty
-    /// or nothing in it is classified.
-    ///
-    /// This is what decides whether the close dialog appears at all.
-    ///
-    /// [`ApplyGroup::Structural`] cannot appear, and nothing in this
-    /// module is what stops it. `ConfigPane::sheep` marks every
-    /// Structural field not editable, `ConfigPane::lock` answers
-    /// [`Lock::Refused`](super::pane::Lock::Refused) for them, and every
-    /// door that files an edit checks that lock first. `pane.rs`'s
-    /// `no_key_files_an_edit_for_a_structural_field` is what holds the
-    /// claim up.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "frame 1g's close dialog reads it; that frame is not built yet"
-        )
-    )]
-    #[must_use]
-    pub fn worst_impact(&self) -> Option<ApplyGroup> {
-        self.entries
-            .values()
-            .filter_map(Edit::impact)
-            .max_by_key(|group| rank(*group))
-    }
-}
-
-/// How heavy an apply group is, for [`Edits::worst_impact`].
-///
-/// A local ordering over one notion of cost rather than a second notion of
-/// it: [`ApplyGroup`] is `#[non_exhaustive]` and derives no `Ord`, and a
-/// total order asserted in shep-core would claim more than this needs.
-#[cfg_attr(
-    not(test),
-    // `allow`, not `expect`: this is dead only through
-    // `Edits::worst_impact`, and whether a compiler propagates that is a
-    // toolchain detail. Rust 1.97 does and 1.93 does not, so an `expect`
-    // here is fulfilled on one and an error on the other. `worst_impact`
-    // itself is dead on both and keeps its `expect`; remove this when that
-    // one goes.
-    allow(
-        dead_code,
-        reason = "frame 1g's close dialog reads `Edits::worst_impact`, which reads this"
-    )
-)]
-const fn rank(group: ApplyGroup) -> u8 {
-    match group {
-        ApplyGroup::Live => 0,
-        ApplyGroup::NextSpawn => 1,
-        // An unknown group answers with the conservative rank, matching
-        // `apply_group`'s own fallback.
-        ApplyGroup::NeedsRespawn | ApplyGroup::Structural | _ => 2,
-    }
 }
 
 #[cfg(test)]
@@ -271,32 +216,6 @@ mod tests {
         edits.set(field("env", json!({})), None);
         edits.set(env("env", None), None);
         assert_eq!(edits.len(), 2);
-    }
-
-    #[test]
-    fn worst_impact_is_the_heaviest_in_the_set() {
-        let mut edits = Edits::default();
-        edits.set(field("max_restarts", json!(4)), Some(ApplyGroup::Live));
-        edits.set(
-            field("script", json!("a.js")),
-            Some(ApplyGroup::NeedsRespawn),
-        );
-        edits.set(field("autostart", json!(true)), Some(ApplyGroup::NextSpawn));
-        assert_eq!(edits.worst_impact(), Some(ApplyGroup::NeedsRespawn));
-    }
-
-    #[test]
-    fn worst_impact_of_an_empty_set_is_none() {
-        assert_eq!(Edits::default().worst_impact(), None);
-    }
-
-    /// A dog carries no apply table, so its edits report no impact at all
-    /// and must not be read as `Live`.
-    #[test]
-    fn an_unclassified_edit_does_not_become_the_lightest_impact() {
-        let mut edits = Edits::default();
-        edits.set(field("url", json!("http://x")), None);
-        assert_eq!(edits.worst_impact(), None);
     }
 
     #[test]

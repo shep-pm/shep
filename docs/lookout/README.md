@@ -16,10 +16,10 @@ phase before deciding what came next.
 
 ## Reading the frames
 
-- `frames.txt`, forty-one scenes rendered through the flattened `NO_COLOR`
+- `frames.txt`, fifty scenes rendered through the flattened `NO_COLOR`
   palette, the one an operator with `$NO_COLOR` set or a 16-colour terminal
   actually gets. Open it in any editor.
-- `frames.ansi`, the same forty-one scenes rendered through the coloured
+- `frames.ansi`, the same fifty scenes rendered through the coloured
   palette the pinned snapshot tests use. Read it with `less -R` so the
   escape codes render instead of printing literally.
 
@@ -69,9 +69,10 @@ cargo test -p shep --lib --all-features -- --ignored write_the_gallery
   prompt nobody answers expires after ten seconds. Read-only refuses
   outright, with a literal sentence (`read-only: from --read-only or
   lookout.allow_control`). The status bar always says which state is in
-  force. The apply menu a parked pane offers on close is the one exception
-  to the arm-then-confirm rule: it names its keys on screen, so `L` and `R`
-  send on the press, and it expires on the same ten seconds.
+  force. The close dialog a config pane raises on `esc` is the one
+  exception to the arm-then-confirm rule: it names its keys on screen, so
+  `R` and `L` send on the press, and it expires on the same ten seconds.
+  See "What 1g settled" below.
   This is a fat-finger catch, not a security boundary: lookout runs as the
   operator's own process, under the operator's own uid, so the shepherd has
   no way to refuse a keypress it cannot tell apart from `shep stop`.
@@ -293,3 +294,26 @@ debt.
   does: edits file into one change set, `u` undoes them, and `esc` sends
   the whole `dogs.toml` section in one request, however many fields
   changed.
+
+## What 1g settled
+
+- **`esc` stops writing on its own. It asks, and the answer writes.** A
+  config pane closing over anything the running child has not taken raises
+  a dialog instead: restart now, reload, or leave the edits parked. `esc`
+  from the dialog itself means keep editing, so nothing is written and the
+  filed set stays filed.
+- **One dialog answers for both halves of what is outstanding.** Edits
+  filed in this pane and not yet sent are one count; fields the shepherd
+  already parked from an earlier write are the other. Either raises the
+  dialog, and the heading names whichever fired, or both.
+- **A stopped sheep, a dog, and read-only all skip the dialog**, each
+  because asking would say something false: nothing holds a stopped
+  sheep's old config to respawn, a dog's write is one section and closes,
+  and read-only never let an edit file in the first place.
+- **The action fires once at least one write lands, and drops when every
+  one is refused.** A restart or reload sent before its write lands would
+  respawn into the old config, so the pane holds the verb and sends it only
+  after every reply is in.
+- **The dialog draws as a box over the pane it belongs to**, dimmed
+  underneath it, at 90 columns and above. Below that it draws full width
+  with no border rather than clipping.
