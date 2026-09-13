@@ -146,7 +146,10 @@ function handle(message) {
   // Every action carries both, so one that does not is not something this
   // app can answer, and carries nowhere to send the answer.
   const { name, params, id } = message;
-  if (typeof name !== "string" || id === undefined) {
+  // `== null` on purpose: it catches both undefined and null, and a reply
+  // carrying "id": null is one shep cannot match to anything. The typed
+  // examples refuse it without asking, since null is not a number there.
+  if (typeof name !== "string" || id == null) {
     return;
   }
   // params is a string or it is absent. A typed language gets this free:

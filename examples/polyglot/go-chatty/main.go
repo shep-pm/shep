@@ -64,6 +64,11 @@ func openChannel() (*os.File, error) {
 		// point this app has already logged that it is ready.
 		f := os.NewFile(uintptr(n), "shep-channel")
 		if _, err := f.Stat(); err != nil {
+			// NewFile hands ownership to the caller, so the refusing path
+			// owes it a Close as much as the succeeding one does. This
+			// example exits straight after, but it gets copied into code
+			// that will not.
+			f.Close()
 			return nil, fmt.Errorf("SHEP_CHANNEL_FD is %q, which is not an open descriptor", fd)
 		}
 		return f, nil
