@@ -901,6 +901,21 @@ pub struct SelectorArgs {
     pub selectors: Vec<String>,
 }
 
+/// The floor and the default for `shep flock --follow`'s `--interval`, in
+/// seconds.
+///
+/// One second, from two measurements rather than taste. `sysinfo` reports no
+/// CPU at all over a window shorter than its own
+/// `MINIMUM_CPU_UPDATE_INTERVAL`, which is 200 ms, so a faster cadence buys
+/// a column of dashes. And one redraw costs the shepherd a
+/// `Request::ListFlock` plus a host sample measured at 5.6 ms a tick on
+/// macOS (`crate::host`'s own module doc): 0.6% of a core at this floor, and
+/// 5.6% of one at the 100 ms somebody would otherwise reach for.
+///
+/// Seconds rather than milliseconds because the operator types it, and
+/// nothing between 200 ms and 1 s is worth the unit confusion.
+pub(crate) const FOLLOW_INTERVAL_FLOOR_SECONDS: u64 = 1;
+
 /// Arguments to `shep flock`.
 ///
 /// A listing is a moment, and this moment drifts: a sheep that started
@@ -930,9 +945,9 @@ pub struct FlockArgs {
     /// `sysinfo` reports no CPU at all over a window that short.
     #[arg(
         long,
-        default_value_t = 1,
+        default_value_t = FOLLOW_INTERVAL_FLOOR_SECONDS,
         value_name = "SECONDS",
-        value_parser = clap::value_parser!(u64).range(1..),
+        value_parser = clap::value_parser!(u64).range(FOLLOW_INTERVAL_FLOOR_SECONDS..),
         requires = "follow"
     )]
     pub interval: u64,
@@ -2282,7 +2297,7 @@ mod tests {
             panic!("expected flock")
         };
         assert!(!args.follow, "a bare listing is still one moment");
-        assert_eq!(args.interval, 1);
+        assert_eq!(args.interval, FOLLOW_INTERVAL_FLOOR_SECONDS);
 
         let Commands::Flock(args) =
             Cli::try_parse_from(["shep", "flock", "--follow", "--interval", "5"])

@@ -2635,7 +2635,7 @@ mod tests {
     fn flock_args() -> cli::FlockArgs {
         cli::FlockArgs {
             follow: false,
-            interval: 1,
+            interval: cli::FOLLOW_INTERVAL_FLOOR_SECONDS,
         }
     }
 
