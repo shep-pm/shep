@@ -450,7 +450,7 @@ impl core::fmt::Display for HomeRefusal {
                 f,
                 "no flock at {path}\n  \
                  did you mean to drop --home? the default is ~/.shep\n  \
-                 to set up a flock there deliberately:  mkdir -p {path}",
+                 to set up a flock there deliberately: mkdir -p {path}",
                 path = path.display(),
             ),
             Self::Io { path, source } => {
