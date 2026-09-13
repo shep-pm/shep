@@ -242,11 +242,17 @@ channel.on("end", () => {
   const tail = pending.trim();
   pending = "";
   if (tail !== "") {
+    let message;
     try {
-      handle(JSON.parse(tail));
+      message = JSON.parse(tail);
     } catch (err) {
+      // Only the parse is guarded, the same way the data handler above
+      // guards it, so a real bug in handle still surfaces as itself
+      // rather than as an unreadable frame.
       console.error(`node-chatty: could not read the last message: ${err.message}`);
+      return;
     }
+    handle(message);
   }
 });
 channel.on("close", () => {
