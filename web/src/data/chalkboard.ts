@@ -13,6 +13,12 @@
  *     bold and some not, so the anchor is each bullet's head: its text up
  *     to the first parenthesis, em dash, or sentence end.
  *
+ * A section ends at the next heading of any depth, not at the next `## `.
+ * Either section can carry a `### ` subsection expanding on one of its
+ * items, and that subsection's own bullets are prose about a cut rather
+ * than six more cuts. Bounding at `## ` alone read all eight bullets of the
+ * 2026-09-06 resource-limit sizing as new v1.1 scope and failed the build.
+ *
  * Merging the two would be the easy thing and the wrong one. A cut is not a
  * queue item, and a board that showed Windows beside OTLP with no label
  * would promise a tier the maintainer ruled out of v1 on 2026-08-15.
@@ -84,8 +90,9 @@ function section(source: string, heading: string): string {
         `"${heading}" section this list is parsed from.`,
     );
   }
-  const end = source.indexOf("\n## ", start + heading.length);
-  return end === -1 ? source.slice(start) : source.slice(start, end);
+  const body = source.slice(start + heading.length);
+  const end = body.search(/\n#{2,6} /);
+  return end === -1 ? body : body.slice(0, end);
 }
 
 /**
