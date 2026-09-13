@@ -12,7 +12,11 @@
 set -eu
 cd "$(dirname "$0")"
 canonical=../../../crates/shep-channel/wire/channel.go
-if ! diff -u "$canonical" channel/wire.go; then
+if [ ! -f "$canonical" ]; then
+  # This example is meant to be copied, and a copy lands somewhere with no
+  # shep checkout above it. Nothing to compare against is not drift.
+  echo "go-chatty: no shep checkout above this directory; skipping the wire check" >&2
+elif ! diff -u "$canonical" channel/wire.go; then
   echo "go-chatty: channel/wire.go has drifted from $canonical; copy it again" >&2
   exit 1
 fi
