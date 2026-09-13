@@ -206,9 +206,17 @@ submitted in `Job::create`, and `JOB_OBJECT_LIMIT_JOB_MEMORY` makes the
 over-limit commit **fail** rather than terminating the process. CPU needs a
 second info class, `JobObjectCpuRateControlInformation`, with
 `ENABLE | HARD_CAP` rather than the weight-based mode, which expresses a
-relative priority and not a quota. Its rate is in hundredths of a percent of
-the whole machine rather than of one core, so `max_cpu_cores` needs a unit
-conversion against the host's processor count.
+relative priority and not a quota.
+
+`CpuRate` is the conversion worth writing down, because it reads backwards and
+a reviewer already got it backwards once. It is hundredths of a percent of the
+WHOLE MACHINE, capped at 10000, not of one core: 10000 means every cycle the
+host has. One core is therefore not a fixed number, and `max_cpu_cores` cannot
+be scaled without knowing how many processors the host has. The conversion is
+`cores * 10000 / processor_count`, which is what moby computes for
+`--cpus` on Windows, so `max_cpu_cores = 2` on an eight-processor host writes
+2500 and not 20000. The cap is the tell: if the rate were per-core, expressing
+two cores would need a value above 10000, and the API refuses one.
 
 **macOS** has no mechanism for either, and this has to be a documented
 refusal. `RLIMIT_AS` is defeated by ordinary virtual-address reservations, so
