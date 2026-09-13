@@ -8,7 +8,8 @@ every key lookout binds, grouped by what the key does.
 `docs/lookout/design-files/rulings.md` is the authority on which of the bundle's
 claims survive contact with shipped shep. Where a frame and a ruling disagree,
 the ruling wins. The rulings list 1k among the frames that go ahead as drawn,
-and set its width floor at 132 columns.
+and set its width floor at 132 columns, which is the one number in them this spec
+corrects rather than follows (see Layout).
 
 ## The bundle is complete, and this frame is last on purpose
 
@@ -194,18 +195,22 @@ interior  126 = 4 columns × 30 + 3 gutters × 2
 column    30 = 12 key + 1 gap + 17 text
 rows      19 = 1 border + 17 interior + 1 border
 interior  1 heading + 12 entry + 1 blank + 1 gate + 2 closing = 17
-floor     132 = 126 interior + 2 border + 2 margin each side
+floor     130 = 126 interior + 2 border + 1 margin each side
 ```
 
-The 132-column floor is the rulings', and it is one column more generous than
-1g's own formula would give. 1g's `BOX_FLOOR` is `BOX_WIDTH + 4`, so 86 interior
-plus two border cells plus **one** margin cell each side is 90, and
-`draw_boxed_close_dialog`'s `margin = (width - (BOX_WIDTH + 2)) / 2` is 1 at that
-floor. The same formula over a 126-cell interior gives 130, not 132. The rulings
-say 132, which is a two-cell margin, and the rulings win where they and a frame
-disagree — so 1k's floor is stated as `interior + 2 border + 2 margin each side`
-rather than reusing 1g's constant expression. Worth a comment, because the two
-frames' floors now come from two formulas and the next reader will assume one.
+**The floor is 130, and the rulings' 132 is wrong.** 1g's `BOX_FLOOR` is
+`BOX_WIDTH + 4`: 86 interior plus two border cells plus one margin cell each side
+is 90, and `draw_boxed_close_dialog`'s `margin = (width - (BOX_WIDTH + 2)) / 2`
+comes out at 1 there. The same formula over a 126-cell interior gives 130. The
+rulings say 132, which would be a two-cell margin that 1g does not ask for and
+this frame has no reason to.
+
+So both floors stay one expression, `interior + 4`, and `rulings.md` and
+`docs/lookout/design-files/README.md:332` are corrected rather than honoured. The
+rulings win where they and a frame disagree about behaviour; an arithmetic slip
+is not a disagreement. Two frames' floors coming out of two formulas is the thing
+a later reader gets wrong, and it is cheaper to fix the number than to carry the
+explanation.
 
 The entry-row budget is 12 and the tallest group has 12. That is zero headroom,
 and a test carries it rather than a comment:
@@ -281,16 +286,21 @@ with four fixed groups cannot reflow per pane in any case.
 
 ## Under the floor, and under the height
 
-Below 132 columns the rulings say draw full width with no border box rather than
+Below the floor the rulings say draw full width with no border box rather than
 clipping. Four columns need 126 cells, so the borderless form also drops columns.
 `n` columns take `32n - 2` cells, so `n = (width + 2) / 32`, clamped to 1..=4:
 
-| width | columns | groups per bank |
-|---|---|---|
-| 126 and up | 4 | all four side by side |
-| 94–125 | 3 | MOVING LOOKING CHANGING, then DOING |
-| 62–93 | 2 | MOVING LOOKING, then CHANGING DOING |
-| 33–61 | 1 | one group per bank, four banks |
+| width | form | columns | groups per bank |
+|---|---|---|---|
+| 130 and up | boxed | 4 | all four side by side |
+| 126–129 | borderless | 4 | all four side by side |
+| 94–125 | borderless | 3 | MOVING LOOKING CHANGING, then DOING |
+| 62–93 | borderless | 2 | MOVING LOOKING, then CHANGING DOING |
+| 33–61 | borderless | 1 | one group per bank, four banks |
+
+The 126–129 band is four columns wide and easy to miss: it is the only place the
+full four-column layout draws without a border, and it exists because the box
+needs two cells the columns themselves do not.
 
 Banks stack, separated by a blank row, so the rows get taller as the terminal
 gets narrower — tallest exactly where there is least room, the same shape
@@ -437,16 +447,25 @@ pinning what it exists to show rather than only that the overlay drew:
 | scene | width × height | pins |
 |---|---|---|
 | `Keymap` | 160 × 48 | the box at 128 cells, four columns, the sheep, all 35 rows |
-| `KeymapNarrow` | 100 × 48 | no border, three columns, DOING on its own bank |
+| `KeymapFloor` | 130 × 48 | the narrowest boxed form: border intact, margin 1 each side |
+| `KeymapBorderlessWide` | 128 × 48 | one column under the floor: four columns, no border |
+| `KeymapNarrow` | 100 × 48 | three columns, DOING on its own bank |
 | `KeymapTwoColumn` | 70 × 48 | two columns, two banks |
 | `KeymapFrozen` | 160 × 48 | the gate line naming the dead link, not the control label |
 | `KeymapReadOnly` | 160 × 48 | `█ read-only` in the gate line |
 | `KeymapShort` | 160 × 20 | the sheep shed, the key rows intact |
 
-`KeymapNarrow` at 100 columns rather than 131: one column under the floor tests
-the floor, and 100 tests the three-column bank the floor's own form actually
-draws. A scene pinned one column short of its own column set drops the thing it
-exists to show, which happened once already in this bundle.
+`KeymapFloor` and `KeymapBorderlessWide` are two columns apart on purpose: 130 is
+the narrowest box and 128 the widest borderless form that still carries all four
+columns. Either one alone would leave the boundary untested, and the 126–129 band
+is narrow enough that a scene at 100 never reaches it. A scene pinned one column
+short of its own column set silently drops the thing it exists to show, which
+happened once already in this bundle.
+
+Each width scene asserts the **column count it exists to show**, by counting
+occupied column starts on a row it knows has entries in every group, not by
+asserting the overlay drew at all. A scene that only checks for the word `MOVING`
+passes at every width in the table.
 
 ## Docs
 
@@ -458,7 +477,12 @@ exists to show, which happened once already in this bundle.
   pane's field-help key (lines 1034 and 1089) is now wrong twice over — the key
   moved and the help is automatic — and both need rewriting.
 - **`docs/lookout/design-files/README.md:317`** gets `g` → `S` and `l` → `b`, and
-  the `h` or `?` claim becomes true.
+  the `h` or `?` claim becomes true. Line 332's `132 columns` becomes `130`.
+- **`docs/lookout/design-files/rulings.md`** gets a correction paragraph in the
+  form its 1h section already uses, recording that the 132-column floor it states
+  is 130: `interior + 4`, the same expression 1g's `BOX_FLOOR` uses. The rulings
+  are the authority on which claims survive contact with shipped shep, so a
+  number they get wrong is corrected there rather than worked around here.
 - **`docs/lookout/README.md`** documents the overlay and the amended
   `FROZEN_HINT`.
 - **`web/scripts/generate-cli-reference.sh`** is run and its diff checked. No
