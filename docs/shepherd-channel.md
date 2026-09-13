@@ -80,10 +80,14 @@ unknown-action reply this document asks for. `shep stop` sends the shutdown
 message instead of a signal, because all four set
 `shutdown_with_message = true`.
 
-The three hand-rolled ones carry both platform arms, and read and write the
-channel from one thread, which is what makes the Windows arm safe. All four
-were run on macOS, and the three under `examples/polyglot/` were run again
-on Windows against a real named pipe.
+The three hand-rolled ones carry both platform arms, and each takes one of
+the two ways out of the deadlock above. go-chatty and python-chatty read
+and write from a single loop, so nothing is ever parked while something
+else wants to write. node-chatty is the overlapped case rather than the
+single-threaded one: libuv drives a named pipe asynchronously, so its
+reads and writes do not serialise against each other in the first place.
+All four were run on macOS, and the three under `examples/polyglot/` were
+run again on Windows against a real named pipe.
 
 ## On Windows: a named pipe, not fd 3
 

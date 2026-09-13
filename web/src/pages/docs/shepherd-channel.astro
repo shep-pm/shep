@@ -88,7 +88,9 @@ channel = true`}</CodeBlock>
       framing the wire themselves. All four answer the same actions, so one{" "}
       <code>shep trigger</code> reads the same way against any of them. The
       three hand-rolled ones carry both platform arms and were run on
-      Windows against a real named pipe. See{" "}
+      Windows against a real named pipe: two of them read and write from a
+      single loop, and the JavaScript one is the overlapped case instead,
+      since libuv drives a pipe asynchronously. See{" "}
       <a href="/docs/examples#channel">Examples</a>.
     </p>
     <p>
