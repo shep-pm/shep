@@ -632,9 +632,7 @@ mod tests {
     ///
     /// Most cases want exactly this and differ only in what they assert
     /// afterwards. The refusal and spent-budget cases spell it out instead,
-    /// because they assert on the error this unwraps, and so does the
-    /// retries-past-a-successor case, which names the generation it expected
-    /// to be answered by.
+    /// because they assert on the error this unwraps.
     async fn reconnect_ok(client: &mut Client) -> Reconnected {
         tokio::time::timeout(BOUND, client.reconnect())
             .await
@@ -1103,10 +1101,7 @@ mod tests {
         let mut client = Client::connect(&path).await.unwrap();
 
         shepherds.cut().await;
-        let verdict = tokio::time::timeout(BOUND, client.reconnect())
-            .await
-            .expect("the reconnect must not hang")
-            .expect("the fourth generation accepted this handshake");
+        let verdict = reconnect_ok(&mut client).await;
 
         assert_eq!(verdict, Reconnected::NewDaemon);
         assert_eq!(
