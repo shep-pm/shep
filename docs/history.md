@@ -309,8 +309,8 @@ because each needs its own `--help` block. The array has counted entries rather
 than verbs ever since, so the number
 `./web/scripts/generate-cli-reference.sh` prints at the end of a run stopped
 matching the generated count and became the largest of the three. Verbs kept
-being added in the meantime, which moved the other two. A measurement on
-2026-09-13 put them at 42 covered, 43 listed and 44 printed, recorded here
+being added in the meantime, which moved all three again. A measurement on
+2026-09-13 put them at 42 generated, 43 listed and 44 printed, recorded here
 only to show that all three had parted.
 
 Neither file keeps a count current now. `CLAUDE.md` describes the three
