@@ -163,20 +163,27 @@ pub(crate) async fn run_on_remove(
     let finished = tokio::time::timeout(budget, drain(&mut child, stdout, stderr)).await;
 
     match finished {
+        // Both failure arms take the ladder, because both can leave a
+        // child running: the budget expired, or a read gave up before the
+        // wait was ever reached. The group goes first, and while it still
+        // has members, since a sweep after the leader is reaped names a
+        // pid the OS may have handed to somebody else.
+        // `dogs::kill_probe_tree` orders it the same way for the same
+        // reason.
         Err(_elapsed) => {
-            // The group first, and while it still has members: a sweep
-            // after the leader is reaped names a pid the OS may have
-            // handed to somebody else. `dogs::kill_probe_tree` orders it
-            // the same way for the same reason.
             kill_group(leader);
             let _ = child.kill().await;
             HookOutcome::TimedOut { after: budget }
         }
         // Not `NotSpawned`: the spawn above succeeded, so this is a read
         // or a wait that failed on a child that ran.
-        Ok(Err(err)) => HookOutcome::Unread {
-            reason: err.to_string(),
-        },
+        Ok(Err(err)) => {
+            kill_group(leader);
+            let _ = child.kill().await;
+            HookOutcome::Unread {
+                reason: err.to_string(),
+            }
+        }
         Ok(Ok((out, err, status))) => {
             let output = format!("{}{}", capped(&out), capped(&err));
             if status.success() {
