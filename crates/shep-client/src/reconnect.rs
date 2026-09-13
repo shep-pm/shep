@@ -28,6 +28,8 @@ use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::Duration;
 
 use tokio::task::JoinHandle;
+// tokio's Instant, not std's: it moves with `tokio::time::pause`, and the
+// budget below is measured against a `tokio::time::sleep` that does too.
 use tokio::time::Instant;
 
 use shep_core::protocol::{HelloAck, Request, Response};
@@ -117,13 +119,13 @@ impl Client {
     /// Re-establishes this connection, retrying until `budget` is spent.
     ///
     /// Meant for a connection that has already ended, as [`Self::closed`]
-    /// reports; a live one is replaced only once the new handshake finishes,
-    /// and its in-flight requests fail. A successor still coming up is
+    /// reports; a live one is replaced only once the new handshake finishes.
+    /// `&mut self` holds the handle exclusively, so none of its own requests
+    /// can be in flight while this runs. A successor still coming up is
     /// retried, from [`RECONNECT_MIN_DELAY`] doubling to
     /// [`RECONNECT_MAX_DELAY`]; a refusal is not. An [`EventStream`] taken
     /// before this call belongs to the old connection, so a caller wanting
-    /// events past it subscribes again. `&mut self` holds the handle
-    /// exclusively while its identity can change.
+    /// events past it subscribes again.
     ///
     /// # Example
     ///
@@ -601,6 +603,20 @@ mod tests {
         seen.unwrap_or_else(|_| panic!("the link never reached a refusal within {BOUND:?}"))
     }
 
+    /// Reconnects `client` inside [`BOUND`], failing the test rather than
+    /// hanging, and hands back the verdict.
+    ///
+    /// Eight cases want exactly this and differ only in what they assert
+    /// afterwards. Three do not use it: the refusal and spent-budget cases
+    /// assert on the error this unwraps, and the retry-ladder case names
+    /// the generation it expected to be answered by.
+    async fn reconnect_ok(client: &mut Client) -> Reconnected {
+        tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("the reconnect must not hang")
+            .expect("the successor accepted this handshake")
+    }
+
     /// fails if a dog is left holding a dead socket after its daemon is
     /// replaced: only the listening socket crosses the exec, and an
     /// accepted one dies with the image.
@@ -927,10 +943,7 @@ mod tests {
         let mut client = Client::connect(&path).await.unwrap();
 
         shepherds.cut().await;
-        let verdict = tokio::time::timeout(BOUND, client.reconnect())
-            .await
-            .expect("the reconnect must not hang")
-            .expect("the successor accepted this handshake");
+        let verdict = reconnect_ok(&mut client).await;
 
         assert_eq!(verdict, Reconnected::SameDaemon);
     }
@@ -953,10 +966,7 @@ mod tests {
         let mut client = Client::connect(&path).await.unwrap();
 
         shepherds.cut().await;
-        let verdict = tokio::time::timeout(BOUND, client.reconnect())
-            .await
-            .expect("the reconnect must not hang")
-            .expect("the successor accepted this handshake");
+        let verdict = reconnect_ok(&mut client).await;
 
         assert_eq!(verdict, Reconnected::NewDaemon);
     }
@@ -983,10 +993,7 @@ mod tests {
         shepherds.cut().await;
         // the verdict is asserted by its own cases above; this one is about
         // what the reconnect did, not what it reported
-        let _ = tokio::time::timeout(BOUND, client.reconnect())
-            .await
-            .expect("the reconnect must not hang")
-            .expect("the successor accepted this handshake");
+        let _ = reconnect_ok(&mut client).await;
 
         let served = tokio::time::timeout(BOUND, client.request(Request::ListFlock))
             .await
@@ -1022,10 +1029,7 @@ mod tests {
         shepherds.cut().await;
         // the verdict is asserted by its own cases above; this one is about
         // what the reconnect did, not what it reported
-        let _ = tokio::time::timeout(BOUND, client.reconnect())
-            .await
-            .expect("the reconnect must not hang")
-            .expect("the successor accepted this handshake");
+        let _ = reconnect_ok(&mut client).await;
 
         assert_eq!(client.daemon().pid, 22);
         assert_eq!(client.daemon().daemon_version, "0.0.22");
@@ -1162,10 +1166,7 @@ mod tests {
         shepherds.cut().await;
         // the verdict is asserted by its own cases above; this one is about
         // what the reconnect did, not what it reported
-        let _ = tokio::time::timeout(BOUND, client.reconnect())
-            .await
-            .expect("the reconnect must not hang")
-            .expect("the successor accepted this handshake");
+        let _ = reconnect_ok(&mut client).await;
 
         let named: Vec<Option<String>> = shepherds
             .hellos()
@@ -1197,10 +1198,7 @@ mod tests {
         shepherds.cut().await;
         // the verdict is asserted by its own cases above; this one is about
         // what the reconnect did, not what it reported
-        let _ = tokio::time::timeout(BOUND, client.reconnect())
-            .await
-            .expect("the reconnect must not hang")
-            .expect("the successor accepted this handshake");
+        let _ = reconnect_ok(&mut client).await;
 
         assert!(
             shepherds
@@ -1242,10 +1240,7 @@ mod tests {
         let mut client = Client::connect(&path).await.unwrap();
 
         shepherds.cut().await;
-        let verdict = tokio::time::timeout(BOUND, client.reconnect())
-            .await
-            .expect("the reconnect must not hang")
-            .expect("the successor accepted this handshake");
+        let verdict = reconnect_ok(&mut client).await;
 
         assert_eq!(verdict, Reconnected::SameDaemon);
         assert_eq!(
@@ -1279,10 +1274,7 @@ mod tests {
         let mut client = Client::connect(&path).await.unwrap();
 
         shepherds.cut().await;
-        let verdict = tokio::time::timeout(BOUND, client.reconnect())
-            .await
-            .expect("the reconnect must not hang")
-            .expect("the successor accepted this handshake");
+        let verdict = reconnect_ok(&mut client).await;
 
         assert_eq!(verdict, Reconnected::NewDaemon);
     }

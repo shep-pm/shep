@@ -214,8 +214,10 @@ impl Client {
 
     /// Takes over `fresh`'s connection, dropping this handle's own.
     ///
-    /// Dropping the old command channel ends the actor task holding the old
-    /// socket, so nothing is left half-connected behind the swap.
+    /// Dropping the old command channel signals its actor rather than
+    /// stopping it where it stands. An actor already awaiting a write
+    /// finishes that write, sees the closed channel when it next reaches
+    /// its select, and only then drops the old socket.
     pub(crate) fn replace_connection(&mut self, fresh: Self) {
         *self = fresh;
     }
