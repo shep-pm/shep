@@ -130,13 +130,20 @@ pub struct Client {
     commands: mpsc::Sender<Command>,
     ack: HelloAck,
     socket: PathBuf,
+    /// The name this client announces itself as a dog under, re-sent on
+    /// every [`Client::reconnect`]. See [`Self::connect_as`].
+    dog_name: Option<String>,
 }
 
+// Manual, not derived: a path, an ack and a dog's name carry no secret, and
+// none of the three is what a derived impl would lead with. The command
+// channel says nothing a reader can act on.
 impl fmt::Debug for Client {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Client")
             .field("socket", &self.socket)
             .field("ack", &self.ack)
+            .field("dog_name", &self.dog_name)
             .finish_non_exhaustive()
     }
 }
@@ -192,7 +199,25 @@ impl Client {
             commands,
             ack,
             socket: socket.to_path_buf(),
+            dog_name: dog_name.map(str::to_owned),
         })
+    }
+
+    /// The name this client announces itself as a dog under, or `None` for
+    /// a caller that is not one.
+    ///
+    /// Crate-private for the reason [`Self::connect_as`] is: only this
+    /// crate may set a name, so only this crate may report one.
+    pub(crate) fn dog_name(&self) -> Option<&str> {
+        self.dog_name.as_deref()
+    }
+
+    /// Takes over `fresh`'s connection, dropping this handle's own.
+    ///
+    /// Dropping the old command channel ends the actor task holding the old
+    /// socket, so nothing is left half-connected behind the swap.
+    pub(crate) fn replace_connection(&mut self, fresh: Self) {
+        *self = fresh;
     }
 
     /// The daemon's handshake acknowledgement.

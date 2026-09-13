@@ -10,6 +10,17 @@
 //! stops the supervisor ([`LinkState::Refused`]) rather than retrying.
 //! [`ReconnectingClient::connect_as_dog`] names the dog on every handshake so
 //! a refusal is actionable.
+//!
+//! # Which daemon answered
+//!
+//! [`Client::reconnect`] reports [`Reconnected::SameDaemon`] when the daemon
+//! now answering carries the [`HelloAck`] pid the predecessor did. A handover
+//! is an `execve`, which keeps the pid, and its blob carries the flock's id
+//! counter across with it, so the two facts move together: a matching pid
+//! means an id minted before the drop still names the same sheep. A daemon
+//! stopped and started again gets a fresh pid and a fresh id space. The gap
+//! is pid reuse inside one reconnect, which nothing on the wire today could
+//! tell apart.
 
 use core::fmt;
 use std::path::{Path, PathBuf};
@@ -17,6 +28,7 @@ use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::Duration;
 
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 
 use shep_core::protocol::{HelloAck, Request, Response};
 
@@ -66,6 +78,112 @@ pub enum LinkState {
         /// The daemon's refusal message, verbatim.
         message: String,
     },
+}
+
+// Exhaustive on purpose, unlike `LinkState`: the question is binary, and a
+// caller branching on it is better served by a match a third variant would
+// break than by a wildcard arm that goes on compiling.
+/// Whether a [`Client::reconnect`] reached the daemon it was talking to
+/// before, or a different one.
+///
+/// See this module's own docs for how the two are told apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use = "the verdict says whether ids held from before the reconnect still mean anything"]
+pub enum Reconnected {
+    /// The daemon now answering is the one that answered before, so an id
+    /// minted before the connection dropped still names the same sheep.
+    SameDaemon,
+    /// A different daemon is answering, minting ids from its own fresh
+    /// space. Every id the caller still holds names nothing here.
+    NewDaemon,
+}
+
+impl Client {
+    /// Re-establishes this connection, reporting which daemon answered.
+    ///
+    /// Shorthand for [`Self::reconnect_within`] with [`HANDSHAKE_TIMEOUT`].
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::reconnect_within`].
+    pub async fn reconnect(&mut self) -> Result<Reconnected, ConnectError> {
+        self.reconnect_within(HANDSHAKE_TIMEOUT).await
+    }
+
+    /// Re-establishes this connection, retrying until `budget` is spent.
+    ///
+    /// A successor still coming up is retried, from [`RECONNECT_MIN_DELAY`]
+    /// doubling to [`RECONNECT_MAX_DELAY`]; a refusal is not. An
+    /// [`EventStream`] taken before this call belongs to the connection that
+    /// died, so a caller wanting events past it subscribes again. `&mut self`
+    /// holds the handle exclusively while its identity can change, which a
+    /// shared [`Client`] cannot offer.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use shep_client::{Client, Reconnected};
+    ///
+    /// # async fn watch(client: &mut Client, held: &mut Option<u32>)
+    /// # -> Result<(), Box<dyn core::error::Error>> {
+    /// client.closed().await;
+    /// if client.reconnect().await? == Reconnected::NewDaemon {
+    ///     // Ids are minted per daemon and never persisted, so this one now
+    ///     // names a different sheep, or none at all.
+    ///     *held = None;
+    /// }
+    /// # Ok(())
+    /// # }
+    /// # let _ = watch;
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// The failure of the last attempt `budget` allowed:
+    ///
+    /// - [`ConnectError::ProtocolMismatch`]: a daemon refused on
+    ///   protocol-version skew. Returned without a retry, since asking the
+    ///   same daemon again cannot change its answer.
+    /// - Anything else [`Self::connect_with_timeout`] reports, once `budget`
+    ///   leaves no room for a further attempt.
+    pub async fn reconnect_within(
+        &mut self,
+        budget: Duration,
+    ) -> Result<Reconnected, ConnectError> {
+        let started = Instant::now();
+        let socket = self.socket().to_path_buf();
+        let dog_name = self.dog_name().map(str::to_owned);
+        let predecessor = self.daemon().pid;
+        let mut delay = RECONNECT_MIN_DELAY;
+
+        loop {
+            let left = budget.saturating_sub(started.elapsed());
+            let attempt =
+                Client::connect_as(&socket, left.min(HANDSHAKE_TIMEOUT), dog_name.as_deref()).await;
+
+            let failed = match attempt {
+                Ok(fresh) => {
+                    let verdict = if fresh.daemon().pid == predecessor {
+                        Reconnected::SameDaemon
+                    } else {
+                        Reconnected::NewDaemon
+                    };
+                    self.replace_connection(fresh);
+                    return Ok(verdict);
+                }
+                Err(refusal @ ConnectError::ProtocolMismatch { .. }) => return Err(refusal),
+                // Everything else is a daemon that is not ready yet, which
+                // resolves on its own if the budget outlasts it.
+                Err(transient) => transient,
+            };
+
+            if budget.saturating_sub(started.elapsed()) <= delay {
+                return Err(failed);
+            }
+            tokio::time::sleep(delay).await;
+            delay = (delay * 2).min(RECONNECT_MAX_DELAY);
+        }
+    }
 }
 
 /// A [`Client`] that re-establishes its own connection when the daemon it
@@ -777,6 +895,336 @@ mod tests {
             grew.is_err(),
             "the supervisor kept reconnecting after its handle was dropped: {} accepts",
             shepherds.accepted()
+        );
+    }
+
+    /// fails if a reconnect that reached the very daemon it was talking to
+    /// before reports a different one, which would have a caller throw away
+    /// ids that are still valid.
+    #[tokio::test]
+    async fn a_reconnect_to_the_same_daemon_reports_same_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Accept(ack_from(11)),
+            ],
+        );
+        let mut client = Client::connect(&path).await.unwrap();
+
+        shepherds.cut().await;
+        let verdict = tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("the reconnect must not hang")
+            .expect("the successor accepted this handshake");
+
+        assert_eq!(verdict, Reconnected::SameDaemon);
+    }
+
+    /// fails if a reconnect that landed on a daemon started after the
+    /// predecessor died reports the same one. That daemon mints its ids
+    /// from a fresh space, so a caller acting on a held id would act on
+    /// whatever now happens to wear the number.
+    #[tokio::test]
+    async fn a_reconnect_to_a_daemon_with_another_pid_reports_new_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Accept(ack_from(22)),
+            ],
+        );
+        let mut client = Client::connect(&path).await.unwrap();
+
+        shepherds.cut().await;
+        let verdict = tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("the reconnect must not hang")
+            .expect("the successor accepted this handshake");
+
+        assert_eq!(verdict, Reconnected::NewDaemon);
+    }
+
+    /// fails if a reconnect reports a verdict without actually swapping the
+    /// connection under the handle, which would leave every later request
+    /// going to a socket nobody is serving.
+    ///
+    /// The proof is positional: the successor's first envelope must be the
+    /// request issued after the reconnect.
+    #[tokio::test]
+    async fn a_reconnected_client_sends_its_next_request_to_the_successor() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Accept(ack_from(22)),
+            ],
+        );
+        let mut client = Client::connect(&path).await.unwrap();
+
+        shepherds.cut().await;
+        // the verdict is asserted by its own cases above; this one is about
+        // what the reconnect did, not what it reported
+        let _ = tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("the reconnect must not hang")
+            .expect("the successor accepted this handshake");
+
+        let served = tokio::time::timeout(BOUND, client.request(Request::ListFlock))
+            .await
+            .expect("the request after a reconnect must not hang");
+        assert!(served.is_ok(), "after the reconnect: {served:?}");
+
+        let successor: Vec<Request> = shepherds
+            .envelopes()
+            .into_iter()
+            .filter(|(generation, _)| *generation == 2)
+            .map(|(_, envelope)| envelope.body)
+            .collect();
+        assert_eq!(successor, vec![Request::ListFlock]);
+    }
+
+    /// fails if the ack keeps describing the predecessor after a reconnect,
+    /// so a caller reading `daemon_version` would report a build that is no
+    /// longer running.
+    #[tokio::test]
+    async fn a_reconnected_clients_ack_describes_the_daemon_now_answering() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Accept(ack_from(22)),
+            ],
+        );
+        let mut client = Client::connect(&path).await.unwrap();
+        assert_eq!(client.daemon().daemon_version, "0.0.11");
+
+        shepherds.cut().await;
+        // the verdict is asserted by its own cases above; this one is about
+        // what the reconnect did, not what it reported
+        let _ = tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("the reconnect must not hang")
+            .expect("the successor accepted this handshake");
+
+        assert_eq!(client.daemon().pid, 22);
+        assert_eq!(client.daemon().daemon_version, "0.0.22");
+    }
+
+    /// fails if a reconnect gives up on a daemon that is merely not ready
+    /// yet. Across a handover the listening socket stays bound while the
+    /// successor replays its blob, so a connect that completes and a
+    /// handshake that is not yet answered is the ordinary case.
+    #[tokio::test]
+    async fn a_reconnect_retries_past_a_successor_still_coming_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Drop,
+                Handshake::Drop,
+                Handshake::Accept(ack_from(44)),
+            ],
+        );
+        let mut client = Client::connect(&path).await.unwrap();
+
+        shepherds.cut().await;
+        let verdict = tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("the reconnect must not hang")
+            .expect("the fourth generation accepted this handshake");
+
+        assert_eq!(verdict, Reconnected::NewDaemon);
+        assert_eq!(
+            shepherds.accepted(),
+            4,
+            "two unanswered handshakes must be retried past, not given up on"
+        );
+    }
+
+    /// fails if a refused reconnect is retried. A successor that refuses on
+    /// protocol skew has said something no retry can change, so the caller
+    /// gets the refusal rather than the budget being spent against it.
+    #[tokio::test]
+    async fn a_reconnect_returns_a_refusal_rather_than_retrying_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Refuse(RpcError {
+                    code: RpcErrorCode::ProtocolMismatch,
+                    message: "daemon speaks protocol 3, client speaks 2".into(),
+                    daemon_version: Some("0.9.9".into()),
+                }),
+            ],
+        );
+        let mut client = Client::connect(&path).await.unwrap();
+
+        shepherds.cut().await;
+        let refused = tokio::time::timeout(BOUND, client.reconnect_within(BOUND))
+            .await
+            .expect("a refusal must be reported, not waited out")
+            .expect_err("the successor refused this handshake");
+
+        let ConnectError::ProtocolMismatch {
+            daemon_version,
+            message,
+            ..
+        } = refused
+        else {
+            panic!("a refusal must arrive as a mismatch, got {refused:?}");
+        };
+        assert_eq!(daemon_version.as_deref(), Some("0.9.9"));
+        assert!(message.contains("protocol 3"), "{message}");
+        assert_eq!(
+            shepherds.accepted(),
+            2,
+            "one initial connection plus exactly one refused reconnect"
+        );
+    }
+
+    /// fails if a reconnect against a daemon that is genuinely gone waits
+    /// forever, or gives up on its first attempt without retrying at all.
+    ///
+    /// The budget is the forcing mechanism, and the elapsed time is the
+    /// assertion at both ends: at least one delay means it retried, and
+    /// returning at all means it stopped.
+    #[tokio::test]
+    async fn a_reconnect_gives_up_when_its_budget_is_spent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(&path, vec![Handshake::Accept(ack_from(11))]);
+        let mut client = Client::connect(&path).await.unwrap();
+
+        // A daemon that is gone for good, listener and all, rather than one
+        // replaced: nothing will answer this address again.
+        drop(shepherds);
+
+        let budget = Duration::from_millis(200);
+        let started = tokio::time::Instant::now();
+        let gave_up = tokio::time::timeout(BOUND, client.reconnect_within(budget))
+            .await
+            .expect("a spent budget must return, not hang");
+        let elapsed = started.elapsed();
+
+        assert!(
+            gave_up.is_err(),
+            "a daemon that is gone must not report a reconnect: {gave_up:?}"
+        );
+        assert!(
+            elapsed >= RECONNECT_MIN_DELAY,
+            "gave up without retrying once, after {elapsed:?}"
+        );
+    }
+
+    /// fails if a dog's name reaches the daemon it booted against and not
+    /// the one it reconnects to. The refusal that matters is the second
+    /// one, and a daemon cannot ask its predecessor which dog was talking.
+    #[tokio::test]
+    async fn a_dogs_name_rides_a_reconnect() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Accept(ack_from(22)),
+            ],
+        );
+        let mut client = Client::connect_as(&path, HANDSHAKE_TIMEOUT, Some("metrics"))
+            .await
+            .unwrap();
+
+        shepherds.cut().await;
+        // the verdict is asserted by its own cases above; this one is about
+        // what the reconnect did, not what it reported
+        let _ = tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("the reconnect must not hang")
+            .expect("the successor accepted this handshake");
+
+        let named: Vec<Option<String>> = shepherds
+            .hellos()
+            .into_iter()
+            .map(|hello| hello.dog_name)
+            .collect();
+        assert_eq!(
+            named,
+            vec![Some("metrics".to_string()), Some("metrics".to_string())],
+            "every generation must be told which dog is talking to it"
+        );
+    }
+
+    /// fails if a client that is not a dog claims to be one after a
+    /// reconnect, which would have a daemon restart a dog nobody adopted.
+    #[tokio::test]
+    async fn a_client_that_is_not_a_dog_stays_anonymous_across_a_reconnect() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Accept(ack_from(22)),
+            ],
+        );
+        let mut client = Client::connect(&path).await.unwrap();
+
+        shepherds.cut().await;
+        // the verdict is asserted by its own cases above; this one is about
+        // what the reconnect did, not what it reported
+        let _ = tokio::time::timeout(BOUND, client.reconnect())
+            .await
+            .expect("the reconnect must not hang")
+            .expect("the successor accepted this handshake");
+
+        assert!(
+            shepherds
+                .hellos()
+                .iter()
+                .all(|hello| hello.dog_name.is_none()),
+            "an unnamed client must stay unnamed: {:?}",
+            shepherds.hellos()
+        );
+    }
+
+    /// fails if `Reconnected` starts printing anything but its verdict. It
+    /// carries no payload, and a caller logging one must never begin
+    /// emitting a daemon's own details alongside it.
+    #[test]
+    fn reconnected_debug_is_the_verdict_and_nothing_else() {
+        assert_eq!(format!("{:?}", Reconnected::SameDaemon), "SameDaemon");
+        assert_eq!(format!("{:?}", Reconnected::NewDaemon), "NewDaemon");
+    }
+
+    /// fails if `Client`'s `Debug` starts printing its command channel, or
+    /// stops naming the dog it announces itself as. A derived impl would do
+    /// both, and the channel says nothing a reader can act on.
+    #[tokio::test]
+    async fn client_debug_names_the_socket_the_ack_and_the_dog() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let ack = ack_from(11);
+        let _shepherds = fake_daemon_across_handovers(&path, vec![Handshake::Accept(ack.clone())]);
+        let client = Client::connect_as(&path, HANDSHAKE_TIMEOUT, Some("metrics"))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            format!("{client:?}"),
+            format!("Client {{ socket: {path:?}, ack: {ack:?}, dog_name: Some(\"metrics\"), .. }}")
         );
     }
 }
