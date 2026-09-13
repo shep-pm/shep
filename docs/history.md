@@ -301,24 +301,26 @@ which this said until 2026-09-04: `refuse_version_skew` runs only after
 so it returns `Err` and that check is never reached. `docs/decisions.md`'s entry on this reverses the
 "`PROTOCOL_VERSION` stayed 2" ruling that predates it.
 
-**Verb count is three questions, not the two this line used to answer.** It
-said "41 generated, 42 listed, and the `VERBS` array holds 41", which was true
-on 2026-09-07 and wrong the next day: `import pm2` and `import env` took their
-own array entries on 2026-09-08, because each needs its own `--help` block. The
-array has counted entries rather than verbs ever since, so the number
-`./web/scripts/generate-cli-reference.sh` prints at the end of a run is the
-largest of the three. `secret` then moved the other two. By 2026-09-13 the
-generator covered 42, the listing showed 43, and the script printed 44.
+**Verb count is three questions, and this line used to answer two of them.**
+It said "41 generated, 42 listed", and explained the first by saying the
+`VERBS` array holds 41 too. That was true on 2026-09-07 and wrong the next
+day: `import pm2` and `import env` took their own array entries on 2026-09-08,
+because each needs its own `--help` block. The array has counted entries rather
+than verbs ever since, so the number
+`./web/scripts/generate-cli-reference.sh` prints at the end of a run stopped
+matching the generated count and became the largest of the three. Adding
+`secret` then raised all three by one. A snapshot taken on 2026-09-13, recorded
+here only to show that all three had parted: 42 covered, 43 listed, 44 printed.
 
-Those three are a dated measurement, not a figure either file keeps current.
-`CLAUDE.md` now describes the three questions and answers none of them, and two
-tests in `crates/shep-cli/src/cli.rs` hold the relationships instead:
+Neither file keeps a count current now. `CLAUDE.md` describes the three
+questions and answers none of them, and two tests in
+`crates/shep-cli/src/cli.rs` hold the relationships instead:
 `every_visible_verb_appears_in_exactly_one_help_group` pins the listing to
 clap's own subcommands, and
 `every_visible_verb_reaches_the_docs_site_generator` pins the generator to
-those minus `help`. Each number is still right about a different question,
-which was this paragraph's original point. README.md still quotes the grouping
-without a count.
+those minus `help`. The three questions stay genuinely different, which was
+this paragraph's original point. README.md still quotes the grouping without a
+count.
 
 What's built vs. deferred to v1.1+: [docs/specs/deferred.md](specs/deferred.md).
 
