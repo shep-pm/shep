@@ -5181,6 +5181,16 @@ impl App {
             });
             return Effect::SendAll(writes);
         }
+        // Nothing goes to a shepherd that is gone. The menu this dialog
+        // replaced refused here through `apply_parked`, and losing that
+        // refusal alongside it would have sent a restart into a dead link
+        // with nothing on screen saying it never left. The writes still
+        // go, for the same reason a refused verb's writes do: they are the
+        // operator's own work and the batch reports its own failure.
+        if let Some(text) = self.link_refusal() {
+            self.notice = Some(Notice { text, grave: true });
+            return Effect::SendAll(writes);
+        }
         if writes.is_empty() {
             return self.send_held_action(verb, name);
         }
@@ -13728,6 +13738,33 @@ mod tests {
             "got {:?}",
             app.notice()
         );
+    }
+
+    /// Nothing goes to a shepherd that is gone.
+    ///
+    /// `the_apply_menu_refuses_on_a_dead_link_like_every_other_action`
+    /// pinned this for the menu this dialog replaced, and went with it.
+    /// The refusal went too: `confirm_refusal` gates `arm` and
+    /// `arm_sheep_pane`, and the dialog answers through `answer_close`,
+    /// which reached neither. So `R` on a dead link sent a restart with
+    /// nothing on screen saying it never left.
+    ///
+    /// The writes still go out, the same as when a verb is refused for
+    /// being second: they are the operator's own work and the batch
+    /// reports its own failure. What must not go is the action.
+    #[test]
+    fn the_dialog_refuses_a_verb_on_a_dead_link_like_every_other_action() {
+        let mut app = fixtures::app_in_sheep_pane_with_two_edits();
+        app.update(Msg::Retrying { attempt: 3 });
+        app.update(Msg::Key(KeyPress::Escape));
+        let effect = app.update(Msg::Key(KeyPress::Action(ActionVerb::Reload)));
+        assert!(
+            !matches!(effect, Effect::Send(Sent::Action { .. })),
+            "nothing goes to a shepherd that is gone: {effect:?}"
+        );
+        assert!(app.held_action().is_none(), "and no verb waits to go later");
+        let said = app.notice().map(ToString::to_string).unwrap_or_default();
+        assert!(said.contains("attempt 3"), "{said}");
     }
 
     /// The sibling door. `arm_sheep_pane` keeps its own copy of the
