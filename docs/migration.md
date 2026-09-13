@@ -325,11 +325,11 @@ shep is 0.1.x and guarantees no API, so a Flockfile that worked under an
 older shep can stop parsing under a newer one. This release's breaks, and
 what to do about each:
 
-- **`increment_var` is removed.** A Flockfile setting it is refused at
-  `shep start`, naming the field and the replacement: set your own key to
-  `"{{instance}}"` under `[app.env]` instead. `SHEP_INSTANCE` is still
-  always set on every instance regardless, so most apps need no field at
-  all.
+- **`increment_var` is removed.** The field is gone from the config, so a
+  Flockfile setting it no longer parses: `Flockfile names unrecognized
+  key: app.0.increment_var`. Set your own key to `"{{instance}}"` under
+  `[app.env]` instead. `SHEP_INSTANCE` is still always set on every
+  instance regardless, so most apps need no field at all.
 - **A colon is refused in a sheep name.** `:` is now the `name:slot`
   selector's separator, and names also land in log filenames, where a
   colon is the NTFS alternate-data-stream separator. Rename any sheep
@@ -349,8 +349,7 @@ what to do about each:
   backlog of an app with `merge_logs = true` still prints the bare name,
   because a shared file holds every instance's output with nothing in a line
   saying who wrote it.
-- **The wire protocol version moved from 1 to 2.** A CLI built against this
-  release refuses to talk to an older daemon still running from before the
-  upgrade, naming both versions at the handshake instead of guessing at a
-  shape the daemon might not send. The fix is to restart the daemon so it
-  picks up the matching binary; there is nothing to configure.
+- **The wire protocol version moved from 8 to 9.** Nothing is refused over
+  it. The floor stayed at 8 and only the daemon checks it, so a CLI and a
+  daemon on either side of the upgrade still talk to each other. There is
+  nothing to configure.

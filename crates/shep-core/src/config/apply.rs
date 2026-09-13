@@ -99,8 +99,6 @@ const FIELDS: &[(&str, ApplyGroup)] = &[
     ("shutdown_with_message", ApplyGroup::NeedsRespawn),
     ("name", ApplyGroup::Structural),
     ("instances", ApplyGroup::Structural),
-    // Read only by `normalize` to refuse it by name.
-    ("increment_var", ApplyGroup::Structural),
 ];
 
 /// The group `field` belongs to.
@@ -235,6 +233,21 @@ mod tests {
         );
     }
 
+    /// fails if the table keeps a row for a field `AppConfig` no longer
+    /// has. `every_appconfig_field_has_a_group` checks the other
+    /// direction only, so without this one a removed field's row survives
+    /// every run: the count tests iterate the struct, never the table.
+    #[test]
+    fn every_group_row_names_a_real_field() {
+        let fields = appconfig_fields();
+        let strays: Vec<&str> = FIELDS
+            .iter()
+            .map(|(name, _)| *name)
+            .filter(|name| !fields.contains_key(*name))
+            .collect();
+        assert!(strays.is_empty(), "FIELDS rows naming no field: {strays:?}");
+    }
+
     #[test]
     fn kill_signal_reaches_the_next_spawn_not_the_next_kill() {
         assert_eq!(apply_group("kill_signal"), ApplyGroup::NextSpawn);
@@ -259,15 +272,15 @@ mod tests {
         assert!(is_classified("depends_on"));
     }
 
-    /// fails if the split drifts from what the spec recorded.
+    /// fails if the split drifts unnoticed.
     #[test]
-    fn the_split_is_20_5_15_3() {
+    fn the_split_is_20_5_15_2() {
         let fields = appconfig_fields();
         let count = |want: ApplyGroup| fields.keys().filter(|k| apply_group(k) == want).count();
         assert_eq!(count(ApplyGroup::Live), 20, "Live");
         assert_eq!(count(ApplyGroup::NextSpawn), 5, "NextSpawn");
         assert_eq!(count(ApplyGroup::NeedsRespawn), 15, "NeedsRespawn");
-        assert_eq!(count(ApplyGroup::Structural), 3, "Structural");
+        assert_eq!(count(ApplyGroup::Structural), 2, "Structural");
     }
 
     #[test]
