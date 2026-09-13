@@ -516,9 +516,9 @@ A key is written only if it appears in some env_<name> map (by construction, onl
 
 `docs/writing-plans/plans/2026-08-12-shep-phase8-cutover.md:1400`
 
-### NODE_APP_INSTANCE becomes increment_var, never a literal env value
+### NODE_APP_INSTANCE becomes a template, never a literal env value
 
-The importer maps pm2's NODE_APP_INSTANCE env key to AppConfig's increment_var mechanism instead of copying its literal value into env.
+The importer writes pm2's NODE_APP_INSTANCE key back as NODE_APP_INSTANCE = "{{instance}}" under [app.env], rather than copying the value the dump recorded.
 
 **Why:** The dump only records instance 0's value; copying it verbatim would pin every instance to instance 0.
 
