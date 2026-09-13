@@ -23,9 +23,10 @@
 const net = require("node:net");
 
 const LEVELS = ["trace", "debug", "info", "warn", "error"];
-// What an unparsable level gets back. Says the rest is dropped rather
-// than inviting arguments this app does not read.
-const USAGE = "usage: level <trace|debug|info|warn|error> [rest is ignored]";
+// What an unparsable level gets back. Built from LEVELS rather than spelled
+// out, so adding one cannot leave the message listing the old set. Says the
+// rest is dropped rather than inviting arguments this app does not read.
+const USAGE = `usage: level <${LEVELS.join("|")}> [rest is ignored]`;
 const started = process.hrtime.bigint();
 
 // Exactly one of the two variables is ever set, so branch on which one is

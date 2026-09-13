@@ -88,7 +88,7 @@ fn main() {
     shepherd.on_action("level", |params, _name| match parse_level(params) {
         Some((level, "")) => format!("log level is now {level}"),
         Some((level, rest)) => format!("log level is now {level}, ignored {rest:?}"),
-        None => USAGE.to_owned(),
+        None => usage(),
     });
 
     shepherd.on_shutdown(|| {
@@ -111,9 +111,15 @@ fn main() {
     }
 }
 
-/// What an unparsable `level` gets back. Says the rest is dropped rather
-/// than inviting arguments this app does not read.
-const USAGE: &str = "usage: level <trace|debug|info|warn|error> [rest is ignored]";
+/// The levels `level` accepts, and the only place they are listed.
+const LEVELS: [&str; 5] = ["trace", "debug", "info", "warn", "error"];
+
+/// What an unparsable `level` gets back. Built from [`LEVELS`] rather than
+/// spelled out, so adding one cannot leave the message listing the old set.
+/// Says the rest is dropped rather than inviting arguments it does not read.
+fn usage() -> String {
+    format!("usage: level <{}> [rest is ignored]", LEVELS.join("|"))
+}
 
 /// Names the metric one `metric` action should send.
 ///
@@ -140,14 +146,12 @@ fn metric_name(params: Option<&str>) -> &str {
 fn parse_level(params: Option<&str>) -> Option<(&str, &str)> {
     let text = params?.trim();
     let (level, rest) = text.split_once(char::is_whitespace).unwrap_or((text, ""));
-    ["trace", "debug", "info", "warn", "error"]
-        .contains(&level)
-        .then(|| (level, rest.trim()))
+    LEVELS.contains(&level).then(|| (level, rest.trim()))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{metric_name, parse_level};
+    use super::{LEVELS, metric_name, parse_level, usage};
 
     #[test]
     fn a_known_level_is_read_from_the_first_word() {
@@ -164,6 +168,16 @@ mod tests {
             Some(("debug", "rate=0.5"))
         );
         assert_eq!(parse_level(Some("info  a  b ")), Some(("info", "a  b")));
+    }
+
+    /// The usage line and the levels it lists cannot drift apart, because
+    /// one is built from the other.
+    #[test]
+    fn the_usage_line_names_every_level_it_accepts() {
+        let text = usage();
+        for level in LEVELS {
+            assert!(text.contains(level), "{text} omits {level}");
+        }
     }
 
     #[test]

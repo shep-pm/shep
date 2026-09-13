@@ -27,9 +27,10 @@ import sys
 import time
 
 LEVELS = ("trace", "debug", "info", "warn", "error")
-# What an unparsable level gets back. Says the rest is dropped rather
-# than inviting arguments this app does not read.
-USAGE = "usage: level <trace|debug|info|warn|error> [rest is ignored]"
+# What an unparsable level gets back. Built from LEVELS rather than spelled
+# out, so adding one cannot leave the message listing the old set. Says the
+# rest is dropped rather than inviting arguments this app does not read.
+USAGE = f"usage: level <{'|'.join(LEVELS)}> [rest is ignored]"
 STARTED = time.monotonic()
 
 

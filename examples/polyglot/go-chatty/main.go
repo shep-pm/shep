@@ -45,9 +45,10 @@ import (
 
 var levels = []string{"trace", "debug", "info", "warn", "error"}
 
-// What an unparsable level gets back. Says the rest is dropped rather
-// than inviting arguments this app does not read.
-const usage = "usage: level <trace|debug|info|warn|error> [rest is ignored]"
+// What an unparsable level gets back. Built from levels rather than
+// spelled out, so adding one cannot leave the message listing the old set.
+// Says the rest is dropped rather than inviting arguments it does not read.
+var usage = "usage: level <" + strings.Join(levels, "|") + "> [rest is ignored]"
 
 // openChannel returns the one file this app reads and writes, or an error
 // naming what would have opened one.
