@@ -154,7 +154,7 @@ and expensively.
 
 Separately, extending `arm(&self, id, root_pid, limit: MemSize)` is a
 **breaking change**. The trait is public specifically so
-`crates/shep-daemon/tests/external_impls.rs:28-34` can implement it from
+`crates/shep-daemon/tests/external_impls.rs:28-36` can implement it from
 outside the crate, and that test's `impl` block is the compile-time proof. CPU
 should not go through the trait in any case, since docker's `--cpus` has no
 breach event to report.
@@ -212,7 +212,7 @@ a runtime that reserves a large arena up front trips it while using almost
 none of it. `RLIMIT_RSS` is not enforced by XNU. Jetsam memory watermarks need
 an entitlement Apple does not grant to third parties. The refusal belongs at
 the call site with its reasoning attached, in the style shep already uses for
-the Windows signal refusal at `tokio_runner.rs:215-276`.
+the Windows signal refusal at `tokio_runner.rs:215-278`.
 
 **The macOS consequence is the largest cost here and the least obvious.**
 macOS is shep's primary development platform, so none of the enforcement code
