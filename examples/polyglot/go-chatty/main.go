@@ -196,7 +196,11 @@ func main() {
 			fmt.Println("go-chatty: the shepherd asked us to stop")
 			return
 		}
-		if message.Kind != channel.KindAction || message.Name == nil || message.ID == nil {
+		if message.Kind != channel.KindAction {
+			continue
+		}
+		if message.Name == nil || message.ID == nil {
+			fmt.Fprintln(os.Stderr, "go-chatty: ignoring an action with no name or no id")
 			continue
 		}
 

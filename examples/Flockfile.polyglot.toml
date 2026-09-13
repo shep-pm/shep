@@ -100,9 +100,10 @@ args   = ["19097"]
 #
 # The three fields below each open a channel on their own, and every entry
 # here sets all three because it uses all three: `wait_ready` makes shep
-# hold the start until the app writes `{"kind":"ready"}`,
-# `shutdown_with_message` sends a JSON shutdown instead of a signal, and
-# `channel` says so outright for anyone who wants neither.
+# hold the start until the app writes `{"kind":"ready"}`, and
+# `shutdown_with_message` sends a JSON shutdown instead of a signal.
+# `channel` asks for the descriptor and nothing else, which is what an app
+# that wants neither of those two behaviours would set on its own.
 #
 # All three answer the same actions, so the same triggers read the same way
 # against any of them:

@@ -166,6 +166,7 @@ function handle(message) {
   // carrying "id": null is one shep cannot match to anything. The typed
   // examples refuse it without asking, since null is not a number there.
   if (typeof name !== "string" || id == null) {
+    console.error("node-chatty: ignoring an action with no name or no id");
     return;
   }
   // params is a string or it is absent. A typed language gets this free:

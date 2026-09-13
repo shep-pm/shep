@@ -162,9 +162,10 @@ max_memory  = "64M"
 # chatty is the only app here that talks back. The three fields below each
 # open a channel on their own, and this entry sets all three because it uses
 # all three: `wait_ready` makes shep hold the start until chatty writes
-# `{"kind":"ready"}`, `shutdown_with_message` sends a JSON shutdown instead
-# of SIGTERM, and `channel` says so outright for anyone reading this entry
-# who wants neither.
+# `{"kind":"ready"}`, and `shutdown_with_message` sends a JSON shutdown
+# instead of SIGTERM. `channel` asks for the descriptor and nothing else,
+# which is what an app that wants to send metrics or answer a trigger, but
+# neither of those two behaviours, would set on its own.
 #
 # `action_timeout` is how long `shep trigger` waits for a reply. Left at its
 # 3s default here on purpose: chatty answers every action name it is sent,

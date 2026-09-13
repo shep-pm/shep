@@ -241,6 +241,7 @@ def main():
         # this app can answer, and carries nowhere to send the answer.
         name, ident = message.get("name"), message.get("id")
         if not isinstance(name, str) or ident is None:
+            warn("python-chatty: ignoring an action with no name or no id")
             continue
 
         # params is a string or it is absent. A typed language gets this
