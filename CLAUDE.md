@@ -320,8 +320,8 @@ anything:
   --help` lists every visible one. The docs-site generator covers all of
   those but `help`, which has no page. Its `VERBS` array is longer still,
   because a subcommand's own flags need their own `--help` block, so every
-  subcommand takes an entry alongside the verb hosting it. That is why the
-  script's closing `N verbs` line is the largest of the three and counts
+  subcommand takes an entry alongside the command hosting it. That is why
+  the script's closing `N verbs` line is the largest of the three and counts
   array entries rather than verbs.
 
   No count is written here on purpose. This bullet said "41 generated and 42

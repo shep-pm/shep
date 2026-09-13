@@ -306,8 +306,8 @@ It said "41 generated, 42 listed", and explained the first by saying the
 `VERBS` array holds 41 too. That was true on 2026-09-07 and wrong the next
 day: `import pm2` and `import env` took their own array entries on 2026-09-08,
 because a subcommand's own flags need their own `--help` block, so every
-subcommand takes an entry alongside the verb hosting it. The array has counted
-entries rather than verbs ever since, so the number
+subcommand takes an entry alongside the command hosting it. The array has
+counted entries rather than verbs ever since, so the number
 `./web/scripts/generate-cli-reference.sh` prints at the end of a run stopped
 matching the generated count and became the largest of the three. Verbs kept
 being added in the meantime, which moved all three again. A measurement against
