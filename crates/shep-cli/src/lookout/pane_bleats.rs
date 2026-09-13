@@ -1089,17 +1089,19 @@ mod tests {
     fn a_matcher_debug_names_its_kind_and_prints_its_text_once() {
         let mut pane = BleatsPane::new(RowKey::Sheep(9));
 
-        pane.set_match("/po+l/".to_string());
-        assert_eq!(
-            format!("{:?}", pane.filters()),
-            r#"Filters { stream: None, min_level: None, matcher: Some(Matcher { text: "/po+l/", kind: Regex }), order: [Match] }"#
-        );
-
-        pane.set_match("/pool(/".to_string());
-        assert_eq!(
-            format!("{:?}", pane.filters()),
-            r#"Filters { stream: None, min_level: None, matcher: Some(Matcher { text: "/pool(/", kind: Invalid }), order: [Match] }"#
-        );
+        for (text, expected) in [
+            ("/po+l/", r#"Matcher { text: "/po+l/", kind: Regex }"#),
+            ("pool", r#"Matcher { text: "pool", kind: Literal }"#),
+            ("/pool(/", r#"Matcher { text: "/pool(/", kind: Invalid }"#),
+        ] {
+            pane.set_match(text.to_string());
+            let matcher = pane
+                .filters()
+                .matcher
+                .as_ref()
+                .expect("set_match set the axis");
+            assert_eq!(format!("{matcher:?}"), expected);
+        }
     }
 
     /// The other half: `PartialEq` reads the typed text, since `regex::Regex`
