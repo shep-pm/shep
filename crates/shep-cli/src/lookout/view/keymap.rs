@@ -296,6 +296,17 @@ mod tests {
     /// that drew at the wrong offset.
     #[test]
     fn the_four_headings_sit_at_their_column_starts() {
+        // `Group::DRAWN`'s literal order, pinned: the layout loop below
+        // derives its expected offsets from `Group::DRAWN` itself, so it
+        // stays green under a swap that moves both the heading and the
+        // offset together. The design specifies MOVING, LOOKING, CHANGING,
+        // DOING left to right, and this is the one assertion that would
+        // catch a swap the layout loop cannot.
+        assert_eq!(
+            Group::DRAWN,
+            [Group::Moving, Group::Looking, Group::Changing, Group::Doing]
+        );
+
         let app = app_with_overlay();
         let rendered = render_overlay(&app, 160, 48);
         let heading_row = rendered
