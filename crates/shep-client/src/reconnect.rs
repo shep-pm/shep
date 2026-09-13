@@ -17,6 +17,12 @@
 //! [`Client::reconnect`] takes `&mut self`, which excludes that case instead
 //! of handling it.
 //!
+//! That signature also decides who can call it. A dog holds a
+//! [`ReconnectingClient`], which is not [`Clone`] and keeps its [`Client`]
+//! behind an [`Arc`], so `&mut Client` is out of reach: a dog waits on this
+//! type's own link state instead. The callers [`Client::reconnect`] is for
+//! are the ones that own their [`Client`] outright.
+//!
 //! # Which daemon answered
 //!
 //! [`Client::reconnect`] reports [`Reconnected::SameDaemon`] when the daemon
