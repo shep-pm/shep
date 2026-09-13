@@ -14865,6 +14865,18 @@ mod tests {
         );
     }
 
+    /// The settings screen's own `Help` arm, reached only once
+    /// `Msg::Settings` has actually landed and put `self.body` into
+    /// `Body::Settings`: pressing `s` alone leaves the dashboard's own arm
+    /// in force, which would open the overlay for the wrong reason.
+    #[test]
+    fn the_overlay_opens_from_the_settings_screen() {
+        let mut app = fixtures::app_in_settings();
+        assert!(app.settings().is_some(), "the screen did not open");
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(app.keymap_open());
+    }
+
     /// `h` typed into the filter box is a letter. Text mode is checked
     /// ahead of the overlay branch, so the overlay can never open from
     /// inside an open box.
