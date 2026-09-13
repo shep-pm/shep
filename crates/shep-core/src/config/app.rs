@@ -362,8 +362,11 @@ pub struct AppConfig {
         "group": "cron",
         "blurb": "Restart on a schedule, written as a cron pattern",
         "suggest": ["*/5 * * * *", "0 * * * *", "0 0 * * *", "0 0 * * 0"],
-        "accepts": ["a five field cron pattern, croner's dialect"],
-        "refuses": ["a field outside its valid range", "a pattern croner cannot parse"],
+        "accepts": ["five fields: minute hour day month weekday",
+                    "a nickname like @daily or @hourly"],
+        "refuses": ["a field outside its valid range",
+                    "a sixth seconds field, or L, W, # or ?",
+                    "a pattern croner cannot parse"],
         "neighbours": [{"field": "cron_timezone", "note": "sets which zone this pattern reads in"}]
     })))]
     pub cron_restart: Option<String>,

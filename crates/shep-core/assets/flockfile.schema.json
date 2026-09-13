@@ -98,7 +98,8 @@
           "default": null,
           "init": {
             "accepts": [
-              "a five field cron pattern, croner's dialect"
+              "five fields: minute hour day month weekday",
+              "a nickname like @daily or @hourly"
             ],
             "blurb": "Restart on a schedule, written as a cron pattern",
             "example": "* * * * *",
@@ -111,6 +112,7 @@
             ],
             "refuses": [
               "a field outside its valid range",
+              "a sixth seconds field, or L, W, # or ?",
               "a pattern croner cannot parse"
             ],
             "suggest": [
