@@ -57,11 +57,7 @@ pub(super) const fn is_boxed(width: u16, interior: u16) -> bool {
     width >= floor_for(interior)
 }
 
-/// The boxed form: `interior` cells wide, centred in `area`, its rows
-/// vertically centred too.
-///
-/// `lines` comes from the caller, which has already measured them against
-/// The rows a boxed dialog occupies: its own lines plus a border above
+/// The rows a boxed overlay occupies: its own lines plus a border above
 /// and below.
 ///
 /// Both the fit check and the draw read this rather than each doing the
