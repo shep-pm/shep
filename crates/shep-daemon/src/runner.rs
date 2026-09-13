@@ -813,6 +813,8 @@ pub(crate) fn log_path_advisory(path: &Path) -> Option<String> {
 #[cfg(windows)]
 #[must_use]
 fn windows_name_advisory(path: &Path) -> Option<String> {
+    use std::os::windows::ffi::OsStrExt as _;
+
     /// Characters no Windows filesystem accepts anywhere in a path.
     const ILLEGAL: &[char] = &['<', '>', ':', '"', '|', '?', '*'];
     /// Device names Windows reserves regardless of extension, compared
@@ -826,14 +828,20 @@ fn windows_name_advisory(path: &Path) -> Option<String> {
     /// widens what passes; it never refuses something this check accepts.
     ///
     /// `>=` rather than `>`, because the 260 counts the terminating null: a
-    /// fully qualified path may be 259 characters, so 260 is already over.
+    /// fully qualified path may be 259 units, so 260 is already over.
     /// Not measurable on the reference Windows host, which has
     /// `LongPathsEnabled` set to 1, so paths of 258 through 261 all wrote a
     /// file there. Anyone re-checking this on that box will get four passes
     /// and learn nothing about the boundary.
     const MAX_PATH: usize = 260;
 
-    let length = path.as_os_str().len();
+    // `encode_wide`, not `OsStr::len`. Windows counts this limit in UTF-16
+    // units and `len` returns WTF-8 bytes, which are only equal for ASCII.
+    // `é` is two bytes and one unit, and an emoji is four bytes and two, so
+    // `len` warns about paths Windows accepts: a 259-unit path of emoji
+    // measures 518 by bytes and would be refused an advisory it never
+    // earned.
+    let length = path.as_os_str().encode_wide().count();
     if length >= MAX_PATH {
         return Some(format!(
             "is {length} characters, at or over Windows' {MAX_PATH}-character default limit"
@@ -1188,6 +1196,24 @@ mod windows_advisory_tests {
             windows_name_advisory(Path::new(r"C:\logs\CON.txt")).is_some(),
             "one dot still leaves CON reserved"
         );
+    }
+
+    /// fails if the length is taken in bytes again. Windows counts this
+    /// limit in UTF-16 units and the two agree only for ASCII, so a
+    /// non-BMP path sits either side of the limit depending on which is
+    /// counted.
+    #[test]
+    fn the_path_limit_counts_utf16_units_not_bytes() {
+        let under = format!(r"C:\logs\{}.log", "\u{1f411}".repeat(120));
+        assert_eq!(
+            windows_name_advisory(Path::new(&under)),
+            None,
+            "252 units is under the limit, though the same path is 492 bytes"
+        );
+
+        let over = format!(r"C:\logs\{}.log", "\u{1f411}".repeat(130));
+        let warning = windows_name_advisory(Path::new(&over)).expect("260 units is at the limit");
+        assert!(warning.contains("260-character"), "{warning}");
     }
 
     #[test]
