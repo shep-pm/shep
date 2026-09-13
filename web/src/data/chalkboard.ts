@@ -13,6 +13,12 @@
  *     bold and some not, so the anchor is each bullet's head: its text up
  *     to the first parenthesis, em dash, or sentence end.
  *
+ * A section ends at the next heading of any depth, not at the next `## `.
+ * Either section can carry a `### ` subsection expanding on one of its
+ * items, and that subsection's own bullets are prose about a cut rather
+ * than six more cuts. Bounding at `## ` alone read all eight bullets of the
+ * 2026-09-06 resource-limit sizing as new v1.1 scope and failed the build.
+ *
  * Merging the two would be the easy thing and the wrong one. A cut is not a
  * queue item, and a board that showed Windows beside OTLP with no label
  * would promise a tier the maintainer ruled out of v1 on 2026-08-15.
@@ -75,7 +81,18 @@ export const board: ChalkboardGroup[] = [
 const QUEUED_HEADING = "## Named as v1.0 in spec §2/§9, not yet built";
 const CUT_HEADING = "## Committed to v1.1+ by design (spec §2)";
 
-/** The text of one `## ` section, throwing if deferred.md no longer has it. */
+/**
+ * The text of one `## ` section, heading included, throwing if deferred.md no
+ * longer has it.
+ *
+ * The section ends at the next heading of ANY depth, not the next `## `, so a
+ * `### ` subsection expanding on one item does not read as more items.
+ * `#{2,6}` and not `#{1,6}`: a `# ` after a `## ` would be a second document
+ * in one file and deferred.md has exactly one, at line 1, while `# ` is also
+ * what a shell comment looks like inside a fenced block. Neither parsed
+ * section fences anything today, and this is the bound that stays right if
+ * one does.
+ */
 function section(source: string, heading: string): string {
   const start = source.indexOf(heading);
   if (start === -1) {
@@ -84,8 +101,9 @@ function section(source: string, heading: string): string {
         `"${heading}" section this list is parsed from.`,
     );
   }
-  const end = source.indexOf("\n## ", start + heading.length);
-  return end === -1 ? source.slice(start) : source.slice(start, end);
+  const bodyStart = start + heading.length;
+  const end = source.slice(bodyStart).search(/\n#{2,6} /);
+  return end === -1 ? source.slice(start) : source.slice(start, bodyStart + end);
 }
 
 /**
@@ -99,8 +117,14 @@ function parseQueuedAnchors(text: string): string[] {
 
 /**
  * The cuts section's items, which are top-level `- ` bullets rather than
- * paragraphs. Only column-zero bullets: Windows' own sub-bullets are
- * indented two spaces and are detail about one cut, not six more of them.
+ * paragraphs. Only column-zero bullets, so a bullet indented under a cut
+ * reads as detail about that cut rather than another one. Windows used to be
+ * the example and its sub-bullets left the section with it on 2026-08-26, so
+ * nothing in there is indented today and the rule is here for the next one.
+ *
+ * Column zero is only half the scoping. `section` supplies the other half by
+ * ending at the next heading of any depth, which is what keeps a `### `
+ * subsection's own column-zero bullets from landing here as cuts.
  *
  * The anchor is each bullet's head, meaning its text up to the first
  * parenthesis, em dash, or sentence end, with bold and backticks stripped.
