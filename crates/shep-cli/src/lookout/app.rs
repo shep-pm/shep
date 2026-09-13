@@ -14888,17 +14888,18 @@ mod tests {
         assert!(!app.keymap_open());
     }
 
-    /// It opens from every body, not only the dashboard, because the design
-    /// draws one reference rather than a per-pane hint.
+    /// It opens from the three bodies `Confirm`, `Secrets` and `Bleats` set
+    /// synchronously (`self.body` changes on the keystroke itself, no reply
+    /// needed). `Edit` and `Settings` open their screens only once a reply
+    /// lands, so a `Help` pressed right after either still reaches the
+    /// dashboard's own arm, which also opens the overlay but proves nothing
+    /// about `on_pane_key` or `on_settings_key`: those two get their own
+    /// dedicated tests instead
+    /// (`h_opens_the_keymap_overlay_in_the_config_pane`,
+    /// `the_overlay_opens_from_the_settings_screen`).
     #[test]
-    fn the_overlay_opens_from_every_body() {
-        for opener in [
-            KeyPress::Edit,
-            KeyPress::Settings,
-            KeyPress::Secrets,
-            KeyPress::Bleats,
-            KeyPress::Confirm,
-        ] {
+    fn the_overlay_opens_from_every_synchronously_opened_body() {
+        for opener in [KeyPress::Secrets, KeyPress::Bleats, KeyPress::Confirm] {
             let mut app = fixtures::full_app();
             let _ = app.update(Msg::Key(opener));
             let _ = app.update(Msg::Key(KeyPress::Help));
