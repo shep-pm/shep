@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-13
+
+### Added
+
+- Open a pane on one sheep, and difference the CPU counter ([#202](https://github.com/shep-pm/shep/pull/202))
+- Warn when cwd/script/out_file/err_file look wrong on disk
+- Warn when cwd/script/out_file/err_file look wrong on disk ([#220](https://github.com/shep-pm/shep/pull/220))
+
+### Fixed
+
+- Find a reserved device name at the last dot, not the first
+- Count Windows' path limit in UTF-16 units, not bytes
+- Advise on a control character in a Windows path
+- Anchor a relative out_file/err_file at the app's cwd ([#224](https://github.com/shep-pm/shep/pull/224)) **(BREAKING)**
+
+
 ## [0.7.4] - 2026-09-12
 
 
