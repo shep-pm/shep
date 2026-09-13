@@ -13700,6 +13700,7 @@ mod tests {
                 name: "web".to_string(),
                 key: "cwd".to_string(),
                 pending: false,
+                warning: None,
             }),
         });
         assert!(matches!(first, Effect::None), "not yet: {first:?}");
@@ -13709,6 +13710,7 @@ mod tests {
                 name: "web".to_string(),
                 key: "max_memory".to_string(),
                 pending: false,
+                warning: None,
             }),
         });
         assert!(
@@ -13743,6 +13745,7 @@ mod tests {
                 name: "web".to_string(),
                 key: "max_memory".to_string(),
                 pending: false,
+                warning: None,
             }),
         });
         assert!(
@@ -13794,6 +13797,7 @@ mod tests {
                 name: "web".to_string(),
                 key: "cwd".to_string(),
                 pending: false,
+                warning: None,
             }),
         });
         assert!(matches!(first, Effect::None), "not yet: {first:?}");
@@ -13803,6 +13807,7 @@ mod tests {
                 name: "web".to_string(),
                 key: "max_memory".to_string(),
                 pending: false,
+                warning: None,
             }),
         });
         assert!(
@@ -13837,6 +13842,7 @@ mod tests {
                 name: "web".to_string(),
                 key: "max_memory".to_string(),
                 pending: false,
+                warning: None,
             }),
         });
         assert!(
@@ -14005,6 +14011,7 @@ mod tests {
                 name: "web".to_string(),
                 key: "cwd".to_string(),
                 pending: false,
+                warning: None,
             }),
         });
         assert!(
@@ -14020,6 +14027,7 @@ mod tests {
                 name: "web".to_string(),
                 key: "max_memory".to_string(),
                 pending: false,
+                warning: None,
             }),
         });
         assert!(
@@ -14081,6 +14089,7 @@ mod tests {
                 name: "web".to_string(),
                 key: "cwd".to_string(),
                 pending: false,
+                warning: None,
             }),
         });
         assert!(
@@ -14096,6 +14105,7 @@ mod tests {
                 name: "web".to_string(),
                 key: "cwd".to_string(),
                 pending: false,
+                warning: None,
             }),
         });
         assert!(
@@ -14111,6 +14121,7 @@ mod tests {
                 name: "web".to_string(),
                 key: "max_memory".to_string(),
                 pending: false,
+                warning: None,
             }),
         });
         assert!(
@@ -15205,7 +15216,12 @@ mod tests {
         let mut app = fixtures::app_in_sheep_pane_with_control();
         pane_to(&mut app, "cwd");
         fixtures::type_into_the_open_editor(&mut app, "/does/not/exist");
-        let mut batch = wire_batch(app.update(Msg::Key(KeyPress::Escape)));
+        // `cwd` needs a respawn, so `esc` raises the close dialog rather
+        // than writing on the keypress. `c` is the answer that writes and
+        // leaves the sheep alone, which is the same batch this test always
+        // read, reached through the question the dialog now asks first.
+        app.update(Msg::Key(KeyPress::Escape));
+        let mut batch = wire_batch(app.update(Msg::Key(KeyPress::Continue)));
         let effect = app.update(Msg::Replied {
             sent: batch.remove(0),
             result: Ok(Response::SheepFieldSet {

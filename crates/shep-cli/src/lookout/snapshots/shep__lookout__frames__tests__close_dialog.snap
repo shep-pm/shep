@@ -22,15 +22,15 @@ shep lookout   /home/ada/.shep                                                  
    NODE_ENV                   (set)                                                       VALIDATION                                                            
    + add a key                                                                            █ a path, relative paths follow cwd                                   
                                     ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                                    
-                                    ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                ▌                                    
-                                    ▐  cwd and err_file take hold when the process starts again.                           ▌le across instances without merge_l…
-                                    ▐                                                                                      ▌                                    
+                                    ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                ▌: warned                            
+                                    ▐  cwd and err_file take hold when the process starts again.                           ▌                                    
+                                    ▐                                                                                      ▌le across instances without merge_l…
                                     ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌                                    
-                                    ▐  L   reload           the replacement starts alongside and takes over. No gap, if the▌n rule                              
-                                    ▐                       app sets SO_REUSEPORT itself.                                  ▌ne file on purpose                  
-  ──────────────────────────────────▐  c   continue         write them and leave it running. They wait for a respawn.      ▌────────────────────────────────────
-  = read-only, set it in the Flockfi▐                                                                                      ▌ou, not yet written                 
-                                    ▐  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        ▌                                    
+                                    ▐  L   reload           the replacement starts alongside and takes over. No gap, if the▌                                    
+                                    ▐                       app sets SO_REUSEPORT itself.                                  ▌n rule                              
+                                    ▐  c   continue         write them and leave it running. They wait for a respawn.      ▌ne file on purpose                  
+  ──────────────────────────────────▐                                                                                      ▌────────────────────────────────────
+  = read-only, set it in the Flockfi▐  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        ▌ou, not yet written                 
                                     ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟                                    
                                                                                                                                                                 
                                                                                                                                                                 

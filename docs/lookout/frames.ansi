@@ -1377,7 +1377,7 @@ The redrawn editing pane on api, fresh: no edits filed, at 160x48. The tab row n
 [0m[38;5;245m  env[0m                                                                                   [0m[38;5;245m  VALIDATION[0m                                                            [0m
    DATABASE_URL               (set)                                                     [0m[7m[38;5;29m  █ [0man absolute or relative path, expanded from cwd                     [0m
    NODE_ENV                   (set)                                                     [0m[7m[38;5;29m  █ [0m~ expands, $VARS do not                                             [0m
- [0m[38;5;245m  + add a key              [0m                                                            [0m[7m[38;5;166m  █ [0mrefused: a path the daemon's user cannot enter                      [0m
+ [0m[38;5;245m  + add a key              [0m                                                            [0m[7m[38;5;29m  █ [0ma directory that does not exist yet: warned                         [0m
                                                                                                                                                                 [0m
                                                                                         [0m[38;5;245m  NEIGHBOURS[0m                                                            [0m
                                                                                           script  resolved against this cwd                                     [0m
@@ -1484,7 +1484,7 @@ The same fresh pane at 120 columns: narrow enough that LANDS gives way to the ex
    DATABASE_URL               (set)                               [0m[38;5;245m  VALIDATION[0m                                          [0m
    NODE_ENV                   (set)                               [0m[7m[38;5;29m  █ [0man absolute or relative path, expanded from cwd   [0m
  [0m[38;5;245m  + add a key              [0m                                      [0m[7m[38;5;29m  █ [0m~ expands, $VARS do not                           [0m
-                                                                  [0m[7m[38;5;166m  █ [0mrefused: a path the daemon's user cannot enter    [0m
+                                                                  [0m[7m[38;5;29m  █ [0ma directory that does not exist yet: warned       [0m
                                                                                                                         [0m
                                                                   [0m[38;5;245m  NEIGHBOURS[0m                                          [0m
                                                                     script  resolved against this cwd                   [0m
@@ -1589,15 +1589,15 @@ esc pressed with cwd and err_file edited and listen_timeout already parked from 
 [0m[38;5;245m   NODE_ENV                   (set)                                                       VALIDATION                                                            [0m
 [0m[38;5;245m   + add a key                                                                            █ a path, relative paths follow cwd                                   [0m
 [0m[38;5;245m                                    [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m                                    [0m
-[0m[38;5;245m                                    [0m[38;5;238m▐[0m[7m[38;5;221m  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                [0m[38;5;238m▌[0m[38;5;245m                                    [0m
-[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  cwd and err_file take hold when the process starts again.                           [0m[38;5;238m▌[0m[38;5;245mle across instances without merge_l…[0m
-[0m[38;5;245m                                    [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m                                    [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m[7m[38;5;221m  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                [0m[38;5;238m▌[0m[38;5;245m: warned                            [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  cwd and err_file take hold when the process starts again.                           [0m[38;5;238m▌[0m[38;5;245m                                    [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245mle across instances without merge_l…[0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  R   restart now      stop, then start. The stop takes up to 1600ms.                 [0m[38;5;238m▌[0m[38;5;245m                                    [0m
-[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  L   reload           the replacement starts alongside and takes over. No gap, if the[0m[38;5;238m▌[0m[38;5;245mn rule                              [0m
-[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m                       app sets SO_REUSEPORT itself.                                  [0m[38;5;238m▌[0m[38;5;245mne file on purpose                  [0m
-[0m[38;5;245m  ──────────────────────────────────[0m[38;5;238m▐[0m[48;5;235m  c   continue         write them and leave it running. They wait for a respawn.      [0m[38;5;238m▌[0m[38;5;245m────────────────────────────────────[0m
-[0m[38;5;245m  = read-only, set it in the Flockfi[0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245mou, not yet written                 [0m
-[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        [0m[38;5;238m▌[0m[38;5;245m                                    [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  L   reload           the replacement starts alongside and takes over. No gap, if the[0m[38;5;238m▌[0m[38;5;245m                                    [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m                       app sets SO_REUSEPORT itself.                                  [0m[38;5;238m▌[0m[38;5;245mn rule                              [0m
+[0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  c   continue         write them and leave it running. They wait for a respawn.      [0m[38;5;238m▌[0m[38;5;245mne file on purpose                  [0m
+[0m[38;5;245m  ──────────────────────────────────[0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m────────────────────────────────────[0m
+[0m[38;5;245m  = read-only, set it in the Flockfi[0m[38;5;238m▐[0m[48;5;235m  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        [0m[38;5;238m▌[0m[38;5;245mou, not yet written                 [0m
 [0m[38;5;245m                                    [0m[38;5;238m▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟[0m[38;5;245m                                    [0m
 [0m[38;5;245m                                                                                                                                                                [0m
 [0m[38;5;245m                                                                                                                                                                [0m
@@ -1644,14 +1644,14 @@ The same dialog at 90 columns, exactly the floor its border needs: 86 interior c
 [0m[38;5;245m [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m [0m
 [0m[38;5;245m [0m[38;5;238m▐[0m[7m[38;5;221m  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                [0m[38;5;238m▌[0m[38;5;245m [0m
 [0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  cwd and err_file take hold when the process starts again.                           [0m[38;5;238m▌[0m[38;5;245m [0m
-[0m[38;5;245m [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m…[0m
-[0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  R   restart now      stop, then start. The stop takes up to 1600ms.                 [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  R   restart now      stop, then start. The stop takes up to 1600ms.                 [0m[38;5;238m▌[0m[38;5;245m…[0m
 [0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  L   reload           the replacement starts alongside and takes over. No gap, if the[0m[38;5;238m▌[0m[38;5;245m [0m
 [0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m                       app sets SO_REUSEPORT itself.                                  [0m[38;5;238m▌[0m[38;5;245m [0m
-[0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  c   continue         write them and leave it running. They wait for a respawn.      [0m[38;5;238m▌[0m[38;5;245m…[0m
-[0m[38;5;245m [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m─[0m
-[0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        [0m[38;5;238m▌[0m[38;5;245m…[0m
-[0m[38;5;245m [0m[38;5;238m▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  c   continue         write them and leave it running. They wait for a respawn.      [0m[38;5;238m▌[0m[38;5;245m [0m
+[0m[38;5;245m [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m…[0m
+[0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        [0m[38;5;238m▌[0m[38;5;245m─[0m
+[0m[38;5;245m [0m[38;5;238m▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟[0m[38;5;245m…[0m
 [0m[38;5;245m                                                                                          [0m
 [0m[38;5;245m                                                                                          [0m
 [0m[38;5;245m                                                                                          [0m
@@ -1748,7 +1748,7 @@ esc pressed with no edit of the operator's own, only listen_timeout already park
 [0m[38;5;245m  env                                                                                     VALIDATION                                                            [0m
 [0m[38;5;245m   DATABASE_URL               (set)                                                       █ an absolute or relative path, expanded from cwd                     [0m
 [0m[38;5;245m   NODE_ENV                   (set) [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m                                    [0m
-[0m[38;5;245m   + add a key                      [0m[38;5;238m▐[0m[7m[38;5;221m  1 FIELD ALREADY WAITING             api is online, pid 48219                        [0m[38;5;238m▌[0m[38;5;245mr cannot enter                      [0m
+[0m[38;5;245m   + add a key                      [0m[38;5;238m▐[0m[7m[38;5;221m  1 FIELD ALREADY WAITING             api is online, pid 48219                        [0m[38;5;238m▌[0m[38;5;245myet: warned                         [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m                                    [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  R   restart now      stop, then start. The stop takes up to 1600ms.                 [0m[38;5;238m▌[0m[38;5;245m                                    [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  L   reload           the replacement starts alongside and takes over. No gap, if the[0m[38;5;238m▌[0m[38;5;245m                                    [0m
