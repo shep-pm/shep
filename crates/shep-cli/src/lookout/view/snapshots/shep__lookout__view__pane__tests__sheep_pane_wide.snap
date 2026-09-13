@@ -21,7 +21,6 @@ expression: "text_of(&lines).join(\"\\n\")"
    DB_HOST                    (set)                                 VALIDATION
    LOG_LEVEL                  (set)                                 █ an absolute or relative path, expanded from cwd
    + add a key                                                      █ ~ expands, $VARS do not
-                                                                    █ refused: a path the daemon's user cannot enter
                                                                   
                                                                     NEIGHBOURS
                                                                     script  resolved against this cwd

@@ -3045,11 +3045,11 @@ mod tests {
     #[test]
     fn a_refused_form_reads_as_refused_without_colour() {
         let app = fixtures::app_with_plain_palette_in_sheep_pane();
-        let panel = fixtures::config_pane_panel_for_tests(&app, 160);
+        let panel = fixtures::config_pane_panel_focused_on(&app, "name", 160);
         let refusal = panel
             .iter()
-            .find(|row| row.contains("cannot enter"))
-            .expect("cwd states a refusal");
+            .find(|row| row.contains("a path separator"))
+            .expect("name states a refusal");
         assert!(refusal.contains("refused"), "{refusal}");
     }
 

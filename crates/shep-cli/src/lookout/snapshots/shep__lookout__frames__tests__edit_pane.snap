@@ -22,14 +22,14 @@ shep lookout   /home/ada/.shep                                                  
   env                                                                                     VALIDATION                                                            
    DATABASE_URL               (set)                                                       █ an absolute or relative path, expanded from cwd                     
    NODE_ENV                   (set)                                                       █ ~ expands, $VARS do not                                             
-   + add a key                                                                            █ refused: a path the daemon's user cannot enter                      
-                                                                                                                                                                
+   + add a key                                                                                                                                                  
                                                                                           NEIGHBOURS                                                            
                                                                                           script  resolved against this cwd                                     
                                                                                           out_file  relative paths follow it too                                
                                                                                           watch_options  globs are rooted here                                  
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
+                                                                                                                                                                
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 

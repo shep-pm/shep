@@ -174,9 +174,6 @@
                 "field": "watch_options",
                 "note": "globs are rooted here"
               }
-            ],
-            "refuses": [
-              "a path the daemon's user cannot enter"
             ]
           }
         },
@@ -701,9 +698,6 @@
                 "field": "interpreter",
                 "note": "picks what runs this script"
               }
-            ],
-            "refuses": [
-              "a path the daemon's user cannot enter"
             ]
           }
         },

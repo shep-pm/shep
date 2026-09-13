@@ -120,7 +120,6 @@ pub struct AppConfig {
         "blurb": "The script that shep should use to launch your app",
         "accepts": ["an absolute or relative path, expanded from cwd",
                     "~ expands, $VARS do not"],
-        "refuses": ["a path the daemon's user cannot enter"],
         "neighbours": [{"field": "cwd",         "note": "resolved against this cwd"},
                        {"field": "interpreter", "note": "picks what runs this script"}]
     })))]
@@ -141,7 +140,6 @@ pub struct AppConfig {
         "blurb": "Where the process runs. Without it, the daemon's own directory",
         "accepts": ["an absolute or relative path, expanded from cwd",
                     "~ expands, $VARS do not"],
-        "refuses": ["a path the daemon's user cannot enter"],
         "neighbours": [{"field": "script",        "note": "resolved against this cwd"},
                        {"field": "out_file",      "note": "relative paths follow it too"},
                        {"field": "watch_options", "note": "globs are rooted here"}]

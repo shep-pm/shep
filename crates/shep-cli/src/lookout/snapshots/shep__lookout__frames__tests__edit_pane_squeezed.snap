@@ -23,7 +23,6 @@ shep lookout   /home/ada/.shep                                                  
    DATABASE_URL               (set)                                 VALIDATION                                          
    NODE_ENV                   (set)                                 █ an absolute or relative path, expanded from cwd   
    + add a key                                                      █ ~ expands, $VARS do not                           
-                                                                    █ refused: a path the daemon's user cannot enter    
                                                                                                                         
                                                                     NEIGHBOURS                                          
                                                                     script  resolved against this cwd                   
@@ -31,6 +30,7 @@ shep lookout   /home/ada/.shep                                                  
                                                                     watch_options  globs are rooted here                
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed…
+                                                                                                                        
                                                                                                                         
                                                                                                                         
                                                                                                                         
