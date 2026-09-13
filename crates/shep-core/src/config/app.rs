@@ -400,7 +400,8 @@ pub struct AppConfig {
         "group": "process",
         "blurb": "Run as this user, on unix",
         "accepts": ["a unix user name"],
-        "refuses": ["a name with no passwd entry"],
+        "refuses": ["a name with no passwd entry",
+                    "another user, unless the shepherd runs as root"],
         "neighbours": [{"field": "group", "note": "resolved together at spawn"}]
     })))]
     pub user: Option<String>,
@@ -410,7 +411,8 @@ pub struct AppConfig {
         "group": "process",
         "blurb": "Run as this group, on unix",
         "accepts": ["a unix group name"],
-        "refuses": ["a name with no group entry"],
+        "refuses": ["a name with no group entry",
+                    "another group, unless the shepherd runs as root"],
         "neighbours": [{"field": "user", "note": "resolved together at spawn"}]
     })))]
     pub group: Option<String>,

@@ -355,7 +355,8 @@
               }
             ],
             "refuses": [
-              "a name with no group entry"
+              "a name with no group entry",
+              "another group, unless the shepherd runs as root"
             ]
           }
         },
@@ -758,7 +759,8 @@
               }
             ],
             "refuses": [
-              "a name with no passwd entry"
+              "a name with no passwd entry",
+              "another user, unless the shepherd runs as root"
             ]
           }
         },
