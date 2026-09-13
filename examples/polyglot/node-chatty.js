@@ -125,20 +125,29 @@ channel.on("data", (chunk) => {
     if (line.trim() === "") {
       continue;
     }
+    let message;
     try {
-      handle(JSON.parse(line));
+      message = JSON.parse(line);
     } catch (err) {
       // The shepherd does not write these, so a frame that will not parse
       // means a wire this app has never seen. Say so and read the next one;
-      // dying here would also drop the action after it.
+      // dying here would also drop the action after it. Only the parse is
+      // guarded, so a real bug in handle still surfaces as itself.
       console.error(`node-chatty: could not read a message: ${err.message}`);
+      continue;
     }
+    handle(message);
   }
 });
 // The shepherd going away is not a reason to stop. shep-channel leaves a
 // Rust app running for the same reason: a channel is something an app has,
 // not what it is for, and a shepherd can be replaced under it. The timer
 // is what keeps this event loop alive once the socket is its only work.
+// Without this, a write to a socket the shepherd has dropped raises an
+// unhandled 'error' and ends the process, which reads as a bug in this app.
+channel.on("error", (err) => {
+  console.error(`node-chatty: the channel failed: ${err.message}`);
+});
 channel.on("close", () => {
   console.log("node-chatty: the shepherd went away; still running");
   setInterval(() => {}, 1 << 30);
