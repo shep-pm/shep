@@ -257,6 +257,9 @@ func main() {
 	// Rust app running for the same reason: a channel is something an app
 	// has, not what it is for, and a shepherd can be replaced under it.
 	fmt.Println("go-chatty: the shepherd went away; still running")
+	// Not select{}, which is the usual way to block forever: this app runs on
+	// one goroutine on purpose, so select{} is the only goroutine asleep and
+	// Go's deadlock detector ends the process with exit 2.
 	for {
 		time.Sleep(time.Hour)
 	}
