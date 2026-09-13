@@ -1059,7 +1059,7 @@ mod tests {
             .set_match(r"/\w+@\w+\.\w+/".to_string());
 
         let before = compiles();
-        let drawn = draw_lines(&app, 160, 50);
+        let drawn_rows = draw_lines(&app, 160, 50);
         assert_eq!(compiles(), before, "a redraw compiles nothing");
 
         // Without these the count above would hold over a pane drawing no
@@ -1070,7 +1070,7 @@ mod tests {
         // pane ever grew another header. The span count is the second half:
         // a row whose match was highlighted is split into more spans than
         // the stream tag plus one run of plain text.
-        let body: Vec<_> = drawn
+        let body: Vec<_> = drawn_rows
             .iter()
             .filter(|line| render_all(std::slice::from_ref(*line)).contains("@example.com"))
             .collect();
