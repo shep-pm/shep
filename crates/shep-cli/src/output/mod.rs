@@ -640,9 +640,9 @@ fn safe_message(fmt: Format, message: &str) -> String {
 /// Only the first line of a table message starts at column 0, so a newline
 /// inside an interpolated value cannot forge a line that reads as shep's own
 /// or that a script anchoring `error[` there will match. It holds because
-/// `code` is sanitised too, printing ahead of the message on that same line.
-/// Messages carry no indent of their own. An empty line stays empty, since
-/// indenting one leaves trailing whitespace on a paragraph break.
+/// `code` is sanitised too, printing ahead of it on that same line. The base
+/// indent is this function's, and a message adds its own only to nest a line
+/// under a label. An empty line stays empty rather than gaining whitespace.
 fn indent_continuations(message: &str) -> String {
     let mut out = String::with_capacity(message.len());
     for (n, line) in message.split('\n').enumerate() {
