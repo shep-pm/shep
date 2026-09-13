@@ -873,7 +873,13 @@ mod tests {
         });
         let captured = tokio::time::timeout(Duration::from_secs(5), captured);
         let request = tokio::select! {
-            () = async { delivered.await.ok(); } => unreachable!("the sender loop never returns"),
+            // Reached only when the timeout above expires, which is this
+            // test failing rather than an impossible state: the sender
+            // loop itself never returns.
+            () = async { delivered.await.ok(); } => panic!(
+                "no bark was delivered within 5s of the handover, so the \
+                 second generation never reached the loop"
+            ),
             request = captured => request.expect("a bark must be delivered after the handover"),
         };
         assert!(String::from_utf8_lossy(&request.unwrap().body).contains("web"));
