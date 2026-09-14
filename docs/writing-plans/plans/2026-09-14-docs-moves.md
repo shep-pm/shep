@@ -64,7 +64,7 @@ The two-field Flockfile minimum does **not** move. `getting-started` already car
 - Consumes: `DocsLayout`, which takes `description` and `activeSlug` only.
 - Produces: `/docs/upgrading`, chapter 10, with anchors `#replacing-the-binary`, `#what-carries-across`, `#when-it-cannot-carry`, `#version-skew`.
 
-- [ ] **Step 1: Record the before state**
+- [x] **Step 1: Record the before state**
 
 ```bash
 cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep -E 'getting-started|TOTAL'
@@ -72,7 +72,7 @@ cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep -E 'getting-sta
 
 Expected: `1244  getting-started` and `44559  TOTAL across 25 pages`. Keep both numbers; Step 7 checks against them.
 
-- [ ] **Step 2: Create the page with the block moved into it**
+- [x] **Step 2: Create the page with the block moved into it**
 
 Create `web/src/pages/docs/upgrading.astro`. Take `getting-started.astro` lines 66 to 131 verbatim: the `<h3>Upgrading later</h3>` heading, its seven paragraphs, the `<div class="terminal">` block showing `cargo install` and `shep daemon reload`, the `<Callout variant="careful">` about version skew, and the `<p class="fine">` about the older reload path and protocol version 5.
 
@@ -122,7 +122,7 @@ import Callout from "../../components/docs/Callout.astro";
 
 The lede is new. Everything under the four headings is the moved prose.
 
-- [ ] **Step 3: Cut the block from getting-started and leave a handoff**
+- [x] **Step 3: Cut the block from getting-started and leave a handoff**
 
 Delete lines 66 to 131 of `web/src/pages/docs/getting-started.astro`, the whole `<h3>Upgrading later</h3>` section up to but not including `<h2>2. Write a Flockfile</h2>`.
 
@@ -136,15 +136,15 @@ In its place, one sentence:
     </p>
 ```
 
-- [ ] **Step 4: Flip the nav entry**
+- [x] **Step 4: Flip the nav entry**
 
 In `web/src/data/docs-nav.ts`, change `upgrading`'s `built: false` to `built: true`.
 
-- [ ] **Step 5: Enforce its anchors**
+- [x] **Step 5: Enforce its anchors**
 
 In `web/scripts/verify-heading-anchors.ts`, add `"upgrading"` to `ENFORCED`.
 
-- [ ] **Step 6: Build**
+- [x] **Step 6: Build**
 
 ```bash
 npm run build
@@ -156,7 +156,7 @@ npx astro check
 
 Expected: both clean. `verify-docs-nav.ts` passes only if Steps 2 and 4 happened together.
 
-- [ ] **Step 7: Check the arithmetic**
+- [x] **Step 7: Check the arithmetic**
 
 ```bash
 cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep -E 'getting-started|upgrading|TOTAL'
@@ -164,13 +164,13 @@ cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep -E 'getting-sta
 
 Expected: `getting-started` near 755, `upgrading` near 540, and the total within about 40 words of 44,559. A total that dropped by hundreds means prose was cut rather than moved.
 
-- [ ] **Step 8: Look at both pages**
+- [x] **Step 8: Look at both pages**
 
 Load `http://localhost:4421/docs/getting-started` and confirm step 1 now runs install then straight into step 2, with the handoff line and no upgrade material.
 
 Load `http://localhost:4421/docs/upgrading` and confirm the four sections render, the sidebar shows chapter 10 as a link rather than `soon`, the chapter bar reads `Previous 9. Talking to a sheep` and `Next 11. The lookout`, and each heading has a hover anchor.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add web/src/pages/docs/upgrading.astro web/src/pages/docs/getting-started.astro web/src/data/docs-nav.ts web/scripts/verify-heading-anchors.ts
@@ -191,7 +191,7 @@ The migration page's runbook is two runbooks. Steps 1 to 6 need nothing but pm2 
 - Consumes: nothing new.
 - Produces: nothing other tasks read.
 
-- [ ] **Step 1: Shorten the runbook on the migration page**
+- [x] **Step 1: Shorten the runbook on the migration page**
 
 In `web/src/pages/docs/from-pm2.astro`, the `<h2>The runbook</h2>` `CodeBlock` currently lists eleven steps. Keep the first six and drop steps 7 to 11. Drop `--user <you>` from nothing here, because it does not appear in steps 1 to 6.
 
@@ -206,7 +206,7 @@ In `web/src/pages/docs/from-pm2.astro`, the `<h2>The runbook</h2>` `CodeBlock` c
 
 Update the paragraph above it, which currently reads "Import, save, install the boot unit, then reboot and check the flock came back". It now describes six steps ending at a saved flock. Keep its existing note that step 3 is the only step touching pm2 and the only irreversible one.
 
-- [ ] **Step 2: Add the handoff**
+- [x] **Step 2: Add the handoff**
 
 Immediately after the shortened `CodeBlock`, before the next heading:
 
@@ -221,11 +221,11 @@ Immediately after the shortened `CodeBlock`, before the next heading:
 
 This sentence is the reason the block is allowed to leave. Without it the migration reads as finished at step 6, and a reader loses their flock at the next reboot.
 
-- [ ] **Step 3: Move the Type=notify callout and Rolling back out**
+- [x] **Step 3: Move the Type=notify callout and Rolling back out**
 
 Delete from `from-pm2.astro` the `<Callout variant="note">` explaining what `active (running)` means at step 8, and the whole `<h2>Rolling back</h2>` section. Both move to `startup.astro` in the next step, verbatim.
 
-- [ ] **Step 4: Give Surviving a reboot the runbook**
+- [x] **Step 4: Give Surviving a reboot the runbook**
 
 In `web/src/pages/docs/startup.astro`, add a new section as the page's second `h2`, after its opening material and before `Never escalates its own privilege`:
 
@@ -248,11 +248,11 @@ Then the moved `Type=notify` callout, then the moved `Rolling back` section as a
 
 **`sudo shep startup` takes no `--user`.** The old runbook wrote `sudo shep startup --user <you>`, which teaches a flag nobody needs: `StartupArgs::user` defaults to `$SUDO_USER` and falls back to the invoking user, read in `crates/shep-cli/src/commands/startup/mod.rs` and covered by a test in `crates/shep-cli/tests/cli_e2e.rs`. Dropping it removes the one token in the sequence that implies the reader must understand Linux users.
 
-- [ ] **Step 5: Give both pages' new headings ids**
+- [x] **Step 5: Give both pages' new headings ids**
 
 `startup.astro`'s existing headings have no ids. Add one to every `h2` and `h3` on the page, not only the new ones, and add `"startup"` to `ENFORCED` in `web/scripts/verify-heading-anchors.ts`.
 
-- [ ] **Step 6: Build**
+- [x] **Step 6: Build**
 
 ```bash
 npm run build
@@ -262,7 +262,7 @@ npm run build
 npx astro check
 ```
 
-- [ ] **Step 7: Check the arithmetic**
+- [x] **Step 7: Check the arithmetic**
 
 ```bash
 cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep -E 'from-pm2|startup|TOTAL'
@@ -270,11 +270,11 @@ cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep -E 'from-pm2|st
 
 Expected: `from-pm2` near 1,810, `startup` near 1,450, total within about 60 of 44,559.
 
-- [ ] **Step 8: Look at both pages**
+- [x] **Step 8: Look at both pages**
 
 On `/docs/from-pm2`, confirm the runbook is six steps and the callout points at the reboot page. On `/docs/startup`, confirm the runbook renders, `--user` appears nowhere, and every heading has a hover anchor.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add web/src/pages/docs/from-pm2.astro web/src/pages/docs/startup.astro web/scripts/verify-heading-anchors.ts
@@ -297,7 +297,7 @@ git commit -m "refactor(web): the pm2 runbook ends at the save, and reboots get 
 - Consumes: `DocsLayout`, `ReferencePills`, and whichever of `Callout`, `CodeBlock` and `VerbSignature` the moved sections already use.
 - Produces: `/docs/writing-a-dog`, chapter 18.
 
-- [ ] **Step 1: Record the before state**
+- [x] **Step 1: Record the before state**
 
 ```bash
 cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep -E '\bdogs\b|TOTAL'
@@ -305,7 +305,7 @@ cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep -E '\bdogs\b|TO
 
 Expected: `6833  dogs`.
 
-- [ ] **Step 2: Create the page**
+- [x] **Step 2: Create the page**
 
 Create `web/src/pages/docs/writing-a-dog.astro` holding `dogs.astro` lines 427 to 1010 verbatim: `<h2>Writing your own</h2>`, `<h2>Answering <code>--version</code></h2>` with its five `h3` subsections, and `<h2>Answering <code>--schema</code></h2>`.
 
@@ -313,7 +313,7 @@ Keep every heading's text. Give each a unique `id`. Copy the import list from `d
 
 The page needs an `h1`, a `ReferencePills` and a new lede. Everything else is moved prose.
 
-- [ ] **Step 3: Cut from dogs and leave a handoff**
+- [x] **Step 3: Cut from dogs and leave a handoff**
 
 Delete lines 427 to 1010 from `web/src/pages/docs/dogs.astro`. In their place:
 
@@ -329,11 +329,11 @@ Delete lines 427 to 1010 from `web/src/pages/docs/dogs.astro`. In their place:
     </p>
 ```
 
-- [ ] **Step 4: Flip the nav entry and enforce anchors**
+- [x] **Step 4: Flip the nav entry and enforce anchors**
 
 `writing-a-dog` becomes `built: true` in `web/src/data/docs-nav.ts`, and `"writing-a-dog"` joins `ENFORCED` in `web/scripts/verify-heading-anchors.ts`.
 
-- [ ] **Step 5: Build**
+- [x] **Step 5: Build**
 
 ```bash
 npm run build
@@ -343,7 +343,7 @@ npm run build
 npx astro check
 ```
 
-- [ ] **Step 6: Check the arithmetic**
+- [x] **Step 6: Check the arithmetic**
 
 ```bash
 cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep -E '\bdogs\b|writing-a-dog|TOTAL'
@@ -351,13 +351,13 @@ cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep -E '\bdogs\b|wr
 
 Expected: `dogs` near 2,850, `writing-a-dog` near 4,060, total within about 40 of 44,559.
 
-- [ ] **Step 7: Look at both pages**
+- [x] **Step 7: Look at both pages**
 
 On `/docs/dogs`, confirm the page now runs from what a dog is, through turning one on and the built-in dogs, to the handoff, and that nothing referenced below the cut is now dangling. Read the sections either side of the join specifically: a paragraph that said "as described above" may now point at nothing.
 
 On `/docs/writing-a-dog`, confirm every code block and callout survived, the sidebar shows chapter 18 as a link, and the chapter bar reads `Previous 17. Dogs` and `Next 19. Community dogs`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add web/src/pages/docs/writing-a-dog.astro web/src/pages/docs/dogs.astro web/src/data/docs-nav.ts web/scripts/verify-heading-anchors.ts
@@ -378,13 +378,13 @@ git commit -m "feat(web): writing a dog becomes its own chapter"
 - Consumes: nothing new.
 - Produces: nothing other tasks read.
 
-- [ ] **Step 1: Move the section**
+- [x] **Step 1: Move the section**
 
 Take `first-flockfile.astro` lines 171 to 205 verbatim and place them in `web/src/pages/docs/overrides.astro` as its first `h2`, before the existing `Why a template and not just config`. The two overlap in subject, which is the point: read together they are the rule and its reasoning, and the rewrite phase will merge them. Do not merge them here.
 
 Give the moved heading `id="a-flockfile-is-a-template"`.
 
-- [ ] **Step 2: Leave a pointer**
+- [x] **Step 2: Leave a pointer**
 
 In `first-flockfile.astro`, in place of the removed section:
 
@@ -398,7 +398,7 @@ In `first-flockfile.astro`, in place of the removed section:
     </p>
 ```
 
-- [ ] **Step 3: Build and check the arithmetic**
+- [x] **Step 3: Build and check the arithmetic**
 
 ```bash
 npm run build
@@ -410,11 +410,11 @@ cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep -E 'first-flock
 
 Expected: `first-flockfile` near 2,315, `overrides` near 3,435, total within about 40 of 44,559.
 
-- [ ] **Step 4: Look at both pages**
+- [x] **Step 4: Look at both pages**
 
 Confirm `/docs/overrides` opens with the rule and reads into its existing first section without a jolt, and that `/docs/first-flockfile` still makes sense where the section was removed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add web/src/pages/docs/first-flockfile.astro web/src/pages/docs/overrides.astro
@@ -434,7 +434,7 @@ Four blocks moved between six pages. The way this fails quietly is a block that 
 - Consumes: `BUDGETS`.
 - Produces: budgets for the eight pages this plan touched, which the rewrite phase then tightens.
 
-- [ ] **Step 1: Confirm the corpus total**
+- [x] **Step 1: Confirm the corpus total**
 
 ```bash
 cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep TOTAL
@@ -442,7 +442,7 @@ cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep TOTAL
 
 Expected: within about 60 words of 44,559, the difference being four ledes and four handoffs. If it dropped by more than that, a block was cut rather than moved. Find it by comparing each page against the "Expected counts" table above rather than by rereading diffs.
 
-- [ ] **Step 2: Confirm nothing points at a section that left**
+- [x] **Step 2: Confirm nothing points at a section that left**
 
 ```bash
 cd web && grep -rn 'as described above\|see above\|below\|earlier on this page' src/pages/docs/dogs.astro src/pages/docs/getting-started.astro src/pages/docs/from-pm2.astro src/pages/docs/first-flockfile.astro
@@ -450,11 +450,11 @@ cd web && grep -rn 'as described above\|see above\|below\|earlier on this page' 
 
 Read each hit. A cross-reference that used to mean "further down this page" may now mean nothing. Fix any that dangle, and only those.
 
-- [ ] **Step 3: Seed budgets at the post-move counts**
+- [x] **Step 3: Seed budgets at the post-move counts**
 
 In `web/scripts/verify-prose-budget.ts`, add the eight pages with their measured counts rounded up slightly. These are not rewrite targets, they are a floor that stops a page growing back before the rewrite phase sets real numbers.
 
-- [ ] **Step 4: Build**
+- [x] **Step 4: Build**
 
 ```bash
 npm run build
@@ -464,7 +464,7 @@ npm run build
 npx astro check
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add web/scripts/verify-prose-budget.ts
@@ -483,6 +483,28 @@ git commit -m "chore(web): budget the eight pages the moves touched"
 - The corpus total is within about 60 words of 44,559, and every page's count matches the Expected counts table.
 - No page references a section that has moved to another page.
 - `npm run build` passes with four check scripts, and `npx astro check` is clean.
+
+## What was learned doing it
+
+**Three .astro parsing defects, all the same shape.** The prose counter
+mis-read a tag with a quoted `<`, the anchor check counted a heading
+mentioned inside a doc comment, and extracting a frontmatter const by
+scanning to the next backtick truncated two of them because they contain
+escaped backticks. Documentation is content about markup and code, so its
+content keeps looking like the syntax being matched. Prefer an extractor
+that respects escapes and strips comments, and expect a fourth.
+
+**Moving markup means moving its frontmatter.** The dogs split failed on
+`probeSnippet is not defined` because three template literals referenced
+from the moved markup live in frontmatter. Checking the component imports
+is not enough; check every binding the block names.
+
+**The tolerance was guessed, not computed.** Two tasks predicted "within
+about 40" and "within about 60" and the plan landed at +261, fully
+accounted for by ledes, handoffs and headings. Every individual page came
+within 55 words of its prediction, so the per-page numbers were sound and
+only the corpus-level tolerance was invented. State a range only when it
+is derived.
 
 ## What this plan deliberately does not do
 
