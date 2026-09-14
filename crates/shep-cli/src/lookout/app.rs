@@ -11390,6 +11390,29 @@ mod tests {
         );
     }
 
+    /// The third of these, after `h_cancels_an_armed_confirm_instead_of_
+    /// opening_the_overlay` (dashboard) and `h_cancels_an_armed_settings_
+    /// candidate_instead_of_opening_the_overlay` (settings). `Help`'s own
+    /// arm here never mentions `armed`: `was_armed`, computed before the
+    /// match for every key but `Confirm` and `Quit`, already disarms it.
+    /// Written because a round of review argued the disarm might not run
+    /// before the overlay opens, and reading the two statements in order
+    /// settles that but does not prove it the way running them does.
+    #[test]
+    fn h_disarms_a_secret_delete_instead_of_opening_the_overlay_over_it() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        assert!(armed_of(&app).is_some(), "the delete armed");
+
+        let _ = app.update(Msg::Key(KeyPress::Help));
+
+        assert!(
+            armed_of(&app).is_none(),
+            "h did not disarm the pending delete"
+        );
+        assert!(app.keymap_open(), "h did not open the overlay");
+    }
+
     /// An armed delete is the fourth armed thing in this module the tick
     /// expires, mirroring the config pane's own `armed_at` at
     /// `app.rs:1999-2005`.
