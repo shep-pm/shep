@@ -186,6 +186,40 @@ const store = `$ cat $SHEP_HOME/overrides.json
       settings nobody has spoken for yet.
     </p>
 
+    <h2 id="a-flockfile-is-a-template">A Flockfile is a template, not live config</h2>
+    <p>
+      A Flockfile lives in the repository of the app it starts, committed
+      like anything else there, and shep never writes to it. That is what
+      makes it safe to load one onto a flock that is already running without
+      reading the diff first: <code>shep start Flockfile.toml</code> appends
+      the settings nobody has established yet and overwrites nothing. A
+      merged pull request cannot quietly lower a memory ceiling somebody
+      raised at 3am.
+    </p>
+    <p>
+      The corollary is the part worth remembering. Editing a line in a
+      Flockfile and loading it again does not move a setting that is already
+      established; <code>shep start Flockfile.toml --reset=policy</code> is
+      how you say the file wins. The rest of this page is that
+      whole story, including which settings change under a running process
+      and which wait for the next spawn.
+    </p>
+    <p>
+      A template that ships its secrets blank, <code>env = &#123; DB_HOST =
+      "", DB_PASSWORD = "" &#125;</code>, has one more problem:{" "}
+      <code>shep start</code> would spawn the app against those blanks and
+      leave it crash-looping. <code>shep add Flockfile.toml</code> takes the
+      same targets and the same load and spawns nothing, so the app lands
+      registered and stopped, and <code>shep start web</code> brings it up
+      once it has real values.
+    </p>
+    <p class="fine">
+      Naming a sheep reads no Flockfile at all. <code>shep start web</code>{" "}
+      starts the sheep called <code>web</code> from the config the shepherd
+      already holds. Three things are a load, and nothing else is: a path you
+      name, a Flockfile discovered in the directory you ran the command from,
+      and <code>-</code>, which reads Flockfile JSON on stdin.
+    </p>
     <h2>Why a template and not just config</h2>
     <p>
       The alternative was letting <code>shep start Flockfile.toml</code>{" "}
