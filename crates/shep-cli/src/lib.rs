@@ -226,14 +226,44 @@ fn dispatch_adopted_dog(argv: &[OsString], err: &clap::Error) -> Option<std::pro
 fn home_before(prefix: &[OsString]) -> Option<PathBuf> {
     let mut tokens = prefix.iter();
     while let Some(arg) = tokens.next() {
-        if let Some(value) = arg.to_str().and_then(|s| s.strip_prefix("--home=")) {
-            return Some(PathBuf::from(value));
+        if let Some(value) = home_equals_value(arg) {
+            return Some(value);
         }
         if arg == "--home" {
             return tokens.next().map(PathBuf::from);
         }
     }
     std::env::var_os("SHEP_HOME").map(PathBuf::from)
+}
+
+/// The value in a `--home=value` token, or `None` when `arg` is not one.
+///
+/// Split on the platform's own encoding rather than through `to_str`, which
+/// answers `None` for the whole token when the value is not valid UTF-8 and
+/// so drops a `--home=` an operator did type. Dropped, [`home_before`] falls
+/// through to `$SHEP_HOME` and an adopted dog runs against a home nobody
+/// named, which is the substitution `require_utf8` exists to refuse. The
+/// spaced `--home value` form never had this, since it copies the token
+/// whole.
+///
+/// The refusal still comes from [`resolve_paths`]; this only carries the
+/// value far enough to be refused.
+#[cfg(unix)]
+fn home_equals_value(arg: &std::ffi::OsStr) -> Option<PathBuf> {
+    use std::os::unix::ffi::OsStrExt as _;
+    let rest = arg.as_bytes().strip_prefix(b"--home=")?;
+    Some(PathBuf::from(std::ffi::OsStr::from_bytes(rest)))
+}
+
+/// [`home_equals_value`] for Windows, where a path is UTF-16 rather than
+/// bytes and the same `to_str` hole is an unpaired surrogate.
+#[cfg(windows)]
+fn home_equals_value(arg: &std::ffi::OsStr) -> Option<PathBuf> {
+    use std::os::windows::ffi::{OsStrExt as _, OsStringExt as _};
+    let wide: Vec<u16> = arg.encode_wide().collect();
+    let prefix: Vec<u16> = "--home=".encode_utf16().collect();
+    let rest = wide.strip_prefix(prefix.as_slice())?;
+    Some(PathBuf::from(OsString::from_wide(rest)))
 }
 
 /// Runs `path`, an adopted dog's binary: `extra_args` passed through as
@@ -2357,6 +2387,31 @@ mod tests {
             quiet: false,
             style: None,
         }
+    }
+
+    /// `home_before` parses argv itself, so it is a second door into the
+    /// home and has to carry a value clap would have refused rather than
+    /// dropping it. Dropped, the adopted-dog path resolves some other home
+    /// and runs the dog against it, which is the exact substitution this
+    /// branch exists to stop.
+    #[cfg(unix)]
+    #[test]
+    fn home_before_keeps_a_non_utf8_equals_value() {
+        use std::os::unix::ffi::OsStringExt as _;
+        let arg = OsString::from_vec(b"--home=/tmp/\xff".to_vec());
+        let found = home_before(&[arg]).expect("the value must survive the parse");
+        assert_eq!(
+            found,
+            non_utf8_tmp_home(),
+            "the bytes as typed, not a lossy rendering and not a fallback"
+        );
+    }
+
+    /// `/tmp/\xff`, the value the test above passes as `--home=`.
+    #[cfg(unix)]
+    fn non_utf8_tmp_home() -> std::path::PathBuf {
+        use std::os::unix::ffi::OsStringExt as _;
+        std::path::PathBuf::from(OsString::from_vec(b"/tmp/\xff".to_vec()))
     }
 
     /// An absolute path whose bytes are not valid UTF-8, which only unix can
