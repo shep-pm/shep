@@ -30,7 +30,9 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
         A success prints one object on stdout: <code>schema_version</code>,{" "}
         <code>command</code>, and <code>data</code>. A failure prints{" "}
         <code>schema_version</code> and <code>error</code> on stderr instead,
-        with no <code>command</code> key.
+        with no <code>command</code> key. That is every command that
+        finishes; <code>shep bleats</code> follows a log and streams{" "}
+        <a href="#streaming">bare objects</a> with no envelope at all.
       </p>
     </ShortVersion>
     <p class="fine">
@@ -280,6 +282,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       </li>
     </ul>
 
+    <h2 id="streaming">Streaming output carries no envelope</h2>
     <Callout variant="note">
       <code>shep bleats --format json</code> is the one exception. A log
       follow has no end, so there's nothing to close an envelope around:
