@@ -192,6 +192,38 @@ impl fmt::Display for SmitError {
 
 impl core::error::Error for SmitError {}
 
+/// The machine the flock runs on, as the shepherd last read it.
+///
+/// Three of the four numbers are rates, so none of them exists in a single
+/// moment: CPU, disk traffic and network traffic are all differences between
+/// two readings of a counter the kernel only ever increments. The shepherd
+/// keeps the earlier reading between its own ticks and serves the
+/// difference, which is what lets a one-shot listing carry them at all.
+///
+/// Answered by [`Response::HostUsage`], and by nothing else: this is
+/// deliberately not a field on [`Response::Flock`], whose array shape
+/// predates it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct HostUsage {
+    /// Every core's usage over the shepherd's last window, as one percentage
+    /// of one whole machine.
+    ///
+    /// `None` where no window long enough to divide by has passed yet, which
+    /// on a shepherd that has just booted it has not. Absent is not idle.
+    pub cpu_percent: Option<f32>,
+    /// Memory in use, as the platform reports it. Not a rate, so never
+    /// absent.
+    pub memory_used_bytes: u64,
+    /// Total physical memory.
+    pub memory_total_bytes: u64,
+    /// Bytes a second the block devices read and wrote over that window,
+    /// absent on [`Self::cpu_percent`]'s terms.
+    pub disk_bytes_per_second: Option<(u64, u64)>,
+    /// Bytes a second the non-loopback interfaces received and transmitted
+    /// over that window, absent on the same terms.
+    pub network_bytes_per_second: Option<(u64, u64)>,
+}
+
 /// One RPC request
 // wire format: changing existing variants is a breaking change
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -202,6 +234,15 @@ pub enum Request {
     Ping,
     /// Full flock listing
     ListFlock,
+    /// What the machine the flock runs on is doing
+    ///
+    /// Answers [`Response::HostUsage`]. Its own request rather than a field
+    /// on [`Response::Flock`]: that variant serializes as an array, and
+    /// giving it a second field would retype it into an object that no
+    /// shipped client can read. A daemon that has never heard of this one
+    /// decodes [`Self::Unrecognized`] and refuses by name, which costs the
+    /// caller the host block and nothing else.
+    HostUsage,
     /// Detailed info for matching sheep
     Describe {
         /// Which sheep
@@ -1526,6 +1567,13 @@ pub enum Response {
     Pong,
     /// Answer to `ListFlock`
     Flock(Vec<ProcessInfo>),
+    /// Answer to `HostUsage`
+    ///
+    /// `None` on a platform `sysinfo` cannot read at all, which is a state a
+    /// caller renders rather than an error. A supported platform with no
+    /// window yet answers `Some`, carrying the memory it could read and
+    /// `None` for each rate it could not.
+    HostUsage(Option<HostUsage>),
     /// Answer to `Describe`
     Described(Vec<ProcessInfo>),
     /// Answer to `Start`
@@ -2847,6 +2895,11 @@ mod tests {
                     dry_run: true,
                 },
             },
+            Envelope {
+                id: 34,
+                deadline_ms: None,
+                body: Request::HostUsage,
+            },
         ];
         insta::assert_json_snapshot!("request_wire_v9", requests);
     }
@@ -3244,6 +3297,37 @@ mod tests {
                     unchanged: vec!["LOG_LEVEL".to_string()],
                     collisions: vec!["API_KEY".to_string()],
                 }),
+            },
+            // Both halves of the same reply: a machine that has been read
+            // and one that has not been read for long enough yet. The rates
+            // are what separate them, and they are `null` rather than `0`
+            // in the second, which is the whole distinction the renderer
+            // spells as `-`.
+            Reply {
+                id: 40,
+                result: Ok(Response::HostUsage(Some(HostUsage {
+                    cpu_percent: Some(11.5),
+                    memory_used_bytes: 39_963_869_184,
+                    memory_total_bytes: 51_539_607_552,
+                    disk_bytes_per_second: Some((1_258_291, 491_520)),
+                    network_bytes_per_second: Some((24_594, 9_260)),
+                }))),
+            },
+            Reply {
+                id: 41,
+                result: Ok(Response::HostUsage(Some(HostUsage {
+                    cpu_percent: None,
+                    memory_used_bytes: 39_963_869_184,
+                    memory_total_bytes: 51_539_607_552,
+                    disk_bytes_per_second: None,
+                    network_bytes_per_second: None,
+                }))),
+            },
+            // A platform `sysinfo` cannot read at all, which is neither of
+            // the two above.
+            Reply {
+                id: 42,
+                result: Ok(Response::HostUsage(None)),
             },
         ];
         insta::assert_json_snapshot!("reply_wire_v9", replies);

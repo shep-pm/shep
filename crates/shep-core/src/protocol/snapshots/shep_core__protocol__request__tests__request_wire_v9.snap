@@ -463,5 +463,12 @@ expression: requests
       "force": true,
       "dry_run": true
     }
+  },
+  {
+    "id": 34,
+    "deadline_ms": null,
+    "body": {
+      "kind": "host_usage"
+    }
   }
 ]
