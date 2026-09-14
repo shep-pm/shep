@@ -569,8 +569,19 @@ watchdog  adopted  true      stopped`}</CodeBlock>
       deadline does, leaves a loop bounded only by that call running for as
       long as it stays up, and a dog doing that stays online on every column
       a listing has while doing nothing. shep's own bark dog had this bug
-      during development. <a href="/docs/dogs/#writing-your-own">The dogs
-      guide</a> shows the wrong loop in full.
+      during development, written like this:
+    </p>
+    <CodeBlock label="the wrong loop">{`loop {
+    let left = budget.saturating_sub(started.elapsed());
+    client.connected_within(left).await?;
+    match client.subscribe(topics.clone()).await {
+        Ok(stream) => return Ok(stream),
+        Err(_) => continue,
+    }
+}`}</CodeBlock>
+    <p>
+      Check the budget at the top of your own loop and return when it is
+      spent.
     </p>
     <p class="fine">
       Three answers in the <code>EXIT</code> column, not two. A dog that

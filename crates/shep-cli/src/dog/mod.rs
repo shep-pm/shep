@@ -440,10 +440,10 @@ impl bark::EventSource for ClientEvents {
                 // supervisor is about to say so, and the budget decides
                 // whether to keep asking.
                 Ok(Err(RequestError::Closed)) => {}
-                // A shepherd answered and refused. Waiting cannot change
-                // its answer, and the error already decides an exit code
-                // that the opening `Subscribe` would have used.
-                Ok(Err(other)) => return Err(bark::Resubscribe::Refused(other)),
+                // The request reached a shepherd and did not succeed.
+                // Waiting cannot change that, and the error already decides
+                // the exit code the opening `Subscribe` would have used.
+                Ok(Err(other)) => return Err(bark::Resubscribe::Request(other)),
                 Err(_elapsed) => {
                     return Err(bark::Resubscribe::Lost(LinkLost::Budget {
                         waited: started.elapsed(),
@@ -629,7 +629,7 @@ mod tests {
     /// one that never answered.
     ///
     /// The bark loop's own test drives a fake that hands it a
-    /// `Resubscribe::Refused` ready-made. This is the other half: the
+    /// `Resubscribe::Request` ready-made. This is the other half: the
     /// adapter producing one from a real shepherd that accepts the
     /// handshake and then rejects the `Subscribe`. Conflating it with
     /// `Closed` would retry until the budget was gone and then report an
@@ -678,7 +678,7 @@ mod tests {
             .expect("a refusal must end the wait, not hang it");
         let waited = started.elapsed();
 
-        let Err(bark::Resubscribe::Refused(err)) = refused else {
+        let Err(bark::Resubscribe::Request(err)) = refused else {
             panic!("expected a kept refusal, got {refused:?}");
         };
         assert!(

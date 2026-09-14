@@ -125,17 +125,24 @@ pub enum Resubscribe {
     /// No shepherd answered inside the dog's budget, or one refused this
     /// dog's protocol version at the handshake.
     Lost(LinkLost),
-    /// A shepherd answered and refused the subscription itself, so waiting
-    /// cannot help. Carried whole, since `RequestError` already decides an
-    /// exit code and flattening it would lose that.
-    Refused(RequestError),
+    /// The `Subscribe` reached a shepherd and did not succeed, and waiting
+    /// cannot change that: a refusal, a mangled frame, or a reply this
+    /// build cannot decode. Carried whole, since `RequestError` already
+    /// decides an exit code and flattening it would lose that.
+    ///
+    /// Named for the request rather than for a refusal, matching
+    /// [`super::DogRunError::Request`]. Only `RequestError::Rpc` is a
+    /// shepherd saying no; `Wire` and `Undecodable` are the transport
+    /// failing, and calling those a refusal points an operator at the
+    /// shepherd's configuration when the fault is on the wire.
+    Request(RequestError),
 }
 
 impl fmt::Display for Resubscribe {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Lost(lost) => lost.fmt(f),
-            Self::Refused(err) => write!(f, "the shepherd refused a subscription: {err}"),
+            Self::Request(err) => write!(f, "the subscription request failed: {err}"),
         }
     }
 }
@@ -147,7 +154,7 @@ impl core::error::Error for Resubscribe {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
             Self::Lost(lost) => Some(lost),
-            Self::Refused(err) => Some(err),
+            Self::Request(err) => Some(err),
         }
     }
 }
@@ -315,7 +322,7 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
                                 eprintln!("shep dog bark: {failed}");
                                 break match &failed {
                                     Resubscribe::Lost(lost) => super::exit_for(lost),
-                                    Resubscribe::Refused(err) => ExitCode::from(err),
+                                    Resubscribe::Request(err) => ExitCode::from(err),
                                 };
                             }
                         },
@@ -630,7 +637,7 @@ mod tests {
             self.resubscribes
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if let Some(code) = self.refuses {
-                return Err(Resubscribe::Refused(RequestError::Rpc(RpcError {
+                return Err(Resubscribe::Request(RequestError::Rpc(RpcError {
                     code,
                     message: "this shepherd does not serve that topic".into(),
                     daemon_version: None,
