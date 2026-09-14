@@ -12249,7 +12249,7 @@ mod tests {
     /// Found by CodeRabbit on PR 246, and it is the shape a green suite
     /// cannot see: two messages in an order no single test sends.
     #[test]
-    fn a_refused_write_reopens_the_editor_out_from_under_the_overlay() {
+    fn a_refused_write_closes_the_overlay_before_reopening_the_editor() {
         let mut app = fixtures::app_in_settings_on(SettingField::MaxCronSleep);
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         let _ = app.update(Msg::Key(KeyPress::TextApply));

@@ -76,7 +76,7 @@ pub(super) const fn is_boxed(width: u16, interior: u16) -> bool {
 /// it separately: a mismatch here would refuse to draw in one place and
 /// draw a wrong-sized box in the other, unreachable with a dialog of a
 /// dozen rows but exactly the class one shared function forecloses.
-pub(super) fn boxed_height(lines: &[Line<'static>]) -> u16 {
+pub(super) fn boxed_height(lines: &[Line<'_>]) -> u16 {
     u16::try_from(lines.len())
         .unwrap_or(u16::MAX)
         .saturating_add(2)
@@ -95,7 +95,7 @@ pub(super) fn boxed_height(lines: &[Line<'static>]) -> u16 {
 /// the same reasoning this module's own doc gives for not duplicating the
 /// box at all.
 pub(super) fn draw_boxed(
-    lines: &[Line<'static>],
+    lines: &[Line<'_>],
     interior: u16,
     palette: Palette,
     ground: Style,
@@ -207,15 +207,79 @@ pub(super) fn mute(buffer: &mut Buffer, area: Rect, palette: Palette) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lookout::view::fixtures;
     use crate::output::width::char_columns;
+
+    /// The reset half: a title band's reverse video and a selected row's
+    /// own ground both patch onto a cell rather than replace it, which is
+    /// exactly what a single `palette.muted()` call would leave standing.
+    #[test]
+    fn mute_clears_the_ground_and_reverse_video_it_finds() {
+        let area = Rect::new(0, 0, 1, 1);
+        let mut buffer = Buffer::empty(area);
+        buffer.set_style(
+            area,
+            Style::default()
+                .bg(ratatui::style::Color::Red)
+                .add_modifier(ratatui::style::Modifier::REVERSED),
+        );
+        let palette = fixtures::coloured();
+        mute(&mut buffer, area, palette);
+        let style = buffer[(0, 0)].style();
+        assert!(
+            !style
+                .add_modifier
+                .contains(ratatui::style::Modifier::REVERSED),
+            "reverse video from underneath survived the mute: {style:?}"
+        );
+        assert_eq!(
+            style.bg,
+            Some(ratatui::style::Color::Reset),
+            "the prior background survived the mute: {style:?}"
+        );
+        assert_eq!(
+            style.fg,
+            palette.muted().fg,
+            "muted's own ink did not land: {style:?}"
+        );
+    }
+
+    /// `boxed_height` is pinned on its own below; this is the margin and
+    /// vertical-centre arithmetic around it, which nothing else in this
+    /// module exercises directly. A 20-wide area with a 10-cell interior
+    /// gives a 12-cell box, margin `(20 - 12) / 2 = 4`; a one-line box is
+    /// three rows tall in a 10-row area, margin `(10 - 3) / 2 = 3`.
+    #[test]
+    fn draw_boxed_centres_the_box_in_the_area() {
+        let area = Rect::new(0, 0, 20, 10);
+        let mut buffer = Buffer::empty(area);
+        let lines = [Line::default()];
+        draw_boxed(
+            &lines,
+            10,
+            fixtures::plain(),
+            Style::reset(),
+            area,
+            &mut buffer,
+        );
+        assert_eq!(
+            buffer[(4, 3)].symbol(),
+            BOX_TOP_LEFT.to_string(),
+            "top-left corner is not where the margin arithmetic puts it"
+        );
+        assert_eq!(
+            buffer[(4, 5)].symbol(),
+            BOX_BOTTOM_LEFT.to_string(),
+            "bottom-left corner is not where the margin arithmetic puts it"
+        );
+    }
 
     /// The two rows a border costs, and the saturation this function's own
     /// doc spends a paragraph on.
     ///
     /// That paragraph is the reason the helper exists: the fit check and the
     /// draw did the addition separately and differently, one saturating from
-    /// a `u16::MAX` fallback and one adding plainly from `0`. Nothing
-    /// exercised the arm it describes, so round 7 asked for this.
+    /// a `u16::MAX` fallback and one adding plainly from `0`.
     ///
     /// 65_534 lines is where `saturating_add` starts to bite, and it is
     /// unreachable from any caller: the overlay's own form is nineteen rows.

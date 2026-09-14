@@ -609,8 +609,6 @@ mod tests {
     use crate::lookout::app::{ActionVerb, App, KeyPress, Msg};
     use crate::lookout::theme::Palette;
 
-    /// The frozen hint names the keymap it no longer refuses.
-    ///
     /// The hint's clause separators are three spaces, every one of them.
     ///
     /// `FROZEN_HINT` is written with a `\` line continuation, and review read
@@ -631,7 +629,7 @@ mod tests {
     /// failure this hint has already had once, when it named a refusal that
     /// ten keys disproved, so the count stays and gets bumped by hand.
     #[test]
-    fn the_frozen_hints_clauses_are_separated_by_exactly_three_spaces() {
+    fn the_frozen_hint_clauses_are_separated_by_exactly_three_spaces() {
         assert!(
             !FROZEN_HINT.contains("    "),
             "a separator wider than three spaces: {FROZEN_HINT:?}"

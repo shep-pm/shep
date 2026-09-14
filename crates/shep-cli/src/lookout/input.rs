@@ -41,6 +41,11 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         return match key.code {
             // SHIFT stays: crossterm delivers a capital as `Char('W')` with
             // SHIFT set. ALT is filtered, since `Alt-w` is never a letter.
+            // The guard never inspects which modifiers ARE present, only
+            // that ALT is absent, so a shifted `?` takes the same branch as
+            // an unshifted one and needs no separate test:
+            // `a_shifted_letter_is_still_a_letter_in_the_box` already proves
+            // the general case with `W`.
             KeyCode::Char(typed) if !key.modifiers.contains(KeyModifiers::ALT) => {
                 Some(KeyPress::TextChar(typed))
             }
