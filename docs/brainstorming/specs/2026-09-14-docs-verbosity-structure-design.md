@@ -270,6 +270,14 @@ Surviving a reboot - picks up from the saved roll
 `shep save` appears in both. It is the hinge between the two, and a reader
 who lands on either page needs it.
 
+Above the runbook, the migration page gains a side-by-side comparison: one
+app written as `ecosystem.config.js` and the same app written as
+`Flockfile.toml`, adjacent. The page currently shows what the importer
+writes but never the pm2 input beside it, so a reader cannot see their own
+file translated. The field table further down stays, and answers a
+different question: the comparison shows the shape, the table answers what
+one field became.
+
 Dropping boot survival from the migration page entirely was considered and
 rejected. `pm2 startup` and `pm2 save` are in pm2's own quick start, so a
 refugee's apps come back after a reboot today. Removing the subject without
@@ -304,8 +312,17 @@ Next -> chapter N+1                         then related links
 1. Nothing sits between the lede and the short version. No pre-release
    warning, no platform caveat.
 2. No disclosure inside the short version.
-3. "Where to go next" becomes "Next", and the real next chapter is first.
+3. Each numbered step in a short version ends with its own pointer, in the
+   form "Full reference: X". A reader who needs depth at step 2 gets it at
+   step 2 rather than at the bottom of the page.
+4. "Where to go next" becomes "Next", and the real next chapter is first.
    Today `from-pm2` points at `getting-started`, which is backwards.
+5. Chapter 1's lede states how long the page takes, so the contract the
+   reader is being offered is written down.
+6. Every page ends with the same escape hatch: a line offering the issue
+   tracker to anyone the page did not answer. One component, rendered by
+   `DocsLayout`, so no page can omit it. This is the part of the site that
+   replaces a private message.
 
 `shepherd-channel` already carries a section called "Summary for the
 impatient" at position 7 of 8. The pattern is right and the position is
@@ -393,6 +410,28 @@ contents is for. Collapsing all but the current part was considered and
 rejected: it hides the shape, and the scroll fix removes the reason to
 reach for it.
 
+## The benchmark table is stale and has to be re-measured
+
+`from-pm2`'s cost table was measured on 2026-08-29 against shep 0.1.12 and
+pm2 7.0.4. The workspace is on 0.8.0. The numbers are presented with the
+date and the versions attached, so nothing on the page is dishonest, but
+they describe a build eight minor versions old and one of the rows moved
+by a factor of fifteen in the days before it was taken.
+
+Re-run the comparison against current shep and current pm2, and update the
+table, the date and the versions. Keep the methodology prose as it stands.
+It names exact versions, says to read the ratios rather than the absolute
+figures, admits the box was not idle and changed power state partway
+through, reports that the two shep rounds agreed within 2.6 percent, says
+plainly that the idle CPU difference is not a result, and volunteers that
+shep was eight times behind pm2 on log-plane cost the day before the run.
+That is a stronger disclosure than the comparable page on any competitor
+reviewed for this spec, and it is the reason the numbers can be trusted.
+
+Automating the run in CI was considered and rejected for this pass. Shared
+runners are noisy enough that a hand measurement on a known box, with the
+drift check above, is the more honest artifact.
+
 ## llms.txt
 
 `/llms.txt`, generated from `docsNav.ts`: one line per page with title,
@@ -419,11 +458,45 @@ The site ships when:
 4. `web/scripts/generate-cli-reference.sh` has been re-run and its diff is
    empty or explained.
 5. Every H2 and H3 on every page has a unique id.
+5a. Every page renders the escape hatch, because `DocsLayout` renders it
+    rather than each page.
+5b. The migration page shows a pm2 config and its Flockfile equivalent
+    side by side, above the runbook.
+5c. The benchmark table names a date and versions no older than the
+    release current when it ships.
 6. `h2` is declared once, in the shared stylesheet.
 7. The sidebar scrolls independently at a 768px viewport.
 8. The DM test passes: take the last thing a beta tester was sent
    privately, and find it on the site in under thirty seconds. Anything
    that fails is a page bug with a name.
+
+## What a competitor's docs site settled, and what it did not
+
+`oxmgr.empellio.com/docs` was reviewed on 2026-09-14. It is another Rust
+process manager aimed at the same pm2 user, so its docs answer the same
+question this spec does, with different choices.
+
+Three of its patterns are adopted above: per-step reference pointers, a
+stated time promise, and an escape hatch on every page. A fourth, the
+side-by-side config comparison, filled a real gap on the migration page.
+
+Four were looked at and left:
+
+- **A flat ten-item sidebar.** It works there because that site documents
+  ten pages. shep documents twenty-seven, and a flat list of twenty-seven
+  is the problem rather than the fix.
+- **Quick Start living at `/docs` itself, ending in a grid of every
+  chapter.** Tempting, and rejected to keep `/docs` a redirect and every
+  existing slug in place.
+- **A feature-comparison table with no row where pm2 wins.** shep's cost
+  table has one, reported as a tie. It stays. A comparison that never
+  concedes anything reads as marketing.
+- **Benchmarks regenerated by CI on every push.** See the section above.
+
+Two things that site does worse are worth naming, because they are easy to
+assume a competitor got right. Not one heading on any page checked carries
+an `id`, so nothing there can be linked to. There is no search of any kind.
+This spec's anchor work and the site's existing Pagefind index both stand.
 
 ## Still open
 
