@@ -4094,12 +4094,13 @@ mod tests {
     /// same `Scene::ALL` the pinned snapshots read, so the ordinary suite
     /// reddens first and whoever fixes it comes back here.
     ///
-    /// **Adding a scene can.** Nothing reddens, because the committed files
-    /// are simply missing the new frame and still carry the old count in
-    /// their own preamble. That is what happened when the eight keymap
-    /// scenes landed: both files said fifty scenes and held none of them.
-    /// So run this in the same commit that adds a scene, the way the close
-    /// dialog's own gallery commit did.
+    /// **Adding a scene without running this one is caught too, now.**
+    /// `the_committed_gallery_matches_what_the_generator_would_write`
+    /// diffs the committed files against fresh output, catching a scene
+    /// missing from both while their own preamble still carries the old
+    /// count. Run this anyway, in the same commit that adds a scene: a
+    /// missing regeneration failing there is a one-line fix, failing in
+    /// the other test means reading a full-file diff to find it.
     #[test]
     #[ignore = "writes into docs/lookout; run it deliberately"]
     fn write_the_gallery() {

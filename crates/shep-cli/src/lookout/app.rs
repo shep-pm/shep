@@ -3182,6 +3182,10 @@ impl App {
         // The rebuilt pane carries no editor, so the keyboard must not
         // still think one is open.
         self.release_text_mode_if_unowned();
+        // An overlay open when this reply landed would otherwise survive
+        // the body it was drawn over, and every key from here goes to
+        // `on_keymap_key` instead of the pane the operator asked for.
+        self.keymap_open = false;
     }
 
     fn on_event(&mut self, event: BusEvent) -> Effect {
@@ -3277,6 +3281,10 @@ impl App {
                 // to look at.
                 self.body = Body::ConfigPane(pane);
                 self.release_text_mode_if_unowned();
+                // Same as `Self::open_or_refresh_config_pane`: an overlay
+                // open when this reply landed must not survive the body
+                // change under it.
+                self.keymap_open = false;
             }
             Ok(_unrecognised) => {
                 self.notice = Some(Notice {
@@ -12233,8 +12241,10 @@ mod tests {
         assert_eq!(app.settings().unwrap().snapshot(), &updated);
     }
 
-    /// A refused write must not reopen the text editor underneath the
-    /// overlay, because `on_key` checks text mode ahead of `keymap_open`.
+    /// A refused write reopens the text editor, and the overlay must not
+    /// survive to hide it: `on_key` checks text mode ahead of
+    /// `keymap_open`, so a still-open overlay would swallow every key
+    /// meant for the reopened editor.
     ///
     /// The ordering in `on_key` is deliberate and documented: `h` typed into
     /// an open filter box is a letter, so the overlay can never be raised
@@ -13163,6 +13173,36 @@ mod tests {
         let pane = app.config_pane().expect("the reply opens the pane");
         assert_eq!(pane.target().name(), "web");
         assert_eq!(pane.fields().len(), 42);
+    }
+
+    /// `h` before the reply arrives raises the overlay over the dashboard;
+    /// the reply then replaces `self.body` with the pane, which must close
+    /// the overlay too, or every key past this point goes to
+    /// `on_keymap_key` instead of the pane the operator asked for.
+    #[test]
+    fn a_config_reply_that_lands_with_the_overlay_up_closes_it() {
+        let mut app =
+            fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Edit));
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(app.keymap_open(), "the overlay did not open");
+
+        app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "web".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(
+                fixtures::sheep_config_view(),
+            ))),
+        });
+        assert!(
+            app.config_pane().is_some(),
+            "the reply must still open the pane"
+        );
+        assert!(
+            !app.keymap_open(),
+            "the overlay survived a body change under it"
+        );
     }
 
     /// `s` then `e` fire two reads; if the settings one lands first it opens
@@ -16363,6 +16403,40 @@ mod tests {
         assert!(
             app.settings().is_none(),
             "the settings screen closes once there is something to look at"
+        );
+    }
+
+    /// Same property as `a_config_reply_that_lands_with_the_overlay_up_closes_it`,
+    /// on `on_dog_section`'s own body-replacing reply rather than
+    /// `open_or_refresh_config_pane`'s.
+    #[test]
+    fn a_dog_sections_reply_that_lands_with_the_overlay_up_closes_it() {
+        let mut app = fixtures::app_in_settings_on_dog("metrics");
+        app.update(Msg::Key(KeyPress::Edit));
+        app.update(Msg::DogPane {
+            name: "metrics".to_string(),
+            adopted_path: None,
+            result: Ok(crate::dog::builtin_schema("metrics").expect("a built-in")),
+        });
+        assert!(app.config_pane().is_none(), "one half is not a pane yet");
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(app.keymap_open(), "the overlay did not open");
+
+        app.update(Msg::Replied {
+            sent: Sent::DogSection {
+                name: "metrics".to_string(),
+            },
+            result: Ok(Response::DogSection {
+                toml: "bind = \"0.0.0.0:9615\"\n".to_string().into(),
+            }),
+        });
+        assert!(
+            app.config_pane().is_some(),
+            "the reply must still open the pane"
+        );
+        assert!(
+            !app.keymap_open(),
+            "the overlay survived a body change under it"
         );
     }
 
