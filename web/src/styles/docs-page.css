@@ -191,6 +191,13 @@
  * its table rendered unstyled: no border, no padding, no monospace term
  * column. That is the same fault the page chrome had before this file
  * existed, in a smaller shape, and it was live rather than theoretical.
+ *
+ * Every row selector names `.rows` as its parent. `.row` on its own is a
+ * class shared with eight other tables on the site, and `.docs-shell main
+ * .row` outranks the page-scoped `.row` those pages declare, so a bare
+ * selector here reached tables it knows nothing about. The lexicon on
+ * /docs/terminology has four cells per row and was being laid out in the
+ * two columns below.
  */
 .docs-shell main .rows {
   border: 3px solid var(--line);
@@ -199,7 +206,7 @@
   margin: 0 0 30px;
 }
 
-.docs-shell main .row {
+.docs-shell main .rows > .row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 2.4fr);
   gap: 14px;
@@ -210,11 +217,11 @@
   color: var(--ink-2);
 }
 
-.docs-shell main .row:last-child {
+.docs-shell main .rows > .row:last-child {
   border-bottom: none;
 }
 
-.docs-shell main .row span:first-child {
+.docs-shell main .rows > .row > span:first-child {
   font-family: "Space Mono", monospace;
   font-weight: 700;
   color: var(--ink);
