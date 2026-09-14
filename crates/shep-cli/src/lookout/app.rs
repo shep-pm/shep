@@ -130,8 +130,16 @@ pub enum KeyPress {
     /// there: an operator should not have to remember two keys for one
     /// job. `Escape` is the only key that closes a pane or a sub-screen.
     Edit,
-    /// `h`: shows the selected field's own help text, in the config pane.
-    /// Pressing it again, or `Escape`, dismisses it. Bound nowhere else.
+    /// `h` or `?`: opens the keymap overlay, from any body. Pressing either
+    /// again, or `Escape`, closes it. Refused while a close dialog is up,
+    /// which owns the keyboard until it is answered, and consumed as a
+    /// cancel instead of opening while an action or a settings candidate
+    /// is armed, the same as every other key.
+    ///
+    /// The config pane's field help draws unconditionally, wherever the
+    /// explanation panel cannot show it, so no key is needed for it: see
+    /// `view::pane::top_lines`. That is why `h` is free to mean this here
+    /// too.
     Help,
     /// `d`: arms the removal of the element under the cursor, on the config
     /// pane's list sub-screen. On a config field, restores the default by
@@ -2234,6 +2242,13 @@ pub struct App {
     /// surviving one poll to the next is exactly what keeps a collapse in
     /// place while the flock underneath it changes shape.
     collapsed_folds: HashSet<String>,
+    /// Whether the keymap overlay is up.
+    ///
+    /// Not an [`InputMode`]: `map_key` has exactly two modes and an overlay
+    /// that swallows keys is a reducer concern rather than a keyboard-edge
+    /// one. A third mode would also have to answer what a letter means in
+    /// it, and the answer is nothing.
+    keymap_open: bool,
 }
 
 /// One flock entry as `visible_rows` sorts and partitions it: name, instance
@@ -2313,6 +2328,7 @@ impl App {
             cpu_last: HashMap::new(),
             grouping: Grouping::Flat,
             collapsed_folds: HashSet::new(),
+            keymap_open: false,
         }
     }
 
@@ -2689,6 +2705,23 @@ impl App {
                             if let Some(settings) = self.settings_mut() {
                                 settings.pending = Some(Pending::Typing { field, buffer });
                             }
+                            // The overlay closes rather than the editor
+                            // reopening beneath it. `on_key` checks text mode
+                            // ahead of `keymap_open`, deliberately, so an `h`
+                            // typed into a filter box stays a letter; the cost
+                            // is that text mode restored from a MESSAGE would
+                            // take the keyboard while the box is still drawn,
+                            // and every key would reach a socket path the box
+                            // hides. Reachable because `is_armed` does not
+                            // cover `Pending::Sent`, so `h` with a write in
+                            // flight opens the overlay instead of cancelling.
+                            //
+                            // Closing it is the lesser surprise: the operator
+                            // asked for a key list, and what they get instead
+                            // is their refused write, the grave notice saying
+                            // why, and their own typed text back. `h` reopens
+                            // the box.
+                            self.keymap_open = false;
                             self.mode = InputMode::Text;
                         }
                         self.notice = Some(Notice {
@@ -3134,9 +3167,6 @@ impl App {
             .config_pane()
             .map(|pane| pane.edits().clone())
             .unwrap_or_default();
-        // Carried for the same reason as the cursor: a re-read must not
-        // dismiss a help note the operator has not dismissed.
-        let carried_help = self.config_pane().is_some_and(ConfigPane::help_open);
         let mut pane = ConfigPane::sheep(view);
         pane.adopt_edits(carried_edits);
         if let Some(carried) = carried {
@@ -3148,11 +3178,14 @@ impl App {
         if let Some((key, carried)) = carried_list {
             pane.adopt_list_view(&key, carried);
         }
-        pane.set_help_open(carried_help);
         self.body = Body::ConfigPane(pane);
         // The rebuilt pane carries no editor, so the keyboard must not
         // still think one is open.
         self.release_text_mode_if_unowned();
+        // An overlay open when this reply landed would otherwise survive
+        // the body it was drawn over, and every key from here goes to
+        // `on_keymap_key` instead of the pane the operator asked for.
+        self.keymap_open = false;
     }
 
     fn on_event(&mut self, event: BusEvent) -> Effect {
@@ -3225,13 +3258,13 @@ impl App {
                 // Everything a refresh has to carry across, read before the
                 // rebuild replaces the pane: see `Self::on_sheep_config`,
                 // which states the argument for each. A dog pane has no env
-                // sub-screen, so only two of the three apply.
+                // sub-screen or list sub-screen, so only its view and its
+                // edits carry across.
                 let carried = self.config_pane().map(|pane| pane.view().clone());
                 let carried_edits = self
                     .config_pane()
                     .map(|pane| pane.edits().clone())
                     .unwrap_or_default();
-                let carried_help = self.config_pane().is_some_and(ConfigPane::help_open);
                 let mut pane = ConfigPane::dog(
                     probe.name,
                     probe.adopted_path,
@@ -3242,13 +3275,16 @@ impl App {
                 if let Some(carried) = carried {
                     pane.adopt_view(carried);
                 }
-                pane.set_help_open(carried_help);
                 // The settings screen is what a dog pane opens over, and this
                 // one assignment is what closes it: `Body` holds one
                 // variant, so the pane replaces it once there is something
                 // to look at.
                 self.body = Body::ConfigPane(pane);
                 self.release_text_mode_if_unowned();
+                // Same as `Self::open_or_refresh_config_pane`: an overlay
+                // open when this reply landed must not survive the body
+                // change under it.
+                self.keymap_open = false;
             }
             Ok(_unrecognised) => {
                 self.notice = Some(Notice {
@@ -3455,10 +3491,65 @@ impl App {
         }
     }
 
+    /// Cancels an armed settings candidate, answering whether it did.
+    ///
+    /// Five arms of the settings handler spend a key this way rather than
+    /// acting: `Settings`/`Escape`, `Refresh`, `Edit`, `Help`, and the four
+    /// `Select*` arms together. A change to what cancelling means, a
+    /// confirmation, a different field cleared, has to land here or the
+    /// handler starts disagreeing with itself about what an armed prompt
+    /// eats.
+    ///
+    /// A `bool` rather than an `Effect`, so each caller keeps its own reason
+    /// for returning: the arms are identical in what they cancel and
+    /// different in what they would otherwise have done.
+    fn disarm_settings_candidate(&mut self) -> bool {
+        if let Some(settings) = self.settings_mut()
+            && settings.is_armed()
+        {
+            settings.pending = None;
+            return true;
+        }
+        false
+    }
+
+    /// Raises the overlay. Reached from every body's own `Help` arm, so
+    /// each body's cancel and dialog guards have already run by the time
+    /// this is called: `h` cancels an armed confirm and is consumed, and a
+    /// close dialog never reaches its body's match at all.
+    fn open_keymap(&mut self) -> Effect {
+        self.keymap_open = true;
+        Effect::None
+    }
+
+    /// The overlay's own keymap while it is up.
+    ///
+    /// Four keystrokes do something across three arms, since `map_key` folds
+    /// `h` and `?` into one `Help`, and everything else is swallowed. Swallowing
+    /// is the point: the box covers the flock table, so a `j` that reached
+    /// the reducer would move a selection the operator cannot see.
+    fn on_keymap_key(&mut self, key: KeyPress) -> Effect {
+        match key {
+            KeyPress::Quit => Effect::Quit,
+            KeyPress::Help | KeyPress::Escape => {
+                self.keymap_open = false;
+                Effect::None
+            }
+            _ => Effect::None,
+        }
+    }
+
     fn on_key(&mut self, key: KeyPress) -> Effect {
         // While the box is open every key is text.
         if self.mode == InputMode::Text {
             return self.on_text_key(key);
+        }
+        // The overlay owns the keyboard while it is up, ahead of every pane
+        // below. Behind text mode, not in front of it: `h` typed into an
+        // open filter box is a letter, so the overlay can never be raised
+        // from inside one.
+        if self.keymap_open {
+            return self.on_keymap_key(key);
         }
         // The config pane owns the keyboard while it is open, ahead of the
         // settings screen and the armed-confirm check below. The two
@@ -3600,9 +3691,11 @@ impl App {
             KeyPress::Edit => self.ask_for_config(),
             // `space` acts only on the settings screen.
             KeyPress::Cycle => Effect::None,
-            // `h` names a field's help text, and the dashboard has no
-            // field selected.
-            KeyPress::Help => Effect::None,
+            // Raises the keymap overlay, reached only once the
+            // armed-confirm check above has already had its turn: an
+            // armed confirm consumes `h` as a cancel rather than letting
+            // it reach here.
+            KeyPress::Help => self.open_keymap(),
             // Toggles rather than opening: pressing it twice is where it
             // began. But `ByFold` collapses a grouped app to its
             // `RowKey::Group` header alone (`push_fold_group_rows`), so a
@@ -3626,8 +3719,11 @@ impl App {
             }
             // Only a `RowKey::Fold` header answers to this key; anything
             // else, including no selection at all, is a no-op rather than a
-            // refusal, the same silence `Cycle` and `Help` fall back to
-            // outside their own screen.
+            // refusal, the same silence `Cycle` falls back to outside its own
+            // screen. Not `Help` any more: the overlay's own screen is every
+            // screen, so `h` acts here rather than falling silent. Left
+            // naming `Cycle` alone rather than dropped, because the next
+            // reader of this arm wants to know a no-op is deliberate.
             KeyPress::Collapse => {
                 if let Some(RowKey::Fold(name)) = self.selected()
                     && !self.collapsed_folds.remove(&name)
@@ -3778,6 +3874,7 @@ impl App {
                 }
             }
             KeyPress::SecretDelete => self.arm_secret_delete(),
+            KeyPress::Help => self.open_keymap(),
             // Nothing else means anything here. Listed rather than a
             // wildcard, so a new `KeyPress` variant cannot fall silently
             // into an arm that ignores it.
@@ -3790,7 +3887,6 @@ impl App {
             | KeyPress::Settings
             | KeyPress::Cycle
             | KeyPress::Edit
-            | KeyPress::Help
             | KeyPress::Remove
             | KeyPress::StepUp
             | KeyPress::StepDown
@@ -4349,6 +4445,7 @@ impl App {
                 }
                 Effect::None
             }
+            KeyPress::Help => self.open_keymap(),
             KeyPress::Refresh
             | KeyPress::Confirm
             | KeyPress::TextChar(_)
@@ -4357,7 +4454,6 @@ impl App {
             | KeyPress::TextAbandon
             | KeyPress::Settings
             | KeyPress::Cycle
-            | KeyPress::Help
             | KeyPress::Remove
             | KeyPress::FoldView
             | KeyPress::Collapse
@@ -4525,6 +4621,7 @@ impl App {
             // window has no fixed start, only a tail. Left unbound rather
             // than aliased to `ctrl-u`'s page, which would give one key two
             // different meanings depending on how far a page happens to be.
+            KeyPress::Help => self.open_keymap(),
             KeyPress::SelectFirst
             | KeyPress::Refresh
             | KeyPress::Action(_)
@@ -4539,7 +4636,6 @@ impl App {
             | KeyPress::Settings
             | KeyPress::Cycle
             | KeyPress::Edit
-            | KeyPress::Help
             | KeyPress::Remove
             | KeyPress::StepUp
             | KeyPress::StepDown
@@ -4663,12 +4759,7 @@ impl App {
             // cancel-before-act rule the dashboard follows. `Escape` closing
             // rather than quitting is where this screen swaps that cascade.
             KeyPress::Settings | KeyPress::Escape => {
-                let armed = self.settings().is_some_and(Settings::is_armed);
-                if armed {
-                    if let Some(settings) = self.settings_mut() {
-                        settings.pending = None;
-                    }
-                } else {
+                if !self.disarm_settings_candidate() {
                     self.body = Body::FlockTable;
                 }
             }
@@ -4679,17 +4770,15 @@ impl App {
             | KeyPress::SelectDown
             | KeyPress::SelectFirst
             | KeyPress::SelectLast => {
-                if let Some(settings) = self.settings_mut() {
-                    if settings.is_armed() {
-                        settings.pending = None;
-                    } else {
-                        match key {
-                            KeyPress::SelectUp => settings.move_by(-1),
-                            KeyPress::SelectDown => settings.move_by(1),
-                            KeyPress::SelectFirst => settings.move_to_first(),
-                            KeyPress::SelectLast => settings.move_to_last(),
-                            _ => unreachable!(),
-                        }
+                if !self.disarm_settings_candidate()
+                    && let Some(settings) = self.settings_mut()
+                {
+                    match key {
+                        KeyPress::SelectUp => settings.move_by(-1),
+                        KeyPress::SelectDown => settings.move_by(1),
+                        KeyPress::SelectFirst => settings.move_to_first(),
+                        KeyPress::SelectLast => settings.move_to_last(),
+                        _ => unreachable!(),
                     }
                 }
             }
@@ -4698,10 +4787,7 @@ impl App {
             // Re-reads `shep.toml`, so another process's write shows up, and
             // the cursor survives. An armed candidate eats this key too.
             KeyPress::Refresh => {
-                if let Some(settings) = self.settings_mut()
-                    && settings.is_armed()
-                {
-                    settings.pending = None;
+                if self.disarm_settings_candidate() {
                     return Effect::None;
                 }
                 return Effect::LoadSettings;
@@ -4710,13 +4796,21 @@ impl App {
             // the pane shows the dog's real schema and section or nothing.
             // An armed candidate eats it first, like every other key here.
             KeyPress::Edit => {
-                if let Some(settings) = self.settings_mut()
-                    && settings.is_armed()
-                {
-                    settings.pending = None;
+                if self.disarm_settings_candidate() {
                     return Effect::None;
                 }
                 return self.probe_dog_schema();
+            }
+            // An armed candidate eats this too, on the same terms as
+            // `Refresh` and `Edit` above: a prompt left standing behind the
+            // overlay is a value the operator cannot see to confirm or
+            // cancel, so `h` cancels it and is consumed rather than also
+            // opening the overlay.
+            KeyPress::Help => {
+                if self.disarm_settings_candidate() {
+                    return Effect::None;
+                }
+                return self.open_keymap();
             }
             // Unreachable from here, named so a new variant cannot fall
             // silently into an arm that ignores it.
@@ -4726,7 +4820,6 @@ impl App {
             | KeyPress::TextBackspace
             | KeyPress::TextApply
             | KeyPress::TextAbandon
-            | KeyPress::Help
             | KeyPress::Remove
             | KeyPress::StepUp
             | KeyPress::StepDown
@@ -4870,11 +4963,11 @@ impl App {
     ///
     /// Movement walks fields, `r` re-reads, `space` cycles the row under
     /// the cursor, `Enter` or `e` edits it, `u` undoes the newest edit,
-    /// `h` toggles the selected field's own help text, and `Escape`
-    /// closes help if it is open, else asks the close dialog's question if
-    /// there is one to ask, else writes everything filed and leaves.
-    /// Everything else is named rather than wildcarded, so a stray variant
-    /// cannot fall silently into an arm that ignores it.
+    /// and `Escape` asks the close dialog's question if there is one to
+    /// ask, else writes everything filed and leaves. `h` raises the keymap
+    /// overlay; see `KeyPress::Help`'s arm below. Everything else is named
+    /// rather than wildcarded, so a stray variant cannot fall silently into
+    /// an arm that ignores it.
     ///
     /// Nothing is armed here and no key is eaten. A keystroke that edits
     /// files into the pane's own set and sends nothing, so a stray one
@@ -4891,25 +4984,28 @@ impl App {
             return Effect::Quit;
         }
         match key {
+            // Unreachable: the guard above already returned. Kept rather
+            // than folded into a silent group or replaced with a wildcard,
+            // because every other arm here is named on purpose (a stray
+            // `KeyPress` variant should not fall through unnoticed), and a
+            // wildcard would defeat that for every variant, not just this
+            // one. If the guard above is ever removed, this is what Quit
+            // still does.
             KeyPress::Quit => return Effect::Quit,
-            // Backs out one level at a time: help first, if it is open,
-            // else the close dialog's own question, else the pane.
-            // `Escape` closes rather than cascading to a filter clear or a
-            // quit, exactly as it does on the settings screen.
+            // Backs out one level at a time: the close dialog's own
+            // question first, if there is one, else the pane. `Escape`
+            // closes rather than cascading to a filter clear or a quit,
+            // exactly as it does on the settings screen.
             //
             // The dialog is asked before anything is taken: `esc` used to
             // write first and ask second, which missed the very edit that
             // made this pane's `Escape` worth asking about. Now nothing
             // leaves the pane until the question is answered, one way or
             // another.
+            //
+            // One press, not two: the field's help draws unconditionally
+            // now, so nothing waits behind a second `esc` for it.
             KeyPress::Escape => {
-                let help_open = self.config_pane().is_some_and(ConfigPane::help_open);
-                if help_open {
-                    if let Some(pane) = self.config_pane_mut() {
-                        pane.close_help();
-                    }
-                    return Effect::None;
-                }
                 if let Some(dialog) = self.close_offer() {
                     self.close_dialog = Some(dialog);
                     return Effect::None;
@@ -4944,9 +5040,7 @@ impl App {
             // key to use it.
             KeyPress::Confirm | KeyPress::Edit => return self.confirm_field(),
             KeyPress::Help => {
-                if let Some(pane) = self.config_pane_mut() {
-                    pane.toggle_help();
-                }
+                self.open_keymap();
             }
             // `d` restores the field under the cursor to its default. Does
             // nothing on an env row or `+ add a key`: unsetting a key
@@ -5229,6 +5323,8 @@ impl App {
                 self.close_dialog = None;
                 Effect::None
             }
+            // `Help` among them: the dialog owns the keyboard until it is
+            // answered, and the keymap overlay is not an exception to that.
             KeyPress::Action(ActionVerb::Stop)
             | KeyPress::SelectUp
             | KeyPress::SelectDown
@@ -5592,7 +5688,8 @@ impl App {
     /// `Escape` closes the sub-screen, not the pane, the same
     /// innermost-first rule the env screen follows. `Enter` or `e` opens
     /// the editor on the element under the cursor, or adds one on
-    /// `+ new`. `d` removes, and `K`/`J` move the element one place.
+    /// `+ new`. `d` removes, `K`/`J` move the element one place, and `h`
+    /// opens the keymap overlay, same as everywhere else.
     ///
     /// A removal and a move file the whole array, since that is what the
     /// write carries. Nothing goes out here: the pane's own `Escape` is
@@ -5602,6 +5699,10 @@ impl App {
             return Effect::Quit;
         }
         match key {
+            // Unreachable, the same way and for the same reason as
+            // `on_pane_key`'s own copy of this arm: the guard above already
+            // returned, and this stays instead of a wildcard so a stray
+            // `KeyPress` variant added later cannot fall through unnoticed.
             KeyPress::Quit => return Effect::Quit,
             KeyPress::Escape => {
                 if let Some(pane) = self.config_pane_mut() {
@@ -5650,6 +5751,9 @@ impl App {
                     pane.file_list_reorder(delta);
                 }
             }
+            KeyPress::Help => {
+                self.open_keymap();
+            }
             KeyPress::Action(_)
             | KeyPress::Cycle
             | KeyPress::Settings
@@ -5658,7 +5762,6 @@ impl App {
             | KeyPress::TextBackspace
             | KeyPress::TextApply
             | KeyPress::TextAbandon
-            | KeyPress::Help
             | KeyPress::FoldView
             | KeyPress::Secrets
             | KeyPress::Reveal
@@ -6757,6 +6860,12 @@ impl App {
         self.mode
     }
 
+    /// Whether the keymap overlay is up, for `view` to draw.
+    #[must_use]
+    pub const fn keymap_open(&self) -> bool {
+        self.keymap_open
+    }
+
     /// How many sheep the shepherd last reported, whatever the filter hides.
     #[must_use]
     pub fn flock_len(&self) -> usize {
@@ -7331,6 +7440,19 @@ impl App {
     /// (`super::secrets::model`) and no open pane all read as `false`.
     pub(crate) fn reveal_gate_open(&self) -> bool {
         matches!(&self.body, Body::Secrets(pane) if pane.model.allow_read)
+    }
+
+    /// Whether the secrets pane owns the body.
+    ///
+    /// `config_pane`, `bleats_pane` and `sheep_pane` each answer this for
+    /// their own body by handing back the pane; the secrets pane had no
+    /// equivalent, so a test could only press `S` and trust it landed. That
+    /// is why the loop over the bodies dropped the cases it could not verify,
+    /// and this predicate is what lets the secrets case join it: the loop can
+    /// assert it arrived before it renders.
+    #[cfg(test)]
+    pub(crate) const fn secrets_pane_is_open(&self) -> bool {
+        matches!(&self.body, Body::Secrets(_))
     }
 
     /// `v`'s answer: a read of the selected row's stored value, or a refusal
@@ -11270,6 +11392,24 @@ mod tests {
         );
     }
 
+    /// `Help`'s own arm here never mentions `armed`: `was_armed`, computed
+    /// before the match for every key but `Confirm` and `Quit`, already
+    /// disarms it.
+    #[test]
+    fn h_disarms_a_secret_delete_before_opening_the_overlay() {
+        let mut app = fixtures::app_with_secrets_and_control();
+        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        assert!(armed_of(&app).is_some(), "the delete armed");
+
+        let _ = app.update(Msg::Key(KeyPress::Help));
+
+        assert!(
+            armed_of(&app).is_none(),
+            "h did not disarm the pending delete"
+        );
+        assert!(app.keymap_open(), "h did not open the overlay");
+    }
+
     /// An armed delete is the fourth armed thing in this module the tick
     /// expires, mirroring the config pane's own `armed_at` at
     /// `app.rs:1999-2005`.
@@ -12101,6 +12241,69 @@ mod tests {
         assert_eq!(app.settings().unwrap().snapshot(), &updated);
     }
 
+    /// A refused write reopens the text editor, and the overlay must not
+    /// survive to hide it: `on_key` checks text mode ahead of
+    /// `keymap_open`, so a still-open overlay would swallow every key
+    /// meant for the reopened editor.
+    ///
+    /// The ordering in `on_key` is deliberate and documented: `h` typed into
+    /// an open filter box is a letter, so the overlay can never be raised
+    /// from inside text mode. It says nothing about the other direction, and
+    /// `Msg::SettingWritten`'s `Err` arm restores `InputMode::Text` from a
+    /// message rather than a keypress.
+    ///
+    /// Reachable because `is_armed` covers `Pending::Armed` and
+    /// `Pending::DogArmed` and not `Pending::Sent`, so `h` with a write in
+    /// flight opens the overlay instead of cancelling anything. The reply
+    /// then lands, and the operator has a box on screen while every key goes
+    /// into a socket path they cannot see.
+    ///
+    /// It is the shape a green suite cannot see: two messages in an order
+    /// no single test sends.
+    #[test]
+    fn a_refused_write_closes_the_overlay_before_reopening_the_editor() {
+        let mut app = fixtures::app_in_settings_on(SettingField::MaxCronSleep);
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+        let Effect::WriteSetting { edit, ticket, .. } = app.update(Msg::Key(KeyPress::Confirm))
+        else {
+            panic!("Enter must send");
+        };
+
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(
+            app.keymap_open(),
+            "a write in flight is not armed, so `h` must open the overlay"
+        );
+
+        let _ = app.update(Msg::SettingWritten {
+            edit,
+            ticket,
+            result: Err("refused".to_string()),
+        });
+
+        // Both halves, because `!(a && b)` holds when either is false and
+        // this one would pass vacuously if the buffer restoration broke:
+        // `typed_text_of` no longer matching means neither line runs and the
+        // assertion is satisfied by an editor that never reopened.
+        assert!(
+            !app.keymap_open(),
+            "the overlay is still up while text mode owns the keyboard"
+        );
+        assert_eq!(
+            app.mode,
+            InputMode::Text,
+            "the editor must reopen, so the operator gets their typed text back"
+        );
+        assert!(
+            matches!(
+                app.settings().unwrap().pending,
+                Some(Pending::Typing { .. })
+            ),
+            "the refused write's buffer is what the editor reopens with"
+        );
+    }
+
     /// Pins `Msg::Settings`'s `opening` check.
     #[test]
     fn the_cursor_survives_a_landed_writes_reload() {
@@ -12619,7 +12822,8 @@ mod tests {
             app.settings().unwrap().pending().is_some(),
             "space must arm before this test means anything"
         );
-        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let effect = app.update(Msg::Key(KeyPress::SelectDown));
+        assert_eq!(effect, Effect::None, "a cancel must not also move");
         assert!(
             app.settings().unwrap().pending().is_none(),
             "the armed candidate must not survive the movement key"
@@ -12628,6 +12832,29 @@ mod tests {
             app.settings().unwrap().cursor(),
             before,
             "the cursor must not also move on the same keypress"
+        );
+    }
+
+    /// `Edit` cancels an armed candidate instead of probing the dog's
+    /// schema, same as `Refresh` and `Help` cancel instead of their own
+    /// actions.
+    ///
+    /// `Effect::None` is the whole assertion on the effect side: a cancel
+    /// that also probed would hand the operator a schema they never asked
+    /// for, on a keypress they spent undoing something else.
+    #[test]
+    fn edit_cancels_an_armed_candidate_rather_than_probing_a_schema() {
+        let mut app = fixtures::app_in_settings_with_control();
+        let _ = app.update(Msg::Key(KeyPress::Cycle));
+        assert!(
+            app.settings().unwrap().pending().is_some(),
+            "space must arm before this test means anything"
+        );
+        let effect = app.update(Msg::Key(KeyPress::Edit));
+        assert_eq!(effect, Effect::None, "a cancel must not also probe");
+        assert!(
+            app.settings().unwrap().pending().is_none(),
+            "the armed candidate must not survive `e`"
         );
     }
 
@@ -12648,6 +12875,26 @@ mod tests {
         assert!(
             app.settings().unwrap().pending().is_none(),
             "the armed candidate must not survive `r`"
+        );
+    }
+
+    #[test]
+    fn escape_cancels_an_armed_candidate_rather_than_closing_the_screen() {
+        let mut app = fixtures::app_in_settings_with_control(); // cursor on log_level
+        let _ = app.update(Msg::Key(KeyPress::Cycle));
+        assert!(
+            app.settings().unwrap().pending().is_some(),
+            "space must arm before this test means anything"
+        );
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        assert_eq!(effect, Effect::None, "a cancel must not also close");
+        assert!(
+            app.settings().is_some(),
+            "the screen must stay open for the cancel to be seen"
+        );
+        assert!(
+            app.settings().unwrap().pending().is_none(),
+            "the armed candidate must not survive escape"
         );
     }
 
@@ -12926,6 +13173,36 @@ mod tests {
         let pane = app.config_pane().expect("the reply opens the pane");
         assert_eq!(pane.target().name(), "web");
         assert_eq!(pane.fields().len(), 42);
+    }
+
+    /// `h` before the reply arrives raises the overlay over the dashboard;
+    /// the reply then replaces `self.body` with the pane, which must close
+    /// the overlay too, or every key past this point goes to
+    /// `on_keymap_key` instead of the pane the operator asked for.
+    #[test]
+    fn a_config_reply_that_lands_with_the_overlay_up_closes_it() {
+        let mut app =
+            fixtures::with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
+        let _ = app.update(Msg::Key(KeyPress::Edit));
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(app.keymap_open(), "the overlay did not open");
+
+        app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "web".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(
+                fixtures::sheep_config_view(),
+            ))),
+        });
+        assert!(
+            app.config_pane().is_some(),
+            "the reply must still open the pane"
+        );
+        assert!(
+            !app.keymap_open(),
+            "the overlay survived a body change under it"
+        );
     }
 
     /// `s` then `e` fire two reads; if the settings one lands first it opens
@@ -14504,15 +14781,40 @@ mod tests {
         assert!(app.close_dialog().is_none());
     }
 
-    /// Help is dismissed before the dialog is asked, so `h` then `esc`
-    /// still puts the operator back on the field list.
+    /// `esc` leaves the config pane on the first press: the blurb draws
+    /// unconditionally now, so nothing else waits for a second press.
+    ///
+    /// 89 columns, one under `panel_width`'s floor, is what makes the
+    /// blurb the only thing drawing the cursor's own help at this width;
+    /// at 160 the panel draws it instead and the assertion below would
+    /// pass regardless.
     #[test]
-    fn escape_dismisses_help_before_it_asks_the_dialog() {
-        let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
-        let _ = app.update(Msg::Key(KeyPress::Help));
+    fn esc_leaves_the_pane_on_one_press_with_a_blurb_showing() {
+        let mut app = fixtures::app_in_sheep_pane_with_nothing_parked();
+        let pane = app.config_pane().expect("the pane is open");
+        let Some(PaneRow::Field(index)) = pane.cursor() else {
+            panic!("the cursor is not on a field");
+        };
+        // The longest word, not the whole help string. The blurb wraps to
+        // BLURB_WRAP, and `render_all` joins rows with newlines, so a help
+        // text over that budget is present on screen and absent from this
+        // assertion.
+        let anchor = pane.fields().fields()[index]
+            .help
+            .split_whitespace()
+            .max_by_key(|word| word.len())
+            .expect("the field help is empty")
+            .to_owned();
+        let lines = crate::lookout::view::pane::pane_lines(pane, fixtures::plain(), 89, 40);
+        assert!(
+            fixtures::render_all(&lines).contains(&anchor),
+            "the blurb is not on screen before esc"
+        );
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(!app.config_pane().unwrap().help_open());
-        assert!(app.close_dialog().is_none());
+        assert!(
+            app.config_pane().is_none(),
+            "one esc did not leave the pane"
+        );
     }
 
     /// The case the old menu missed: an edit made in this pane, on a sheep
@@ -14657,40 +14959,220 @@ mod tests {
         assert!(matches!(effect, Effect::None), "got {effect:?}");
     }
 
+    /// `h` raises the keymap overlay from inside the config pane too: the
+    /// field help draws unconditionally (`view::pane::top_lines`), so no
+    /// key is needed for it and `h` is free for this instead.
     #[test]
-    fn h_toggles_help_and_escape_dismisses_it_before_closing_the_pane() {
+    fn h_opens_the_keymap_overlay_in_the_config_pane() {
         let mut app = fixtures::app_in_sheep_pane();
         pane_to(&mut app, "max_memory");
-        let _ = app.update(Msg::Key(KeyPress::Help));
-        assert!(app.config_pane().unwrap().help_open());
-        // Escape dismisses help first; the pane is still open.
-        let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(!app.config_pane().unwrap().help_open());
-        assert!(
-            app.config_pane().is_some(),
-            "the first escape only closes help"
-        );
-        // A second `h` toggles it back open, and pressing it again closes it.
-        let _ = app.update(Msg::Key(KeyPress::Help));
-        assert!(app.config_pane().unwrap().help_open());
-        let _ = app.update(Msg::Key(KeyPress::Help));
-        assert!(!app.config_pane().unwrap().help_open());
-        // Escape with help already closed closes the pane, same as ever.
-        let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.config_pane().is_none());
+        assert_eq!(app.update(Msg::Key(KeyPress::Help)), Effect::None);
+        assert!(app.config_pane().is_some(), "h closed the pane");
+        assert!(app.keymap_open(), "h did not raise the overlay");
     }
 
-    /// `h` on an env row has no field to show help for, so `top_line`
-    /// draws nothing for it even though the flag it toggles is the same
-    /// one a field row uses: `h` is bound once, on the whole field list,
-    /// not per row.
+    /// `h` raises the keymap overlay from the list sub-screen too, reached
+    /// the same way `enter_on_an_array_row_opens_the_list_sub_screen` gets
+    /// there: `pane_to` an array field, then `Confirm`. `on_pane_key`
+    /// routes to `on_list_key` only once `ConfigPane::list()` is `Some`, so
+    /// landing here for real is the only way to exercise its own `Help`
+    /// arm rather than the pane's.
     #[test]
-    fn h_toggles_help_on_an_env_row_but_nothing_draws_it() {
+    fn h_opens_the_keymap_overlay_from_the_list_sub_screen() {
         let mut app = fixtures::app_in_sheep_pane_with_control();
-        let _ = app.update(Msg::Key(KeyPress::SelectLast));
-        assert_eq!(app.config_pane().unwrap().cursor(), Some(PaneRow::AddEnv));
+        pane_to(&mut app, "args");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(
+            app.config_pane().unwrap().list().is_some(),
+            "the list sub-screen did not open"
+        );
         assert_eq!(app.update(Msg::Key(KeyPress::Help)), Effect::None);
-        assert!(app.config_pane().unwrap().help_open());
+        assert!(
+            app.config_pane().unwrap().list().is_some(),
+            "h closed the list sub-screen"
+        );
+        assert!(app.keymap_open(), "h did not raise the overlay");
+    }
+
+    /// The overlay swallows a movement key rather than letting it reach the
+    /// table underneath, which the box is covering.
+    ///
+    /// Asserts on the selection index, not on the effect: a `j` that
+    /// returned `Effect::None` and still moved the cursor is exactly the
+    /// bug, and an effect-only assertion would pass through it.
+    #[test]
+    fn the_overlay_swallows_a_movement_key() {
+        let mut app = fixtures::full_app();
+        let before = app.selected_index();
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(app.keymap_open());
+        assert_eq!(app.update(Msg::Key(KeyPress::SelectDown)), Effect::None);
+        assert_eq!(
+            app.selected_index(),
+            before,
+            "j moved the selection behind the overlay"
+        );
+        assert!(app.keymap_open(), "j closed the overlay as well");
+    }
+
+    /// `h`, `?` and `esc` all close it. `?` reaches here as `Help` too, so
+    /// this is one variant tested by the route the operator takes.
+    #[test]
+    fn the_overlay_closes_on_help_and_on_esc() {
+        for closer in [KeyPress::Help, KeyPress::Escape] {
+            let mut app = fixtures::full_app();
+            let _ = app.update(Msg::Key(KeyPress::Help));
+            assert!(app.keymap_open());
+            let _ = app.update(Msg::Key(closer));
+            assert!(!app.keymap_open(), "{closer:?} did not close it");
+        }
+    }
+
+    /// `q` still quits, the way it does with 1g's dialog up.
+    #[test]
+    fn quit_still_quits_with_the_overlay_up() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(app.keymap_open(), "the overlay did not open");
+        assert_eq!(app.update(Msg::Key(KeyPress::Quit)), Effect::Quit);
+    }
+
+    /// A close dialog owns the keyboard, overlay included: `h` with one up
+    /// does not open a box over the question.
+    #[test]
+    fn the_close_dialog_keeps_the_keyboard_from_the_overlay() {
+        let mut app = fixtures::app_with_close_dialog();
+        assert!(app.close_dialog().is_some());
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(
+            !app.keymap_open(),
+            "the overlay opened over an unanswered dialog"
+        );
+    }
+
+    /// An armed confirm is cancelled by `h` and the overlay does not open,
+    /// the same rule `any_other_key_cancels_an_action_armed_inside_the_pane`
+    /// already states for every other key: a cancelling press is consumed.
+    #[test]
+    fn h_cancels_an_armed_confirm_instead_of_opening_the_overlay() {
+        let mut app = fixtures::full_app();
+        app.set_control_for_tests(Control::Allowed);
+        let _ = app.update(Msg::Key(KeyPress::Action(ActionVerb::Stop)));
+        assert!(app.action().is_some());
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(app.action().is_none(), "h did not cancel the confirm");
+        assert!(
+            !app.keymap_open(),
+            "h cancelled and also opened the overlay"
+        );
+    }
+
+    /// `Help` joins its siblings' `is_armed()` check: a candidate armed with
+    /// `Cycle` is cancelled and consumed rather than left standing behind a
+    /// box the operator cannot see past, the same ruling
+    /// `h_cancels_an_armed_confirm_instead_of_opening_the_overlay` already
+    /// pins for the dashboard's own confirm.
+    #[test]
+    fn h_cancels_an_armed_settings_candidate_instead_of_opening_the_overlay() {
+        let mut app = fixtures::app_in_settings_with_control();
+        let _ = app.update(Msg::Key(KeyPress::Cycle));
+        assert!(app.settings().unwrap().pending().is_some());
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(
+            app.settings().unwrap().pending().is_none(),
+            "h did not cancel the armed candidate"
+        );
+        assert!(
+            !app.keymap_open(),
+            "h cancelled and also opened the overlay"
+        );
+    }
+
+    /// The settings screen's own `Help` arm, reached only once
+    /// `Msg::Settings` has actually landed and put `self.body` into
+    /// `Body::Settings`: pressing `s` alone leaves the dashboard's own arm
+    /// in force, which would open the overlay for the wrong reason.
+    #[test]
+    fn the_overlay_opens_from_the_settings_screen() {
+        let mut app = fixtures::app_in_settings();
+        assert!(app.settings().is_some(), "the screen did not open");
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(app.keymap_open());
+    }
+
+    /// The reducer-level property text mode's ordering actually provides: a
+    /// `Help` arriving while `mode == InputMode::Text` must not raise the
+    /// overlay, however it arrives. Sent directly rather than through
+    /// `TextChar`, which `map_key` already resolves before the reducer ever
+    /// sees it: `input.rs` covers that side, and it never emits `Help` in
+    /// text mode today. This is the reducer's own guard, kept correct
+    /// independent of whatever `map_key` does or is later changed to do.
+    #[test]
+    fn help_in_text_mode_does_not_raise_the_overlay() {
+        let mut app = fixtures::full_app();
+        let _ = app.update(Msg::Key(KeyPress::FilterStart));
+        assert_eq!(app.mode(), InputMode::Text);
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(!app.keymap_open(), "h raised the overlay from text mode");
+    }
+
+    /// It opens from the three bodies `Confirm`, `Secrets` and `Bleats` set
+    /// synchronously (`self.body` changes on the keystroke itself, no reply
+    /// needed). `Edit` and `Settings` open their screens only once a reply
+    /// lands, so a `Help` pressed right after either still reaches the
+    /// dashboard's own arm, which also opens the overlay but proves nothing
+    /// about `on_pane_key` or `on_settings_key`: those two get their own
+    /// dedicated tests instead
+    /// (`h_opens_the_keymap_overlay_in_the_config_pane`,
+    /// `the_overlay_opens_from_the_settings_screen`). The list sub-screen is
+    /// not a `Body` at all (it is `ConfigPane::list`, nested inside
+    /// `Body::ConfigPane`, and reached by a `pane_to` plus `Confirm` rather
+    /// than a single opener from the dashboard), so it was never in scope
+    /// for this loop either; it gets its own dedicated test too
+    /// (`h_opens_the_keymap_overlay_from_the_list_sub_screen`).
+    ///
+    /// Each iteration asserts it reached the body before pressing `Help`.
+    /// Without that the loop is the shape it was narrowed for: an opener
+    /// that stops setting `Body` synchronously leaves the dashboard on
+    /// screen, `Help` opens the overlay from there, and the loop passes
+    /// three times while testing one body. `Edit` and `Settings` did
+    /// exactly that before they were dropped from it.
+    #[test]
+    fn the_overlay_opens_from_every_synchronously_opened_body() {
+        /// An opener paired with the predicate that says it landed.
+        type Arrival = (KeyPress, fn(&App) -> bool);
+
+        let reached: [Arrival; 3] = [
+            (KeyPress::Secrets, |app| app.secrets_pane_is_open()),
+            (KeyPress::Bleats, |app| app.bleats_pane().is_some()),
+            (KeyPress::Confirm, |app| app.sheep_pane().is_some()),
+        ];
+        for (opener, arrived) in reached {
+            let mut app = fixtures::full_app();
+            let _ = app.update(Msg::Key(opener));
+            assert!(
+                arrived(&app),
+                "{opener:?} did not reach its body, so this iteration would \
+                 have tested the dashboard"
+            );
+            let _ = app.update(Msg::Key(KeyPress::Help));
+            assert!(
+                app.keymap_open(),
+                "the overlay did not open after {opener:?}"
+            );
+        }
+    }
+
+    /// And on a frozen dashboard, where a key list is most wanted.
+    #[test]
+    fn the_overlay_opens_when_the_link_is_gone() {
+        let mut app = fixtures::full_app();
+        app.update(Msg::Frozen {
+            at_local: "2026-08-16 09:00:00".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
+        });
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(app.keymap_open());
     }
 
     #[test]
@@ -15921,6 +16403,40 @@ mod tests {
         assert!(
             app.settings().is_none(),
             "the settings screen closes once there is something to look at"
+        );
+    }
+
+    /// Same property as `a_config_reply_that_lands_with_the_overlay_up_closes_it`,
+    /// on `on_dog_section`'s own body-replacing reply rather than
+    /// `open_or_refresh_config_pane`'s.
+    #[test]
+    fn a_dog_sections_reply_that_lands_with_the_overlay_up_closes_it() {
+        let mut app = fixtures::app_in_settings_on_dog("metrics");
+        app.update(Msg::Key(KeyPress::Edit));
+        app.update(Msg::DogPane {
+            name: "metrics".to_string(),
+            adopted_path: None,
+            result: Ok(crate::dog::builtin_schema("metrics").expect("a built-in")),
+        });
+        assert!(app.config_pane().is_none(), "one half is not a pane yet");
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(app.keymap_open(), "the overlay did not open");
+
+        app.update(Msg::Replied {
+            sent: Sent::DogSection {
+                name: "metrics".to_string(),
+            },
+            result: Ok(Response::DogSection {
+                toml: "bind = \"0.0.0.0:9615\"\n".to_string().into(),
+            }),
+        });
+        assert!(
+            app.config_pane().is_some(),
+            "the reply must still open the pane"
+        );
+        assert!(
+            !app.keymap_open(),
+            "the overlay survived a body change under it"
         );
     }
 

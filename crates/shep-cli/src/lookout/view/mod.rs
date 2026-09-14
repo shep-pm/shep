@@ -11,7 +11,9 @@ pub mod cell;
 pub mod detail;
 pub mod flock;
 pub mod host;
+mod keymap;
 pub mod link_panel;
+mod overlay;
 pub mod pane;
 pub mod scroll;
 pub mod secrets;
@@ -26,6 +28,7 @@ pub mod status;
 pub mod fixtures;
 
 use ratatui::Frame;
+use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -196,29 +199,57 @@ fn title_gap_rows(height: u16) -> u16 {
     1 + u16::from(height >= ROOMY_HEIGHT)
 }
 
+/// The refusal a terminal under [`MIN_TERM_WIDTH`] or [`MIN_HEIGHT`] gets
+/// instead of a body.
+///
+/// Two short lines, not one long sentence: `Buffer::set_line` truncates at
+/// `max_width` in silence, and this exists for terminals narrower than
+/// `MIN_TERM_WIDTH`.
+fn draw_too_small(frame: &mut Frame<'_>, area: Rect) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let first = Line::from(Span::raw("too small"));
+    frame
+        .buffer_mut()
+        .set_line(area.x, area.y, &first, area.width);
+    if area.height >= 2 {
+        let second = Line::from(Span::raw(format!("need {MIN_TERM_WIDTH}x{MIN_HEIGHT}")));
+        frame
+            .buffer_mut()
+            .set_line(area.x, area.y + 1, &second, area.width);
+    }
+}
+
 /// Real caller: `super::mod`'s `run_ui`, once per frame.
+///
+/// Three steps, so the overlay's own call is structural: a new `Body`
+/// variant cannot skip it, since the call sits outside the match a new
+/// arm would join. One call after whichever body drew, not a convention
+/// repeated at each exit.
+///
+/// The refusal is the one path that gets no overlay: a terminal too
+/// narrow for a body is too narrow for a box over it.
 pub fn draw(app: &App, frame: &mut Frame<'_>) {
     let area = frame.area();
     let (width, height) = (area.width, area.height);
-    let palette = app.palette();
 
     if width < MIN_TERM_WIDTH || height < MIN_HEIGHT {
-        // Two short lines, not one long sentence: `Buffer::set_line`
-        // truncates at `max_width` in silence, and this branch exists for
-        // terminals narrower than `MIN_TERM_WIDTH`.
-        if width == 0 || height == 0 {
-            return;
-        }
-        let first = Line::from(Span::raw("too small"));
-        frame.buffer_mut().set_line(area.x, area.y, &first, width);
-        if height >= 2 {
-            let second = Line::from(Span::raw(format!("need {MIN_TERM_WIDTH}x{MIN_HEIGHT}")));
-            frame
-                .buffer_mut()
-                .set_line(area.x, area.y + 1, &second, width);
-        }
+        draw_too_small(frame, area);
         return;
     }
+
+    draw_body(app, frame);
+    draw_keymap_overlay(app, area, frame.buffer_mut(), app.palette());
+}
+
+/// Whichever of the six [`Body`] variants is up, plus the title band and
+/// the status bar around it. Never the keymap overlay: [`draw`] draws that
+/// once, over whatever this left on the screen.
+fn draw_body(app: &App, frame: &mut Frame<'_>) {
+    let area = frame.area();
+    let (width, height) = (area.width, area.height);
+    let palette = app.palette();
 
     let panes = panes_for(height);
     let mut y = area.y;
@@ -263,10 +294,12 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     // between the title and the status bar: a swap, not an overlay, so
     // nothing below draws while one is up. One `match` on `App::body`
     // rather than two sequential `if let`s, since the two can never both
-    // be open at once. Still true of these four bodies; the config pane's
-    // own close dialog is lookout's first actual overlay, and it draws
-    // inside `pane::draw_pane` rather than here, over whichever body that
-    // pane already is.
+    // be open at once. Still true of these four bodies; two overlays draw
+    // over a body rather than swapping for it. The config pane's own close
+    // dialog came first, inside `pane::draw_pane` rather than here, over
+    // whichever body that pane already is. The keymap overlay came second
+    // and is general: `draw` draws it after this function returns, over
+    // whichever of the six bodies drew, so nothing here has to remember.
     match app.body() {
         Body::ConfigPane(pane) => {
             let body = Rect {
@@ -487,6 +520,20 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     }
 
     buffer.set_line(area.x, bottom, &status::status_line(app, width), width);
+}
+
+/// Last, over everything: the overlay covers whatever body is showing,
+/// unlike 1g's dialog, which only ever covers the config pane and so draws
+/// from inside `view::pane::draw_pane`.
+///
+/// [`App::keymap_open`]'s own doc says it is reached from every body's own
+/// `Help` arm; [`draw`] calls this once, after [`draw_body`] returns from
+/// whichever of the six it took.
+fn draw_keymap_overlay(app: &App, area: Rect, buffer: &mut Buffer, palette: Palette) {
+    if app.keymap_open() {
+        overlay::mute(buffer, area, palette);
+        keymap::draw(app, area, buffer);
+    }
 }
 
 /// The title row: a full-width reverse-video band naming the mode.
@@ -714,6 +761,43 @@ mod tests {
         assert_eq!(single.lines().count(), 1);
     }
 
+    /// The refusal is the one screen the keymap overlay does not cover, and
+    /// `draw`'s own doc says so, so something has to check it.
+    ///
+    /// It reads as free, since `draw` returns before the overlay call. It is
+    /// not: that early return is the only thing holding it, and the whole
+    /// point of moving the overlay call out of the six body exits was that
+    /// a call made in one place is easy to move to another. Drawing a box
+    /// over `too small` would bury the one sentence naming the fix.
+    #[test]
+    fn the_refusal_gets_no_keymap_overlay_over_it() {
+        let mut app = App::new(
+            Palette::detect(None, None, None),
+            Control::ReadOnly,
+            "/home/ada/.shep".to_string(),
+            Instant::now(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(app.keymap_open(), "the overlay did not open");
+
+        // Roomy enough for the box at 130 columns, three rows short of a
+        // body: `MIN_HEIGHT` is what refuses here, not the width, so the
+        // overlay would have had the room it needs.
+        let frame = draw_to(&app, 130, 3);
+        assert_eq!(frame.lines().next().unwrap().trim_end(), "too small");
+        // `lookout::keymap`, not `lookout::view::keymap`. Two modules carry
+        // that name: this one's sibling draws the overlay, and `Group` lives
+        // in the parent's, beside the bindings it groups. Spelled out
+        // rather than shortened, since the two are easy to conflate.
+        for group in crate::lookout::keymap::Group::DRAWN {
+            assert!(
+                !frame.contains(group.heading()),
+                "the overlay drew {} over the refusal: {frame}",
+                group.heading()
+            );
+        }
+    }
+
     /// A bare empty screen does not tell an operator whether the shepherd
     /// has nothing to run or the dashboard is broken.
     #[test]
@@ -937,7 +1021,7 @@ mod tests {
             .next_back()
             .expect("a status bar")
             .to_string();
-        assert!(bar.contains("j/k still moves"), "{bar:?}");
+        assert!(bar.contains("j/k g/G move"), "{bar:?}");
         assert!(
             !bar.contains("   r "),
             "the bar must not offer a key a freeze has already refused: {bar:?}"

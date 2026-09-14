@@ -55,15 +55,31 @@ pub fn banner_line(app: &App, width: u16) -> Option<Line<'static>> {
 
 /// The key hint once the link is [`Link::Lost`].
 ///
-/// Two keys, because two keys still do something: `q` leaves, and `j`/`k`
-/// move a cursor over values that are already history. `r` is not among
-/// them, whatever the design's own copy says: it is refused like the rest
-/// (`App::on_key`), and `super::super::link::run_link` has already returned
-/// by the time a freeze lands, so no task survives to answer a redial. The
-/// last clause is the whole rest of the keymap, said once rather than
-/// discovered a keypress at a time.
-const FROZEN_HINT: &str =
-    "q quit   j/k still moves   every other key is refused while the link is down";
+/// `q` leaves, movement still walks a cursor over values that are already
+/// history, and `h` opens the keymap overlay, which is read only and wanted
+/// most on the screen where nothing else works. `r` is refused
+/// (`App::on_key` tests [`Link::Lost`]), even though 1l's own design copy
+/// says it redials: `super::super::link::run_link` has already returned by
+/// the time a freeze lands, so no task survives to answer one.
+///
+/// The hint does not claim every other key is refused, because that is not
+/// true: `esc`, `j`, `g`/`G`, `h`, `/`, `Enter`, `e`, `s` and `S` all still
+/// act. Only `Refresh` and the three action verbs test the link.
+///
+/// What the hint states instead is the consequence: the shepherd is
+/// unreachable, so nothing pressed here changes anything out there.
+/// Movement, the keymap and the filter stay local, and every key that would
+/// reach the shepherd fails to.
+const FROZEN_HINT: &str = "q quit   h keymap   j/k g/G move   \
+     nothing you press can reach the shepherd";
+
+/// The status bar's own label for [`Control::ReadOnly`], shared with the
+/// keymap overlay's gate line so the two cannot drift apart.
+pub(super) const READ_ONLY_LABEL: &str = "read-only";
+
+/// The status bar's own label for [`Control::Allowed`], shared with the
+/// keymap overlay's gate line so the two cannot drift apart.
+pub(super) const CONTROL_ENABLED_LABEL: &str = "control enabled";
 
 /// The bottom line: eight slots, highest priority first: the settings
 /// screen's armed or in-flight edit, a dashboard confirm, the settings
@@ -275,8 +291,8 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         "\u{2588} following"
     } else {
         match app.control() {
-            Control::ReadOnly => "read-only",
-            Control::Allowed => "control enabled",
+            Control::ReadOnly => READ_ONLY_LABEL,
+            Control::Allowed => CONTROL_ENABLED_LABEL,
         }
     };
     let right_len = u16::try_from(right.chars().count()).unwrap_or(0);
@@ -587,6 +603,72 @@ mod tests {
     use crate::commands::settings::SettingField;
     use crate::lookout::app::{ActionVerb, App, KeyPress, Msg};
     use crate::lookout::theme::Palette;
+
+    /// The hint's clause separators are three spaces, every one of them.
+    ///
+    /// `FROZEN_HINT` is written with a `\` line continuation: Rust strips
+    /// the next line's leading whitespace after that continuation, so the
+    /// source's own indent never becomes extra spaces in the string, and
+    /// the gallery's own rendered frame confirms three.
+    ///
+    /// The sibling tests around this constant call `contains` on each
+    /// clause separately, so none of them can see the spacing between
+    /// clauses; this is the one that does. A future continuation, or a
+    /// hand-typed run of spaces, would otherwise go unnoticed in text an
+    /// operator reads at 3am.
+    ///
+    /// Two assertions with different guarantees: "no run of four or more"
+    /// covers a clause added later automatically, but the exact-three
+    /// count does not. A fourth clause fails it deliberately, and the
+    /// count needs a manual bump when that happens on purpose.
+    #[test]
+    fn the_frozen_hint_clauses_are_separated_by_exactly_three_spaces() {
+        assert!(
+            !FROZEN_HINT.contains("    "),
+            "a separator wider than three spaces: {FROZEN_HINT:?}"
+        );
+        assert_eq!(
+            FROZEN_HINT.matches("   ").count(),
+            3,
+            "three clause gaps, so three separators: {FROZEN_HINT:?}"
+        );
+    }
+
+    /// Three claims in two macros, and the second macro is the load-bearing
+    /// one. `h keymap` alone would pass on a rewrite that appended the new
+    /// key and dropped the two it landed between, which is how a hint loses
+    /// the keys it always had. The rest of the sentence, the clause about
+    /// every key it does not list, is its own test below: naming `h` and
+    /// keeping that clause true have to happen together, and each half needs
+    /// a test that fails without the other.
+    #[test]
+    fn the_frozen_hint_names_the_keymap_it_no_longer_refuses() {
+        assert!(FROZEN_HINT.contains("h keymap"), "{FROZEN_HINT}");
+        assert!(
+            FROZEN_HINT.contains("q quit") && FROZEN_HINT.contains("j/k g/G move"),
+            "{FROZEN_HINT}"
+        );
+    }
+
+    /// The hint must not claim every other key is refused, because seven of
+    /// them are not.
+    ///
+    /// Enumerated against a frozen app rather than reasoned about: `esc`,
+    /// `g`/`G`, `/`, `Enter`, `e`, `s` and `S` all still act, and `/` opens
+    /// the filter box outright. Only `Refresh` and the three action verbs
+    /// test [`Link::Lost`]. The hint states the consequence instead, which
+    /// stays true however many local keys keep working.
+    #[test]
+    fn the_frozen_hint_claims_no_blanket_refusal() {
+        assert!(
+            !FROZEN_HINT.contains("every other key"),
+            "the blanket-refusal claim is back, and it is false: {FROZEN_HINT}"
+        );
+        assert!(
+            FROZEN_HINT.contains("nothing you press can reach the shepherd"),
+            "{FROZEN_HINT}"
+        );
+    }
 
     /// The legend sits at the tail, and the hint truncates from the tail, so
     /// it survives only while the hint fits. The lowest tier that still draws

@@ -31,4 +31,4 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
   refused   the shepherd did not answer: could not connect to `/home/ada/.shep/run/shep.sock`: Connection refused (os error 61)                                 
   since     2026-08-14 14:32:07, 9m 53s ago      the sheep themselves may well still be running; lookout cannot see them to say                                 
   try       shep muster, from another shell      then reopen lookout: it does not reconnect on its own                                                          
-q quit   j/k still moves   every other key is refused while the link is down                                                                            █ frozen
+q quit   h keymap   j/k g/G move   nothing you press can reach the shepherd                                                                             █ frozen

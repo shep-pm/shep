@@ -1,0 +1,52 @@
+---
+source: crates/shep-cli/src/lookout/frames.rs
+expression: render_text(&buffer)
+---
+MOVING                          LOOKING                               
+j/k  ↓/↑     select a row       h  ?         this keymap              
+g/G home/end first / last       b            feed, full screen        
+J/K          next / prev sheep  F            gather by fold           
+ctrl-d/u     page the feed      z            collapse a fold          
+←/→          environment tab    o            out / err / both         
+tab          next config group  m            minimum level            
+1-8          jump to a group    f            follow the tail          
+n/N          next / prev match  w            wrap long lines          
+↵            open selection     /            filter, or match         
+esc          back one level     r            refresh now              
+                                v            reveal for 10s           
+                                y            copy the value           
+                                                                      
+CHANGING                        DOING                                 
+any char     types into a box   x            stop                     
+⌫ ↵ esc      erase, file, drop  R            restart                  
+e            the config pane    L            reload                   
+space        cycle a value                                            
+d            restore default                                          
+u            undo the edit                                            
+s            shepherd settings                                        
+S            secrets                                                  
+D            delete a secret                                          
+c            leave it running                                         
+                                                                      
+                                                                      
+                                                                      
+ the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer …
+ colour is decoration only: every coloured cell says the same thing i…
+ h or ?  closes this  ·  q  ctrl-c  quits lookout                     
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+──────────────────────────────────────────────────────────────────────
+ ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   …
+lambs  not read yet                                                   
+out  …/.shep/logs/api-2-out.log   │   err  …a/.shep/logs/api-2-err.log
+                                                                      
+──────────────────────────────────────────────────────────────────────
+ ██ BLEATS api  … 1 earlier line not shown                            
+out  GET /healthz 200 3ms                                             
+out  GET /v1/orders 200 44ms                                          
+out  POST /v1/orders 201 88ms                                         
+out  GET /v1/orders/8821 200 9ms                                      
+out  connection pool: 14/50 in use                                    
+q quit   j/k select   / filter   F folds   x stop   R… control enabled

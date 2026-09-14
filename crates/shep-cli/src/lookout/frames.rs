@@ -304,6 +304,30 @@ pub enum Scene {
     /// The parked half alone: no edit of the operator's own, and the
     /// heading that says so.
     CloseDialogParked,
+    /// `h` pressed at the design target, 160x48: boxed, all four columns,
+    /// the sheep, and the gate line reading control enabled.
+    Keymap,
+    /// The overlay at 130 columns, the narrowest the box's own border can
+    /// still hold.
+    KeymapFloor,
+    /// One column below the box's floor of 130, at 129: the widest borderless
+    /// form, still carrying all four columns.
+    KeymapBorderlessWide,
+    /// 100 columns: three columns share one bank and the fourth, DOING,
+    /// drops to a bank of its own.
+    KeymapNarrow,
+    /// 70 columns: two columns per bank, two banks stacked.
+    KeymapTwoColumn,
+    /// The overlay raised after the link is lost: the gate line names the
+    /// dead link rather than either control state.
+    KeymapFrozen,
+    /// The overlay raised under `--read-only`: the gate line reads
+    /// read-only rather than control enabled.
+    KeymapReadOnly,
+    /// 160x16: under the box's own nineteen rows, so the boxed-only sheep
+    /// is already gone and the `NO_COLOR` sentence sheds too, while every
+    /// key row survives.
+    KeymapShort,
 }
 }
 
@@ -362,6 +386,14 @@ impl Scene {
             Self::CloseDialogFloor => "close_dialog_floor",
             Self::CloseDialogNarrow => "close_dialog_narrow",
             Self::CloseDialogParked => "close_dialog_parked",
+            Self::Keymap => "keymap",
+            Self::KeymapFloor => "keymap_floor",
+            Self::KeymapBorderlessWide => "keymap_borderless_wide",
+            Self::KeymapNarrow => "keymap_narrow",
+            Self::KeymapTwoColumn => "keymap_two_column",
+            Self::KeymapFrozen => "keymap_frozen",
+            Self::KeymapReadOnly => "keymap_read_only",
+            Self::KeymapShort => "keymap_short",
         }
     }
 
@@ -523,18 +555,43 @@ impl Scene {
             Self::CloseDialogParked => {
                 "esc pressed with no edit of the operator's own, only listen_timeout already parked: the heading names the parked half alone."
             }
+            Self::Keymap => {
+                "`h` pressed at 160x48, the design target: boxed at 128 columns (126 interior plus one border cell each side), all four columns drawn whole, the sheep once in the DOING column's own rows, and the gate line reading control enabled over the dimmed dashboard behind it."
+            }
+            Self::KeymapFloor => {
+                "The same overlay at 130 columns, the narrowest the border can still hold: 130 = 128 (126 interior plus one border cell each side) plus one margin cell each side. One column narrower and the border is gone."
+            }
+            Self::KeymapBorderlessWide => {
+                "129 columns, one below KeymapFloor's own 130: the border is gone, but columns_for(129) is still 4, so this is the widest form the overlay ever draws with all four columns and no frame around them. It sits next to KeymapFloor on purpose, so the two together pin the boundary rather than bracketing it loosely."
+            }
+            Self::KeymapNarrow => {
+                "100 columns: columns_for(100) is 3, so MOVING, LOOKING and CHANGING share one bank and DOING drops to a bank of its own below a blank separator row."
+            }
+            Self::KeymapTwoColumn => {
+                "70 columns: columns_for(70) is 2, so the four groups split into two banks of two, MOVING and LOOKING on top and CHANGING and DOING below."
+            }
+            Self::KeymapFrozen => {
+                "The overlay raised after the link is already lost: the gate line names the dead link, not either control state, the same precedence the status bar's own right-hand label gives Link::Lost over Control."
+            }
+            Self::KeymapReadOnly => {
+                "The overlay raised under --read-only: the gate line reads read-only where the design target's own reads control enabled."
+            }
+            Self::KeymapShort => {
+                "160x16, under the nineteen rows the box needs: the sheep is boxed-only and already gone, and the borderless form has shed to its own Decoration tier, which drops the NO_COLOR sentence too, while every key row is still on screen."
+            }
         }
     }
 
     /// Whether this scene's dashboard may act.
     ///
     /// Allowed is the fallthrough, matching the real dashboard's default.
-    /// `Refused` is the one scene that exists to show the gate closed, so
-    /// it is the one exception.
+    /// Two exceptions, and they show the closed gate in different places:
+    /// `Refused` in the dashboard's own status bar, `KeymapReadOnly` in the
+    /// overlay's gate line.
     #[must_use]
     pub const fn control(self) -> Control {
         match self {
-            Self::Refused => Control::ReadOnly,
+            Self::Refused | Self::KeymapReadOnly => Control::ReadOnly,
             _ => Control::Allowed,
         }
     }
@@ -657,11 +714,101 @@ impl Scene {
             Self::CloseDialogFloor => (90, 48),
             // 89: one below the floor, which is the borderless form.
             Self::CloseDialogNarrow => (89, 48),
+            // 160: the design target, boxed at 128 (126 interior plus one
+            // border cell each side), so (160 - 128) / 2 = 16 dimmed columns
+            // each side of it.
+            Self::Keymap | Self::KeymapFrozen | Self::KeymapReadOnly => (160, 48),
+            // 130: `overlay::floor_for(126)`, the narrowest width the box's
+            // own border can still draw at.
+            Self::KeymapFloor => (130, 48),
+            // 129: one below the floor of 130, the widest borderless form that
+            // still carries all four columns (`columns_for(129) == 4`).
+            Self::KeymapBorderlessWide => (129, 48),
+            // 100: `columns_for(100) == 3`, so DOING drops to a bank of
+            // its own.
+            Self::KeymapNarrow => (100, 48),
+            // 70: `columns_for(70) == 2`, two banks of two columns each.
+            Self::KeymapTwoColumn => (70, 48),
+            // 16 rows: under the box's own 19, so the sheep (boxed-only) is
+            // already gone, and the borderless form has shed to its own
+            // `Shed::Decoration`, which drops the NO_COLOR line too; every
+            // key row stays intact. 16, not 22: at 22 the box holds whole
+            // and nothing sheds.
+            Self::KeymapShort => (160, 16),
             // HealthyWide, Errored, Grouped, WithDogs, Retrying, Refused,
             // FeedGap, FeedMissing, HostUnknown, Lambs, LambsUnknown: every
             // scene that carries all three optional panes at their ordinary
             // rows.
             _ => (120, 30),
+        }
+    }
+
+    /// Whether this scene raises the keymap overlay before it renders.
+    ///
+    /// Every arm named on both sides rather than a wildcard on either, so
+    /// a ninth `Keymap*` variant fails to compile here instead of
+    /// rendering silently without the overlay raised.
+    #[must_use]
+    pub const fn is_keymap(self) -> bool {
+        match self {
+            Self::Keymap
+            | Self::KeymapFloor
+            | Self::KeymapBorderlessWide
+            | Self::KeymapNarrow
+            | Self::KeymapTwoColumn
+            | Self::KeymapFrozen
+            | Self::KeymapReadOnly
+            | Self::KeymapShort => true,
+            Self::HealthyWide
+            | Self::Errored
+            | Self::Grouped
+            | Self::Folds
+            | Self::WithDogs
+            | Self::MemCeiling
+            | Self::CfgDrift
+            | Self::Empty
+            | Self::Narrow
+            | Self::TooNarrow
+            | Self::Retrying
+            | Self::Frozen
+            | Self::Refused
+            | Self::FilterEditing
+            | Self::FilterActive
+            | Self::FilterNoMatch
+            | Self::NoDetail
+            | Self::TableOnly
+            | Self::FeedGap
+            | Self::FeedMissing
+            | Self::Cramped
+            | Self::HostUnknown
+            | Self::Lambs
+            | Self::LambsUnknown
+            | Self::Confirm
+            | Self::Acting
+            | Self::ActionRefused
+            | Self::ActionAccepted
+            | Self::ActionRefusedOffline
+            | Self::SettingsFresh
+            | Self::SettingsSet
+            | Self::SettingsConfirm
+            | Self::SettingsTyping
+            | Self::SettingsDogs
+            | Self::SettingsNarrow
+            | Self::SettingsShort
+            | Self::Bleats
+            | Self::Secrets
+            | Self::SheepPane
+            | Self::SheepPaneCpuOnly
+            | Self::SheepPaneSparklines
+            | Self::SheepPaneShort
+            | Self::EditPane
+            | Self::EditPaneEdited
+            | Self::EditPaneSqueezed
+            | Self::EditPaneNarrow
+            | Self::CloseDialog
+            | Self::CloseDialogFloor
+            | Self::CloseDialogNarrow
+            | Self::CloseDialogParked => false,
         }
     }
 }
@@ -1256,8 +1403,8 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
                     None,
                 ),
             ];
-            // Round 2, finding 2: `log_row`'s on-disk size had never
-            // rendered anywhere in the gallery, because every fixture's
+            // `log_row`'s on-disk size had never rendered anywhere in the
+            // gallery, because every fixture's
             // `out_file`/`err_file` name a path (`/home/ada/.shep/logs/...`)
             // that never exists on the machine running the test, so
             // `fs::metadata` always failed silently. `HealthyWide`'s
@@ -1326,6 +1473,15 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
     app.update(Msg::Tick {
         now: t0 + Duration::from_secs(7),
     });
+
+    // Every `Keymap*` scene uses the healthy flock fixture above (the
+    // default arm of the match) and raises the overlay right after: `h`
+    // toggles `App::keymap_open` and nothing else, so it does not matter
+    // that this runs ahead of the selection, the host sample or (for
+    // `KeymapFrozen`) the freeze below.
+    if which.is_keymap() {
+        app.update(Msg::Key(KeyPress::Help));
+    }
 
     // Selects `api` (id 2) so the panes below describe a fixed sheep,
     // walked by id since the table sorts by name. Skipped where there is
@@ -1513,7 +1669,7 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
         Scene::Retrying => {
             app.update(Msg::Retrying { attempt: 3 });
         }
-        Scene::Frozen => {
+        Scene::Frozen | Scene::KeymapFrozen => {
             app.update(Msg::Frozen {
                 at_local: "2026-08-14 14:32:07".to_string(),
                 why: super::view::fixtures::FROZEN_WHY.to_string(),
@@ -2290,9 +2446,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all fifty scenes through the same coloured
+frames.ansi renders all fifty-eight scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same fifty scenes through the flattened NO_COLOR palette
+renders the same fifty-eight scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -2321,8 +2477,15 @@ row: fresh at the 160x48 design target, the same pane with two edits filed
 columns, where the explanation panel and the LANDS column trade places as
 the width falls.
 
-The last four are the close dialog `esc` raises over that pane when a change
-is filed the running child cannot take. Boxed and centred at the 160x48
+The last eight are the keymap overlay, `h` or `?` from any body. Boxed and
+centred at the 160x48 target, at 130 where the border only just fits,
+borderless at 129 one column below that floor, at 100 where DOING drops to a
+bank of its own, and at 70 where two columns are all that fit. Three more
+change what the bottom line says rather than the layout: a frozen dashboard,
+a read-only one, and a terminal too short for the box at all.
+
+Before those, four show the close dialog `esc` raises over the editing pane
+when a change is filed the running child cannot take. Boxed and centred at the 160x48
 target, the same at 90 where the border only just fits, borderless at 89 one
 column below its floor, and the parked-only heading on a sheep whose fields
 were written before the pane was opened.
@@ -2340,6 +2503,7 @@ a frame of their own.
 
 #[cfg(test)]
 mod tests {
+    use super::super::keymap::Group;
     use super::*;
 
     /// `sgr`/`render_ansi` were foreground-only before this task: a band's
@@ -2479,7 +2643,7 @@ mod tests {
     /// which is the form a reader sees.
     #[test]
     fn the_gallery_preamble_counts_the_scenes_it_has() {
-        const NUMBERS: [(usize, &str); 17] = [
+        const NUMBERS: [(usize, &str); 25] = [
             (34, "thirty-four"),
             (35, "thirty-five"),
             (36, "thirty-six"),
@@ -2497,12 +2661,30 @@ mod tests {
             (48, "forty-eight"),
             (49, "forty-nine"),
             (50, "fifty"),
+            (51, "fifty-one"),
+            (52, "fifty-two"),
+            (53, "fifty-three"),
+            (54, "fifty-four"),
+            (55, "fifty-five"),
+            (56, "fifty-six"),
+            (57, "fifty-seven"),
+            (58, "fifty-eight"),
         ];
         let spelled = NUMBERS
             .iter()
             .find(|(n, _)| *n == Scene::ALL.len())
             .map(|(_, word)| *word)
             .expect("add the next number to NUMBERS when the gallery outgrows it");
+        // `fifty` is a prefix of `fifty-one` through `fifty-eight`, so a bare
+        // `contains` passes when the preamble overstates inside its own
+        // decade: 50 scenes against a preamble saying "fifty-eight" satisfies
+        // `contains("fifty")`. Refusing the hyphen is what makes the match a
+        // whole number rather than a prefix of a larger one.
+        assert!(
+            !GALLERY_PREAMBLE.contains(&format!("{spelled}-")),
+            "the preamble spells a larger number than {} scenes: {spelled}-…",
+            Scene::ALL.len()
+        );
         assert!(
             GALLERY_PREAMBLE.contains(spelled),
             "the preamble says something other than {spelled}, and \
@@ -3356,7 +3538,7 @@ mod tests {
 
         // CloseDialogNarrow: 89x48, one column under the floor. No box
         // glyph anywhere in the frame; this is the assertion a wrong
-        // BOX_FLOOR would fail.
+        // overlay::floor_for(BOX_WIDTH) would fail.
         let close_dialog_narrow = render_text(&scene(Scene::CloseDialogNarrow).1);
         for glyph in ['▛', '▜', '▙', '▟', '▐', '▀', '▄', '▌'] {
             assert!(
@@ -3503,7 +3685,15 @@ mod tests {
             Scene::CloseDialog => Some(Scene::CloseDialogFloor),
             Scene::CloseDialogFloor => Some(Scene::CloseDialogNarrow),
             Scene::CloseDialogNarrow => Some(Scene::CloseDialogParked),
-            Scene::CloseDialogParked => None,
+            Scene::CloseDialogParked => Some(Scene::Keymap),
+            Scene::Keymap => Some(Scene::KeymapFloor),
+            Scene::KeymapFloor => Some(Scene::KeymapBorderlessWide),
+            Scene::KeymapBorderlessWide => Some(Scene::KeymapNarrow),
+            Scene::KeymapNarrow => Some(Scene::KeymapTwoColumn),
+            Scene::KeymapTwoColumn => Some(Scene::KeymapFrozen),
+            Scene::KeymapFrozen => Some(Scene::KeymapReadOnly),
+            Scene::KeymapReadOnly => Some(Scene::KeymapShort),
+            Scene::KeymapShort => None,
         }
     }
 
@@ -3682,6 +3872,73 @@ mod tests {
         );
     }
 
+    /// Each width scene draws the column count it exists to show, counted
+    /// off the heading row's own occupied starts rather than inferred from
+    /// a word being present. A test that only looked for `MOVING` would
+    /// pass at every width in the table, since `MOVING` draws at every
+    /// width the overlay ever renders.
+    #[test]
+    fn each_keymap_width_scene_draws_its_own_column_count() {
+        for (which, wanted) in [
+            (Scene::Keymap, 4),
+            (Scene::KeymapFloor, 4),
+            (Scene::KeymapBorderlessWide, 4),
+            (Scene::KeymapNarrow, 3),
+            (Scene::KeymapTwoColumn, 2),
+        ] {
+            let rendered = render_text(&scene(which).1);
+            let first_bank = rendered
+                .lines()
+                // `Group::Moving.heading()`, not the literal "MOVING": the
+                // count below derives from `heading()`, so a rename would
+                // leave this `find` hunting a word nothing draws and the
+                // failure would read as a missing heading row rather than as
+                // a rename.
+                .find(|row| row.contains(Group::Moving.heading()))
+                .expect("no heading row");
+            let drawn = Group::DRAWN
+                .iter()
+                .filter(|group| first_bank.contains(group.heading()))
+                .count();
+            assert_eq!(drawn, wanted, "{}: {first_bank:?}", which.label());
+        }
+    }
+
+    /// Every `Keymap*` scene actually raises the overlay.
+    ///
+    /// `scene`'s builder raises it from a `matches!` list of variants, and
+    /// the comment over that list says "every `Keymap*` scene". Nothing held
+    /// that claim. The per-scene checks in this module are a hand-written
+    /// list, `each_keymap_width_scene_draws_its_own_column_count` names five
+    /// of the eight, and a snapshot is accepted for whatever a scene
+    /// rendered, so a ninth keymap scene left out of the `matches!` list
+    /// would draw the dashboard and be pinned that way.
+    ///
+    /// Driven off the label rather than a list, so a new scene joins this
+    /// test by being named. Dropping `KeymapNarrow` from the builder's list
+    /// fails it, and so does adding a scene the list does not cover.
+    ///
+    /// The count is the other half: it catches a keymap scene whose label
+    /// does not start with `keymap`, which this test would otherwise skip in
+    /// silence, and it is the same eight the gallery preamble promises.
+    #[test]
+    fn every_keymap_scene_raises_the_overlay() {
+        let mut checked = 0;
+        for which in Scene::ALL {
+            if !which.label().starts_with("keymap") {
+                continue;
+            }
+            checked += 1;
+            let rendered = render_text(&scene(*which).1);
+            assert!(
+                rendered.contains(Group::Moving.heading()),
+                "{}: the overlay did not draw",
+                which.label()
+            );
+        }
+        assert_eq!(checked, 8, "the keymap scenes, counted by label");
+    }
+
     /// Frame pins, not wire fixtures: re-accepting these after a layout
     /// change is expected, unlike the rule for shep-core's protocol
     /// snapshots.
@@ -3781,6 +4038,41 @@ mod tests {
         (plain, ansi)
     }
 
+    /// The committed gallery matches what the generator would write today.
+    ///
+    /// `write_the_gallery` is `#[ignore]`d, so nothing in the ordinary
+    /// suite catches a scene that landed without also running it: its own
+    /// doc names the exact failure, both files still saying fifty scenes
+    /// and holding none of the eight keymap scenes that shipped alongside
+    /// them. Diffing against fresh output, rather than only counting
+    /// headings, catches a mismatch a count would miss too, a caption
+    /// edited without a corresponding regeneration.
+    ///
+    /// `cfg(unix)`: same reason as `frames_are_pinned` above. `signal_label`
+    /// resolves a fixture's signal against the running platform's own
+    /// table, and the committed artifacts under `docs/lookout/` are unix
+    /// renderings, so a Windows-built binary regenerates the `cron` row
+    /// reading a bare `15` where the committed file reads `SIGTERM`.
+    #[cfg(unix)]
+    #[test]
+    fn the_committed_gallery_matches_what_the_generator_would_write() {
+        let dir = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/lookout"));
+        let (plain, ansi) = gallery_text();
+        for (name, want) in [("frames.txt", &plain), ("frames.ansi", &ansi)] {
+            let have = std::fs::read_to_string(dir.join(name)).unwrap_or_else(|e| {
+                panic!(
+                    "{name} is missing or unreadable ({e}); run \
+                     cargo test -p shep --lib --all-features -- --ignored write_the_gallery"
+                )
+            });
+            assert_eq!(
+                &have, want,
+                "{name} is stale against the current scenes; run \
+                 cargo test -p shep --lib --all-features -- --ignored write_the_gallery"
+            );
+        }
+    }
+
     #[test]
     fn the_gallery_carries_no_dashes() {
         let (plain, ansi) = gallery_text();
@@ -3798,8 +4090,17 @@ mod tests {
     /// cargo test -p shep --lib --all-features -- --ignored write_the_gallery
     /// ```
     ///
-    /// Cannot rot: it renders the same `Scene::ALL` the pinned snapshots
-    /// read, so a layout change reddens the ordinary suite first.
+    /// A layout change cannot rot these files unnoticed: they render the
+    /// same `Scene::ALL` the pinned snapshots read, so the ordinary suite
+    /// reddens first and whoever fixes it comes back here.
+    ///
+    /// **Adding a scene without running this one is caught too, now.**
+    /// `the_committed_gallery_matches_what_the_generator_would_write`
+    /// diffs the committed files against fresh output, catching a scene
+    /// missing from both while their own preamble still carries the old
+    /// count. Run this anyway, in the same commit that adds a scene: a
+    /// missing regeneration failing there is a one-line fix, failing in
+    /// the other test means reading a full-file diff to find it.
     #[test]
     #[ignore = "writes into docs/lookout; run it deliberately"]
     fn write_the_gallery() {
@@ -3818,7 +4119,7 @@ mod tests {
         // a scene rendering empty, and that is what these two check.
         assert!(
             plain.lines().count() > 100,
-            "eight frames is more than a hundred lines"
+            "every scene in the gallery is more than a hundred lines together"
         );
         assert_eq!(plain.matches("=== ").count(), Scene::ALL.len());
     }

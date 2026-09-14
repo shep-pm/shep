@@ -29,6 +29,7 @@ use super::super::theme::Palette;
 use super::super::validation;
 use super::cell;
 use super::flock::{fit, mark};
+use super::overlay;
 use super::scroll::Attempt;
 use crate::output::width::char_columns;
 use crate::vocabulary::Role;
@@ -43,38 +44,6 @@ const GUTTER: u16 = 2;
 /// [`close_dialog_lines`] lays its rows out to when [`draw_close_dialog`]
 /// draws the boxed form.
 const BOX_WIDTH: u16 = 86;
-
-/// 86 interior plus a border cell each side is 88, plus a margin cell each
-/// side is 90. One column narrower and the border would have to clip, which
-/// `docs/lookout/design-files/README.md:332` refuses ("The 1g and 1k
-/// overlays need 90 and 132 columns; below that, draw them full-width with
-/// no border box rather than clipping"), so 89 draws the borderless form
-/// instead.
-const BOX_FLOOR: u16 = BOX_WIDTH + 4;
-
-/// The border's four corners, checked against `unicodedata.east_asian_width`
-/// and found Neutral, same as [`BOX_LEFT`].
-const BOX_TOP_LEFT: char = '▛';
-const BOX_TOP_RIGHT: char = '▜';
-const BOX_BOTTOM_LEFT: char = '▙';
-const BOX_BOTTOM_RIGHT: char = '▟';
-
-/// The left edge. Neutral, unlike the other three edge glyphs below.
-const BOX_LEFT: char = '▐';
-
-/// The top, bottom and right edges. All three are East-Asian Ambiguous,
-/// checked the same way the rulings ask `▌` to be. Kept anyway: `─` already
-/// draws every hairline rule in this pane at full width and `█░` fill every
-/// gauge, both Ambiguous too, so "no Ambiguous glyph" was never this
-/// codebase's bar. The right edge is the one with real exposure, since no
-/// Neutral right-half block exists to swap `▌` for and a terminal that
-/// doubles it shifts every interior row;
-/// `the_border_vocabulary_is_the_one_that_was_checked` pins the set so a
-/// later glyph change gets the same check rather than inheriting this
-/// answer.
-const BOX_TOP: char = '▀';
-const BOX_BOTTOM: char = '▄';
-const BOX_RIGHT: char = '▌';
 
 /// The KEY cell at its full width, flag character included. Twenty-six is
 /// `exp_backoff_restart_delay` plus its flag, the longest key the Flockfile
@@ -388,21 +357,57 @@ fn field_line(
     Line::from(spans)
 }
 
-/// The one line the field list reserves under its title: the selected
-/// field's own help text while `h` has it open. [`None`] otherwise.
+/// The rows the field list reserves under its title: the selected field's
+/// own help text, wrapped, at widths where the explanation panel cannot
+/// draw it. Empty where the panel does.
 ///
-/// The close dialog used to draw here too, as the apply menu this pane
-/// replaced. It draws over the whole field list instead now
-/// ([`draw_pane`]), since it answers a question about the pane's own
-/// close rather than a per-field one.
-fn top_line(pane: &ConfigPane, palette: Palette) -> Option<(String, Style)> {
-    if pane.help_open()
-        && let Some(PaneRow::Field(index)) = pane.cursor()
-        && let Some(field) = pane.fields().fields().get(index)
-    {
-        return Some((field.help.clone(), palette.muted()));
+/// Pushes the field-help lines [`top_lines`] returns onto `lines`, spending
+/// `budget` down as it goes and stopping one line short of empty: a long
+/// wrapped help string must not spend the last line the cursor's own row
+/// needs.
+fn push_wrapped_blurb(
+    lines: &mut Vec<Line<'static>>,
+    budget: &mut usize,
+    pane: &ConfigPane,
+    palette: Palette,
+    width: u16,
+) {
+    for (text, style) in top_lines(pane, palette, width) {
+        if *budget <= 1 {
+            break;
+        }
+        lines.push(Line::from(Span::styled(
+            format!("  {}", fit(&text, body_width(width))),
+            style,
+        )));
+        *budget -= 1;
     }
-    None
+}
+
+fn top_lines(pane: &ConfigPane, palette: Palette, width: u16) -> Vec<(String, Style)> {
+    if panel_width(width).is_some() {
+        return Vec::new();
+    }
+    let Some(PaneRow::Field(index)) = pane.cursor() else {
+        return Vec::new();
+    };
+    let Some(field) = pane.fields().fields().get(index) else {
+        return Vec::new();
+    };
+    // Two columns for the indent this row draws with, the same budget
+    // `panel_for_field`'s own blurb wraps to.
+    wrap(
+        &field.help,
+        usize::from(BLURB_WRAP.min(width.saturating_sub(2))),
+    )
+    .into_iter()
+    // No indent here. Both callers prepend the pane's own two columns, and
+    // the wrap budget above already reserves them, so adding them a second
+    // time put the blurb four columns in while every other row in the pane
+    // sits at two. `panel_for_field`'s copy of this indents once because it
+    // is the thing writing the row.
+    .map(|row| (row, palette.muted()))
+    .collect()
 }
 
 /// `""` for one, `"S"` for every other count: the plural suffix
@@ -611,8 +616,9 @@ enum DialogRow {
     Blank,
 }
 
-/// The dialog's rows: what a terminal under [`BOX_FLOOR`] columns gets
-/// full width, and what the boxed form draws inside its own border.
+/// The dialog's rows: what a terminal under [`overlay::floor_for`]`(BOX_WIDTH)`
+/// columns gets full width, and what the boxed form draws inside its own
+/// border.
 ///
 /// `now` is the caller's own clock, against which the `esc` row states
 /// what is left of [`CONFIRM_EXPIRY`] since `dialog.at()`: seconds and a
@@ -1032,9 +1038,9 @@ fn hairline_line(palette: Palette, width: u16) -> Line<'static> {
 }
 
 /// The column header row: `KEY`, `VALUE` and `COST`, aligned over
-/// [`field_line`]'s own cells. Drawn in place of [`top_line`] when neither
-/// the apply menu nor `h`'s help text is up, so the slot under the tab row
-/// always says something.
+/// [`field_line`]'s own cells. Unconditional: a slot that could vanish
+/// under a wrapped blurb has nowhere left to put `LANDS`, so the header
+/// stays and the blurb takes the room below it.
 fn column_header_line(palette: Palette, width: u16, show_lands: bool) -> Line<'static> {
     let (key_w, value_w, cost_w) = widths(body_width(width), show_lands);
     let mut text = String::from("  ");
@@ -1440,16 +1446,14 @@ fn grouped_pane_lines_with_panel(
         remaining -= 1;
     }
     if remaining > 1 {
-        if let Some((text, style)) = top_line(pane, palette) {
-            lines.push(Line::from(Span::styled(
-                format!("  {}", fit(&text, body_width(width))),
-                style,
-            )));
-        } else {
-            lines.push(column_header_line(palette, left_width, show_lands));
-        }
+        lines.push(column_header_line(palette, left_width, show_lands));
         remaining -= 1;
     }
+    push_wrapped_blurb(&mut lines, &mut remaining, pane, palette, width);
+    // Unreachable given `push_wrapped_blurb`'s own floor of `<= 1`. Kept as
+    // the explicit statement of that invariant;
+    // `the_blurb_never_spends_the_row_the_cursor_needs` is what actually
+    // fails if the floor is ever loosened.
     if remaining == 0 {
         return lines;
     }
@@ -1636,27 +1640,29 @@ fn ungrouped_pane_lines_with_panel(
     // is a committed file with 40 properties, but a dog answers `--schema`
     // for itself) leaves the title as the whole pane.
     let mut body_budget = budget - 1;
-    // `h`'s help text, on the line under the title. Subtracted from the
-    // budget rather than appended, per `body_from`'s own doc on markers.
-    // See `top_line`.
-    if let Some((text, style)) = top_line(pane, palette)
-        && body_budget > 0
-    {
-        lines.push(Line::from(Span::styled(
-            format!("  {}", fit(&text, body_width(width))),
-            style,
-        )));
-        body_budget -= 1;
-    }
     // The one line a dog pane has that a sheep pane does not: shep does not
     // know what a dog's field costs, so every row's COST cell is empty.
     // Reserved out of the budget before rows are laid out, for the same
     // reason the top line is: a footer appended afterwards is a line
     // nothing counted.
+    //
+    // Reserved before the BLURB too, not between the blurb and the rows:
+    // the blurb's floor below keeps one line back for the cursor's own
+    // row, and a footer reserved afterward would take exactly that line.
+    // The blurb is the line to lose, since it describes the row rather
+    // than being it.
     let footer = dog_footer_text(pane, body_budget);
     if footer.is_some() {
         body_budget -= 1;
     }
+    // The selected field's own help text, on the lines under the title.
+    // Subtracted from the budget rather than appended, per `body_from`'s
+    // own doc on markers. See `top_lines`.
+    //
+    // `push_wrapped_blurb`'s own floor of `<= 1`, not `== 0`: a long
+    // wrapped help must not spend the last line reserved for the cursor's
+    // own row.
+    push_wrapped_blurb(&mut lines, &mut body_budget, pane, palette, width);
     if !pane.fields().is_empty() && body_budget > 0 {
         let total = pane.rows().len();
         let cursor_row = pane.view().cursor().min(total - 1);
@@ -2149,39 +2155,20 @@ pub fn draw_pane(app: &App, pane: &ConfigPane, area: Rect, buffer: &mut Buffer) 
     if let Some(dialog) = app.close_dialog() {
         // The pane draws first and is then muted whole, so 1e's own render
         // is untouched and its four pinned snapshots do not move.
-        //
-        // Two calls, not one: `Buffer::set_style` (ratatui-core 0.1.2,
-        // `buffer/buffer.rs:405`) patches a cell rather than replacing it,
-        // so a single `palette.muted()` call would leave the title band's
-        // reverse video and the selected row's own ground sitting under the
-        // new ink. `Style::reset()` clears both back to the terminal's own
-        // default first; `palette.muted()` then repaints the one ink the
-        // dialog leaves the pane in. Under `NO_COLOR` the second call is a
-        // no-op (`Palette::muted` has no colour to give), so only the reset
-        // runs and the pane behind goes completely flat, which is the right
-        // outcome there: the border and the reverse-video heading are what
-        // carry the separation on their own.
-        buffer.set_style(area, Style::reset());
-        buffer.set_style(area, app.palette().muted());
+        overlay::mute(buffer, area, app.palette());
         draw_close_dialog(dialog, app.palette(), app.now(), area, buffer);
     }
 }
 
-/// Whether a dialog `width` columns wide draws boxed, or gives way to the
-/// borderless form.
-const fn dialog_is_boxed(width: u16) -> bool {
-    width >= BOX_FLOOR
-}
-
-/// The dialog on top of the muted pane: boxed at [`BOX_FLOOR`] and above,
-/// full width with no border below it, and full width with no border at
-/// any width when the box is taller than the rows there are.
+/// The dialog on top of the muted pane: boxed at [`overlay::floor_for`]`(BOX_WIDTH)`
+/// and above, full width with no border below it, and full width with no
+/// border at any width when the box is taller than the rows there are.
 ///
 /// A box cannot shed rows the way the borderless form can, since its
 /// border pair is what makes it a box, and half a box is worse than none.
 /// So a terminal too short for the whole box gives way to the borderless
 /// form, which is the same answer the width rule already gives one column
-/// under [`BOX_FLOOR`].
+/// under [`overlay::floor_for`]`(BOX_WIDTH)`.
 fn draw_close_dialog(
     dialog: &CloseDialog,
     palette: Palette,
@@ -2189,10 +2176,10 @@ fn draw_close_dialog(
     area: Rect,
     buffer: &mut Buffer,
 ) {
-    if dialog_is_boxed(area.width) {
+    if overlay::is_boxed(area.width, BOX_WIDTH) {
         let lines = close_dialog_lines(dialog, palette, BOX_WIDTH, now);
-        if boxed_dialog_height(&lines) <= area.height {
-            draw_boxed_close_dialog(&lines, palette, area, buffer);
+        if overlay::boxed_height(&lines) <= area.height {
+            overlay::draw_boxed(&lines, BOX_WIDTH, palette, Style::reset(), area, buffer);
             return;
         }
     }
@@ -2200,9 +2187,9 @@ fn draw_close_dialog(
 }
 
 /// The full-width, borderless form: bottom-anchored over the field list,
-/// the same rows a terminal under [`BOX_FLOOR`] always drew before this
-/// task, so a gallery scene one column below the floor still gets the form
-/// it exists to show rather than a clipped box.
+/// the same rows a terminal under [`overlay::floor_for`]`(BOX_WIDTH)` always
+/// drew before this task, so a gallery scene one column below the floor
+/// still gets the form it exists to show rather than a clipped box.
 ///
 /// [`shed_dialog_rows`] is what keeps this inside `area`: a narrow
 /// terminal wraps the reload sentence over more rows, so the form is
@@ -2220,90 +2207,13 @@ fn draw_borderless_close_dialog(
         + area
             .height
             .saturating_sub(u16::try_from(rows.len()).unwrap_or(0));
+    // One allocation for the whole dialog rather than one per row.
+    let blank = overlay::blank_of(area.width);
     for (offset, (_, line)) in rows.iter().enumerate() {
         let offset = u16::try_from(offset).unwrap_or(0);
-        blank_row(buffer, area.x, top + offset, area.width);
+        overlay::blank_row(buffer, area.x, top + offset, &blank, Style::reset());
         buffer.set_line(area.x, top + offset, line, area.width);
     }
-}
-
-/// The boxed form: [`BOX_WIDTH`] cells wide, centred in `area`, its rows
-/// vertically centred too.
-///
-/// `lines` comes from the caller, which has already measured them against
-/// The rows a boxed dialog occupies: its own lines plus a border above
-/// and below.
-///
-/// Both the fit check and the draw read this rather than each doing the
-/// addition, because they did it differently once. The check saturated
-/// from a `u16::MAX` fallback and the draw added plainly from a `0` one,
-/// so a `lines.len()` past `u16::MAX` would have refused to draw in one
-/// place and drawn a two-row box in the other. Neither is reachable with
-/// a dialog of a dozen rows, which is why nothing caught it; one function
-/// is what stops it coming back.
-fn boxed_dialog_height(lines: &[Line<'static>]) -> u16 {
-    u16::try_from(lines.len())
-        .unwrap_or(u16::MAX)
-        .saturating_add(2)
-}
-
-/// The boxed form: [`BOX_WIDTH`] cells wide, centred in `area`, its rows
-/// vertically centred too.
-///
-/// `lines` comes from the caller, which has already measured them against
-/// `area.height` to decide this form fits at all.
-fn draw_boxed_close_dialog(
-    lines: &[Line<'static>],
-    palette: Palette,
-    area: Rect,
-    buffer: &mut Buffer,
-) {
-    let box_height = boxed_dialog_height(lines);
-    let rows = box_height.saturating_sub(2);
-    let margin = area.width.saturating_sub(BOX_WIDTH + 2) / 2;
-    let box_x = area.x + margin;
-    let box_y = area.y + area.height.saturating_sub(box_height) / 2;
-    let line_style = palette.line();
-
-    buffer.set_string(
-        box_x,
-        box_y,
-        format!(
-            "{BOX_TOP_LEFT}{}{BOX_TOP_RIGHT}",
-            BOX_TOP.to_string().repeat(usize::from(BOX_WIDTH))
-        ),
-        line_style,
-    );
-    for (offset, line) in lines.iter().enumerate() {
-        let offset = u16::try_from(offset).unwrap_or(0);
-        let y = box_y + 1 + offset;
-        buffer.set_string(box_x, y, BOX_LEFT.to_string(), line_style);
-        blank_row(buffer, box_x + 1, y, BOX_WIDTH);
-        buffer.set_line(box_x + 1, y, line, BOX_WIDTH);
-        buffer.set_string(box_x + 1 + BOX_WIDTH, y, BOX_RIGHT.to_string(), line_style);
-    }
-    buffer.set_string(
-        box_x,
-        box_y + 1 + rows,
-        format!(
-            "{BOX_BOTTOM_LEFT}{}{BOX_BOTTOM_RIGHT}",
-            BOX_BOTTOM.to_string().repeat(usize::from(BOX_WIDTH))
-        ),
-        line_style,
-    );
-}
-
-/// `width` cells of plain space at `(x, y)`, reset back to the terminal's
-/// own default: the dialog itself is never muted, only the pane behind it.
-///
-/// [`Buffer::set_line`] only ever writes as many cells as its `Line` carries
-/// content for, so a blank separator row (`Line::from(Span::raw(""))`,
-/// [`close_dialog_lines`]'s own two of them) writes nothing and would leave
-/// whatever the field list drew there showing through, muted, in the
-/// middle of what is meant to read as a solid dialog. Called ahead of every
-/// row this module draws the dialog's own lines into, boxed or not.
-fn blank_row(buffer: &mut Buffer, x: u16, y: u16, width: u16) {
-    buffer.set_string(x, y, " ".repeat(usize::from(width)), Style::reset());
 }
 
 #[cfg(test)]
@@ -2454,7 +2364,12 @@ mod tests {
     /// regardless of the terminal, so a wide terminal still wraps).
     #[test]
     fn the_reload_sentence_wraps_rather_than_truncates_at_every_width() {
-        for width in [BOX_WIDTH, BOX_FLOOR - 1, MIN_TERM_WIDTH, 160] {
+        for width in [
+            BOX_WIDTH,
+            overlay::floor_for(BOX_WIDTH) - 1,
+            MIN_TERM_WIDTH,
+            160,
+        ] {
             for kind in [ReloadKind::Overlap, ReloadKind::Serial] {
                 for instances in [1, 3] {
                     let dialog = fixtures::close_dialog_reloading(kind, instances);
@@ -2547,8 +2462,9 @@ mod tests {
 
     #[test]
     fn the_box_draws_at_its_floor_and_not_one_column_below() {
-        assert!(dialog_is_boxed(BOX_FLOOR));
-        assert!(!dialog_is_boxed(BOX_FLOOR - 1));
+        let floor = overlay::floor_for(BOX_WIDTH);
+        assert!(overlay::is_boxed(floor, BOX_WIDTH));
+        assert!(!overlay::is_boxed(floor - 1, BOX_WIDTH));
     }
 
     #[test]
@@ -2715,9 +2631,13 @@ mod tests {
 
     /// One frame row's dialog content: what the box holds, or the whole
     /// row when the borderless form is drawn.
+    ///
+    /// `▐` and `▌` are the box's own left and right edge glyphs
+    /// ([`overlay::draw_boxed`]'s constants), spelled out rather than
+    /// named: this fixture reads rendered text, not `overlay` internals.
     fn dialog_interior(line: &str) -> String {
-        let inside = match (line.find(BOX_LEFT), line.rfind(BOX_RIGHT)) {
-            (Some(left), Some(right)) if left < right => &line[left + BOX_LEFT.len_utf8()..right],
+        let inside = match (line.find('▐'), line.rfind('▌')) {
+            (Some(left), Some(right)) if left < right => &line[left + '▐'.len_utf8()..right],
             _ => line,
         };
         inside.trim().to_owned()
@@ -2784,17 +2704,6 @@ mod tests {
                 .add_modifier
                 .contains(ratatui::style::Modifier::REVERSED)
         );
-    }
-
-    /// The three the check found. `▐` is Neutral and the four corners are
-    /// too; `▀`, `▄` and `▌` are East-Asian Ambiguous, and a terminal that
-    /// doubles the right edge shifts every interior row. Recorded rather
-    /// than fixed, since no Neutral right-half block exists to swap in.
-    #[test]
-    fn the_border_vocabulary_is_the_one_that_was_checked() {
-        for glyph in ['▛', '▜', '▙', '▟', '▐', '▀', '▄', '▌'] {
-            assert_eq!(char_columns(glyph), 1, "{glyph}");
-        }
     }
 
     /// The whole pane at a comfortable width, unbounded. The snapshot is the
@@ -3014,10 +2923,10 @@ mod tests {
             all_text.extend(text);
             pane.next_group();
         }
-        // `parts(line).is_some()` alone is not enough at this width any
-        // more: the legend line now spells out `= read-only, set it in
-        // the Flockfile` (finding 3), and its own leading two spaces plus
-        // an `=` parse the same shape `parts` reads off a field row. Real
+        // `parts(line).is_some()` alone is not enough at this width: the
+        // legend line spells out `= read-only, set it in the Flockfile`,
+        // and its own leading two spaces plus an `=` parse the same shape
+        // `parts` reads off a field row. Real
         // field keys only, the same filter `rows_of` applies, keeps this
         // test about the cost cell rather than the legend.
         let keys: Vec<String> = web_pane()
@@ -3106,20 +3015,85 @@ mod tests {
 
     /// The marker that says rows were cut would itself become the row
     /// that gets cut.
+    ///
+    /// Both widths, because they take different code. 120 has a panel, so
+    /// every height walks `grouped_pane_lines_with_panel` with `top_lines`
+    /// returning empty and never reaches the blurb loop's own arithmetic.
+    /// 89 is one column under `panel_width`'s floor, so the blurb draws and
+    /// the sweep crosses `remaining` entering that loop at 0, 1 and 2
+    /// without having to name which height produces which value.
+    ///
+    /// One test over a width list, not two copies of it: they were twelve
+    /// identical lines apart from the literal, and the assertion message
+    /// names the width so a failure still says which case broke.
+    ///
+    /// What this does NOT see is a row too FEW, since the bound is an upper
+    /// one and losing the cursor's row only shortens the output.
+    /// `the_blurb_never_spends_the_row_the_cursor_needs` is that half, and
+    /// it exists because a real defect hid in this gap.
     #[test]
     fn the_body_never_outgrows_the_height_it_was_given() {
         let mut pane = web_pane();
-        for height in 1..=60u16 {
-            pane.set_rows(usize::from(height.saturating_sub(1)));
-            for cursor in [0usize, 7, 20, 38] {
-                pane.move_to_first();
-                pane.move_by(isize::try_from(cursor).unwrap());
-                let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
+        for width in [120u16, 89] {
+            for height in 1..=60u16 {
+                pane.set_rows(usize::from(height.saturating_sub(1)));
+                for cursor in [0usize, 7, 20, 38] {
+                    pane.move_to_first();
+                    pane.move_by(isize::try_from(cursor).unwrap());
+                    let text = text_of(&pane_lines(&pane, fixtures::plain(), width, height));
+                    assert!(
+                        text.len() <= usize::from(height),
+                        "width {width}, height {height}, cursor {cursor}: {text:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// `push_wrapped_blurb` breaks on a budget of `<= 1` rather than
+    /// `== 0`, so a long wrapped help must not spend the last line the
+    /// cursor's own row needs. Nothing pinned it before the helper existed:
+    /// the height sweep above passes with the floor at either value,
+    /// because losing the field row only makes the output shorter and that
+    /// assertion is an upper bound.
+    ///
+    /// So this asserts the pair instead: wherever the blurb reached the
+    /// screen, the cursor's own row did too. Both pane shapes, grouped and
+    /// ungrouped, even though one function now serves both, because this is
+    /// the end-to-end check through the real `pane_lines` entry point
+    /// rather than a check of the helper alone.
+    ///
+    /// The final count is the vacuity guard: a blurb that never drew would
+    /// skip every height and pass.
+    #[test]
+    fn the_blurb_never_spends_the_row_the_cursor_needs() {
+        for (which, mut pane, key) in [
+            ("grouped", web_pane(), "autorestart"),
+            ("ungrouped", bark_pane(), "history_bytes"),
+        ] {
+            pane.move_to_key(key);
+            let anchor = blurb_anchor(&pane);
+            let mut checked = 0;
+            for height in 1..=20u16 {
+                let rows = text_of(&pane_lines(&pane, fixtures::plain(), 89, height));
+                if !rows.iter().any(|row| row.contains(&anchor)) {
+                    continue;
+                }
+                checked += 1;
+                // Excludes the blurb row itself: a help string that ever
+                // came to mention its own field's name would let a cut
+                // cursor row hide behind the blurb row satisfying `key` by
+                // coincidence.
                 assert!(
-                    text.len() <= usize::from(height),
-                    "height {height}, cursor {cursor}: {text:?}"
+                    rows.iter()
+                        .any(|row| row.contains(key) && !row.contains(&anchor)),
+                    "{which} at height {height}: the blurb drew and the cursor's row did not: {rows:?}"
                 );
             }
+            assert!(
+                checked > 0,
+                "{which}: the blurb never drew, so nothing was checked"
+            );
         }
     }
 
@@ -3142,64 +3116,141 @@ mod tests {
         );
     }
 
-    /// `max_memory`'s own blurb, read off the same schema `Field::help`
-    /// is built from.
+    /// At a width with no explanation panel, the field under the cursor
+    /// still has its help text on screen, with no key pressed.
+    ///
+    /// 89 columns is the widest terminal `panel_width` refuses: the panel
+    /// clamps to `PANEL_MIN` 50 and 89 - 50 is 39, one short of `LEFT_MIN`.
+    ///
+    /// `contains` cannot see indentation drift, so this compares against
+    /// the header row's own margin instead of a literal 2, since every
+    /// row in the pane shares one.
     #[test]
-    fn help_open_draws_the_selected_fields_own_text_under_the_title() {
-        let mut pane = web_pane();
-        pane.move_to_key("max_memory");
-        pane.toggle_help();
-        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
-        assert!(
-            text.iter()
-                .any(|line| line.contains("Restart the app if it climbs above this much memory")),
-            "{text:?}"
+    fn the_blurb_shares_the_panes_own_indent() {
+        let pane = web_pane();
+        let lines = pane_lines(&pane, fixtures::plain(), 89, 40);
+        let rows = text_of(&lines);
+        let indent = |row: &str| row.len() - row.trim_start().len();
+        let header = rows
+            .iter()
+            .find(|row| row.contains("FIELD") && row.contains("VALUE"))
+            .expect("no column header");
+        let anchor = blurb_anchor(&pane);
+        let blurb = rows
+            .iter()
+            .find(|row| row.contains(&anchor))
+            .expect("no blurb row");
+        assert_eq!(
+            indent(blurb),
+            indent(header),
+            "blurb {:?} against header {:?}",
+            blurb.get(..12),
+            header.get(..12)
         );
     }
 
-    /// Below the panel's own floor: the panel prints the cursor's field's
-    /// blurb unconditionally, `h` or no `h`, so this has to run where the
-    /// panel does not draw at all to see the top line's own text disappear
-    /// on the second toggle.
     #[test]
-    fn toggling_help_again_dismisses_it() {
-        let mut pane = web_pane();
-        pane.move_to_key("max_memory");
-        pane.toggle_help();
-        pane.toggle_help();
-        let text = text_of(&pane_lines(&pane, fixtures::plain(), 89, 0));
+    fn the_blurb_draws_at_a_width_with_no_panel() {
+        let pane = web_pane();
+        assert!(panel_width(89).is_none(), "89 must have no panel");
+        let lines = pane_lines(&pane, fixtures::plain(), 89, 40);
+        let anchor = blurb_anchor(&pane);
+        let rows = text_of(&lines);
         assert!(
-            !text.iter().any(|line| line.contains("Restart the app")),
-            "{text:?}"
+            rows.iter().any(|row| row.contains(&anchor)),
+            "no blurb at 89 columns: {rows:?}"
         );
     }
 
-    /// Help keeps the shared slot through an edit: nothing competes for
-    /// it any more, so a filed edit must not blank a note the operator has
-    /// not dismissed.
+    /// And it describes the row the cursor is on, not the first field.
     #[test]
-    fn open_help_survives_a_filed_edit() {
+    fn the_blurb_follows_the_cursor_with_no_panel() {
         let mut pane = web_pane();
-        pane.move_to_key("autorestart");
-        pane.toggle_help();
-        pane.cycle();
-        let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
+        let first = blurb_anchor(&pane);
+        pane.move_by(1);
+        let second = blurb_anchor(&pane);
+        // On the anchors, not the help strings: two fields can have
+        // different help and share a longest word, and then the absence
+        // assertion below cannot fail. Guarding the help alone would look
+        // like it covered this.
+        //
+        // Substring, not just inequality: "memory" != "max_memory" passes
+        // `assert_ne!` while `second`'s own row still contains `first`,
+        // which would fail the absence assertion below on a fixture
+        // mismatch rather than a real regression.
         assert!(
-            text.iter()
-                .any(|line| line.contains("Restarts the process automatically")),
-            "{text:?}"
+            !first.contains(&second) && !second.contains(&first),
+            "the fixture needs two fields whose longest help words are not substrings of each other: {first:?} / {second:?}"
+        );
+        let lines = pane_lines(&pane, fixtures::plain(), 89, 40);
+        let rows = text_of(&lines);
+        // The specific blurb row, not the whole screen: `first` scanned
+        // against every row would false-fail on a coincidental substring
+        // in an unrelated one, a field name or a value cell.
+        let blurb_row = rows
+            .iter()
+            .find(|row| row.contains(&second))
+            .unwrap_or_else(|| panic!("the cursor moved and the blurb did not: {rows:?}"));
+        assert!(
+            !blurb_row.contains(&first),
+            "the previous field's blurb is still on screen: {rows:?}"
         );
     }
 
-    /// The hard constraint this item's brief calls out: a line drawn into
-    /// the fixed slot under the title is still one line counted against
-    /// the same budget every other line in the pane is, at every width
-    /// and height the pane claims to draw at.
+    /// At the design target the panel draws the blurb, and the fix must not
+    /// have added a second copy above the field list.
+    #[test]
+    fn the_panel_is_the_only_blurb_where_it_draws() {
+        let pane = web_pane();
+        assert!(panel_width(160).is_some(), "160 must have a panel");
+        assert!(
+            top_lines(&pane, fixtures::plain(), 160).is_empty(),
+            "the inline blurb drew beside the panel, so the help is on \
+             screen twice"
+        );
+        assert!(
+            !top_lines(&pane, fixtures::plain(), 89).is_empty(),
+            "and it must still draw where the panel cannot"
+        );
+    }
+
+    /// The longest word in the cursor's field help, which is what the blurb
+    /// tests match on.
+    ///
+    /// Not the whole help string: the blurb wraps to `BLURB_WRAP`, so a
+    /// help text longer than the wrap budget appears in no single row and a
+    /// `contains` against all of it fails for a reason unrelated to what
+    /// these tests pin. Not the first word either, since "Set" or "The"
+    /// appears in other rows. The longest word is the one least likely to
+    /// be split by a wrap or shared with another row.
+    fn blurb_anchor(pane: &ConfigPane) -> String {
+        let help = field_help_under_cursor(pane);
+        help.split_whitespace()
+            .max_by_key(|word| word.len())
+            .expect("the field help is empty")
+            .to_owned()
+    }
+
+    /// The `help` string of the field under the cursor, whichever it is.
+    fn field_help_under_cursor(pane: &ConfigPane) -> String {
+        let Some(PaneRow::Field(index)) = pane.cursor() else {
+            panic!("the cursor is not on a field");
+        };
+        pane.fields().fields()[index].help.clone()
+    }
+
+    /// The hard constraint this item's brief calls out: the blurb rows
+    /// under the title are counted against the same budget every other
+    /// line in the pane is, at every width and height the pane claims to
+    /// draw at.
+    ///
+    /// "A line drawn into the fixed slot" until 072b6ff8: the slot held one
+    /// line while `h` toggled it, and holds as many as the help text wraps
+    /// to now that it is unconditional.
     #[test]
     fn help_text_still_respects_the_width_and_height_budgets() {
         let mut pane = web_pane();
         pane.move_to_key("max_memory");
-        pane.toggle_help();
         for width in super::super::MIN_TERM_WIDTH..=200 {
             for line in text_of(&pane_lines(&pane, fixtures::plain(), width, 0)) {
                 assert!(
@@ -3989,17 +4040,14 @@ mod tests {
         assert!(panel.iter().filter(|row| !row.trim().is_empty()).count() > 3);
     }
 
-    /// The finding this fix round closes: nothing on the live screen drew
-    /// the panel, because nothing called it outside a test fixture. This
-    /// pins the wiring itself, through the same [`pane_lines`] the real
-    /// draw path calls, not through a fixture built to reach
-    /// [`panel_lines`] directly.
+    /// Nothing on the live screen drew the panel, because nothing called
+    /// it outside a test fixture. This pins the wiring itself, through the
+    /// same [`pane_lines`] the real draw path calls, not through a
+    /// fixture built to reach [`panel_lines`] directly.
     ///
-    /// The "not below the design target" half of this test's original name
-    /// no longer holds: the fixed 160-column threshold became
-    /// [`panel_width`]'s continuous ladder, so the panel now draws down to
-    /// 90 columns. What still has to hold, and what this pins instead,
-    /// is the panel's own floor: nothing below it.
+    /// The panel draws across a range, from the design target down to
+    /// [`panel_width`]'s own floor at 90 columns, not only at the design
+    /// target. What this pins is the floor: nothing below it.
     #[test]
     fn the_panel_draws_beside_the_field_list_at_the_design_target() {
         let app = fixtures::app_in_sheep_pane();

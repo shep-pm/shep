@@ -116,7 +116,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
   refused   the shepherd did not answer: could not connect to \`/home/ada/.shep/run/shep.sock\`: Connection refused (os error 61)
   since     2026-08-14 14:32:07, 9m 53s ago      the sheep themselves may well still be running; lookout cannot see them to say
   try       shep muster, from another shell      then reopen lookout: it does not reconnect on its own
-q quit   j/k still moves   every other key is refused while the link is down                                                                            █ frozen`;
+q quit   h keymap   j/k g/G move   nothing you press can reach the shepherd                                                                              █ frozen`;
 
 const refused = `shep lookout   /home/ada/.shep                                                                            6 in the flock
 host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   floc…
@@ -630,6 +630,42 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
     </p>
     <CodeBlock label="100×14, filter applied">{filterActive}</CodeBlock>
 
+    <h2>The keymap</h2>
+    <p>
+      <code>h</code> or <code>?</code> opens a box over whatever is on
+      screen, listing every key lookout binds. Four columns group them by
+      what the key does: <code>MOVING</code> for the selection and the
+      panes, <code>LOOKING</code> for what's on screen,{" "}
+      <code>CHANGING</code> for anything that writes, and{" "}
+      <code>DOING</code> for the three that act on a sheep.
+    </p>
+    <p>
+      It owns the keyboard while it's up. <code>h</code>, <code>?</code> and{" "}
+      <code>Esc</code> close it, <code>q</code> and <code>Ctrl-C</code> still
+      quit, and every other key is swallowed, since the box covers the table
+      a movement key would otherwise scroll under it. A close dialog is the
+      one screen it won't open over: that question owns the keyboard until
+      it's answered.
+    </p>
+    <p>
+      The line under the three destructive keys says whether they can act at
+      all. With the gate open it reads <code>control enabled</code>, with{" "}
+      <code>--read-only</code> it reads <code>read-only</code>, and once the
+      link is down it says so instead, because <code>x</code>,{" "}
+      <code>R</code> and <code>L</code> then refuse for a reason the gate
+      doesn't name. The overlay itself still opens on a frozen dashboard,
+      which is where a key list is wanted most.
+    </p>
+    <p>
+      The box wants 130 columns and 19 rows. Below 130 it draws full width
+      with no border rather than clipping, and drops a column at a time as
+      the terminal narrows: three columns under 126, two under 94, one under
+      62. Short terminals lose the colour note first, then the blank row,
+      then the gate line. Under 13 rows it refuses and names the height it
+      needs, since half a key list is worse than a sentence saying it
+      doesn't fit.
+    </p>
+
     <h2>When the terminal is small</h2>
     <p>
       Panes drop before columns do, least-diagnostic-first: below 24 rows the
@@ -704,8 +740,13 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       The sheep detail band and the bleats feed hand their rows to a link
       panel. Both describe a shepherd that is gone; the panel describes
       what happened to it, quoting the last dial's own error. Lookout never
-      exits on its own. <code>q</code> quits, <code>r</code> dials again,
-      and every other key refuses while the link is down.
+      exits on its own. <code>q</code> quits, <code>h</code> opens the
+      keymap, and <code>j</code>/<code>k</code> and <code>g</code>/<code>G</code>
+      still move over values that are already history. What no key can do is
+      reach the shepherd, which is what the bar says instead of listing
+      refusals: <code>r</code> is refused outright, since the task that would
+      answer a re-dial has already returned by the time a freeze lands, so it
+      says the shepherd is gone rather than pretending to try.
     </p>
     <CodeBlock label="160×30, shepherd dead">{frozen}</CodeBlock>
 
@@ -1031,10 +1072,10 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       A panel to the right of a wide enough pane explains whichever field
       the cursor is on: its help text, its current value, its default, an
       example, what it accepts and refuses, and which other fields it
-      interacts with. <code>h</code> still shows the same field's help text
-      inline for a narrower terminal, since the panel needs room the field
-      list doesn't. Below 90 columns there's no room for it and the cost
-      column carries every row's cost alone. From 90 up the panel draws and
+      interacts with. Below 90 columns there's no room for the panel, so the
+      field's help text draws inline instead, in a row above the field list,
+      wrapped, and still following the cursor. No key toggles it either way. The cost
+      column carries every row's cost alone down there. From 90 up the panel draws and
       the cost column gives way to it, since the panel already names the
       focused field's own cost. From 160 up the pane is wide enough for
       both at once.
@@ -1086,12 +1127,13 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
         <code>8</code> jump straight to one.
       </li>
       <li>
-        <code>h</code> shows the selected field's own help text under the
-        title. Press it again, or <code>Esc</code>, to dismiss it.
+        <code>h</code> opens the keymap, the same as everywhere else. The
+        selected field's help text needs no key: the panel carries it, or a
+        row above the field list does once the panel is gone.
       </li>
       <li>
         <code>Esc</code> closes whatever is innermost: a sub-screen back to
-        the field list, then help if it's open, then a question if anything
+        the field list, then a question if anything
         the running child hasn't taken is outstanding, and last the pane
         itself, writing the whole change set as it closes. It never quits
         lookout.

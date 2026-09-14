@@ -314,7 +314,7 @@ The frozen state after the retry ladder is spent.
 
 ## Interactions & behavior
 
-**Navigation.** `j`/`k` move the selection by a row, `g`/`G` jump to the ends, `↵` opens the selected sheep or dog (1a → 1d), `esc` goes back one level, `J`/`K` step to the next sheep without leaving 1d. `e` opens the editing pane from either 1a or 1d. `g` opens secrets, `l` opens the full-screen feed, `s` opens the existing daemon settings screen, `F` toggles the fold view, `h` or `?` toggles the keymap.
+**Navigation.** `j`/`k` move the selection by a row, `g`/`G` jump to the ends, `↵` opens the selected sheep or dog (1a → 1d), `esc` goes back one level, `J`/`K` step to the next sheep without leaving 1d. `e` opens the editing pane from either 1a or 1d. `S` opens secrets, `b` opens the full-screen feed, `s` opens the existing daemon settings screen, `F` toggles the fold view, `h` or `?` toggles the keymap. (`S` and `b`, not the `g` and `l` this line first gave: `g` is `SelectFirst` and `l` is unbound.)
 
 **Actions.** Unchanged from the shipped behaviour: `x`, `R`, `L` arm a confirm, `↵` confirms, any other key cancels, `q`/Ctrl-C still quit with a prompt up, an unanswered prompt expires after ten seconds, and `--read-only` / `lookout.allow_control = "false"` refuses outright with a literal sentence. The one exception is 1g's apply menu, which names its keys and so acts on the press.
 
@@ -329,7 +329,7 @@ The frozen state after the retry ladder is spent.
 - Columns drop least-diagnostic-first at the widths already in `docs/lookout/README.md`; the new columns join that ladder before the old ones: the 27-cell right margin collapses first, then `MEM/CEIL` gauge (keeping `RSS`), then `CPU 60s` sparkline (keeping `%`), then `FOLD`, then the existing order.
 - Panes drop before columns on short terminals: detail below 24 rows, feed below 18, host strip below 14, per the shipped rule.
 - The 1d charts need 140 columns for the shared axis; below that, drop the memory chart first and keep CPU, and below 100 columns drop both and fall back to the sparkline pair from 1a.
-- The 1g and 1k overlays need 90 and 132 columns; below that, draw them full-width with no border box rather than clipping.
+- The 1g and 1k overlays need 90 and 130 columns; below that, draw them full-width with no border box rather than clipping. (130, not the 132 this line first gave: the floor is the interior plus a border cell and a margin cell each side, which is 86 + 4 for 1g and 126 + 4 for 1k.)
 - Below 31 columns or 6 rows, refuse as today.
 
 ## State

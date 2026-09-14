@@ -1,0 +1,52 @@
+---
+source: crates/shep-cli/src/lookout/frames.rs
+expression: render_text(&buffer)
+---
+ THE SHEPHERD HAS DIED  ▖  these values are frozen as of 2026-08-14 14:32:07                                                 nothing here is live  ▖  q to quit 
+                                                                                                                                                                
+ shep lookout   /home/ada/.shep  ·  the dashboard stays up so you can read what it had  ·  it will not exit on its own                                          
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 14.7%       ▁█   flock mem 716.0M …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                                                                
+  ID    NAME                  STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       FROZEN    FOLD        SMIT         
+   ██ FLOCK                                                                                                                                                     
+  2     api                   online           48219    1         -          -              █  7.1%    ░░░░░░░░░░  241.0M    1h 18m    edge        -            
+  3     billing-reconciliat…  online           48230    0         -          -              ▂  0.8%    ░░░░░░░░░░  96.0M     1h 19m    -           -            
+  4     cron                  online           48233    0         -          -              ▁  0.1%    ░░░░░░░░░░  8.0M      1h 21m    -           -            
+  5     metrics               online           48240    0         -          -              ▁  0.4%    ░░░░░░░░░░  11.0M     1h 22m    -           -            
+  0     web                   online           48211    0         -          -              ▄  3.4%    ░░░░░░░░░░  182.0M    1h 15m    edge        -            
+  1     web                   online           48212    0         -          -              ▄  2.9%    ░░░░░░░░░░  178.0M    1h 16m    edge        -            
+                ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                
+                ▐MOVING                          LOOKING                         CHANGING                        DOING                         ▌                
+                ▐j/k  ↓/↑     select a row       h  ?         this keymap        any char     types into a box   x            stop             ▌                
+                ▐g/G home/end first / last       b            feed, full screen  ⌫ ↵ esc      erase, file, drop  R            restart          ▌                
+                ▐J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload           ▌                
+                ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                    ▌                
+                ▐←/→          environment tab    o            out / err / both   d            restore default      ▟█████▙                     ▌                
+                ▐tab          next config group  m            minimum level      u            undo the edit       ▟███████▙                    ▌                
+                ▐1-8          jump to a group    f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌                
+                ▐n/N          next / prev match  w            wrap long lines    S            secrets               ▀▘ ▀▘                      ▌                
+                ▐↵            open selection     /            filter, or match   D            delete a secret                                  ▌                
+                ▐esc          back one level     r            refresh now        c            leave it running                                 ▌                
+                ▐                                v            reveal for 10s                                                                   ▌                
+                ▐                                y            copy the value                                                                   ▌                
+                ▐                                                                                                                              ▌                
+                ▐ the three above are refused  ·  █ the link is down  ·  nothing acts                                                          ▌                
+                ▐ colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          ▌                
+                ▐ h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                             ▌                
+                ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ THE LINK  5 redials over 7.75s, all refused   ·   lookout has stopped polling and stopped re-dialling                                                       
+  ladder    █ 250ms  █ 500ms  █ 1s  █ 2s  █ 4s                                                                                                                  
+  refused   the shepherd did not answer: could not connect to `/home/ada/.shep/run/shep.sock`: Connection refused (os error 61)                                 
+  since     2026-08-14 14:32:07, 9m 53s ago      the sheep themselves may well still be running; lookout cannot see them to say                                 
+  try       shep muster, from another shell      then reopen lookout: it does not reconnect on its own                                                          
+q quit   h keymap   j/k g/G move   nothing you press can reach the shepherd                                                                             █ frozen
