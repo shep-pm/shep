@@ -361,25 +361,10 @@ fn field_line(
 /// own help text, wrapped, at widths where the explanation panel cannot
 /// draw it. Empty where the panel does.
 ///
-/// One route to a field's help, and it follows the cursor. `h` used to be
-/// the other, drawing the same `field.help` string on one line under the
-/// title, which duplicated `panel_for_field`'s own second region everywhere
-/// the panel drew and was the only route below `panel_width`'s floor of 90
-/// columns. Making this unconditional retired the key rather than leaving
-/// its meaning to depend on the terminal's width, and freed `h` for the
-/// keymap overlay the design always wanted on it.
 /// Pushes the field-help lines [`top_lines`] returns onto `lines`, spending
-/// `budget` down as it goes and stopping one line short of empty.
-///
-/// Both callers had this loop written out by hand, floored at `<= 1` rather
-/// than `== 0`, because a long wrapped help string must not spend the last
-/// line either path reserves for the cursor's own row. That agreement used
-/// to be a comment saying the two copies "agree deliberately, not by
-/// coincidence", after the two disagreed once for real:
-/// `f603305f`'s dog-pane bug was the floor holding in one copy and not the
-/// other, because the budget for a footer was reserved on one side of this
-/// loop and the other side of it in the sibling function. One function
-/// removes the chance of that happening a third time.
+/// `budget` down as it goes and stopping one line short of empty: a long
+/// wrapped help string must not spend the last line the cursor's own row
+/// needs.
 fn push_wrapped_blurb(
     lines: &mut Vec<Line<'static>>,
     budget: &mut usize,
@@ -3137,15 +3122,10 @@ mod tests {
     ///
     /// 89 columns is the widest terminal `panel_width` refuses: the panel
     /// clamps to `PANEL_MIN` 50 and 89 - 50 is 39, one short of `LEFT_MIN`.
-    /// `h` used to be the only route to this text, which is why it survived
-    /// the panel that made it redundant everywhere else.
-    /// The blurb sits at the pane's own two-column indent, not deeper.
     ///
-    /// `contains` cannot see this, which is why it shipped four columns in:
-    /// `top_lines` indented its own rows and both callers indent again. The
-    /// header row is the reference, since every row in the pane shares its
-    /// margin, so the test compares against it rather than against a
-    /// literal 2.
+    /// `contains` cannot see indentation drift, so this compares against
+    /// the header row's own margin instead of a literal 2, since every
+    /// row in the pane shares one.
     #[test]
     fn the_blurb_shares_the_panes_own_indent() {
         let pane = web_pane();

@@ -5002,10 +5002,8 @@ impl App {
             // leaves the pane until the question is answered, one way or
             // another.
             //
-            // There used to be a rung above the dialog, closing the field
-            // help `h` had opened. The help is unconditional now, so an
-            // operator who could see a blurb no longer presses `esc` twice
-            // to leave the pane.
+            // One press, not two: the field's help draws unconditionally
+            // now, so nothing waits behind a second `esc` for it.
             KeyPress::Escape => {
                 if let Some(dialog) = self.close_offer() {
                     self.close_dialog = Some(dialog);
@@ -11393,14 +11391,9 @@ mod tests {
         );
     }
 
-    /// The third of these, after `h_cancels_an_armed_confirm_instead_of_
-    /// opening_the_overlay` (dashboard) and `h_cancels_an_armed_settings_
-    /// candidate_instead_of_opening_the_overlay` (settings). `Help`'s own
-    /// arm here never mentions `armed`: `was_armed`, computed before the
-    /// match for every key but `Confirm` and `Quit`, already disarms it.
-    /// Written because a round of review argued the disarm might not run
-    /// before the overlay opens, and reading the two statements in order
-    /// settles that but does not prove it the way running them does.
+    /// `Help`'s own arm here never mentions `armed`: `was_armed`, computed
+    /// before the match for every key but `Confirm` and `Quit`, already
+    /// disarms it.
     #[test]
     fn h_disarms_a_secret_delete_instead_of_opening_the_overlay_over_it() {
         let mut app = fixtures::app_with_secrets_and_control();
@@ -14740,15 +14733,13 @@ mod tests {
         assert!(app.close_dialog().is_none());
     }
 
-    /// `esc` leaves the config pane on the first press, with a blurb on
-    /// screen. It used to take two: `h`'s field help was a rung above the
-    /// close dialog's question in `Escape`'s cascade, and the blurb is
-    /// unconditional now, so there is no rung to spend.
+    /// `esc` leaves the config pane on the first press: the blurb draws
+    /// unconditionally now, so nothing else waits for a second press.
     ///
     /// 89 columns, one under `panel_width`'s floor, is what makes the
-    /// blurb the only thing drawing the cursor's own help: at 160 the
-    /// panel would draw it and the render below would pass regardless of
-    /// which rung `Escape` used to spend.
+    /// blurb the only thing drawing the cursor's own help at this width;
+    /// at 160 the panel draws it instead and the assertion below would
+    /// pass regardless.
     #[test]
     fn esc_leaves_the_pane_on_one_press_with_a_blurb_showing() {
         let mut app = fixtures::app_in_sheep_pane_with_nothing_parked();

@@ -211,10 +211,9 @@ fn rows_from(probe: &[(KeyCode, KeyModifiers)]) -> Vec<Binding> {
             else {
                 continue;
             };
-            // Not `let binding = binding(&press)`: the fn and the local
-            // used to share a name, which reads fine here but is a trap the
-            // moment a later edit needs to call `binding` again inside this
-            // loop and silently calls the value instead.
+            // Not the function's own name: shadowing it here would silently
+            // resolve a later call to `binding` inside this loop to this
+            // value instead.
             let entry = binding(&press);
             if entry.group == group && !out.iter().any(|seen| seen.keys == entry.keys) {
                 out.push(entry);

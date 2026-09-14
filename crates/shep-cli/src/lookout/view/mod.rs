@@ -530,10 +530,9 @@ fn draw_body(app: &App, frame: &mut Frame<'_>) {
 /// unlike 1g's dialog, which only ever covers the config pane and so draws
 /// from inside `view::pane::draw_pane`.
 ///
-/// [`App::keymap_open`]'s own doc says the overlay is "reached from every
-/// body's own `Help` arm", and [`draw_body`] returns early for five of the
-/// six, so this used to be called at each of its exits. [`draw`] calls it
-/// once now, after `draw_body` has returned from whichever one it took.
+/// [`App::keymap_open`]'s own doc says it is reached from every body's own
+/// `Help` arm; [`draw`] calls this once, after [`draw_body`] returns from
+/// whichever of the six it took.
 fn draw_keymap_overlay(app: &App, area: Rect, buffer: &mut Buffer, palette: Palette) {
     if app.keymap_open() {
         overlay::mute(buffer, area, palette);

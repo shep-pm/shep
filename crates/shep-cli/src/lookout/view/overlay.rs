@@ -57,13 +57,9 @@ const BOX_RIGHT: char = '▌';
 /// That file, not `rulings.md`: the rulings never give 1k a width, so the
 /// 132 is a frame's own arithmetic slip rather than a ruling to overturn.
 pub(super) const fn floor_for(interior: u16) -> u16 {
-    // `saturating_add`, for the reason `draw_boxed` gives two functions down:
-    // this module protects every addition, and one bare `+` reads as an
-    // oversight whether or not it is one. Round 5 raised `interior + 4` here
-    // and I declined it as unreachable, which it is at a const 126. Round 11
-    // raised it again against the policy I had written in between, which is
-    // the better argument: consistency a reader can check beats a
-    // reachability argument a reader has to reconstruct.
+    // saturating_add: this module protects every addition consistently, so
+    // a bare `+` here would read as an oversight even though it is
+    // unreachable at the real interior of 126.
     interior.saturating_add(4)
 }
 
@@ -186,11 +182,9 @@ pub(super) fn blank_row(buffer: &mut Buffer, x: u16, y: u16, blank: &str, style:
 
 /// A row's worth of spaces, for [`blank_row`] to write.
 ///
-/// Split from it because all three callers draw inside a loop over rows and
-/// `blank_row` used to take a `width` and allocate the string itself, once per
-/// row. Hoisting is free here in a way that replacing a derived constant with
-/// a literal is not: the width still comes from one expression, and only the
-/// allocation moves.
+/// Split from it because all three callers draw inside a loop over rows.
+/// Hoisting the allocation here is free, unlike replacing a derived
+/// constant with a literal: the width still comes from one expression.
 pub(super) fn blank_of(width: u16) -> String {
     " ".repeat(usize::from(width))
 }

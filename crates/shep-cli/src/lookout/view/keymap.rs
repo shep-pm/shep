@@ -1228,15 +1228,10 @@ mod tests {
     fn app_with_overlay() -> App {
         let mut app = healthy_app();
         let _ = app.update(Msg::Key(KeyPress::Help));
-        // Asserted in the helper, not left to the caller. A dozen tests
-        // render from this and assert on headings, so an overlay that
-        // failed to open reaches every one of them as "no heading row" or
-        // "MOVING missing", which names the symptom and not the cause.
-        //
-        // On all five of these helpers, not just this one. Round 7 caught the
-        // guard sitting on this helper alone while its four neighbours kept
-        // the old shape, which is the same fix-the-instance-and-stop defect
-        // this branch has now closed five times.
+        // Asserted here, on all five of these helpers, not left to the
+        // caller: a dozen tests render from this and assert on headings, so
+        // an overlay that failed to open would reach each one as "no
+        // heading row" instead of naming the actual cause.
         assert!(app.keymap_open(), "the overlay did not open");
         app
     }
