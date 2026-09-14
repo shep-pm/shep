@@ -538,7 +538,7 @@ impl core::fmt::Display for HomeRefusal {
             Self::Missing(path) => write!(
                 f,
                 "no flock at {path}\n\
-                 did you mean to drop --home? the default is {DEFAULT_HOME_SPELLING}\n\
+                 did you mean to drop {HOME_KNOB}? the default is {DEFAULT_HOME_SPELLING}\n\
                  to set up a flock there deliberately: {MKDIR_COMMAND} {quoted}",
                 path = one_line(path),
                 quoted = shell_quoted(path),
@@ -1699,6 +1699,23 @@ mod tests {
         );
         // The line above it names the path as prose, and is not a command.
         assert!(text.contains("no flock at /tmp/my shep home"), "{text}");
+    }
+
+    /// fails if the refusal offers to drop a knob the operator may never
+    /// have typed. `$SHEP_HOME` reaches this variant through clap's `env`,
+    /// so naming the flag alone sends half of them looking for something
+    /// that is not on their command line.
+    #[test]
+    fn the_missing_home_refusal_names_both_ways_the_home_was_set() {
+        let text = HomeRefusal::Missing(PathBuf::from("/srv/api")).to_string();
+        // Spelled out rather than read back from `HOME_KNOB`. The `?`
+        // anchors the end, so a longer knob cannot satisfy it.
+        let expected = if cfg!(windows) {
+            "did you mean to drop --home/%SHEP_HOME%?"
+        } else {
+            "did you mean to drop --home/$SHEP_HOME?"
+        };
+        assert!(text.contains(expected), "{text}");
     }
 
     /// fails if the offer to drop `--home` stops naming the path a unix
