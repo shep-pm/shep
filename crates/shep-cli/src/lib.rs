@@ -530,7 +530,7 @@ fn style_write_is_overridden(source: style::StyleSource) -> bool {
 const WINDOWS_NO_SERVICE: &str = "\
 shep startup installs a boot-time service, and on Windows that means \
 registering with the Service Control Manager -- not yet built (Tier B in \
-docs/specs/windows-estimate.md).\n  \
+docs/specs/windows-estimate.md).\n\
 the shepherd itself works here: run `shep start` in your own session, or wrap \
 `shep runtime` in a service manager such as NSSM or WinSW.";
 
@@ -613,16 +613,43 @@ impl core::fmt::Display for HomeRefusal {
             ),
             Self::Missing(path) => write!(
                 f,
-                "no flock at {path}\n  \
-                 did you mean to drop --home? the default is ~/.shep\n  \
-                 to set up a flock there deliberately:  mkdir -p {path}",
-                path = path.display(),
+                "no flock at {path}\n\
+                 did you mean to drop --home? the default is ~/.shep\n\
+                 to set up a flock there deliberately: mkdir -p {quoted}",
+                path = one_line(path),
+                quoted = shell_quoted(path),
             ),
-            Self::Io { path, source } => {
-                write!(f, "could not create {}: {source}", path.display())
-            }
+            Self::Io { path, source } => write!(
+                f,
+                "could not create {path}: {source}",
+                path = one_line(path),
+                source = crate::terminal_safe::sanitise(&source.to_string()).0,
+            ),
         }
     }
+}
+
+/// `path` as one word a POSIX shell will not split, for a hint an operator
+/// copies straight into one.
+///
+/// Unquoted, `--home "/tmp/my shep"` rendered `mkdir -p /tmp/my shep`, which
+/// creates two directories, reports no error, and leaves the operator with
+/// the empty invisible flock this refusal exists to prevent. Single quotes
+/// rather than backslashes because a path is one word and reads as one; an
+/// embedded `'` closes the quoting around an escaped one and reopens it.
+fn shell_quoted(path: &Path) -> String {
+    format!("'{}'", one_line(path).replace('\'', r"'\''"))
+}
+
+/// `path` as a single line, for composing into prose whose line breaks a
+/// table keeps.
+///
+/// A `--home` carrying a `\n` otherwise writes a line of its own choosing
+/// under `error[usage]:`, which a reader takes for shep's. The layout is
+/// shep's and stays multi-line; every value placed into it is collapsed
+/// here, the way `refuse_version_skew` collapses `daemon_version`.
+fn one_line(path: &Path) -> String {
+    crate::terminal_safe::sanitise(&path.display().to_string()).0
 }
 
 impl core::error::Error for HomeRefusal {
@@ -1271,13 +1298,13 @@ pub(crate) fn write_relative_refusal(
 ) -> core::fmt::Result {
     write!(
         f,
-        "{knob} must be an absolute path, not {given}\n  \
+        "{knob} must be an absolute path, not {given}\n\
          a relative home is read against whatever directory shep runs in, so the flock it \
          names is reachable from that one directory and nowhere else",
-        given = given.display(),
+        given = one_line(given),
     )?;
     match absolute {
-        Some(absolute) => write!(f, "\n  did you mean:  {}", absolute.display()),
+        Some(absolute) => write!(f, "\ndid you mean: {}", one_line(absolute)),
         None => Ok(()),
     }
 }
@@ -1514,6 +1541,9 @@ const VERSION_SKEW_REMEDY: &str = RECOVERY_VERBS[1];
 fn version_skew_instruction(fmt: Format) -> String {
     match fmt {
         Format::Json => format!("Run `shep {VERSION_SKEW_REMEDY}`."),
+        // Two spaces of its own, on top of the indent `safe_message` gives
+        // every continuation line, so the command sits a level under its
+        // label rather than beside it.
         Format::Table => format!("Run:\n  shep {VERSION_SKEW_REMEDY}"),
     }
 }
@@ -1552,21 +1582,15 @@ pub(crate) fn refuse_version_skew(
             let instruction = version_skew_instruction(Format::Json);
             streams.fail(code, &format!("{summary}. {cause} {instruction}"));
         }
-        // Written straight to the stream, not through `Streams::fail`, whose
-        // `terminal_safe::sanitise` collapses every `\n` to a space: the
-        // remedy has to sit on a line of its own to be copied.
+        // The remedy has to sit on a line of its own to be copied.
         Format::Table => {
             let cause = VERSION_SKEW_CAUSE.join("\n");
-            // `daemon_version` arrives over the socket and can carry an escape
-            // sequence that forges lines on the operator's terminal. This
-            // branch bypasses `emit_error`, so it sanitises that value itself.
+            // `daemon_version` arrives over the socket, and the table
+            // emitter keeps line breaks, so this collapses the one fragment
+            // a peer worded before it joins prose that does not.
             let summary = crate::terminal_safe::sanitise(&summary).0;
             let instruction = version_skew_instruction(Format::Table);
-            let _ = writeln!(
-                streams.err,
-                "error[{}]: {summary}\n\n{cause}\n\n{instruction}",
-                code.code_str()
-            );
+            streams.fail(code, &format!("{summary}\n\n{cause}\n\n{instruction}"));
         }
     }
     Err(code)
@@ -1705,6 +1729,93 @@ async fn run_daemon_command(fmt: Format, global: &GlobalArgs, args: &DaemonArgs)
 
 #[cfg(test)]
 mod tests {
+    /// fails if the copyable remedy stops being one shell word. A path with
+    /// a space rendered `mkdir -p /tmp/my shep`, which creates two
+    /// directories and reports no error, leaving exactly the empty
+    /// invisible flock this refusal exists to prevent.
+    #[test]
+    fn the_mkdir_hint_survives_a_path_a_shell_would_split() {
+        let refusal = HomeRefusal::Missing(PathBuf::from("/tmp/my shep home"));
+        let text = refusal.to_string();
+        assert!(
+            text.contains("mkdir -p '/tmp/my shep home'"),
+            "the remedy must name one word: {text}"
+        );
+        // The line above it names the path as prose, and is not a command.
+        assert!(text.contains("no flock at /tmp/my shep home"), "{text}");
+    }
+
+    /// fails if a path can add a line to a refusal. The table emitter keeps
+    /// shep's own line breaks, so a `\n` inside an interpolated value would
+    /// write a line under `error[usage]:` that reads as shep's own.
+    #[test]
+    fn a_newline_in_a_missing_home_cannot_forge_a_line() {
+        let hostile = PathBuf::from("/tmp/forge-a\nnotice[ok]: your flock is fine");
+        let text = HomeRefusal::Missing(hostile).to_string();
+        assert_eq!(
+            text.lines().count(),
+            3,
+            "the refusal has three lines of its own: {text:?}"
+        );
+        assert!(
+            !text.lines().any(|line| line.starts_with("notice[")),
+            "a line was forged: {text:?}"
+        );
+        assert!(
+            text.starts_with("no flock at /tmp/forge-a notice[ok]: your flock is fine\n"),
+            "the newline must become a space, not vanish: {text:?}"
+        );
+    }
+
+    /// fails if the relative-home refusal takes a line from its path. Same
+    /// defect as the missing-home one, two variants over, and the reason to
+    /// check it separately is that it interpolates twice.
+    #[test]
+    fn a_newline_in_a_relative_home_cannot_forge_a_line() {
+        let refusal = HomeRefusal::Relative {
+            knob: "--home/$SHEP_HOME",
+            given: PathBuf::from("forge-b\nerror[internal]: shepherd compromised"),
+            absolute: Some(PathBuf::from(
+                "/w/forge-b\nerror[internal]: shepherd compromised",
+            )),
+        };
+        let text = refusal.to_string();
+        assert_eq!(text.lines().count(), 3, "{text:?}");
+        assert!(
+            !text.lines().any(|line| line.starts_with("error[")),
+            "a line was forged: {text:?}"
+        );
+    }
+
+    /// fails if the io refusal lets either half add a line. Its `source` is
+    /// written by the OS rather than by an operator, and is collapsed for
+    /// the same reason: the layout is shep's and the values are not.
+    #[test]
+    fn neither_half_of_an_io_refusal_can_forge_a_line() {
+        let refusal = HomeRefusal::Io {
+            path: PathBuf::from("/tmp/forge-c\nnotice[ok]: created"),
+            source: std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "denied\nnotice[ok]: retried and it worked",
+            ),
+        };
+        let text = refusal.to_string();
+        assert_eq!(text.lines().count(), 1, "{text:?}");
+        assert!(!text.contains('\n'), "{text:?}");
+    }
+
+    /// fails if an apostrophe in a path breaks out of the quoting and turns
+    /// the rest of the hint into shell the operator did not mean to run.
+    #[test]
+    fn an_apostrophe_in_a_path_cannot_escape_the_mkdir_hint() {
+        let refusal = HomeRefusal::Missing(PathBuf::from("/tmp/rin's flock"));
+        let text = refusal.to_string();
+        assert!(
+            text.contains(r"mkdir -p '/tmp/rin'\''s flock'"),
+            "an embedded quote must close and reopen: {text}"
+        );
+    }
+
     use super::*;
 
     /// A [`ShepPaths`] rooted at `root`, so the rule can be exercised without
@@ -2982,9 +3093,11 @@ mod tests {
         let text = String::from_utf8(err).unwrap();
 
         // No blank line between the label and the command: a gap reads as
-        // two unrelated things.
+        // two unrelated things. Four spaces, not two: `safe_message` indents
+        // every continuation line and the instruction adds one level on top,
+        // so the command sits under its label rather than beside it.
         assert!(
-            text.contains("Run:\n  shep daemon reload"),
+            text.contains("Run:\n    shep daemon reload"),
             "the label must sit directly on the copyable line it points at: {text}"
         );
         // The sentence above the indented line must not repeat the command.

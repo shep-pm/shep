@@ -148,6 +148,10 @@ impl Render for FlockRows {
         // CPU already reports the percentage; the raw counter behind it is
         // for a client differencing its own polls, not this table.
         "cpu_ms",
+        // A reload's own answer, absent from every other listing this type
+        // renders. Milliseconds are for the client waiting the swap out,
+        // not for a column an operator reads.
+        "reload_deadline_ms",
     ];
 
     // Parallel to `headers()`. The rest survive in ascending order. CFG ties
@@ -2598,10 +2602,19 @@ pub(crate) mod tests {
 
     #[test]
     fn flock_rows_do_not_drift() {
+        // `reload_deadline_ms` on top of `sample_flock`, not in it: this
+        // type renders a reload's acceptance as well as a listing, and the
+        // gate can only see a key a fixture serializes. It stays off the
+        // shared fixture because no other payload built from one can carry
+        // it, and `skip_serializing_if` means an unset field has no key.
+        let FlockRows(mut rows) = sample_flock();
+        for row in &mut rows {
+            row.reload_deadline_ms = Some(15_000);
+        }
         // UPTIME/CPU/MEM are formatted, EXIT's JSON value is a nested object,
         // and CFG is a summary of two fields.
         assert_no_drift(
-            &sample_flock(),
+            &FlockRows(rows),
             |j| &j[0],
             &["UPTIME", "CPU", "MEM", "EXIT", "CFG"],
         );

@@ -124,9 +124,12 @@ clap_complete = { version = "4.6.0", default-features = false }
 # `io-util` is `crate::http`'s: `BufReader`, `AsyncBufReadExt`/
 # `AsyncReadExt`/`AsyncWriteExt`, and `tokio::io::duplex` for its tests.
 # `fs` is `serve::worker`'s: `tokio::fs::File` and `tokio::io::copy` for
-# streaming a served file off disk. Adds zero crates: tokio's `fs` feature
-# is `spawn_blocking` over `std::fs`.
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "net", "time", "sync", "io-util", "fs"] }
+# streaming a served file off disk. `process` is `commands::hook`'s:
+# draining a dog's two pipes concurrently is what `std::process` cannot do
+# without a second thread. Adds zero crates: tokio's `fs` feature is
+# `spawn_blocking` over `std::fs`, and `process` rides the mio already here
+# for `net`.
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "net", "time", "sync", "io-util", "fs", "process"] }
 # `dog::bark::sinks`'s TLS transport for Discord/Slack webhooks, a
 # hand-rolled HTTP/1.1 client over `tokio-rustls` (see the root Cargo.toml
 # entry). `ring`/`tls12` name the crypto provider directly so tokio-rustls's

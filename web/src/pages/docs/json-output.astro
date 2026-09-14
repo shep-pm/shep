@@ -260,6 +260,17 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
         divide against; a <code>null</code> here is why that gauge draws an
         all-tail bar instead of a fraction.
       </li>
+      <li>
+        <code>reload_deadline_ms</code> is the one key that appears on{" "}
+        <code>shep reload</code>'s rows and nowhere else. It is how long
+        the shepherd gives one swap of that instance before it gives up:
+        the instance's own <code>listen_timeout</code> plus its{" "}
+        <code>graceful_timeout</code> plus five seconds of slack. Per
+        instance, not per app, so a client waiting a reload out reads the
+        number the shepherd is actually keeping to rather than one worked
+        out from a Flockfile copy. The key is absent, not <code>null</code>,
+        on a row no swap is queued for, and on every other command.
+      </li>
     </ul>
 
     <Callout variant="note">
