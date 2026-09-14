@@ -225,7 +225,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "writing-a-dog",
         label: "Writing a dog",
-        built: false,
+        built: true,
         source: "docs/dogs.md",
       },
       {
