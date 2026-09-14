@@ -226,7 +226,7 @@ fn draw_too_small(frame: &mut Frame<'_>, area: Rect, width: u16, height: u16) {
 /// seventh `Body` variant would have skipped it in silence: the compiler has
 /// nothing to say about a call a new match arm forgets to make. One call
 /// here, after whichever body drew, is a guarantee instead of a convention.
-/// `the_overlay_draws_over_every_body` stays as the net, but it is no longer
+/// `the_overlay_renders_over_the_four_bodies_a_test_can_reach` stays as the net, but it is no longer
 /// the only thing holding this.
 ///
 /// The refusal is the one path that does NOT get an overlay: a terminal too

@@ -749,21 +749,29 @@ mod tests {
         );
     }
 
-    /// The overlay draws over every body, not only the dashboard.
+    /// The overlay draws over a body other than the dashboard, and does it
+    /// for four of the six.
     ///
-    /// `App::keymap_open`'s own doc says it is reached from every body's
-    /// `Help` arm, and `view::draw` returns early for each full-screen body,
-    /// so the hook has to sit at all six exits. An earlier draft of this
-    /// frame's brief said "at the end of `view::draw`", which would have
-    /// left the overlay invisible over five of them. This is the net for
-    /// that mistake.
+    /// Four, not six, and the title says four rather than "every" on
+    /// purpose. A universal over a set cannot be held by a test that walks
+    /// a hand-written subset of it, and `Settings` and `Edit` cannot join:
+    /// neither sets `App::body` synchronously, so a case built on them
+    /// renders the dashboard and passes while proving nothing. The other
+    /// half of the claim is structural instead, and stronger than a list:
+    /// `view::draw` calls `draw_keymap_overlay` once, after `draw_body` has
+    /// returned from whichever of the six exits it took.
     ///
-    /// Each case asserts the body it claims to be in before rendering.
-    /// Without that, `Edit` and `Settings` make the loop vacuous: neither
-    /// sets `App::body` synchronously, so a case built on them renders the
-    /// dashboard and passes while proving nothing.
+    /// What this adds on top of that call is the rendering: that the
+    /// overlay's own geometry survives over a body which is not the flock
+    /// table. An earlier draft of this frame's brief said to hook it "at the
+    /// end of `view::draw`", which would have left it invisible over five
+    /// bodies, and this is the net for that mistake.
+    ///
+    /// Each case asserts the body it claims to be in before rendering, which
+    /// is what keeps a case that silently fell back to the dashboard from
+    /// passing.
     #[test]
-    fn the_overlay_draws_over_every_body() {
+    fn the_overlay_renders_over_the_four_bodies_a_test_can_reach() {
         let sheep = {
             let mut app = fixtures::full_app();
             let _ = app.update(Msg::Key(KeyPress::Confirm));
@@ -782,8 +790,18 @@ mod tests {
             assert!(app.config_pane().is_some(), "not in the config pane");
             app
         };
+        let secrets = {
+            let app = fixtures::app_with_secrets();
+            assert!(app.secrets_pane_is_open(), "not in the secrets pane");
+            app
+        };
 
-        for (name, mut app) in [("sheep", sheep), ("bleats", bleats), ("config", config)] {
+        for (name, mut app) in [
+            ("sheep", sheep),
+            ("bleats", bleats),
+            ("config", config),
+            ("secrets", secrets),
+        ] {
             let _ = app.update(Msg::Key(KeyPress::Help));
             assert!(app.keymap_open(), "{name}: the overlay did not open");
             let rendered = render_overlay(&app, 160, 48);
