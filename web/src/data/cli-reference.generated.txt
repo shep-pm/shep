@@ -2128,7 +2128,8 @@ Options:
           Talk to a different shepherd
           
           Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep.
+          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
+          flock from every directory.
           
           [env: SHEP_HOME=]
 
@@ -2182,7 +2183,8 @@ Options:
           Talk to a different shepherd
           
           Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep.
+          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
+          flock from every directory.
           
           [env: SHEP_HOME=]
 
@@ -2235,7 +2237,8 @@ Options:
           Talk to a different shepherd
           
           Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep.
+          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
+          flock from every directory.
           
           [env: SHEP_HOME=]
 
@@ -2281,7 +2284,8 @@ Options:
           Talk to a different shepherd
           
           Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep.
+          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
+          flock from every directory.
           
           [env: SHEP_HOME=]
 

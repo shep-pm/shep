@@ -154,6 +154,11 @@ if (
       <code>--home</code> takes an absolute path, and so does{" "}
       <code>$SHEP_HOME</code>. A relative one would mean a different flock from
       every directory, so shep refuses it and prints the absolute form instead.
+      It also has to be valid UTF-8: shep carries the home path into the{" "}
+      <code>{'{{SHEP_HOME}}'}</code> template, the log paths it reports and the
+      control socket's own name, all of which are text, so a byte that is not
+      UTF-8 would be replaced and shep would use a directory you did not name.
+      That is refused too, rather than quietly substituted.
     </Callout>
 
     <Callout variant="note">
