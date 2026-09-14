@@ -56,6 +56,16 @@ const SHEEP: [&str; 4] = [
 /// [`GUTTER`] spaces, the separator between two adjacent cells whether the
 /// cells are columns of the same bank or (nowhere yet) two banks side by
 /// side.
+///
+/// `" ".repeat` rather than a `&'static str` of the right length, here and
+/// for the [`COLUMN`]-wide blank and the [`GAP`] in [`entry_cell`]. Raised
+/// twice by review and declined twice, so the reason belongs here: the three
+/// together allocate roughly eighty two-byte strings per drawn frame, and a
+/// lookout frame is drawn on a keypress or a two-second tick, not at 60 fps.
+/// What a literal costs is the derivation: `"  "` is right only while
+/// `GUTTER` is 2, and nothing would say so when it changed. A width that
+/// disagrees with its own constant is the defect this frame's own gallery
+/// scenes exist to catch, so the constant wins over the allocation.
 fn gutter_span() -> Span<'static> {
     Span::raw(" ".repeat(usize::from(GUTTER)))
 }
@@ -69,7 +79,12 @@ fn gutter_span() -> Span<'static> {
 /// [`Group::DRAWN`]) and each borderless bank ([`draw_borderless`]'s own
 /// call, however many groups [`columns_for`] gave that bank).
 fn heading_line_for(groups: &[Group], palette: Palette) -> Line<'static> {
-    let mut spans = Vec::with_capacity(groups.len() * 2 - 1);
+    // `* 2` and not `* 2 - 1`: the exact count is one gutter short of this,
+    // and subtracting it underflows to `usize::MAX` on an empty slice,
+    // which panics in debug and aborts on the allocation in release. Every
+    // caller passes a `chunks()` bank, which is never empty, so this is one
+    // spare slot against a panic site in a capacity HINT.
+    let mut spans = Vec::with_capacity(groups.len() * 2);
     for (index, &group) in groups.iter().enumerate() {
         if index > 0 {
             spans.push(gutter_span());
@@ -230,9 +245,15 @@ fn quit_text(all_rows: &[Binding]) -> String {
     format!(" h or ?  closes this  \u{b7}  {}  quits lookout", quit.keys)
 }
 
-/// The keys that leave the overlay or lookout itself. The last line any
-/// form keeps: every tier short enough to drop the `NO_COLOR` disclosure
-/// still draws this one.
+/// The keys that leave the overlay or lookout itself.
+///
+/// Its own function because [`Shed::Decoration`] and [`Shed::Blank`] keep
+/// it while dropping the `NO_COLOR` disclosure beside it, and used to reach
+/// it as `closing_lines(..)[1].clone()`, building the disclosure in order
+/// to throw it away. Not every shorter tier keeps it: [`Shed::Gate`] folds
+/// the same text into [`folded_gate_and_quit_line`] when it has a row of
+/// slack and drops it entirely at [`HEIGHT_FLOOR`], where the gate's own
+/// warning is the last thing standing.
 fn quit_line(all_rows: &[Binding], palette: Palette, width: u16) -> Line<'static> {
     Line::from(Span::styled(
         fit(&quit_text(all_rows), width),
@@ -382,7 +403,13 @@ fn draw_borderless(app: &App, area: Rect, buffer: &mut Buffer, palette: Palette)
     let banks: Vec<&[Group]> = Group::DRAWN.chunks(columns).collect();
     // Each bank beyond the first costs its own floor (`HEIGHT_FLOOR`) plus
     // the blank row that separates it from the one before.
-    let bank_count = u16::try_from(banks.len()).unwrap_or(u16::MAX);
+    // `expect`, not `unwrap_or(u16::MAX)`: `banks` is `Group::DRAWN`
+    // chunked by at least one column, so it holds at most four, and the
+    // fallback was unreachable. It was also the wrong fallback, since
+    // `u16::MAX` here would have made `extra_banks_cost` below overflow
+    // rather than refuse: a silent wrong answer where a named panic says
+    // which invariant broke.
+    let bank_count = u16::try_from(banks.len()).expect("at most COLUMN_COUNT banks of groups");
     let extra_banks_cost = bank_count.saturating_sub(1) * (HEIGHT_FLOOR + 1);
     let effective_height = area.height.saturating_sub(extra_banks_cost);
     let shed = rows_for_height(effective_height);
@@ -577,11 +604,16 @@ mod tests {
         // (`▐`, `overlay::BOX_LEFT`) is three bytes, so a byte slice at the
         // column's own numeric offset lands inside it.
         let chars: Vec<char> = heading_row.chars().collect();
+        const MARGIN: usize = 16;
+        assert_eq!(usize::from(160 - (INTERIOR + 2)) / 2, MARGIN);
         for (index, group) in Group::DRAWN.iter().enumerate() {
             let offset = usize::from(COLUMN + GUTTER) * index;
             // +1 for the box's own left border cell, and the box starts at
-            // (160 - 128) / 2 = 16.
-            let start = 16 + 1 + offset;
+            // (160 - 128) / 2 = 16, which `MARGIN` above pins rather than
+            // derives: a literal fails on a margin bug, and the assertion
+            // beside it fails if `INTERIOR` moves, instead of quietly
+            // measuring the wrong column.
+            let start = MARGIN + 1 + offset;
             let from_start: String = chars[start..].iter().collect();
             assert!(
                 from_start.starts_with(group.heading()),
@@ -673,9 +705,47 @@ mod tests {
             .find(SHEEP[0])
             .map(|at| row[..at].chars().count())
             .expect("no sheep on the row that contains it");
+        // A pair, not a lower bound. `>= 113` alone cannot see a sheep
+        // drawn too far RIGHT, and DOING is the last column, so nothing
+        // else would catch it. The upper half is reachable rather than
+        // decoration: shifting `overlay::draw_boxed`'s own margin by 31
+        // puts the sheep at column 144 and fails here, measured.
+        let doing = 113..113 + usize::from(COLUMN);
         assert!(
-            column >= 113,
-            "the sheep starts at column {column}, left of DOING's 113: {row:?}"
+            doing.contains(&column),
+            "the sheep starts at column {column}, outside DOING's {doing:?}: {row:?}"
+        );
+
+        // Its ROW as well as its column. `SHEEP_FIRST_ROW` is a named
+        // layout constant and nothing measured it, so a sheep shifted up
+        // or down inside DOING passed everything: the column assertions
+        // above do not care which row they found it on.
+        //
+        // Counted from the heading row rather than from the top of the
+        // screen, so the box's own vertical centring is not part of the
+        // claim. One heading row, then `SHEEP_FIRST_ROW` entry rows, then
+        // the sheep.
+        // A literal, and the derivation asserted beside it. Written as
+        // `1 + SHEEP_FIRST_ROW` first, which is a tautology: moving the
+        // constant to 6 moved both sides of the comparison and the test
+        // stayed green, so it pinned the arithmetic and not the layout.
+        const UNDER_THE_HEADING: usize = 5;
+        assert_eq!(1 + SHEEP_FIRST_ROW, UNDER_THE_HEADING);
+
+        let rows: Vec<&str> = rendered.lines().collect();
+        let heading_at = rows
+            .iter()
+            .position(|row| row.contains("MOVING"))
+            .expect("no heading row");
+        let sheep_at = rows
+            .iter()
+            .position(|row| row.contains(SHEEP[0]))
+            .expect("no sheep row");
+        assert_eq!(
+            sheep_at - heading_at,
+            UNDER_THE_HEADING,
+            "the sheep is {} rows under the heading, not {UNDER_THE_HEADING}",
+            sheep_at - heading_at
         );
     }
 
@@ -795,6 +865,30 @@ mod tests {
     /// Each boundary is asserted from both sides. The 126..129 band is the
     /// only place the full four-column layout draws unboxed, and it is four
     /// widths wide: the box needs two cells the columns themselves do not.
+    ///
+    /// The last two assert the clamp rather than a boundary, and no caller
+    /// can reach it. `draw_borderless` runs below the box floor, and the
+    /// widest width below that floor fits `COLUMN_COUNT` columns exactly,
+    /// for any constants [`the_columns_sum_to_the_interior`] accepts:
+    ///
+    /// ```text
+    /// INTERIOR = N*C + (N-1)*G          the identity that test holds
+    /// widest   = INTERIOR + 4 - 1       one under `overlay::floor_for`
+    /// fits     = (widest + G)/(C + G) = N + 3/(C + G) = N   for C + G > 3
+    /// ```
+    ///
+    /// So a mutation raising the clamp's threshold survived the whole
+    /// suite, and it would have survived a narrower `KEY_CELL` too, because
+    /// narrowing a cell narrows `INTERIOR` and lowers the floor with it.
+    /// The arm is the second net under that identity rather than a guard
+    /// against any width a terminal can have: it fires only once the
+    /// identity is broken, which is the one thing that test exists to stop.
+    /// Kept because `columns_for`'s own doc promises the clamp, and pinned
+    /// here since nothing else can reach it.
+    ///
+    /// `u16::MAX - GUTTER` rather than `u16::MAX`: `columns_for` adds
+    /// `GUTTER` before dividing, so the maximum is one `GUTTER` under the
+    /// type's. A real `area.width` is nowhere near either.
     #[test]
     fn the_column_ladder_has_a_boundary_on_each_side() {
         assert_eq!(columns_for(126), 4);
@@ -804,6 +898,8 @@ mod tests {
         assert_eq!(columns_for(62), 2);
         assert_eq!(columns_for(61), 1);
         assert_eq!(columns_for(MIN_TERM_WIDTH), 1);
+        assert_eq!(columns_for(158), COLUMN_COUNT, "five columns' room");
+        assert_eq!(columns_for(u16::MAX - GUTTER), COLUMN_COUNT);
     }
 
     /// The boxed form's own top border row: the top-left corner, `INTERIOR`
@@ -1066,6 +1162,11 @@ mod tests {
     fn app_with_overlay() -> App {
         let mut app = healthy_app();
         let _ = app.update(Msg::Key(KeyPress::Help));
+        // Asserted in the helper, not left to the caller. A dozen tests
+        // render from this and assert on headings, so an overlay that
+        // failed to open reaches every one of them as "no heading row" or
+        // "MOVING missing", which names the symptom and not the cause.
+        assert!(app.keymap_open(), "the overlay did not open");
         app
     }
 

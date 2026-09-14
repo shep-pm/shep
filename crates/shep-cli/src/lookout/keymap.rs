@@ -426,20 +426,68 @@ mod tests {
         }
     }
 
+    /// `DRAWN`'s headings, which several `contains` assertions across two
+    /// modules silently rest on.
+    ///
+    /// Non-empty first, and this is not hypothetical: `Closing`'s heading
+    /// IS `""`, deliberately, because the quit row draws no bank header.
+    /// `Closing` is not in `DRAWN`, so nothing iterating `DRAWN` meets it
+    /// today. `str::contains("")` is always true, so the day a heading
+    /// becomes empty, or `Closing` joins `DRAWN`, every "this heading
+    /// reached the screen" assertion passes on a screen that drew nothing.
+    ///
+    /// Then pairwise, which is the other way those assertions go wrong: the
+    /// column-count tests count how many of the four headings a bank row
+    /// contains, so a heading that is a substring of another is counted for
+    /// both and the count is right for the wrong reason. `MOVING`,
+    /// `LOOKING`, `CHANGING` and `DOING` are distinct and none contains
+    /// another.
+    ///
+    /// Both halves are mutation-checked, and the first mutation tried was
+    /// the wrong one: renaming `Moving` to `MOVING FAST` survives, because
+    /// there is then no separate `MOVING` for it to collide with. The
+    /// pairwise half needs one DRAWN heading to contain ANOTHER DRAWN one,
+    /// which `Looking => "DOING MORE"` does, and that fails.
+    #[test]
+    fn every_drawn_heading_is_a_word_of_its_own() {
+        for group in Group::DRAWN {
+            assert!(!group.heading().is_empty(), "{group:?} draws a bank header");
+        }
+        assert!(
+            Group::Closing.heading().is_empty(),
+            "the quit row draws no bank header, so its heading stays empty"
+        );
+        for (index, one) in Group::DRAWN.iter().enumerate() {
+            for other in &Group::DRAWN[index + 1..] {
+                assert!(
+                    !one.heading().contains(other.heading())
+                        && !other.heading().contains(one.heading()),
+                    "{one:?} and {other:?} share a heading substring"
+                );
+            }
+        }
+    }
+
     /// Every caption fits the cell it draws into, so nothing is cut on
     /// screen. The widths are `view::keymap`'s, asserted here because this
     /// is where the strings are written.
+    ///
+    /// Both bounds are a pair, because `<=` alone cannot see a caption that
+    /// is too SHORT: `visible_width("")` is 0 and fits every cell. An empty
+    /// `does` would pass that and pass `every_derived_row_is_drawn` too,
+    /// since `str::contains("")` is always true, so nothing in the suite
+    /// would have said a row drew no words.
     #[test]
     fn the_cells_fit_their_widths() {
         for row in rows() {
             assert!(
-                visible_width(row.keys) <= usize::from(KEY_CELL),
+                (1..=usize::from(KEY_CELL)).contains(&visible_width(row.keys)),
                 "the `{}` caption is {} cells against {KEY_CELL}",
                 row.keys,
                 visible_width(row.keys)
             );
             assert!(
-                visible_width(row.does) <= usize::from(TEXT_CELL),
+                (1..=usize::from(TEXT_CELL)).contains(&visible_width(row.does)),
                 "`{}` is {} cells against {TEXT_CELL}",
                 row.does,
                 visible_width(row.does)

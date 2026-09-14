@@ -3017,45 +3017,37 @@ mod tests {
 
     /// The marker that says rows were cut would itself become the row
     /// that gets cut.
+    ///
+    /// Both widths, because they take different code. 120 has a panel, so
+    /// every height walks `grouped_pane_lines_with_panel` with `top_lines`
+    /// returning empty and never reaches the blurb loop's own arithmetic.
+    /// 89 is one column under `panel_width`'s floor, so the blurb draws and
+    /// the sweep crosses `remaining` entering that loop at 0, 1 and 2
+    /// without having to name which height produces which value.
+    ///
+    /// One test over a width list, not two copies of it: they were twelve
+    /// identical lines apart from the literal, and the assertion message
+    /// names the width so a failure still says which case broke.
+    ///
+    /// What this does NOT see is a row too FEW, since the bound is an upper
+    /// one and losing the cursor's row only shortens the output.
+    /// `the_blurb_never_spends_the_row_the_cursor_needs` is that half, and
+    /// it exists because a real defect hid in this gap.
     #[test]
     fn the_body_never_outgrows_the_height_it_was_given() {
         let mut pane = web_pane();
-        for height in 1..=60u16 {
-            pane.set_rows(usize::from(height.saturating_sub(1)));
-            for cursor in [0usize, 7, 20, 38] {
-                pane.move_to_first();
-                pane.move_by(isize::try_from(cursor).unwrap());
-                let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, height));
-                assert!(
-                    text.len() <= usize::from(height),
-                    "height {height}, cursor {cursor}: {text:?}"
-                );
-            }
-        }
-    }
-
-    /// [`the_body_never_outgrows_the_height_it_was_given`], at a width
-    /// [`top_lines`] actually draws at.
-    ///
-    /// 120 columns has a panel, so every height in the test above walks
-    /// `grouped_pane_lines_with_panel` with `top_lines` returning empty and
-    /// never reaches the blurb loop's own arithmetic. 89 is one column
-    /// under `panel_width`'s floor, so the blurb draws here and the height
-    /// sweep below crosses `remaining` entering that loop at 0, 1 and 2
-    /// without having to name which height produces which value.
-    #[test]
-    fn the_body_never_outgrows_the_height_it_was_given_with_a_blurb_drawing() {
-        let mut pane = web_pane();
-        for height in 1..=60u16 {
-            pane.set_rows(usize::from(height.saturating_sub(1)));
-            for cursor in [0usize, 7, 20, 38] {
-                pane.move_to_first();
-                pane.move_by(isize::try_from(cursor).unwrap());
-                let text = text_of(&pane_lines(&pane, fixtures::plain(), 89, height));
-                assert!(
-                    text.len() <= usize::from(height),
-                    "height {height}, cursor {cursor}: {text:?}"
-                );
+        for width in [120u16, 89] {
+            for height in 1..=60u16 {
+                pane.set_rows(usize::from(height.saturating_sub(1)));
+                for cursor in [0usize, 7, 20, 38] {
+                    pane.move_to_first();
+                    pane.move_by(isize::try_from(cursor).unwrap());
+                    let text = text_of(&pane_lines(&pane, fixtures::plain(), width, height));
+                    assert!(
+                        text.len() <= usize::from(height),
+                        "width {width}, height {height}, cursor {cursor}: {text:?}"
+                    );
+                }
             }
         }
     }
