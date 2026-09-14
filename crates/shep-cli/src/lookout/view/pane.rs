@@ -3183,12 +3183,15 @@ mod tests {
         );
         let lines = pane_lines(&pane, fixtures::plain(), 89, 40);
         let rows = text_of(&lines);
+        // The specific blurb row, not the whole screen: `first` scanned
+        // against every row would false-fail on a coincidental substring
+        // in an unrelated one, a field name or a value cell.
+        let blurb_row = rows
+            .iter()
+            .find(|row| row.contains(&second))
+            .unwrap_or_else(|| panic!("the cursor moved and the blurb did not: {rows:?}"));
         assert!(
-            rows.iter().any(|row| row.contains(&second)),
-            "the cursor moved and the blurb did not: {rows:?}"
-        );
-        assert!(
-            !rows.iter().any(|row| row.contains(&first)),
+            !blurb_row.contains(&first),
             "the previous field's blurb is still on screen: {rows:?}"
         );
     }

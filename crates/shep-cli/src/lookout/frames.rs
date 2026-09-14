@@ -324,8 +324,9 @@ pub enum Scene {
     /// The overlay raised under `--read-only`: the gate line reads
     /// read-only rather than control enabled.
     KeymapReadOnly,
-    /// 160x16: under the box's own nineteen rows, so the sheep and the
-    /// `NO_COLOR` sentence are shed while every key row survives.
+    /// 160x16: under the box's own nineteen rows, so the boxed-only sheep
+    /// is already gone and the `NO_COLOR` sentence sheds too, while every
+    /// key row survives.
     KeymapShort,
 }
 }
@@ -739,6 +740,75 @@ impl Scene {
             // scene that carries all three optional panes at their ordinary
             // rows.
             _ => (120, 30),
+        }
+    }
+
+    /// Whether this scene raises the keymap overlay before it renders.
+    ///
+    /// Every arm named on both sides rather than a wildcard on either, so
+    /// a ninth `Keymap*` variant fails to compile here instead of
+    /// rendering silently without the overlay raised.
+    #[must_use]
+    pub const fn is_keymap(self) -> bool {
+        match self {
+            Self::Keymap
+            | Self::KeymapFloor
+            | Self::KeymapBorderlessWide
+            | Self::KeymapNarrow
+            | Self::KeymapTwoColumn
+            | Self::KeymapFrozen
+            | Self::KeymapReadOnly
+            | Self::KeymapShort => true,
+            Self::HealthyWide
+            | Self::Errored
+            | Self::Grouped
+            | Self::Folds
+            | Self::WithDogs
+            | Self::MemCeiling
+            | Self::CfgDrift
+            | Self::Empty
+            | Self::Narrow
+            | Self::TooNarrow
+            | Self::Retrying
+            | Self::Frozen
+            | Self::Refused
+            | Self::FilterEditing
+            | Self::FilterActive
+            | Self::FilterNoMatch
+            | Self::NoDetail
+            | Self::TableOnly
+            | Self::FeedGap
+            | Self::FeedMissing
+            | Self::Cramped
+            | Self::HostUnknown
+            | Self::Lambs
+            | Self::LambsUnknown
+            | Self::Confirm
+            | Self::Acting
+            | Self::ActionRefused
+            | Self::ActionAccepted
+            | Self::ActionRefusedOffline
+            | Self::SettingsFresh
+            | Self::SettingsSet
+            | Self::SettingsConfirm
+            | Self::SettingsTyping
+            | Self::SettingsDogs
+            | Self::SettingsNarrow
+            | Self::SettingsShort
+            | Self::Bleats
+            | Self::Secrets
+            | Self::SheepPane
+            | Self::SheepPaneCpuOnly
+            | Self::SheepPaneSparklines
+            | Self::SheepPaneShort
+            | Self::EditPane
+            | Self::EditPaneEdited
+            | Self::EditPaneSqueezed
+            | Self::EditPaneNarrow
+            | Self::CloseDialog
+            | Self::CloseDialogFloor
+            | Self::CloseDialogNarrow
+            | Self::CloseDialogParked => false,
         }
     }
 }
@@ -1409,17 +1479,7 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
     // toggles `App::keymap_open` and nothing else, so it does not matter
     // that this runs ahead of the selection, the host sample or (for
     // `KeymapFrozen`) the freeze below.
-    if matches!(
-        which,
-        Scene::Keymap
-            | Scene::KeymapFloor
-            | Scene::KeymapBorderlessWide
-            | Scene::KeymapNarrow
-            | Scene::KeymapTwoColumn
-            | Scene::KeymapFrozen
-            | Scene::KeymapReadOnly
-            | Scene::KeymapShort
-    ) {
+    if which.is_keymap() {
         app.update(Msg::Key(KeyPress::Help));
     }
 
