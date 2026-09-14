@@ -32,7 +32,7 @@ const benchTable: { metric: string; shep: string; pm2: string; ratio: string }[]
   { metric: "Log-plane CPU per line", shep: "2.27 us", pm2: "4.10 us", ratio: "1.8x" },
   { metric: "Start ten apps, cold daemon", shep: "0.195 s", pm2: "0.366 s", ratio: "1.9x" },
   { metric: "Start ten apps, warm daemon", shep: "0.095 s", pm2: "0.201 s", ratio: "2.1x" },
-  { metric: "Install footprint", shep: "24.52 MiB", pm2: "23.11 MiB", ratio: "pm2 is smaller" },
+  { metric: "Install footprint", shep: "53.85 MiB", pm2: "23.11 MiB", ratio: "pm2, by 2.3x" },
   { metric: "Idle daemon CPU", shep: "0.138%", pm2: "0.065%", ratio: "a tie" },
 ];
 
@@ -455,6 +455,13 @@ cwd = "/srv/migrate"`}</CodeBlock>
         ))
       }
     </div>
+    <p class="fine">
+      Footprint is what lands on disk either way. Installing shep gives you
+      three binaries, <code>shep</code>, <code>shep-runtime</code> and{" "}
+      <code>shep-dev</code>, at 17.94 MiB each, against pm2's whole{" "}
+      <code>node_modules</code> tree. The download is 20.20 MiB compressed.
+    </p>
+
     <Callout variant="careful">
       Read the ratios, not the absolute figures. The order is shep, pm2,
       shep, so a machine that shifts mid-run shows up as disagreement between
@@ -468,10 +475,9 @@ cwd = "/srv/migrate"`}</CodeBlock>
       2026-08-29 against shep 0.1.12. pm2 is the same version and its figures
       barely moved, so this is shep changing rather than the machine: idle
       memory 13.90 MiB to 17.41, a warm start 0.056 s to 0.095, and the binary
-      14.23 MiB to 24.52, which hands pm2 the smaller install for the first
-      time. shep is still ahead on everything but footprint, by smaller
-      margins than it was, and it writes 88 bytes per line to pm2's 58 while
-      winning the log measure.
+      14.23 MiB to 53.85. shep is still ahead on everything but footprint,
+      by smaller margins than it was, and it writes 88 bytes per line to
+      pm2's 58 while winning the log measure.
     </p>
 
     <p>
