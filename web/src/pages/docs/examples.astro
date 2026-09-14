@@ -113,14 +113,13 @@ const rustRows: ExampleRow[] = [
       Unix, not just cargo. Six of the seven build and run anywhere Rust
       does, but <code>stubborn</code> traps <code>SIGTERM</code> with a
       Unix signal mask: on any other platform it prints why and exits 1
-      instead of running at all. This file declares no{" "}
-      <code>depends_on</code>, so <code>shep start</code> runs top to
-      bottom and stops at the first app that fails to spawn, which is why
-      it does not run straight through as shown on a non-Unix host. See{" "}
-      <a href="#polyglot">the polyglot layer</a> below for the same rule
-      hitting a missing runtime instead. Comment out{" "}
-      <code>stubborn</code>'s <code>[[app]]</code> block to run the other
-      six.
+      instead of running at all. That is an exit, not a refusal to spawn,
+      so the start succeeds and the other six come up. <code>stubborn</code>{" "}
+      then restarts into the same exit until <code>max_restarts</code> (16)
+      is spent and it settles at <code>errored</code>. Comment out its{" "}
+      <code>[[app]]</code> block to skip that. A missing runtime is harsher:
+      a spawn that fails ends the start where it stands, as{" "}
+      <a href="#polyglot">the polyglot layer</a> below shows.
     </Callout>
 
     <Callout variant="careful">
