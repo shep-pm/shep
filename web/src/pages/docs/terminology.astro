@@ -8,6 +8,7 @@
  * The usage-rule cards are DATA from web/src/data/docs-rules.ts.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import { lexiconTable, mdInlineToHtml } from "../../data/docs-lexicon";
 import { usageRules } from "../../data/docs-rules";
@@ -38,7 +39,21 @@ const toneFor = (built: "yes" | "partly" | "no") =>
       and every themed verb has a straight alias that works forever.
     </p>
 
-    <h2>The lexicon</h2>
+    <ShortVersion label="The five that matter">
+      <p>
+        A <span class="term">sheep</span> is one process shep runs. The whole set of
+        them is the <span class="term">flock</span>. A <span class="term">fold</span> is a
+        namespace you can put sheep in and select later. A{" "}
+        <span class="term">dog</span> is a plugin process the shepherd supervises
+        alongside them, and <span class="term">bleats</span> are logs.
+      </p>
+      <p class="fine">
+        Those five carry every other chapter. The table below is for when you
+        meet a word that is not one of them.
+      </p>
+    </ShortVersion>
+
+    <h2 id="the-lexicon">The lexicon</h2>
     <div class="lexicon-table">
       <div class="row header">
         <span class="col-term">shep says</span>{" "}
@@ -65,7 +80,7 @@ const toneFor = (built: "yes" | "partly" | "no") =>
     </div>
 
     <div class="sheepdogs-card">
-      <h3>Sheepdogs and sheep were separate ideas from the start</h3>
+      <h3 id="sheepdogs-and-sheep">Sheepdogs and sheep were separate ideas from the start</h3>
       <p>
         So "dog" never means the daemon. The shepherd is the shepherd. Dogs
         are plugins that work for it: <code>metrics</code> and{" "}
@@ -74,7 +89,7 @@ const toneFor = (built: "yes" | "partly" | "no") =>
       </p>
     </div>
 
-    <h2>Usage rules</h2>
+    <h2 id="usage-rules">Usage rules</h2>
     <p class="rules-lede">Readability beats theme, every time.</p>
     <div class="rules">
       {
@@ -90,7 +105,7 @@ const toneFor = (built: "yes" | "partly" | "no") =>
       }
     </div>
 
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
     <div class="next-grid">
       <a href="/docs/first-flockfile" class="next-card">
         <div class="next-title">Your first Flockfile →</div>
