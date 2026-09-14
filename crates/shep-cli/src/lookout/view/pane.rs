@@ -3084,8 +3084,12 @@ mod tests {
                     continue;
                 }
                 checked += 1;
+                // Excludes the blurb row itself: a help string that ever
+                // came to mention its own field's name would let a cut
+                // cursor row hide behind the blurb row satisfying `key` by
+                // coincidence.
                 assert!(
-                    rows.iter().any(|row| row.contains(key)),
+                    rows.iter().any(|row| row.contains(key) && !row.contains(&anchor)),
                     "{which} at height {height}: the blurb drew and the cursor's row did not: {rows:?}"
                 );
             }
