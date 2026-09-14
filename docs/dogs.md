@@ -846,10 +846,16 @@ reload` runs against a three-sheep flock, the socket turned away a full
 connect, handshake and request for 38ms at the shortest and 254ms at the
 longest.
 
-An operator sees the difference in the `EXIT` column: a dog that gave up
-waiting exits `5`, and one a shepherd refused on protocol-version skew
-exits `6` without waiting at all, since the shepherd that refused is the
-party that can fix it.
+An operator sees the difference in the `EXIT` column, and there are three
+answers rather than two. A dog that gave up waiting exits `5`. One a
+shepherd refused on protocol-version skew exits `6` without waiting at
+all, since the shepherd that refused is the party that can fix it. And a
+dog whose shepherd answered and then refused the request it made exits on
+that refusal's own code, `13` for an unsupported request, the same code
+the dog would have exited had the refusal come at startup instead of
+after a handover. The one an operator must never see is `5` for a
+shepherd that is running and answering, which would send them looking for
+a daemon that is not missing.
 
 ### Your own dog has to do this too
 

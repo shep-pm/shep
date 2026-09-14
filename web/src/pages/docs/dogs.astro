@@ -570,9 +570,14 @@ watchdog  adopted  true      stopped`}</CodeBlock>
       guide</a> shows the wrong loop in full.
     </p>
     <p class="fine">
-      A dog that gave up waiting exits <code>5</code>, and one a shepherd
-      refused on protocol-version skew exits <code>6</code> without waiting,
-      since the shepherd that refused is the party that can fix it.
+      Three answers in the <code>EXIT</code> column, not two. A dog that
+      gave up waiting exits <code>5</code>. One a shepherd refused on
+      protocol-version skew exits <code>6</code> without waiting, since the
+      shepherd that refused is the party that can fix it. And a dog whose
+      shepherd answered and then refused its request exits on that
+      refusal's own code, <code>13</code> for an unsupported request, the
+      same code it would have exited had the refusal come at startup rather
+      than after a handover.
     </p>
     <p>
       Those two are what shep adds, not the whole environment. A dog is a
