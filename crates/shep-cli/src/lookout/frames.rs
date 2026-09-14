@@ -576,7 +576,7 @@ impl Scene {
                 "The overlay raised under --read-only: the gate line reads read-only where the design target's own reads control enabled."
             }
             Self::KeymapShort => {
-                "160x16, under the nineteen rows the box needs: the borderless form sheds down to its own Decoration tier, so the sheep and the NO_COLOR sentence are gone while every key row is still on screen."
+                "160x16, under the nineteen rows the box needs: the sheep is boxed-only and already gone, and the borderless form has shed to its own Decoration tier, which drops the NO_COLOR sentence too, while every key row is still on screen."
             }
         }
     }
@@ -728,9 +728,10 @@ impl Scene {
             Self::KeymapNarrow => (100, 48),
             // 70: `columns_for(70) == 2`, two banks of two columns each.
             Self::KeymapTwoColumn => (70, 48),
-            // 16 rows: under the box's own 19, so the borderless form sheds
-            // to `Shed::Decoration` (the sheep and the NO_COLOR line gone,
-            // every key row intact). 16, not 22: at 22 the box holds whole
+            // 16 rows: under the box's own 19, so the sheep (boxed-only) is
+            // already gone, and the borderless form has shed to its own
+            // `Shed::Decoration`, which drops the NO_COLOR line too; every
+            // key row stays intact. 16, not 22: at 22 the box holds whole
             // and nothing sheds.
             Self::KeymapShort => (160, 16),
             // HealthyWide, Errored, Grouped, WithDogs, Retrying, Refused,
@@ -3975,6 +3976,34 @@ mod tests {
             ansi.push_str(&render_ansi(&ansi_buffer));
         }
         (plain, ansi)
+    }
+
+    /// The committed gallery matches what the generator would write today.
+    ///
+    /// `write_the_gallery` is `#[ignore]`d, so nothing in the ordinary
+    /// suite catches a scene that landed without also running it: its own
+    /// doc names the exact failure, both files still saying fifty scenes
+    /// and holding none of the eight keymap scenes that shipped alongside
+    /// them. Diffing against fresh output, rather than only counting
+    /// headings, catches a mismatch a count would miss too, a caption
+    /// edited without a corresponding regeneration.
+    #[test]
+    fn the_committed_gallery_matches_what_the_generator_would_write() {
+        let dir = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/lookout"));
+        let (plain, ansi) = gallery_text();
+        for (name, want) in [("frames.txt", &plain), ("frames.ansi", &ansi)] {
+            let have = std::fs::read_to_string(dir.join(name)).unwrap_or_else(|e| {
+                panic!(
+                    "{name} is missing or unreadable ({e}); run \
+                     cargo test -p shep --lib --all-features -- --ignored write_the_gallery"
+                )
+            });
+            assert_eq!(
+                &have, want,
+                "{name} is stale against the current scenes; run \
+                 cargo test -p shep --lib --all-features -- --ignored write_the_gallery"
+            );
+        }
     }
 
     #[test]

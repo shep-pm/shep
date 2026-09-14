@@ -1804,10 +1804,10 @@ git commit -m "feat(lookout): drop the keymap's columns and border as the termin
     fn the_frozen_hint_names_the_keymap_it_no_longer_refuses() {
         assert!(FROZEN_HINT.contains("h keymap"), "{FROZEN_HINT}");
         assert!(
-            FROZEN_HINT.contains("every other key is refused while the link is down"),
+            FROZEN_HINT.contains("nothing you press can reach the shepherd"),
             "{FROZEN_HINT}"
         );
-        assert!(FROZEN_HINT.contains("q quit") && FROZEN_HINT.contains("j/k still moves"));
+        assert!(FROZEN_HINT.contains("q quit") && FROZEN_HINT.contains("j/k g/G move"));
     }
 ```
 
@@ -1830,8 +1830,8 @@ Expected: FAIL — `h keymap` is absent.
 /// answer a redial. The last clause is the whole rest of the keymap, said
 /// once rather than discovered a keypress at a time — which is why `h` had
 /// to be named here the moment it stopped being refused.
-const FROZEN_HINT: &str = "q quit   h keymap   j/k still moves   \
-     every other key is refused while the link is down";
+const FROZEN_HINT: &str = "q quit   h keymap   j/k g/G move   \
+     nothing you press can reach the shepherd";
 ```
 
 Check the width tests in this module: the hint got longer, and `status.rs` has tests pinning where it truncates. Re-run them and update whichever numeric threshold they assert, with the new number in the comment rather than the old one edited around.

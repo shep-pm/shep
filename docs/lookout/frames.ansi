@@ -2157,7 +2157,7 @@ The overlay raised under --read-only: the gate line reads read-only where the de
 
 
 === keymap_short  (160x16) ===
-160x16, under the nineteen rows the box needs: the borderless form sheds down to its own Decoration tier, so the sheep and the NO_COLOR sentence are gone while every key row is still on screen.
+160x16, under the nineteen rows the box needs: the sheep is boxed-only and already gone, and the borderless form has shed to its own Decoration tier, which drops the NO_COLOR sentence too, while every key row is still on screen.
 
 [0m[7m[38;5;29m[48;5;235mMOVING                        [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mLOOKING                       [0m[38;5;245m[48;5;235m  [0m[7m[38;5;29m[48;5;235mCHANGING                      [0m[38;5;245m[48;5;235m  [0m[7m[38;5;166m[48;5;235mDOING                         [0m[38;5;245m[48;5;235m                                  [0m
 [0m[38;5;221m[48;5;235mj/k  ↑/↓    [0m[38;5;245m[48;5;235m select a row       [0m[38;5;221m[48;5;235mh  ?        [0m[38;5;245m[48;5;235m this keymap        [0m[38;5;221m[48;5;235me           [0m[38;5;245m[48;5;235m the config pane    [0m[38;5;221m[48;5;235mx           [0m[38;5;245m[48;5;235m stop                                               [0m

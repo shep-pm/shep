@@ -49,13 +49,9 @@ const BOX_RIGHT: char = '▌';
 /// The interior, a border cell each side, and a margin cell each side. 1g's
 /// 86 gives 90 and 1k's 126 gives 130, and
 /// `draw_boxed`'s own `margin` arithmetic comes out at 1 at either floor.
-///
-/// `docs/lookout/design-files/README.md` states 132 for 1k, which is a
-/// two-cell margin 1g does not ask for. Corrected there rather than
-/// special-cased here, so this stays one expression for both frames.
-///
-/// That file, not `rulings.md`: the rulings never give 1k a width, so the
-/// 132 is a frame's own arithmetic slip rather than a ruling to overturn.
+/// `docs/lookout/design-files/README.md` gives the same two numbers; the
+/// rulings never state a width for 1k, so that README is the source for it,
+/// not `rulings.md`.
 pub(super) const fn floor_for(interior: u16) -> u16 {
     // saturating_add: this module protects every addition consistently, so
     // a bare `+` here would read as an oversight even though it is

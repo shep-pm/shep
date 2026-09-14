@@ -2100,7 +2100,7 @@ out  connection pool: 14/50 in use
 q quit   j/k select   g/G first/last   r refresh   / filter   F folds   s settings   e edit   * yours   ! parked                                       read-only
 
 === keymap_short  (160x16) ===
-160x16, under the nineteen rows the box needs: the borderless form sheds down to its own Decoration tier, so the sheep and the NO_COLOR sentence are gone while every key row is still on screen.
+160x16, under the nineteen rows the box needs: the sheep is boxed-only and already gone, and the borderless form has shed to its own Decoration tier, which drops the NO_COLOR sentence too, while every key row is still on screen.
 
 MOVING                          LOOKING                         CHANGING                        DOING                                                           
 j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane    x            stop                                               

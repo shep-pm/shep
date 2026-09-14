@@ -57,24 +57,19 @@ pub fn banner_line(app: &App, width: u16) -> Option<Line<'static>> {
 ///
 /// `q` leaves, movement still walks a cursor over values that are already
 /// history, and `h` opens the keymap overlay, which is read only and wanted
-/// most on the screen where nothing else works. `r` is not among them,
-/// whatever the design's own copy says: it is refused
-/// (`App::on_key` tests [`Link::Lost`]), and
-/// `super::super::link::run_link` has already returned by the time a freeze
-/// lands, so no task survives to answer a redial.
+/// most on the screen where nothing else works. `r` is refused
+/// (`App::on_key` tests [`Link::Lost`]), even though 1l's own design copy
+/// says it redials: `super::super::link::run_link` has already returned by
+/// the time a freeze lands, so no task survives to answer one.
 ///
-/// **The last clause does not say "every other key is refused", because that
-/// was false.** The design's own copy for 1l says it, and this constant said
-/// it too. Enumerated against a frozen `full_app` rather than reasoned about,
-/// these all still act: `q`, `esc`, `j`, `g`/`G`, `h`, `/`, `Enter`, `e`, `s`
-/// and `S`. Only `Refresh` and the three action verbs test the link. `/`
-/// genuinely opens the filter box, and `g`/`G` move exactly as `j`/`k` do,
-/// so naming two movement keys and refusing the rest was wrong twice over.
+/// The hint does not claim every other key is refused, because that is not
+/// true: `esc`, `j`, `g`/`G`, `h`, `/`, `Enter`, `e`, `s` and `S` all still
+/// act. Only `Refresh` and the three action verbs test the link.
 ///
-/// What is true, and what an operator needs, is the consequence rather than
-/// a key list: the shepherd is unreachable, so nothing pressed here changes
-/// anything out there. Movement, the keymap and the filter are local, and
-/// every key that would reach the shepherd fails to.
+/// What the hint states instead is the consequence: the shepherd is
+/// unreachable, so nothing pressed here changes anything out there.
+/// Movement, the keymap and the filter stay local, and every key that would
+/// reach the shepherd fails to.
 const FROZEN_HINT: &str = "q quit   h keymap   j/k g/G move   \
      nothing you press can reach the shepherd";
 

@@ -42,7 +42,7 @@ stale and one describes something that does not exist.
 |---|---|---|
 | `g` opens secrets | `S` is `KeyPress::Secrets`; `g` is `KeyPress::SelectFirst` | the code, deliberately. `docs/brainstorming/specs/2026-09-08-lookout-1h-secrets-design.md:224` records the pick, and `input.rs`'s `capital_s_opens_the_secrets_pane_and_lower_s_still_opens_settings` asserts `g` stays `SelectFirst` with the reason in the message. |
 | `l` opens the full-screen feed | `b` is `KeyPress::Bleats`; `l` is unbound | the code. `KeyPress::Bleats`' own doc names `b`. |
-| `h` or `?` toggles the keymap | `h` is `KeyPress::Help`; `?` is unbound | neither. This frame's work, not drift. |
+| `h` or `?` toggles the keymap | `h` and `?` are both `KeyPress::Help` | neither. This frame's work, not drift. |
 
 The design also names no key at all for `m` (`LevelCycle` — 1i's own status-bar
 list omits it, and the variant's doc says it was picked because the design named
@@ -373,9 +373,10 @@ There is no blanket refusal in `on_key`: only `Refresh` and `arm` test
 The overlay opens when the link is gone, because a key list is most wanted on the
 screen where nothing else works. Two things follow:
 
-- **`FROZEN_HINT` gains it**: `q quit   h keymap   j/k still moves   every other
-  key is refused while the link is down`. Appended before the refusal clause, so
-  the sentence stays true.
+- **`FROZEN_HINT` gains it**: `q quit   h keymap   j/k g/G move   nothing you
+  press can reach the shepherd`. States the consequence rather than naming
+  every key still working, since a key list goes stale each time one more
+  local key turns out to act.
 - **The gate line names the link instead of the control gate.** With
   `Link::Lost`, `█ control enabled` becomes `█ the link is down · nothing acts`,
   because `x`/`R`/`L` then refuse for a reason `Control` does not carry.
