@@ -631,7 +631,7 @@ enum DialogRow {
     Blank,
 }
 
-/// The dialog's rows: what a terminal under `overlay::floor_for(BOX_WIDTH)`
+/// The dialog's rows: what a terminal under [`overlay::floor_for`]`(BOX_WIDTH)`
 /// columns gets full width, and what the boxed form draws inside its own
 /// border.
 ///
@@ -2181,7 +2181,7 @@ pub fn draw_pane(app: &App, pane: &ConfigPane, area: Rect, buffer: &mut Buffer) 
     }
 }
 
-/// The dialog on top of the muted pane: boxed at `overlay::floor_for(BOX_WIDTH)`
+/// The dialog on top of the muted pane: boxed at [`overlay::floor_for`]`(BOX_WIDTH)`
 /// and above, full width with no border below it, and full width with no
 /// border at any width when the box is taller than the rows there are.
 ///
@@ -2189,7 +2189,7 @@ pub fn draw_pane(app: &App, pane: &ConfigPane, area: Rect, buffer: &mut Buffer) 
 /// border pair is what makes it a box, and half a box is worse than none.
 /// So a terminal too short for the whole box gives way to the borderless
 /// form, which is the same answer the width rule already gives one column
-/// under `overlay::floor_for(BOX_WIDTH)`.
+/// under [`overlay::floor_for`]`(BOX_WIDTH)`.
 fn draw_close_dialog(
     dialog: &CloseDialog,
     palette: Palette,
@@ -2208,7 +2208,7 @@ fn draw_close_dialog(
 }
 
 /// The full-width, borderless form: bottom-anchored over the field list,
-/// the same rows a terminal under `overlay::floor_for(BOX_WIDTH)` always
+/// the same rows a terminal under [`overlay::floor_for`]`(BOX_WIDTH)` always
 /// drew before this task, so a gallery scene one column below the floor
 /// still gets the form it exists to show rather than a clipped box.
 ///
