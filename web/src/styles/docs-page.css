@@ -143,3 +143,9 @@
     display: none;
   }
 }
+
+/* The short version box supplies its own bottom padding, so the last
+   paragraph inside it must not add another 18px under itself. */
+.docs-shell main .sv-body > :last-child {
+  margin-bottom: 14px;
+}
