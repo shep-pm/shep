@@ -1,5 +1,5 @@
 /*
- * The docs book: seven parts, twenty-seven chapters, in reading order.
+ * The docs book: seven parts, twenty-nine chapters, in reading order.
  *
  * This is the shape of the docs shell itself, and it is the only place a
  * chapter is named, numbered or ordered. DocsLayout derives each page's
@@ -13,12 +13,14 @@
  * called "Concepts" had collected eleven items with no order inside it.
  *
  * `built: false` marks a chapter that is planned and numbered but not yet
- * written. Two are, deliberately: numbering them now is what stops every
- * chapter after them shifting on the day they land, and DocsSidebar draws
- * them as inert text with a "soon" tag rather than as links to a 404.
+ * written. None are today: the two that were, Upgrading and Writing a dog,
+ * landed in this same branch. Numbering a chapter before it is written is
+ * what stops every chapter after it shifting on the day it lands, and
+ * DocsSidebar draws one as inert text with a "soon" tag rather than as a
+ * link to a 404.
  *
  * `source`/`spec`/`api` back the reference pills under each page's title
- * (see ReferencePills.astro) ,  one shared component driven by this data so
+ * (see ReferencePills.astro), one shared component driven by this data so
  * a new page can't ship without at least a Source pill.
  */
 
@@ -30,7 +32,7 @@ export interface SpecRef {
   label: string;
 }
 
-/** A docs.rs type this page is genuinely about ,  only where shep-core's own API is the subject. */
+/** A docs.rs type this page is genuinely about, only where shep-core's own API is the subject. */
 export interface ApiRef {
   /** Path under docs.rs/shep-core/latest/shep_core/, e.g. "config/flockfile/struct.Flockfile.html". */
   path: string;
@@ -52,7 +54,7 @@ export interface DocsNavItem {
   summary: string;
   built: boolean;
   /**
-   * Repo-relative path this page's material is drawn from ,  the Source pill.
+   * Repo-relative path this page's material is drawn from: the Source pill.
    *
    * An array where a page's verbs genuinely span more than one module, which
    * renders one Source pill per file. The Logs page is the case that forced
@@ -409,7 +411,7 @@ export const docsNav: DocsNavGroup[] = [
  * Whether each pill *kind* has anywhere real to send a reader yet. Both
  * start false: the repo is private (a GitHub link 404s for anyone without
  * access) and no crate has published (docs.rs has nothing to show). The
- * pills still render ,  with the real, final URL already in their href , 
+ * pills still render, with the real, final URL already in their href,
  * dimmed and inert instead of clickable, rather than either shipping a
  * confident-looking link that 404s or hiding the sourcing entirely.
  *
