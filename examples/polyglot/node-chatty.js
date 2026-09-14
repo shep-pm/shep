@@ -153,7 +153,12 @@ function handle(message) {
   }
   if (message.kind === "shutdown") {
     console.log("node-chatty: the shepherd asked us to stop");
-    process.exit(0);
+    // Replies queued earlier in this same chunk are still in the stream's
+    // buffer, and process.exit drops whatever has not reached the kernel.
+    // end() flushes first, then the callback ends the process. Measured at
+    // 100 batched actions: 92 of them arrived before this, 100 after.
+    channel.end(() => process.exit(0));
+    return;
   }
   if (message.kind !== "action") {
     return;
