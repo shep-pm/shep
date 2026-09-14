@@ -3827,6 +3827,41 @@ mod tests {
         }
     }
 
+    /// Every `Keymap*` scene actually raises the overlay.
+    ///
+    /// `scene`'s builder raises it from a `matches!` list of variants, and
+    /// the comment over that list says "every `Keymap*` scene". Nothing held
+    /// that claim. The per-scene checks in this module are a hand-written
+    /// list, `each_keymap_width_scene_draws_its_own_column_count` names five
+    /// of the eight, and a snapshot is accepted for whatever a scene
+    /// rendered, so a ninth keymap scene left out of the `matches!` list
+    /// would draw the dashboard and be pinned that way.
+    ///
+    /// Driven off the label rather than a list, so a new scene joins this
+    /// test by being named. Dropping `KeymapNarrow` from the builder's list
+    /// fails it, and so does adding a scene the list does not cover.
+    ///
+    /// The count is the other half: it catches a keymap scene whose label
+    /// does not start with `keymap`, which this test would otherwise skip in
+    /// silence, and it is the same eight the gallery preamble promises.
+    #[test]
+    fn every_keymap_scene_raises_the_overlay() {
+        let mut checked = 0;
+        for which in Scene::ALL {
+            if !which.label().starts_with("keymap") {
+                continue;
+            }
+            checked += 1;
+            let rendered = render_text(&scene(*which).1);
+            assert!(
+                rendered.contains(Group::Moving.heading()),
+                "{}: the overlay did not draw",
+                which.label()
+            );
+        }
+        assert_eq!(checked, 8, "the keymap scenes, counted by label");
+    }
+
     /// Frame pins, not wire fixtures: re-accepting these after a layout
     /// change is expected, unlike the rule for shep-core's protocol
     /// snapshots.

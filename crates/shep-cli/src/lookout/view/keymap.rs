@@ -1060,7 +1060,7 @@ mod tests {
 
     /// A multi-bank width crossed against the height ladder.
     ///
-    /// Every height-ladder test above runs at width 160, which is always
+    /// Every other height-ladder test runs at width 160, which is always
     /// one bank; every bank-grouping test runs at height 48 or 100, always
     /// above the ladder's own top. Neither exercises `extra_banks_cost` and
     /// `effective_height` together, and those two are exactly the
