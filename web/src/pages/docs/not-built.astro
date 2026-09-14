@@ -8,6 +8,7 @@
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 ---
@@ -25,9 +26,20 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       serve/dev/runtime, and config and packaging. Windows runs the same
       build and the same day-to-day loop, minus a named handful of refusals
       it makes out loud. This page is the honest remainder: what the newest
-      platform does not do, and a short list of smaller cuts, each with the
-      reason it isn't here yet.
+      platform does not do.
     </p>
+
+    <ShortVersion>
+      <p>
+        Windows ships today with three named limits: no graceful stop
+        signal unless the app opts into the shepherd channel, no{" "}
+        <code>user</code>/<code>group</code>, and no <code>shep startup</code>.
+        Five smaller cuts are deferred past v1 on purpose (whistle's HTTP
+        transport, cgroup v2 enforcement, the <code>@shep/io</code> shim, VCS
+        metadata, a JSON status endpoint). One item, OTLP export for the
+        metrics dog, is scheduled rather than decided against.
+      </p>
+    </ShortVersion>
 
     <h2 id="windows-built-with-named-limits">Windows: built, with named limits</h2>
     <p>

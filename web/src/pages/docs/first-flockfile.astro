@@ -10,6 +10,7 @@
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import { slugify } from "../../data/slug";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
@@ -165,25 +166,17 @@ const fieldGroups: FieldGroup[] = [
       typo into a parse error instead of a surprise at 3am.
     </p>
 
-    <h2 id="two-fields-is-still-a-complete-one">Two fields is still a complete one</h2>
-    <p>
-      <code>name</code> and <code>script</code> are the only two fields with
-      no default. Everything else in the reference table below fills in on
-      its own. <code>autorestart</code> and <code>autostart</code> both
-      default to <code>true</code>, so a bare two-field entry is already a
-      supervised, auto-starting sheep.
-    </p>
-    <CodeBlock label="Flockfile.toml">{`[[app]]
+    <ShortVersion>
+      <CodeBlock label="Flockfile.toml">{`[[app]]
 name   = "web"
 script = "./server"`}</CodeBlock>
-
-    <p class="fine">
-      A Flockfile is a template your project commits, not live
-      configuration. shep never writes to one, and an operator changing a
-      setting on a running flock is not editing this file:{" "}
-      <a href="/docs/overrides">Changing a setting</a> covers where those
-      changes live.
-    </p>
+      <p class="fine">
+        <code>name</code> and <code>script</code> are the only two fields
+        with no default. <code>autorestart</code> and <code>autostart</code>{" "}
+        both default to <code>true</code>, so this is already a supervised,
+        auto-starting sheep. Everything else is in the field reference below.
+      </p>
+    </ShortVersion>
 
     <h2 id="or-start-from-a-generated-one">Or start from a generated one</h2>
     <VerbSignature verb="init" usage="shep init [path] [--all] [--force]">
@@ -491,6 +484,12 @@ DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>
       <code>interval</code> (10s), <code>timeout</code> (5s), and{" "}
       <code>failure_threshold</code> (3). <code>depends_on</code> has a page
       of its own: see <a href="/docs/boot-order">boot order</a>.
+    </p>
+    <p class="fine">
+      Every field below is also editable from <a href="/docs/lookout">lookout</a>:
+      its config pane builds its form straight off this same Flockfile JSON
+      Schema, the way it builds one for a dog's own <code>--schema</code>{" "}
+      answer.
     </p>
     {
       fieldGroups.map((group) => (

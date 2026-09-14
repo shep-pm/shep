@@ -7,6 +7,7 @@
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 ---
@@ -25,11 +26,23 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       command's behavior changes; only the rendering does.
     </p>
 
+    <ShortVersion>
+      <p>
+        A success prints one object on stdout: <code>schema_version</code>,{" "}
+        <code>command</code>, and <code>data</code>. A failure prints{" "}
+        <code>schema_version</code> and <code>error</code> on stderr instead,
+        with no <code>command</code> key.
+      </p>
+    </ShortVersion>
+    <p class="fine">
+      <code>schema_version</code> is <code>1</code> today, and it only moves
+      for a rename, a removal, or a retype in some command's{" "}
+      <code>data</code> shape. A new field never bumps it.
+    </p>
+
     <h2 id="the-envelope">The envelope</h2>
     <p>
-      Every non-streaming command wraps its payload in the same three
-      fields: a schema version, the verb name, and the data itself. One
-      verb adds a fourth, and only sometimes; see{" "}
+      One verb adds a fourth field, and only sometimes; see{" "}
       <a href="#refused">a reload that was refused part of its fold</a>.
       Here's <code>shep flock --format json</code> against a two-sheep
       flock:
@@ -166,12 +179,9 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
 
     <h2 id="what-schema-version-promises">What <code>schema_version</code> promises</h2>
     <p>
-      It's at <code>1</code> today, and it moves only for a breaking change
-      to some command's <code>data</code> shape: a field renamed, removed,
-      or given a different type. Adding a new field to an existing payload
-      does <strong>not</strong> bump it: a consumer that reads the keys it
-      cares about and ignores the rest survives an additive release
-      untouched. The contract that's actually worth writing code against:
+      A consumer that reads the keys it cares about and ignores the rest
+      survives an additive release untouched. The contract that's actually
+      worth writing code against:
     </p>
     <ul class="promise-list">
       <li>

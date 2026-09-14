@@ -24,6 +24,7 @@
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import { slugify } from "../../data/slug";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
@@ -142,6 +143,19 @@ if (
       understands, generated from the binary's own <code>--help</code>. Nothing
       below is hand-typed.
     </p>
+
+    <ShortVersion>
+      <p>
+        Five aliases are permanent, not shorthand that might disappear:{" "}
+        <code>shep flock</code> (<code>list</code>, <code>ls</code>),{" "}
+        <code>shep bleats</code> (<code>logs</code>),{" "}
+        <code>shep lookout</code> (<code>dash</code>),{" "}
+        <code>shep stock</code> (<code>scale</code>),{" "}
+        <code>shep whisper</code> (<code>sendline</code>). Every verb takes{" "}
+        <code>--home</code>, <code>--format table|json</code> and{" "}
+        <code>-q</code>/<code>--quiet</code>.
+      </p>
+    </ShortVersion>
 
     <Callout variant="note">
       <code>--home</code>, <code>--format table|json</code> and <code>-q</code>/<code>--quiet</code>{" "}

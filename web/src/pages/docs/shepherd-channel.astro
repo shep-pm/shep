@@ -12,6 +12,7 @@
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
@@ -30,6 +31,23 @@ import VerbSignature from "../../components/docs/VerbSignature.astro";
       <code>shep trigger</code>. It's language-agnostic: the channel is a
       plain file descriptor carrying JSON text, nothing Rust-specific about
       it.
+    </p>
+
+    <ShortVersion>
+      <ul>
+        <li>Ask for a channel with <code>channel = true</code> (or get one free from <code>wait_ready</code> / <code>shutdown_with_message</code>).</li>
+        <li>Read <code>SHEP_CHANNEL_FD</code> on unix, or <code>SHEP_CHANNEL_PIPE</code> on Windows, where the channel is a named pipe your app opens by path rather than an inherited fd. Exactly one is ever set, so branch on which one is present, not on the platform. Then read/write newline-delimited JSON.</li>
+        <li>A plain blocking read works: no event loop required.</li>
+        <li>Reply to every <code>action</code> message you receive, even ones you don't recognize, exactly once, promptly.</li>
+        <li>Echo the <code>id</code>: one field, and it's what makes a slow action's answer land on the right trigger.</li>
+        <li>What you put in <code>body</code> is what the operator reads back, and what anyone on <code>channel.*</code> reads too.</li>
+      </ul>
+    </ShortVersion>
+    <p class="fine">
+      <code>SHEP_CHANNEL_VERSION</code> is <code>1</code> today. It isn't
+      negotiated: a mismatch only warns rather than refuses, because every
+      wire change so far has been additive and an older reader ignores a
+      field it doesn't know.
     </p>
 
     <h2 id="getting-a-channel">Getting a channel</h2>
@@ -62,10 +80,7 @@ channel = true`}</CodeBlock>
       <code>read()</code> parks your process until the daemon has something
       to say, exactly like any other pipe. No event loop, non-blocking I/O,
       or polling required: a shell script doing{" "}
-      <code>read -r line &lt;&amp;3</code> works. The daemon also exports{" "}
-      <code>SHEP_CHANNEL_VERSION</code> (currently <code>1</code>) so a
-      defensive app can notice a wire it's never seen rather than failing to
-      parse a line with nothing to connect that failure to.
+      <code>read -r line &lt;&amp;3</code> works.
     </p>
     <p>
       <strong>A Rust app does not have to speak this by hand.</strong> The{" "}
@@ -296,15 +311,6 @@ ID  NAME  OUTCOME     DETAIL
       comfortable with any subscriber seeing.
     </p>
 
-    <h2 id="summary-for-the-impatient">Summary for the impatient</h2>
-    <ul>
-      <li>Ask for a channel with <code>channel = true</code> (or get one free from <code>wait_ready</code> / <code>shutdown_with_message</code>).</li>
-      <li>Read <code>SHEP_CHANNEL_FD</code> on unix, or <code>SHEP_CHANNEL_PIPE</code> on Windows, where the channel is a named pipe your app opens by path rather than an inherited fd. Exactly one is ever set, so branch on which one is present, not on the platform. Then read/write newline-delimited JSON.</li>
-      <li>A plain blocking read works: no event loop required.</li>
-      <li>Reply to every <code>action</code> message you receive, even ones you don't recognize, exactly once, promptly.</li>
-      <li>Echo the <code>id</code>: one field, and it's what makes a slow action's answer land on the right trigger.</li>
-      <li>What you put in <code>body</code> is what the operator reads back, and what anyone on <code>channel.*</code> reads too.</li>
-    </ul>
     <h2 id="where-to-go-next">Where to go next</h2>
 
     <div class="next-grid">

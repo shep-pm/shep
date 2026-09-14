@@ -12,6 +12,7 @@
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import { repoFile } from "../../data/repo";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import NotBuilt from "../../components/docs/NotBuilt.astro";
@@ -29,14 +30,11 @@ import { pillTargetsLive } from "../../data/docs-nav";
       <code>shep whistle</code> is an MCP server, spoken over stdio, that
       hands a model the same flock a person reaches with{" "}
       <code>shep flock</code>, <code>shep stop</code>,{" "}
-      <code>shep restart</code>. Nine tools exist; five are read-only and
-      always present, four act on the flock and exist only when a config
-      flag is turned on.
+      <code>shep restart</code>.
     </p>
 
-    <h2 id="running-it">Running it</h2>
-    <p>A worked launcher config, for an MCP host that spawns its own servers:</p>
-    <CodeBlock label="mcp.json">{`{
+    <ShortVersion>
+      <CodeBlock label="mcp.json">{`{
   "mcpServers": {
     "shep": {
       "command": "shep",
@@ -44,6 +42,14 @@ import { pillTargetsLive } from "../../data/docs-nav";
     }
   }
 }`}</CodeBlock>
+      <p class="fine">
+        That's the whole launcher config for an MCP host that spawns its own
+        servers. Five tools are read-only and always there; four act on the
+        flock and only appear once <code>allow_control</code> is on.
+      </p>
+    </ShortVersion>
+
+    <h2 id="running-it">Running it</h2>
     <p class="fine">
       It writes nothing else to stdout, because stdout is the wire. An
       agent host launches this process and talks JSON-RPC to it on the pipe.

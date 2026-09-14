@@ -7,6 +7,7 @@
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import NotBuilt from "../../components/docs/NotBuilt.astro";
@@ -42,8 +43,16 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
       layer shared with the metrics dog), not built on axum or tower-http.
     </p>
 
+    <ShortVersion>
+      <CodeBlock>$ shep serve ./dist --port 8080</CodeBlock>
+      <p class="fine">
+        Binds loopback only, refuses traversal and dotfiles, and 404s any
+        symlink under the docroot: every wider behavior is a named flag, not
+        a default.
+      </p>
+    </ShortVersion>
+
     <h2 id="try-it">Try it</h2>
-    <CodeBlock>$ shep serve ./dist --port 8080</CodeBlock>
     <p class="fine">
       Add <code>--foreground</code> to run the worker directly in this
       terminal instead of registering a sheep. Same worker either way, just
@@ -52,9 +61,7 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
 
     <h2 id="the-security-posture-checked-against-real-requests">The security posture, checked against real requests</h2>
     <p>
-      Every default below is the safe one, and every unsafe one is a named
-      flag rather than a config file nobody reads. Binds loopback
-      (<code>127.0.0.1:8080</code>) unless you pass a wider{" "}
+      Binds loopback (<code>127.0.0.1:8080</code>) unless you pass a wider{" "}
       <code>--bind</code>, which prints a stderr notice naming what it just
       exposed. These four requests were run against a real{" "}
       <code>shep serve</code> process, docroot containing an{" "}
