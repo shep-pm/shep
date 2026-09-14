@@ -12249,7 +12249,7 @@ mod tests {
     /// Found by CodeRabbit on PR 246, and it is the shape a green suite
     /// cannot see: two messages in an order no single test sends.
     #[test]
-    fn a_refused_write_does_not_reopen_the_editor_under_the_overlay() {
+    fn a_refused_write_reopens_the_editor_out_from_under_the_overlay() {
         let mut app = fixtures::app_in_settings_on(SettingField::MaxCronSleep);
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         let _ = app.update(Msg::Key(KeyPress::TextApply));
@@ -14991,6 +14991,7 @@ mod tests {
     fn quit_still_quits_with_the_overlay_up() {
         let mut app = fixtures::full_app();
         let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(app.keymap_open(), "the overlay did not open");
         assert_eq!(app.update(Msg::Key(KeyPress::Quit)), Effect::Quit);
     }
 
