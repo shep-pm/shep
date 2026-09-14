@@ -53,7 +53,15 @@ toml_edit.workspace = true
 chrono.workspace = true
 # Process-table RSS sampling for the MemorySampler seam (limits/sample.rs):
 # resident memory across a sheep's whole process tree.
-sysinfo.workspace = true
+#
+# # Option: `disk` and `network`
+# The two rates `host.rs` serves, read on its own tick so a listing can carry
+# them without sampling. Both are additive: on macOS, Linux and Windows they
+# pull no crate `system` has not already pulled, only more of the `windows`
+# crate's own feature surface. They used to be named on shep-cli, which
+# sampled the host for itself; the sampler moved here and the features came
+# with it.
+sysinfo = { workspace = true, features = ["disk", "network"] }
 # The OS seam for watch-restart (watch/source.rs): bridges notify's debounced
 # filesystem events onto a tokio mpsc channel.
 notify.workspace = true

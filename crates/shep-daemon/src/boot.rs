@@ -1009,6 +1009,10 @@ pub async fn boot<R: ProcessRunner>(
         pid,
         shutdown,
         stats,
+        // Starts its own tick here rather than riding the supervisor's
+        // extras: those are armed and disarmed per sheep, and this reads
+        // the machine whether the flock is empty or not.
+        host: crate::host::HostState::real(),
         provider_secrets,
     };
 
