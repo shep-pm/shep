@@ -751,6 +751,29 @@ mod tests {
         }
     }
 
+    /// fails if [`SHEPHERD_RETURN_BUDGET`] moves without the prose that
+    /// names its value moving too.
+    ///
+    /// Three doc comments say "five seconds" in words: the constant's own,
+    /// and the two `mod slow` headers that explain why those tests take
+    /// that long. None of them can be checked by a reader, because the
+    /// value arrives from `shep_daemon` rather than from the line above
+    /// them, so a change there leaves all three quietly wrong while every
+    /// doc-link still resolves.
+    ///
+    /// Pinning it here rather than deleting the numbers: a budget a reader
+    /// has to go and look up is worse documentation, and this makes the
+    /// concrete version safe to keep.
+    #[test]
+    fn the_budget_is_the_five_seconds_the_docs_promise() {
+        assert_eq!(
+            SHEPHERD_RETURN_BUDGET,
+            Duration::from_secs(5),
+            "docs/dogs.md, the web dogs page and three doc comments all say five \
+             seconds; change them together or not at all"
+        );
+    }
+
     /// A [`ShepPaths`] rooted at `dir`, with `socket` pointed wherever the
     /// caller's fake daemon actually bound. Flat, not nested under `run/`,
     /// so a test never has to create that directory.
