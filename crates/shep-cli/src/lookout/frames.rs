@@ -584,8 +584,9 @@ impl Scene {
     /// Whether this scene's dashboard may act.
     ///
     /// Allowed is the fallthrough, matching the real dashboard's default.
-    /// `Refused` is the one scene that exists to show the gate closed, so
-    /// it is the one exception.
+    /// Two exceptions, and they show the closed gate in different places:
+    /// `Refused` in the dashboard's own status bar, `KeymapReadOnly` in the
+    /// overlay's gate line.
     #[must_use]
     pub const fn control(self) -> Control {
         match self {

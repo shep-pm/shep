@@ -1184,6 +1184,11 @@ mod tests {
         // render from this and assert on headings, so an overlay that
         // failed to open reaches every one of them as "no heading row" or
         // "MOVING missing", which names the symptom and not the cause.
+        //
+        // On all five of these helpers, not just this one. Round 7 caught the
+        // guard sitting on this helper alone while its four neighbours kept
+        // the old shape, which is the same fix-the-instance-and-stop defect
+        // this branch has now closed five times.
         assert!(app.keymap_open(), "the overlay did not open");
         app
     }
@@ -1193,6 +1198,7 @@ mod tests {
     fn coloured_app_with_overlay() -> App {
         let mut app = healthy_app_with_palette(fixtures::coloured());
         let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(app.keymap_open(), "the overlay did not open");
         app
     }
 
@@ -1201,6 +1207,7 @@ mod tests {
         let mut app = healthy_app();
         app.set_control_for_tests(Control::ReadOnly);
         let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(app.keymap_open(), "the overlay did not open");
         app
     }
 
@@ -1213,6 +1220,7 @@ mod tests {
             why: fixtures::FROZEN_WHY.to_string(),
         });
         let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(app.keymap_open(), "the overlay did not open");
         app
     }
 
@@ -1228,6 +1236,7 @@ mod tests {
             why: fixtures::FROZEN_WHY.to_string(),
         });
         let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(app.keymap_open(), "the overlay did not open");
         app
     }
 }

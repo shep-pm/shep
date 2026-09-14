@@ -205,17 +205,19 @@ fn title_gap_rows(height: u16) -> u16 {
 /// Two short lines, not one long sentence: `Buffer::set_line` truncates at
 /// `max_width` in silence, and this exists for terminals narrower than
 /// `MIN_TERM_WIDTH`.
-fn draw_too_small(frame: &mut Frame<'_>, area: Rect, width: u16, height: u16) {
-    if width == 0 || height == 0 {
+fn draw_too_small(frame: &mut Frame<'_>, area: Rect) {
+    if area.width == 0 || area.height == 0 {
         return;
     }
     let first = Line::from(Span::raw("too small"));
-    frame.buffer_mut().set_line(area.x, area.y, &first, width);
-    if height >= 2 {
+    frame
+        .buffer_mut()
+        .set_line(area.x, area.y, &first, area.width);
+    if area.height >= 2 {
         let second = Line::from(Span::raw(format!("need {MIN_TERM_WIDTH}x{MIN_HEIGHT}")));
         frame
             .buffer_mut()
-            .set_line(area.x, area.y + 1, &second, width);
+            .set_line(area.x, area.y + 1, &second, area.width);
     }
 }
 
@@ -237,7 +239,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     let (width, height) = (area.width, area.height);
 
     if width < MIN_TERM_WIDTH || height < MIN_HEIGHT {
-        draw_too_small(frame, area, width, height);
+        draw_too_small(frame, area);
         return;
     }
 

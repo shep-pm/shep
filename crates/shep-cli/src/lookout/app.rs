@@ -3463,6 +3463,28 @@ impl App {
         }
     }
 
+    /// Cancels an armed settings candidate, answering whether it did.
+    ///
+    /// Three arms of the settings handler spend a key this way rather than
+    /// acting: `Refresh`, `Edit` and `Help`. They were three copies of the
+    /// same four lines, which round 7 flagged, and the shape is the one that
+    /// drifts: a change to what cancelling means (a confirmation, a different
+    /// field cleared) has to land in all three or the handler starts
+    /// disagreeing with itself about what an armed prompt eats.
+    ///
+    /// A `bool` rather than an `Effect`, so each caller keeps its own reason
+    /// for returning: the arms are identical in what they cancel and
+    /// different in what they would otherwise have done.
+    fn disarm_settings_candidate(&mut self) -> bool {
+        if let Some(settings) = self.settings_mut()
+            && settings.is_armed()
+        {
+            settings.pending = None;
+            return true;
+        }
+        false
+    }
+
     /// Raises the overlay. Reached from every body's own `Help` arm, so
     /// each body's cancel and dialog guards have already run by the time
     /// this is called: `h` cancels an armed confirm and is consumed, and a
@@ -4741,10 +4763,7 @@ impl App {
             // Re-reads `shep.toml`, so another process's write shows up, and
             // the cursor survives. An armed candidate eats this key too.
             KeyPress::Refresh => {
-                if let Some(settings) = self.settings_mut()
-                    && settings.is_armed()
-                {
-                    settings.pending = None;
+                if self.disarm_settings_candidate() {
                     return Effect::None;
                 }
                 return Effect::LoadSettings;
@@ -4753,10 +4772,7 @@ impl App {
             // the pane shows the dog's real schema and section or nothing.
             // An armed candidate eats it first, like every other key here.
             KeyPress::Edit => {
-                if let Some(settings) = self.settings_mut()
-                    && settings.is_armed()
-                {
-                    settings.pending = None;
+                if self.disarm_settings_candidate() {
                     return Effect::None;
                 }
                 return self.probe_dog_schema();
@@ -4767,10 +4783,7 @@ impl App {
             // cancel, so `h` cancels it and is consumed rather than also
             // opening the overlay.
             KeyPress::Help => {
-                if let Some(settings) = self.settings_mut()
-                    && settings.is_armed()
-                {
-                    settings.pending = None;
+                if self.disarm_settings_candidate() {
                     return Effect::None;
                 }
                 return self.open_keymap();
@@ -7400,8 +7413,9 @@ impl App {
     /// `config_pane`, `bleats_pane` and `sheep_pane` each answer this for
     /// their own body by handing back the pane; the secrets pane had no
     /// equivalent, so a test could only press `S` and trust it landed. That
-    /// is the setup a narrowed every-body loop was narrowed for, so the
-    /// predicate exists to let the loop assert it arrived.
+    /// is why the loop over the bodies dropped the cases it could not verify,
+    /// and this predicate is what lets the secrets case join it: the loop can
+    /// assert it arrived before it renders.
     #[cfg(test)]
     pub(crate) const fn secrets_pane_is_open(&self) -> bool {
         matches!(&self.body, Body::Secrets(_))
@@ -12702,6 +12716,34 @@ mod tests {
             app.settings().unwrap().cursor(),
             before,
             "the cursor must not also move on the same keypress"
+        );
+    }
+
+    /// `Edit` is the third arm that spends a key on the cancel, and it was
+    /// the one with no test.
+    ///
+    /// Found by folding the three copies into `disarm_settings_candidate` and
+    /// mutating the helper to report a cancel it had not done: two tests
+    /// failed, for `Refresh` and `Help`, and `Edit` did not. So the fold was
+    /// worth more than the four lines it saved, which is not the usual
+    /// argument for one.
+    ///
+    /// `Effect::None` is the whole assertion on the effect side: a cancel
+    /// that also probed would hand the operator a schema they never asked
+    /// for, on a keypress they spent undoing something else.
+    #[test]
+    fn edit_cancels_an_armed_candidate_rather_than_probing_a_schema() {
+        let mut app = fixtures::app_in_settings_with_control();
+        let _ = app.update(Msg::Key(KeyPress::Cycle));
+        assert!(
+            app.settings().unwrap().pending().is_some(),
+            "space must arm before this test means anything"
+        );
+        let effect = app.update(Msg::Key(KeyPress::Edit));
+        assert_eq!(effect, Effect::None, "a cancel must not also probe");
+        assert!(
+            app.settings().unwrap().pending().is_none(),
+            "the armed candidate must not survive `e`"
         );
     }
 

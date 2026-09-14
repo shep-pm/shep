@@ -180,6 +180,34 @@ mod tests {
     use super::*;
     use crate::output::width::char_columns;
 
+    /// The two rows a border costs, and the saturation this function's own
+    /// doc spends a paragraph on.
+    ///
+    /// That paragraph is the reason the helper exists: the fit check and the
+    /// draw did the addition separately and differently, one saturating from
+    /// a `u16::MAX` fallback and one adding plainly from `0`. Nothing
+    /// exercised the arm it describes, so round 7 asked for this.
+    ///
+    /// 65_534 lines is where `saturating_add` starts to bite, and it is
+    /// unreachable from any caller: the overlay's own form is nineteen rows.
+    /// Pinned anyway, because an unreachable arm the doc argues about is
+    /// exactly the kind that gets "simplified" into a plain `+ 2` by someone
+    /// who reads the code and not the comment.
+    #[test]
+    fn the_box_costs_two_rows_and_saturates_rather_than_wrapping() {
+        assert_eq!(boxed_height(&[]), 2);
+        assert_eq!(boxed_height(&vec![Line::default(); 17]), 19);
+        assert_eq!(
+            boxed_height(&vec![Line::default(); usize::from(u16::MAX) - 1]),
+            u16::MAX
+        );
+        assert_eq!(
+            boxed_height(&vec![Line::default(); usize::from(u16::MAX) + 5]),
+            u16::MAX,
+            "past u16 the try_from fallback takes over, and it saturates too"
+        );
+    }
+
     /// The floor is the interior plus a border cell and a margin cell each
     /// side. 1g's own floor is 90 over an 86-cell interior and 1k's is 130
     /// over a 126-cell one, and both come out of this one expression: the
