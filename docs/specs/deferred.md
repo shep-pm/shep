@@ -902,26 +902,32 @@ The maintainer's, 2026-08-30, after asking whether an app could speak fd 3
 using something that already exists. Wanted, in her own list: **node, go,
 rust, python**.
 
-**Today an app can, badly.** `shep_core::protocol::channel` exports
-`ChildMessage`, `ShepherdMessage` and `CHANNEL_VERSION`, all serde-derived,
-and shep-core is published. But it is a daemon's core rather than a client:
-an app that wants two enums also gets toml, serde-saphyr, json5, regex,
-tokio, croner, chrono, chrono-tz, globset, tempfile and nix. Hand-rolling
-against [shepherd-channel.md](../shepherd-channel.md) is about forty lines
-and the better trade, which is an odd thing to have to say about one's own
-published crate. The other three languages have nothing at all.
+**When this was written, an app could, badly.** `shep_core::protocol::channel`
+exported `ChildMessage`, `ShepherdMessage` and `CHANNEL_VERSION`, all
+serde-derived, and shep-core is published. But it is a daemon's core rather
+than a client: an app that wanted two enums also got toml, serde-saphyr,
+json5, regex, tokio, croner, chrono, chrono-tz, globset, tempfile and nix.
+Hand-rolling against [shepherd-channel.md](../shepherd-channel.md) is about
+forty lines and was the better trade, which is an odd thing to have to say
+about one's own published crate.
 
-**There is no example anywhere.** `examples/` holds seven Rust binaries and
-four polyglot apps in Go, Node, Python and static HTML, and not one of them
-speaks fd 3. The contract doc has two code blocks and one of them is JSON.
-The wire is specified in prose and demonstrated nowhere, which is the real
-barrier for anyone deciding whether to adopt it.
+That is what `shep-channel` fixed, and `shep_core::protocol::channel` is a
+deprecated shim onto it now. Go has a library too. JavaScript and Python
+are the two languages with nothing but the examples.
 
-**Three things a hand-roll gets wrong**, each named in `channel.rs`'s own
-module doc: an app must reply to a `ShepherdMessage::Action` even when it
-does not recognise the name; it should echo the `id` so the reply is matched
-to its exact trigger, and the name-and-order fallback costs something when
-it does not; and there is a `params` quoting gap. Those are what a library
+**The examples half of this is built.** `examples/` now holds the same
+channel app in all four languages: `chatty.rs` over the `shep-channel`
+crate, and hand-rolled Go, Node and Python under `examples/polyglot/`. Each
+carries both platform arms. What this entry described, an `examples/`
+directory where nothing spoke fd 3 and a contract demonstrated only in
+prose, is no longer the state of the repository.
+
+**Three things a hand-roll gets wrong**, each named in the module doc of
+`crates/shep-channel/src/wire.rs`, which is where that wire moved to: an
+app must reply to a `ShepherdMessage::Action` even when it does not
+recognise the name; it should echo the `id` so the reply is matched to its
+exact trigger, and the name-and-order fallback costs something when it does
+not; and there is a `params` quoting gap. Those are what a library
 encodes once and prose asks every author to get right separately. Windows is
 a fourth, since fd 3 is a named pipe there and every client needs two arms.
 
@@ -933,6 +939,11 @@ diff against files that already exist, and it gives every community app
 something to copy. A library second, for whichever language earns one. The
 four chosen are also the ones the surrounding ecosystem is written in, so
 the examples serve the whole audience on their own.
+
+Both halves of that have moved. The examples exist, and two of the four
+languages have a library: `shep-channel` for Rust and
+`github.com/shep-pm/shep-go/channel` for Go. What is left of this entry is
+JavaScript and Python, where the examples are what an author copies today.
 
 ## A readiness probe cannot verify a reload's replacement
 

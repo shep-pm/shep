@@ -43,12 +43,51 @@ speaks, so this is not a negotiation — it is there so a defensive app can
 notice a version it has never seen and say so, rather than failing to parse a
 line with nothing to connect that failure to a protocol change.
 
-**A Rust app does not have to speak this by hand.** The `shep-channel` crate
-implements everything on this page: discovering the descriptor, framing the
-JSON, and answering messages the app does not handle itself. Go, JavaScript
-and Python libraries over the same contract are planned. Whatever language
-an app is written in, this document is still the contract it has to hold
-to.
+**Rust and Go apps do not have to speak this by hand.** The `shep-channel`
+crate and `github.com/shep-pm/shep-go/channel` each implement everything on
+this page: discovering the descriptor, framing the JSON, and answering
+messages the app does not handle itself. JavaScript and Python libraries
+over the same contract are planned. Whatever language an app is written in,
+this document is still the contract it has to hold to.
+
+## Four apps that already do this
+
+`examples/` has the same app four times, once per language, and every one
+of them runs under a Flockfile in this repository:
+
+| app | language | how it frames the wire |
+|---|---|---|
+| `examples/src/bin/chatty.rs` | Rust | the `shep-channel` crate |
+| `examples/polyglot/go-chatty/` | Go | by hand, over shep's generated Go types |
+| `examples/polyglot/node-chatty.js` | JavaScript | by hand |
+| `examples/polyglot/python-chatty.py` | Python | by hand |
+
+All four answer the same actions, so one trigger reads the same way against
+any of them:
+
+```text
+$ shep trigger '*chatty' ping
+ID  NAME           OUTCOME  DETAIL
+20  chatty         replied  pong from rust pid=40076, up 7.1s
+10  go-chatty      replied  pong from go pid=40075, up 7.1s
+8   node-chatty    replied  pong from node pid=40077, up 7.1s
+9   python-chatty  replied  pong from python pid=40078, up 7.1s
+```
+
+`ping` answers, `metric` sends a sample and says what it sent, and `level`
+shows an app splitting its own `params`. Any other name gets the
+unknown-action reply this document asks for. `shep stop` sends the shutdown
+message instead of a signal, because all four set
+`shutdown_with_message = true`.
+
+The three hand-rolled ones carry both platform arms, and each takes one of
+the two ways out of the deadlock above. go-chatty and python-chatty read
+and write from a single loop, so nothing is ever parked while something
+else wants to write. node-chatty is the overlapped case rather than the
+single-threaded one: libuv drives a named pipe asynchronously, so its
+reads and writes do not serialise against each other in the first place.
+All four were run on macOS, and the three under `examples/polyglot/` were
+run again on Windows against a real named pipe.
 
 ## On Windows: a named pipe, not fd 3
 
