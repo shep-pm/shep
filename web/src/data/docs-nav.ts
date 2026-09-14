@@ -390,7 +390,10 @@ export const docsNav: DocsNavGroup[] = [
         source: "crates/shep-core/src/config/flockfile.rs",
         spec: { anchor: "5-configuration", label: "§5 Configuration" },
         api: {
-          path: "config/struct.Flockfile.html",
+          // The canonical page, not the `config` re-export: rustdoc gives a
+          // re-exported item no page of its own, so config/struct.Flockfile.html
+          // is a 404. The label stays the path a caller actually writes.
+          path: "config/flockfile/struct.Flockfile.html",
           label: "shep_core::config::Flockfile",
         },
       },
@@ -409,23 +412,25 @@ export const docsNav: DocsNavGroup[] = [
 
 /**
  * Whether each pill *kind* has anywhere real to send a reader yet. Both
- * start false: the repo is private (a GitHub link 404s for anyone without
- * access) and no crate has published (docs.rs has nothing to show). The
- * pills still render, with the real, final URL already in their href,
- * dimmed and inert instead of clickable, rather than either shipping a
- * confident-looking link that 404s or hiding the sourcing entirely.
+ * started false: the repo was private (a GitHub link 404s for anyone
+ * without access) and no crate had published (docs.rs had nothing to show).
+ * A pill of a dead kind still renders, with the real, final URL already in
+ * its href, dimmed and inert instead of clickable, rather than either
+ * shipping a confident-looking link that 404s or hiding the sourcing
+ * entirely.
  *
- * Flip one flag the day it stops being true and every pill of that kind
- * goes live with no other code change: the repo going public is one
- * boolean, shep-core's first docs.rs publish is the other.
+ * Nothing here checks the network, so a flag is a claim someone has to
+ * verify by hand. Both were checked with `curl` on 2026-09-14: every
+ * `api.path` in this file answers 200 under
+ * docs.rs/shep-core/latest/shep_core/.
  */
 export const pillTargetsLive = {
   // The repository went public on 2026-08-16, so every Source and Spec pill
-  // resolves. docs.rs stays gated until the first `cargo publish`: the crate
-  // has no page there yet, and a pill that looks authoritative and 404s is
-  // worse than one that says why it is waiting.
+  // resolves. shep-core published on crates.io and docs.rs built it, so the
+  // API pills resolve too: they were dimmed for a publish that had already
+  // happened.
   github: true,
-  docsRs: false,
+  docsRs: true,
 };
 
 /** One chapter, flattened out of its group and numbered from 1. */

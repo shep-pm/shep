@@ -9,14 +9,13 @@ import { REPO } from "../../data/repo";
  * not a silent gap.
  *
  * Source and Spec both point into the GitHub repo, which went public on
- * 2026-08-16; API points at docs.rs, which has nothing until shep-core's
- * first publish. Both targets are real, final URLs today, so nothing about
- * the link itself needs to change later. `pillTargetsLive` in docs-nav.ts is the single
- * switch: while a kind is `false` the pill renders dimmed, non-interactive,
- * and marked `aria-disabled`, with a tooltip saying why, instead of either
- * a confident-looking link that 404s or hiding the sourcing until launch
- * day. Flip the flag once true and every pill of that kind becomes a plain
- * clickable `<a>` — no other code changes.
+ * 2026-08-16; API points at docs.rs, which has had shep-core since its
+ * first publish. Both kinds are live now. `pillTargetsLive` in docs-nav.ts
+ * is the single switch: while a kind is `false` the pill renders dimmed,
+ * non-interactive, and marked `aria-disabled`, with a tooltip saying why,
+ * instead of either a confident-looking link that 404s or hiding the
+ * sourcing until launch day. Flip the flag once true and every pill of that
+ * kind becomes a plain clickable `<a>`, no other code changes.
  */
 import { docsNav, pillTargetsLive } from "../../data/docs-nav";
 
