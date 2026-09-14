@@ -133,7 +133,7 @@ const fn binding(press: &KeyPress) -> Binding {
         KeyPress::Secrets => row("S", Group::Changing, "secrets"),
         KeyPress::SecretDelete => row("D", Group::Changing, "delete a secret"),
         KeyPress::Continue => row("c", Group::Changing, "leave it running"),
-        KeyPress::TextChar(_) => row("a-z 0-9", Group::Changing, "types into a box"),
+        KeyPress::TextChar(_) => row("any char", Group::Changing, "types into a box"),
         KeyPress::TextBackspace | KeyPress::TextApply | KeyPress::TextAbandon => row(
             "\u{232b} \u{21b5} esc",
             Group::Changing,
@@ -296,7 +296,7 @@ mod tests {
     /// not bind in `Normal` is only legitimate if it is the *only* one
     /// standing for its row — remove it and that row would disappear.
     /// `Char('a')` is necessary this way, since nothing else produces the
-    /// `a-z 0-9` row; a stray unclaimed letter added later is not, since
+    /// `any char` row; a stray unclaimed letter added later is not, since
     /// `Char('a')` (or whichever entry already claims the row) still
     /// covers it without the new one. This is derived from [`rows_from`]
     /// rather than a second list of which entries are text-only.

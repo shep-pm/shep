@@ -26,7 +26,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
  ▐tab          next config group  m            minimum level      S            secrets             ▟███████▙                    ▌ 
  ▐1-8          jump to a group    f            follow the tail    D            delete a secret     ▜██▀ ▀██▛                    ▌ 
  ▐n/N          next / prev match  w            wrap long lines    c            leave it running      ▀▘ ▀▘                      ▌ 
- ▐↵            open selection     /            filter, or match   a-z 0-9      types into a box                                 ▌ 
+ ▐↵            open selection     /            filter, or match   any char     types into a box                                 ▌ 
  ▐esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop                                ▌ 
  ▐                                v            reveal for 10s                                                                   ▌ 
  ▐                                y            copy the value                                                                   ▌ 

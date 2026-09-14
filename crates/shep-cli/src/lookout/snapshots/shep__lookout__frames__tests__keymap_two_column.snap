@@ -25,7 +25,7 @@ s            shepherd settings
 S            secrets                                                  
 D            delete a secret                                          
 c            leave it running                                         
-a-z 0-9      types into a box                                         
+any char     types into a box                                         
 ⌫ ↵ esc      erase, file, drop                                        
                                                                       
                                                                       

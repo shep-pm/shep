@@ -131,8 +131,10 @@ pub enum KeyPress {
     /// job. `Escape` is the only key that closes a pane or a sub-screen.
     Edit,
     /// `h` or `?`: opens the keymap overlay, from any body. Pressing either
-    /// again, or `Escape`, closes it. Refused only while a close dialog is
-    /// up, which owns the keyboard until it is answered.
+    /// again, or `Escape`, closes it. Refused while a close dialog is up,
+    /// which owns the keyboard until it is answered, and consumed as a
+    /// cancel instead of opening while an action or a settings candidate
+    /// is armed, the same as every other key.
     ///
     /// The config pane's field help draws unconditionally, wherever the
     /// explanation panel cannot show it, so no key is needed for it: see

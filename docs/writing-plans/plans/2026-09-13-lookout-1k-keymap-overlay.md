@@ -1953,7 +1953,7 @@ git commit -m "test(lookout): eight gallery scenes for the keymap overlay"
 - Modify: `docs/lookout/design-files/README.md` (lines near 317 and 332)
 - Modify: `docs/lookout/README.md`
 - Modify: `web/src/pages/docs/lookout.astro`
-- Regenerate: `web/src/pages/docs/cli.astro` (or whatever the script writes)
+- Regenerate: `web/src/data/cli-reference.generated.txt`
 
 - [x] **Step 1: Do NOT correct the rulings**
 
@@ -1986,7 +1986,7 @@ Line 317's navigation sentence: `g` → `S`, `l` → `b`. Line 332's `132 column
 cargo build --release
 ```
 ```bash
-./web/scripts/generate-cli-reference.sh
+env -u SHEP_HOME -u SHEP_STYLE -u NO_COLOR ./web/scripts/generate-cli-reference.sh
 ```
 Then `git diff`. No flag changed, so the expectation is no diff; the run is what confirms it rather than the assumption.
 
