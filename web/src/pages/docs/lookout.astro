@@ -1073,8 +1073,8 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       the cursor is on: its help text, its current value, its default, an
       example, what it accepts and refuses, and which other fields it
       interacts with. Below 90 columns there's no room for the panel, so the
-      field's help text draws inline under the title instead, wrapped, and
-      still following the cursor. No key toggles it either way. The cost
+      field's help text draws inline instead, in a row above the field list,
+      wrapped, and still following the cursor. No key toggles it either way. The cost
       column carries every row's cost alone down there. From 90 up the panel draws and
       the cost column gives way to it, since the panel already names the
       focused field's own cost. From 160 up the pane is wide enough for
@@ -1128,8 +1128,8 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       </li>
       <li>
         <code>h</code> opens the keymap, the same as everywhere else. The
-        selected field's help text needs no key: the panel carries it, or
-        the title does on a narrow terminal.
+        selected field's help text needs no key: the panel carries it, or a
+        row above the field list does once the panel is gone.
       </li>
       <li>
         <code>Esc</code> closes whatever is innermost: a sub-screen back to
