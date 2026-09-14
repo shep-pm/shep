@@ -158,8 +158,12 @@ for (const chapter of chapters) {
     cursor: default;
   }
 
-  .unbuilt:hover {
+  /* Class-and-class, because the plain `.unbuilt:hover` below it ties with
+     `.item:hover` on specificity and loses on source order: an unbuilt
+     chapter took the hover border and ink of a link it is not. */
+  .item.unbuilt:hover {
     border-color: transparent;
+    color: var(--ink-3);
   }
 
   .item:hover {
