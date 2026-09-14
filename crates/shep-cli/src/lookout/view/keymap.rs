@@ -544,9 +544,14 @@ mod tests {
     ///   floor    130 = 128 + 1 margin each side
     #[test]
     fn the_columns_sum_to_the_interior() {
-        // Literals, not the defining expression: COLUMN *is*
-        // KEY_CELL + GAP + TEXT_CELL, so comparing them constant-folds to
-        // 30 == 30 and would survive all three being wrong together.
+        // Literals. The form this avoids is
+        // `assert_eq!(COLUMN, KEY_CELL + GAP + TEXT_CELL)`, which cannot
+        // fail: `COLUMN` is defined as that sum, so moving `KEY_CELL` to 20
+        // makes both sides 38 and all three constants can be wrong
+        // together. Pinning each against a literal fails instead, and a
+        // qwen round read the description of that rejected form as a
+        // description of these assertions, which is what naming it as code
+        // rather than as prose is meant to stop.
         assert_eq!((KEY_CELL, GAP, TEXT_CELL), (12, 1, 17));
         assert_eq!(
             COLUMN * COLUMN_COUNT + GUTTER * (COLUMN_COUNT - 1),
