@@ -64,7 +64,7 @@ KEY  VALUE`;
       only for what's left after those two.
     </Callout>
 
-    <h2>The three verbs</h2>
+    <h2 id="the-three-verbs">The three verbs</h2>
     <CodeBlock>{threeVerbs}</CodeBlock>
     <p>
       <code>shep set &lt;key&gt; &lt;value&gt;</code> writes a key, replacing
@@ -77,7 +77,7 @@ KEY  VALUE`;
       something different depending on your own store.
     </p>
 
-    <h2>Real output</h2>
+    <h2 id="real-output">Real output</h2>
     <p>Run against a fresh <code>$SHEP_HOME</code>, no shepherd listening:</p>
     <CodeBlock>{realOutput}</CodeBlock>
     <p class="fine">
@@ -88,7 +88,7 @@ KEY  VALUE`;
       "missing."
     </p>
 
-    <h2>The key grammar</h2>
+    <h2 id="the-key-grammar">The key grammar</h2>
     <p>
       A key is <code>[A-Za-z0-9._-]</code>, one to 128 bytes, and can't start
       with a dot. <strong>A dot is part of a name, not a path</strong>:{" "}
@@ -103,7 +103,7 @@ KEY  VALUE`;
       quietly becoming a blob store.
     </p>
 
-    <h2>No shepherd required</h2>
+    <h2 id="no-shepherd-required">No shepherd required</h2>
     <p>
       <code>shep set</code>/<code>get</code>/<code>unset</code> never touch
       the socket: they read and write <code>$SHEP_HOME/kv.json</code>{" "}
@@ -117,7 +117,7 @@ KEY  VALUE`;
       already has every property a socket round trip would have bought it.
     </p>
 
-    <h2>Concurrent writers lose nothing</h2>
+    <h2 id="concurrent-writers-lose-nothing">Concurrent writers lose nothing</h2>
     <p>
       Two <code>shep set</code> invocations racing (two provisioning
       scripts, or an operator and a dog) are serialized by an exclusive
@@ -129,7 +129,7 @@ KEY  VALUE`;
       <code>git add</code> and diff like any other small config file. Mode is{" "}
       <code>0600</code>.
     </p>
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
 
     <div class="next-grid">
       <a href="/docs/lookout" class="next-card">

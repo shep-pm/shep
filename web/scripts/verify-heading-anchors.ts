@@ -40,6 +40,26 @@ export const ENFORCED: string[] = [
   "from-pm2",
   "examples",
   "terminology",
+  // Parts II to VII.
+  "folds",
+  "logs",
+  "overrides",
+  "lifecycle",
+  "talking-to-a-sheep",
+  "lookout",
+  "output",
+  "boot-order",
+  "secrets",
+  "kv",
+  "dogs",
+  "community-dogs",
+  "whistle",
+  "json-output",
+  "shepherd-channel",
+  "serve",
+  "cli",
+  "first-flockfile",
+  "not-built",
 ];
 
 /**
@@ -57,8 +77,16 @@ export function headings(source: string): { tag: string; id: string | null }[] {
   const found: { tag: string; id: string | null }[] = [];
   for (const m of body.matchAll(/<(h[23])(\s[^>]*)?>/g)) {
     const attrs = m[2] ?? "";
-    const id = /\sid=["']([^"']+)["']/.exec(attrs);
-    found.push({ tag: m[1], id: id ? id[1] : null });
+    // Either a literal id="..." or a computed id={expr}. A heading rendered
+    // in a loop cannot carry a hand-written id, and community-dogs, cli and
+    // first-flockfile all have one, so a check that only saw quoted ids
+    // reported them as unanchored when they are not.
+    const literal = /\sid=["']([^"']+)["']/.exec(attrs);
+    const computed = /\sid=\{([^}]+)\}/.exec(attrs);
+    found.push({
+      tag: m[1],
+      id: literal ? literal[1] : computed ? `{${computed[1].trim()}}` : null,
+    });
   }
   return found;
 }
@@ -68,6 +96,14 @@ test("headings() finds an id when there is one, and reports null when there is n
   assert.deepEqual(found, [
     { tag: "h2", id: "naming-a-dependency" },
     { tag: "h3", id: null },
+  ]);
+});
+
+test("headings() accepts a computed id as well as a literal one", () => {
+  const page = '<h2 id={slugify(group.label)}>Group</h2><h3 id="plain">Plain</h3>';
+  assert.deepEqual(headings(page), [
+    { tag: "h2", id: "{slugify(group.label)}" },
+    { tag: "h3", id: "plain" },
   ]);
 });
 
@@ -97,7 +133,9 @@ test("every enforced page gives every H2 and H3 a unique id", async () => {
       0,
       `${slug}.astro has ${missing.length} heading(s) with no id; every H2 and H3 on an enforced page needs one`,
     );
-    const ids = found.map((h) => h.id);
+    // Only literal ids can be compared: two computed ones are the same
+    // expression evaluated per row, and differ at render time by design.
+    const ids = found.map((h) => h.id).filter((id) => id && !id.startsWith("{"));
     const duplicates = ids.filter((id, i) => ids.indexOf(id) !== i);
     assert.deepEqual(
       duplicates,

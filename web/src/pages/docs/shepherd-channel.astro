@@ -32,7 +32,7 @@ import VerbSignature from "../../components/docs/VerbSignature.astro";
       it.
     </p>
 
-    <h2>Getting a channel</h2>
+    <h2 id="getting-a-channel">Getting a channel</h2>
     <p>
       shep opens the channel (a socketpair, one end handed to your process
       as an extra file descriptor) only when your app's Flockfile config
@@ -86,7 +86,7 @@ channel = true`}</CodeBlock>
       an id of zero.
     </p>
 
-    <h2>The wire format</h2>
+    <h2 id="the-wire-format">The wire format</h2>
     <p>
       Newline-delimited JSON, one complete message per line, in both
       directions. No framing header, no length prefix: just{" "}
@@ -94,7 +94,7 @@ channel = true`}</CodeBlock>
       act on it; build a JSON object, append <code>\n</code>, write it.
     </p>
 
-    <h3>What you send (daemon reads this)</h3>
+    <h3 id="what-you-send-daemon-reads-this">What you send (daemon reads this)</h3>
     <div class="wire-table">
       <div class="row header"><span>Message</span> <span>Meaning</span></div>
       <div class="row"><span><code>{`{"kind":"ready"}`}</code></span> <span>You are up and ready to serve. Only meaningful if <code>wait_ready = true</code>.</span></div>
@@ -102,14 +102,14 @@ channel = true`}</CodeBlock>
       <div class="row"><span><code>{`{"kind":"action-reply","action":"<n>","body":"<t>","id":<num>}`}</code></span> <span>Your answer to a triggered action. <code>id</code> is optional: echo the one from the <code>action</code> message and shep matches your reply to that exact request.</span></div>
     </div>
 
-    <h3>What you receive (daemon writes this)</h3>
+    <h3 id="what-you-receive-daemon-writes-this">What you receive (daemon writes this)</h3>
     <div class="wire-table">
       <div class="row header"><span>Message</span> <span>Meaning</span></div>
       <div class="row"><span><code>{`{"kind":"shutdown"}`}</code></span> <span>Sent instead of a stop signal when <code>shutdown_with_message = true</code>. The daemon still escalates to <code>SIGKILL</code> after <code>kill_timeout</code> if you take too long.</span></div>
       <div class="row"><span><code>{`{"kind":"action","name":"<n>","id":<num>}`}</code></span> <span>An operator ran <code>shep trigger</code> against you, optionally with <code>{`"params":"<text>"`}</code>. <code>id</code> is always present: echo it on your reply.</span></div>
     </div>
 
-    <h2>A worked example</h2>
+    <h2 id="a-worked-example">A worked example</h2>
     <p>
       Two apps below, both answering the same <code>Flockfile.toml</code>{" "}
       shape (<code>channel = true</code> and <code>wait_ready = true</code>)
@@ -143,7 +143,7 @@ for line in r:
         w.flush()
     elif msg["kind"] == "shutdown":
         sys.exit(0)`}</CodeBlock>
-    <h3>On Windows: open a named pipe instead</h3>
+    <h3 id="on-windows-open-a-named-pipe-instead">On Windows: open a named pipe instead</h3>
     <p>
       Windows has no fd-3 inheritance an app can rely on, so the daemon
       exports{" "}
@@ -198,7 +198,7 @@ ID  NAME    OUTCOME  DETAIL
 $ shep trigger chatty ping --format json
 {"schema_version":1,"command":"trigger","data":[{"id":5,"name":"chatty","outcome":{"kind":"replied","body":"handled ping params=None"}}]}`}</CodeBlock>
 
-    <h2>Custom actions: the part most worth reading closely</h2>
+    <h2 id="custom-actions-the-part-most-worth-reading-closely">Custom actions: the part most worth reading closely</h2>
     <VerbSignature verb="trigger" usage="shep trigger <selector> <action> [params]">
       <p>
         How an operator reaches a running app directly, for whatever your
@@ -259,7 +259,7 @@ $ shep trigger chatty ping --format json
       you make that impossible.
     </p>
 
-    <h2>Not every sheep has a channel, and that's not a silent failure</h2>
+    <h2 id="not-every-sheep-has-a-channel-and-that-s-not-a-silent-failure">Not every sheep has a channel, and that's not a silent failure</h2>
     <p>
       An app configured with none of <code>channel</code>/<code>wait_ready</code>/
       <code>shutdown_with_message</code> still gets a row back from{" "}
@@ -276,7 +276,7 @@ ID  NAME  OUTCOME     DETAIL
       costs the operator a timeout; both are refused immediately.
     </p>
 
-    <h2>Everything you write here is also public on the bus</h2>
+    <h2 id="everything-you-write-here-is-also-public-on-the-bus">Everything you write here is also public on the bus</h2>
     <p>
       Every message you send on fd 3 (<code>ready</code>,{" "}
       <code>metric</code>, <code>action-reply</code>) is republished on the
@@ -296,7 +296,7 @@ ID  NAME  OUTCOME     DETAIL
       comfortable with any subscriber seeing.
     </p>
 
-    <h2>Summary for the impatient</h2>
+    <h2 id="summary-for-the-impatient">Summary for the impatient</h2>
     <ul>
       <li>Ask for a channel with <code>channel = true</code> (or get one free from <code>wait_ready</code> / <code>shutdown_with_message</code>).</li>
       <li>Read <code>SHEP_CHANNEL_FD</code> on unix, or <code>SHEP_CHANNEL_PIPE</code> on Windows, where the channel is a named pipe your app opens by path rather than an inherited fd. Exactly one is ever set, so branch on which one is present, not on the platform. Then read/write newline-delimited JSON.</li>
@@ -305,7 +305,7 @@ ID  NAME  OUTCOME     DETAIL
       <li>Echo the <code>id</code>: one field, and it's what makes a slow action's answer land on the right trigger.</li>
       <li>What you put in <code>body</code> is what the operator reads back, and what anyone on <code>channel.*</code> reads too.</li>
     </ul>
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
 
     <div class="next-grid">
       <a href="/docs/dogs" class="next-card">

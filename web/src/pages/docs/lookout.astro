@@ -408,14 +408,14 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       >.
     </Callout>
 
-    <h2>Start it</h2>
+    <h2 id="start-it">Start it</h2>
     <CodeBlock>{startCmds}</CodeBlock>
     <p class="fine">
       <code>--read-only</code> closes the action gate, covered below. The
       gate is open by default.
     </p>
 
-    <h2>The flock table</h2>
+    <h2 id="the-flock-table">The flock table</h2>
     <p>
       Every frame below is real: rendered headlessly through ratatui's{" "}
       <code>TestBackend</code> by a pinned snapshot test, not mocked up for
@@ -431,7 +431,7 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       as a dog. Each band shows up only when its side has a row.
     </p>
 
-    <h2>Multi-instance apps</h2>
+    <h2 id="multi-instance-apps">Multi-instance apps</h2>
     <p>
       An app with more than one instance gets a group row above its slots,
       the same rollup <code>shep flock</code> shows: <code>web
@@ -455,7 +455,7 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       it: it names the app and asks you to select one instance instead.
     </p>
 
-    <h2>Grouping by fold</h2>
+    <h2 id="grouping-by-fold">Grouping by fold</h2>
     <p>
       <code>F</code> gathers the table by fold, <code>AppConfig::fold</code>,
       instead of by name. Each fold gets a header row; sheep with no fold sit
@@ -496,7 +496,7 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       would have nothing to send.
     </p>
 
-    <h2>The three panes underneath</h2>
+    <h2 id="the-three-panes-underneath">The three panes underneath</h2>
     <p>
       The host strip is the line above the table: load average and host
       memory each draw a ten-cell gauge, load against the core count and
@@ -535,7 +535,7 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
     </p>
     <CodeBlock>{feedExcerpt}</CodeBlock>
 
-    <h2>The sheep pane</h2>
+    <h2 id="the-sheep-pane">The sheep pane</h2>
     <p>
       <code>↵</code> on a selected sheep opens a full-screen pane for it.
       Nothing happens on a group row, a fold header, or a dog: there's no
@@ -576,7 +576,7 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
     </p>
     <CodeBlock label="99×48, the sparkline fallback">{sheepPaneSparklines}</CodeBlock>
 
-    <h2>The bleats pane, full screen</h2>
+    <h2 id="the-bleats-pane-full-screen">The bleats pane, full screen</h2>
     <p>
       <code>b</code> opens the selected sheep's feed full screen and pins it
       there. There's no table on screen anymore to change the selection
@@ -609,7 +609,7 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       between matches.
     </p>
 
-    <h2>Filtering the table</h2>
+    <h2 id="filtering-the-table">Filtering the table</h2>
     <p>
       <code>/</code> opens a query box in the status bar; typing narrows the
       table to sheep whose name contains it, case-insensitively, as you type.{" "}
@@ -628,7 +628,7 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
     </p>
     <CodeBlock label="100×14, filter applied">{filterActive}</CodeBlock>
 
-    <h2>The keymap</h2>
+    <h2 id="the-keymap">The keymap</h2>
     <p>
       <code>h</code> or <code>?</code> opens a box over whatever is on
       screen, listing every key lookout binds. Four columns group them by
@@ -664,7 +664,7 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       doesn't fit.
     </p>
 
-    <h2>When the terminal is small</h2>
+    <h2 id="when-the-terminal-is-small">When the terminal is small</h2>
     <p>
       Panes drop before columns do, least-diagnostic-first: below 24 rows the
       detail pane goes (everything on it but the log paths already sits in
@@ -724,7 +724,7 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       rest of lookout still draws at 33.
     </p>
 
-    <h2>If the shepherd goes away</h2>
+    <h2 id="if-the-shepherd-goes-away">If the shepherd goes away</h2>
     <p>
       Lookout re-dials five times (at 250/500/1000/2000/4000&nbsp;ms, about
       7.75 seconds total) before it gives up. Then it stops polling and
@@ -748,7 +748,7 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
     </p>
     <CodeBlock label="160×30, shepherd dead">{frozen}</CodeBlock>
 
-    <h2>Actions</h2>
+    <h2 id="actions">Actions</h2>
     <p>
       <code>--read-only</code> (or <code>shep set lookout.allow_control
       false</code>) closes the gate; it's open by default, and closed means
@@ -788,7 +788,7 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       redundant with text, so <code>NO_COLOR</code> and a 16-color terminal
       lose decoration, never information.
     </p>
-    <h2>Settings</h2>
+    <h2 id="settings">Settings</h2>
     <p>
       <code>s</code> opens a full-screen settings view over{" "}
       <code>shep.toml</code>: the four daemon fields, the whistle gate, the
@@ -892,7 +892,7 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       the dashboard's <code>x</code>/<code>R</code>/<code>L</code> confirm
       uses.
     </p>
-    <h2>Secrets</h2>
+    <h2 id="secrets">Secrets</h2>
     <p>
       <code>S</code>, <code>s</code>'s neighbour, opens a full-screen view
       over the store <a href="/docs/secrets">the secrets page</a> covers:
@@ -962,7 +962,7 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       deliberately. A delete that finds no value to remove says so rather
       than reporting a success it did not have.
     </p>
-    <h2>The config pane</h2>
+    <h2 id="the-config-pane">The config pane</h2>
     <p>
       <code>e</code> on a selected sheep opens its config over the dashboard:
       every Flockfile field, the value in force, and what changing it would
@@ -1185,7 +1185,7 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       whichever instance the cursor was over.
     </p>
 
-    <h2>The dog config pane</h2>
+    <h2 id="the-dog-config-pane">The dog config pane</h2>
     <p>
       <code>e</code> on a dog row opens its config, over that dog's{" "}
       <code>[&lt;name&gt;]</code> section in <code>dogs.toml</code>. It
@@ -1250,7 +1250,7 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       whose job is to re-read a file never respawns somebody else's binary.
     </p>
 
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
 
     <div class="next-grid">
       <a href="/docs/kv" class="next-card">

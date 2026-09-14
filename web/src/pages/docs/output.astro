@@ -28,7 +28,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       is the default both ways.
     </p>
 
-    <h2>What a terminal shows</h2>
+    <h2 id="what-a-terminal-shows">What a terminal shows</h2>
     <p>
       <code>shep flock</code> in a 120-column window. Every colour here says
       something a number alone would take a second glance to notice: STATUS
@@ -60,7 +60,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       one. See <a href="/docs/terminology">terminology</a>.
     </p>
 
-    <h3>The faces</h3>
+    <h3 id="the-faces">The faces</h3>
     <p>
       Five faces across six statuses, because two of them mean the same
       thing to someone glancing at a table:
@@ -83,7 +83,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       colour, which would turn every column measurement into guesswork.
     </p>
 
-    <h3>The EXIT column</h3>
+    <h3 id="the-exit-column">The EXIT column</h3>
     <p>
       A sheep that is not running shows why it stopped: an exit code, or a
       signal name. A running one shows <code>-</code>, the same convention{" "}
@@ -352,7 +352,7 @@ Dogs
       <code>shep stop 11</code>.
     </p>
 
-    <h2>Narrow windows</h2>
+    <h2 id="narrow-windows">Narrow windows</h2>
     <p>
       The table measures your terminal and drops columns until it fits,
       least useful first, and names what it hid. The same flock at 60
@@ -386,7 +386,7 @@ Dogs
       about.
     </p>
 
-    <h2>What a pipe gets</h2>
+    <h2 id="what-a-pipe-gets">What a pipe gets</h2>
     <p>
       Redirect it and the boxes, colour and faces all go away. This is not a
       setting; a non-terminal stdout forces it, and so does{" "}
@@ -432,7 +432,7 @@ Dogs
       instead, and is still the thing to parse if you have the choice.
     </p>
 
-    <h2>Choosing how much</h2>
+    <h2 id="choosing-how-much">Choosing how much</h2>
     <p>
       Three levels, set with <code>shep style</code>:
     </p>
@@ -463,7 +463,7 @@ notice[style]: plain (from shep.toml)`}</CodeBlock>
     <CodeBlock label="a higher layer says so">{`$ SHEP_STYLE=full shep style
 notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
 
-    <h3>NO_COLOR</h3>
+    <h3 id="no-color">NO_COLOR</h3>
     <p>
       <a href="https://no-color.org/">The <code>NO_COLOR</code> convention</a>{" "}
       is honoured at every level, and it is a separate axis rather than a
@@ -476,7 +476,7 @@ notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
       An empty <code>NO_COLOR=</code> counts as unset, per the convention.
     </p>
 
-    <h2>Where sheep appear</h2>
+    <h2 id="where-sheep-appear">Where sheep appear</h2>
     <p>
       Beyond the status column, three moments get art, each one a screen with
       nothing else on it: a flock with nothing in it yet, a flock that is
@@ -491,7 +491,7 @@ notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
       service is simply wrong.
     </Callout>
 
-    <h2>Following the flock</h2>
+    <h2 id="following-the-flock">Following the flock</h2>
     <p>
       <code>shep flock --follow</code> keeps the table on screen and paints a
       fresh one over it every second. <code>--interval</code> changes the
@@ -529,7 +529,7 @@ notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
       many it dropped. <code>shep lookout</code> scrolls. This does not.
     </p>
 
-    <h2>Following logs</h2>
+    <h2 id="following-logs">Following logs</h2>
     <p>
       <code>shep bleats</code> prints the tail of each log before it starts
       following, so a sheep that has already died still tells you why rather

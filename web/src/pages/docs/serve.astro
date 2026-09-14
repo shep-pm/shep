@@ -42,7 +42,7 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
       layer shared with the metrics dog), not built on axum or tower-http.
     </p>
 
-    <h2>Try it</h2>
+    <h2 id="try-it">Try it</h2>
     <CodeBlock>$ shep serve ./dist --port 8080</CodeBlock>
     <p class="fine">
       Add <code>--foreground</code> to run the worker directly in this
@@ -50,7 +50,7 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
       without the supervision.
     </p>
 
-    <h2>The security posture, checked against real requests</h2>
+    <h2 id="the-security-posture-checked-against-real-requests">The security posture, checked against real requests</h2>
     <p>
       Every default below is the safe one, and every unsafe one is a named
       flag rather than a config file nobody reads. Binds loopback
@@ -85,7 +85,7 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
     </Callout>
     <CodeBlock>{followSymlinksNotice}</CodeBlock>
 
-    <h2>The rest of the flags</h2>
+    <h2 id="the-rest-of-the-flags">The rest of the flags</h2>
     <p>
       <code>--listing</code> turns on directory listings for a folder with no{" "}
       <code>index.html</code>, off by default, since a listing publishes
@@ -109,7 +109,7 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
       request.
     </p>
 
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
 
     <div class="next-grid">
       <a href="/docs/containers" class="next-card">

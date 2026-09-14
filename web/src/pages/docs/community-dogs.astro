@@ -7,6 +7,7 @@
  * index at import time, so every field read below is trusted.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
+import { slugify } from "../../data/slug";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
@@ -97,10 +98,13 @@ function adoptLine(dog: Dog): string {
     {
       groups.map((group) => (
         <section class="dog-category">
-          <h2>{group.label}</h2>
+          <h2 id={slugify(group.label)}>{group.label}</h2>
           {group.entries.map((dog) => (
-            <article class="dog-entry" id={anchorOf(dog)}>
-              <h3>
+            <article class="dog-entry">
+              {/* The anchor sits on the heading, not the article: that keeps
+                  the entry in the document outline and in the anchor check's
+                  reach, and the fragment is unchanged either way. */}
+              <h3 id={anchorOf(dog)}>
                 <a href={`#${anchorOf(dog)}`}>
                   {dog.package} ({dog.name})
                 </a>
@@ -132,7 +136,7 @@ function adoptLine(dog: Dog): string {
       ))
     }
 
-    <h2>Add a dog</h2>
+    <h2 id="add-a-dog">Add a dog</h2>
     <p>
       Add yours by editing <code>web/public/dogs.json</code> and opening a
       pull request. Point your editor at{" "}

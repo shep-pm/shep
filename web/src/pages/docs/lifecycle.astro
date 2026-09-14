@@ -197,7 +197,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       above.
     </p>
 
-    <h2>One ladder, two grace periods</h2>
+    <h2 id="one-ladder-two-grace-periods">One ladder, two grace periods</h2>
     <p>
       <code>stop</code>, <code>restart</code> and <code>delete</code> all
       end a live process the same way. First, either the app's configured{" "}
@@ -245,7 +245,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       </a>.
     </p>
 
-    <h2>What stays, what goes: the muster roll</h2>
+    <h2 id="what-stays-what-goes-the-muster-roll">What stays, what goes: the muster roll</h2>
     <p>
       shep keeps a file at <code>$SHEP_HOME/flock.json</code>, the muster
       roll, recording every registered app's config and whether it was
@@ -302,7 +302,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       <a href="/docs/whistle">whistle</a>.
     </p>
 
-    <h2>restart: back immediately</h2>
+    <h2 id="restart-back-immediately">restart: back immediately</h2>
     <VerbSignature verb="restart" usage="shep restart <selector>...">
       <p>
         Runs the kill ladder, then spawns a fresh process in the same slot
@@ -325,7 +325,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       </a>.
     </p>
 
-    <h2>reload: one instance at a time, in one of two orders</h2>
+    <h2 id="reload-one-instance-at-a-time-in-one-of-two-orders">reload: one instance at a time, in one of two orders</h2>
     <p>
       A reload overlaps the old instance and the new one by default: the
       replacement is spawned and confirmed before the old one drains, so the
@@ -373,7 +373,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       overlap: there's only ever one instance to ask.
     </p>
 
-    <h3>Overlap, done right</h3>
+    <h3 id="overlap-done-right">Overlap, done right</h3>
     <p>
       <code>worker</code> below has no probe, so it always overlaps. It
       writes to its own log file and binds nothing, so there's nothing for
@@ -389,7 +389,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       has taken the name back.
     </p>
 
-    <h3>Overlap, when the app doesn't cooperate</h3>
+    <h3 id="overlap-when-the-app-doesn-t-cooperate">Overlap, when the app doesn't cooperate</h3>
     <p>
       <code>web</code> also has no probe, so it also overlaps, but it
       binds a port and does nothing to share it. shep never sets{" "}
@@ -419,7 +419,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       right is entirely on the app.
     </Callout>
 
-    <h3>Serial: the gap you can see</h3>
+    <h3 id="serial-the-gap-you-can-see">Serial: the gap you can see</h3>
     <p>
       <code>probed</code> has a <code>readiness_probe</code> and no{" "}
       <code>reuse_port</code>, so it reloads serially. Watch the flock table
@@ -465,7 +465,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       <a href="/docs/boot-order">boot order</a>.
     </p>
 
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
 
     <div class="next-grid">
       <a href="/docs/startup" class="next-card">

@@ -45,7 +45,7 @@ const dogLogDemo = `2026-09-02T14:22:31.412+02:00 [shep] shep started this dog; 
       <code>shep flock</code> or <code>shep describe</code> would.
     </Callout>
 
-    <h2>What a dog actually is</h2>
+    <h2 id="what-a-dog-actually-is">What a dog actually is</h2>
     <p>
       Underneath, a dog is not a second kind of supervised process. It's an
       ordinary sheep with a marker on its entry saying where it came from
@@ -65,7 +65,7 @@ const dogLogDemo = `2026-09-02T14:22:31.412+02:00 [shep] shep started this dog; 
       while a sweep of everything else leaves it running.
     </p>
 
-    <h2>Turning one on</h2>
+    <h2 id="turning-one-on">Turning one on</h2>
     <VerbSignature verb="enable" usage="shep enable <name>">
       <p>
         Writes <code>shep.toml</code> first, then starts the dog now if a
@@ -144,7 +144,7 @@ $ shep disable metrics`}</CodeBlock>
       <code>shep.toml</code>'s first.
     </p>
 
-    <h2>When a dog starts</h2>
+    <h2 id="when-a-dog-starts">When a dog starts</h2>
     <p>
       After the flock, by default. A metrics dog that came up first would
       spend the boot answering for a flock that is not running yet.
@@ -169,7 +169,7 @@ boot_first_dogs = ["log-rotate"]`}</CodeBlock>
       this positions a dog in.
     </p>
 
-    <h2>Configuration lives on the socket, not the environment</h2>
+    <h2 id="configuration-lives-on-the-socket-not-the-environment">Configuration lives on the socket, not the environment</h2>
     <p>
       A dog's settings live under <code>[&lt;name&gt;]</code> in{" "}
       <code>$SHEP_HOME/dogs.toml</code>, hand-editable and separate from{" "}
@@ -248,7 +248,7 @@ boot_first_dogs = ["log-rotate"]`}</CodeBlock>
       namespace.
     </Callout>
 
-    <h2>The metrics dog</h2>
+    <h2 id="the-metrics-dog">The metrics dog</h2>
     <p>
       <code>shep enable metrics</code> serves Prometheus exposition text over
       plain HTTP, bound to <code>127.0.0.1:9615</code> by default:
@@ -296,7 +296,7 @@ shep_host_memory_total_bytes 51539607552`}</CodeBlock>
       to lock it down.
     </p>
 
-    <h2>The bark dog</h2>
+    <h2 id="the-bark-dog">The bark dog</h2>
     <p>
       <code>shep enable bark</code> subscribes to the shepherd's event bus
       and delivers to named webhook sinks:
@@ -363,7 +363,7 @@ sinks = ["oncall"]`}</CodeBlock>
       shepherd itself when an enabled dog exhausts its own restart budget.
     </p>
 
-    <h2>Reading the alert history</h2>
+    <h2 id="reading-the-alert-history">Reading the alert history</h2>
     <VerbSignature verb="barks" usage="shep barks [--tail N]">
       <p>
         Prints that file, newest last, with <code>--tail</code> to see only
@@ -394,7 +394,7 @@ sinks = ["oncall"]`}</CodeBlock>
       mode.
     </p>
 
-    <h2>Writing your own</h2>
+    <h2 id="writing-your-own">Writing your own</h2>
     <p>
       A dog is an ordinary binary that answers a few questions on stdout and
       speaks the dog protocol on a socket the shepherd hands it. The whole
@@ -404,7 +404,7 @@ sinks = ["oncall"]`}</CodeBlock>
       <a href="/docs/writing-a-dog">Writing a dog</a>.
     </p>
 
-    <h2>What shep writes into a dog's own log</h2>
+    <h2 id="what-shep-writes-into-a-dog-s-own-log">What shep writes into a dog's own log</h2>
     <p>
       A dog's log is the first place anyone looks when a dog misbehaves, and
       it used to hold only what the dog itself said. Everything shep had to
@@ -425,7 +425,7 @@ sinks = ["oncall"]`}</CodeBlock>
       in arrival order.
     </p>
 
-    <h2>When a dog stops answering</h2>
+    <h2 id="when-a-dog-stops-answering">When a dog stops answering</h2>
     <p>
       A dog that is running but never handshakes gets one restart from disk
       and then a verdict. That verdict says what the shepherd actually
@@ -464,7 +464,7 @@ sinks = ["oncall"]`}</CodeBlock>
       dog that was connected and serving requests the whole time.
     </p>
 
-    <h2>When a dog dies</h2>
+    <h2 id="when-a-dog-dies">When a dog dies</h2>
     <p>
       If an enabled dog exhausts its own restart budget and lands on{" "}
       <code>Errored</code>, the shepherd writes a record straight into{" "}
@@ -484,7 +484,7 @@ sinks = ["oncall"]`}</CodeBlock>
       <code>shep barks</code> and the metrics endpoint are the two places
       that say a dog went down.
     </p>
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
 
     <div class="next-grid">
       <a href="/docs/shepherd-channel" class="next-card">

@@ -8,6 +8,7 @@
  * at crates/shep-core/assets/flockfile.schema.json.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
+import { slugify } from "../../data/slug";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
@@ -164,7 +165,7 @@ const fieldGroups: FieldGroup[] = [
       typo into a parse error instead of a surprise at 3am.
     </p>
 
-    <h2>Two fields is still a complete one</h2>
+    <h2 id="two-fields-is-still-a-complete-one">Two fields is still a complete one</h2>
     <p>
       <code>name</code> and <code>script</code> are the only two fields with
       no default. Everything else in the reference table below fills in on
@@ -184,7 +185,7 @@ script = "./server"`}</CodeBlock>
       changes live.
     </p>
 
-    <h2>Or start from a generated one</h2>
+    <h2 id="or-start-from-a-generated-one">Or start from a generated one</h2>
     <VerbSignature verb="init" usage="shep init [path] [--all] [--force]">
       <p>
         Writes a commented Flockfile to fill in. With no path that's{" "}
@@ -231,7 +232,7 @@ script = "./server"`}</CodeBlock>
       naming both files when it spots that.
     </p>
 
-    <h2>Formats and discovery</h2>
+    <h2 id="formats-and-discovery">Formats and discovery</h2>
     <p>
       TOML, YAML, JSON, and JSON5 all parse the same document shape: a list
       of app tables under one <code>app</code> key (<code>[[app]]</code> in
@@ -285,7 +286,7 @@ flockfile.json5`}</CodeBlock>
       behind the ten-name list above stopping at JSON5.
     </Callout>
 
-    <h2>Strict grammars</h2>
+    <h2 id="strict-grammars">Strict grammars</h2>
     <p>
       Two field types are small parsers of their own rather than bare
       numbers, so a typo in either fails at parse time instead of silently
@@ -328,7 +329,7 @@ error[invalid_config]: invalid TOML Flockfile: TOML parse error at line 4, colum
   |              ^^^^^^^
 memory size must be ASCII digits with an optional trailing G, M, or K`}</CodeBlock>
 
-    <h2>Unknown fields are a parse error, not a shrug</h2>
+    <h2 id="unknown-fields-are-a-parse-error-not-a-shrug">Unknown fields are a parse error, not a shrug</h2>
     <p>
       Every Flockfile field name is checked against the real set. A typo'd
       key is rejected at load, not ignored, and the message names the exact
@@ -352,7 +353,7 @@ error[invalid_config]: Flockfile names unrecognized key: app.0.max_memory_restar
       start almost always means the path was wrong.
     </p>
 
-    <h3>Paths</h3>
+    <h3 id="paths">Paths</h3>
     <p>
       Four fields hold one: <code>script</code>, <code>cwd</code>,{" "}
       <code>out_file</code> and <code>err_file</code>. All four expand a
@@ -370,7 +371,7 @@ error[invalid_config]: Flockfile names unrecognized key: app.0.max_memory_restar
       good answer to that.
     </p>
 
-    <h2>Templates: <code>{'{{instance}}'}</code>, <code>{'{{name}}'}</code>, <code>{'{{SHEP_HOME}}'}</code> and <code>{'{{secret:...}}'}</code></h2>
+    <h2 id="templates-and">Templates: <code>{'{{instance}}'}</code>, <code>{'{{name}}'}</code>, <code>{'{{SHEP_HOME}}'}</code> and <code>{'{{secret:...}}'}</code></h2>
     <p>
       <code>env</code> values, <code>args</code>, <code>out_file</code> and{" "}
       <code>err_file</code> all accept doubled-brace tokens. Three are filled
@@ -404,7 +405,7 @@ Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
       <code>{'{{instance}}'}</code> or <code>merge_logs</code> in its log
       paths.
     </p>
-    <h3>Casing says where a token reads from</h3>
+    <h3 id="casing-says-where-a-token-reads-from">Casing says where a token reads from</h3>
     <p>
       An uppercase name is something from the environment, a lowercase one is
       something from the config. <code>SHEP_HOME</code> is an environment
@@ -454,7 +455,7 @@ DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>
     </p>
     <CodeBlock label="env sets a reserved variable">{`error[invalid_config]: the daemon reported InvalidConfig: sheep \`z-worker\` sets \`SHEP_INSTANCE\` in env, but shep injects it: use a different name, or \`{{instance}}\` in your own variable`}</CodeBlock>
 
-    <h2>Changing the count without editing the file</h2>
+    <h2 id="changing-the-count-without-editing-the-file">Changing the count without editing the file</h2>
     <VerbSignature verb="stock" aliases={["scale"]} usage="shep stock <name> <n>">
       <p>
         An absolute count, not a change: <code>shep stock web 4</code> means
@@ -481,7 +482,7 @@ DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>
       <a href="/docs/startup">a reboot</a> keeps it.
     </p>
 
-    <h2>The full field reference</h2>
+    <h2 id="the-full-field-reference">The full field reference</h2>
     <p>
       Every field <code>AppConfig</code> accepts, grouped by what it's for.{" "}
       <code>readiness_probe</code> and <code>liveness_probe</code> each take
@@ -494,7 +495,7 @@ DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>
     {
       fieldGroups.map((group) => (
         <div class="field-group">
-          <h3>{group.title}</h3>
+          <h3 id={slugify(group.title)}>{group.title}</h3>
           <div class="field-table">
             <div class="row header">
               <span class="col-name">Field</span>
@@ -530,7 +531,7 @@ DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>
       own wait on every restart, even with the backoff disabled.
     </Callout>
 
-    <h2>Get the schema directly</h2>
+    <h2 id="get-the-schema-directly">Get the schema directly</h2>
     <p>
       Everything above is generated from the same source the parser uses,
       so it can't drift from what <code>shep</code> actually accepts.{" "}
@@ -596,7 +597,7 @@ DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>
       convention) does the same job, invisibly to the parser.
     </p>
 
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
     <div class="next-grid">
       <a href="/docs/overrides" class="next-card">
         <div class="next-title">Overrides →</div>

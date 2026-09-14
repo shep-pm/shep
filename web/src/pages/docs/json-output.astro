@@ -25,7 +25,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       command's behavior changes; only the rendering does.
     </p>
 
-    <h2>The envelope</h2>
+    <h2 id="the-envelope">The envelope</h2>
     <p>
       Every non-streaming command wraps its payload in the same three
       fields: a schema version, the verb name, and the data itself. One
@@ -94,7 +94,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       lists multiple sheep.
     </p>
 
-    <h2>Errors get their own envelope</h2>
+    <h2 id="errors-get-their-own-envelope">Errors get their own envelope</h2>
     <p>
       A failed command prints a different, smaller shape to stderr, no{" "}
       <code>command</code> key, because the command never produced a
@@ -164,7 +164,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       rests on.
     </p>
 
-    <h2>What <code>schema_version</code> promises</h2>
+    <h2 id="what-schema-version-promises">What <code>schema_version</code> promises</h2>
     <p>
       It's at <code>1</code> today, and it moves only for a breaking change
       to some command's <code>data</code> shape: a field renamed, removed,
@@ -286,7 +286,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       which one wrote it.
     </p>
 
-    <h2>Table format is not a lesser version of this</h2>
+    <h2 id="table-format-is-not-a-lesser-version-of-this">Table format is not a lesser version of this</h2>
     <p>
       The default <code>--format table</code> and <code>--format json</code>{" "}
       render from the same underlying data (there's no separate code path
@@ -298,7 +298,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       parsing the table's columns.
     </p>
 
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
     <div class="next-grid">
       <a href="/docs/cli" class="next-card">
         <div class="next-title">CLI reference →</div>

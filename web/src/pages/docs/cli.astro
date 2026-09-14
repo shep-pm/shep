@@ -22,6 +22,7 @@
  * the content inside each VerbSignature is generated.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
+import { slugify } from "../../data/slug";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
@@ -166,7 +167,7 @@ if (
       <code>%HOMEDRIVE%%HOMEPATH%</code>.
     </Callout>
 
-    <h2>Aliases at a glance</h2>
+    <h2 id="aliases-at-a-glance">Aliases at a glance</h2>
     <p>
       Five aliases are permanent, not shorthand that might go away: the theme
       never costs a straight verb its plain name.
@@ -194,7 +195,7 @@ if (
       </div>
     </div>
 
-    <h2>Every verb, at a glance</h2>
+    <h2 id="every-verb-at-a-glance">Every verb, at a glance</h2>
     <p>
       The exact output of <code>shep --help</code> against this build: the
       full command list, the global options, and their defaults.
@@ -204,7 +205,7 @@ if (
     {
       groups.map((group) => (
         <>
-          <h2>{group.title}</h2>
+          <h2 id={slugify(group.title)}>{group.title}</h2>
           {group.verbs.map((name) => {
             const verb = byName.get(name);
             if (!verb) {
@@ -229,7 +230,7 @@ if (
       ))
     }
 
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
     <div class="next-grid">
       <a href="/docs/from-pm2" class="next-card">
         <div class="next-title">Coming from pm2 →</div>

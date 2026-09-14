@@ -67,7 +67,7 @@ ID  NAME  STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM   UPTIME  FOLD  SMIT
       waiting for a database waits for the database instead.
     </p>
 
-    <h2>Naming a dependency</h2>
+    <h2 id="naming-a-dependency">Naming a dependency</h2>
     <p>
       <code>depends_on</code> is a list of other sheep, or of dogs. It goes
       in the app's own Flockfile, because a requirement the app has belongs
@@ -100,7 +100,7 @@ depends_on = ["api"]`}</CodeBlock>
       waits for every instance of it.
     </p>
 
-    <h2>What ready means, and what it costs</h2>
+    <h2 id="what-ready-means-and-what-it-costs">What ready means, and what it costs</h2>
     <p>
       A stage advances when its members have settled. An app with{" "}
       <code>wait_ready</code> or a <code>readiness_probe</code> settles the
@@ -140,7 +140,7 @@ depends_on = ["db"]`}</CodeBlock>
       the app's own startup time or the probe buys you nothing at boot.
     </Callout>
 
-    <h2>Dogs run last, unless you move one</h2>
+    <h2 id="dogs-run-last-unless-you-move-one">Dogs run last, unless you move one</h2>
     <p>
       A dog is a node in the same graph, and by default it lands in a final
       stage after every sheep. That is the right place for the metrics dog:
@@ -179,7 +179,7 @@ stage 2  web
       seconds.
     </Callout>
 
-    <h2>When the graph is wrong</h2>
+    <h2 id="when-the-graph-is-wrong">When the graph is wrong</h2>
     <p>
       What happens depends on who is watching. An operator typing{" "}
       <code>shep start</code> or <code>shep add</code> is there to fix a
@@ -238,7 +238,7 @@ error[invalid_config]: the daemon reported InvalidConfig: dependency cycle: api 
       field in another app's file.
     </Callout>
 
-    <h2>Shutdown runs backwards</h2>
+    <h2 id="shutdown-runs-backwards">Shutdown runs backwards</h2>
     <p>
       A shepherd going down walks the stages in reverse, so{" "}
       <code>web</code> gets its SIGTERM, then <code>api</code>, then{" "}
@@ -300,7 +300,7 @@ error[invalid_config]: the daemon reported InvalidConfig: dependency cycle: api 
       back errored.
     </p>
 
-    <h2>What a staged start leaves behind</h2>
+    <h2 id="what-a-staged-start-leaves-behind">What a staged start leaves behind</h2>
     <p>
       Checks shep can make in advance still refuse a batch before anything
       is registered. Once spawning has begun there is nothing to make them
@@ -316,7 +316,7 @@ error[spawn_failed]: the daemon reported SpawnFailed: nothing in this batch was 
       failing stage is attempted in that same invocation.
     </p>
 
-    <h2>Two things this does not do</h2>
+    <h2 id="two-things-this-does-not-do">Two things this does not do</h2>
     <p>
       Ordering applies to a batch. <code>shep start api</code> on its own
       starts <code>api</code>, immediately, whatever it depends on, because
@@ -329,7 +329,7 @@ error[spawn_failed]: the daemon reported SpawnFailed: nothing in this batch was 
       Boot ordering has no opinion about it.
     </p>
 
-    <h2>Reading it back</h2>
+    <h2 id="reading-it-back">Reading it back</h2>
     <p>
       <code>shep describe</code> lists a sheep's dependencies, which is what
       answers "why did <code>web</code> start six seconds in":
@@ -348,7 +348,7 @@ Depends on for web:
       <code>depends_on</code> array.
     </p>
 
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
     <div class="next-grid">
       <a href="/docs/first-flockfile" class="next-card">
         <div class="next-title">Your first Flockfile →</div>

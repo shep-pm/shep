@@ -220,7 +220,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       name, a Flockfile discovered in the directory you ran the command from,
       and <code>-</code>, which reads Flockfile JSON on stdin.
     </p>
-    <h2>Why a template and not just config</h2>
+    <h2 id="why-a-template-and-not-just-config">Why a template and not just config</h2>
     <p>
       The alternative was letting <code>shep start Flockfile.toml</code>{" "}
       overwrite whatever it found. That reads fine on a laptop and is
@@ -245,7 +245,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       sitting in the current directory.
     </Callout>
 
-    <h2>Three things a load with no flag will not do</h2>
+    <h2 id="three-things-a-load-with-no-flag-will-not-do">Three things a load with no flag will not do</h2>
     <div class="rows">
       <div class="row"><span>never registers</span><span>The merge adds no app. An app the file names and the flock does not have is skipped by the merge, and the <code>shep start</code> carrying it registers and starts that app as it always has, because starting things is what you typed. What the merge cannot do is reach a host through config alone: the load half of a merged pull request can only touch sheep that are already there.</span></div>
       <div class="row"><span>never prunes</span><span>An app the file does not mention is left alone. shep has no record of which Flockfile a sheep came from, so loading <code>./a/Flockfile.toml</code> and then <code>./b/Flockfile.toml</code> would otherwise have the second wipe the first's flock.</span></div>
@@ -268,7 +268,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       the next restart.
     </p>
 
-    <h2>What a load looks like</h2>
+    <h2 id="what-a-load-looks-like">What a load looks like</h2>
     <p>
       One app and two environment variables with no values in them. The
       empty strings are deliberate and there is a section on them below:
@@ -293,7 +293,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       guess.
     </p>
 
-    <h2>The CFG column</h2>
+    <h2 id="the-cfg-column">The CFG column</h2>
     <p>
       <code>!1</code> in <code>CFG</code> means one field is parked on this
       sheep. <code>*1</code> means one field an operator has taken ownership
@@ -323,7 +323,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       sheep's original start and costs no lookup.
     </p>
 
-    <h2>A second load does not repeat the first</h2>
+    <h2 id="a-second-load-does-not-repeat-the-first">A second load does not repeat the first</h2>
     <p>
       Once a key has been established, the file stops speaking for it. Move{" "}
       <code>max_memory</code> to <code>2G</code> and load again and shep says
@@ -419,7 +419,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       <code>shep flock</code> underneath is the settled count.
     </p>
 
-    <h2>Empty values are the point</h2>
+    <h2 id="empty-values-are-the-point">Empty values are the point</h2>
     <p>
       <code>env = &#123; DB_HOST = "", DB_PASSWORD = "" &#125;</code> is doing
       what a committed <code>.env.example</code> does. It says which
@@ -448,7 +448,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       again to fill it in.
     </p>
 
-    <h2>Registering before starting</h2>
+    <h2 id="registering-before-starting">Registering before starting</h2>
     <p>
       <code>shep add</code> takes the targets <code>shep start</code> takes
       and runs the same load. The one difference is that nothing spawns: the
@@ -491,7 +491,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       <code>notice[add]: web is already registered; nothing to add.</code>
     </p>
 
-    <h2>Setting one from the command line</h2>
+    <h2 id="setting-one-from-the-command-line">Setting one from the command line</h2>
     <p>
       An assignment in front of a target is an override, written the way a
       shell writes one:
@@ -533,7 +533,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       <a href="/docs/secrets">secrets</a> carry the value instead.
     </Callout>
 
-    <h2>A template may add, never overwrite</h2>
+    <h2 id="a-template-may-add-never-overwrite">A template may add, never overwrite</h2>
     <p>
       That is the sentence the whole design reduces to, and it is worth
       stating on its own because every awkward consequence on this page
@@ -551,7 +551,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       does the same for a deleted <code>env</code> key.
     </p>
 
-    <h2>Where it is kept</h2>
+    <h2 id="where-it-is-kept">Where it is kept</h2>
     <p>
       <code>$SHEP_HOME/overrides.json</code>, one entry per sheep name,
       mode <code>0600</code>, written through the same read-modify-rename
@@ -622,7 +622,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       that overwrites it.
     </p>
 
-    <h2>When a load refuses</h2>
+    <h2 id="when-a-load-refuses">When a load refuses</h2>
     <p>
       Per app, and the rest of the file still loads: one bad app in a file of
       eleven costing the other ten their load is the failure that would make
@@ -638,7 +638,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       the first time anybody improved it.
     </p>
 
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
     <div class="next-grid">
       <a href="/docs/first-flockfile" class="next-card">
         <div class="next-title">Your first Flockfile →</div>
