@@ -611,13 +611,13 @@ mod tests {
 
     /// The frozen hint names the keymap it no longer refuses.
     ///
-    /// Three assertions, and the second is the load-bearing one. The point
-    /// is not that a key got appended, it is that the sentence stays true:
-    /// its last clause is a claim about every key it does not list, so
-    /// naming `h` and keeping that clause have to happen together. A test
-    /// checking only for `h keymap` would pass on a hint that had quietly
-    /// dropped the refusal, and a test checking only the clause would pass
-    /// on the version that made it false.
+    /// Three claims in two macros, and the second macro is the load-bearing
+    /// one. `h keymap` alone would pass on a rewrite that appended the new
+    /// key and dropped the two it landed between, which is how a hint loses
+    /// the keys it always had. The rest of the sentence, the clause about
+    /// every key it does not list, is its own test below: naming `h` and
+    /// keeping that clause true have to happen together, and each half needs
+    /// a test that fails without the other.
     #[test]
     fn the_frozen_hint_names_the_keymap_it_no_longer_refuses() {
         assert!(FROZEN_HINT.contains("h keymap"), "{FROZEN_HINT}");

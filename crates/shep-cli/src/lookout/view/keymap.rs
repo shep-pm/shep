@@ -230,15 +230,22 @@ fn quit_text(all_rows: &[Binding]) -> String {
     format!(" h or ?  closes this  \u{b7}  {}  quits lookout", quit.keys)
 }
 
-/// The two lines that close the box: the `NO_COLOR` disclosure, and the
-/// keys that leave the overlay or lookout itself.
+/// The keys that leave the overlay or lookout itself. The last line any
+/// form keeps: every tier short enough to drop the `NO_COLOR` disclosure
+/// still draws this one.
+fn quit_line(all_rows: &[Binding], palette: Palette, width: u16) -> Line<'static> {
+    Line::from(Span::styled(
+        fit(&quit_text(all_rows), width),
+        palette.muted(),
+    ))
+}
+
+/// The two lines that close the box: the `NO_COLOR` disclosure, and
+/// [`quit_line`].
 fn closing_lines(all_rows: &[Binding], palette: Palette, width: u16) -> [Line<'static>; 2] {
     [
         Line::from(Span::styled(fit(colour_sentence(), width), palette.muted())),
-        Line::from(Span::styled(
-            fit(&quit_text(all_rows), width),
-            palette.muted(),
-        )),
+        quit_line(all_rows, palette, width),
     ]
 }
 
@@ -458,11 +465,11 @@ fn borderless_lines(
         Shed::Decoration => {
             out.push(Line::default());
             out.push(gate_line(app, palette, width));
-            out.push(closing_lines(all_rows, palette, width)[1].clone());
+            out.push(quit_line(all_rows, palette, width));
         }
         Shed::Blank => {
             out.push(gate_line(app, palette, width));
-            out.push(closing_lines(all_rows, palette, width)[1].clone());
+            out.push(quit_line(all_rows, palette, width));
         }
         Shed::Gate => {
             // One row of slack over `HEIGHT_FLOOR` buys the folded line;
@@ -622,6 +629,7 @@ mod tests {
         let read_only = render_overlay(&read_only_app_with_overlay(), 160, 48);
         assert!(read_only.contains("read-only"), "{read_only}");
         assert!(!read_only.contains("control enabled"));
+        assert!(!read_only.contains("the link is down"));
 
         let frozen = render_overlay(&frozen_app_with_overlay(), 160, 48);
         assert!(frozen.contains("the link is down"), "{frozen}");
@@ -686,8 +694,6 @@ mod tests {
     /// dashboard and passes while proving nothing.
     #[test]
     fn the_overlay_draws_over_every_body() {
-        use crate::lookout::app::{KeyPress, Msg};
-
         let sheep = {
             let mut app = fixtures::full_app();
             let _ = app.update(Msg::Key(KeyPress::Confirm));

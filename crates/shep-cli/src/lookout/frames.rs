@@ -713,7 +713,8 @@ impl Scene {
             // 89: one below the floor, which is the borderless form.
             Self::CloseDialogNarrow => (89, 48),
             // 160: the design target, boxed at 128 (126 interior plus one
-            // border cell each side) with 32 dimmed columns each side of it.
+            // border cell each side), so (160 - 128) / 2 = 16 dimmed columns
+            // each side of it.
             Self::Keymap | Self::KeymapFrozen | Self::KeymapReadOnly => (160, 48),
             // 130: `overlay::floor_for(126)`, the narrowest width the box's
             // own border can still draw at.
@@ -3798,7 +3799,7 @@ mod tests {
     /// pass at every width in the table, since `MOVING` draws at every
     /// width the overlay ever renders.
     #[test]
-    fn each_keymap_scene_draws_its_own_column_count() {
+    fn each_keymap_width_scene_draws_its_own_column_count() {
         for (which, wanted) in [
             (Scene::Keymap, 4),
             (Scene::KeymapFloor, 4),

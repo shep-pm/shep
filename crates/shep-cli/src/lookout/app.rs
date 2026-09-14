@@ -3474,7 +3474,8 @@ impl App {
 
     /// The overlay's own keymap while it is up.
     ///
-    /// Four keys do something and everything else is swallowed. Swallowing
+    /// Four keystrokes do something across three arms, since `map_key` folds
+    /// `h` and `?` into one `Help`, and everything else is swallowed. Swallowing
     /// is the point: the box covers the flock table, so a `j` that reached
     /// the reducer would move a selection the operator cannot see.
     fn on_keymap_key(&mut self, key: KeyPress) -> Effect {
