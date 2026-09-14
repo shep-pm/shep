@@ -1038,11 +1038,9 @@ fn hairline_line(palette: Palette, width: u16) -> Line<'static> {
 }
 
 /// The column header row: `KEY`, `VALUE` and `COST`, aligned over
-/// [`field_line`]'s own cells. Unconditional now: [`top_lines`] used to
-/// draw here instead of it while `h`'s help was open, and drew nothing
-/// otherwise, but a slot that could vanish under a wrapped blurb had
-/// nowhere left to put `LANDS`, so the header stays and the blurb takes
-/// the room below it.
+/// [`field_line`]'s own cells. Unconditional: a slot that could vanish
+/// under a wrapped blurb has nowhere left to put `LANDS`, so the header
+/// stays and the blurb takes the room below it.
 fn column_header_line(palette: Palette, width: u16, show_lands: bool) -> Line<'static> {
     let (key_w, value_w, cost_w) = widths(body_width(width), show_lands);
     let mut text = String::from("  ");

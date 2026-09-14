@@ -256,9 +256,8 @@ fn quit_text(all_rows: &[Binding]) -> String {
 /// The keys that leave the overlay or lookout itself.
 ///
 /// Its own function because [`Shed::Decoration`] and [`Shed::Blank`] keep
-/// it while dropping the `NO_COLOR` disclosure beside it, and used to reach
-/// it as `closing_lines(..)[1].clone()`, building the disclosure in order
-/// to throw it away. Not every shorter tier keeps it: [`Shed::Gate`] folds
+/// it while dropping the `NO_COLOR` disclosure beside it. Not every
+/// shorter tier keeps it: [`Shed::Gate`] folds
 /// the same text into [`folded_gate_and_quit_line`] when it has a row of
 /// slack and drops it entirely at [`HEIGHT_FLOOR`], where the gate's own
 /// warning is the last thing standing.

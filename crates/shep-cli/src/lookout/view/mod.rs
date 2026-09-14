@@ -223,17 +223,13 @@ fn draw_too_small(frame: &mut Frame<'_>, area: Rect) {
 
 /// Real caller: `super::mod`'s `run_ui`, once per frame.
 ///
-/// Three steps, in this shape so the overlay's own call is structural. It
-/// used to sit at every one of [`draw_body`]'s six exits, identically, and a
-/// seventh `Body` variant would have skipped it in silence: the compiler has
-/// nothing to say about a call a new match arm forgets to make. One call
-/// here, after whichever body drew, is a guarantee instead of a convention.
-/// `the_overlay_renders_over_the_four_bodies_a_test_can_reach` stays as the net, but it is no longer
-/// the only thing holding this.
+/// Three steps, so the overlay's own call is structural: a new `Body`
+/// variant cannot skip it, since the call sits outside the match a new
+/// arm would join. One call after whichever body drew, not a convention
+/// repeated at each exit.
 ///
-/// The refusal is the one path that does NOT get an overlay: a terminal too
-/// narrow for a body is too narrow for a box over it, and the keymap's own
-/// `Shed::Refuse` answers a short terminal rather than a tiny one.
+/// The refusal is the one path that gets no overlay: a terminal too
+/// narrow for a body is too narrow for a box over it.
 pub fn draw(app: &App, frame: &mut Frame<'_>) {
     let area = frame.area();
     let (width, height) = (area.width, area.height);

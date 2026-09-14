@@ -72,13 +72,10 @@ pub(super) const fn is_boxed(width: u16, interior: u16) -> bool {
 /// The rows a boxed overlay occupies: its own lines plus a border above
 /// and below.
 ///
-/// Both the fit check and the draw read this rather than each doing the
-/// addition, because they did it differently once. The check saturated
-/// from a `u16::MAX` fallback and the draw added plainly from a `0` one,
-/// so a `lines.len()` past `u16::MAX` would have refused to draw in one
-/// place and drawn a two-row box in the other. Neither is reachable with
-/// a dialog of a dozen rows, which is why nothing caught it; one function
-/// is what stops it coming back.
+/// Both the fit check and the draw read this rather than each computing
+/// it separately: a mismatch here would refuse to draw in one place and
+/// draw a wrong-sized box in the other, unreachable with a dialog of a
+/// dozen rows but exactly the class one shared function forecloses.
 pub(super) fn boxed_height(lines: &[Line<'static>]) -> u16 {
     u16::try_from(lines.len())
         .unwrap_or(u16::MAX)
