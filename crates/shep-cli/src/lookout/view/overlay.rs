@@ -154,8 +154,9 @@ pub(super) fn draw_boxed(
     );
 }
 
-/// `width` cells of plain space at `(x, y)`, in `style`: the dialog itself
-/// is never muted, only the pane behind it.
+/// `blank`'s worth of plain space at `(x, y)`, in `style`: the dialog itself
+/// is never muted, only the pane behind it. [`blank_of`] builds the argument,
+/// and every caller builds it once above its own row loop.
 ///
 /// [`Buffer::set_line`] only ever writes as many cells as its `Line` carries
 /// content for, so a blank separator row (`Line::from(Span::raw(""))`,
