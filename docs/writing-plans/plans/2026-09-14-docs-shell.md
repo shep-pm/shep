@@ -157,7 +157,7 @@ If Step 4 required the gradient, add `web/src/layouts/DocsLayout.astro` to the s
 - Consumes: nothing.
 - Produces: the class names `.lede`, `.fine`, `.next-grid`, `.next-card`, `.next-title`, `.next-body`, styled globally for any page inside `.docs-shell`. Later phases write pages using these names without declaring them.
 
-- [ ] **Step 1: Record the before state**
+- [x] **Step 1: Record the before state**
 
 ```bash
 cd web && for f in src/pages/docs/*.astro; do s=$(awk '/^  h2 \{/,/\}/' "$f" | grep -E 'font-size|margin' | tr -d ' \n'); [ -n "$s" ] && printf "%-22s %s\n" "$(basename $f .astro)" "$s"; done | sort -u -k2
@@ -165,7 +165,7 @@ cd web && for f in src/pages/docs/*.astro; do s=$(awk '/^  h2 \{/,/\}/' "$f" | g
 
 Expected: nine distinct `h2` shapes. Keep this output; Step 6 compares against it.
 
-- [ ] **Step 2: Create the shared stylesheet**
+- [x] **Step 2: Create the shared stylesheet**
 
 Create `web/src/styles/docs-page.css`:
 
@@ -278,7 +278,7 @@ Create `web/src/styles/docs-page.css`:
 }
 ```
 
-- [ ] **Step 3: Import it from the layout**
+- [x] **Step 3: Import it from the layout**
 
 In `web/src/layouts/DocsLayout.astro`, add the import beneath the existing ones in the frontmatter:
 
@@ -291,7 +291,7 @@ import "../styles/docs-page.css";
 
 A plain CSS import is global, matching how `Base.astro` loads `global.css`. Because only `/docs/*` routes use this layout, the stylesheet reaches only those pages.
 
-- [ ] **Step 4: Verify `/docs/output` is fixed before touching any other page**
+- [x] **Step 4: Verify `/docs/output` is fixed before touching any other page**
 
 Reload `http://localhost:4421/docs/output` and evaluate:
 
@@ -303,17 +303,21 @@ Reload `http://localhost:4421/docs/output` and evaluate:
 
 Expected: `fontSize: "29px"` and `marginTop: "48px"` on all three. Before this task they were `24px` and `0px`.
 
-- [ ] **Step 5: Remove the now-duplicated rules from each page**
+- [x] **Step 5: Remove the now-duplicated rules from each page**
 
 For each of the 24 page files with a `<style>` block, delete only these rule blocks: `h1`, `h2`, `h2:first-of-type`, `h3`, `p`, `.lede`, `.fine`, `.next-grid`, `.next-card`, `.next-card:hover`, `.next-title`, `.next-body`, `.next-body code`.
 
 Leave everything else. Pages carry genuinely page-specific styles that must stay: `.field-table` and its `.row` descendants, `.alias-grid`, `.terminal`, `.file-panel`, `.col-does`, `ul`, `li`, `code` and anything not in the list above.
 
+Do this one file at a time and check each page renders before moving to the next. If scripting it, exclude `}` from whatever character class starts a selector: a rule following an `@media` block's closing brace otherwise gets swallowed into a bogus two-selector match and silently skipped. Four pages kept their `.next-grid` that way on the first attempt.
+
+One page carries a real override rather than a duplicate: `boot-order` has `p.fine { font-size: 14.5px }`. Keep it. Astro's scoping attribute gives it enough specificity to beat the shared `.fine`, measured at 14.5px after the change.
+
 Do this one file at a time and check each page renders before moving to the next. Two pages have a deliberately different `h1` (`clamp(34px, 4.4vw, 52px)` rather than `clamp(36px, 4.6vw, 56px)`); they lose it and adopt the shared value, which is intended.
 
 If a page's `<style>` block becomes empty, delete the whole `<style>` element.
 
-- [ ] **Step 6: Verify no page kept a shared rule**
+- [x] **Step 6: Verify no page kept a shared rule**
 
 ```bash
 cd web && grep -lE '^  (h1|h2|h3|p|\.lede|\.fine|\.next-grid|\.next-card|\.next-title|\.next-body) \{' src/pages/docs/*.astro
@@ -321,11 +325,11 @@ cd web && grep -lE '^  (h1|h2|h3|p|\.lede|\.fine|\.next-grid|\.next-card|\.next-
 
 Expected: no output.
 
-- [ ] **Step 7: Walk every page in the browser**
+- [x] **Step 7: Walk every page in the browser**
 
 Load all 25 routes and confirm each still renders its own tables, terminals and grids. The pages with the most page-specific CSS are the ones most likely to have lost something by accident: `terminology`, `first-flockfile`, `from-pm2`, `examples`, `boot-order`.
 
-- [ ] **Step 8: Build**
+- [x] **Step 8: Build**
 
 ```bash
 npx astro build
@@ -337,7 +341,7 @@ npx astro check
 
 Expected: both clean.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add web/src/styles/docs-page.css web/src/layouts/DocsLayout.astro web/src/pages/docs/
