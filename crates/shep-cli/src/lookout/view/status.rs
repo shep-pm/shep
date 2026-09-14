@@ -55,21 +55,28 @@ pub fn banner_line(app: &App, width: u16) -> Option<Line<'static>> {
 
 /// The key hint once the link is [`Link::Lost`].
 ///
-/// Three keys, because three still do something: `q` leaves, `j`/`k` move a
-/// cursor over values that are already history, and `h` opens the keymap
-/// overlay, which is read only and wanted most on the screen where nothing
-/// else works. `r` is not among them, whatever the design's own copy says:
-/// it is refused like the rest (`App::on_key`), and
+/// `q` leaves, movement still walks a cursor over values that are already
+/// history, and `h` opens the keymap overlay, which is read only and wanted
+/// most on the screen where nothing else works. `r` is not among them,
+/// whatever the design's own copy says: it is refused
+/// (`App::on_key` tests [`Link::Lost`]), and
 /// `super::super::link::run_link` has already returned by the time a freeze
-/// lands, so no task survives to answer a redial. The last clause is the
-/// whole rest of the keymap, said once rather than discovered a keypress at
-/// a time.
+/// lands, so no task survives to answer a redial.
 ///
-/// That last clause is why `h` had to be named here the moment it stopped
-/// being refused. The sentence is a claim about every key it does not list,
-/// so a key that quietly started working would make it false.
-const FROZEN_HINT: &str = "q quit   h keymap   j/k still moves   \
-     every other key is refused while the link is down";
+/// **The last clause does not say "every other key is refused", because that
+/// was false.** The design's own copy for 1l says it, and this constant said
+/// it too. Enumerated against a frozen `full_app` rather than reasoned about,
+/// these all still act: `q`, `esc`, `j`, `g`/`G`, `h`, `/`, `Enter`, `e`, `s`
+/// and `S`. Only `Refresh` and the three action verbs test the link. `/`
+/// genuinely opens the filter box, and `g`/`G` move exactly as `j`/`k` do,
+/// so naming two movement keys and refusing the rest was wrong twice over.
+///
+/// What is true, and what an operator needs, is the consequence rather than
+/// a key list: the shepherd is unreachable, so nothing pressed here changes
+/// anything out there. Movement, the keymap and the filter are local, and
+/// every key that would reach the shepherd fails to.
+const FROZEN_HINT: &str = "q quit   h keymap   j/k g/G move   \
+     nothing you press can reach the shepherd";
 
 /// The status bar's own label for [`Control::ReadOnly`], shared with the
 /// keymap overlay's gate line so the two cannot drift apart.
@@ -615,11 +622,27 @@ mod tests {
     fn the_frozen_hint_names_the_keymap_it_no_longer_refuses() {
         assert!(FROZEN_HINT.contains("h keymap"), "{FROZEN_HINT}");
         assert!(
-            FROZEN_HINT.contains("every other key is refused while the link is down"),
+            FROZEN_HINT.contains("q quit") && FROZEN_HINT.contains("j/k g/G move"),
             "{FROZEN_HINT}"
         );
+    }
+
+    /// The hint must not claim every other key is refused, because seven of
+    /// them are not.
+    ///
+    /// Enumerated against a frozen app rather than reasoned about: `esc`,
+    /// `g`/`G`, `/`, `Enter`, `e`, `s` and `S` all still act, and `/` opens
+    /// the filter box outright. Only `Refresh` and the three action verbs
+    /// test [`Link::Lost`]. The hint states the consequence instead, which
+    /// stays true however many local keys keep working.
+    #[test]
+    fn the_frozen_hint_claims_no_blanket_refusal() {
         assert!(
-            FROZEN_HINT.contains("q quit") && FROZEN_HINT.contains("j/k still moves"),
+            !FROZEN_HINT.contains("every other key"),
+            "the blanket-refusal claim is back, and it is false: {FROZEN_HINT}"
+        );
+        assert!(
+            FROZEN_HINT.contains("nothing you press can reach the shepherd"),
             "{FROZEN_HINT}"
         );
     }

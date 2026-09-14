@@ -962,7 +962,7 @@ mod tests {
             .next_back()
             .expect("a status bar")
             .to_string();
-        assert!(bar.contains("j/k still moves"), "{bar:?}");
+        assert!(bar.contains("j/k g/G move"), "{bar:?}");
         assert!(
             !bar.contains("   r "),
             "the bar must not offer a key a freeze has already refused: {bar:?}"

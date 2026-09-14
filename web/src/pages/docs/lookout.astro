@@ -116,7 +116,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
   refused   the shepherd did not answer: could not connect to \`/home/ada/.shep/run/shep.sock\`: Connection refused (os error 61)
   since     2026-08-14 14:32:07, 9m 53s ago      the sheep themselves may well still be running; lookout cannot see them to say
   try       shep muster, from another shell      then reopen lookout: it does not reconnect on its own
-q quit   j/k still moves   every other key is refused while the link is down                                                                            █ frozen`;
+q quit   h keymap   j/k g/G move   nothing you press can reach the shepherd                                                                              █ frozen`;
 
 const refused = `shep lookout   /home/ada/.shep                                                                            6 in the flock
 host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   floc…
@@ -741,11 +741,12 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       panel. Both describe a shepherd that is gone; the panel describes
       what happened to it, quoting the last dial's own error. Lookout never
       exits on its own. <code>q</code> quits, <code>h</code> opens the
-      keymap, <code>j</code>/<code>k</code> still move over values that are
-      already history, and every other key refuses. <code>r</code> is one of
-      the refused: the task that would answer a re-dial has already returned
-      by the time a freeze lands, so <code>r</code> says the shepherd is gone
-      instead of pretending to try.
+      keymap, and <code>j</code>/<code>k</code> and <code>g</code>/<code>G</code>
+      still move over values that are already history. What no key can do is
+      reach the shepherd, which is what the bar says instead of listing
+      refusals: <code>r</code> is refused outright, since the task that would
+      answer a re-dial has already returned by the time a freeze lands, so it
+      says the shepherd is gone rather than pretending to try.
     </p>
     <CodeBlock label="160×30, shepherd dead">{frozen}</CodeBlock>
 
