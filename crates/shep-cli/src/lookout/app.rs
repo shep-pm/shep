@@ -3482,12 +3482,17 @@ impl App {
 
     /// Cancels an armed settings candidate, answering whether it did.
     ///
-    /// Three arms of the settings handler spend a key this way rather than
-    /// acting: `Refresh`, `Edit` and `Help`. They were three copies of the
-    /// same four lines, which round 7 flagged, and the shape is the one that
-    /// drifts: a change to what cancelling means (a confirmation, a different
-    /// field cleared) has to land in all three or the handler starts
-    /// disagreeing with itself about what an armed prompt eats.
+    /// Four arms of the settings handler spend a key this way rather than
+    /// acting: `Refresh`, `Edit`, `Help`, and the four `Select*` arms
+    /// together. Three were copies of the same four lines, which round 7
+    /// flagged; the fourth was a fifth copy, written differently, found by
+    /// review at round 16 and folded in. Its own coverage predates the
+    /// fold: `movement_cancels_an_armed_candidate_rather_than_also_moving`
+    /// tested the inline version directly and now walks this helper
+    /// instead, unchanged. The shape is the one that drifts: a change to
+    /// what cancelling means (a confirmation, a different field cleared)
+    /// has to land in every one or the handler starts disagreeing with
+    /// itself about what an armed prompt eats.
     ///
     /// A `bool` rather than an `Effect`, so each caller keeps its own reason
     /// for returning: the arms are identical in what they cancel and
@@ -4764,17 +4769,15 @@ impl App {
             | KeyPress::SelectDown
             | KeyPress::SelectFirst
             | KeyPress::SelectLast => {
-                if let Some(settings) = self.settings_mut() {
-                    if settings.is_armed() {
-                        settings.pending = None;
-                    } else {
-                        match key {
-                            KeyPress::SelectUp => settings.move_by(-1),
-                            KeyPress::SelectDown => settings.move_by(1),
-                            KeyPress::SelectFirst => settings.move_to_first(),
-                            KeyPress::SelectLast => settings.move_to_last(),
-                            _ => unreachable!(),
-                        }
+                if !self.disarm_settings_candidate()
+                    && let Some(settings) = self.settings_mut()
+                {
+                    match key {
+                        KeyPress::SelectUp => settings.move_by(-1),
+                        KeyPress::SelectDown => settings.move_by(1),
+                        KeyPress::SelectFirst => settings.move_to_first(),
+                        KeyPress::SelectLast => settings.move_to_last(),
+                        _ => unreachable!(),
                     }
                 }
             }
@@ -12823,7 +12826,8 @@ mod tests {
             app.settings().unwrap().pending().is_some(),
             "space must arm before this test means anything"
         );
-        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let effect = app.update(Msg::Key(KeyPress::SelectDown));
+        assert_eq!(effect, Effect::None, "a cancel must not also move");
         assert!(
             app.settings().unwrap().pending().is_none(),
             "the armed candidate must not survive the movement key"
