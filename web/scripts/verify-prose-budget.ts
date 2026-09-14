@@ -32,9 +32,10 @@ const pagesDir = fileURLToPath(new URL("../src/pages/docs", import.meta.url));
  * A number here only ever comes down.
  */
 export const BUDGETS: Record<string, number> = {
-  terminology: 250, // 176 today
+  terminology: 250, // 243 today
   "community-dogs": 400, // 288
   cli: 500, // 355
+  examples: 1200, // 1182
   serve: 650, // 488
   kv: 750, // 564
   containers: 750, // 572
@@ -43,23 +44,56 @@ export const BUDGETS: Record<string, number> = {
   // a little headroom. These are not rewrite targets either: they are a
   // floor that stops a page growing back before the rewrite phase sets real
   // numbers against each reader's need.
-  "getting-started": 820, // 778
+  "getting-started": 400, // 388
   upgrading: 580, // 539
-  "from-pm2": 1950, // 1865
-  startup: 1500, // 1423
+  "from-pm2": 1650, // 1600
+  startup: 1250, // 1242
   dogs: 3000, // 2884
   "writing-a-dog": 4150, // 4042
   "first-flockfile": 2450, // 2343
   overrides: 3520, // 3427
 };
 
+
+/** Remove every `<div>` opening with `open`, balancing nested div tags. */
+function stripBlock(source: string, open: string): string {
+  let out = "";
+  let i = 0;
+  for (;;) {
+    const start = source.indexOf(`<${open}`, i);
+    if (start === -1) return out + source.slice(i);
+    out += source.slice(i, start);
+    let depth = 0;
+    let j = start;
+    for (;;) {
+      const next = source.slice(j).search(/<\/?div\b/);
+      if (next === -1) return out;
+      j += next;
+      if (source.startsWith("</div", j)) {
+        depth -= 1;
+        j = source.indexOf(">", j) + 1;
+        if (depth === 0) break;
+      } else {
+        depth += 1;
+        j = source.indexOf(">", j) + 1;
+      }
+    }
+    i = j;
+  }
+}
+
 /** Words a reader actually reads: no frontmatter, styles, code or transcripts. */
 export function proseWords(source: string): number {
   let s = source.replace(/^---[\s\S]*?^---/m, "");
   s = s.replace(/<style>[\s\S]*?<\/style>/g, "");
   s = s.replace(/<CodeBlock[^>]*>[\s\S]*?<\/CodeBlock>/g, "");
-  s = s.replace(/<div class="terminal[\s\S]*?<\/div>\s*(?=<)/g, "");
-  s = s.replace(/<div class="file-panel"[\s\S]*?<\/div>\s*<\/div>/g, "");
+  // Terminal transcripts and file panels nest <div>s, so a lazy match ends
+  // at the FIRST inner </div> and leaves the rest of the block counted as
+  // prose. Found by an agent rewriting the examples page, which has two of
+  // them: `$ shep --help` and a column header row were being counted as
+  // words a reader wades through. Balance the tags instead.
+  s = stripBlock(s, 'div class="terminal');
+  s = stripBlock(s, 'div class="file-panel"');
   // A tag may carry a quoted attribute that itself contains "<" or ">":
   // folds.astro's description says `fold:<name> reaches it from any verb`.
   // A plain /<[^>]*>/ stops at the first ">" it meets, which is the one
