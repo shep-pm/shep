@@ -7394,6 +7394,18 @@ impl App {
         matches!(&self.body, Body::Secrets(pane) if pane.model.allow_read)
     }
 
+    /// Whether the secrets pane owns the body.
+    ///
+    /// `config_pane`, `bleats_pane` and `sheep_pane` each answer this for
+    /// their own body by handing back the pane; the secrets pane had no
+    /// equivalent, so a test could only press `S` and trust it landed. That
+    /// is the setup a narrowed every-body loop was narrowed for, so the
+    /// predicate exists to let the loop assert it arrived.
+    #[cfg(test)]
+    pub(crate) const fn secrets_pane_is_open(&self) -> bool {
+        matches!(&self.body, Body::Secrets(_))
+    }
+
     /// `v`'s answer: a read of the selected row's stored value, or a refusal
     /// naming the gate and the file.
     ///
@@ -14907,11 +14919,28 @@ mod tests {
     /// than a single opener from the dashboard), so it was never in scope
     /// for this loop either; it gets its own dedicated test too
     /// (`h_opens_the_keymap_overlay_from_the_list_sub_screen`).
+    ///
+    /// Each iteration asserts it reached the body before pressing `Help`.
+    /// Without that the loop is the shape it was narrowed for: an opener
+    /// that stops setting `Body` synchronously leaves the dashboard on
+    /// screen, `Help` opens the overlay from there, and the loop passes
+    /// three times while testing one body. `Edit` and `Settings` did
+    /// exactly that before they were dropped from it.
     #[test]
     fn the_overlay_opens_from_every_synchronously_opened_body() {
-        for opener in [KeyPress::Secrets, KeyPress::Bleats, KeyPress::Confirm] {
+        let reached: [(KeyPress, fn(&App) -> bool); 3] = [
+            (KeyPress::Secrets, |app| app.secrets_pane_is_open()),
+            (KeyPress::Bleats, |app| app.bleats_pane().is_some()),
+            (KeyPress::Confirm, |app| app.sheep_pane().is_some()),
+        ];
+        for (opener, arrived) in reached {
             let mut app = fixtures::full_app();
             let _ = app.update(Msg::Key(opener));
+            assert!(
+                arrived(&app),
+                "{opener:?} did not reach its body, so this iteration would \
+                 have tested the dashboard"
+            );
             let _ = app.update(Msg::Key(KeyPress::Help));
             assert!(
                 app.keymap_open(),
