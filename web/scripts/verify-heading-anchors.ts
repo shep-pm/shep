@@ -30,12 +30,22 @@ const pagesDir = fileURLToPath(new URL("../src/pages/docs", import.meta.url));
  * checks nothing. One real page keeps it honest. Each later phase appends
  * what it converted, and nothing ever leaves.
  */
-export const ENFORCED: string[] = ["containers"];
+export const ENFORCED: string[] = ["containers", "upgrading"];
 
-/** Every `<h2 ...>` / `<h3 ...>` open tag in a page, with its id if it has one. */
+/**
+ * Every `<h2 ...>` / `<h3 ...>` open tag in a page, with its id if it has one.
+ *
+ * Astro frontmatter and HTML comments are stripped first. A doc comment that
+ * mentions a heading is not a heading: upgrading.astro's own comment opens by
+ * saying the page "was an <h3> called Upgrading later", and without this the
+ * check counted that sentence and refused the page.
+ */
 export function headings(source: string): { tag: string; id: string | null }[] {
+  const body = source
+    .replace(/^---[\s\S]*?^---/m, "")
+    .replace(/<!--[\s\S]*?-->/g, "");
   const found: { tag: string; id: string | null }[] = [];
-  for (const m of source.matchAll(/<(h[23])(\s[^>]*)?>/g)) {
+  for (const m of body.matchAll(/<(h[23])(\s[^>]*)?>/g)) {
     const attrs = m[2] ?? "";
     const id = /\sid=["']([^"']+)["']/.exec(attrs);
     found.push({ tag: m[1], id: id ? id[1] : null });
@@ -49,6 +59,17 @@ test("headings() finds an id when there is one, and reports null when there is n
     { tag: "h2", id: "naming-a-dependency" },
     { tag: "h3", id: null },
   ]);
+});
+
+test("headings() ignores a heading mentioned in the frontmatter comment", () => {
+  const page = [
+    "---",
+    "/* This page was an <h3> called Upgrading later. */",
+    'import DocsLayout from "../../layouts/DocsLayout.astro";',
+    "---",
+    '<h2 id="real">Real heading</h2>',
+  ].join("\n");
+  assert.deepEqual(headings(page), [{ tag: "h2", id: "real" }]);
 });
 
 test("headings() is not fooled by an id on some other element", () => {
