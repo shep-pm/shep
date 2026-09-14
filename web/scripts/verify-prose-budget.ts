@@ -47,6 +47,12 @@ export function proseWords(source: string): number {
   s = s.replace(/<CodeBlock[^>]*>[\s\S]*?<\/CodeBlock>/g, "");
   s = s.replace(/<div class="terminal[\s\S]*?<\/div>\s*(?=<)/g, "");
   s = s.replace(/<div class="file-panel"[\s\S]*?<\/div>\s*<\/div>/g, "");
+  // A tag may carry a quoted attribute that itself contains "<" or ">":
+  // folds.astro's description says `fold:<name> reaches it from any verb`.
+  // A plain /<[^>]*>/ stops at the first ">" it meets, which is the one
+  // inside those quotes, so the tail of the tag was counted as prose. This
+  // walks quoted runs as single units instead.
+  s = s.replace(/<[a-zA-Z/!][^>"']*(?:(?:"[^"]*"|'[^']*')[^>"']*)*>/g, " ");
   s = s.replace(/<[^>]*>/g, " ");
   s = s.replace(/\{[^{}]*\}/g, " ");
   return s.split(/\s+/).filter(Boolean).length;
