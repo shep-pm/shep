@@ -56,11 +56,19 @@ shep 0.1.12 (`d113586`) against pm2 7.0.4 on node v26.5.0, macOS.
 | Log-plane CPU per line | 2.10 us | 4.03 us | 1.9x |
 | Start ten apps, cold | 0.158 s | 0.374 s | 2.4x |
 | Start ten apps, warm | 0.056 s | 0.197 s | 3.5x |
-| Install footprint | 14.23 MiB | 23.10 MiB | 1.6x |
+| `shep` binary vs pm2 install | 14.23 MiB | 23.10 MiB | 1.6x |
 | Idle daemon CPU | 0.045% | 0.020% | a tie at the noise floor |
 
 Idle CPU is reported as the instrument read it. Both figures are hundredths
 of one percent of one core; the difference is not a result.
+
+That footprint row compares one binary against a whole install tree, which is
+not a like-for-like. `m_footprint` reads `stat` on `$SHEP_BIN` alone, and the
+three-binary split landed on 2026-08-15, before this run: an install put
+`shep`, `shep-runtime` and `shep-dev` on disk, so the honest shep side of that
+row is three times 14.23 MiB. The row said "Install footprint" until
+2026-09-14. The harness's own printed label said "shep binary" the whole
+time.
 
 The log-plane figure is worth its own sentence. shep cost 32.8 us per line
 before the 2026-08-28 audit, so pm2 was ahead by 8x on this measure until the

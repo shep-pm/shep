@@ -474,8 +474,9 @@ cwd = "/srv/migrate"`}</CodeBlock>
       Four of these moved against shep since the same harness last ran, on
       2026-08-29 against shep 0.1.12. pm2 is the same version and its figures
       barely moved, so this is shep changing rather than the machine: idle
-      memory 13.90 MiB to 17.41, a warm start 0.056 s to 0.095, and the binary
-      14.23 MiB to 53.85. shep is still ahead on everything but footprint,
+      memory 13.90 MiB to 17.41, a warm start 0.056 s to 0.095, and the{" "}
+      <code>shep</code> binary 14.23 MiB to 17.94, one of the three the
+      footprint row counts. shep is still ahead on everything but footprint,
       by smaller margins than it was, and it writes 88 bytes per line to
       pm2's 58 while winning the log measure.
     </p>
