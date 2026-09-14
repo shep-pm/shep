@@ -531,18 +531,56 @@ watchdog  adopted  true      stopped`}</CodeBlock>
       its restart count stays where it was. What does not survive is the
       accepted connection, which dies with the old image — so a dog that
       does not dial again is a live process holding a dead socket, alive on
-      every column a listing has and answering nothing. The metrics dog is
-      measured holding its pid and <code>restarts 0</code> across six
-      reloads while still serving a scrape.
+      every column a listing has and answering nothing. Both built-in dogs
+      are measured holding their pid and <code>restarts 0</code> across ten
+      reloads, the metrics dog still serving a scrape and the bark dog
+      still delivering.
+    </p>
+    <p>
+      A subscription belongs to one connection too, so a dog that has one
+      asks for a new one. Nothing re-arms it for you, on purpose: a stream
+      that papered over the gap between one connection dying and the
+      successor accepting a fresh <code>Subscribe</code> would leave you no
+      way to know there had been a gap. Ask again, and treat the gap as a
+      gap, since whatever the bus carried in between is gone and only the
+      shepherd knows what changed.
+    </p>
+    <p>
+      A dog waits five seconds for a shepherd to answer again and exits if
+      none does. Both halves matter. A dog that exits the moment its
+      connection drops restarts once per reload, which reads as an unhealthy
+      dog on the one column that judges it; a dog that waits forever is
+      still running when an unrelated shepherd binds that socket later, and
+      attaches itself to that one beside its own dog of the same kind. A
+      handover never comes near five seconds: measured over ten{" "}
+      <code>shep daemon reload</code> runs against a three-sheep flock, the
+      socket turned away a full connect, handshake and request for 38ms at
+      the shortest and 254ms at the longest.{" "}
+      <code>ReconnectingClient::link_lost</code> and{" "}
+      <code>connected_within</code> are what a third-party dog imposes that
+      bound with; the client itself reconnects for as long as it is alive.
+    </p>
+    <p>
+      Check the budget at the top of your own retry loop.{" "}
+      <code>connected_within</code> answers <code>Ok</code> for a link that
+      is already up without consulting the budget, so it cannot be the thing
+      that ends one. A shepherd that answers the handshake and then fails
+      whatever you ask it, which one slow enough to miss your request's
+      deadline does, leaves a loop bounded only by that call running for as
+      long as it stays up, and a dog doing that stays online on every column
+      a listing has while doing nothing. shep's own bark dog had this bug
+      during development. <a href="/docs/dogs/#writing-your-own">The dogs
+      guide</a> shows the wrong loop in full.
     </p>
     <p class="fine">
-      The bark dog is the exception, and it is on the list to fix. Its
-      subscription belongs to one connection, so the stream ends when that
-      connection does and the dog exits; autorestart replaces it, which
-      costs one restart per reload on a dog that is otherwise healthy. It
-      comes back on its own every time, and its restart budget starts a
-      fresh window with each shepherd, so this is a count that reads wrong
-      rather than an outage.
+      Three answers in the <code>EXIT</code> column, not two. A dog that
+      gave up waiting exits <code>5</code>. One a shepherd refused on
+      protocol-version skew exits <code>6</code> without waiting, since the
+      shepherd that refused is the party that can fix it. And a dog whose
+      shepherd answered and then refused its request exits on that
+      refusal's own code, <code>13</code> for an unsupported request, the
+      same code it would have exited had the refusal come at startup rather
+      than after a handover.
     </p>
     <p>
       Those two are what shep adds, not the whole environment. A dog is a

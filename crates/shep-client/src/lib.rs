@@ -71,7 +71,7 @@ pub use events::{EventStream, Lagged};
 #[doc(inline)]
 pub use futures_util::Stream;
 pub use reconnect::{
-    LinkState, RECONNECT_MAX_DELAY, RECONNECT_MIN_DELAY, Reconnected, ReconnectingClient,
+    LinkLost, LinkState, RECONNECT_MAX_DELAY, RECONNECT_MIN_DELAY, Reconnected, ReconnectingClient,
 };
 
 // Portable for the same reason as `connection` above: every fake here binds

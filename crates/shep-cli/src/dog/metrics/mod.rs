@@ -127,9 +127,16 @@ pub(crate) fn sample_host() -> Option<HostReading> {
 
 /// Runs the metrics dog until it is signalled.
 ///
-/// Binds [`MetricsConfig::bind`] and serves until `SIGINT` or `SIGTERM`.
+/// Binds [`MetricsConfig::bind`] and serves until `SIGINT` or `SIGTERM`,
+/// or until its shepherd has been gone for a whole
+/// [`SHEPHERD_RETURN_BUDGET`](super::SHEPHERD_RETURN_BUDGET).
 /// `SIGTERM` is the first rung of the shepherd's kill ladder, so a dog
 /// deaf to it rides that ladder to `SIGKILL` on every `shep disable`.
+///
+/// The third exit is new, and it is a behaviour change rather than a
+/// tightening: this dog used to stay up for as long as the machine did,
+/// reconnecting against an address nobody would answer. It now exits
+/// `DaemonUnreachable`.
 ///
 /// A refused bind is fatal: a dog running but bound to nothing looks
 /// healthy from the outside.
@@ -160,11 +167,21 @@ pub async fn run(runtime: DogRuntime) -> ExitCode {
     };
     let client = Arc::new(runtime.client);
     tokio::select! {
-        _ = tokio::signal::ctrl_c() => {}
-        _ = sigterm.recv() => {}
-        () = accept_forever(listener, client) => {}
+        _ = tokio::signal::ctrl_c() => ExitCode::Success,
+        _ = sigterm.recv() => ExitCode::Success,
+        () = accept_forever(listener, Arc::clone(&client)) => ExitCode::Success,
+        // A scrape is the only thing that makes this dog touch its client,
+        // so nothing else here would ever notice the shepherd was gone: an
+        // unscraped dog would sit reconnecting against an address nobody
+        // answers, and attach itself to whatever shepherd binds that
+        // socket next. A handover is not that, and never reaches here: the
+        // clock runs only while the link is down and a successor comes back
+        // long inside the budget.
+        lost = client.link_lost(super::SHEPHERD_RETURN_BUDGET) => {
+            eprintln!("shep dog metrics: {lost}");
+            super::exit_for(&lost)
+        }
     }
-    ExitCode::Success
 }
 
 /// Accepts connections off `listener` forever, one task per connection.
@@ -293,6 +310,92 @@ mod tests {
             .cpu_percent(Some(0.5))
             .memory_bytes(Some(1024))
             .build()
+    }
+
+    /// Tests that wait out a real [`crate::dog::SHEPHERD_RETURN_BUDGET`]. Five seconds
+    /// of elapsed time is the point, so a paused clock would test nothing.
+    mod slow {
+        use super::*;
+
+        /// An unused loopback port, found by binding one and letting it go.
+        ///
+        /// Port `0` is what every other test here uses, but this one has to
+        /// name the dog's port in a config section before the dog exists,
+        /// so it cannot read the port back off a listener the dog owns.
+        async fn free_port() -> u16 {
+            let probe = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+            probe.local_addr().unwrap().port()
+        }
+
+        /// fails if a metrics dog whose shepherd is gone waits for it
+        /// forever. Nothing else here would notice: this dog touches its
+        /// client only when something scrapes it, so an unscraped one sits
+        /// reconnecting against an address nobody answers, and attaches
+        /// itself to whatever shepherd binds that socket next, beside that
+        /// shepherd's own metrics dog.
+        ///
+        /// Also fails if it exits the moment the connection drops, which is
+        /// the whole distinction: a reload drops the connection on purpose
+        /// and this dog is meant to cross it.
+        #[tokio::test]
+        async fn a_metrics_dog_whose_shepherd_is_gone_waits_its_budget_and_then_exits() {
+            let dir = tempfile::tempdir().unwrap();
+            let socket = shep_client::testing::control_address(dir.path());
+            let port = free_port().await;
+            let shepherds =
+                fake_daemon_across_handovers(&socket, vec![Handshake::Accept(sample_ack())]);
+            shepherds.reply_to_dog_config(&format!("bind = \"127.0.0.1:{port}\"\n"));
+            shepherds.reply_to_list(vec![sample_info("web")]);
+            let paths = crate::dog::tests::test_paths(dir.path(), socket);
+
+            let dog = tokio::spawn(crate::dog::run_dog("metrics", paths));
+
+            // Up, bound and answering from the shepherd's own flock. A test
+            // that dropped the shepherd before this would be watching a dog
+            // that never started, which exits for its own reasons and would
+            // satisfy every assertion below.
+            let addr = SocketAddr::from(([127, 0, 0, 1], port));
+            let bound = tokio::time::timeout(Duration::from_secs(10), async {
+                // `scrape` unwraps its connect, so the wait for the bind is
+                // its own loop rather than a scrape that retries.
+                while TcpStream::connect(addr).await.is_err() {
+                    assert!(!dog.is_finished(), "the dog exited before it bound");
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await;
+            assert!(bound.is_ok(), "the dog never bound its port");
+
+            let served = scrape(addr, "/metrics").await;
+            assert!(
+                served.starts_with("HTTP/1.1 200 "),
+                "the dog must be answering from the shepherd's own flock: {served}"
+            );
+            assert!(served.contains("web"), "{served}");
+
+            // Gone for good, listener and all, which is what a stopped
+            // shepherd leaves behind. A handover leaves the listener bound.
+            drop(shepherds);
+            let went = tokio::time::Instant::now();
+
+            let code = tokio::time::timeout(crate::dog::SHEPHERD_RETURN_BUDGET * 3, dog)
+                .await
+                .expect("a dog whose shepherd is gone must exit, not linger")
+                .unwrap();
+            let waited = went.elapsed();
+
+            assert_eq!(
+                code,
+                ExitCode::DaemonUnreachable,
+                "exiting 0 would read as a dog that finished its work"
+            );
+            let budget = crate::dog::SHEPHERD_RETURN_BUDGET;
+            assert!(
+                waited >= budget,
+                "gave up after {waited:?}, inside the {budget:?} a handover \
+                 is allowed to take, which is the restart-per-reload this rule exists to avoid"
+            );
+        }
     }
 
     /// A running metrics dog bound to an OS-assigned loopback port, backed
