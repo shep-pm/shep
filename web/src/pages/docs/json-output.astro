@@ -30,8 +30,9 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
     <h2>The envelope</h2>
     <p>
       Every non-streaming command wraps its payload in the same three
-      fields: a schema version, the verb name, and the data itself. One
-      verb adds a fourth, and only sometimes; see{" "}
+      fields: a schema version, the verb name, and the data itself. Two
+      verbs add a fourth. <code>shep flock</code> always does, with{" "}
+      <code>host</code>; <code>shep reload</code> does only sometimes, see{" "}
       <a href="#refused">a reload that was refused part of its fold</a>.
       Here's <code>shep flock --format json</code> against a two-sheep
       flock:
@@ -44,48 +45,71 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       "id": 0,
       "name": "web",
       "status": "online",
-      "pid": 40968,
+      "pid": 14955,
       "restarts": 0,
-      "uptime_ms": 1019,
+      "uptime_ms": 3047,
       "fold": "backend",
       "depends_on": [],
       "out_file": "/tmp/shepdemo/logs/web-0-out.log",
       "err_file": "/tmp/shepdemo/logs/web-0-err.log",
       "cpu_percent": null,
-      "memory_bytes": 1212416,
-      "cpu_ms": 640,
+      "memory_bytes": 3129344,
+      "cpu_ms": 4,
       "dog": null,
       "lambs": null,
       "last_exit": null,
       "smit": null,
       "instance": 0,
       "handshook": null,
-      "dog_stale": null
+      "dog_stale": null,
+      "max_memory": null
     },
     {
       "id": 1,
       "name": "worker",
       "status": "online",
-      "pid": 40969,
+      "pid": 14979,
       "restarts": 0,
-      "uptime_ms": 1017,
+      "uptime_ms": 3020,
       "fold": "backend",
       "depends_on": [],
       "out_file": "/tmp/shepdemo/logs/worker-0-out.log",
       "err_file": "/tmp/shepdemo/logs/worker-0-err.log",
       "cpu_percent": null,
-      "memory_bytes": 1212416,
-      "cpu_ms": 610,
+      "memory_bytes": 3129344,
+      "cpu_ms": 3,
       "dog": null,
       "lambs": null,
       "last_exit": null,
       "smit": null,
       "instance": 0,
       "handshook": null,
-      "dog_stale": null
+      "dog_stale": null,
+      "max_memory": null
     }
-  ]
+  ],
+  "host": {
+    "cpu_percent": 18.083654,
+    "memory_used_bytes": 38749880320,
+    "memory_total_bytes": 51539607552,
+    "disk_bytes_per_second": [16384, 851968],
+    "network_bytes_per_second": [17480, 4174]
+  }
 }`}</CodeBlock>
+    <p>
+      <code>host</code> is the machine the flock runs on, beside{" "}
+      <code>data</code> rather than inside it, so a script reading{" "}
+      <code>data[0].name</code> sees nothing new. The two disk and network
+      values are read and written, then received and transmitted, in that
+      order. It has three shapes and they are three different answers: an
+      object, as here; <code>null</code> where sysinfo cannot read this
+      platform; and no <code>host</code> key at all from a shepherd old
+      enough to refuse the question. CPU and the two rate pairs are{" "}
+      <code>null</code> on their own when the shepherd has been up for less
+      than a second and has nothing to subtract from yet. The{" "}
+      <a href="/docs/output#host-line">host line</a> is the same figures
+      drawn for a person.
+    </p>
     <p>
       <code>command</code> is the verb you typed, spelled out in full:
       run it as <code>shep ls --format json</code> and <code>command</code>{" "}
