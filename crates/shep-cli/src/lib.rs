@@ -2407,6 +2407,37 @@ mod tests {
         );
     }
 
+    /// The Windows arm of the same hole. A path there is UTF-16, so the
+    /// byte that cannot be UTF-8 is instead a high surrogate with no low one
+    /// after it, which a filesystem accepts and `to_str` refuses.
+    ///
+    /// The first assertion is the fixture checking itself. Built wrong, the
+    /// value would be ordinary UTF-16, the old `to_str` parse would have
+    /// handled it, and the test would pass while exercising nothing.
+    #[cfg(windows)]
+    #[test]
+    fn home_before_keeps_a_lone_surrogate_equals_value() {
+        use std::os::windows::ffi::OsStringExt as _;
+        let lone = 0xD800_u16;
+        let mut typed: Vec<u16> = r"--home=C:\tmp\".encode_utf16().collect();
+        typed.push(lone);
+        let arg = OsString::from_wide(&typed);
+        assert!(
+            arg.to_str().is_none(),
+            "the fixture must be the case under test, not valid UTF-16"
+        );
+
+        let found = home_before(&[arg]).expect("the value must survive the parse");
+
+        let mut want: Vec<u16> = r"C:\tmp\".encode_utf16().collect();
+        want.push(lone);
+        assert_eq!(
+            found,
+            PathBuf::from(OsString::from_wide(&want)),
+            "the units as typed, not a lossy rendering and not a fallback"
+        );
+    }
+
     /// `/tmp/\xff`, the value the test above passes as `--home=`.
     #[cfg(unix)]
     fn non_utf8_tmp_home() -> std::path::PathBuf {
