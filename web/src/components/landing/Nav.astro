@@ -1,4 +1,5 @@
 ---
+import { REPO } from "../../data/repo";
 /*
  * Landing nav. Sticky, overlaps the hero via a negative bottom margin (see
  * docs/shep-design/README.md, "Screens > 1. Landing page > Nav").
@@ -18,7 +19,7 @@ import Sheep from "../marks/Sheep.astro";
       <a href="#pasture" class="pill press lexicon" style="--shadow-offset:4px;">Lexicon</a>
       <a href="/docs" class="pill press butter" style="--shadow-offset:4px;">Docs</a>
       <a
-        href="https://github.com/shep-pm/shep"
+        href={REPO}
         class="pill press ink"
         style="--shadow-offset:4px; --shadow-color:var(--barn);"
       >

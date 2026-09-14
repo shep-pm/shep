@@ -10,6 +10,7 @@
  * Quality bar: getting-started.astro.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
+import { repoFile } from "../../data/repo";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
@@ -54,7 +55,7 @@ import { pillTargetsLive } from "../../data/docs-nav";
       and <code>whistle/control.rs</code> build, not a second hand-typed
       copy beside them:{" "}
       {pillTargetsLive.github ? (
-        <a href="https://github.com/shep-pm/shep/blob/main/docs/whistle/tools.md">
+        <a href={repoFile("docs/whistle/tools.md")}>
           the full generated reference is on GitHub
         </a>
       ) : (

@@ -1,4 +1,5 @@
 ---
+import { REPO } from "../../data/repo";
 /*
  * Reference pills — Source / API / Spec links under a docs page's <h1>.
  * One shared component reading web/src/data/
@@ -31,7 +32,7 @@ if (!item) {
   throw new Error(`ReferencePills: no docsNav item for slug "${slug}"`);
 }
 
-const REPO = "https://github.com/shep-pm/shep";
+
 const SPEC_FILE = "docs/specs/shep-v1.md";
 
 const sources = Array.isArray(item.source) ? item.source : [item.source];

@@ -11,13 +11,14 @@
  * data-pagefind-ignore for the same reason the footer license line carries
  * it: repeated on all 25 pages, it would pad every search excerpt.
  */
+import { REPO, REPO_ISSUES_NEW } from "../../data/repo";
 ---
 
 <aside class="still-stuck" data-pagefind-ignore>
   <span class="ask">Didn't find it here?</span>
   <span class="offer">
-    <a href="https://github.com/shep-pm/shep/issues/new" rel="noopener">Open an issue</a>, or{" "}
-    <a href="https://github.com/shep-pm/shep" rel="noopener">browse the source</a>.
+    <a href={REPO_ISSUES_NEW} rel="noopener">Open an issue</a>, or{" "}
+    <a href={REPO} rel="noopener">browse the source</a>.
   </span>
 </aside>
 
