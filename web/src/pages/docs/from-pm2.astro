@@ -22,8 +22,6 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
 
 const meta = {
-  title: "Coming from pm2",
-  crumb: "Start here / Coming from pm2",
   blurb:
     "shep import pm2 reads a real dump.pm2 and writes a Flockfile. It starts nothing, and names on stderr everything that could not survive the trip unchanged.",
 };
@@ -91,9 +89,7 @@ const verbTable: { pm2: string; shep: string; note?: string }[] = [
 ---
 
 <DocsLayout
-  title={meta.title}
   description={meta.blurb}
-  crumb={meta.crumb}
   activeSlug="from-pm2"
 >
   <article>
