@@ -392,23 +392,27 @@ pub(crate) async fn flock_follow(
             host = host_usage(client) => host,
             _ = interrupt.recv() => return ExitCode::Success,
         };
-        // Measured before the frame is built rather than after it: the strip
-        // fits itself to the window, and a window that was resized between
-        // redraws has to be read again to know what it fits into.
-        let size = crossterm::terminal::size()
-            .ok()
-            .filter(|&(columns, _)| columns > 0);
-        let columns = size.map_or(streams.style.width, |(columns, _)| usize::from(columns));
+        // One reading, used twice. Measured before the frame is built
+        // rather than after it, because the strip fits itself to the window
+        // and a window resized between redraws has to be read again. Two
+        // readings would let a resize land between them, fitting the strip
+        // to the old width and then trimming the frame to the new one.
+        let size = crossterm::terminal::size().ok();
+        // A width of zero is not a window. `fit_rows` answers that case for
+        // itself, further down, by declining to trim at all.
+        let columns = size
+            .filter(|&(columns, _)| columns > 0)
+            .map_or(streams.style.width, |(columns, _)| usize::from(columns));
         let frame = follow_frame(
             procs,
             streams.style,
             host.map(|usage| host::strip(usage, streams.style, columns)),
         );
-        let frame = match crossterm::terminal::size() {
-            Ok((columns, rows)) => fit_rows(&frame, columns, rows),
+        let frame = match size {
+            Some((columns, rows)) => fit_rows(&frame, columns, rows),
             // A terminal that will not say how big it is gets the frame
             // whole. Scrolling beats hiding a sheep.
-            Err(_unmeasured) => frame,
+            None => frame,
         };
         // Not discarded. A follow whose terminal has gone (the emulator
         // closed, an ssh session dropped) writes into a dead descriptor

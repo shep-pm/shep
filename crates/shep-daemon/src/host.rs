@@ -316,8 +316,17 @@ impl HostSource for HostWatch {
         self.sampled_at = now;
 
         self.system.refresh_specifics(Self::refresh());
-        self.disks.refresh_specifics(false, Self::disk_refresh());
-        self.networks.refresh(false);
+        // `true` on both: drop whatever this enumeration no longer lists.
+        // The flag is `remove_not_listed`, and with `false` a device or an
+        // interface that goes away keeps its entry, frozen at the last
+        // window's delta, which the sums below then re-add on every later
+        // sample for the life of the daemon. A disk keeps its lifetime pair
+        // too, so it also stays a distinct `distinct_disk_io` key. Nothing
+        // is lost by dropping them: a device seen for the first time starts
+        // at `read_bytes == old_read_bytes`, so its first reported delta is
+        // zero rather than its whole lifetime counter (sysinfo 0.38.4).
+        self.disks.refresh_specifics(true, Self::disk_refresh());
+        self.networks.refresh(true);
 
         let measured = is_measurable(window);
         let disk = measured.then(|| {
