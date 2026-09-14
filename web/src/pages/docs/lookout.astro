@@ -11,6 +11,7 @@
  * inside a kept row is edited.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
@@ -394,6 +395,16 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       wrong.
     </p>
 
+    <ShortVersion>
+      <CodeBlock>{startCmds}</CodeBlock>
+      <p>
+        <code>j</code> and <code>k</code> move, <code>Enter</code> opens what
+        is selected, <code>b</code> is the feed full screen, <code>e</code>
+        edits config, and <code>q</code> quits. <code>h</code> lists every
+        other key without leaving the screen.
+      </p>
+    </ShortVersion>
+
     <Callout variant="careful">
       Lookout needs a real terminal. With stdout redirected (piped to a file
       or another program) it refuses outright rather than writing escape
@@ -637,13 +648,10 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       <code>CHANGING</code> for anything that writes, and{" "}
       <code>DOING</code> for the three that act on a sheep.
     </p>
-    <p>
-      It owns the keyboard while it's up. <code>h</code>, <code>?</code> and{" "}
-      <code>Esc</code> close it, <code>q</code> and <code>Ctrl-C</code> still
-      quit, and every other key is swallowed, since the box covers the table
-      a movement key would otherwise scroll under it. A close dialog is the
-      one screen it won't open over: that question owns the keyboard until
-      it's answered.
+    <p class="fine">
+      It owns the keyboard while it is up. <code>h</code>, <code>?</code> and{" "}
+      <code>Esc</code> close it and <code>q</code> still quits. A close dialog
+      is the one screen it will not open over.
     </p>
     <p>
       The line under the three destructive keys says whether they can act at
@@ -654,60 +662,30 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       doesn't name. The overlay itself still opens on a frozen dashboard,
       which is where a key list is wanted most.
     </p>
-    <p>
-      The box wants 130 columns and 19 rows. Below 130 it draws full width
-      with no border rather than clipping, and drops a column at a time as
-      the terminal narrows: three columns under 126, two under 94, one under
-      62. Short terminals lose the colour note first, then the blank row,
-      then the gate line. Under 13 rows it refuses and names the height it
-      needs, since half a key list is worse than a sentence saying it
-      doesn't fit.
+    <p class="fine">
+      It drops columns as the terminal narrows, and under 13 rows it refuses
+      and names the height it needs, since half a key list is worse than a
+      sentence saying it does not fit.
     </p>
 
     <h2 id="when-the-terminal-is-small">When the terminal is small</h2>
     <p>
-      Panes drop before columns do, least-diagnostic-first: below 24 rows the
-      detail pane goes (everything on it but the log paths already sits in
-      the row above it). Below 18 the feed goes with it, and below 14 the
-      host strip goes too, leaving only the flock table. Within the table,
-      narrow widths drop columns one at a time, in this order:{" "}
-      <code>MEM/CEIL</code>, <code>CPU 20s</code>, CFG, SMIT, FOLD, EXIT,
-      RESTARTS, PID, MEM, CPU, and finally UPTIME, leaving{" "}
-      <code>ID NAME STATUS</code> as the floor. <code>MEM/CEIL</code> is a
-      gauge of a sheep's memory against its ceiling and <code>CPU 20s</code>{" "}
-      is a sparkline of its CPU history; both restate a number CPU and MEM
-      already carry, so they go first. A terminal needs 148 columns for the
-      gauge and 136 for the sparkline, so the only frame on this page wide
-      enough to draw either is the frozen one further down. Every row's
-      sparkline scales to the same
-      ceiling, the busiest sample any sheep has posted in the retained
-      window, so rows read against each other rather than each one filling
-      its own column.
+      Panes drop before columns do, least-diagnostic-first: the detail pane
+      goes, then the feed, then the host strip, leaving the flock table.
+      Within the table, columns drop one at a time in a fixed order, ending
+      at <code>ID NAME STATUS</code>. <code>MEM/CEIL</code> and{" "}
+      <code>CPU 20s</code> go first, because a gauge and a sparkline restate
+      numbers that <code>CPU</code> and <code>MEM</code> already carry.
     </p>
     <p class="fine">
-      <code>CFG</code> drops third, right after <code>MEM/CEIL</code> and{" "}
-      <code>CPU 20s</code> and still ahead of <code>SMIT</code>, which is
-      not where the <a href="/docs/output">CLI table</a> puts it. The frames
-      on this page are 120 columns wide, and tying <code>CFG</code> to{" "}
-      <code>EXIT</code>'s tier the way that table does would have pushed the
-      full set past 120 and quietly taken <code>SMIT</code> off every frame
-      in the gallery. Dropping <code>CFG</code> on its own leaves a
-      120-column terminal showing exactly what it showed before the column
-      existed; you see <code>CFG</code> past 122.
+      Every row's sparkline scales to the same ceiling, the busiest sample
+      any sheep has posted in the retained window, so rows read against each
+      other rather than each one filling its own column.
     </p>
     <CodeBlock label="51×14">{narrow}</CodeBlock>
     <p>
-      The settings screen has its own drop order, and its two tables
-      disagree about which column goes first. The scalar rows drop the
-      apply cost and keep SOURCE; the dogs table drops SOURCE and keeps
-      RUNNING. Each keeps whichever fact is not said anywhere else on the
-      screen. The apply cost already appears twice more, in the confirm and
-      in the status bar the moment a candidate arms, so it can go first.
-      SOURCE on a scalar row is the only place that says whether an
-      operator wrote the value or shep assumed it, so it stays until the
-      last column falls. The dogs table has no such backup for SOURCE, so
-      it goes, and RUNNING, the one fact nothing else on the pane answers,
-      stays.
+      The settings screen has its own drop order, and each of its two tables
+      keeps whichever fact is not said anywhere else on the screen.
     </p>
     <CodeBlock label="45×24">{settingsNarrow}</CodeBlock>
     <p>
@@ -788,7 +766,9 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       redundant with text, so <code>NO_COLOR</code> and a 16-color terminal
       lose decoration, never information.
     </p>
-    <h2 id="settings">Settings</h2>
+    <details>
+      <summary><h2 id="settings">Settings</h2></summary>
+      <p class="fine">The shepherd's own settings, and every dog's, edited in place.</p>
     <p>
       <code>s</code> opens a full-screen settings view over{" "}
       <code>shep.toml</code>: the four daemon fields, the whistle gate, the
@@ -892,7 +872,11 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       the dashboard's <code>x</code>/<code>R</code>/<code>L</code> confirm
       uses.
     </p>
-    <h2 id="secrets">Secrets</h2>
+    </details>
+
+    <details>
+      <summary><h2 id="secrets">Secrets</h2></summary>
+      <p class="fine">Browse and set secrets without leaving the dashboard.</p>
     <p>
       <code>S</code>, <code>s</code>'s neighbour, opens a full-screen view
       over the store <a href="/docs/secrets">the secrets page</a> covers:
@@ -962,7 +946,11 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       deliberately. A delete that finds no value to remove says so rather
       than reporting a success it did not have.
     </p>
-    <h2 id="the-config-pane">The config pane</h2>
+    </details>
+
+    <details>
+      <summary><h2 id="the-config-pane">The config pane</h2></summary>
+      <p class="fine">Edit any Flockfile field on a running sheep, field by field.</p>
     <p>
       <code>e</code> on a selected sheep opens its config over the dashboard:
       every Flockfile field, the value in force, and what changing it would
@@ -1078,11 +1066,11 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       focused field's own cost. From 160 up the pane is wide enough for
       both at once.
     </p>
-    <p>Keys, local to the pane while it's open:</p>
+    <p>
+      What the keys do here that <code>h</code> cannot tell you in one
+      line:
+    </p>
     <ul>
-      <li><code>e</code> opens the pane from the dashboard</li>
-      <li><code>j</code>/<code>k</code>, arrows move the cursor one row</li>
-      <li><code>g</code>/<code>G</code> jump to the first or last field</li>
       <li>
         <code>r</code> re-reads the config and leaves the cursor where it was
       </li>
@@ -1119,15 +1107,6 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       </li>
       <li>
         <code>u</code> undoes the most recently filed edit, one at a time.
-      </li>
-      <li>
-        <code>Tab</code> moves to the next group; <code>1</code> through{" "}
-        <code>8</code> jump straight to one.
-      </li>
-      <li>
-        <code>h</code> opens the keymap, the same as everywhere else. The
-        selected field's help text needs no key: the panel carries it, or a
-        row above the field list does once the panel is gone.
       </li>
       <li>
         <code>Esc</code> closes whatever is innermost: a sub-screen back to
@@ -1184,8 +1163,11 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       shares one stored spec, so the pane is about the app rather than about
       whichever instance the cursor was over.
     </p>
+    </details>
 
-    <h2 id="the-dog-config-pane">The dog config pane</h2>
+    <details>
+      <summary><h2 id="the-dog-config-pane">The dog config pane</h2></summary>
+      <p class="fine">The same editor, pointed at a dog's own schema.</p>
     <p>
       <code>e</code> on a dog row opens its config, over that dog's{" "}
       <code>[&lt;name&gt;]</code> section in <code>dogs.toml</code>. It
@@ -1249,6 +1231,7 @@ esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D 
       <code>r</code> re-reads the section and not the schema, so a keystroke
       whose job is to re-read a file never respawns somebody else's binary.
     </p>
+    </details>
 
     <h2 id="where-to-go-next">Where to go next</h2>
 
