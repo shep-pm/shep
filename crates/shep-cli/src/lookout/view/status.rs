@@ -611,6 +611,34 @@ mod tests {
 
     /// The frozen hint names the keymap it no longer refuses.
     ///
+    /// The hint's clause separators are three spaces, every one of them.
+    ///
+    /// `FROZEN_HINT` is written with a `\` line continuation, and review read
+    /// that twice as keeping the next line's five spaces of indent, which
+    /// would put eight spaces between "move" and "nothing" against three
+    /// everywhere else. Rust strips leading whitespace after a `\`-newline, so
+    /// it does not, and the gallery's own rendered frame shows three.
+    ///
+    /// The finding was wrong and its second half was right: the tests around
+    /// it call `contains` on each clause separately, so not one of them can
+    /// see the spacing between clauses. A future continuation, or a hand-typed
+    /// run of spaces, would go unnoticed in text an operator reads at 3am.
+    ///
+    /// Asserted as "no run of four or more", rather than counting each gap, so
+    /// a clause added later is covered without touching this test.
+    #[test]
+    fn the_frozen_hints_clauses_are_separated_by_exactly_three_spaces() {
+        assert!(
+            !FROZEN_HINT.contains("    "),
+            "a separator wider than three spaces: {FROZEN_HINT:?}"
+        );
+        assert_eq!(
+            FROZEN_HINT.matches("   ").count(),
+            3,
+            "three clause gaps, so three separators: {FROZEN_HINT:?}"
+        );
+    }
+
     /// Three claims in two macros, and the second macro is the load-bearing
     /// one. `h keymap` alone would pass on a rewrite that appended the new
     /// key and dropped the two it landed between, which is how a hint loses

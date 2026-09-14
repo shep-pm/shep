@@ -3818,7 +3818,12 @@ mod tests {
             let rendered = render_text(&scene(which).1);
             let first_bank = rendered
                 .lines()
-                .find(|row| row.contains("MOVING"))
+                // `Group::Moving.heading()`, not the literal "MOVING": the
+                // count below derives from `heading()`, so a rename would
+                // leave this `find` hunting a word nothing draws and the
+                // failure would read as a missing heading row rather than as
+                // a rename.
+                .find(|row| row.contains(Group::Moving.heading()))
                 .expect("no heading row");
             let drawn = Group::DRAWN
                 .iter()

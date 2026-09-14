@@ -453,6 +453,8 @@ fn draw_borderless(app: &App, area: Rect, buffer: &mut Buffer, palette: Palette)
         )
     };
 
+    // One allocation for the whole form rather than one per row.
+    let blank = overlay::blank_of(area.width);
     for (offset, line) in lines.iter().enumerate() {
         let Ok(offset) = u16::try_from(offset) else {
             break;
@@ -461,7 +463,7 @@ fn draw_borderless(app: &App, area: Rect, buffer: &mut Buffer, palette: Palette)
             break;
         }
         let y = area.y + offset;
-        overlay::blank_row(buffer, area.x, y, area.width, palette.ground());
+        overlay::blank_row(buffer, area.x, y, &blank, palette.ground());
         buffer.set_line(area.x, y, line, area.width);
     }
 }
@@ -616,7 +618,7 @@ mod tests {
         let rendered = render_overlay(&app, 160, 48);
         let heading_row = rendered
             .lines()
-            .find(|row| row.contains("MOVING"))
+            .find(|row| row.contains(Group::Moving.heading()))
             .expect("no heading row");
         // Char-indexed, not byte-indexed: the border glyph at column 16
         // (`▐`, `overlay::BOX_LEFT`) is three bytes, so a byte slice at the
@@ -753,7 +755,7 @@ mod tests {
         let rows: Vec<&str> = rendered.lines().collect();
         let heading_at = rows
             .iter()
-            .position(|row| row.contains("MOVING"))
+            .position(|row| row.contains(Group::Moving.heading()))
             .expect("no heading row");
         let sheep_at = rows
             .iter()
@@ -1069,7 +1071,11 @@ mod tests {
             "no refusal at 12 rows: {rendered}"
         );
         assert!(
-            !rendered.contains("MOVING"),
+            // Derived, and it matters most here: this is an ABSENCE
+            // assertion, so a renamed heading would leave the old literal
+            // absent for the wrong reason and the test would pass on a
+            // screen that drew the heading under its new name.
+            !rendered.contains(Group::Moving.heading()),
             "a partial list drew anyway: {rendered}"
         );
 

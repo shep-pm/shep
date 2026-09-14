@@ -2211,9 +2211,11 @@ fn draw_borderless_close_dialog(
         + area
             .height
             .saturating_sub(u16::try_from(rows.len()).unwrap_or(0));
+    // One allocation for the whole dialog rather than one per row.
+    let blank = overlay::blank_of(area.width);
     for (offset, (_, line)) in rows.iter().enumerate() {
         let offset = u16::try_from(offset).unwrap_or(0);
-        overlay::blank_row(buffer, area.x, top + offset, area.width, Style::reset());
+        overlay::blank_row(buffer, area.x, top + offset, &blank, Style::reset());
         buffer.set_line(area.x, top + offset, line, area.width);
     }
 }

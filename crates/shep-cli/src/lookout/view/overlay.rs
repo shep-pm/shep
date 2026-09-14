@@ -114,6 +114,12 @@ pub(super) fn draw_boxed(
     let box_x = area.x + margin;
     let box_y = area.y + area.height.saturating_sub(box_height) / 2;
     let line_style = palette.line();
+    // Built once rather than per row. `Buffer::set_string` wants a `&str` and
+    // the glyphs are `char` consts, so each row was allocating two one-glyph
+    // strings and one `interior`-wide blank inside the loop below.
+    let left = BOX_LEFT.to_string();
+    let right = BOX_RIGHT.to_string();
+    let blank = blank_of(interior);
 
     buffer.set_string(
         box_x,
@@ -132,10 +138,10 @@ pub(super) fn draw_boxed(
         // this form, so a count past `u16` cannot reach here.
         let offset = u16::try_from(offset).expect("a boxed form is at most area.height lines");
         let y = box_y + 1 + offset;
-        buffer.set_string(box_x, y, BOX_LEFT.to_string(), line_style);
-        blank_row(buffer, box_x + 1, y, interior, ground);
+        buffer.set_string(box_x, y, &left, line_style);
+        blank_row(buffer, box_x + 1, y, &blank, ground);
         buffer.set_line(box_x + 1, y, line, interior);
-        buffer.set_string(box_x + 1 + interior, y, BOX_RIGHT.to_string(), line_style);
+        buffer.set_string(box_x + 1 + interior, y, &right, line_style);
     }
     buffer.set_string(
         box_x,
@@ -164,8 +170,19 @@ pub(super) fn draw_boxed(
 /// [`Buffer::set_line`] then patches each span's own style onto whatever
 /// `style` already set, so a foreground-only span (every span this module
 /// draws) leaves this row's background alone underneath it.
-pub(super) fn blank_row(buffer: &mut Buffer, x: u16, y: u16, width: u16, style: Style) {
-    buffer.set_string(x, y, " ".repeat(usize::from(width)), style);
+pub(super) fn blank_row(buffer: &mut Buffer, x: u16, y: u16, blank: &str, style: Style) {
+    buffer.set_string(x, y, blank, style);
+}
+
+/// A row's worth of spaces, for [`blank_row`] to write.
+///
+/// Split from it because all three callers draw inside a loop over rows and
+/// `blank_row` used to take a `width` and allocate the string itself, once per
+/// row. Hoisting is free here in a way that replacing a derived constant with
+/// a literal is not: the width still comes from one expression, and only the
+/// allocation moves.
+pub(super) fn blank_of(width: u16) -> String {
+    " ".repeat(usize::from(width))
 }
 
 /// Dims everything already drawn in `area`, so an overlay reads as a
