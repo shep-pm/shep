@@ -15,6 +15,7 @@
 import Base from "./Base.astro";
 import DocsHeader from "../components/docs/DocsHeader.astro";
 import DocsSidebar from "../components/docs/DocsSidebar.astro";
+import StillStuck from "../components/docs/StillStuck.astro";
 import "../styles/docs-page.css";
 
 interface Props {
@@ -37,6 +38,7 @@ const { title, description, crumb, activeSlug } = Astro.props;
       <main data-pagefind-body>
         <div class="crumb">{crumb}</div>
         <slot />
+        <StillStuck />
         <footer class="docs-footer" data-pagefind-ignore>
           <span class="license">
             shep docs · pre-release · MIT OR Apache-2.0
