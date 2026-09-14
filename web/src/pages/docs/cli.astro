@@ -31,10 +31,6 @@ import VerbSignature from "../../components/docs/VerbSignature.astro";
 import { cliReference } from "../../data/cli-reference";
 import { workspaceVersion } from "../../data/workspace-version";
 
-const meta = {
-  blurb:
-    "Every verb, its aliases, its flags, and its exit codes: generated from the same clap tree the binary parses with.",
-};
 const byName = new Map(cliReference.verbs.map((v) => [v.name, v]));
 
 const groups = [
@@ -132,7 +128,6 @@ if (
 ---
 
 <DocsLayout
-  description={meta.blurb}
   activeSlug="cli"
 >
   <article>

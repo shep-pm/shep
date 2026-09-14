@@ -60,6 +60,8 @@ export const ENFORCED: string[] = [
   "cli",
   "first-flockfile",
   "not-built",
+  "pm2-verbs",
+  "lookout-config",
 ];
 
 /**

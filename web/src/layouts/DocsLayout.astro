@@ -21,12 +21,11 @@ import { chapterFor } from "../data/docs-nav";
 import "../styles/docs-page.css";
 
 interface Props {
-  description: string;
   /** Sidebar slug to highlight, e.g. "getting-started". */
   activeSlug: string;
 }
 
-const { description, activeSlug } = Astro.props;
+const { activeSlug } = Astro.props;
 
 /*
  * The chapter's name and part both come from docs-nav.ts, so moving a
@@ -46,6 +45,7 @@ if (!found) {
   );
 }
 const title = found.chapter.item.label;
+const description = found.chapter.item.summary;
 const crumb = `${found.chapter.part} / ${found.chapter.item.label}`;
 ---
 

@@ -27,11 +27,6 @@ import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
 
-const meta = {
-  blurb:
-    "shep import pm2 reads a real dump.pm2 and writes a Flockfile. It starts nothing, and names on stderr everything that could not survive the trip unchanged.",
-};
-
 const benchTable: { metric: string; shep: string; pm2: string; ratio: string }[] = [
   { metric: "Idle daemon RSS, ten apps", shep: "13.90 MiB", pm2: "71.16 MiB", ratio: "5.1x" },
   { metric: "Log-plane CPU per line", shep: "2.10 us", pm2: "4.03 us", ratio: "1.9x" },
@@ -41,61 +36,9 @@ const benchTable: { metric: string; shep: string; pm2: string; ratio: string }[]
   { metric: "Idle daemon CPU", shep: "0.045%", pm2: "0.020%", ratio: "a tie" },
 ];
 
-const verbTable: { pm2: string; shep: string; note?: string }[] = [
-  { pm2: "pm2 start <script>", shep: "shep start <script>" },
-  {
-    pm2: "pm2 start ecosystem.config.js",
-    shep: "shep import pm2, then shep start Flockfile.toml",
-    note: "shep never reads a pm2 ecosystem file directly",
-  },
-  { pm2: "pm2 stop", shep: "shep stop" },
-  { pm2: "pm2 restart", shep: "shep restart" },
-  {
-    pm2: "pm2 reload",
-    shep: "shep reload",
-    note: "N instances on one port need the app to set SO_REUSEPORT: see below",
-  },
-  { pm2: "pm2 delete", shep: "shep delete" },
-  { pm2: "pm2 list / ls / status", shep: "shep flock", note: "alias: list, ls" },
-  { pm2: "pm2 describe", shep: "shep describe" },
-  { pm2: "pm2 logs", shep: "shep bleats", note: "alias: logs" },
-  {
-    pm2: "pm2 scale <name> <n>",
-    shep: "shep stock <name> <n>",
-    note: "alias: scale (always an absolute count in both)",
-  },
-  { pm2: "pm2 save", shep: "shep save" },
-  { pm2: "pm2 resurrect", shep: "shep muster", note: "hidden alias: resurrect" },
-  { pm2: "pm2 startup", shep: "shep startup" },
-  { pm2: "pm2 unstartup", shep: "shep unstartup" },
-  { pm2: "pm2 kill", shep: "shep kill" },
-  { pm2: "pm2 flush", shep: "shep flush" },
-  { pm2: "pm2 serve <dir>", shep: "shep serve <dir>", note: "three defaults flip: see below" },
-  { pm2: "pm2-runtime", shep: "shep runtime", note: "or the shep-runtime alias binary" },
-  { pm2: "pm2 sendSignal", shep: "shep signal" },
-  { pm2: "-", shep: "shep whisper", note: "no pm2 equivalent: writes a line to an app's stdin" },
-  {
-    pm2: "pm2 trigger",
-    shep: "shep trigger",
-    note: "different mechanism: pm2 calls a module method, shep sends over the app's own shepherd channel",
-  },
-  {
-    pm2: "pm2 monit",
-    shep: "shep lookout",
-    note: "alias: dash (a fuller dashboard, not a straight swap). shep flock --follow redraws the same table in place, if that is all you want",
-  },
-  {
-    pm2: "pm2-server-monit",
-    shep: "shep flock --follow",
-    note: "a separately installed pm2 module. In shep the host line comes with the followed listing",
-  },
-  { pm2: "-", shep: "shep enable / disable / adopt / rehome", note: "dogs have no pm2 analogue" },
-  { pm2: "-", shep: "shep set / get / unset", note: "the KV store; nothing in pm2 does this" },
-];
 ---
 
 <DocsLayout
-  description={meta.blurb}
   activeSlug="from-pm2"
 >
   <article>
@@ -122,22 +65,11 @@ const verbTable: { pm2: string; shep: string; note?: string }[] = [
     </ShortVersion>
 
     <h2 id="verb-table">The verb-by-verb table</h2>
-    <div class="verb-table">
-      <div class="row header">
-        <span>pm2</span>
-        <span>shep</span>
-        <span>note</span>
-      </div>
-      {
-        verbTable.map((row) => (
-          <div class="row">
-            <span class="pm2-cell"><code>{row.pm2}</code></span>
-            <span class="shep-cell"><code>{row.shep}</code></span>
-            <span class="note-cell">{row.note ?? ""}</span>
-          </div>
-        ))
-      }
-    </div>
+    <p>
+      Every pm2 verb and the shep one to type instead is its own chapter,
+      because it is the part of this page a reader comes back to long after
+      the migration: <a href="/docs/pm2-verbs">pm2 verb reference</a>.
+    </p>
 
     <h2 id="side-by-side">Side by side</h2>
     <p>

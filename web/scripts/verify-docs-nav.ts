@@ -57,6 +57,13 @@ test("no unbuilt chapter has quietly grown a page", async () => {
   );
 });
 
+test("every chapter has a summary, so /llms.txt cannot ship a blank line", () => {
+  const blank = chapters
+    .filter((c) => !c.item.summary || c.item.summary.trim() === "")
+    .map((c) => c.item.slug);
+  assert.deepEqual(blank, [], `chapters with no summary: ${blank.join(", ")}`);
+});
+
 test("chapter numbers run 1..n with no gaps and no repeats", () => {
   assert.deepEqual(
     chapters.map((c) => c.number),
