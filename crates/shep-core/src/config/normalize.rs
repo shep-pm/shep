@@ -1186,18 +1186,26 @@ mod tests {
         }
         .to_string();
 
-        // Spelled out rather than read back from the constants under test,
-        // which would pass on whatever those happen to hold.
-        let (home_var, shep_var) = if cfg!(windows) {
-            ("%USERPROFILE%", "%SHEP_HOME%")
+        // Whole messages, spelled out rather than read back from the
+        // constants under test: a fragment passes while the prose around
+        // it regresses, and a constant agrees with itself.
+        let (tilde_expected, templated_expected) = if cfg!(windows) {
+            (
+                "`web`: cwd begins with `~/` but no home directory could be found. \
+                 Set %USERPROFILE%, or write the path out in full.",
+                "`web`: out_file carries `{{SHEP_HOME}}` but no shep home could be \
+                 found. Set %SHEP_HOME%, or write the path out in full.",
+            )
         } else {
-            ("$HOME", "$SHEP_HOME")
+            (
+                "`web`: cwd begins with `~/` but no home directory could be found. \
+                 Set $HOME, or write the path out in full.",
+                "`web`: out_file carries `{{SHEP_HOME}}` but no shep home could be \
+                 found. Set $SHEP_HOME, or write the path out in full.",
+            )
         };
-        assert!(tilde.contains(&format!("Set {home_var},")), "{tilde}");
-        assert!(
-            templated.contains(&format!("Set {shep_var},")),
-            "{templated}"
-        );
+        assert_eq!(tilde, tilde_expected);
+        assert_eq!(templated, templated_expected);
     }
 
     /// `reuse_port` loads because reload's overlap mode is chosen from it:

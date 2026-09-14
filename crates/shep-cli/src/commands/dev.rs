@@ -411,9 +411,10 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn the_ignored_home_aside_names_both_knobs_the_windows_way() {
-        let aside = home_ignored_aside();
-        assert!(aside.contains("--home/%SHEP_HOME%"), "{aside}");
-        assert!(aside.contains("%SHEP_DEV_HOME%"), "{aside}");
-        assert!(!aside.contains('$'), "{aside}");
+        assert_eq!(
+            home_ignored_aside(),
+            "shep dev ignores --home/%SHEP_HOME%; isolation is the whole feature \u{2014} set \
+             %SHEP_DEV_HOME% instead"
+        );
     }
 }

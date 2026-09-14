@@ -1706,28 +1706,20 @@ mod tests {
     /// so naming the flag alone sends half of them looking for something
     /// that is not on their command line.
     #[test]
-    fn the_missing_home_refusal_names_both_ways_the_home_was_set() {
+    fn the_missing_home_refusal_reads_exactly_this() {
         let text = HomeRefusal::Missing(PathBuf::from("/srv/api")).to_string();
-        // Spelled out rather than read back from `HOME_KNOB`. The `?`
-        // anchors the end, so a longer knob cannot satisfy it.
+        // Whole message, not a fragment: a substring passes while a line
+        // outside it regresses, and all three lines are per-platform.
         let expected = if cfg!(windows) {
-            "did you mean to drop --home/%SHEP_HOME%?"
+            "no flock at /srv/api\n\
+             did you mean to drop --home/%SHEP_HOME%? the default is %USERPROFILE%\\.shep\n\
+             to set up a flock there deliberately: mkdir \"/srv/api\""
         } else {
-            "did you mean to drop --home/$SHEP_HOME?"
+            "no flock at /srv/api\n\
+             did you mean to drop --home/$SHEP_HOME? the default is ~/.shep\n\
+             to set up a flock there deliberately: mkdir -p '/srv/api'"
         };
-        assert!(text.contains(expected), "{text}");
-    }
-
-    /// fails if the offer to drop `--home` stops naming the path a unix
-    /// operator would type. Its Windows counterpart pins the same line
-    /// below.
-    #[cfg(not(windows))]
-    #[test]
-    fn the_missing_home_refusal_names_the_unix_default_home() {
-        let text = HomeRefusal::Missing(PathBuf::from("/srv/api")).to_string();
-        // The trailing newline anchors it: without one, a constant of
-        // `~/.shepXYZ` still contains `~/.shep` and the test passes.
-        assert!(text.contains("the default is ~/.shep\n"), "{text}");
+        assert_eq!(text, expected);
     }
 
     /// fails if a path can add a line to a refusal. The table emitter keeps
@@ -1809,26 +1801,23 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn the_missing_home_remedy_is_one_a_windows_shell_can_run() {
-        let refusal = HomeRefusal::Missing(PathBuf::from(r"C:\tmp\my shep home"));
-        let text = refusal.to_string();
-        assert!(
-            text.contains(r#"mkdir "C:\tmp\my shep home""#),
-            "the remedy must name one argument both shells accept: {text}"
+        let spaced = HomeRefusal::Missing(PathBuf::from(r"C:\tmp\my shep home")).to_string();
+        assert_eq!(
+            spaced,
+            "no flock at C:\\tmp\\my shep home\n\
+             did you mean to drop --home/%SHEP_HOME%? the default is %USERPROFILE%\\.shep\n\
+             to set up a flock there deliberately: mkdir \"C:\\tmp\\my shep home\""
         );
-        assert!(!text.contains("mkdir -p"), "{text}");
-        assert!(
-            text.contains(concat!(r"%USERPROFILE%\.shep", "\n")),
-            "the default has to be spelled the way it is typed here: {text}"
-        );
-        assert!(!text.contains("~/.shep"), "{text}");
 
         // A Windows path can hold an apostrophe, and the POSIX escaping
         // would break it apart. Nothing inside a double-quoted wrap needs
         // escaping, because a Windows path cannot hold a `"`.
         let quoted = HomeRefusal::Missing(PathBuf::from(r"C:\tmp\rin's flock")).to_string();
-        assert!(
-            quoted.contains(r#"mkdir "C:\tmp\rin's flock""#),
-            "an apostrophe is an ordinary character in this wrap: {quoted}"
+        assert_eq!(
+            quoted,
+            "no flock at C:\\tmp\\rin's flock\n\
+             did you mean to drop --home/%SHEP_HOME%? the default is %USERPROFILE%\\.shep\n\
+             to set up a flock there deliberately: mkdir \"C:\\tmp\\rin's flock\""
         );
     }
 
