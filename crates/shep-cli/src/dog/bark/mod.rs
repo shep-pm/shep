@@ -140,7 +140,17 @@ impl fmt::Display for Resubscribe {
     }
 }
 
-impl core::error::Error for Resubscribe {}
+impl core::error::Error for Resubscribe {
+    /// Both arms wrap an error rather than describing one, so a structured
+    /// logger walking the chain reaches the connection or RPC failure
+    /// underneath instead of stopping here.
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::Lost(lost) => Some(lost),
+            Self::Refused(err) => Some(err),
+        }
+    }
+}
 
 /// What bark reads the flock through, so the loop's poll is drivable
 /// without a socket.
@@ -910,7 +920,11 @@ mod tests {
         let (addr, captured) = one_shot_sink(200, "").await;
         let dir = tempfile::tempdir().unwrap();
         let barks_path = dir.path().join("barks.jsonl");
-        let flock = ScriptedFlock::answering(vec![errored_info("web", 16)]);
+        // Empty on purpose. A re-subscribe reconciles, so a flock with
+        // anything firing in it delivers a bark from that reconcile and
+        // satisfies `captured` whether or not the second generation was
+        // ever armed. The bark below has to come from the stream.
+        let flock = ScriptedFlock::answering(Vec::new());
 
         let loop_handle = tokio::spawn(run_loop(
             source,
@@ -965,6 +979,87 @@ mod tests {
         assert!(
             !loop_handle.is_finished(),
             "the dog must still be running after a handover"
+        );
+        loop_handle.abort();
+    }
+
+    /// fails if a dog survives one handover and not the next.
+    ///
+    /// The single-handover test proves the arm runs once. A reload is not a
+    /// one-off, and a rolling restart is several in a row, so the property
+    /// that matters is that the second and third cost no more than the
+    /// first. A `resubscribe` that double-advanced its queue or left the
+    /// previous generation in place would pass with one handover.
+    #[tokio::test]
+    async fn a_dog_rides_out_three_shepherds_in_a_row() {
+        let (first_tx, first_rx) = tokio::sync::broadcast::channel(8);
+        let (second_tx, second_rx) = tokio::sync::broadcast::channel(8);
+        let (third_tx, third_rx) = tokio::sync::broadcast::channel(8);
+        let (source, resubscribes) = HandoverSource::across(
+            vec![first_rx, second_rx, third_rx],
+            LinkLost::Budget {
+                waited: Duration::ZERO,
+            },
+        );
+
+        let (addr, captured) = one_shot_sink(200, "").await;
+        let dir = tempfile::tempdir().unwrap();
+        let barks_path = dir.path().join("barks.jsonl");
+        // Empty on purpose. A re-subscribe reconciles, and a flock with
+        // anything firing in it would deliver a bark from that reconcile,
+        // which satisfies `captured` without the third generation ever
+        // being read. The only bark this test can produce has to come from
+        // the stream.
+        let flock = ScriptedFlock::answering(Vec::new());
+
+        let loop_handle = tokio::spawn(run_loop(
+            source,
+            flock.clone(),
+            gave_up_rules(),
+            &config_with_sink(addr, &barks_path),
+            &barks_path,
+            ScriptedConfig::answering(String::new()),
+        ));
+
+        // Two handovers back to back, each ending a generation the dog is
+        // already on.
+        drop(first_tx);
+        let two = tokio::time::timeout(Duration::from_secs(5), async {
+            while resubscribes.load(std::sync::atomic::Ordering::SeqCst) < 1 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            drop(second_tx);
+            while resubscribes.load(std::sync::atomic::Ordering::SeqCst) < 2 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await;
+        assert!(two.is_ok(), "both handovers must be answered within 5s");
+
+        // An event only the THIRD generation could carry.
+        let delivered = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let _ = third_tx.send(errored_event("web"));
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                assert!(
+                    !loop_handle.is_finished(),
+                    "the dog ended on one of the two handovers"
+                );
+            }
+        });
+        let captured = tokio::time::timeout(Duration::from_secs(5), captured);
+        let request = tokio::select! {
+            () = async { delivered.await.ok(); } => panic!(
+                "no bark was delivered on the third generation within 5s"
+            ),
+            request = captured => request.expect("a bark must be delivered after two handovers"),
+        };
+        assert!(String::from_utf8_lossy(&request.unwrap().body).contains("web"));
+
+        assert_eq!(
+            resubscribes.load(std::sync::atomic::Ordering::SeqCst),
+            2,
+            "two handovers, two re-subscribes, no more"
         );
         loop_handle.abort();
     }
