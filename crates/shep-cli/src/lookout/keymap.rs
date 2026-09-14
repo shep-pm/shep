@@ -211,9 +211,13 @@ fn rows_from(probe: &[(KeyCode, KeyModifiers)]) -> Vec<Binding> {
             else {
                 continue;
             };
-            let binding = binding(&press);
-            if binding.group == group && !out.iter().any(|seen| seen.keys == binding.keys) {
-                out.push(binding);
+            // Not `let binding = binding(&press)`: the fn and the local
+            // used to share a name, which reads fine here but is a trap the
+            // moment a later edit needs to call `binding` again inside this
+            // loop and silently calls the value instead.
+            let entry = binding(&press);
+            if entry.group == group && !out.iter().any(|seen| seen.keys == entry.keys) {
+                out.push(entry);
             }
         }
     }

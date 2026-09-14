@@ -321,7 +321,11 @@ pub(super) fn lines(app: &App, interior: u16) -> Vec<Line<'static>> {
 /// column is 30, and to [`COLUMN_COUNT`] at the top, since only four groups
 /// draw as columns.
 const fn columns_for(width: u16) -> u16 {
-    let fits = (width + GUTTER) / (COLUMN + GUTTER);
+    // `saturating_add`: the one production caller passes `area.width`,
+    // bounded by a real terminal, but the function's own doc promises a
+    // clamp to `1..=COLUMN_COUNT` for any `u16`, and a bare `+` breaks
+    // that promise above `u16::MAX - GUTTER` instead of keeping it.
+    let fits = width.saturating_add(GUTTER) / (COLUMN + GUTTER);
     if fits < 1 {
         1
     } else if fits > COLUMN_COUNT {

@@ -1467,6 +1467,18 @@ fn grouped_pane_lines_with_panel(
         remaining -= 1;
     }
     push_wrapped_blurb(&mut lines, &mut remaining, pane, palette, width);
+    // Unreachable given `push_wrapped_blurb`'s own floor of `<= 1`:
+    // `remaining` enters that call at `>= 1` (the early return above and
+    // the three `> 1` guards before it both keep it there), and the floor
+    // stops the loop from ever taking it below `1`. Kept rather than
+    // deleted, because it is the one place that states the invariant
+    // explicitly: if the floor in `push_wrapped_blurb` is ever loosened to
+    // `== 0`, this is what would start underflowing `remaining -= 1` below
+    // instead of returning cleanly. `the_blurb_never_spends_the_row_the_
+    // cursor_needs` already fails on that exact change, so this line is
+    // belt to that test's braces, not the only thing standing between a
+    // loosened floor and a real bug. Confirmed dead by mutation: turned
+    // into `unreachable!()`, all 2141 lib tests pass, none hit it.
     if remaining == 0 {
         return lines;
     }
