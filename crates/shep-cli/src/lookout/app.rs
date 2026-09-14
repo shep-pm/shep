@@ -134,9 +134,10 @@ pub enum KeyPress {
     /// again, or `Escape`, closes it. Refused only while a close dialog is
     /// up, which owns the keyboard until it is answered.
     ///
-    /// It used to toggle the config pane's field help. That text is
-    /// unconditional now, wherever the explanation panel cannot draw it, so
-    /// no key shows it: see `view::pane::top_lines`.
+    /// The config pane's field help draws unconditionally, wherever the
+    /// explanation panel cannot show it, so no key is needed for it: see
+    /// `view::pane::top_lines`. That is why `h` is free to mean this here
+    /// too.
     Help,
     /// `d`: arms the removal of the element under the cursor, on the config
     /// pane's list sub-screen. On a config field, restores the default by
@@ -14912,9 +14913,8 @@ mod tests {
     }
 
     /// `h` raises the keymap overlay from inside the config pane too: the
-    /// field help it used to toggle draws unconditionally now
-    /// (`view::pane::top_lines`), which is what freed the key for the
-    /// overlay.
+    /// field help draws unconditionally (`view::pane::top_lines`), so no
+    /// key is needed for it and `h` is free for this instead.
     #[test]
     fn h_opens_the_keymap_overlay_in_the_config_pane() {
         let mut app = fixtures::app_in_sheep_pane();
