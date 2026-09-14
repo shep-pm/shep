@@ -21,6 +21,7 @@ import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 
 const stopSurvivesDemo = `$ shep stop parked
 ID  NAME    STATUS   PID    RESTARTS  EXIT     CFG  CPU  MEM   UPTIME  FOLD  SMIT
@@ -160,35 +161,36 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       and three of them run through the exact same kill ladder underneath.
       What they don't share is what they leave behind: a stopped sheep is
       still in the flock, a deleted one is gone, and a reload can end either
-      as a clean handover or as a crash you get to watch happen. That is what
-      this page is for.
+      as a clean handover or as a crash you get to watch happen.
     </p>
 
-    <div class="verb-table">
-      <div class="row header">
-        <span>verb</span> <span>the current process</span> <span>the muster roll</span>
+    <ShortVersion>
+      <div class="verb-table">
+        <div class="row header">
+          <span>verb</span> <span>the current process</span> <span>the muster roll</span>
+        </div>
+        <div class="row">
+          <span><code>stop</code></span>
+          <span>killed, through the ladder below</span>
+          <span>stays, entry marked stopped</span>
+        </div>
+        <div class="row">
+          <span><code>restart</code></span>
+          <span>killed, then a fresh one at once</span>
+          <span>stays, marked online again</span>
+        </div>
+        <div class="row">
+          <span><code>reload</code></span>
+          <span>one instance replaced, old or new order below</span>
+          <span>unchanged, still the same app</span>
+        </div>
+        <div class="row">
+          <span><code>delete</code></span>
+          <span>killed if running, through the same ladder</span>
+          <span>removed, for good</span>
+        </div>
       </div>
-      <div class="row">
-        <span><code>stop</code></span>
-        <span>killed, through the ladder below</span>
-        <span>stays, entry marked stopped</span>
-      </div>
-      <div class="row">
-        <span><code>restart</code></span>
-        <span>killed, then a fresh one at once</span>
-        <span>stays, marked online again</span>
-      </div>
-      <div class="row">
-        <span><code>reload</code></span>
-        <span>one instance replaced, old or new order below</span>
-        <span>unchanged, still the same app</span>
-      </div>
-      <div class="row">
-        <span><code>delete</code></span>
-        <span>killed if running, through the same ladder</span>
-        <span>removed, for good</span>
-      </div>
-    </div>
+    </ShortVersion>
     <p class="fine">
       <code>shep thatlldo</code> is a hidden, working alias for{" "}
       <code>stop</code>, "graceful stop" in{" "}
@@ -447,7 +449,8 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       actually kills versus what a sheep's process tree contains.
     </p>
 
-    <h2 id="several-sheep-at-once">Several sheep at once run in dependency order</h2>
+    <details>
+      <summary><h2 id="several-sheep-at-once">Several sheep at once run in dependency order</h2></summary>
     <p>
       Everything above describes one sheep. Once a Flockfile uses{" "}
       <code>depends_on</code>, shep sorts the flock into stages, and the
@@ -464,6 +467,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       matching several sheep go the other way, dependencies first. See{" "}
       <a href="/docs/boot-order">boot order</a>.
     </p>
+    </details>
 
     <h2 id="where-to-go-next">Where to go next</h2>
 

@@ -51,7 +51,21 @@ export const BUDGETS: Record<string, number> = {
   dogs: 3000, // 2884
   "writing-a-dog": 4150, // 4042
   "first-flockfile": 2450, // 2343
-  overrides: 3520, // 3427
+  overrides: 3380, // 3314
+
+  // Parts II to VII, at what each measures plus headroom.
+  lookout: 5750,
+  output: 2930,
+  secrets: 2110,
+  lifecycle: 2060,
+  logs: 1900,
+  "shepherd-channel": 1700,
+  "boot-order": 1670,
+  "talking-to-a-sheep": 1620,
+  "json-output": 1330,
+  "not-built": 1100,
+  folds: 930,
+  whistle: 770,
 };
 
 

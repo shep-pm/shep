@@ -4,12 +4,18 @@
  * Every command and table below was run against target/release/shep during
  * page-writing: the commit message carries the transcript. Quality bar:
  * getting-started.astro.
+ *
+ * Restructured 2026-09-14 per docs/writing-plans/plans/2026-09-14-docs-the-rest.md,
+ * Task 4: a short version up top; the log-format, connectivity-troubleshooting
+ * and dog-death sections moved behind <details>, plus the live-reload
+ * mechanics inside the config section.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 
 const barksDemo = `$ shep barks
 WHEN                 RULE    SUBJECT  MESSAGE                                                                     SINKS
@@ -35,6 +41,10 @@ const dogLogDemo = `2026-09-02T14:22:31.412+02:00 [shep] shep started this dog; 
       <code>shep adopt</code> at a binary of your own and the shepherd will
       supervise it the same way.
     </p>
+
+    <ShortVersion>
+      <CodeBlock>{`$ shep enable metrics`}</CodeBlock>
+    </ShortVersion>
 
     <Callout variant="note">
       A dog is not the same thing as a sheep with a shepherd channel: see{" "}
@@ -193,6 +203,9 @@ boot_first_dogs = ["log-rotate"]`}</CodeBlock>
       &lt;name&gt; &amp;&amp; shep enable &lt;name&gt;</code> is what
       re-reads it: a fresh process asking a fresh question.
     </Callout>
+
+    <details>
+      <summary>Live updates without a restart</summary>
     <p>
       A dog can subscribe instead of waiting to be bounced. Shep publishes
       on <code>config.dog.&lt;name&gt;</code> when it changes a dog's
@@ -223,6 +236,10 @@ boot_first_dogs = ["log-rotate"]`}</CodeBlock>
       <code>[dog.&lt;name&gt;]</code> is not a value and refuses nothing. A
       dog present in only one file migrates or starts normally.
     </Callout>
+    </details>
+
+    <details>
+      <summary>What a provider dog pushes</summary>
     <p>
       A dog can also push, not only be configured. A provider dog sends{" "}
       <code>Request::PutSecrets</code> with its own registered name as the
@@ -247,6 +264,7 @@ boot_first_dogs = ["log-rotate"]`}</CodeBlock>
       trap catches any dog name with a dot in it, not only a provider's
       namespace.
     </Callout>
+    </details>
 
     <h2 id="the-metrics-dog">The metrics dog</h2>
     <p>
@@ -268,6 +286,8 @@ shep_dog_up{dog="metrics",source="built-in"} 1
 shep_daemon_up{version="0.1.0"} 1
 shep_daemon_pid 39898
 shep_host_memory_total_bytes 51539607552`}</CodeBlock>
+    <details>
+      <summary>Full metric reference</summary>
     <div class="metrics-table">
       <div class="row header">
         <span>Metric</span>
@@ -286,6 +306,7 @@ shep_host_memory_total_bytes 51539607552`}</CodeBlock>
       <div class="row"><span><code>shep_host_processes</code></span> <span>Number of processes running on the host, the flock included.</span></div>
       <div class="row"><span><code>shep_host_uptime_seconds</code></span> <span>Seconds since the host booted.</span></div>
     </div>
+    </details>
     <p class="fine">
       A reference Grafana dashboard built against this exact metric set ships
       in <code>assets/grafana/</code>. The default bind is loopback on
@@ -370,9 +391,7 @@ sinks = ["oncall"]`}</CodeBlock>
         the last few. It reads <code>barks.jsonl</code> straight off disk and
         never connects to the shepherd, which is the whole point: the history
         is on disk precisely so it outlives the shepherd, and the moment this
-        verb exists for is an operator reading it after a crash. Same
-        precedent as <code>shep flush --daemon</code>, which also works on
-        files rather than through the socket.
+        verb exists for is an operator reading it after a crash.
       </p>
     </VerbSignature>
     <CodeBlock>{barksDemo}</CodeBlock>
@@ -404,8 +423,9 @@ sinks = ["oncall"]`}</CodeBlock>
       <a href="/docs/writing-a-dog">Writing a dog</a>.
     </p>
 
-    <h2 id="what-shep-writes-into-a-dog-s-own-log">What shep writes into a dog's own log</h2>
-    <p>
+    <details>
+      <summary><h2 id="what-shep-writes-into-a-dog-s-own-log">What shep writes into a dog's own log</h2></summary>
+      <p>
       A dog's log is the first place anyone looks when a dog misbehaves, and
       it used to hold only what the dog itself said. Everything shep had to
       say about it went to <code>shepd.err.log</code>, which is not the file
@@ -417,16 +437,18 @@ sinks = ["oncall"]`}</CodeBlock>
     <p>
       Six things get written: the spawn and the resolved binary path, an
       accepted handshake (once, the first time this shepherd hears from the
-      dog — not on every reconnect), a refused handshake with both
+      dog, not on every reconnect), a refused handshake with both
       protocol numbers, the warning when a dog goes quiet, the verdict when
       shep gives up on it, and the exit code or signal when its process
       stops. <code>shep bleats &lt;name&gt; --follow</code> sees the same
       lines live, marked the same way, interleaved with the dog's own output
       in arrival order.
     </p>
+    </details>
 
-    <h2 id="when-a-dog-stops-answering">When a dog stops answering</h2>
-    <p>
+    <details>
+      <summary><h2 id="when-a-dog-stops-answering">When a dog stops answering</h2></summary>
+      <p>
       A dog that is running but never handshakes gets one restart from disk
       and then a verdict. That verdict says what the shepherd actually
       watched happen, because the three cases it reports have opposite
@@ -443,7 +465,7 @@ sinks = ["oncall"]`}</CodeBlock>
         </strong>{" "}
         The dog is talking to shep and may be serving every request it's
         asked; what it doesn't do is say who it is. Reinstalling the same
-        build won't change that — it's built against shep-client older
+        build won't change that: it's built against shep-client older
         than 0.1.23, or it calls <code>Client::connect</code> where it should
         call <code>ReconnectingClient::connect_as_dog</code>. Rebuild it
         against a current shep-client.
@@ -452,8 +474,8 @@ sinks = ["oncall"]`}</CodeBlock>
         <strong>Shep couldn't tell which process opened the connections.</strong>{" "}
         Windows has no peer identity by design, and some unix platforms
         decline to report a pid. Neither of the two above is ruled out, so
-        shep names both and tells you to read the dog's own log — where a
-        dog that can't reach the socket says so, and one that's merely
+        shep names both and tells you to read the dog's own log: a dog that
+        can't reach the socket says so there, and one that's merely
         anonymous doesn't.
       </li>
     </ul>
@@ -463,9 +485,11 @@ sinks = ["oncall"]`}</CodeBlock>
       three cases, which sent one operator through two days of reinstalling a
       dog that was connected and serving requests the whole time.
     </p>
+    </details>
 
-    <h2 id="when-a-dog-dies">When a dog dies</h2>
-    <p>
+    <details>
+      <summary><h2 id="when-a-dog-dies">When a dog dies</h2></summary>
+      <p>
       If an enabled dog exhausts its own restart budget and lands on{" "}
       <code>Errored</code>, the shepherd writes a record straight into{" "}
       <code>barks.jsonl</code> itself, independent of whether the bark dog is
@@ -484,6 +508,8 @@ sinks = ["oncall"]`}</CodeBlock>
       <code>shep barks</code> and the metrics endpoint are the two places
       that say a dog went down.
     </p>
+    </details>
+
     <h2 id="where-to-go-next">Where to go next</h2>
 
     <div class="next-grid">

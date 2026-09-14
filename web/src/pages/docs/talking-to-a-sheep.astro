@@ -16,6 +16,7 @@ import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 
 const hupDemo = `$ shep signal web HUP
 ID  NAME  OUTCOME    DETAIL
@@ -88,6 +89,18 @@ ID  NAME    OUTCOME   DETAIL
       replace the process. This page is the three verbs that don't.
     </p>
 
+    <ShortVersion>
+      <p>
+        <code>shep signal &lt;selector&gt; &lt;name&gt;</code> sends a real
+        unix signal to a sheep's own process, nothing else.{" "}
+        <code>shep whisper &lt;selector&gt; &lt;line&gt;</code> writes one
+        line to its stdin, for an app that set <code>stdin = true</code>.{" "}
+        <code>shep trigger &lt;selector&gt; &lt;action&gt;</code> sends a
+        named action over the shepherd channel and reports what the app
+        answered.
+      </p>
+    </ShortVersion>
+
     <h2 id="signals">Signals</h2>
     <VerbSignature verb="signal" usage="shep signal <selector> <signal>">
       <p>
@@ -124,10 +137,8 @@ ID  NAME    OUTCOME   DETAIL
     <p>
       Only the application can make the second one true. shep delivers the
       signal and reports that it was delivered; what <code>SIGHUP</code>{" "}
-      means is the app's convention, though a widely kept one. Server
-      software has treated it as "re-read your configuration" for decades,
-      and plenty of application frameworks and long-running daemons do the
-      same. Here is a sheep that traps it, saying so in its own output:
+      means is the app's convention, though a widely kept one. Here is a
+      sheep that traps it, saying so in its own output:
     </p>
     <CodeBlock>{hupDemo}</CodeBlock>
 

@@ -182,3 +182,40 @@
 .docs-shell main details {
   margin: 0 0 34px;
 }
+
+/*
+ * The two-column definition table, used by folds, output, overrides and
+ * secrets.
+ *
+ * Three pages each declared an identical copy and folds declared none, so
+ * its table rendered unstyled: no border, no padding, no monospace term
+ * column. That is the same fault the page chrome had before this file
+ * existed, in a smaller shape, and it was live rather than theoretical.
+ */
+.docs-shell main .rows {
+  border: 3px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  margin: 0 0 30px;
+}
+
+.docs-shell main .row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2.4fr);
+  gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 2px solid var(--line);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+.docs-shell main .row:last-child {
+  border-bottom: none;
+}
+
+.docs-shell main .row span:first-child {
+  font-family: "Space Mono", monospace;
+  font-weight: 700;
+  color: var(--ink);
+}

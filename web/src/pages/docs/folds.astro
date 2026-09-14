@@ -191,7 +191,11 @@ error[not_found]: no sheep is in a fold called typo`}</CodeBlock>
         if those aren't the same sheep. <code>fold:</code> is checked early
         enough that a fold can be named anything, including <code>all</code>{" "}
         or a number, and <code>fold:&lt;that name&gt;</code> still reaches
-        it.
+        it. A glob like <code>web*</code> is checked before{" "}
+        <code>name:slot</code>, so it matches every instance of an app
+        rather than being read as a name with a stray colon; and a colon is
+        no longer legal in a sheep name at all, so <code>web:2</code> can
+        only ever mean slot 2 of <code>web</code>.
       </Callout>
     </details>
 

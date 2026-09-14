@@ -11,6 +11,7 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 ---
 
 <DocsLayout
@@ -27,6 +28,14 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       same plain columns it always has. You do not have to configure that; it
       is the default both ways.
     </p>
+
+    <ShortVersion label="Three style levels">
+      <div class="rows">
+        <div class="row"><span><code>full</code></span><span>sheep, boxes, colour. The default.</span></div>
+        <div class="row"><span><code>plain</code></span><span>boxes and colour, no faces</span></div>
+        <div class="row"><span><code>bare</code></span><span>exactly what a pipe gets</span></div>
+      </div>
+    </ShortVersion>
 
     <h2 id="what-a-terminal-shows">What a terminal shows</h2>
     <p>
@@ -334,7 +343,8 @@ Dogs
       want the flock.
     </Callout>
 
-    <h2 id="row-order">Row order</h2>
+    <details>
+      <summary><h2 id="row-order">Row order</h2></summary>
     <p>
       Every listing shep prints is sorted by name, then by id. That covers{" "}
       <code>shep flock</code>, every lifecycle verb above,{" "}
@@ -351,6 +361,7 @@ Dogs
       refreshes, and it is still what you type at{" "}
       <code>shep stop 11</code>.
     </p>
+    </details>
 
     <h2 id="narrow-windows">Narrow windows</h2>
     <p>
@@ -396,8 +407,8 @@ Dogs
 1   api   errored  -      15        1     -    -     -     0s      -        -
 0   web   online   68630  0         -     -    0.0%  3.0M  5m 10s  backend  -`}</CodeBlock>
     <p>
-      None of the pretty rendering survives a pipe, which is the point. The
-      columns themselves do move between releases though. <code>CFG</code>,{" "}
+      The columns themselves do move between releases, though.{" "}
+      <code>CFG</code>,{" "}
       <code>EXIT</code> and <code>SMIT</code> are all recent, so parse{" "}
       <code>--format json</code> instead if a script depends on the shape.
     </p>
@@ -434,13 +445,8 @@ Dogs
 
     <h2 id="choosing-how-much">Choosing how much</h2>
     <p>
-      Three levels, set with <code>shep style</code>:
+      The three levels above the fold are set with <code>shep style</code>:
     </p>
-    <div class="rows">
-      <div class="row"><span><code>full</code></span><span>sheep, boxes, colour. The default.</span></div>
-      <div class="row"><span><code>plain</code></span><span>boxes and colour, no faces</span></div>
-      <div class="row"><span><code>bare</code></span><span>exactly what a pipe gets</span></div>
-    </div>
     <CodeBlock label="shep style">{`$ shep style
 notice[style]: full (from the default)
 
@@ -463,7 +469,8 @@ notice[style]: plain (from shep.toml)`}</CodeBlock>
     <CodeBlock label="a higher layer says so">{`$ SHEP_STYLE=full shep style
 notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
 
-    <h3 id="no-color">NO_COLOR</h3>
+    <details>
+      <summary><h3 id="no-color">NO_COLOR</h3></summary>
     <p>
       <a href="https://no-color.org/">The <code>NO_COLOR</code> convention</a>{" "}
       is honoured at every level, and it is a separate axis rather than a
@@ -475,8 +482,10 @@ notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
     <p class="fine">
       An empty <code>NO_COLOR=</code> counts as unset, per the convention.
     </p>
+    </details>
 
-    <h2 id="where-sheep-appear">Where sheep appear</h2>
+    <details>
+      <summary><h2 id="where-sheep-appear">Where sheep appear</h2></summary>
     <p>
       Beyond the status column, three moments get art, each one a screen with
       nothing else on it: a flock with nothing in it yet, a flock that is
@@ -490,6 +499,7 @@ notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
       failure makes it harder to read, and a cheerful one after deleting a
       service is simply wrong.
     </Callout>
+    </details>
 
     <h2 id="following-the-flock">Following the flock</h2>
     <p>
@@ -558,3 +568,9 @@ web:2 | listening`}</CodeBlock>
     </p>
   </article>
 </DocsLayout>
+
+<style>
+
+
+
+</style>

@@ -5,12 +5,17 @@
  * the third source: dogs other people wrote, adopted with `shep adopt`
  * instead of shipped inside the binary. `dogs.ts` already validated the
  * index at import time, so every field read below is trusted.
+ *
+ * Restructured 2026-09-14 per docs/writing-plans/plans/2026-09-14-docs-the-rest.md,
+ * Task 4: a short version up top; the naming gotcha moved behind
+ * <details>. Already short, so shape rather than cuts.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import { slugify } from "../../data/slug";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import { dogs, anchorOf, CATEGORIES, type Dog, type DogCategory } from "../../data/dogs";
 
 function categoryLabel(category: DogCategory): string {
@@ -70,10 +75,13 @@ function adoptLine(dog: Dog): string {
       have to write yourself.
     </p>
 
+    <ShortVersion>
+      <CodeBlock>{`$ shep dogs --available`}</CodeBlock>
+    </ShortVersion>
+
     <p>
-      You can read the same index from a terminal:{" "}
-      <code>shep dogs --available</code> prints the install and adopt
-      commands below, narrowed with an optional filter.
+      That prints the install and adopt commands below, narrowed with an
+      optional filter.
     </p>
 
     <Callout variant="careful">
@@ -84,9 +92,10 @@ function adoptLine(dog: Dog): string {
       anything else your Flockfile already starts.
     </Callout>
 
-    <p>
-      One assumption runs through every entry below: a crate's binary
-      doesn't have to share its package name, and{" "}
+    <details>
+      <summary>A naming gotcha before you adopt one</summary>
+      <p>
+      A crate's binary doesn't have to share its package name, and{" "}
       <code>CARGO_INSTALL_ROOT</code> or <code>GOBIN</code> can move where
       the installer puts the file, so check where it actually landed before
       adopting it. Getting the path wrong is loud, since{" "}
@@ -94,6 +103,7 @@ function adoptLine(dog: Dog): string {
       name wrong is silent, which is exactly why <code>adopt_as</code>{" "}
       exists as its own field instead of reusing the package name.
     </p>
+    </details>
 
     {
       groups.map((group) => (

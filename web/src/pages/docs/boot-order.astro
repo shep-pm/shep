@@ -5,11 +5,16 @@
  * crates/shep-core/src/config/app.rs for the depends_on field itself and
  * crates/shep-core/src/config/daemon.rs for boot_first_dogs). Every
  * transcript below was run against target/release/shep on 2026-09-06.
+ *
+ * Restructured 2026-09-14 per docs/writing-plans/plans/2026-09-14-docs-the-rest.md,
+ * Task 3/4: a short version up top; the two failure-case sections moved
+ * behind <details>.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 
 interface GraphRow {
   problem: string;
@@ -66,6 +71,13 @@ ID  NAME  STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM   UPTIME  FOLD  SMIT
       are up. An app that would have crash-looped through its restart budget
       waiting for a database waits for the database instead.
     </p>
+
+    <ShortVersion>
+      <CodeBlock label="Flockfile.toml">{`[[app]]
+name       = "api"
+script     = "./api"
+depends_on = ["db"]`}</CodeBlock>
+    </ShortVersion>
 
     <h2 id="naming-a-dependency">Naming a dependency</h2>
     <p>
@@ -166,8 +178,7 @@ stage 2  web
       shepherd spawns dogs in two groups, the promoted ones before the
       restore and the rest after it, and neither group sits at a stage
       boundary. A sheep depending on an unpromoted dog is warned about and
-      started anyway. <code>boot_first_dogs</code> is the lever that
-      actually reorders one.
+      started anyway.
     </p>
     <Callout variant="careful">
       Promotion moves the spawn, not the link. The shepherd binds its socket
@@ -179,8 +190,9 @@ stage 2  web
       seconds.
     </Callout>
 
-    <h2 id="when-the-graph-is-wrong">When the graph is wrong</h2>
-    <p>
+    <details>
+      <summary><h2 id="when-the-graph-is-wrong">When the graph is wrong</h2></summary>
+      <p>
       What happens depends on who is watching. An operator typing{" "}
       <code>shep start</code> or <code>shep add</code> is there to fix a
       typo. A machine rebooting at 4am is not, and stranding its whole flock
@@ -237,6 +249,7 @@ error[invalid_config]: the daemon reported InvalidConfig: dependency cycle: api 
       explicit statement in one app's own config is not overridden by a
       field in another app's file.
     </Callout>
+    </details>
 
     <h2 id="shutdown-runs-backwards">Shutdown runs backwards</h2>
     <p>
@@ -300,8 +313,9 @@ error[invalid_config]: the daemon reported InvalidConfig: dependency cycle: api 
       back errored.
     </p>
 
-    <h2 id="what-a-staged-start-leaves-behind">What a staged start leaves behind</h2>
-    <p>
+    <details>
+      <summary><h2 id="what-a-staged-start-leaves-behind">What a staged start leaves behind</h2></summary>
+      <p>
       Checks shep can make in advance still refuse a batch before anything
       is registered. Once spawning has begun there is nothing to make them
       against: stage 0 is running by the time stage 1 proves unstartable,
@@ -315,6 +329,7 @@ error[spawn_failed]: the daemon reported SpawnFailed: nothing in this batch was 
       <code>shep stop db</code> if you want it down. Nothing after the
       failing stage is attempted in that same invocation.
     </p>
+    </details>
 
     <h2 id="two-things-this-does-not-do">Two things this does not do</h2>
     <p>
