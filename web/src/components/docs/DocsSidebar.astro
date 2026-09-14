@@ -77,7 +77,9 @@ const { activeSlug } = Astro.props;
     top: 64px;
     padding: 34px 24px 60px;
     border-right: 3px solid var(--line);
-    min-height: calc(100vh - 64px);
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .menu-toggle {
@@ -179,7 +181,11 @@ const { activeSlug } = Astro.props;
   @media (max-width: 860px) {
     .docs-sidebar {
       position: static;
-      min-height: 0;
+      /* The desktop rule caps the column so it can scroll beside the
+         article. Here the whole disclosure is in the page flow, so the cap
+         would clip the expanded menu and give it a second scrollbar. */
+      max-height: none;
+      overflow-y: visible;
       border-right: none;
       border-bottom: 3px solid var(--line);
       padding: 0;
