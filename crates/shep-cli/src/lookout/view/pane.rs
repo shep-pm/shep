@@ -368,6 +368,37 @@ fn field_line(
 /// columns. Making this unconditional retired the key rather than leaving
 /// its meaning to depend on the terminal's width, and freed `h` for the
 /// keymap overlay the design always wanted on it.
+/// Pushes the field-help lines [`top_lines`] returns onto `lines`, spending
+/// `budget` down as it goes and stopping one line short of empty.
+///
+/// Both callers had this loop written out by hand, floored at `<= 1` rather
+/// than `== 0`, because a long wrapped help string must not spend the last
+/// line either path reserves for the cursor's own row. That agreement used
+/// to be a comment saying the two copies "agree deliberately, not by
+/// coincidence", after the two disagreed once for real:
+/// `f603305f`'s dog-pane bug was the floor holding in one copy and not the
+/// other, because the budget for a footer was reserved on one side of this
+/// loop and the other side of it in the sibling function. One function
+/// removes the chance of that happening a third time.
+fn push_wrapped_blurb(
+    lines: &mut Vec<Line<'static>>,
+    budget: &mut usize,
+    pane: &ConfigPane,
+    palette: Palette,
+    width: u16,
+) {
+    for (text, style) in top_lines(pane, palette, width) {
+        if *budget <= 1 {
+            break;
+        }
+        lines.push(Line::from(Span::styled(
+            format!("  {}", fit(&text, body_width(width))),
+            style,
+        )));
+        *budget -= 1;
+    }
+}
+
 fn top_lines(pane: &ConfigPane, palette: Palette, width: u16) -> Vec<(String, Style)> {
     if panel_width(width).is_some() {
         return Vec::new();
@@ -1435,16 +1466,7 @@ fn grouped_pane_lines_with_panel(
         lines.push(column_header_line(palette, left_width, show_lands));
         remaining -= 1;
     }
-    for (text, style) in top_lines(pane, palette, width) {
-        if remaining <= 1 {
-            break;
-        }
-        lines.push(Line::from(Span::styled(
-            format!("  {}", fit(&text, body_width(width))),
-            style,
-        )));
-        remaining -= 1;
-    }
+    push_wrapped_blurb(&mut lines, &mut remaining, pane, palette, width);
     if remaining == 0 {
         return lines;
     }
@@ -1652,21 +1674,12 @@ fn ungrouped_pane_lines_with_panel(
     // Subtracted from the budget rather than appended, per `body_from`'s
     // own doc on markers. See `top_lines`.
     //
-    // Floored at `<= 1`, not `== 0`, on purpose: `grouped_pane_lines_with_
-    // panel`'s own blurb loop keeps the same floor, so a long wrapped help
-    // string cannot spend the last line either path reserves for the
-    // cursor's own row. The two agree deliberately, not by coincidence, and
-    // `the_blurb_never_spends_the_row_the_cursor_needs` walks both.
-    for (text, style) in top_lines(pane, palette, width) {
-        if body_budget <= 1 {
-            break;
-        }
-        lines.push(Line::from(Span::styled(
-            format!("  {}", fit(&text, body_width(width))),
-            style,
-        )));
-        body_budget -= 1;
-    }
+    // `push_wrapped_blurb`'s own floor of `<= 1`, not `== 0`: a long
+    // wrapped help must not spend the last line reserved for the cursor's
+    // own row. `the_blurb_never_spends_the_row_the_cursor_needs` walks this
+    // pane shape and the grouped one through the same function now, so the
+    // floor cannot disagree with itself the way it once did (`f603305f`).
+    push_wrapped_blurb(&mut lines, &mut body_budget, pane, palette, width);
     if !pane.fields().is_empty() && body_budget > 0 {
         let total = pane.rows().len();
         let cursor_row = pane.view().cursor().min(total - 1);
@@ -3054,19 +3067,18 @@ mod tests {
         }
     }
 
-    /// Both blurb loops break on a budget of `<= 1` rather than `== 0`, and
-    /// the comment on the second says the two agree deliberately: a long
-    /// wrapped help must not spend the last line the cursor's own row
-    /// needs. Nothing pinned either. The height sweep above passes with the
-    /// floor at either value, because losing the field row only makes the
-    /// output shorter and that assertion is an upper bound.
+    /// `push_wrapped_blurb` breaks on a budget of `<= 1` rather than
+    /// `== 0`, so a long wrapped help must not spend the last line the
+    /// cursor's own row needs. Nothing pinned it before the helper existed:
+    /// the height sweep above passes with the floor at either value,
+    /// because losing the field row only makes the output shorter and that
+    /// assertion is an upper bound.
     ///
     /// So this asserts the pair instead: wherever the blurb reached the
-    /// screen, the cursor's own row did too. Both panes, because the floors
-    /// are in two functions and a grouped pane never walks the ungrouped
-    /// one. Mutating either to `== 0` fails its own case at height 2 and
-    /// leaves the other passing, which is what "they agree deliberately"
-    /// has to mean to be worth writing down.
+    /// screen, the cursor's own row did too. Both pane shapes, grouped and
+    /// ungrouped, even though one function now serves both, because this is
+    /// the end-to-end check through the real `pane_lines` entry point
+    /// rather than a check of the helper alone.
     ///
     /// The final count is the vacuity guard: a blurb that never drew would
     /// skip every height and pass.

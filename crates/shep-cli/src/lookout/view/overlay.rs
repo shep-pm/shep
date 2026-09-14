@@ -111,12 +111,14 @@ pub(super) fn draw_boxed(
 ) {
     let box_height = boxed_height(lines);
     let rows = box_height.saturating_sub(2);
-    // `saturating_add`, not `+`, so every piece of arithmetic in this
-    // function is protected the same way. `interior` is a const 126 at both
-    // call sites and 65534 is unreachable, so this is about a reader being
-    // able to tell which additions are deliberate: the line below saturates,
-    // `boxed_height` saturates, and one bare `+` in between reads as an
-    // oversight whether or not it is one.
+    // `saturating_add`, not `+`, on `interior` specifically: it is a const
+    // 126 at both call sites and 65534 is unreachable, but `boxed_height`
+    // right above this line saturates the same class of addition, and one
+    // bare `+` between two saturating ones reads as an oversight whether or
+    // not it is. The rest of this function's arithmetic is screen
+    // coordinates, `area`'s own fields and small row offsets, bounded by a
+    // real terminal's dimensions rather than by a value this module hands
+    // out; those stay bare.
     let margin = area.width.saturating_sub(interior.saturating_add(2)) / 2;
     let box_x = area.x + margin;
     let box_y = area.y + area.height.saturating_sub(box_height) / 2;

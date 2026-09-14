@@ -5686,7 +5686,8 @@ impl App {
     /// `Escape` closes the sub-screen, not the pane, the same
     /// innermost-first rule the env screen follows. `Enter` or `e` opens
     /// the editor on the element under the cursor, or adds one on
-    /// `+ new`. `d` removes, and `K`/`J` move the element one place.
+    /// `+ new`. `d` removes, `K`/`J` move the element one place, and `h`
+    /// opens the keymap overlay, same as everywhere else.
     ///
     /// A removal and a move file the whole array, since that is what the
     /// write carries. Nothing goes out here: the pane's own `Escape` is
