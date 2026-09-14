@@ -11,6 +11,50 @@ import ShortVersion from "../../components/docs/ShortVersion.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
+
+interface ExampleRow {
+  program: string;
+  demonstrates: string;
+  watch: string;
+}
+
+const rustRows: ExampleRow[] = [
+  {
+    program: "http_server",
+    demonstrates: "The baseline every probe example needs.",
+    watch: "curl 127.0.0.1:19081/ and get 200 OK.",
+  },
+  {
+    program: "slow_boot",
+    demonstrates: "A readiness probe waiting, and listen_timeout expiring.",
+    watch: "shep flock shows starting, then online anyway once listen_timeout elapses, before the port is even bound.",
+  },
+  {
+    program: "ready_when_told",
+    demonstrates: "An exec probe — the one kind with no everyday real-world example.",
+    watch: "touch the sentinel file and watch the next poll flip the sheep to online.",
+  },
+  {
+    program: "stubborn",
+    demonstrates: "Escalation past a stop signal.",
+    watch: "shep stop stubborn takes exactly kill_timeout, then SIGKILL ends it.",
+  },
+  {
+    program: "leaky",
+    demonstrates: "max_memory firing.",
+    watch: "shep flock's MEM column climbs past the ceiling, then RESTARTS increments and it climbs again.",
+  },
+  {
+    program: "crasher",
+    demonstrates: "Restart policy, growing backoff, and max_restarts.",
+    watch: "shep logs -f shows the gap between restarts widen until the sheep reaches errored.",
+  },
+  {
+    program: "noisy",
+    demonstrates: "The log plane.",
+    watch: "shep bleats noisy -f, alternating stdout and stderr lines.",
+  },
+];
 ---
 
 <DocsLayout
@@ -103,10 +147,29 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       <div><span class="prompt">$</span> ./target/release/shep flock</div>
     </div>
     <p class="fine">
-      Each of the seven demonstrates a different shep behavior; see{" "}
-      <code>examples/src/bin/</code> for the source of each and{" "}
-      <code>examples/Flockfile.toml</code> for how it's wired up.
+      <code>examples/src/bin/</code> holds the source of each, and{" "}
+      <code>examples/Flockfile.toml</code> wires them up.
     </p>
+
+    <h2 id="what-each-one-demonstrates">What each one demonstrates</h2>
+    <div class="field-table">
+      <div class="row header">
+        <span class="col-name">Program</span>
+        <span class="col-does">Demonstrates</span>
+        <span class="col-does">Watch for</span>
+      </div>
+      {
+        rustRows.map((r) => (
+          <div class="row">
+            <span class="col-name">
+              <code>{r.program}</code>
+            </span>
+            <span class="col-does">{r.demonstrates}</span>
+            <span class="col-does">{r.watch}</span>
+          </div>
+        ))
+      }
+    </div>
 
     <h2 id="polyglot">The polyglot layer</h2>
     <p>
