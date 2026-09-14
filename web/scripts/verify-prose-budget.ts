@@ -73,7 +73,14 @@ export const BUDGETS: Record<string, number> = {
 };
 
 
-/** Remove every `<div>` opening with `open`, balancing nested div tags. */
+/**
+ * Remove every `<div>` opening with `open`, balancing nested div tags.
+ *
+ * An unterminated tag ends the walk rather than continuing it. `indexOf`
+ * answers -1 there, so the old `+ 1` restarted `j` at 0 and the scan found
+ * the same tag forever. This script runs first in `npm run build`, so the
+ * hang arrived instead of Astro's report of the malformed page.
+ */
 function stripBlock(source: string, open: string): string {
   let out = "";
   let i = 0;
@@ -87,14 +94,12 @@ function stripBlock(source: string, open: string): string {
       const next = source.slice(j).search(/<\/?div\b/);
       if (next === -1) return out;
       j += next;
-      if (source.startsWith("</div", j)) {
-        depth -= 1;
-        j = source.indexOf(">", j) + 1;
-        if (depth === 0) break;
-      } else {
-        depth += 1;
-        j = source.indexOf(">", j) + 1;
-      }
+      const closer = source.startsWith("</div", j);
+      const end = source.indexOf(">", j);
+      if (end === -1) return out + source.slice(start);
+      depth += closer ? -1 : 1;
+      j = end + 1;
+      if (closer && depth === 0) break;
     }
     i = j;
   }
@@ -138,6 +143,14 @@ test("proseWords counts prose and ignores frontmatter, styles and code", () => {
 test("proseWords does not count a terminal transcript", () => {
   const page = `<p>Two words</p><div class="terminal"><div>shep start Flockfile.toml</div></div><p>here</p>`;
   assert.equal(proseWords(page), 3);
+});
+
+test("an unterminated div ends the walk instead of spinning forever", () => {
+  // This used to hang. `indexOf(">")` answers -1 on a tag with no `>`, the
+  // old `+ 1` sent the cursor back to 0, and the scan found the same tag
+  // again. `npm run build` runs this script before astro, so the malformed
+  // page was never reported: the build simply stopped.
+  assert.equal(proseWords(`<p>ok here</p><div class="terminal"><div>a</div`), 3);
 });
 
 test("every budgeted page is at or under its ceiling", async () => {
