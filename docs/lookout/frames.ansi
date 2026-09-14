@@ -38,8 +38,15 @@ row: fresh at the 160x48 design target, the same pane with two edits filed
 columns, where the explanation panel and the LANDS column trade places as
 the width falls.
 
-The last four are the close dialog `esc` raises over that pane when a change
-is filed the running child cannot take. Boxed and centred at the 160x48
+The last eight are the keymap overlay, `h` or `?` from any body. Boxed and
+centred at the 160x48 target, at 130 where the border only just fits,
+borderless at 129 one column below that floor, at 100 where DOING drops to a
+bank of its own, and at 70 where two columns are all that fit. Three more
+change what the bottom line says rather than the layout: a frozen dashboard,
+a read-only one, and a terminal too short for the box at all.
+
+Before those, four show the close dialog `esc` raises over the editing pane
+when a change is filed the running child cannot take. Boxed and centred at the 160x48
 target, the same at 90 where the border only just fits, borderless at 89 one
 column below its floor, and the parked-only heading on a sheep whose fields
 were written before the pane was opened.
