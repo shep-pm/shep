@@ -1419,7 +1419,7 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
             | Scene::KeymapReadOnly
             | Scene::KeymapShort
     ) {
-        let _ = app.update(Msg::Key(KeyPress::Help));
+        app.update(Msg::Key(KeyPress::Help));
     }
 
     // Selects `api` (id 2) so the panes below describe a fixed sheep,

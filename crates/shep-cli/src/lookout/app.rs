@@ -4980,6 +4980,13 @@ impl App {
             return Effect::Quit;
         }
         match key {
+            // Unreachable: the guard above already returned. Kept rather
+            // than folded into a silent group or replaced with a wildcard,
+            // because every other arm here is named on purpose (a stray
+            // `KeyPress` variant should not fall through unnoticed), and a
+            // wildcard would defeat that for every variant, not just this
+            // one. If the guard above is ever removed, this is what Quit
+            // still does.
             KeyPress::Quit => return Effect::Quit,
             // Backs out one level at a time: the close dialog's own
             // question first, if there is one, else the pane. `Escape`
@@ -5689,6 +5696,10 @@ impl App {
             return Effect::Quit;
         }
         match key {
+            // Unreachable, the same way and for the same reason as
+            // `on_pane_key`'s own copy of this arm: the guard above already
+            // returned, and this stays instead of a wildcard so a stray
+            // `KeyPress` variant added later cannot fall through unnoticed.
             KeyPress::Quit => return Effect::Quit,
             KeyPress::Escape => {
                 if let Some(pane) = self.config_pane_mut() {

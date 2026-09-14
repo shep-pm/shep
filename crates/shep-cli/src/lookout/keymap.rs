@@ -88,10 +88,9 @@ pub(super) struct Binding {
 /// does not print.
 const fn binding(press: &KeyPress) -> Binding {
     // `row` keeps each arm to one line, so a reader checks thirty-six
-    // captions rather than thirty-six struct literals. Thirty-six, not the
-    // thirty-five this said: `the_rows_are_deduplicated` asserts the count,
-    // and thirty-five is how many land in a DRAWN column, which is the
-    // number the doc on `rows` gives.
+    // captions rather than thirty-six struct literals. `the_rows_are_
+    // deduplicated` asserts the count; `rows`'''s own doc gives the
+    // thirty-five that land in a DRAWN column.
     const fn row(keys: &'static str, group: Group, does: &'static str) -> Binding {
         Binding { keys, group, does }
     }
