@@ -65,7 +65,38 @@ removed  /Library/LaunchDaemons/io.github.turtiesocks.shep.deploy.plist  absent`
       unit file.
     </p>
 
-    <h2>Never escalates its own privilege</h2>
+    <h2 id="the-runbook">The runbook</h2>
+    <p>
+      From a flock that is running and saved to one that comes back on its
+      own. <code>shep save</code> is the hinge and appears in the{" "}
+      <a href="/docs/from-pm2">migration runbook</a> too: a roll has to exist
+      before there is anything to restore.
+    </p>
+    <CodeBlock>{`1. shep save                     # if you have not already
+2. sudo shep startup             # writes and enables the unit
+3. systemctl status shep-<you>   # active (running), and green
+4. reboot
+5. systemctl status shep-<you>   # active (running) WITHOUT anyone logging in
+6. shep flock                    # the same apps, new pids, uptime near zero`}</CodeBlock>
+    <Callout variant="note">
+      Step 3 going <code>active (running)</code> means something specific:
+      the generated unit is <code>Type=notify</code>, so systemd doesn't
+      consider it started until the daemon itself says so: it only
+      sends that signal once step 1's muster restore has finished. A green
+      status at step 3 is already evidence the restore path works, before
+      the reboot ever happens.
+    </Callout>
+
+    <h2 id="rolling-back">Rolling back</h2>
+    <p>
+      <code>shep unstartup</code> disables and removes whatever unit{" "}
+      <code>startup</code> installed. Run unprivileged, it prints the same
+      kind of paste-able <code>sudo</code> command <code>startup</code> does.
+      A machine that never ran <code>startup</code> reports the unit{" "}
+      <code>absent</code> and exits successfully. Nothing left to guess at.
+    </p>
+
+    <h2 id="never-escalates">Never escalates its own privilege</h2>
     <p>
       Installing a unit needs root. shep never asks for it. Without root it
       prints the exact command to run and exits non-zero, so a script
@@ -87,7 +118,7 @@ removed  /Library/LaunchDaemons/io.github.turtiesocks.shep.deploy.plist  absent`
       never created.
     </p>
 
-    <h2>The PATH capture, and its one trap</h2>
+    <h2 id="the-path-capture">The PATH capture, and its one trap</h2>
     <p>
       A daemon started by systemd or launchd has no login shell and no{" "}
       <code>.bashrc</code>/<code>.profile</code> behind it. Without help,{" "}
@@ -115,7 +146,7 @@ removed  /Library/LaunchDaemons/io.github.turtiesocks.shep.deploy.plist  absent`
       <code>startup</code> refuses to overwrite the unit it just wrote).
     </Callout>
 
-    <h2>The muster roll</h2>
+    <h2 id="the-muster-roll">The muster roll</h2>
     <p>
       The unit brings the shepherd back. What brings the <em>flock</em> back
       is a file: <code>$SHEP_HOME/flock.json</code>, the muster roll, holding
@@ -172,7 +203,7 @@ removed  /Library/LaunchDaemons/io.github.turtiesocks.shep.deploy.plist  absent`
       reported rather than aborting the whole muster.
     </Callout>
 
-    <h2>Is it up, and stopping it on purpose</h2>
+    <h2 id="is-it-up">Is it up, and stopping it on purpose</h2>
     <VerbSignature verb="ping" usage="shep ping">
       <p>
         Asks whether a shepherd is answering, and says which one: its
@@ -204,7 +235,7 @@ removed  /Library/LaunchDaemons/io.github.turtiesocks.shep.deploy.plist  absent`
       same proof.
     </p>
 
-    <h2>Honestly: openrc and the BSDs are untested</h2>
+    <h2 id="openrc-and-the-bsds">Honestly: openrc and the BSDs are untested</h2>
     <p>
       All four unit renderers (systemd, launchd, openrc, FreeBSD/OpenBSD{" "}
       <code>rc.d</code>) are pinned by exact-string tests, the same tier the
@@ -228,7 +259,7 @@ removed  /Library/LaunchDaemons/io.github.turtiesocks.shep.deploy.plist  absent`
       as the process is spawned and says so in its own header comment,
       naming <code>shep flock</code> as the real check.
     </p>
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
 
     <div class="next-grid">
       <a href="/docs/from-pm2" class="next-card">

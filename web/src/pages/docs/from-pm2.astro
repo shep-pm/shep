@@ -521,41 +521,22 @@ PORT_BASE = "3000"`}</CodeBlock>
 
     <h2>The runbook</h2>
     <p>
-      Import, save, install the boot unit, then reboot and check the flock
-      came back: the sequence <code>docs/specs/shep-v1.md</code> describes
-      as the flagship migration scenario. Step 3 is the only step that
-      touches pm2, and the only irreversible one in the list.
+      Import, check, cut pm2 over, then save the roll: the sequence{" "}
+      <code>docs/specs/shep-v1.md</code> describes as the flagship migration
+      scenario. Step 3 is the only step that touches pm2, and the only
+      irreversible one in the list.
     </p>
-    <CodeBlock>{`1.  shep import pm2 --dry-run       # read the Flockfile before it is written
-2.  shep import pm2                 # writes ./Flockfile.toml; starts nothing
-3.  pm2 delete all && pm2 kill      # the one destructive step, and it is pm2's
-4.  shep start ./Flockfile.toml     # the flock comes up under shep
-5.  shep flock                      # every app online, CPU and MEM populated
-6.  shep save                       # names the roll it wrote and the app count
-7.  sudo shep startup --user <you>  # writes and enables the unit
-8.  systemctl status shep-<you>     # active (running), and green
-9.  reboot
-10. systemctl status shep-<you>     # active (running) WITHOUT anyone logging in
-11. shep flock                      # the same apps, new pids, uptime near zero`}</CodeBlock>
+    <CodeBlock>{`1. shep import pm2 --dry-run       # read the Flockfile before it is written
+2. shep import pm2                 # writes ./Flockfile.toml; starts nothing
+3. pm2 delete all && pm2 kill      # the one destructive step, and it is pm2's
+4. shep start ./Flockfile.toml     # the flock comes up under shep
+5. shep flock                      # every app online, CPU and MEM populated
+6. shep save                       # names the roll it wrote and the app count`}</CodeBlock>
     <Callout variant="note">
-      Step 8 going <code>active (running)</code> means something specific:
-      the generated unit is <code>Type=notify</code>, so systemd doesn't
-      consider it started until the daemon itself says so: it only
-      sends that signal once step 6's muster restore has finished. A green
-      status at step 8 is already evidence the restore path works, before
-      the reboot ever happens.
+      The flock is running and its roll is saved, but nothing yet starts it
+      after a reboot. That is <code>pm2 startup</code>'s counterpart, and it
+      is its own chapter: <a href="/docs/startup">Surviving a reboot</a>.
     </Callout>
-
-    <h2>Rolling back</h2>
-    <p>
-      <code>shep unstartup</code> disables and removes whatever unit{" "}
-      <code>startup</code> installed. Run unprivileged, it prints the same
-      kind of paste-able <code>sudo</code> command <code>startup</code> does.
-      A machine that never ran <code>startup</code> reports the unit{" "}
-      <code>absent</code> and exits successfully. Nothing left to guess at.
-      Nothing here is destructive to pm2 itself except the one step in the
-      runbook that says so.
-    </p>
 
     <h2>Where to go next</h2>
     <div class="next-grid">
