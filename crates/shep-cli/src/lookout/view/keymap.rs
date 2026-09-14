@@ -58,17 +58,17 @@ const SHEEP: [&str; 4] = [
 /// side.
 ///
 /// `" ".repeat` rather than a `&'static str` of the right length, here and
-/// for the [`COLUMN`]-wide blank and the [`GAP`] in [`entry_cell`]. Raised
-/// twice by review and declined twice, so the reason belongs here: the three
-/// together allocate roughly eighty two-byte strings per drawn frame, and a
-/// lookout frame is drawn on a keypress or a two-second tick, not at 60 fps.
+/// for the [`COLUMN`]-wide blank and the [`GAP`] in [`entry_cell`]: the
+/// three together allocate roughly eighty two-byte strings per drawn
+/// frame, and a lookout frame is drawn on a keypress or a two-second tick,
+/// not at 60 fps.
 ///
-/// Two more of the same tier, declined for the same reason and written down
-/// so a later round does not spend a slot re-raising them: [`rows`] runs
-/// twice when a form fits the width and not the height, since [`lines`]
-/// builds and discards one before [`draw_borderless`] builds another, and
-/// [`entry_cell`]'s `filter().nth()` scans `all_rows` once per cell, about
-/// forty-eight scans a frame.
+/// Two more of the same tier, worth naming here rather than left for a
+/// reader to rediscover: [`rows`] runs twice when a form fits the width
+/// and not the height, since [`lines`] builds and discards one before
+/// [`draw_borderless`] builds another, and [`entry_cell`]'s
+/// `filter().nth()` scans `all_rows` once per cell, about forty-eight
+/// scans a frame.
 /// What a literal costs is the derivation: `"  "` is right only while
 /// `GUTTER` is 2, and nothing would say so when it changed. A width that
 /// disagrees with its own constant is the defect this frame's own gallery
@@ -369,9 +369,8 @@ enum Shed {
     /// because a reader holding a `Shed` value would otherwise have to find
     /// that `if` to know what it renders.
     ///
-    /// "Condition", not "test", which is what this said. In a Rust file that
-    /// word means `#[test]`, and review read it as a reference to a test
-    /// function that does not exist.
+    /// "Condition", not "test": in a Rust file that word reads as
+    /// `#[test]`, a reference to a test function that does not exist.
     Gate,
     Refuse,
 }
@@ -559,10 +558,7 @@ mod tests {
         // `assert_eq!(COLUMN, KEY_CELL + GAP + TEXT_CELL)`, which cannot
         // fail: `COLUMN` is defined as that sum, so moving `KEY_CELL` to 20
         // makes both sides 38 and all three constants can be wrong
-        // together. Pinning each against a literal fails instead, and a
-        // qwen round read the description of that rejected form as a
-        // description of these assertions, which is what naming it as code
-        // rather than as prose is meant to stop.
+        // together. Pinning each against a literal fails instead.
         assert_eq!((KEY_CELL, GAP, TEXT_CELL), (12, 1, 17));
         assert_eq!(
             COLUMN * COLUMN_COUNT + GUTTER * (COLUMN_COUNT - 1),

@@ -2927,10 +2927,10 @@ mod tests {
             all_text.extend(text);
             pane.next_group();
         }
-        // `parts(line).is_some()` alone is not enough at this width any
-        // more: the legend line now spells out `= read-only, set it in
-        // the Flockfile` (finding 3), and its own leading two spaces plus
-        // an `=` parse the same shape `parts` reads off a field row. Real
+        // `parts(line).is_some()` alone is not enough at this width: the
+        // legend line spells out `= read-only, set it in the Flockfile`,
+        // and its own leading two spaces plus an `=` parse the same shape
+        // `parts` reads off a field row. Real
         // field keys only, the same filter `rows_of` applies, keeps this
         // test about the cost cell rather than the legend.
         let keys: Vec<String> = web_pane()
@@ -4044,17 +4044,14 @@ mod tests {
         assert!(panel.iter().filter(|row| !row.trim().is_empty()).count() > 3);
     }
 
-    /// The finding this fix round closes: nothing on the live screen drew
-    /// the panel, because nothing called it outside a test fixture. This
-    /// pins the wiring itself, through the same [`pane_lines`] the real
-    /// draw path calls, not through a fixture built to reach
-    /// [`panel_lines`] directly.
+    /// Nothing on the live screen drew the panel, because nothing called
+    /// it outside a test fixture. This pins the wiring itself, through the
+    /// same [`pane_lines`] the real draw path calls, not through a
+    /// fixture built to reach [`panel_lines`] directly.
     ///
-    /// The "not below the design target" half of this test's original name
-    /// no longer holds: the fixed 160-column threshold became
-    /// [`panel_width`]'s continuous ladder, so the panel now draws down to
-    /// 90 columns. What still has to hold, and what this pins instead,
-    /// is the panel's own floor: nothing below it.
+    /// The panel draws across a range, from the design target down to
+    /// [`panel_width`]'s own floor at 90 columns, not only at the design
+    /// target. What this pins is the floor: nothing below it.
     #[test]
     fn the_panel_draws_beside_the_field_list_at_the_design_target() {
         let app = fixtures::app_in_sheep_pane();

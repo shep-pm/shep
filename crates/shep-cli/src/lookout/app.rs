@@ -11386,7 +11386,7 @@ mod tests {
     /// before the match for every key but `Confirm` and `Quit`, already
     /// disarms it.
     #[test]
-    fn h_disarms_a_secret_delete_and_still_opens_the_overlay() {
+    fn h_disarms_a_secret_delete_before_opening_the_overlay() {
         let mut app = fixtures::app_with_secrets_and_control();
         let _ = app.update(Msg::Key(KeyPress::SecretDelete));
         assert!(armed_of(&app).is_some(), "the delete armed");
@@ -12246,8 +12246,8 @@ mod tests {
     /// then lands, and the operator has a box on screen while every key goes
     /// into a socket path they cannot see.
     ///
-    /// Found by CodeRabbit on PR 246, and it is the shape a green suite
-    /// cannot see: two messages in an order no single test sends.
+    /// It is the shape a green suite cannot see: two messages in an order
+    /// no single test sends.
     #[test]
     fn a_refused_write_closes_the_overlay_before_reopening_the_editor() {
         let mut app = fixtures::app_in_settings_on(SettingField::MaxCronSleep);

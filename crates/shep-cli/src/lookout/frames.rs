@@ -1403,8 +1403,8 @@ fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
                     None,
                 ),
             ];
-            // Round 2, finding 2: `log_row`'s on-disk size had never
-            // rendered anywhere in the gallery, because every fixture's
+            // `log_row`'s on-disk size had never rendered anywhere in the
+            // gallery, because every fixture's
             // `out_file`/`err_file` name a path (`/home/ada/.shep/logs/...`)
             // that never exists on the machine running the test, so
             // `fs::metadata` always failed silently. `HealthyWide`'s
