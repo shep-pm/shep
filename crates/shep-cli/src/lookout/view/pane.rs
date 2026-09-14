@@ -1631,6 +1631,23 @@ fn ungrouped_pane_lines_with_panel(
     // is a committed file with 40 properties, but a dog answers `--schema`
     // for itself) leaves the title as the whole pane.
     let mut body_budget = budget - 1;
+    // The one line a dog pane has that a sheep pane does not: shep does not
+    // know what a dog's field costs, so every row's COST cell is empty.
+    // Reserved out of the budget before rows are laid out, for the same
+    // reason the top line is: a footer appended afterwards is a line
+    // nothing counted.
+    //
+    // Reserved before the BLURB too, not between the blurb and the rows,
+    // which is where this sat until a test went looking. The blurb's floor
+    // below keeps one line back for the cursor's own row, and a footer
+    // reserved afterwards took exactly that line: at a pane height of 3 a
+    // dog drew its title, its blurb and its footer, and the row the cursor
+    // was on did not draw at all. The blurb is the line to lose, since it
+    // describes the row rather than being it.
+    let footer = dog_footer_text(pane, body_budget);
+    if footer.is_some() {
+        body_budget -= 1;
+    }
     // The selected field's own help text, on the lines under the title.
     // Subtracted from the budget rather than appended, per `body_from`'s
     // own doc on markers. See `top_lines`.
@@ -1638,7 +1655,8 @@ fn ungrouped_pane_lines_with_panel(
     // Floored at `<= 1`, not `== 0`, on purpose: `grouped_pane_lines_with_
     // panel`'s own blurb loop keeps the same floor, so a long wrapped help
     // string cannot spend the last line either path reserves for the
-    // cursor's own row. The two agree deliberately, not by coincidence.
+    // cursor's own row. The two agree deliberately, not by coincidence, and
+    // `the_blurb_never_spends_the_row_the_cursor_needs` walks both.
     for (text, style) in top_lines(pane, palette, width) {
         if body_budget <= 1 {
             break;
@@ -1647,15 +1665,6 @@ fn ungrouped_pane_lines_with_panel(
             format!("  {}", fit(&text, body_width(width))),
             style,
         )));
-        body_budget -= 1;
-    }
-    // The one line a dog pane has that a sheep pane does not: shep does not
-    // know what a dog's field costs, so every row's COST cell is empty.
-    // Reserved out of the budget before rows are laid out, for the same
-    // reason the top line is: a footer appended afterwards is a line
-    // nothing counted.
-    let footer = dog_footer_text(pane, body_budget);
-    if footer.is_some() {
         body_budget -= 1;
     }
     if !pane.fields().is_empty() && body_budget > 0 {
@@ -3048,6 +3057,49 @@ mod tests {
                     "height {height}, cursor {cursor}: {text:?}"
                 );
             }
+        }
+    }
+
+    /// Both blurb loops break on a budget of `<= 1` rather than `== 0`, and
+    /// the comment on the second says the two agree deliberately: a long
+    /// wrapped help must not spend the last line the cursor's own row
+    /// needs. Nothing pinned either. The height sweep above passes with the
+    /// floor at either value, because losing the field row only makes the
+    /// output shorter and that assertion is an upper bound.
+    ///
+    /// So this asserts the pair instead: wherever the blurb reached the
+    /// screen, the cursor's own row did too. Both panes, because the floors
+    /// are in two functions and a grouped pane never walks the ungrouped
+    /// one. Mutating either to `== 0` fails its own case at height 2 and
+    /// leaves the other passing, which is what "they agree deliberately"
+    /// has to mean to be worth writing down.
+    ///
+    /// The final count is the vacuity guard: a blurb that never drew would
+    /// skip every height and pass.
+    #[test]
+    fn the_blurb_never_spends_the_row_the_cursor_needs() {
+        for (which, mut pane, key) in [
+            ("grouped", web_pane(), "autorestart"),
+            ("ungrouped", bark_pane(), "history_bytes"),
+        ] {
+            pane.move_to_key(key);
+            let anchor = blurb_anchor(&pane);
+            let mut checked = 0;
+            for height in 1..=20u16 {
+                let rows = text_of(&pane_lines(&pane, fixtures::plain(), 89, height));
+                if !rows.iter().any(|row| row.contains(&anchor)) {
+                    continue;
+                }
+                checked += 1;
+                assert!(
+                    rows.iter().any(|row| row.contains(key)),
+                    "{which} at height {height}: the blurb drew and the cursor's row did not: {rows:?}"
+                );
+            }
+            assert!(
+                checked > 0,
+                "{which}: the blurb never drew, so nothing was checked"
+            );
         }
     }
 
