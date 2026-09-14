@@ -327,7 +327,18 @@ mod tests {
     /// neither inherits this test's answer without being in it.
     #[test]
     fn the_border_vocabulary_is_the_one_that_was_checked() {
-        for glyph in ['▛', '▜', '▙', '▟', '▐', '▀', '▄', '▌', '▘', '⌫'] {
+        for glyph in [
+            BOX_TOP_LEFT,
+            BOX_TOP_RIGHT,
+            BOX_BOTTOM_LEFT,
+            BOX_BOTTOM_RIGHT,
+            BOX_LEFT,
+            BOX_TOP,
+            BOX_BOTTOM,
+            BOX_RIGHT,
+            '▘',
+            '⌫',
+        ] {
             assert_eq!(char_columns(glyph), 1, "{glyph}");
         }
     }
