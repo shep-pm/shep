@@ -267,11 +267,14 @@ func main() {
 }
 
 // Enough of a frame to recognise it, bounded because a frame has no length
-// limit and a log line should not inherit one.
+// limit and a log line should not inherit one. Runes rather than bytes, so
+// a cut lands between characters and the other three examples agree on
+// what 80 counts.
 func snippet(line string) string {
 	line = strings.TrimRight(line, "\n")
-	if len(line) > 80 {
-		return line[:80] + "..."
+	runes := []rune(line)
+	if len(runes) > 80 {
+		return string(runes[:80]) + "..."
 	}
 	return line
 }

@@ -139,8 +139,9 @@ def snippet(line):
     """Enough of a frame to recognise it, bounded.
 
     A frame has no length limit and a log line should not inherit one.
+    Both doors in `open_channel` open binary, so a line is always bytes.
     """
-    text = line.decode("utf-8", "replace").rstrip("\n") if isinstance(line, bytes) else line
+    text = line.decode("utf-8", "replace").rstrip("\n")
     return wire(text[:80] + "..." if len(text) > 80 else text)
 
 

@@ -60,13 +60,6 @@ function openChannel() {
 // exactly as the operator typed it, so an empty or blank one is ordinary
 // rather than a mistake. Both fall back, since a metric named "" is worse
 // on the bus than no custom name at all.
-// Enough of a frame to recognise it, bounded because a frame has no length
-// limit and a log line should not inherit one.
-function snippet(line) {
-  const text = line.length > 80 ? `${line.slice(0, 80)}...` : line;
-  return JSON.stringify(text);
-}
-
 function metricName(params) {
   return (params ?? "").trim() || "triggers";
 }
@@ -212,6 +205,27 @@ function handle(message) {
 // One message per line, so buffer until a newline arrives. A read can
 // carry half a message or two whole ones.
 let pending = "";
+// Enough of a frame to recognise it, bounded because a frame has no length
+// limit and a log line should not inherit one.
+function snippet(line) {
+  const text = line.length > 80 ? `${line.slice(0, 80)}...` : line;
+  return JSON.stringify(text);
+}
+
+// The parsed frame, or undefined after reporting the bytes that would not
+// parse. The shepherd does not write these, so a frame that will not parse
+// means a wire this app has never seen. Both readers below want the same
+// report, and writing it twice drifted once already. Only the parse is
+// guarded, so a real bug in handle still surfaces as itself.
+function parseFrame(line, what) {
+  try {
+    return JSON.parse(line);
+  } catch (err) {
+    console.error(`node-chatty: could not read ${what}: ${err.message}, in ${snippet(line)}`);
+    return undefined;
+  }
+}
+
 channel.setEncoding("utf8");
 channel.on("data", (chunk) => {
   pending += chunk;
@@ -222,15 +236,10 @@ channel.on("data", (chunk) => {
     if (line.trim() === "") {
       continue;
     }
-    let message;
-    try {
-      message = JSON.parse(line);
-    } catch (err) {
-      // The shepherd does not write these, so a frame that will not parse
-      // means a wire this app has never seen. Say so and read the next one;
-      // dying here would also drop the action after it. Only the parse is
-      // guarded, so a real bug in handle still surfaces as itself.
-      console.error(`node-chatty: could not read a message: ${err.message}, in ${snippet(line)}`);
+    // A frame that will not parse costs this one line, never the action
+    // after it.
+    const message = parseFrame(line, "a message");
+    if (message === undefined) {
       continue;
     }
     handle(message);
@@ -249,14 +258,8 @@ channel.on("end", () => {
   const tail = pending.trim();
   pending = "";
   if (tail !== "") {
-    let message;
-    try {
-      message = JSON.parse(tail);
-    } catch (err) {
-      // Only the parse is guarded, the same way the data handler above
-      // guards it, so a real bug in handle still surfaces as itself
-      // rather than as an unreadable frame.
-      console.error(`node-chatty: could not read the last message: ${err.message}`);
+    const message = parseFrame(tail, "the last message");
+    if (message === undefined) {
       return;
     }
     handle(message);
