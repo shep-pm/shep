@@ -38,6 +38,19 @@ export const BUDGETS: Record<string, number> = {
   serve: 650, // 488
   kv: 750, // 564
   containers: 750, // 572
+
+  // The eight pages the moves phase touched, at their post-move counts plus
+  // a little headroom. These are not rewrite targets either: they are a
+  // floor that stops a page growing back before the rewrite phase sets real
+  // numbers against each reader's need.
+  "getting-started": 820, // 778
+  upgrading: 580, // 539
+  "from-pm2": 1950, // 1865
+  startup: 1500, // 1423
+  dogs: 3000, // 2884
+  "writing-a-dog": 4150, // 4042
+  "first-flockfile": 2450, // 2343
+  overrides: 3520, // 3427
 };
 
 /** Words a reader actually reads: no frontmatter, styles, code or transcripts. */
