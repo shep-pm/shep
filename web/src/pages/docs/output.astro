@@ -416,11 +416,11 @@ Dogs
   did you mean to drop --home/$SHEP_HOME? the default is ~/.shep
   to set up a flock there deliberately: mkdir -p '/tmp/no-such'`}</CodeBlock>
     <Callout variant="note">
-      That transcript is a unix one. The layout is the same on Windows and the
-      middle two lines are not: the knob reads{" "}
+      That transcript is a unix one. The layout is identical on Windows and the
+      middle two lines are not. There the knob reads{" "}
       <code>--home/%SHEP_HOME%</code>, the default reads{" "}
-      <code>%USERPROFILE%\.shep</code>, and the remedy reads{" "}
-      <code>mkdir "C:\no-such"</code>. Neither <code>cmd.exe</code> nor
+      <code>%USERPROFILE%\.shep</code>, and the remedy wraps the path in double
+      quotes after a bare <code>mkdir</code>. Neither <code>cmd.exe</code> nor
       PowerShell takes <code>-p</code>, and <code>cmd.exe</code> reads a single
       quote as an ordinary character rather than as quoting.
     </Callout>
