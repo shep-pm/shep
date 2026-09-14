@@ -15,6 +15,7 @@
 import Base from "./Base.astro";
 import DocsHeader from "../components/docs/DocsHeader.astro";
 import DocsSidebar from "../components/docs/DocsSidebar.astro";
+import ChapterBar from "../components/docs/ChapterBar.astro";
 import StillStuck from "../components/docs/StillStuck.astro";
 import { chapterFor } from "../data/docs-nav";
 import "../styles/docs-page.css";
@@ -56,6 +57,7 @@ const crumb = `${found.chapter.part} / ${found.chapter.item.label}`;
       <main data-pagefind-body>
         <div class="crumb">{crumb}</div>
         <slot />
+        <ChapterBar activeSlug={activeSlug} />
         <StillStuck />
         <footer class="docs-footer" data-pagefind-ignore>
           <span class="license">
