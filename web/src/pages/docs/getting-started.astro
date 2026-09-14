@@ -47,6 +47,14 @@ import ShortVersion from "../../components/docs/ShortVersion.astro";
         <div><span class="prompt">$</span> shep ls</div>
       </div>
     </ShortVersion>
+    <p class="fine">
+      <code>./server</code> is your own binary or start script, and shep
+      writes neither: point <code>script</code> at something that already
+      exists or the start fails to spawn. Nothing to hand yet?{" "}
+      <code>shep serve ./site</code> puts a real sheep in the flock out of
+      the install you just did, no Flockfile needed. See{" "}
+      <a href="/docs/serve">Serve</a>.
+    </p>
 
     <Callout variant="careful">
       shep is pre-1.0, so anything here can still change. macOS, Linux and

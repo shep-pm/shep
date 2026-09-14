@@ -44,7 +44,11 @@ export const BUDGETS: Record<string, number> = {
   // a little headroom. These are not rewrite targets either: they are a
   // floor that stops a page growing back before the rewrite phase sets real
   // numbers against each reader's need.
-  "getting-started": 400, // 388
+  // Raised from 400 on 2026-09-14 for the note saying `./server` is the
+  // reader's own binary and pointing at `shep serve` for anyone who has no
+  // app to hand. The quickstart's three blocks were not runnable from a
+  // fresh install without it.
+  "getting-started": 450, // 440
   upgrading: 580, // 539
   // Raised from 1650 on 2026-09-14 for the paragraph comparing this run
   // against the previous one. A reader deciding whether to switch wants to
