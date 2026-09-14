@@ -18,6 +18,21 @@
 - **Invoke the `shep-idiomatic-rust` skill before writing any Rust.** It fronts 47 numbered rules; cite them as `IR-<n>`. The ones this plan touches most: every public item needs docs and a deliberate `Debug` decision (IR-41), `# Errors` sections on fallible public functions, `core::error::Error` not `std::error::Error`, and `#[track_caller]` on anything with a `# Panics` section.
 - **Never run the full workspace suite mid-task.** The shape above is the loop. The workspace gate runs once, at the end of Task 10.
 - **Do not poll CI.** Report DONE and let the main thread watch the run.
+> **Corrected 2026-09-14, after the work shipped.** This plan said in five
+> places that `docs/lookout/design-files/rulings.md` states a 132-column floor
+> for 1k. It does not, and it gives 1k no width at all. The 132 was in
+> `docs/lookout/design-files/README.md:332`, which now reads 130 with the
+> arithmetic beside it. Task 10's Step 1 below would have added a correction
+> section to `rulings.md` announcing "this file said 132", which would have put
+> a false correction into the authority document. It was never run: the real
+> citation was found during Task 1 and fixed in `view/overlay.rs` and the spec.
+> Flagged by CodeRabbit on the pull request.
+>
+> Sweeping for the class rather than the instance found a second one it did not
+> name: the U+2600 glyph ceiling was also attributed to `rulings.md`, here and
+> in shipped code at `view/overlay.rs`. It is `design-files/README.md:67`,
+> "no glyph above U+2600". Both now name the README.
+
 - **The design document is not the authority; `rulings.md` is, and the code outranks both on what a key does.** Where this plan quotes existing code, grep it rather than trusting the quote: line numbers move.
 
 ---
@@ -95,8 +110,8 @@ mod tests {
     /// The floor is the interior plus a border cell and a margin cell each
     /// side. 1g's own floor is 90 over an 86-cell interior and 1k's is 130
     /// over a 126-cell one, and both come out of this one expression: the
-    /// rulings state 132 for 1k, which would be a two-cell margin neither
-    /// frame asks for.
+    /// design README gave 132 for 1k, which would be a two-cell margin
+    /// neither frame asks for.
     #[test]
     fn both_frames_floors_come_out_of_one_expression() {
         assert_eq!(floor_for(86), 90, "1g");
@@ -139,9 +154,10 @@ Move the items from Step 1 verbatim, with these changes and nothing else:
 /// 86 gives 90 and 1k's 126 gives 130, and
 /// `draw_boxed`'s own `margin` arithmetic comes out at 1 at either floor.
 ///
-/// `docs/lookout/design-files/rulings.md` states 132 for 1k, which is a
-/// two-cell margin 1g does not ask for. Corrected there rather than
-/// special-cased here, so this stays one expression for both frames.
+/// `docs/lookout/design-files/README.md` gave 132 for 1k, which is a two-cell
+/// margin 1g does not ask for. Corrected there rather than special-cased
+/// here, so this stays one expression for both frames. Not `rulings.md`,
+/// which gives 1k no width.
 pub(super) const fn floor_for(interior: u16) -> u16 {
     interior + 4
 }
@@ -1512,8 +1528,8 @@ In `overlay.rs`, extend `the_border_vocabulary_is_the_one_that_was_checked`'s ar
 
 ```rust
     /// ... `▘` (U+2598) joined for the keymap overlay's sheep and `⌫`
-    /// (U+232B) for its text-mode row: both are below the rulings' U+2600
-    /// ceiling but absent from the design's own vocabulary table, so
+    /// (U+232B) for its text-mode row: both are below the design README's
+    /// U+2600 ceiling but absent from the design's own vocabulary table, so
     /// neither inherits this test's answer without being in it.
 ```
 
@@ -1752,7 +1768,7 @@ Then capture the real binary at 100×48 and at 70×48 with `tui-screen-capture`,
 - [ ] **Step 5: Mutate each test and watch it fail**
 
 - `the_column_ladder_has_a_boundary_on_each_side` — change the divisor to `COLUMN`.
-- `one_column_under_the_floor_keeps_four_columns_and_loses_the_border` — set the floor to `INTERIOR + 6`, which is the rulings' 132, and watch 130 stop being boxed.
+- `one_column_under_the_floor_keeps_four_columns_and_loses_the_border` — set the floor to `INTERIOR + 6`, which is the 132 the design README first gave, and watch 130 stop being boxed.
 - `three_columns_put_doing_on_its_own_bank` — put all four groups on one bank regardless of width.
 - `the_height_ladder_shows_its_boundaries` — move the `Decoration` boundary to 17.
 - `a_short_terminal_sheds_the_decoration_and_keeps_the_keys` — shed an entry row instead of the closing line.
@@ -1934,24 +1950,22 @@ git commit -m "test(lookout): eight gallery scenes for the keymap overlay"
 ## Task 10: Docs, and the gate
 
 **Files:**
-- Modify: `docs/lookout/design-files/rulings.md`
 - Modify: `docs/lookout/design-files/README.md` (lines near 317 and 332)
 - Modify: `docs/lookout/README.md`
 - Modify: `web/src/pages/docs/lookout.astro`
 - Regenerate: `web/src/pages/docs/cli.astro` (or whatever the script writes)
 
-- [ ] **Step 1: Correct the rulings**
+- [x] **Step 1: Do NOT correct the rulings**
 
-Add a section in the form the rulings' own 1h correction uses:
+Struck, not done. `rulings.md` never said 132 and gives 1k no width, so a
+section there announcing "this file said 132" would be a false correction in
+the authority document. The 132 was in `design-files/README.md:332`, which
+Step 2 corrects, and that line now carries the arithmetic:
 
-```markdown
-## 1k's floor is 130, not 132
-
-**Corrected 2026-09-13. This file said 132.** The box is 126 interior cells
-plus a border cell and a margin cell each side, which is 130, and it is the
-same expression 1g's own floor comes out of: `view/overlay.rs`'s
-`floor_for(interior) = interior + 4` gives 90 for 1g's 86 and 130 for 1k's
-126. 132 would be a two-cell margin 1g does not ask for.
+```text
+(130, not the 132 this line first gave: the floor is the interior plus a
+border cell and a margin cell each side, which is 86 + 4 for 1g and
+126 + 4 for 1k.)
 ```
 
 - [ ] **Step 2: Correct the design README**

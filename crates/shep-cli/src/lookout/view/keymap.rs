@@ -244,6 +244,7 @@ const fn colour_sentence() -> &'static str {
 /// to panicking here is drawing a quit line that names no key at all, which
 /// is a worse failure than a panic in a private function guarded by a
 /// match the compiler already checks is exhaustive.
+#[track_caller]
 fn quit_text(all_rows: &[Binding]) -> String {
     let quit = all_rows
         .iter()

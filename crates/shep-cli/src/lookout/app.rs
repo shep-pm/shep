@@ -2702,6 +2702,23 @@ impl App {
                             if let Some(settings) = self.settings_mut() {
                                 settings.pending = Some(Pending::Typing { field, buffer });
                             }
+                            // The overlay closes rather than the editor
+                            // reopening beneath it. `on_key` checks text mode
+                            // ahead of `keymap_open`, deliberately, so an `h`
+                            // typed into a filter box stays a letter; the cost
+                            // is that text mode restored from a MESSAGE would
+                            // take the keyboard while the box is still drawn,
+                            // and every key would reach a socket path the box
+                            // hides. Reachable because `is_armed` does not
+                            // cover `Pending::Sent`, so `h` with a write in
+                            // flight opens the overlay instead of cancelling.
+                            //
+                            // Closing it is the lesser surprise: the operator
+                            // asked for a key list, and what they get instead
+                            // is their refused write, the grave notice saying
+                            // why, and their own typed text back. `h` reopens
+                            // the box.
+                            self.keymap_open = false;
                             self.mode = InputMode::Text;
                         }
                         self.notice = Some(Notice {
@@ -12187,6 +12204,67 @@ mod tests {
         });
 
         assert_eq!(app.settings().unwrap().snapshot(), &updated);
+    }
+
+    /// A refused write must not reopen the text editor underneath the
+    /// overlay, because `on_key` checks text mode ahead of `keymap_open`.
+    ///
+    /// The ordering in `on_key` is deliberate and documented: `h` typed into
+    /// an open filter box is a letter, so the overlay can never be raised
+    /// from inside text mode. It says nothing about the other direction, and
+    /// `Msg::SettingWritten`'s `Err` arm restores `InputMode::Text` from a
+    /// message rather than a keypress.
+    ///
+    /// Reachable because `is_armed` covers `Pending::Armed` and
+    /// `Pending::DogArmed` and not `Pending::Sent`, so `h` with a write in
+    /// flight opens the overlay instead of cancelling anything. The reply
+    /// then lands, and the operator has a box on screen while every key goes
+    /// into a socket path they cannot see.
+    ///
+    /// Found by CodeRabbit on PR 246, and it is the shape a green suite
+    /// cannot see: two messages in an order no single test sends.
+    #[test]
+    fn a_refused_write_does_not_reopen_the_editor_under_the_overlay() {
+        let mut app = fixtures::app_in_settings_on(SettingField::MaxCronSleep);
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+        let Effect::WriteSetting { edit, ticket, .. } = app.update(Msg::Key(KeyPress::Confirm))
+        else {
+            panic!("Enter must send");
+        };
+
+        let _ = app.update(Msg::Key(KeyPress::Help));
+        assert!(
+            app.keymap_open(),
+            "a write in flight is not armed, so `h` must open the overlay"
+        );
+
+        let _ = app.update(Msg::SettingWritten {
+            edit,
+            ticket,
+            result: Err("refused".to_string()),
+        });
+
+        // Both halves, because `!(a && b)` holds when either is false and
+        // this one would pass vacuously if the buffer restoration broke:
+        // `typed_text_of` no longer matching means neither line runs and the
+        // assertion is satisfied by an editor that never reopened.
+        assert!(
+            !app.keymap_open(),
+            "the overlay is still up while text mode owns the keyboard"
+        );
+        assert_eq!(
+            app.mode,
+            InputMode::Text,
+            "the editor must reopen, so the operator gets their typed text back"
+        );
+        assert!(
+            matches!(
+                app.settings().unwrap().pending,
+                Some(Pending::Typing { .. })
+            ),
+            "the refused write's buffer is what the editor reopens with"
+        );
     }
 
     /// Pins `Msg::Settings`'s `opening` check.
