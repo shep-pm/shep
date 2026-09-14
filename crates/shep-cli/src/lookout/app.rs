@@ -3483,17 +3483,12 @@ impl App {
 
     /// Cancels an armed settings candidate, answering whether it did.
     ///
-    /// Four arms of the settings handler spend a key this way rather than
-    /// acting: `Refresh`, `Edit`, `Help`, and the four `Select*` arms
-    /// together. Three were copies of the same four lines, which round 7
-    /// flagged; the fourth was a fifth copy, written differently, found by
-    /// review at round 16 and folded in. Its own coverage predates the
-    /// fold: `movement_cancels_an_armed_candidate_rather_than_also_moving`
-    /// tested the inline version directly and now walks this helper
-    /// instead, unchanged. The shape is the one that drifts: a change to
-    /// what cancelling means (a confirmation, a different field cleared)
-    /// has to land in every one or the handler starts disagreeing with
-    /// itself about what an armed prompt eats.
+    /// Five arms of the settings handler spend a key this way rather than
+    /// acting: `Settings`/`Escape`, `Refresh`, `Edit`, `Help`, and the four
+    /// `Select*` arms together. A change to what cancelling means, a
+    /// confirmation, a different field cleared, has to land here or the
+    /// handler starts disagreeing with itself about what an armed prompt
+    /// eats.
     ///
     /// A `bool` rather than an `Effect`, so each caller keeps its own reason
     /// for returning: the arms are identical in what they cancel and
@@ -4754,12 +4749,7 @@ impl App {
             // cancel-before-act rule the dashboard follows. `Escape` closing
             // rather than quitting is where this screen swaps that cascade.
             KeyPress::Settings | KeyPress::Escape => {
-                let armed = self.settings().is_some_and(Settings::is_armed);
-                if armed {
-                    if let Some(settings) = self.settings_mut() {
-                        settings.pending = None;
-                    }
-                } else {
+                if !self.disarm_settings_candidate() {
                     self.body = Body::FlockTable;
                 }
             }
@@ -12833,14 +12823,9 @@ mod tests {
         );
     }
 
-    /// `Edit` is the third arm that spends a key on the cancel, and it was
-    /// the one with no test.
-    ///
-    /// Found by folding the three copies into `disarm_settings_candidate` and
-    /// mutating the helper to report a cancel it had not done: two tests
-    /// failed, for `Refresh` and `Help`, and `Edit` did not. So the fold was
-    /// worth more than the four lines it saved, which is not the usual
-    /// argument for one.
+    /// `Edit` cancels an armed candidate instead of probing the dog's
+    /// schema, same as `Refresh` and `Help` cancel instead of their own
+    /// actions.
     ///
     /// `Effect::None` is the whole assertion on the effect side: a cancel
     /// that also probed would hand the operator a schema they never asked
@@ -12878,6 +12863,26 @@ mod tests {
         assert!(
             app.settings().unwrap().pending().is_none(),
             "the armed candidate must not survive `r`"
+        );
+    }
+
+    #[test]
+    fn escape_cancels_an_armed_candidate_rather_than_closing_the_screen() {
+        let mut app = fixtures::app_in_settings_with_control(); // cursor on log_level
+        let _ = app.update(Msg::Key(KeyPress::Cycle));
+        assert!(
+            app.settings().unwrap().pending().is_some(),
+            "space must arm before this test means anything"
+        );
+        let effect = app.update(Msg::Key(KeyPress::Escape));
+        assert_eq!(effect, Effect::None, "a cancel must not also close");
+        assert!(
+            app.settings().is_some(),
+            "the screen must stay open for the cancel to be seen"
+        );
+        assert!(
+            app.settings().unwrap().pending().is_none(),
+            "the armed candidate must not survive escape"
         );
     }
 
