@@ -226,3 +226,51 @@
   font-weight: 700;
   color: var(--ink);
 }
+
+/*
+ * The two-column table with a header row, used by dogs and writing-a-dog.
+ *
+ * It lived in dogs.astro's scoped block, where Astro pinned every selector
+ * to that one page. writing-a-dog renders four of these and matched none of
+ * them: no border, no grid, no header band, `display: block` on every row.
+ * Distinct from `.rows` above, which has no header row and a wider second
+ * column.
+ */
+.docs-shell main .metrics-table {
+  border: 3px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  margin: 0 0 20px;
+}
+
+.docs-shell main .metrics-table .row {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+  gap: 14px;
+  padding: 11px 18px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.docs-shell main .metrics-table .row:not(:last-child) {
+  border-bottom: 2px solid var(--hair);
+}
+
+.docs-shell main .metrics-table .row.header {
+  background: var(--paper-2);
+  font-family: "Space Mono", monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 700;
+}
+
+.docs-shell main .metrics-table .row:not(.header) span:last-child {
+  color: var(--ink-2);
+}
+
+.docs-shell main .metrics-table code {
+  font-family: "Space Mono", monospace;
+  font-size: 13px;
+}
