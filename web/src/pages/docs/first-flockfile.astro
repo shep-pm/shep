@@ -65,6 +65,7 @@ interface FieldGroup {
 
 const fieldGroups: FieldGroup[] = [
   {
+    title: "Identity & process",
     fields: [
       { name: "name", type: "string", default: "required", does: "Unique sheep name. May not contain a path separator or a colon: a colon is the name:slot selector's own separator, and also illegal in a log filename on Windows." },
       { name: "script", type: "string", default: "required", does: "Executable or script path." },
@@ -77,6 +78,7 @@ const fieldGroups: FieldGroup[] = [
     ],
   },
   {
+    title: "Restart policy",
     fields: [
       { name: "autorestart", type: "bool", default: "true", does: "Restart on unexpected exit." },
       { name: "autostart", type: "bool", default: "true", does: "Start when the daemon starts, or on shep muster." },
@@ -88,6 +90,7 @@ const fieldGroups: FieldGroup[] = [
     ],
   },
   {
+    title: "Stopping",
     fields: [
       { name: "kill_signal", type: "string?", default: "SIGTERM", does: "One of SIGTERM/SIGINT/SIGQUIT/SIGUSR2: the SIG prefix and case are both optional." },
       { name: "kill_timeout", type: "duration", default: "1.6s", does: "Grace period between the stop signal and SIGKILL." },
@@ -96,6 +99,7 @@ const fieldGroups: FieldGroup[] = [
     ],
   },
   {
+    title: "Startup signaling",
     fields: [
       { name: "listen_timeout", type: "duration", default: "3s", does: "Readiness fallback when no ready signal or probe is configured." },
       { name: "wait_ready", type: "bool", default: "false", does: "Expect {\"kind\":\"ready\"} on the shepherd channel before treating the sheep as up." },
@@ -105,6 +109,7 @@ const fieldGroups: FieldGroup[] = [
     ],
   },
   {
+    title: "Watching & scheduling",
     fields: [
       { name: "watch", type: "bool", default: "false", does: "Restart when watched files change." },
       { name: "watch_options", type: "string[]", default: "[]", does: "Include globs; empty means watch the whole cwd." },
@@ -115,6 +120,7 @@ const fieldGroups: FieldGroup[] = [
     ],
   },
   {
+    title: "Resources & organization",
     fields: [
       { name: "max_memory", type: "size?", default: "none", does: "Memory ceiling: the polling enforcer restarts the sheep above it." },
       { name: "fold", type: "string?", default: "none", does: "Names the fold (group) this sheep belongs to." },
@@ -124,6 +130,7 @@ const fieldGroups: FieldGroup[] = [
     ],
   },
   {
+    title: "Logs",
     fields: [
       { name: "out_file", type: "string?", default: "{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log", does: "Stdout log file path override; supports {{instance}}, {{name}} and {{SHEP_HOME}}. A relative path lands under the app's cwd, and a {{SHEP_HOME}} one is absolute already. With instances > 1, an explicit path needs {{instance}} or merge_logs, or it's refused: {{name}} renders the same for every instance, so a path carrying only that one still collides." },
       { name: "err_file", type: "string?", default: "{{SHEP_HOME}}/logs/{{name}}-{{instance}}-err.log", does: "Stderr log file path override; supports {{instance}}, {{name}} and {{SHEP_HOME}}. A relative path lands under the app's cwd, and a {{SHEP_HOME}} one is absolute already. With instances > 1, an explicit path needs {{instance}} or merge_logs, or it's refused: {{name}} renders the same for every instance, so a path carrying only that one still collides." },
@@ -132,6 +139,7 @@ const fieldGroups: FieldGroup[] = [
     ],
   },
   {
+    title: "Networking & probes",
     fields: [
       { name: "reuse_port", type: "bool", default: "false", does: "Asserts the app sets SO_REUSEPORT itself, which lets a reload overlap the old and new instance. A probed app that leaves this off is reloaded serially instead: the old instance drains before the new one starts." },
       { name: "readiness_probe", type: "object?", default: "none", does: "HTTP/TCP/exec probe gating reload's await-ready step." },

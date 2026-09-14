@@ -37,6 +37,7 @@ const byName = new Map(cliReference.verbs.map((v) => [v.name, v]));
 
 const groups = [
   {
+    title: "Managing a sheep",
     verbs: [
       "start",
       "add",
@@ -49,39 +50,51 @@ const groups = [
     ],
   },
   {
+    title: "Inspecting the flock",
     verbs: ["flock", "describe", "fold", "dogs"],
   },
   {
+    title: "Dogs",
     verbs: ["enable", "disable", "adopt", "rehome"],
   },
   {
+    title: "Talking to a sheep",
     verbs: ["trigger", "signal", "whisper"],
   },
   {
+    title: "Logs and alerts",
     verbs: ["bleats", "reopen", "flush", "barks"],
   },
   {
+    title: "The KV store",
     verbs: ["set", "get", "unset"],
   },
   {
+    title: "Secrets",
     verbs: ["secret", "secret set", "secret get", "secret unset", "secret list"],
   },
   {
+    title: "Interfaces",
     verbs: ["lookout", "whistle"],
   },
   {
+    title: "The shepherd itself",
     verbs: ["ping", "kill", "save", "muster"],
   },
   {
+    title: "Containers and dev sessions",
     verbs: ["runtime", "dev"],
   },
   {
+    title: "Migrating and deploying",
     verbs: ["import", "import pm2", "import env", "startup", "unstartup"],
   },
   {
+    title: "Getting oriented",
     verbs: ["welcome", "init"],
   },
   {
+    title: "Your shell and terminal",
     verbs: ["completions", "style"],
   },
 ];
