@@ -63,70 +63,10 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       set up, and the five commands worth knowing.
     </p>
 
-    <h3>Upgrading later</h3>
-    <p>
-      <code>cargo install shep</code> replaces the binary on disk. It does
-      not touch anything already running: the shepherd keeps the code it
-      booted with until you reload it, and each dog keeps its own until you
-      reinstall it separately.
-    </p>
-    <div class="terminal">
-      <div><span class="prompt">$</span> cargo install shep</div>
-      <div><span class="prompt">$</span> cargo install shep-log-rotate<span class="muted"> # and every other dog</span></div>
-      <div><span class="prompt">$</span> shep daemon reload</div>
-    </div>
-    <p>
-      A flock that can be carried keeps running through the reload. The
-      shepherd replaces its own image in place, so every sheep keeps the pid
-      it already had and its log carries on where it was. The dogs cross
-      with it rather than being stopped and started alongside the flock; the
-      dogs page says what each one does on the far side. One that cannot be
-      carried is
-      stopped and started instead, which moves every pid and starts every log
-      again; the note below says which flocks those are.
-    </p>
-    <p>
-      If a dog cannot talk to the new shepherd, the reload names it. It waits
-      for the dogs to reconnect first, so the answer is about the shepherd
-      now running, not the one it replaced.
-    </p>
-    <p>
-      The reload re-reads <code>shep.toml</code> too, and always has. So it
-      is also the command for a changed log level, a new socket path or an
-      edited <code>[interpreters]</code> table, with no new binary involved.
-      It is a different verb from <code>shep reload &lt;sheep&gt;</code>,
-      which replaces one sheep's processes and reads no file at all: the
-      shepherd's own config and an app's Flockfile are two separate things
-      that happen to share a word.
-    </p>
     <p class="fine">
-      One thing still sends a reload down the older path: a sheep whose log
-      pump has stopped answering. The shepherd cannot say which files that
-      sheep is writing to, so it stops and starts the flock instead and
-      names the sheep that held it back. Coming from 0.1.17 or earlier, the
-      first reload always takes that path too: the shepherd being replaced
-      predates the handover and has nothing to hand over with.
-    </p>
-    <Callout variant="careful">
-      Skip <code>shep daemon reload</code> and the new binary answers{" "}
-      <code>shep --version</code> while the running shepherd is still the
-      old one. shep refuses most verbs against a version-skewed shepherd and
-      names this exact command as the fix.
-    </Callout>
-    <p class="fine">
-      <code>shep start &lt;Flockfile&gt;</code> used to be the one verb that
-      did not refuse cleanly across that skew: applying a Flockfile to a
-      running flock is additive, so the protocol number did not move for
-      it, and the handshake passed while the shepherd then ended the
-      connection on an envelope it could not read. It refuses cleanly now,
-      because the <code>--reset</code> flag's own wire spelling changed and
-      that is not additive the same way, so the protocol number moved with
-      it. The number is 5 now: it moved twice more since, once for a set
-      of live config-editing requests and once for a provider dog's own
-      way to push into the <a href="/docs/secrets">secrets store</a>, and
-      both bumped even though the new requests were additive, for the same
-      reason the rename did. Reloading first is still the whole fix either
-      way.
+      Upgrading later is its own thing, and it is not part of installing: a
+      new binary on disk changes nothing that is already running. See{" "}
+      <a href="/docs/upgrading">Upgrading</a> when you get there.
     </p>
 
     <h2>2. Write a Flockfile</h2>

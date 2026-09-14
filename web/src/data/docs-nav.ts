@@ -151,7 +151,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "upgrading",
         label: "Upgrading",
-        built: false,
+        built: true,
         source: "crates/shep-cli/src/commands/daemon.rs",
       },
       {
