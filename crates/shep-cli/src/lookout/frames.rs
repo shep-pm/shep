@@ -4047,6 +4047,13 @@ mod tests {
     /// them. Diffing against fresh output, rather than only counting
     /// headings, catches a mismatch a count would miss too, a caption
     /// edited without a corresponding regeneration.
+    ///
+    /// `cfg(unix)`: same reason as `frames_are_pinned` above. `signal_label`
+    /// resolves a fixture's signal against the running platform's own
+    /// table, and the committed artifacts under `docs/lookout/` are unix
+    /// renderings, so a Windows-built binary regenerates the `cron` row
+    /// reading a bare `15` where the committed file reads `SIGTERM`.
+    #[cfg(unix)]
     #[test]
     fn the_committed_gallery_matches_what_the_generator_would_write() {
         let dir = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/lookout"));
