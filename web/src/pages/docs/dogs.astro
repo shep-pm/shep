@@ -557,6 +557,18 @@ watchdog  adopted  true      stopped`}</CodeBlock>
       <code>connected_within</code> are what a third-party dog imposes that
       bound with; the client itself reconnects for as long as it is alive.
     </p>
+    <p>
+      Check the budget at the top of your own retry loop.{" "}
+      <code>connected_within</code> answers <code>Ok</code> for a link that
+      is already up without consulting the budget, so it cannot be the thing
+      that ends one. A shepherd that answers the handshake and then fails
+      whatever you ask it, which one slow enough to miss your request's
+      deadline does, leaves a loop bounded only by that call running for as
+      long as it stays up, and a dog doing that stays online on every column
+      a listing has while doing nothing. shep's own bark dog had this bug
+      during development. <a href="/docs/dogs/#writing-your-own">The dogs
+      guide</a> shows the wrong loop in full.
+    </p>
     <p class="fine">
       A dog that gave up waiting exits <code>5</code>, and one a shepherd
       refused on protocol-version skew exits <code>6</code> without waiting,

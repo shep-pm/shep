@@ -594,6 +594,15 @@ impl ReconnectingClient {
     /// of its own. Never resolves while the link is up, which is what lets
     /// it sit in a `select!` arm beside the work a caller does when it is.
     ///
+    /// One case does not get that fresh budget, and it is the watch's
+    /// nature rather than a gap to close. A [`watch`] receiver keeps only
+    /// the latest value, so a successor that connects and dies again before
+    /// this task next runs is never observed as `Connected`, and its
+    /// outage and the one before it are spent as a single budget. The
+    /// answer is the same either way: a shepherd flapping that fast is a
+    /// shepherd this dog cannot work with, and exiting is what it should
+    /// do.
+    ///
     /// A supervised dog is the caller this exists for: one whose shepherd
     /// is genuinely gone should exit rather than wait for a shepherd that
     /// is not coming, since a dog still running when an unrelated shepherd

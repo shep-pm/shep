@@ -392,46 +392,69 @@ impl bark::EventSource for ClientEvents {
             .map(|item| item.map_err(|lagged| lagged.count))
     }
 
-    async fn resubscribe(&mut self) -> Result<(), LinkLost> {
+    async fn resubscribe(&mut self) -> Result<(), bark::Resubscribe> {
         let started = tokio::time::Instant::now();
-        let mut reported = false;
+        // Every wait below is taken from this rather than from a value
+        // computed earlier in the pass: `connected_within` and `subscribe`
+        // each consume time, so a `left` read before them is spent by the
+        // time the next one starts.
+        let remaining = |elapsed| SHEPHERD_RETURN_BUDGET.saturating_sub(elapsed);
         loop {
-            let left = SHEPHERD_RETURN_BUDGET.saturating_sub(started.elapsed());
-            // The budget is checked here rather than left to
-            // `connected_within`, which returns `Ok` on a live link without
-            // consulting it. A shepherd that answers the handshake and then
-            // fails every `Subscribe`, which a slow one does by timing them
-            // out, would otherwise keep this loop going for as long as it
-            // stayed up.
+            let left = remaining(started.elapsed());
+            // Checked here rather than left to `connected_within`, which
+            // returns `Ok` on a live link without consulting the budget. A
+            // shepherd that answers the handshake and then fails every
+            // `Subscribe` would otherwise keep this loop going for as long
+            // as it stayed up.
             if left.is_zero() {
-                return Err(LinkLost::Budget {
+                return Err(bark::Resubscribe::Lost(LinkLost::Budget {
                     waited: started.elapsed(),
-                });
+                }));
             }
-            self.shepherd.client.connected_within(left).await?;
-            match self.shepherd.client.subscribe(self.topics.clone()).await {
-                Ok(stream) => {
+            self.shepherd
+                .client
+                .connected_within(left)
+                .await
+                .map_err(bark::Resubscribe::Lost)?;
+
+            // Bounded by what is left rather than by the request's own
+            // deadline. `Client::subscribe` carries `DEFAULT_DEADLINE` plus
+            // `DEADLINE_GRACE`, seven seconds, which on its own outlasts
+            // the budget this whole function is meant to keep. Dropping the
+            // future is safe: the client actor expects a reply receiver to
+            // go away.
+            let left = remaining(started.elapsed());
+            if left.is_zero() {
+                return Err(bark::Resubscribe::Lost(LinkLost::Budget {
+                    waited: started.elapsed(),
+                }));
+            }
+            let asked =
+                tokio::time::timeout(left, self.shepherd.client.subscribe(self.topics.clone()));
+            match asked.await {
+                Ok(Ok(stream)) => {
                     self.stream = stream;
                     return Ok(());
                 }
-                Err(RequestError::Closed) => {}
-                // A shepherd answered and refused the subscription itself,
-                // which waiting cannot fix. Reported once rather than on
-                // every attempt, then left to the budget: a dog that
-                // cannot subscribe has nothing to do either way.
-                Err(other) => {
-                    if !reported {
-                        eprintln!("shep dog bark: the shepherd refused a subscription: {other}");
-                        reported = true;
-                    }
+                // The generation it was issued on had already gone. The
+                // supervisor is about to say so, and the budget decides
+                // whether to keep asking.
+                Ok(Err(RequestError::Closed)) => {}
+                // A shepherd answered and refused. Waiting cannot change
+                // its answer, and the error already decides an exit code
+                // that the opening `Subscribe` would have used.
+                Ok(Err(other)) => return Err(bark::Resubscribe::Refused(other)),
+                Err(_elapsed) => {
+                    return Err(bark::Resubscribe::Lost(LinkLost::Budget {
+                        waited: started.elapsed(),
+                    }));
                 }
             }
             // The supervisor reports a connection's death a moment after
-            // the socket does, so a bare retry here would spin against a
-            // link still reading as connected. One rung of the supervisor's
-            // own ladder is long enough to outlast that and short against
-            // the handover it is waiting out.
-            tokio::time::sleep(RECONNECT_MIN_DELAY.min(left)).await;
+            // the socket does, so a bare retry would spin against a link
+            // still reading as connected. One rung of the supervisor's own
+            // ladder outlasts that and is short against the handover.
+            tokio::time::sleep(RECONNECT_MIN_DELAY.min(remaining(started.elapsed()))).await;
         }
     }
 }
@@ -570,7 +593,10 @@ mod tests {
         let armed = tokio::time::timeout(Duration::from_secs(10), events.resubscribe())
             .await
             .expect("a re-subscribe must not outlive its own budget");
-        assert_eq!(armed, Ok(()), "a successor was there to subscribe to");
+        assert!(
+            armed.is_ok(),
+            "a successor was there to subscribe to: {armed:?}"
+        );
 
         // `Ok` alone does not prove the adapter kept what it was handed. An
         // adapter that answered `Ok` and left the dead stream in place
@@ -644,7 +670,10 @@ mod tests {
             let waited = started.elapsed();
 
             assert!(
-                matches!(gave_up, Err(LinkLost::Budget { .. })),
+                matches!(
+                    gave_up,
+                    Err(bark::Resubscribe::Lost(LinkLost::Budget { .. }))
+                ),
                 "expected a spent budget, got {gave_up:?}"
             );
             assert!(

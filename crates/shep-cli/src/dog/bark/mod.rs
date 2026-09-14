@@ -14,6 +14,7 @@
 pub mod rules;
 pub mod sinks;
 
+use core::fmt;
 use core::future::Future;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -105,11 +106,41 @@ pub trait EventSource: Send {
     /// [`Self::next`] returns `None`.
     ///
     /// # Errors
-    /// [`LinkLost`]: no shepherd answered inside the dog's budget, or one
-    /// refused this dog's protocol version. Either way the shepherd is
-    /// gone as far as this dog is concerned, and it exits.
-    fn resubscribe(&mut self) -> impl Future<Output = Result<(), LinkLost>> + Send;
+    /// [`Resubscribe`], which the dog exits on either way. The two arms
+    /// exit differently, because a shepherd that never answered and one
+    /// that answered and refused send an operator to different places.
+    fn resubscribe(&mut self) -> impl Future<Output = Result<(), Resubscribe>> + Send;
 }
+
+/// Why bark could not arm a fresh subscription.
+///
+/// Two outcomes rather than one, so a re-subscribe reports what the first
+/// subscription would have. `run_bark` exits `ExitCode::from(&err)` when
+/// the shepherd refuses the opening `Subscribe`; without this a refusal
+/// after a handover would exit `DaemonUnreachable` instead, naming a
+/// shepherd that is running and answering.
+#[derive(Debug)]
+#[must_use = "which of the two it was decides how the dog exits"]
+pub enum Resubscribe {
+    /// No shepherd answered inside the dog's budget, or one refused this
+    /// dog's protocol version at the handshake.
+    Lost(LinkLost),
+    /// A shepherd answered and refused the subscription itself, so waiting
+    /// cannot help. Carried whole, since `RequestError` already decides an
+    /// exit code and flattening it would lose that.
+    Refused(RequestError),
+}
+
+impl fmt::Display for Resubscribe {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Lost(lost) => lost.fmt(f),
+            Self::Refused(err) => write!(f, "the shepherd refused a subscription: {err}"),
+        }
+    }
+}
+
+impl core::error::Error for Resubscribe {}
 
 /// What bark reads the flock through, so the loop's poll is drivable
 /// without a socket.
@@ -270,9 +301,12 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
                                 // never on an id the shepherd minted.
                                 reconcile(&flock, &mut rules, &delivery).await;
                             }
-                            Err(lost) => {
-                                eprintln!("shep dog bark: {lost}");
-                                break super::exit_for(&lost);
+                            Err(failed) => {
+                                eprintln!("shep dog bark: {failed}");
+                                break match &failed {
+                                    Resubscribe::Lost(lost) => super::exit_for(lost),
+                                    Resubscribe::Refused(err) => ExitCode::from(err),
+                                };
                             }
                         },
                         // Matched on the variant rather than on the dog's
@@ -443,7 +477,7 @@ mod tests {
     use std::net::SocketAddr;
 
     use shep_core::barks::Bark;
-    use shep_core::protocol::ProcessEventKind;
+    use shep_core::protocol::{ProcessEventKind, RpcError, RpcErrorCode};
     use shep_core::status::ProcStatus;
     use tokio::sync::{broadcast, oneshot};
 
@@ -499,10 +533,10 @@ mod tests {
 
         /// A bare receiver has no shepherd behind it to ask again, so this
         /// stands for the shepherd that never came back.
-        async fn resubscribe(&mut self) -> Result<(), LinkLost> {
-            Err(LinkLost::Budget {
+        async fn resubscribe(&mut self) -> Result<(), Resubscribe> {
+            Err(Resubscribe::Lost(LinkLost::Budget {
                 waited: Duration::ZERO,
-            })
+            }))
         }
     }
 
@@ -519,6 +553,10 @@ mod tests {
         later: std::collections::VecDeque<broadcast::Receiver<BusEvent>>,
         /// What [`Self::resubscribe`] reports when `later` is empty.
         when_gone: LinkLost,
+        /// Set instead of `when_gone` when the shepherd answers and
+        /// refuses, which exits on the error's own code rather than on the
+        /// budget's.
+        refuses: Option<RpcErrorCode>,
         resubscribes: Arc<std::sync::atomic::AtomicU32>,
     }
 
@@ -526,6 +564,28 @@ mod tests {
         fn across(
             generations: Vec<broadcast::Receiver<BusEvent>>,
             when_gone: LinkLost,
+        ) -> (Self, Arc<std::sync::atomic::AtomicU32>) {
+            Self::across_inner(generations, when_gone, None)
+        }
+
+        /// A source whose shepherd answers the re-subscribe and refuses it.
+        fn refusing(
+            generations: Vec<broadcast::Receiver<BusEvent>>,
+            code: RpcErrorCode,
+        ) -> (Self, Arc<std::sync::atomic::AtomicU32>) {
+            Self::across_inner(
+                generations,
+                LinkLost::Budget {
+                    waited: Duration::ZERO,
+                },
+                Some(code),
+            )
+        }
+
+        fn across_inner(
+            generations: Vec<broadcast::Receiver<BusEvent>>,
+            when_gone: LinkLost,
+            refuses: Option<RpcErrorCode>,
         ) -> (Self, Arc<std::sync::atomic::AtomicU32>) {
             let mut later: std::collections::VecDeque<_> = generations.into();
             let current = later.pop_front();
@@ -535,6 +595,7 @@ mod tests {
                     current,
                     later,
                     when_gone,
+                    refuses,
                     resubscribes: Arc::clone(&resubscribes),
                 },
                 resubscribes,
@@ -555,15 +616,22 @@ mod tests {
             }
         }
 
-        async fn resubscribe(&mut self) -> Result<(), LinkLost> {
+        async fn resubscribe(&mut self) -> Result<(), Resubscribe> {
             self.resubscribes
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if let Some(code) = self.refuses {
+                return Err(Resubscribe::Refused(RequestError::Rpc(RpcError {
+                    code,
+                    message: "this shepherd does not serve that topic".into(),
+                    daemon_version: None,
+                })));
+            }
             match self.later.pop_front() {
                 Some(stream) => {
                     self.current = Some(stream);
                     Ok(())
                 }
-                None => Err(self.when_gone.clone()),
+                None => Err(Resubscribe::Lost(self.when_gone.clone())),
             }
         }
     }
@@ -943,6 +1011,44 @@ mod tests {
             resubscribes.load(std::sync::atomic::Ordering::SeqCst),
             1,
             "it must have tried once before giving up"
+        );
+    }
+
+    /// fails if a shepherd that answers and refuses the subscription is
+    /// reported as a shepherd that never answered.
+    ///
+    /// `run_bark` exits `ExitCode::from(&err)` when the opening `Subscribe`
+    /// is refused. A re-subscribe meeting the same refusal has to exit the
+    /// same code, or the same fault reports differently depending on
+    /// whether a handover happened to have run first.
+    #[tokio::test]
+    async fn a_refused_re_subscribe_exits_on_the_refusals_own_code() {
+        let (tx, rx) = tokio::sync::broadcast::channel(8);
+        let (source, _resubscribes) = HandoverSource::refusing(vec![rx], RpcErrorCode::Unsupported);
+
+        let (addr, _captured) = one_shot_sink(200, "").await;
+        let dir = tempfile::tempdir().unwrap();
+        let barks_path = dir.path().join("barks.jsonl");
+
+        let loop_handle = tokio::spawn(run_loop(
+            source,
+            ScriptedFlock::answering(Vec::new()),
+            gave_up_rules(),
+            &config_with_sink(addr, &barks_path),
+            &barks_path,
+            ScriptedConfig::answering(String::new()),
+        ));
+
+        drop(tx);
+
+        let code = tokio::time::timeout(Duration::from_secs(5), loop_handle)
+            .await
+            .expect("a refused subscription must end the dog, not be waited out")
+            .unwrap();
+        assert_eq!(
+            code,
+            ExitCode::Unsupported,
+            "exiting DaemonUnreachable would name a shepherd that answered"
         );
     }
 
