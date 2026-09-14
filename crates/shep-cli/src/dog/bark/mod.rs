@@ -125,16 +125,30 @@ pub enum Resubscribe {
     /// No shepherd answered inside the dog's budget, or one refused this
     /// dog's protocol version at the handshake.
     Lost(LinkLost),
-    /// The `Subscribe` reached a shepherd and did not succeed, and waiting
-    /// cannot change that: a refusal, a mangled frame, or a reply this
-    /// build cannot decode. Carried whole, since `RequestError` already
-    /// decides an exit code and flattening it would lose that.
+    /// The `Subscribe` did not succeed and waiting cannot change that.
+    /// Carried whole, since `RequestError` already decides an exit code and
+    /// flattening it would lose that.
+    ///
+    /// All four of `RequestError`'s non-`Closed` conditions arrive here,
+    /// and they are not one fault:
+    ///
+    /// - `Rpc` is a shepherd answering and saying no.
+    /// - `Wire` and `Undecodable` are the transport failing, so pointing an
+    ///   operator at the shepherd's configuration sends them to the wrong
+    ///   place.
+    /// - `Timeout` is nobody answering in time, which means the request may
+    ///   never have reached a shepherd at all.
     ///
     /// Named for the request rather than for a refusal, matching
-    /// [`super::DogRunError::Request`]. Only `RequestError::Rpc` is a
-    /// shepherd saying no; `Wire` and `Undecodable` are the transport
-    /// failing, and calling those a refusal points an operator at the
-    /// shepherd's configuration when the fault is on the wire.
+    /// [`super::DogRunError::Request`], because only one of the four is a
+    /// refusal.
+    ///
+    /// `Timeout` cannot arrive here today: `ClientEvents::resubscribe`
+    /// bounds each attempt by what is left of `SHEPHERD_RETURN_BUDGET`,
+    /// five seconds, and `Client::subscribe` carries seven, so the outer
+    /// bound always fires first and reports a spent budget instead. That is
+    /// a consequence of the two numbers rather than a guarantee, so the
+    /// variant documents the condition rather than relying on it.
     Request(RequestError),
 }
 
