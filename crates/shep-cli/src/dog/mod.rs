@@ -625,6 +625,73 @@ mod tests {
         );
     }
 
+    /// fails if the adapter treats a shepherd that answers and refuses as
+    /// one that never answered.
+    ///
+    /// The bark loop's own test drives a fake that hands it a
+    /// `Resubscribe::Refused` ready-made. This is the other half: the
+    /// adapter producing one from a real shepherd that accepts the
+    /// handshake and then rejects the `Subscribe`. Conflating it with
+    /// `Closed` would retry until the budget was gone and then report an
+    /// unreachable shepherd for one that answered.
+    #[tokio::test]
+    async fn the_bark_adapter_keeps_a_refusal_rather_than_retrying_it() {
+        use bark::EventSource as _;
+        use shep_core::protocol::{RpcError, RpcErrorCode};
+
+        let dir = tempfile::tempdir().unwrap();
+        let socket = shep_client::testing::control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &socket,
+            vec![
+                Handshake::Accept(sample_ack()),
+                Handshake::Accept(sample_ack()),
+            ],
+        );
+        let client = ReconnectingClient::connect_as_dog(&socket, "bark")
+            .await
+            .unwrap();
+        let topics = vec!["process.*".to_owned()];
+        let stream = client.subscribe(topics.clone()).await.unwrap();
+        let shepherd = Arc::new(ClientShepherd {
+            client,
+            dog: "bark".to_owned(),
+        });
+        let mut events = ClientEvents {
+            shepherd: Arc::clone(&shepherd),
+            topics,
+            stream,
+        };
+
+        // The successor accepts the handshake and refuses the one
+        // subscription that follows it.
+        shepherds.refuse_next_subscribe(RpcError {
+            code: RpcErrorCode::Unsupported,
+            message: "this shepherd does not serve that topic".into(),
+            daemon_version: None,
+        });
+        shepherds.cut().await;
+
+        let started = tokio::time::Instant::now();
+        let refused = tokio::time::timeout(SHEPHERD_RETURN_BUDGET * 2, events.resubscribe())
+            .await
+            .expect("a refusal must end the wait, not hang it");
+        let waited = started.elapsed();
+
+        let Err(bark::Resubscribe::Refused(err)) = refused else {
+            panic!("expected a kept refusal, got {refused:?}");
+        };
+        assert!(
+            matches!(&err, RequestError::Rpc(rpc) if rpc.code == RpcErrorCode::Unsupported),
+            "the shepherd's own error must survive: {err:?}"
+        );
+        assert!(
+            waited < SHEPHERD_RETURN_BUDGET,
+            "spent {waited:?} of the {SHEPHERD_RETURN_BUDGET:?} budget, so it retried a \
+             refusal instead of keeping it"
+        );
+    }
+
     /// Tests that wait out a real [`SHEPHERD_RETURN_BUDGET`]. Five seconds
     /// of elapsed time is the point, so a paused clock would test nothing.
     mod slow {

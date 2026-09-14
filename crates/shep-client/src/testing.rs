@@ -235,6 +235,7 @@ pub struct Handovers {
     envelopes: Arc<Mutex<Vec<(u32, Envelope)>>>,
     armed_list: Arc<Mutex<Vec<ProcessInfo>>>,
     armed_dog_section: Arc<Mutex<String>>,
+    armed_subscribe_err: Arc<Mutex<Option<RpcError>>>,
     task: JoinHandle<()>,
 }
 
@@ -292,6 +293,18 @@ impl Handovers {
     pub fn reply_to_dog_config(&self, section: &str) {
         *self.armed_dog_section.lock().unwrap() = section.to_owned();
     }
+
+    /// Arms the next `Request::Subscribe` to be answered with `refusal`
+    /// instead of `Response::Subscribed`.
+    ///
+    /// Taken rather than held, so exactly one `Subscribe` is refused and a
+    /// later one is served. That is the shape a caller needs to tell a
+    /// shepherd refusing the request from a connection that died: the
+    /// second answers, and only a caller that stopped on the first will
+    /// not see it.
+    pub fn refuse_next_subscribe(&self, refusal: RpcError) {
+        *self.armed_subscribe_err.lock().unwrap() = Some(refusal);
+    }
 }
 
 impl Drop for Handovers {
@@ -318,6 +331,7 @@ pub fn fake_daemon_across_handovers(path: &Path, handshakes: Vec<Handshake>) -> 
     let envelopes: Arc<Mutex<Vec<(u32, Envelope)>>> = Arc::new(Mutex::new(Vec::new()));
     let armed_list: Arc<Mutex<Vec<ProcessInfo>>> = Arc::new(Mutex::new(Vec::new()));
     let armed_dog_section: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    let armed_subscribe_err: Arc<Mutex<Option<RpcError>>> = Arc::new(Mutex::new(None));
 
     let task = tokio::spawn({
         let cut_on_next_request = Arc::clone(&cut_on_next_request);
@@ -326,6 +340,7 @@ pub fn fake_daemon_across_handovers(path: &Path, handshakes: Vec<Handshake>) -> 
         let envelopes = Arc::clone(&envelopes);
         let armed_list = Arc::clone(&armed_list);
         let armed_dog_section = Arc::clone(&armed_dog_section);
+        let armed_subscribe_err = Arc::clone(&armed_subscribe_err);
         async move {
             let mut generation: u32 = 0;
             while let Ok(stream) = listener.accept().await {
@@ -365,6 +380,20 @@ pub fn fake_daemon_across_handovers(path: &Path, handshakes: Vec<Handshake>) -> 
                             if cut_on_next_request.swap(false, Ordering::SeqCst) {
                                 break;
                             }
+                            // Armed refusal, taken so it answers one
+                            // `Subscribe` and the next is served normally.
+                            // Taken into a local first: the guard must not
+                            // be alive across the write below, or this
+                            // future stops being `Send`.
+                            let refusal = if matches!(body, Request::Subscribe { .. }) {
+                                armed_subscribe_err.lock().unwrap().take()
+                            } else {
+                                None
+                            };
+                            if let Some(refusal) = refusal {
+                                write_err(&mut frames, id, refusal.code, refusal.message).await;
+                                continue;
+                            }
                             let response = match body {
                                 Request::ListFlock => {
                                     Response::Flock(armed_list.lock().unwrap().clone())
@@ -394,6 +423,7 @@ pub fn fake_daemon_across_handovers(path: &Path, handshakes: Vec<Handshake>) -> 
         envelopes,
         armed_list,
         armed_dog_section,
+        armed_subscribe_err,
         task,
     }
 }
