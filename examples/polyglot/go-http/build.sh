@@ -1,7 +1,9 @@
 #!/bin/sh
-# Builds the static binary that `examples/Flockfile.polyglot.toml`'s
-# go-http entry runs directly, with no `interpreter` -- a compiled program
-# needs none. Run once, from anywhere:
+# Builds the binary that `examples/Flockfile.polyglot.toml`'s go-http
+# entry runs directly, with no `interpreter` -- a compiled program needs
+# none. Not a static one: net/http reaches the system resolver, so this
+# links libresolv, CoreFoundation and Security on macOS. Run once, from
+# anywhere:
 #
 #   $ examples/polyglot/go-http/build.sh
 set -eu
