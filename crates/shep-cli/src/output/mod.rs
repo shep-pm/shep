@@ -27,7 +27,7 @@ use std::collections::BTreeSet;
 use std::io;
 
 use serde::Serialize;
-use shep_core::protocol::{ProcessInfo, SheepRefusal};
+use shep_core::protocol::{HostUsage, ProcessInfo, SheepRefusal};
 
 use crate::exit::ExitCode;
 
@@ -305,10 +305,39 @@ pub(crate) fn terminal_width() -> usize {
     }
 }
 
+/// The `--format json` shape [`emit_flock`] writes: [`OutputEnvelope`]'s own
+/// three fields, plus `host` riding beside `data` rather than inside it.
+///
+/// A sibling field for [`DescribedEnvelope`]'s reason: `data` stays exactly
+/// the array it always was, so an existing `data[0].name` script sees no
+/// shape change, and [`SCHEMA_VERSION`] does not move for an addition
+/// outside it.
+///
+/// `Option<Option<HostUsage>>` because there are three answers and a reader
+/// has to tell them apart. Absent: this shepherd would not answer, which
+/// today means one built before `Request::HostUsage` existed. `null`: a
+/// platform `sysinfo` cannot read. An object: a reading, whose own rate
+/// fields are `null` where no window has passed yet.
+///
+/// Only ever constructed by [`emit_flock`]. `#[cfg_attr(windows,
+/// allow(dead_code))]` for [`DescribedEnvelope`]'s reason.
+#[derive(Serialize)]
+#[cfg_attr(windows, allow(dead_code))]
+struct FlockEnvelope<'a> {
+    schema_version: u32,
+    command: &'a str,
+    data: FlockRows,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    host: Option<Option<HostUsage>>,
+}
+
 /// Renders one flock listing: the sheep table, then the dogs table
 /// beneath it whenever any dog is registered.
 ///
-/// JSON stays one array, every entry carrying its own `dog` marker.
+/// JSON stays one array under `data`, every entry carrying its own `dog`
+/// marker, with `host` beside it: see [`FlockEnvelope`]. `host` is `None`
+/// for a caller with no host block to carry, which is every caller but
+/// `shep flock` itself.
 /// Table partitions on [`ProcessInfo::dog`], rendering sheep and dogs
 /// each through [`table_of`], with a blank line and `Dogs` caption
 /// between them only when a dog exists. [`silence_pointer`] adds one
@@ -322,10 +351,20 @@ pub fn emit_flock(
     fmt: Format,
     command: &str,
     listing: Vec<ProcessInfo>,
+    host: Option<Option<HostUsage>>,
     style: Presentation,
 ) -> io::Result<()> {
     match fmt {
-        Format::Json => emit(out, fmt, command, FlockRows(listing), style),
+        Format::Json => {
+            let envelope = FlockEnvelope {
+                schema_version: SCHEMA_VERSION,
+                command,
+                data: FlockRows(listing),
+                host,
+            };
+            serde_json::to_writer(&mut *out, &envelope)?;
+            writeln!(out)
+        }
         Format::Table => {
             let (dogs, sheep): (Vec<ProcessInfo>, Vec<ProcessInfo>) =
                 listing.into_iter().partition(|p| p.dog.is_some());
@@ -888,6 +927,7 @@ mod tests {
             Format::Table,
             "flock",
             mixed_listing(),
+            None,
             Presentation::BARE,
         )
         .unwrap();
@@ -951,6 +991,7 @@ mod tests {
             Format::Table,
             "flock",
             vec![sheep_info("web"), silent_dog("log-rotate", Some(true))],
+            None,
             Presentation::BARE,
         )
         .unwrap();
@@ -983,6 +1024,7 @@ mod tests {
                 Format::Table,
                 "flock",
                 listing,
+                None,
                 Presentation::BARE,
             )
             .unwrap();
@@ -1028,6 +1070,7 @@ mod tests {
             Format::Table,
             "flock",
             vec![sheep_info("web"), talking],
+            None,
             Presentation::BARE,
         )
         .unwrap();
@@ -1118,6 +1161,7 @@ mod tests {
             Format::Json,
             "flock",
             mixed_listing(),
+            None,
             Presentation::BARE,
         )
         .unwrap();
@@ -1138,6 +1182,7 @@ mod tests {
             Format::Table,
             "flock",
             vec![sheep_info("web")],
+            None,
             Presentation::BARE,
         )
         .unwrap();

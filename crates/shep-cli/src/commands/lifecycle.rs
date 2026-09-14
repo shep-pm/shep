@@ -596,6 +596,9 @@ async fn render_outcome<T: Render>(
         streams.fmt,
         command,
         listing,
+        // A dog listing says nothing about the machine, and a `host` key on
+        // it would claim this verb answers a question it was never asked.
+        None,
         streams.style,
     ))
 }
