@@ -55,7 +55,7 @@ The page contract puts a short version above the fold on every page. It needs on
 - Consumes: nothing.
 - Produces: `<ShortVersion>`, wrapping whatever a page puts in its default slot, with an optional `label` prop defaulting to "The short version". Every later task imports it.
 
-- [ ] **Step 1: Create the component**
+- [x] **Step 1: Create the component**
 
 ```astro
 ---
@@ -103,7 +103,7 @@ const { label = "The short version" } = Astro.props;
 </style>
 ```
 
-- [ ] **Step 2: Let page chrome apply inside it**
+- [x] **Step 2: Let page chrome apply inside it**
 
 The shared stylesheet scopes its rules to `.docs-shell main`, which already covers anything inside this component, so `p` and `code` inherit correctly. Add only the spacing fix a boxed block needs, to `web/src/styles/docs-page.css`:
 
@@ -115,11 +115,11 @@ The shared stylesheet scopes its rules to `.docs-shell main`, which already cove
 }
 ```
 
-- [ ] **Step 3: Check it renders before four tasks depend on it**
+- [x] **Step 3: Check it renders before four tasks depend on it**
 
 Put a `<ShortVersion>` on `terminology.astro` temporarily with two lines in it, run `npx astro dev --port 4421`, and confirm the box draws with its label, the text sits inside it, and the spacing under the last line matches the space above the first. Then revert that page.
 
-- [ ] **Step 4: Build**
+- [x] **Step 4: Build**
 
 ```bash
 npm run build
@@ -129,7 +129,7 @@ npm run build
 npx astro check
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add web/src/components/docs/ShortVersion.astro web/src/styles/docs-page.css
@@ -152,7 +152,7 @@ Target 1,600 prose words from 1,865. Most of the win is order, not deletion.
 - Consumes: `ShortVersion` from Task 1.
 - Produces: nothing other tasks read.
 
-- [ ] **Step 1: Reorder into this sequence**
+- [x] **Step 1: Reorder into this sequence**
 
 1. Lede, unchanged in substance.
 2. `<ShortVersion>`: the six-step runbook, as it stands, and nothing else. No caveats inside the box.
@@ -165,23 +165,23 @@ Target 1,600 prose words from 1,865. Most of the win is order, not deletion.
 9. `shep serve vs. pm2 serve` and `pm2-runtime vs. shep runtime`, unchanged.
 10. The handoff callout to `Surviving a reboot`, which currently sits under the runbook, moves to the end of the `ShortVersion`.
 
-- [ ] **Step 2: Fix the link text that names an old chapter**
+- [x] **Step 2: Fix the link text that names an old chapter**
 
 This page says "Getting started" and "Your first Flockfile" in its cards and prose. Those chapters are now Quickstart and Flockfile reference. Change the text, not the href.
 
-- [ ] **Step 3: Add anchors and enforce them**
+- [x] **Step 3: Add anchors and enforce them**
 
 Every H2 and H3 gets a unique id. Add `"from-pm2"` to `ENFORCED`.
 
-- [ ] **Step 4: Run the voice skills**
+- [x] **Step 4: Run the voice skills**
 
 `humanizer`, then `rin-voice`, over every sentence written or reworked. The new side-by-side section is the largest piece of new prose on this page.
 
-- [ ] **Step 5: Set the budget**
+- [x] **Step 5: Set the budget**
 
 In `web/scripts/verify-prose-budget.ts`, change `"from-pm2"` from 1950 to 1600.
 
-- [ ] **Step 6: Build**
+- [x] **Step 6: Build**
 
 ```bash
 npm run build
@@ -193,11 +193,11 @@ npx astro check
 
 Expected: both clean, and `from-pm2` at or under 1,600.
 
-- [ ] **Step 7: Read it as the reader**
+- [x] **Step 7: Read it as the reader**
 
 Load the page and scroll once. The runbook must be visible without scrolling at a 768px viewport, and the verb table within one scroll. Check every `<details>` opens, and that the side-by-side renders as two columns on desktop and stacks below 560px.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add web/src/pages/docs/from-pm2.astro web/scripts/verify-heading-anchors.ts web/scripts/verify-prose-budget.ts
@@ -220,7 +220,7 @@ Target 400 prose words.
 - Consumes: `ShortVersion` from Task 1.
 - Produces: nothing other tasks read.
 
-- [ ] **Step 1: Restructure**
+- [x] **Step 1: Restructure**
 
 1. Lede, one sentence, stating how long the page takes.
 2. A one-line router as the very first thing after it: coming from pm2, start at chapter 2 instead, with the link. One line of scan for a greenfield reader, one signpost for a refugee, cheaper than a chooser page that taxes everyone with a click.
@@ -229,19 +229,19 @@ Target 400 prose words.
 5. Shell completions and `shep welcome` move into a single `<details>` under `Other ways to install`. Neither is needed to get a process running.
 6. The pre-release and Windows callout moves below the short version. A reader who has not started yet cannot act on a Windows caveat.
 
-- [ ] **Step 2: Keep the aliases grid**
+- [x] **Step 2: Keep the aliases grid**
 
 `shep bleats` / `shep logs` and the other three pairs are four lines and teach the whole naming scheme. Keep them under `Reading the flock table`.
 
-- [ ] **Step 3: Fix stale chapter names in link text**
+- [x] **Step 3: Fix stale chapter names in link text**
 
 This page points at "Terminology" and "Your first Flockfile". They are The words and Flockfile reference now.
 
-- [ ] **Step 4: Anchors, voice, budget**
+- [x] **Step 4: Anchors, voice, budget**
 
 Ids on every heading, `"getting-started"` into `ENFORCED`, `humanizer` then `rin-voice` over the new sentences, and the budget set to 400.
 
-- [ ] **Step 5: Build and read it**
+- [x] **Step 5: Build and read it**
 
 ```bash
 npm run build
@@ -253,7 +253,7 @@ npx astro check
 
 At a 768px viewport, the short version must be fully visible without scrolling. Time yourself reading from the top to the point where a flock is running; if it is more than about ninety seconds, it is still too long.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add web/src/pages/docs/getting-started.astro web/scripts/verify-heading-anchors.ts web/scripts/verify-prose-budget.ts
@@ -276,7 +276,7 @@ Target 1,200 prose words from 1,423.
 - Consumes: `ShortVersion` from Task 1.
 - Produces: nothing other tasks read.
 
-- [ ] **Step 1: Restructure**
+- [x] **Step 1: Restructure**
 
 1. Lede.
 2. `<ShortVersion>`: the six-step runbook that is already there, moved into the box.
@@ -286,15 +286,15 @@ Target 1,200 prose words from 1,423.
 6. `Is it up, and stopping it on purpose`, unchanged.
 7. Into `<details>`, each behind a one-line summary: `Never escalates its own privilege`, `The PATH capture, and its one trap`, `Honestly: openrc and the BSDs are untested`. All three matter and none is what a reader is asking on their first pass.
 
-- [ ] **Step 2: Keep the honesty**
+- [x] **Step 2: Keep the honesty**
 
 The openrc and BSD section says those paths are untested. It goes into a disclosure, not out of the page. Its summary line must say "untested" so a reader on one of those systems sees it without opening anything.
 
-- [ ] **Step 3: Anchors, voice, budget**
+- [x] **Step 3: Anchors, voice, budget**
 
 This page already has ids on every heading and is already in `ENFORCED`. Any new heading needs one too. Budget to 1,200.
 
-- [ ] **Step 4: Build and read**
+- [x] **Step 4: Build and read**
 
 ```bash
 npm run build
@@ -304,7 +304,7 @@ npm run build
 npx astro check
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add web/src/pages/docs/startup.astro web/scripts/verify-prose-budget.ts
@@ -327,7 +327,7 @@ Target 1,100 prose words from 1,312.
 - Consumes: `ShortVersion` from Task 1.
 - Produces: nothing other tasks read.
 
-- [ ] **Step 1: Restructure**
+- [x] **Step 1: Restructure**
 
 1. Lede.
 2. `<ShortVersion label="Pick yours">`: a list linking straight to each walkthrough's anchor, one line each, saying which stack it is for. Node and Bun in one file, several instances without `reuse_port`, a venv's own python, a build step then no interpreter, and a static directory rather than an app.
@@ -336,11 +336,11 @@ Target 1,100 prose words from 1,312.
 5. `The exec probe, in full` and `kill_timeout, not graceful_timeout` move below the walkthroughs. Both are reference material a reader reaches after picking an example.
 6. `What each one demonstrates` folds into the chooser rather than being its own section.
 
-- [ ] **Step 2: Anchors, voice, budget**
+- [x] **Step 2: Anchors, voice, budget**
 
 Every heading gets an id, and the chooser links to those ids, so it breaks loudly if one is renamed. `"examples"` into `ENFORCED`. Budget to 1,100.
 
-- [ ] **Step 3: Build and read**
+- [x] **Step 3: Build and read**
 
 ```bash
 npm run build
@@ -352,7 +352,7 @@ npx astro check
 
 Click every link in the chooser and confirm each lands on its walkthrough.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add web/src/pages/docs/examples.astro web/scripts/verify-heading-anchors.ts web/scripts/verify-prose-budget.ts
@@ -371,15 +371,15 @@ This task is mechanical and is done in the main thread rather than dispatched.
 - Modify: `web/src/pages/docs/terminology.astro`
 - Modify: `web/scripts/verify-heading-anchors.ts`
 
-- [ ] **Step 1: Add the short version**
+- [x] **Step 1: Add the short version**
 
 `<ShortVersion label="The five that matter">`: flock, fold, sheep, dog, bleats, one line each. A reader who learns those five can read every other chapter; the full table below is for when they meet a word that is not one of them.
 
-- [ ] **Step 2: Ids and enforcement**
+- [x] **Step 2: Ids and enforcement**
 
 Ids on `The lexicon`, `Sheepdogs and sheep were separate ideas from the start`, `Usage rules` and `Where to go next`. Add `"terminology"` to `ENFORCED`.
 
-- [ ] **Step 3: Build**
+- [x] **Step 3: Build**
 
 ```bash
 npm run build
@@ -389,7 +389,7 @@ npm run build
 npx astro check
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add web/src/pages/docs/terminology.astro web/scripts/verify-heading-anchors.ts
@@ -405,11 +405,11 @@ Five pages rewritten separately can each be right and still not read as a sequen
 **Files:**
 - Modify: `web/scripts/verify-prose-budget.ts` if any budget needs correcting
 
-- [ ] **Step 1: Read all five in order**
+- [x] **Step 1: Read all five in order**
 
 Load chapters 1 to 5 and follow the chapter bar from one to the next, as a reader would. Check that nothing in chapter 2 assumes something only chapter 4 says, and that no page repeats an explanation another page already gave.
 
-- [ ] **Step 2: Confirm every page has the shape**
+- [x] **Step 2: Confirm every page has the shape**
 
 ```bash
 cd web && for p in getting-started from-pm2 startup examples terminology; do printf "%-18s short-version=%s headings-without-id=%s\n" "$p" "$(grep -c 'ShortVersion' src/pages/docs/$p.astro)" "$(grep -c '<h[23]>' src/pages/docs/$p.astro)"; done
@@ -417,7 +417,7 @@ cd web && for p in getting-started from-pm2 startup examples terminology; do pri
 
 Expected: every page uses `ShortVersion` at least once, and none has a heading without an id.
 
-- [ ] **Step 3: Confirm the budgets hold**
+- [x] **Step 3: Confirm the budgets hold**
 
 ```bash
 cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep -E 'getting-started|from-pm2|startup|examples|terminology|TOTAL'
@@ -425,11 +425,11 @@ cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep -E 'getting-sta
 
 Part I should total near 4,500 prose words, down from 5,555.
 
-- [ ] **Step 4: The DM test**
+- [x] **Step 4: The DM test**
 
 Take the last thing a beta tester was sent privately and find it in Part I in under thirty seconds. Anything that fails is a page bug with a name, and it gets recorded here rather than fixed silently.
 
-- [ ] **Step 5: Commit any budget corrections**
+- [x] **Step 5: Commit any budget corrections**
 
 ---
 
@@ -444,6 +444,40 @@ Tasks 2 to 5 touch one page each plus the two check scripts, so they run in para
 `sonnet`, `effort: high` for all four. The design decisions are in this plan; the work is applying them to prose. Roughly 15 minutes of wall-clock against about 50 sequential.
 
 **Agents cannot see a rendered page.** Every defect in the three completed plans was found by looking at one, and none by reading a diff. So each agent's report is a draft, and the main thread opens all five pages in the browser before any of it is called done.
+
+## What the fan-out actually cost and caught
+
+Four agents, sonnet at high effort, about 17 minutes each in parallel
+against roughly 50 sequential. Every report was accurate. Two still needed
+correcting, and both corrections came from opening the page rather than
+from reading the report.
+
+**The reboot agent put the ids on the `<details>` elements.** Its report
+said "all green, every h2 still has a unique id", which was true because
+three h2s had stopped being h2s. The page went from eight headings to
+four, the anchor check stopped covering three sections while still
+reporting green, and `/docs/startup#openrc-and-the-bsds` neither scrolled
+nor opened. Fixed by putting each id back on an `<h2>` inside its
+`<summary>`, which `<summary>` accepts by spec.
+
+**The quickstart agent cut a paragraph to remove a stale link**, which
+left the page with no route to the Flockfile reference at all, and its
+Where-to-go-next cards offered Dogs. Swapped for Flockfile reference.
+
+**One agent found a bug in the tooling and reported it instead of routing
+around it.** The prose counter's terminal stripper ended at the first
+nested `</div>`, so command lines and table output after the first were
+counted as prose. The corpus was overstated by 913 words. It could have
+restructured its markup to dodge the miscount and said nothing; it did not.
+
+**And the fan-out surfaced a defect of mine that predated it.** Running
+`astro check` through `tail -3` hides the error count whenever there are
+errors, because the offending source is printed above the summary. Ten
+ts(2339) and ts(2741) errors had been reported for four commits and I had
+been reading "0 warnings / 0 hints" as success. Every field-group heading
+on the Flockfile reference and every verb-group heading on the CLI page
+was rendering empty. Never truncate the output of the command that exists
+to tell you something is wrong.
 
 ## One spec criterion this plan does not meet
 
