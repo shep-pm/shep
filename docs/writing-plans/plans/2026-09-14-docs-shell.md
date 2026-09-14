@@ -366,7 +366,7 @@ Ids are hand-written rather than derived from heading text, because a derived sl
 - Consumes: `web/src/styles/docs-page.css` from Task 2.
 - Produces: `ENFORCED`, an exported array of page slugs in `verify-heading-anchors.ts`. Later phases append their slugs to it. Also produces the convention every later page follows: `<h2 id="kebab-case-id">`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `web/scripts/verify-heading-anchors.ts`:
 
@@ -458,7 +458,7 @@ test("every enforced slug is a page that exists", async () => {
 });
 ```
 
-- [ ] **Step 2: Run it and watch the unit tests pass and the page tests pass vacuously**
+- [x] **Step 2: Run it and watch the unit tests pass and the page tests pass vacuously**
 
 ```bash
 cd web && node --test scripts/verify-heading-anchors.ts
@@ -466,7 +466,7 @@ cd web && node --test scripts/verify-heading-anchors.ts
 
 Expected: 4 tests pass. The two page tests pass over an empty `ENFORCED`, which is correct for this phase.
 
-- [ ] **Step 3: Prove the guard actually refuses something**
+- [x] **Step 3: Prove the guard actually refuses something**
 
 Temporarily set `export const ENFORCED: string[] = ["getting-started"];` and re-run:
 
@@ -478,7 +478,7 @@ Expected: FAIL with exactly `getting-started.astro has 8 heading(s) with no id; 
 
 Then set `ENFORCED` back to `[]` and re-run to confirm it passes again.
 
-- [ ] **Step 4: Add the hover affordance**
+- [x] **Step 4: Add the hover affordance**
 
 Append to `web/src/styles/docs-page.css`:
 
@@ -519,7 +519,7 @@ Append to `web/src/styles/docs-page.css`:
 }
 ```
 
-- [ ] **Step 5: Inject the click target**
+- [x] **Step 5: Inject the click target**
 
 In `web/src/layouts/DocsLayout.astro`, add this after the closing `</div>` of `.grid` and before `</div>` of `.docs-shell`:
 
@@ -541,13 +541,13 @@ In `web/src/layouts/DocsLayout.astro`, add this after the closing `</div>` of `.
 </script>
 ```
 
-- [ ] **Step 6: Verify on a page that already has ids**
+- [x] **Step 6: Verify on a page that already has ids**
 
 `output.astro` already carries nine. Load `http://localhost:4421/docs/output`, hover a heading such as "Multi-instance apps group", and confirm a `#` appears to its left and navigates to `/docs/output#grouped-instances` when clicked.
 
 Then confirm the deep link works cold: load `http://localhost:4421/docs/output#the-dogs-table` directly and check the page lands on that section.
 
-- [ ] **Step 7: Wire the check into the build**
+- [x] **Step 7: Wire the check into the build**
 
 In `web/package.json`, add the new test to the `build` script, next to the existing one:
 
@@ -555,7 +555,7 @@ In `web/package.json`, add the new test to the `build` script, next to the exist
     "build": "node scripts/check-node.mjs && node --test scripts/verify-dogs-index.ts && node --test scripts/verify-heading-anchors.ts && astro build && pagefind --site dist && node scripts/verify-pagefind-index.mjs",
 ```
 
-- [ ] **Step 8: Build**
+- [x] **Step 8: Build**
 
 ```bash
 npm run build
@@ -567,7 +567,7 @@ npx astro check
 
 Expected: both clean, and the build output shows the new test file running.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add web/scripts/verify-heading-anchors.ts web/src/styles/docs-page.css web/src/layouts/DocsLayout.astro web/package.json
@@ -588,7 +588,7 @@ The spec sets word targets per page. A rewrite brief without a numeric ceiling a
 - Consumes: nothing.
 - Produces: `BUDGETS`, an exported record of slug to maximum prose words, and `proseWords(source)`, the counting function. Later phases add entries to `BUDGETS` and are checked against them.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `web/scripts/verify-prose-budget.ts`:
 
@@ -673,7 +673,7 @@ test("every budgeted slug is a page that exists", async () => {
 });
 ```
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 ```bash
 cd web && node --test scripts/verify-prose-budget.ts
@@ -681,7 +681,7 @@ cd web && node --test scripts/verify-prose-budget.ts
 
 Expected: 4 tests pass.
 
-- [ ] **Step 3: Prove it refuses an over-budget page, and accepts an under-budget one**
+- [x] **Step 3: Prove it refuses an over-budget page, and accepts an under-budget one**
 
 Temporarily set `export const BUDGETS: Record<string, number> = { "getting-started": 300, terminology: 500 };` and re-run.
 
@@ -689,7 +689,7 @@ Expected: FAIL with exactly `getting-started.astro has 1245 prose words against 
 
 Set `BUDGETS` back to `{}` and re-run to confirm it passes.
 
-- [ ] **Step 4: Add a reporting mode for the pages not yet budgeted**
+- [x] **Step 4: Add a reporting mode for the pages not yet budgeted**
 
 Append to `web/scripts/verify-prose-budget.ts`:
 
@@ -712,7 +712,7 @@ test("report every page's prose count, so the unbudgeted ones stay visible", asy
 });
 ```
 
-- [ ] **Step 5: Run and record the baseline**
+- [x] **Step 5: Run and record the baseline**
 
 ```bash
 cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep -E '^\s+[0-9]+\s'
@@ -720,7 +720,7 @@ cd web && node --test scripts/verify-prose-budget.ts 2>&1 | grep -E '^\s+[0-9]+\
 
 Expected: 25 rows and a total of 44,584. Paste that output into the commit message, so the starting point is in the history rather than only in a spec.
 
-- [ ] **Step 6: Wire into the build**
+- [x] **Step 6: Wire into the build**
 
 In `web/package.json`:
 
@@ -728,7 +728,7 @@ In `web/package.json`:
     "build": "node scripts/check-node.mjs && node --test scripts/verify-dogs-index.ts && node --test scripts/verify-heading-anchors.ts && node --test scripts/verify-prose-budget.ts && astro build && pagefind --site dist && node scripts/verify-pagefind-index.mjs",
 ```
 
-- [ ] **Step 7: Build**
+- [x] **Step 7: Build**
 
 ```bash
 npm run build
@@ -736,7 +736,7 @@ npm run build
 
 Expected: clean.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add web/scripts/verify-prose-budget.ts web/package.json
@@ -757,7 +757,7 @@ The spec's acceptance list ends with the DM test: take the last thing a beta tes
 - Consumes: nothing.
 - Produces: `StillStuck.astro`, rendered by `DocsLayout` for every `/docs/*` route. No page imports it.
 
-- [ ] **Step 1: Create the component**
+- [x] **Step 1: Create the component**
 
 Create `web/src/components/docs/StillStuck.astro`:
 
@@ -810,7 +810,7 @@ Create `web/src/components/docs/StillStuck.astro`:
 </style>
 ```
 
-- [ ] **Step 2: Render it from the layout**
+- [x] **Step 2: Render it from the layout**
 
 In `web/src/layouts/DocsLayout.astro`, import it alongside the others:
 
@@ -833,13 +833,13 @@ and place it inside `<main>`, between the page slot and the existing footer:
       </main>
 ```
 
-- [ ] **Step 3: Verify it renders on every route, and check the links**
+- [x] **Step 3: Verify it renders on every route, and check the links**
 
 Load three pages of different shapes, for example `/docs/getting-started`, `/docs/output` and `/docs/terminology`, and confirm the box appears above the license footer on each.
 
 Confirm both hrefs resolve rather than 404: `https://github.com/shep-pm/shep/issues/new` and `https://github.com/shep-pm/shep`.
 
-- [ ] **Step 4: Verify it did not pollute the search index**
+- [x] **Step 4: Verify it did not pollute the search index**
 
 ```bash
 cd web && npm run build
@@ -853,7 +853,7 @@ cd web && grep -rl "Didn't find it here" dist/pagefind/ | head
 
 Expected: no output. `data-pagefind-ignore` should have carved it out. If it appears, the attribute is on the wrong element.
 
-- [ ] **Step 5: Build**
+- [x] **Step 5: Build**
 
 ```bash
 npm run build
@@ -865,7 +865,7 @@ npx astro check
 
 Expected: both clean.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add web/src/components/docs/StillStuck.astro web/src/layouts/DocsLayout.astro
@@ -873,6 +873,18 @@ git commit -m "feat(web): every docs page offers somewhere to ask"
 ```
 
 ---
+
+## What was done differently, and why
+
+Three departures from the plan as written, all made during execution.
+
+**Both ratchets were seeded rather than started empty.** The plan had `ENFORCED` and `BUDGETS` begin empty on the grounds that this phase converts no page. An empty list passes whatever it is handed, which makes it indistinguishable from a guard that checks nothing, so each got a real starting point. `containers.astro` was converted for `ENFORCED`: five ids, no prose touched, which doubles as the worked example later phases copy. `BUDGETS` took the six pages already short enough to need no rewrite, at roughly their current length plus headroom, so the guard holds a real line from its first day.
+
+**The anchor glyph moved from the element's text into CSS.** The plan set `link.textContent = "#"`. A prepended child's text joins its parent's `textContent`, so the heading's accessible name became `#The dogs table` and Pagefind would have indexed the same. A `::before` supplies the glyph instead and the anchor holds no text.
+
+**`StillStuck` needed an explicit `{" "}`.** The markup had a newline between "or" and the second link, Astro collapsed it, and the line rendered as `orbrowse the source`. Neither `astro build` nor `astro check` sees this, and neither does reading the source.
+
+Two things worth carrying into the later phases. Every defect in this phase was found by looking at a rendered page, never by reading a diff. And a gate has to be exercised in both directions and in each branch separately: the first attempt at proving the anchor check tested a missing id and a duplicate id in the same edit, the missing-id assertion short-circuited, and the duplicate branch went unexercised while appearing to be covered.
 
 ## Done when
 
