@@ -13,6 +13,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-14
+
+### Added
+
+- Draw frame 1l, the frozen lookout dashboard ([#197](https://github.com/shep-pm/shep/pull/197)) **(BREAKING)**
+- Open a pane on one sheep, and difference the CPU counter ([#202](https://github.com/shep-pm/shep/pull/202))
+- Redraw the config pane and batch its writes ([#206](https://github.com/shep-pm/shep/pull/206))
+- Give shep flock a --follow that redraws the listing
+- A host line above a followed listing
+- Let an app declare what its log levels look like ([#218](https://github.com/shep-pm/shep/pull/218))
+- Warn when cwd/script/out_file/err_file look wrong on disk ([#220](https://github.com/shep-pm/shep/pull/220))
+- Derive the keymap's rows from map_key
+- Bind ? to the keymap alongside h
+- Raise and dismiss the keymap overlay
+- Draw the keymap overlay over the dimmed body
+- Drop the keymap's columns and border as the terminal narrows
+
+### Changed
+
+- Qwen audit group E, dog and bark duplication ([#208](https://github.com/shep-pm/shep/pull/208))
+- Export the Flockfile discovery order ([#213](https://github.com/shep-pm/shep/pull/213))
+- One spelling per rule in the CLI runtime ([#210](https://github.com/shep-pm/shep/pull/210))
+- Name the --follow interval floor, per IR-26
+- Share the overlay box between 1g and 1k
+- Draw a field's help at every width, and retire h **(BREAKING)**
+- Add must_use to keymap::lines
+- Draw the keymap overlay from one place
+- Fold the settings Select arm into disarm_settings_candidate
+- IR-47, sweep the branch for the same three violations CodeRabbit found
+
+### Fixed
+
+- Reserve the truncation notice's real height, not one row
+- Say "1 more line", not "1 more lines"
+- Stop a follow whose terminal has gone, and clip its notice
+- Name the log file a read could not find ([#225](https://github.com/shep-pm/shep/pull/225))
+- Match a settings reply by its own ticket ([#228](https://github.com/shep-pm/shep/pull/228))
+- Floor the dog pane's blurb loop like the grouped pane's
+- Restore Confirm's glyph, tighten two vacuous keymap tests, close clippy
+- Cancel an armed settings candidate on Help instead of leaving it live
+- Drop the painted ground from the keymap's does text
+- Give the keymap overlay's interior its own paper-2 ground
+- Make the boxed-border check structural, and record the real reason the sheep is boxed-only
+- Style the keymap refusal with palette.refusal()
+- Name the keymap in the frozen hint that claims to refuse it
+- Indent the field blurb once, not twice
+- Put KeymapBorderlessWide on the boundary it claims
+- The frozen hint stops claiming a refusal that is not one
+- Factor the arrival pair, which clippy refused
+- A dog pane's footer no longer eats the cursor's own row
+- Name the keymap frames in the gallery preamble
+- The overlay loses the keyboard when a refused write reopens the editor
+- Round 11, five of six, and four were my own rules broken
+- A heredoc quote-escaping artifact from the last commit
+- Round 13, one duplication extracted, three claims settled by evidence
+- Round 15, three real fixes, one ninth-HIGH-wrong compile claim
+- Fold Settings/Escape's disarm copy into the helper
+- Round 18, three real fixes, a settled dismissal, two API/coverage cleanups
+- CodeRabbit's full review of be649226, all 6 actionable comments
+- Round 19, exhaustive keymap check, one more contains-collision guard
+- Gate the gallery-comparison test on cfg(unix)
+- Round 20's last two, a substring gap and a review post-mortem
+- CodeRabbit's full review of 9f0cf3c2, all 3 actionable comments
+- Round 21, a real keymap_open leak on two body-replacing replies
+- CodeRabbit's full review of 7d5aa5b1, all 6 actionable, plus round 23's two real
+
+### Performance
+
+- Hoist three per-row allocations, and derive four heading literals
+- Hoist rows() out of every_group_fits_its_column's loop
+
+
 ## [0.7.4] - 2026-09-12
 
 
