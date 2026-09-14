@@ -827,7 +827,10 @@ the listening socket crosses that exec, every accepted connection dies
 with the old image, and a dog notices only that its connection has ended.
 
 **A dog waits a bounded time for a shepherd to answer again, then exits if
-none does.** The wait is five seconds, the same `DOG_SILENCE_BUDGET` the
+none does.** For the metrics dog this replaces staying up indefinitely: it
+used to reconnect for as long as the machine ran, so anything watching for
+that process still being alive will see it exit now. The wait is five
+seconds, the same `DOG_SILENCE_BUDGET` the
 shepherd allows a dog before acting on its silence.
 
 Both halves of that are load-bearing:

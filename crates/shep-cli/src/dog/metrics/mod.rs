@@ -127,9 +127,16 @@ pub(crate) fn sample_host() -> Option<HostReading> {
 
 /// Runs the metrics dog until it is signalled.
 ///
-/// Binds [`MetricsConfig::bind`] and serves until `SIGINT` or `SIGTERM`.
+/// Binds [`MetricsConfig::bind`] and serves until `SIGINT` or `SIGTERM`,
+/// or until its shepherd has been gone for a whole
+/// [`SHEPHERD_RETURN_BUDGET`](super::SHEPHERD_RETURN_BUDGET).
 /// `SIGTERM` is the first rung of the shepherd's kill ladder, so a dog
 /// deaf to it rides that ladder to `SIGKILL` on every `shep disable`.
+///
+/// The third exit is new, and it is a behaviour change rather than a
+/// tightening: this dog used to stay up for as long as the machine did,
+/// reconnecting against an address nobody would answer. It now exits
+/// `DaemonUnreachable`.
 ///
 /// A refused bind is fatal: a dog running but bound to nothing looks
 /// healthy from the outside.
