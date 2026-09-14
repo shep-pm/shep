@@ -89,7 +89,7 @@ pub(super) struct Binding {
 const fn binding(press: &KeyPress) -> Binding {
     // `row` keeps each arm to one line, so a reader checks thirty-six
     // captions rather than thirty-six struct literals. `the_rows_are_
-    // deduplicated` asserts the count; `rows`'''s own doc gives the
+    // deduplicated` asserts the count; `rows`'s own doc gives the
     // thirty-five that land in a DRAWN column.
     const fn row(keys: &'static str, group: Group, does: &'static str) -> Binding {
         Binding { keys, group, does }
