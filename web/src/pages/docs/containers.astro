@@ -23,9 +23,6 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
 ---
 
 <DocsLayout
-  title="Containers"
-  description="shep runtime is the PID-1 entrypoint for a container. shep dev is the same idea for a laptop: an isolated session that tidies up after itself."
-  crumb="Deploying / Containers"
   activeSlug="containers"
 >
   <article>
@@ -39,7 +36,7 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
       swapped in for the container's own kind of disposability.
     </p>
 
-    <h2>shep runtime: the container entrypoint</h2>
+    <h2 id="shep-runtime">shep runtime: the container entrypoint</h2>
     <p>
       <code>shep runtime</code> boots a shepherd in-process, runs one
       Flockfile's flock, and exits once nothing is left online.{" "}
@@ -61,7 +58,7 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
       rather than inventing <code>/var/lib/shep</code> at 2am.
     </p>
 
-    <h3>Exit codes an orchestrator can act on</h3>
+    <h3 id="exit-codes">Exit codes an orchestrator can act on</h3>
     <p>
       <code>shep runtime</code> exits <strong>0</strong> once the flock has
       been empty and clean (every sheep <code>stopped</code>, none{" "}
@@ -74,7 +71,7 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
       second.
     </p>
 
-    <h3>PID 1 without racing tokio's own reaper</h3>
+    <h3 id="pid-1">PID 1 without racing tokio's own reaper</h3>
     <p>
       When <code>shep runtime</code> genuinely is PID 1, it splits into a
       small init process first, rather than reaping orphans inside the
@@ -90,7 +87,7 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
       SIGKILLing everything mid-shutdown.
     </p>
 
-    <h2>shep dev: the same shape for a laptop</h2>
+    <h2 id="shep-dev">shep dev: the same shape for a laptop</h2>
     <p>
       <code>shep dev</code> runs one Flockfile's flock in an isolated,
       throwaway foreground session: <code>$SHEP_DEV_HOME</code> (default{" "}
@@ -114,7 +111,7 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
       flock would get a "dev" session that shares it and silently forces{" "}
       <code>watch = true</code> onto production apps.
     </Callout>
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
 
     <div class="next-grid">
       <a href="/docs/serve" class="next-card">
@@ -134,88 +131,3 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
     </div>
   </article>
 </DocsLayout>
-
-<style>
-  h1 {
-    font-size: clamp(36px, 4.6vw, 56px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 29px;
-    letter-spacing: -0.03em;
-    margin: 40px 0 8px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  h3 {
-    font-size: 20px;
-    letter-spacing: -0.02em;
-    margin: 26px 0 8px;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 30px;
-    text-wrap: pretty;
-  }
-
-  p {
-    font-size: 16.5px;
-    line-height: 1.65;
-    color: var(--ink-2);
-    margin: 0 0 18px;
-  }
-
-  .fine {
-    font-size: 15px;
-    line-height: 1.6;
-    color: var(--ink-3);
-    margin: -8px 0 30px;
-  }
-
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 8px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
-  }
-</style>

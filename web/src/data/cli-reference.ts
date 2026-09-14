@@ -1,7 +1,7 @@
 /*
  * CLI reference page data — every verb's usage line, about text and full
  * `--help` output, parsed from a real run of the binary rather than
- * hand-typed. Same shape as web/src/data/docsLexicon.ts (parse a checked-in
+ * hand-typed. Same shape as web/src/data/docs-lexicon.ts (parse a checked-in
  * generated text file into structured rows at Astro build time), and same
  * reason: a hand-written CLI reference drifts from crates/shep-cli/src/cli.rs
  * the first time a flag changes and nobody remembers to update prose too.
@@ -53,7 +53,7 @@ export interface CliReferenceData {
 const VERB_MARKER = /^@@VERB:(.+)@@$/m;
 
 function fail(message: string): never {
-  throw new Error(`web/src/data/cliReference.ts: ${message}`);
+  throw new Error(`web/src/data/cli-reference.ts: ${message}`);
 }
 
 /** Escapes HTML, then applies `code` and **bold** inline spans. */
@@ -156,7 +156,7 @@ function parseAliasesFromTopLevel(topLevelHelp: string, names: readonly string[]
 // The generator emits nothing ahead of it, so this marker opens the file
 // rather than being something to search for. There is deliberately no
 // version section any more — see the generator's own comment for why, and
-// web/src/data/workspaceVersion.ts for where the page reads the version now.
+// web/src/data/workspace-version.ts for where the page reads the version now.
 const TOP_LEVEL_MARKER = "@@TOPLEVEL@@\n";
 
 function parse(source: string): CliReferenceData {

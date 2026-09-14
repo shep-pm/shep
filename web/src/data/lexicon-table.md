@@ -1,7 +1,7 @@
 # Lexicon table
 
 <!--
-  The Terminology page's table, parsed by web/src/data/docsLexicon.ts.
+  The Terminology page's table, parsed by web/src/data/docs-lexicon.ts.
 
   It lived in README.md until that page was rewritten as a landing page
   rather than a reference, which left the parser reading a heading that was

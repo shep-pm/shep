@@ -1,0 +1,43 @@
+---
+/*
+ * The short version: the commands, or the answer, above the fold and
+ * before any caveat.
+ *
+ * One component rather than one per page, because the same thing happened
+ * to `h2` before this: twenty-four pages each declared it and it drifted
+ * into nine variants. A reader learns to look for this box once.
+ *
+ * `label` exists for the few pages where "the short version" is the wrong
+ * words, not so each page can name it whatever it likes.
+ */
+interface Props {
+  label?: string;
+}
+
+const { label = "The short version" } = Astro.props;
+---
+
+<aside class="short-version">
+  <div class="sv-label">{label}</div>
+  <div class="sv-body"><slot /></div>
+</aside>
+
+<style>
+  .short-version {
+    border: 3px solid var(--line);
+    border-radius: 16px;
+    background: var(--paper-2);
+    box-shadow: 5px 5px 0 var(--shadow);
+    padding: 20px 22px 6px;
+    margin: 0 0 34px;
+  }
+
+  .sv-label {
+    font-family: "Space Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 14px;
+  }
+</style>

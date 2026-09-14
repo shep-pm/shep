@@ -129,6 +129,12 @@ reset_shep() {
   shepc kill        >/dev/null 2>&1
   sleep 2
   rm -f "$SHEP_HOME_DIR"/logs/*.log
+  # shep refuses a --home that does not exist rather than creating one, so
+  # the directory has to be here before the first start. That guard landed
+  # after this harness was written and made every timed start fail with
+  # "no flock at", which reads in the output as a start failure rather than
+  # as a missing directory.
+  mkdir -p "$SHEP_HOME_DIR"
 }
 
 reset_pm2() {
@@ -410,7 +416,7 @@ m_versions() {
   sha=$(cd "$SCRATCH/wt-bench" && git rev-parse HEAD)
   pv=$(node -e "console.log(require('$SCRATCH/pm2-install/node_modules/pm2/package.json').version)")
   nv=$(node --version)
-  emit "{\"metric\":\"versions\",\"shep_sha\":\"$sha\",\"shep_version\":\"$("$SHEP_BIN" --version | awk '{print $2}')\",\"pm2\":\"$pv\",\"node\":\"$nv\"}"
+  emit "{\"metric\":\"versions\",\"shep_sha\":\"$sha\",\"shep_version\":\"$("$SHEP_BIN" --version | head -1 | awk '{print $2}')\",\"pm2\":\"$pv\",\"node\":\"$nv\"}"
   echo "  shep $sha | pm2 $pv | node $nv"
 }
 
@@ -455,6 +461,11 @@ trap 'cleanup_all; exit 143' TERM
 main() {
   : > "$METRICS"
   echo "=== versus-pm2 :: $(date) ==="
+  # The generated configs name these two scripts by path, and a tool whose
+  # script is missing reports zero online forever, which surfaces as a start
+  # failure rather than as a missing file. The function existed and nothing
+  # called it.
+  write_workloads || exit 1
   m_versions
   echo "--- machine ---"
   echo "$(sysctl -n machdep.cpu.brand_string) / $(sysctl -n hw.ncpu) cpus"
