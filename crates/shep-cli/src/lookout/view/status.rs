@@ -606,23 +606,21 @@ mod tests {
 
     /// The hint's clause separators are three spaces, every one of them.
     ///
-    /// `FROZEN_HINT` is written with a `\` line continuation, and review read
-    /// that twice as keeping the next line's five spaces of indent, which
-    /// would put eight spaces between "move" and "nothing" against three
-    /// everywhere else. Rust strips leading whitespace after a `\`-newline, so
-    /// it does not, and the gallery's own rendered frame shows three.
+    /// `FROZEN_HINT` is written with a `\` line continuation: Rust strips
+    /// the next line's leading whitespace after that continuation, so the
+    /// source's own indent never becomes extra spaces in the string, and
+    /// the gallery's own rendered frame confirms three.
     ///
-    /// The finding was wrong and its second half was right: the tests around
-    /// it call `contains` on each clause separately, so not one of them can
-    /// see the spacing between clauses. A future continuation, or a hand-typed
-    /// run of spaces, would go unnoticed in text an operator reads at 3am.
+    /// The sibling tests around this constant call `contains` on each
+    /// clause separately, so none of them can see the spacing between
+    /// clauses; this is the one that does. A future continuation, or a
+    /// hand-typed run of spaces, would otherwise go unnoticed in text an
+    /// operator reads at 3am.
     ///
-    /// Two assertions, and the second is not future-proof, which this doc
-    /// claimed it was. "No run of four or more" does cover a clause added
-    /// later. The count of exactly three separators does not: a fourth clause
-    /// fails it, deliberately. A dropped clause is the other half of the
-    /// failure this hint has already had once, when it named a refusal that
-    /// ten keys disproved, so the count stays and gets bumped by hand.
+    /// Two assertions with different guarantees: "no run of four or more"
+    /// covers a clause added later automatically, but the exact-three
+    /// count does not. A fourth clause fails it deliberately, and the
+    /// count needs a manual bump when that happens on purpose.
     #[test]
     fn the_frozen_hint_clauses_are_separated_by_exactly_three_spaces() {
         assert!(

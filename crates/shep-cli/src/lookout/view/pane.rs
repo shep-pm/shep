@@ -3177,9 +3177,14 @@ mod tests {
         // different help and share a longest word, and then the absence
         // assertion below cannot fail. Guarding the help alone would look
         // like it covered this.
-        assert_ne!(
-            first, second,
-            "the fixture needs two fields whose longest help words differ"
+        //
+        // Substring, not just inequality: "memory" != "max_memory" passes
+        // `assert_ne!` while `second`'s own row still contains `first`,
+        // which would fail the absence assertion below on a fixture
+        // mismatch rather than a real regression.
+        assert!(
+            !first.contains(&second) && !second.contains(&first),
+            "the fixture needs two fields whose longest help words are not substrings of each other: {first:?} / {second:?}"
         );
         let lines = pane_lines(&pane, fixtures::plain(), 89, 40);
         let rows = text_of(&lines);
