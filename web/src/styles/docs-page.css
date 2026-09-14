@@ -1,0 +1,106 @@
+/*
+ * Shared chrome for every page under /docs, imported by DocsLayout.astro.
+ *
+ * These rules lived in 24 separate page <style> blocks until 2026-09-14, by
+ * which point h2 alone had drifted into nine variants (26px/44/14 through
+ * 29px/40/18) and output.astro had lost its copy entirely. global.css sets
+ * h1, h2, h3 { margin: 0 }, so a page with no local rule rendered its
+ * section headings at the browser default with no gap above them, which
+ * astro build and astro check are both blind to.
+ *
+ * Every value below is the one the majority of pages already used, with one
+ * deliberate change: h2's top margin goes from 40px to 48px, which is the
+ * extra air between sections that the readability pass asked for.
+ *
+ * Scoped to `.docs-shell main` rather than left bare so it cannot reach the
+ * landing page, and so it outranks any page-scoped leftover during the
+ * migration.
+ */
+
+.docs-shell main h1 {
+  font-size: clamp(36px, 4.6vw, 56px);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  margin: 0 0 18px;
+}
+
+.docs-shell main h2 {
+  font-size: 29px;
+  letter-spacing: -0.03em;
+  margin: 48px 0 10px;
+}
+
+.docs-shell main h2:first-of-type {
+  margin-top: 0;
+}
+
+.docs-shell main h3 {
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+  margin: 28px 0 8px;
+}
+
+.docs-shell main p {
+  font-size: 16.5px;
+  line-height: 1.65;
+  color: var(--ink-2);
+  margin: 0 0 18px;
+}
+
+.docs-shell main .lede {
+  font-size: 19px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin: 0 0 30px;
+  text-wrap: pretty;
+}
+
+.docs-shell main .fine {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-3);
+  margin: -8px 0 30px;
+}
+
+.docs-shell main .next-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.docs-shell main .next-card {
+  text-align: left;
+  background: var(--paper-2);
+  border: 3px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 5px 5px 0 var(--shadow);
+  padding: 20px;
+  color: var(--ink);
+  text-decoration: none;
+  display: block;
+}
+
+.docs-shell main .next-card:hover {
+  transform: translate(2px, 2px);
+  box-shadow: 3px 3px 0 var(--shadow);
+  color: var(--ink);
+}
+
+.docs-shell main .next-title {
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-weight: 800;
+  font-size: 17px;
+  margin-bottom: 7px;
+}
+
+.docs-shell main .next-body {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.docs-shell main .next-body code {
+  font-size: 0.85em;
+}
