@@ -75,14 +75,10 @@ fn main() {
     let emitter = shepherd.clone();
     let samples = AtomicU64::new(0);
     shepherd.on_action("metric", move |params, _name| {
-        let name = metric_name(params).to_owned();
+        let name = metric_name(params);
         let value = samples.fetch_add(1, Ordering::Relaxed) + 1;
-        // The body borrows the name, then the name moves into the sample.
-        // `metric` takes `impl Into<String>`, so handing it a reference
-        // would allocate a second string rather than avoid the first.
-        let body = format!("sent {name}={value}");
         emitter.metric(name, value as f64);
-        body
+        format!("sent {name}={value}")
     });
 
     shepherd.on_action("level", |params, _name| match parse_level(params) {

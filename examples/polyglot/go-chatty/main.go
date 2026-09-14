@@ -184,7 +184,8 @@ func main() {
 	handle := func(line string) bool {
 		var message channel.ShepherdMessage
 		if err := json.Unmarshal([]byte(line), &message); err != nil {
-			fmt.Fprintln(os.Stderr, "go-chatty: could not read a message:", err)
+			fmt.Fprintf(os.Stderr, "go-chatty: could not read a message: %v, in %q\n",
+				err, snippet(line))
 			return false
 		}
 
@@ -263,6 +264,16 @@ func main() {
 	for {
 		time.Sleep(time.Hour)
 	}
+}
+
+// Enough of a frame to recognise it, bounded because a frame has no length
+// limit and a log line should not inherit one.
+func snippet(line string) string {
+	line = strings.TrimRight(line, "\n")
+	if len(line) > 80 {
+		return line[:80] + "..."
+	}
+	return line
 }
 
 func str(s string) *string { return &s }

@@ -60,6 +60,13 @@ function openChannel() {
 // exactly as the operator typed it, so an empty or blank one is ordinary
 // rather than a mistake. Both fall back, since a metric named "" is worse
 // on the bus than no custom name at all.
+// Enough of a frame to recognise it, bounded because a frame has no length
+// limit and a log line should not inherit one.
+function snippet(line) {
+  const text = line.length > 80 ? `${line.slice(0, 80)}...` : line;
+  return JSON.stringify(text);
+}
+
 function metricName(params) {
   return (params ?? "").trim() || "triggers";
 }
@@ -223,7 +230,7 @@ channel.on("data", (chunk) => {
       // means a wire this app has never seen. Say so and read the next one;
       // dying here would also drop the action after it. Only the parse is
       // guarded, so a real bug in handle still surfaces as itself.
-      console.error(`node-chatty: could not read a message: ${err.message}`);
+      console.error(`node-chatty: could not read a message: ${err.message}, in ${snippet(line)}`);
       continue;
     }
     handle(message);

@@ -135,6 +135,15 @@ def warn(text):
     print(text, file=sys.stderr, flush=True)
 
 
+def snippet(line):
+    """Enough of a frame to recognise it, bounded.
+
+    A frame has no length limit and a log line should not inherit one.
+    """
+    text = line.decode("utf-8", "replace").rstrip("\n") if isinstance(line, bytes) else line
+    return wire(text[:80] + "..." if len(text) > 80 else text)
+
+
 def metric_name(params):
     """Names the metric one `metric` action should send.
 
@@ -222,7 +231,7 @@ def main():
             # The shepherd does not write these, so a frame that will not
             # parse means a wire this app has never seen. Say so and read
             # the next one; dying here would also drop the action after it.
-            warn(f"python-chatty: could not read a message: {err}")
+            warn(f"python-chatty: could not read a message: {err}, in {snippet(line)}")
             continue
         # Parsing is not the same as being a message. A bare number, list,
         # string or null is all valid JSON and none of them is one of ours.
