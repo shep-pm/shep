@@ -45,6 +45,26 @@ const { title, description, crumb, activeSlug } = Astro.props;
       </main>
     </div>
   </div>
+  <script>
+    // Turns every id-bearing section heading into something a reader can
+    // click to get its URL. Ids are authored in the pages themselves; this
+    // only draws the handle, so deep links keep working with this blocked.
+    for (const heading of document.querySelectorAll<HTMLElement>(
+      ".docs-shell main h2[id], .docs-shell main h3[id]",
+    )) {
+      const link = document.createElement("a");
+      link.className = "heading-anchor";
+      link.href = `#${heading.id}`;
+      // The glyph is a CSS ::before, not text. Text here would join the
+      // heading's own textContent, so the accessible name became
+      // "#The dogs table" and Pagefind indexed the same.
+      link.setAttribute(
+        "aria-label",
+        `Link to ${heading.textContent?.trim() ?? "this section"}`,
+      );
+      heading.prepend(link);
+    }
+  </script>
 </Base>
 
 <style>

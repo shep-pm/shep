@@ -104,3 +104,42 @@
 .docs-shell main .next-body code {
   font-size: 0.85em;
 }
+
+/*
+ * Anchor affordance. The id is what makes a section linkable; this is only
+ * the visible handle. The marker is a real <a> injected by DocsLayout rather
+ * than a ::after pseudo-element, because a pseudo-element cannot be clicked
+ * or focused. Without JavaScript the ids still resolve, the handle is just
+ * not drawn.
+ */
+.docs-shell main h2[id],
+.docs-shell main h3[id] {
+  position: relative;
+}
+
+.docs-shell main .heading-anchor {
+  position: absolute;
+  left: -0.85em;
+  opacity: 0;
+  text-decoration: none;
+  color: var(--ink-3);
+  font-weight: 400;
+  border: 0;
+}
+
+.docs-shell main .heading-anchor::before {
+  content: "#";
+}
+
+.docs-shell main h2[id]:hover .heading-anchor,
+.docs-shell main h3[id]:hover .heading-anchor,
+.docs-shell main .heading-anchor:focus-visible {
+  opacity: 1;
+}
+
+@media (max-width: 860px) {
+  /* No hover on a phone, and the negative offset would sit off-screen. */
+  .docs-shell main .heading-anchor {
+    display: none;
+  }
+}

@@ -39,7 +39,7 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
       swapped in for the container's own kind of disposability.
     </p>
 
-    <h2>shep runtime: the container entrypoint</h2>
+    <h2 id="shep-runtime">shep runtime: the container entrypoint</h2>
     <p>
       <code>shep runtime</code> boots a shepherd in-process, runs one
       Flockfile's flock, and exits once nothing is left online.{" "}
@@ -61,7 +61,7 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
       rather than inventing <code>/var/lib/shep</code> at 2am.
     </p>
 
-    <h3>Exit codes an orchestrator can act on</h3>
+    <h3 id="exit-codes">Exit codes an orchestrator can act on</h3>
     <p>
       <code>shep runtime</code> exits <strong>0</strong> once the flock has
       been empty and clean (every sheep <code>stopped</code>, none{" "}
@@ -74,7 +74,7 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
       second.
     </p>
 
-    <h3>PID 1 without racing tokio's own reaper</h3>
+    <h3 id="pid-1">PID 1 without racing tokio's own reaper</h3>
     <p>
       When <code>shep runtime</code> genuinely is PID 1, it splits into a
       small init process first, rather than reaping orphans inside the
@@ -90,7 +90,7 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
       SIGKILLing everything mid-shutdown.
     </p>
 
-    <h2>shep dev: the same shape for a laptop</h2>
+    <h2 id="shep-dev">shep dev: the same shape for a laptop</h2>
     <p>
       <code>shep dev</code> runs one Flockfile's flock in an isolated,
       throwaway foreground session: <code>$SHEP_DEV_HOME</code> (default{" "}
@@ -114,7 +114,7 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
       flock would get a "dev" session that shares it and silently forces{" "}
       <code>watch = true</code> onto production apps.
     </Callout>
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
 
     <div class="next-grid">
       <a href="/docs/serve" class="next-card">
