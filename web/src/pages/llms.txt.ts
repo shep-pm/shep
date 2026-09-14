@@ -2,7 +2,7 @@
  * /llms.txt, generated from docs-nav.ts.
  *
  * A map of the docs for an agent asked about shep, so it fetches the one
- * chapter it needs rather than crawling twenty-nine. The format is the
+ * chapter it needs rather than crawling the whole book. The format is the
  * llms.txt convention: an H1, a blockquote summary, then links grouped
  * under headings, one line each.
  *

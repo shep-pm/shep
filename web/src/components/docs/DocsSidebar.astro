@@ -1,8 +1,10 @@
 ---
 /*
  * Docs sidebar (docs/shep-design/README.md, "Screens > 2. Docs > Sidebar").
- * Seven parts and twenty-seven numbered chapters, read off
- * web/src/data/docs-nav.ts's flattened `chapters` list. Active item: butter
+ * Every part and numbered chapter, read off
+ * web/src/data/docs-nav.ts's flattened `chapters` list. The counts live
+ * there and nowhere else: this comment said twenty-seven for a while after
+ * the book reached twenty-nine. Active item: butter
  * fill, ink text, 700 weight, 2px ink border. Inactive: transparent,
  * --ink-2, 400.
  *
@@ -18,7 +20,7 @@
  * sidebar" as one real option. This is that — a native <details>/<summary>
  * disclosure, collapsed by default so a phone visitor sees the article
  * almost immediately instead of scrolling past ten nav links first, with a
- * "Menu" bar that expands the same three groups in place.
+ * "Menu" bar that expands the same parts in place.
  *
  * No client JS: <details> is natively keyboard- and screen-reader-operable
  * as a disclosure widget, so this needs no toggle script and keeps working
