@@ -1,7 +1,7 @@
 ---
 /*
  * Docs sidebar (docs/shep-design/README.md, "Screens > 2. Docs > Sidebar").
- * Three groups from web/src/data/docsNav.ts. Active item: butter fill, ink
+ * Three groups from web/src/data/docs-nav.ts. Active item: butter fill, ink
  * text, 700 weight, 2px ink border. Inactive: transparent, --ink-2, 400.
  * Unbuilt items carry a "soon" tag in bark on the right.
  *
@@ -25,7 +25,7 @@
  * content-visibility: visible }` is what actually beats that. Confirmed by
  * looking at a real desktop viewport, not just by reading the spec.
  */
-import { docsNav } from "../../data/docsNav";
+import { docsNav } from "../../data/docs-nav";
 
 interface Props {
   activeSlug: string;

@@ -4,7 +4,7 @@
 
 **Goal:** Fix the docs shell and build the mechanical gates the prose rewrite depends on, without changing a single sentence of docs prose or the order of the sidebar.
 
-**Architecture:** Five independent changes under `web/`. One CSS fix to the sidebar, one extraction of duplicated page chrome into a shared stylesheet, and three new scripts or components that later phases are checked against. Nothing here touches page prose, `docsNav.ts` ordering, or any route.
+**Architecture:** Five independent changes under `web/`. One CSS fix to the sidebar, one extraction of duplicated page chrome into a shared stylesheet, and three new scripts or components that later phases are checked against. Nothing here touches page prose, `docs-nav.ts` ordering, or any route.
 
 **Tech Stack:** Astro 7 (static, no MDX), plain CSS, Node's built-in test runner with native TypeScript type stripping. No new dependencies.
 
@@ -18,7 +18,7 @@
 - **Both build commands, every time.** `npx astro build` does not typecheck. `npx astro check` is what catches a component being passed a prop it does not have. A wrong prop builds clean and renders wrong.
 - **Conventional commit subjects**, `type(scope): summary`, with `!` on anything that breaks. `release-plz` reads individual commits and `filter_unconventional = true` silently drops whatever does not parse. Accepted types here: `fix`, `feat`, `refactor`, `docs`, `test`, `ci`, `chore`, `style`, `perf`. Everything in this plan is `fix(web)` or `chore(web)`.
 - **No absolute local paths** in any committed file. Repo-relative only.
-- **Do not reorder `docsNav.ts` or edit any page's prose.** That is a later phase. A diff from this plan that changes a sentence of docs copy is out of scope.
+- **Do not reorder `docs-nav.ts` or edit any page's prose.** That is a later phase. A diff from this plan that changes a sentence of docs copy is out of scope.
 - **The two check scripts added here ratchet.** Each has an explicit list of pages it enforces. Pages not on the list are reported but do not fail the build. Later phases add their pages to the list. Never widen a list to cover a page the current phase has not converted, and never shrink one.
 
 ---
@@ -894,4 +894,4 @@ Two things worth carrying into the later phases. Every defect in this phase was 
 - `npm run build` runs both new checks and passes, and `npx astro check` is clean.
 - Both new checks have been seen to fail on bad input and pass on good, not merely to pass.
 - Every `/docs/*` route ends with the escape hatch, and it is absent from the search index.
-- No docs page's prose has changed, and `docsNav.ts` is untouched.
+- No docs page's prose has changed, and `docs-nav.ts` is untouched.

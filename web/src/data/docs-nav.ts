@@ -2,7 +2,7 @@
  * Docs sidebar structure (docs/shep-design/README.md, "Screens > 2. Docs >
  * Sidebar"). This is the shape of the docs shell itself — which pages exist,
  * which route they live at, which group they're under — not a claim about
- * product state, so unlike docsLexicon.ts / docsRules.ts it isn't sourced
+ * product state, so unlike docs-lexicon.ts / docs-rules.ts it isn't sourced
  * from a doc that drifts. `built` just means "has a real page" — every item
  * below is one today, but the field stays live rather than getting deleted:
  * a page can still be added to the sidebar (and linked from elsewhere) the

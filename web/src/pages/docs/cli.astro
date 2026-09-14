@@ -3,7 +3,7 @@
  * CLI reference (docs/shep-design/README.md, "Screens > 2. Docs >
  * Reference"). Every verb, its aliases, its usage line and its own
  * --help output — none of it hand-typed. The data comes from
- * web/src/data/cliReference.ts, which parses a checked-in dump of real
+ * web/src/data/cli-reference.ts, which parses a checked-in dump of real
  * `shep --help` output, one run per verb and per subcommand of a verb,
  * (web/src/data/cli-reference.generated.txt, produced by
  * web/scripts/generate-cli-reference.sh). Re-run that script and rebuild
@@ -13,7 +13,7 @@
  *
  * The version in the lede is the one thing here that does NOT come from
  * that dump. It is read from Cargo.toml at build time through
- * web/src/data/workspaceVersion.ts, because it was the only line a release
+ * web/src/data/workspace-version.ts, because it was the only line a release
  * changed and so the only line that went stale on its own — see that
  * module's header for the four times it did.
  *
@@ -26,8 +26,8 @@ import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
-import { cliReference } from "../../data/cliReference";
-import { workspaceVersion } from "../../data/workspaceVersion";
+import { cliReference } from "../../data/cli-reference";
+import { workspaceVersion } from "../../data/workspace-version";
 
 const meta = {
   title: "CLI reference",

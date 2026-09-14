@@ -1,16 +1,16 @@
 ---
 /*
  * Terminology (docs/shep-design/README.md, "Screens > 2. Docs >
- * Terminology"). The lexicon table is DATA from web/src/data/docsLexicon.ts
- * (parsed from web/src/data/lexiconTable.md at build time, which is the file
+ * Terminology"). The lexicon table is DATA from web/src/data/docs-lexicon.ts
+ * (parsed from web/src/data/lexicon-table.md at build time, which is the file
  * to edit to change a row — see that parser's header comment for why it is
  * not docs/terminology.md).
- * The usage-rule cards are DATA from web/src/data/docsRules.ts.
+ * The usage-rule cards are DATA from web/src/data/docs-rules.ts.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
-import { lexiconTable, mdInlineToHtml } from "../../data/docsLexicon";
-import { usageRules } from "../../data/docsRules";
+import { lexiconTable, mdInlineToHtml } from "../../data/docs-lexicon";
+import { usageRules } from "../../data/docs-rules";
 
 const toneFor = (built: "yes" | "partly" | "no") =>
   built === "yes"

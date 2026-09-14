@@ -141,7 +141,7 @@ one page instead of scraping the site.
 
 1. `/llms.txt` lists every page with title, one-line summary and absolute
    URL.
-2. It is generated from `docsNav.ts`.
+2. It is generated from `docs-nav.ts`.
 3. The build fails when a nav entry has no summary.
 
 None of the seven is met today. Six fail on ordering and addressing rather
@@ -434,7 +434,7 @@ drift check above, is the more honest artifact.
 
 ## llms.txt
 
-`/llms.txt`, generated from `docsNav.ts`: one line per page with title,
+`/llms.txt`, generated from `docs-nav.ts`: one line per page with title,
 one-line summary and absolute URL, grouped by part. A nav entry without a
 summary fails the build.
 

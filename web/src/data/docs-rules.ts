@@ -44,7 +44,7 @@ export const usageRules: UsageRule[] = [
 const anchorHeading = "## Usage rules (readability > theme)";
 if (!terminologySource.includes(anchorHeading)) {
   throw new Error(
-    `web/src/data/docsRules.ts: docs/terminology.md no longer has the ` +
+    `web/src/data/docs-rules.ts: docs/terminology.md no longer has the ` +
       `"${anchorHeading}" section these cards were curated from — re-check ` +
       `usageRules against the current file.`,
   );
