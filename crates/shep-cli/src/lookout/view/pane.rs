@@ -3089,7 +3089,8 @@ mod tests {
                 // cursor row hide behind the blurb row satisfying `key` by
                 // coincidence.
                 assert!(
-                    rows.iter().any(|row| row.contains(key) && !row.contains(&anchor)),
+                    rows.iter()
+                        .any(|row| row.contains(key) && !row.contains(&anchor)),
                     "{which} at height {height}: the blurb drew and the cursor's row did not: {rows:?}"
                 );
             }

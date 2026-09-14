@@ -340,8 +340,9 @@ mod tests {
     /// group grew.
     #[test]
     fn every_group_fits_its_column() {
+        let rows = rows();
         for group in Group::DRAWN {
-            let count = rows().iter().filter(|row| row.group == group).count();
+            let count = rows.iter().filter(|row| row.group == group).count();
             assert!(
                 count <= ENTRY_ROWS,
                 "{group:?} has {count} entries against {ENTRY_ROWS} rows"
