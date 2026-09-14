@@ -671,6 +671,60 @@ mod tests {
         );
     }
 
+    /// The overlay draws over every body, not only the dashboard.
+    ///
+    /// `App::keymap_open`'s own doc says it is reached from every body's
+    /// `Help` arm, and `view::draw` returns early for each full-screen body,
+    /// so the hook has to sit at all six exits. An earlier draft of this
+    /// frame's brief said "at the end of `view::draw`", which would have
+    /// left the overlay invisible over five of them. This is the net for
+    /// that mistake.
+    ///
+    /// Each case asserts the body it claims to be in before rendering.
+    /// Without that, `Edit` and `Settings` make the loop vacuous: neither
+    /// sets `App::body` synchronously, so a case built on them renders the
+    /// dashboard and passes while proving nothing.
+    #[test]
+    fn the_overlay_draws_over_every_body() {
+        use crate::lookout::app::{KeyPress, Msg};
+
+        let sheep = {
+            let mut app = fixtures::full_app();
+            let _ = app.update(Msg::Key(KeyPress::Confirm));
+            assert!(app.sheep_pane().is_some(), "not in the sheep pane");
+            app
+        };
+        let bleats = {
+            let mut app = fixtures::full_app();
+            let _ = app.update(Msg::Key(KeyPress::Confirm));
+            let _ = app.update(Msg::Key(KeyPress::Bleats));
+            assert!(app.bleats_pane().is_some(), "not in the bleats pane");
+            app
+        };
+        let config = {
+            let app = fixtures::app_in_sheep_pane();
+            assert!(app.config_pane().is_some(), "not in the config pane");
+            app
+        };
+
+        for (name, mut app) in [("sheep", sheep), ("bleats", bleats), ("config", config)] {
+            let _ = app.update(Msg::Key(KeyPress::Help));
+            assert!(app.keymap_open(), "{name}: the overlay did not open");
+            let rendered = render_overlay(&app, 160, 48);
+            for group in Group::DRAWN {
+                assert!(
+                    rendered.contains(group.heading()),
+                    "{name}: {} missing from the overlay",
+                    group.heading()
+                );
+            }
+            assert!(
+                rendered.contains(&top_border_row()),
+                "{name}: no box border over this body"
+            );
+        }
+    }
+
     /// The body behind is dimmed, not painted over: the frame draws the
     /// overlay as a question about what is underneath.
     ///
