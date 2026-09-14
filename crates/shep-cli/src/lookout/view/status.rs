@@ -624,8 +624,12 @@ mod tests {
     /// see the spacing between clauses. A future continuation, or a hand-typed
     /// run of spaces, would go unnoticed in text an operator reads at 3am.
     ///
-    /// Asserted as "no run of four or more", rather than counting each gap, so
-    /// a clause added later is covered without touching this test.
+    /// Two assertions, and the second is not future-proof, which this doc
+    /// claimed it was. "No run of four or more" does cover a clause added
+    /// later. The count of exactly three separators does not: a fourth clause
+    /// fails it, deliberately. A dropped clause is the other half of the
+    /// failure this hint has already had once, when it named a refusal that
+    /// ten keys disproved, so the count stays and gets bumped by hand.
     #[test]
     fn the_frozen_hints_clauses_are_separated_by_exactly_three_spaces() {
         assert!(

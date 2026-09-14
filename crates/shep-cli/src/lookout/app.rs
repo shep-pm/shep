@@ -3708,8 +3708,11 @@ impl App {
             }
             // Only a `RowKey::Fold` header answers to this key; anything
             // else, including no selection at all, is a no-op rather than a
-            // refusal, the same silence `Cycle` and `Help` fall back to
-            // outside their own screen.
+            // refusal, the same silence `Cycle` falls back to outside its own
+            // screen. Not `Help` any more: the overlay's own screen is every
+            // screen, so `h` acts here rather than falling silent. Left
+            // naming `Cycle` alone rather than dropped, because the next
+            // reader of this arm wants to know a no-op is deliberate.
             KeyPress::Collapse => {
                 if let Some(RowKey::Fold(name)) = self.selected()
                     && !self.collapsed_folds.remove(&name)

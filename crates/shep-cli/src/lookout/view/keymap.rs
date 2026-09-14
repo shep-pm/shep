@@ -361,9 +361,14 @@ enum Shed {
     Blank,
     /// Two heights, and the variant alone does not say which output they
     /// get: [`borderless_lines`] draws the folded gate-and-quit line at 14
-    /// and nothing at all at [`HEIGHT_FLOOR`], on a second test one
-    /// function deeper. Named here because a reader holding a `Shed` value
-    /// would otherwise have to find that test to know what it renders.
+    /// and nothing at all at [`HEIGHT_FLOOR`], decided by a second condition
+    /// one function deeper: `if effective_height > HEIGHT_FLOOR`. Named here
+    /// because a reader holding a `Shed` value would otherwise have to find
+    /// that `if` to know what it renders.
+    ///
+    /// "Condition", not "test", which is what this said. In a Rust file that
+    /// word means `#[test]`, and review read it as a reference to a test
+    /// function that does not exist.
     Gate,
     Refuse,
 }
@@ -1131,7 +1136,15 @@ mod tests {
                 .expect("four groups never chunk into more banks than fit a u16");
         let boundary = bank_count.saturating_sub(1) * (HEIGHT_FLOOR + 1) + HEIGHT_FLOOR;
 
-        for height in 20..=35 {
+        // Derived from `boundary`, not the hand-picked `20..=35` this was.
+        // The doc above says the boundary is found by the test, and a fixed
+        // range does not deliver that: change `HEIGHT_FLOOR` so the boundary
+        // leaves the range and every height lands on one side, the opposite
+        // branch never runs, and the test passes having verified no
+        // transition at all. The tallies below are the vacuity guard.
+        let mut refusals = 0;
+        let mut whole_draws = 0;
+        for height in boundary.saturating_sub(4)..=boundary + 4 {
             let rendered = render_overlay(&app, width, height);
             let headings_present = Group::DRAWN
                 .iter()
@@ -1152,11 +1165,13 @@ mod tests {
                 "height {height} against a boundary of {boundary}: {rendered}"
             );
             if refused {
+                refusals += 1;
                 assert_eq!(
                     headings_present, 0,
                     "height {height} refused but still drew a heading: {rendered}"
                 );
             } else {
+                whole_draws += 1;
                 for row in crate::lookout::keymap::rows() {
                     if row.group == Group::Closing {
                         continue;
@@ -1169,6 +1184,11 @@ mod tests {
                 }
             }
         }
+
+        assert!(
+            refusals > 0 && whole_draws > 0,
+            "the sweep never crossed the boundary of {boundary}:              {refusals} refusals and {whole_draws} whole draws"
+        );
     }
 
     /// Renders one overlay and returns the screen as text.

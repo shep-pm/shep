@@ -57,7 +57,14 @@ const BOX_RIGHT: char = '▌';
 /// That file, not `rulings.md`: the rulings never give 1k a width, so the
 /// 132 is a frame's own arithmetic slip rather than a ruling to overturn.
 pub(super) const fn floor_for(interior: u16) -> u16 {
-    interior + 4
+    // `saturating_add`, for the reason `draw_boxed` gives two functions down:
+    // this module protects every addition, and one bare `+` reads as an
+    // oversight whether or not it is one. Round 5 raised `interior + 4` here
+    // and I declined it as unreachable, which it is at a const 126. Round 11
+    // raised it again against the policy I had written in between, which is
+    // the better argument: consistency a reader can check beats a
+    // reachability argument a reader has to reconstruct.
+    interior.saturating_add(4)
 }
 
 /// Whether a `width`-column terminal draws the box, or gives way to the

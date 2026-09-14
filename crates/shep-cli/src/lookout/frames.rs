@@ -2614,6 +2614,16 @@ mod tests {
             .find(|(n, _)| *n == Scene::ALL.len())
             .map(|(_, word)| *word)
             .expect("add the next number to NUMBERS when the gallery outgrows it");
+        // `fifty` is a prefix of `fifty-one` through `fifty-eight`, so a bare
+        // `contains` passes when the preamble overstates inside its own
+        // decade: 50 scenes against a preamble saying "fifty-eight" satisfies
+        // `contains("fifty")`. Refusing the hyphen is what makes the match a
+        // whole number rather than a prefix of a larger one.
+        assert!(
+            !GALLERY_PREAMBLE.contains(&format!("{spelled}-")),
+            "the preamble spells a larger number than {} scenes: {spelled}-…",
+            Scene::ALL.len()
+        );
         assert!(
             GALLERY_PREAMBLE.contains(spelled),
             "the preamble says something other than {spelled}, and \
