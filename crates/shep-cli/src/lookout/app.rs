@@ -14593,10 +14593,19 @@ mod tests {
         let Some(PaneRow::Field(index)) = pane.cursor() else {
             panic!("the cursor is not on a field");
         };
-        let help = pane.fields().fields()[index].help.clone();
+        // The longest word, not the whole help string. The blurb wraps to
+        // BLURB_WRAP, and `render_all` joins rows with newlines, so a help
+        // text over that budget is present on screen and absent from this
+        // assertion.
+        let anchor = pane.fields().fields()[index]
+            .help
+            .split_whitespace()
+            .max_by_key(|word| word.len())
+            .expect("the field help is empty")
+            .to_owned();
         let lines = crate::lookout::view::pane::pane_lines(pane, fixtures::plain(), 89, 40);
         assert!(
-            fixtures::render_all(&lines).contains(&help),
+            fixtures::render_all(&lines).contains(&anchor),
             "the blurb is not on screen before esc"
         );
         let _ = app.update(Msg::Key(KeyPress::Escape));

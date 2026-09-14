@@ -3125,10 +3125,17 @@ mod tests {
     #[test]
     fn the_blurb_follows_the_cursor_with_no_panel() {
         let mut pane = web_pane();
-        let first = field_help_under_cursor(&pane);
+        let first = blurb_anchor(&pane);
         pane.move_by(1);
-        let second = field_help_under_cursor(&pane);
-        assert_ne!(first, second, "the fixture needs two differing blurbs");
+        let second = blurb_anchor(&pane);
+        // On the anchors, not the help strings: two fields can have
+        // different help and share a longest word, and then the absence
+        // assertion below cannot fail. Guarding the help alone would look
+        // like it covered this.
+        assert_ne!(
+            first, second,
+            "the fixture needs two fields whose longest help words differ"
+        );
         let lines = pane_lines(&pane, fixtures::plain(), 89, 40);
         let rows = text_of(&lines);
         assert!(
