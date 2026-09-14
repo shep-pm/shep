@@ -18,16 +18,16 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
   1     web                   online           48212    0         -          -              ▄  2.9%    ░░░░░░░░░░  178.0M    1h 16m    edge        -            
                 ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                
                 ▐MOVING                          LOOKING                         CHANGING                        DOING                         ▌                
-                ▐j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane    x            stop             ▌                
-                ▐g/G home/end first / last       b            feed, full screen  space        cycle a value      R            restart          ▌                
-                ▐J/K          next / prev sheep  F            gather by fold     d            restore default    L            reload           ▌                
-                ▐ctrl-d/u     page the feed      z            collapse a fold    u            undo the edit                                    ▌                
-                ▐←/→          environment tab    o            out / err / both   s            shepherd settings    ▟█████▙                     ▌                
-                ▐tab          next config group  m            minimum level      S            secrets             ▟███████▙                    ▌                
-                ▐1-8          jump to a group    f            follow the tail    D            delete a secret     ▜██▀ ▀██▛                    ▌                
-                ▐n/N          next / prev match  w            wrap long lines    c            leave it running      ▀▘ ▀▘                      ▌                
-                ▐↵            open selection     /            filter, or match   any char     types into a box                                 ▌                
-                ▐esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop                                ▌                
+                ▐j/k  ↓/↑     select a row       h  ?         this keymap        any char     types into a box   x            stop             ▌                
+                ▐g/G home/end first / last       b            feed, full screen  ⌫ ↵ esc      erase, file, drop  R            restart          ▌                
+                ▐J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload           ▌                
+                ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                    ▌                
+                ▐←/→          environment tab    o            out / err / both   d            restore default      ▟█████▙                     ▌                
+                ▐tab          next config group  m            minimum level      u            undo the edit       ▟███████▙                    ▌                
+                ▐1-8          jump to a group    f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌                
+                ▐n/N          next / prev match  w            wrap long lines    S            secrets               ▀▘ ▀▘                      ▌                
+                ▐↵            open selection     /            filter, or match   D            delete a secret                                  ▌                
+                ▐esc          back one level     r            refresh now        c            leave it running                                 ▌                
                 ▐                                v            reveal for 10s                                                                   ▌                
                 ▐                                y            copy the value                                                                   ▌                
                 ▐                                                                                                                              ▌                

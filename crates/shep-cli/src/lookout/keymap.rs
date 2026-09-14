@@ -96,7 +96,7 @@ const fn binding(press: &KeyPress) -> Binding {
     }
     match press {
         KeyPress::SelectDown | KeyPress::SelectUp => {
-            row("j/k  \u{2191}/\u{2193}", Group::Moving, "select a row")
+            row("j/k  \u{2193}/\u{2191}", Group::Moving, "select a row")
         }
         KeyPress::SelectFirst | KeyPress::SelectLast => {
             row("g/G home/end", Group::Moving, "first / last")
@@ -206,17 +206,22 @@ fn rows_from(probe: &[(KeyCode, KeyModifiers)]) -> Vec<Binding> {
     for group in Group::DRAWN.into_iter().chain([Group::Closing]) {
         for (code, modifiers) in probe {
             let event = Event::Key(KeyEvent::new(*code, *modifiers));
-            let Some(press) =
-                map_key(&event, InputMode::Normal).or_else(|| map_key(&event, InputMode::Text))
-            else {
-                continue;
-            };
-            // Not the function's own name: shadowing it here would silently
-            // resolve a later call to `binding` inside this loop to this
-            // value instead.
-            let entry = binding(&press);
-            if entry.group == group && !out.iter().any(|seen| seen.keys == entry.keys) {
-                out.push(entry);
+            // Both modes, not `.or_else`: a code with a mapping in each
+            // needs both to reach `binding`, or whichever mode lost the
+            // race drops out of the overlay silently. `Backspace` has no
+            // `Normal` mapping today, which is the only reason `or_else`
+            // ever read as correct here.
+            for mode in [InputMode::Normal, InputMode::Text] {
+                let Some(press) = map_key(&event, mode) else {
+                    continue;
+                };
+                // Not the function's own name: shadowing it here would
+                // silently resolve a later call to `binding` inside this
+                // loop to this value instead.
+                let entry = binding(&press);
+                if entry.group == group && !out.iter().any(|seen| seen.keys == entry.keys) {
+                    out.push(entry);
+                }
             }
         }
     }
@@ -280,56 +285,64 @@ mod tests {
         }
     }
 
-    /// And the reverse: `PROBE` cannot accumulate keys that stopped being
-    /// bound.
+    /// No `PROBE` entry binds nothing: every `(code, modifiers)` pair
+    /// pinned here reaches a real `KeyPress` in at least one of
+    /// `map_key`'s two modes.
     ///
-    /// `map_key`'s `InputMode::Text` branch binds every non-ALT `Char` as
-    /// `TextChar`, so `normal.is_some() || text.is_some()` alone is
-    /// satisfied by any printable character whether or not it is still
-    /// bound in `Normal` — the realistic way a `PROBE` entry goes stale.
-    /// Classifying by the *observed* press does not fix this: a letter
-    /// that lost its `Normal` binding collapses to exactly the same
-    /// `TextChar` the text-only representative produces, so no property
-    /// of the resulting [`KeyPress`] tells the two apart.
-    ///
-    /// What does tell them apart is [`rows`] itself: an entry that does
-    /// not bind in `Normal` is only legitimate if it is the *only* one
-    /// standing for its row — remove it and that row would disappear.
-    /// `Char('a')` is necessary this way, since nothing else produces the
-    /// `any char` row; a stray unclaimed letter added later is not, since
-    /// `Char('a')` (or whichever entry already claims the row) still
-    /// covers it without the new one. This is derived from [`rows_from`]
-    /// rather than a second list of which entries are text-only.
+    /// `rows_from` checks both modes for every entry, so a letter with no
+    /// `Normal` meaning is no more or less necessary than one that also
+    /// has one: both independently reach `TextChar` and the `any char`
+    /// row they share with every other letter, and `Backspace`, `Enter`
+    /// and `Esc` share their own row the same way. Nothing left
+    /// distinguishes a stale, unclaimed entry from a deliberate one by
+    /// removing it and checking whether its row survives, since a row
+    /// with several legitimate contributors survives losing any one of
+    /// them on purpose.
     #[test]
     fn every_probe_entry_binds_something() {
-        for (index, (code, modifiers)) in PROBE.iter().enumerate() {
+        for (code, modifiers) in PROBE {
             let event = Event::Key(KeyEvent::new(*code, *modifiers));
             let normal = map_key(&event, InputMode::Normal);
             let text = map_key(&event, InputMode::Text);
-            let press = normal.or(text).unwrap_or_else(|| {
-                panic!("{code:?} with {modifiers:?} is in PROBE and binds nothing")
-            });
-            if normal.is_some() {
-                continue;
-            }
-            let without_this: Vec<(KeyCode, KeyModifiers)> = PROBE
-                .iter()
-                .enumerate()
-                .filter(|(seen, _)| *seen != index)
-                .map(|(_, entry)| *entry)
-                .collect();
-            let row = binding(&press);
-            let still_covered = rows_from(&without_this)
-                .iter()
-                .any(|seen| seen.keys == row.keys);
             assert!(
-                !still_covered,
-                "{code:?} with {modifiers:?} does not bind in InputMode::Normal, and \
-                 its row ({}) is already covered without it, so it adds nothing \
-                 the way a text-only representative would",
-                row.keys
+                normal.or(text).is_some(),
+                "{code:?} with {modifiers:?} is in PROBE and binds nothing"
             );
         }
+    }
+
+    /// `rows_from` checks both modes for every entry rather than picking
+    /// whichever wins first, so the `any char` row does not depend on
+    /// `Char('a')` alone: an ordinary letter with its own `Normal` meaning
+    /// still reaches `TextChar` too. Removing the one entry with no
+    /// `Normal` meaning at all must not lose the row.
+    #[test]
+    fn any_char_survives_losing_its_only_normal_less_entry() {
+        let (only_normal_less, _) = PROBE
+            .iter()
+            .enumerate()
+            .find(|(_, (code, modifiers))| {
+                let event = Event::Key(KeyEvent::new(*code, *modifiers));
+                map_key(&event, InputMode::Normal).is_none()
+                    && matches!(
+                        map_key(&event, InputMode::Text),
+                        Some(KeyPress::TextChar(_))
+                    )
+            })
+            .expect("PROBE needs a letter with no Normal meaning to make this test mean anything");
+        let without_it: Vec<(KeyCode, KeyModifiers)> = PROBE
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| *index != only_normal_less)
+            .map(|(_, entry)| *entry)
+            .collect();
+        assert!(
+            rows_from(&without_it)
+                .iter()
+                .any(|row| row.keys == "any char"),
+            "any char disappeared once its only Normal-less representative was gone, so no \
+             ordinary letter's own Text-mode mapping is reaching it independently"
+        );
     }
 
     /// No group has more entries than its column has rows.

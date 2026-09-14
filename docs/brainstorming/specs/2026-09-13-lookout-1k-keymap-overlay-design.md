@@ -202,8 +202,8 @@ floor     130 = 126 interior + 2 border + 1 margin each side
 `BOX_WIDTH + 4`: 86 interior plus two border cells plus one margin cell each side
 is 90, and `draw_boxed_close_dialog`'s `margin = (width - (BOX_WIDTH + 2)) / 2`
 comes out at 1 there. The same formula over a 126-cell interior gives 130. The
-design's own README says 132 at line 332, which would be a two-cell margin that
-1g does not ask for and this frame has no reason to.
+design's own README said 132 at line 332, which would have been a two-cell
+margin that 1g does not ask for and this frame has no reason to.
 
 **That file, not `rulings.md`.** This spec said the rulings state 132 and they
 do not: they give 1k no width at all. So the 132 is a frame's own arithmetic
@@ -266,7 +266,7 @@ h or ? closes this  ·  q or ctrl-c quits lookout
 Every variant's row: `Quit` → the closing line, `Escape` → `esc`, `SelectUp`/
 `SelectDown` → `j/k`, `SelectFirst`/`SelectLast` → `g/G`, `Refresh` → `r`,
 `Action(Stop|Restart|Reload)` → `x`/`R`/`L`, `Confirm` → `↵`, `FilterStart` →
-`/`, the four text-mode variants → `a-z 0-9` and `⌫ ↵ esc`, `Settings` → `s`,
+`/`, the four text-mode variants → `any char` and `⌫ ↵ esc`, `Settings` → `s`,
 `Secrets` → `S`, `Reveal` → `v`, `Copy` → `y`, `TabPrev`/`TabNext` → `←/→`,
 `Cycle` → `space`, `Edit` → `e`, `Help` → `h  ?`, `Remove` → `d`, `StepUp`/
 `StepDown` → `J/K`, `FoldView` → `F`, `Collapse` → `z`, `Bleats` → `b`,

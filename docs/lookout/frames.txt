@@ -1754,16 +1754,16 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                                                                                                                                                                 
                 ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                
                 ▐MOVING                          LOOKING                         CHANGING                        DOING                         ▌                
-                ▐j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane    x            stop             ▌                
-                ▐g/G home/end first / last       b            feed, full screen  space        cycle a value      R            restart          ▌                
-                ▐J/K          next / prev sheep  F            gather by fold     d            restore default    L            reload           ▌                
-                ▐ctrl-d/u     page the feed      z            collapse a fold    u            undo the edit                                    ▌                
-                ▐←/→          environment tab    o            out / err / both   s            shepherd settings    ▟█████▙                     ▌                
-                ▐tab          next config group  m            minimum level      S            secrets             ▟███████▙                    ▌                
-                ▐1-8          jump to a group    f            follow the tail    D            delete a secret     ▜██▀ ▀██▛                    ▌                
-                ▐n/N          next / prev match  w            wrap long lines    c            leave it running      ▀▘ ▀▘                      ▌                
-                ▐↵            open selection     /            filter, or match   any char     types into a box                                 ▌                
-                ▐esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop                                ▌                
+                ▐j/k  ↓/↑     select a row       h  ?         this keymap        any char     types into a box   x            stop             ▌                
+                ▐g/G home/end first / last       b            feed, full screen  ⌫ ↵ esc      erase, file, drop  R            restart          ▌                
+                ▐J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload           ▌                
+                ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                    ▌                
+                ▐←/→          environment tab    o            out / err / both   d            restore default      ▟█████▙                     ▌                
+                ▐tab          next config group  m            minimum level      u            undo the edit       ▟███████▙                    ▌                
+                ▐1-8          jump to a group    f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌                
+                ▐n/N          next / prev match  w            wrap long lines    S            secrets               ▀▘ ▀▘                      ▌                
+                ▐↵            open selection     /            filter, or match   D            delete a secret                                  ▌                
+                ▐esc          back one level     r            refresh now        c            leave it running                                 ▌                
                 ▐                                v            reveal for 10s                                                                   ▌                
                 ▐                                y            copy the value                                                                   ▌                
                 ▐                                                                                                                              ▌                
@@ -1806,16 +1806,16 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                                                                                                                                   
  ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜ 
  ▐MOVING                          LOOKING                         CHANGING                        DOING                         ▌ 
- ▐j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane    x            stop             ▌ 
- ▐g/G home/end first / last       b            feed, full screen  space        cycle a value      R            restart          ▌ 
- ▐J/K          next / prev sheep  F            gather by fold     d            restore default    L            reload           ▌ 
- ▐ctrl-d/u     page the feed      z            collapse a fold    u            undo the edit                                    ▌ 
- ▐←/→          environment tab    o            out / err / both   s            shepherd settings    ▟█████▙                     ▌ 
- ▐tab          next config group  m            minimum level      S            secrets             ▟███████▙                    ▌ 
- ▐1-8          jump to a group    f            follow the tail    D            delete a secret     ▜██▀ ▀██▛                    ▌ 
- ▐n/N          next / prev match  w            wrap long lines    c            leave it running      ▀▘ ▀▘                      ▌ 
- ▐↵            open selection     /            filter, or match   any char     types into a box                                 ▌ 
- ▐esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop                                ▌ 
+ ▐j/k  ↓/↑     select a row       h  ?         this keymap        any char     types into a box   x            stop             ▌ 
+ ▐g/G home/end first / last       b            feed, full screen  ⌫ ↵ esc      erase, file, drop  R            restart          ▌ 
+ ▐J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload           ▌ 
+ ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                    ▌ 
+ ▐←/→          environment tab    o            out / err / both   d            restore default      ▟█████▙                     ▌ 
+ ▐tab          next config group  m            minimum level      u            undo the edit       ▟███████▙                    ▌ 
+ ▐1-8          jump to a group    f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌ 
+ ▐n/N          next / prev match  w            wrap long lines    S            secrets               ▀▘ ▀▘                      ▌ 
+ ▐↵            open selection     /            filter, or match   D            delete a secret                                  ▌ 
+ ▐esc          back one level     r            refresh now        c            leave it running                                 ▌ 
  ▐                                v            reveal for 10s                                                                   ▌ 
  ▐                                y            copy the value                                                                   ▌ 
  ▐                                                                                                                              ▌ 
@@ -1843,16 +1843,16 @@ q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s set
 129 columns, one below KeymapFloor's own 130: the border is gone, but columns_for(129) is still 4, so this is the widest form the overlay ever draws with all four columns and no frame around them. It sits next to KeymapFloor on purpose, so the two together pin the boundary rather than bracketing it loosely.
 
 MOVING                          LOOKING                         CHANGING                        DOING                            
-j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane    x            stop                
-g/G home/end first / last       b            feed, full screen  space        cycle a value      R            restart             
-J/K          next / prev sheep  F            gather by fold     d            restore default    L            reload              
-ctrl-d/u     page the feed      z            collapse a fold    u            undo the edit                                       
-←/→          environment tab    o            out / err / both   s            shepherd settings                                   
-tab          next config group  m            minimum level      S            secrets                                             
-1-8          jump to a group    f            follow the tail    D            delete a secret                                     
-n/N          next / prev match  w            wrap long lines    c            leave it running                                    
-↵            open selection     /            filter, or match   any char     types into a box                                    
-esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop                                   
+j/k  ↓/↑     select a row       h  ?         this keymap        any char     types into a box   x            stop                
+g/G home/end first / last       b            feed, full screen  ⌫ ↵ esc      erase, file, drop  R            restart             
+J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload              
+ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                       
+←/→          environment tab    o            out / err / both   d            restore default                                     
+tab          next config group  m            minimum level      u            undo the edit                                       
+1-8          jump to a group    f            follow the tail    s            shepherd settings                                   
+n/N          next / prev match  w            wrap long lines    S            secrets                                             
+↵            open selection     /            filter, or match   D            delete a secret                                     
+esc          back one level     r            refresh now        c            leave it running                                    
                                 v            reveal for 10s                                                                      
                                 y            copy the value                                                                      
                                                                                                                                  
@@ -1895,16 +1895,16 @@ q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s set
 100 columns: columns_for(100) is 3, so MOVING, LOOKING and CHANGING share one bank and DOING drops to a bank of its own below a blank separator row.
 
 MOVING                          LOOKING                         CHANGING                            
-j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane        
-g/G home/end first / last       b            feed, full screen  space        cycle a value          
-J/K          next / prev sheep  F            gather by fold     d            restore default        
-ctrl-d/u     page the feed      z            collapse a fold    u            undo the edit          
-←/→          environment tab    o            out / err / both   s            shepherd settings      
-tab          next config group  m            minimum level      S            secrets                
-1-8          jump to a group    f            follow the tail    D            delete a secret        
-n/N          next / prev match  w            wrap long lines    c            leave it running       
-↵            open selection     /            filter, or match   any char     types into a box       
-esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop      
+j/k  ↓/↑     select a row       h  ?         this keymap        any char     types into a box       
+g/G home/end first / last       b            feed, full screen  ⌫ ↵ esc      erase, file, drop      
+J/K          next / prev sheep  F            gather by fold     e            the config pane        
+ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value          
+←/→          environment tab    o            out / err / both   d            restore default        
+tab          next config group  m            minimum level      u            undo the edit          
+1-8          jump to a group    f            follow the tail    s            shepherd settings      
+n/N          next / prev match  w            wrap long lines    S            secrets                
+↵            open selection     /            filter, or match   D            delete a secret        
+esc          back one level     r            refresh now        c            leave it running       
                                 v            reveal for 10s                                         
                                 y            copy the value                                         
                                                                                                     
@@ -1947,7 +1947,7 @@ q quit   j/k select   / filter   F folds   x stop   R restart   L reload   s set
 70 columns: columns_for(70) is 2, so the four groups split into two banks of two, MOVING and LOOKING on top and CHANGING and DOING below.
 
 MOVING                          LOOKING                               
-j/k  ↑/↓     select a row       h  ?         this keymap              
+j/k  ↓/↑     select a row       h  ?         this keymap              
 g/G home/end first / last       b            feed, full screen        
 J/K          next / prev sheep  F            gather by fold           
 ctrl-d/u     page the feed      z            collapse a fold          
@@ -1961,16 +1961,16 @@ esc          back one level     r            refresh now
                                 y            copy the value           
                                                                       
 CHANGING                        DOING                                 
-e            the config pane    x            stop                     
-space        cycle a value      R            restart                  
-d            restore default    L            reload                   
+any char     types into a box   x            stop                     
+⌫ ↵ esc      erase, file, drop  R            restart                  
+e            the config pane    L            reload                   
+space        cycle a value                                            
+d            restore default                                          
 u            undo the edit                                            
 s            shepherd settings                                        
 S            secrets                                                  
 D            delete a secret                                          
 c            leave it running                                         
-any char     types into a box                                         
-⌫ ↵ esc      erase, file, drop                                        
                                                                       
                                                                       
                                                                       
@@ -2014,16 +2014,16 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
   1     web                   online           48212    0         -          -              ▄  2.9%    ░░░░░░░░░░  178.0M    1h 16m    edge        -            
                 ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                
                 ▐MOVING                          LOOKING                         CHANGING                        DOING                         ▌                
-                ▐j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane    x            stop             ▌                
-                ▐g/G home/end first / last       b            feed, full screen  space        cycle a value      R            restart          ▌                
-                ▐J/K          next / prev sheep  F            gather by fold     d            restore default    L            reload           ▌                
-                ▐ctrl-d/u     page the feed      z            collapse a fold    u            undo the edit                                    ▌                
-                ▐←/→          environment tab    o            out / err / both   s            shepherd settings    ▟█████▙                     ▌                
-                ▐tab          next config group  m            minimum level      S            secrets             ▟███████▙                    ▌                
-                ▐1-8          jump to a group    f            follow the tail    D            delete a secret     ▜██▀ ▀██▛                    ▌                
-                ▐n/N          next / prev match  w            wrap long lines    c            leave it running      ▀▘ ▀▘                      ▌                
-                ▐↵            open selection     /            filter, or match   any char     types into a box                                 ▌                
-                ▐esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop                                ▌                
+                ▐j/k  ↓/↑     select a row       h  ?         this keymap        any char     types into a box   x            stop             ▌                
+                ▐g/G home/end first / last       b            feed, full screen  ⌫ ↵ esc      erase, file, drop  R            restart          ▌                
+                ▐J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload           ▌                
+                ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                    ▌                
+                ▐←/→          environment tab    o            out / err / both   d            restore default      ▟█████▙                     ▌                
+                ▐tab          next config group  m            minimum level      u            undo the edit       ▟███████▙                    ▌                
+                ▐1-8          jump to a group    f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌                
+                ▐n/N          next / prev match  w            wrap long lines    S            secrets               ▀▘ ▀▘                      ▌                
+                ▐↵            open selection     /            filter, or match   D            delete a secret                                  ▌                
+                ▐esc          back one level     r            refresh now        c            leave it running                                 ▌                
                 ▐                                v            reveal for 10s                                                                   ▌                
                 ▐                                y            copy the value                                                                   ▌                
                 ▐                                                                                                                              ▌                
@@ -2066,16 +2066,16 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                                                                                                                                                                 
                 ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                
                 ▐MOVING                          LOOKING                         CHANGING                        DOING                         ▌                
-                ▐j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane    x            stop             ▌                
-                ▐g/G home/end first / last       b            feed, full screen  space        cycle a value      R            restart          ▌                
-                ▐J/K          next / prev sheep  F            gather by fold     d            restore default    L            reload           ▌                
-                ▐ctrl-d/u     page the feed      z            collapse a fold    u            undo the edit                                    ▌                
-                ▐←/→          environment tab    o            out / err / both   s            shepherd settings    ▟█████▙                     ▌                
-                ▐tab          next config group  m            minimum level      S            secrets             ▟███████▙                    ▌                
-                ▐1-8          jump to a group    f            follow the tail    D            delete a secret     ▜██▀ ▀██▛                    ▌                
-                ▐n/N          next / prev match  w            wrap long lines    c            leave it running      ▀▘ ▀▘                      ▌                
-                ▐↵            open selection     /            filter, or match   any char     types into a box                                 ▌                
-                ▐esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop                                ▌                
+                ▐j/k  ↓/↑     select a row       h  ?         this keymap        any char     types into a box   x            stop             ▌                
+                ▐g/G home/end first / last       b            feed, full screen  ⌫ ↵ esc      erase, file, drop  R            restart          ▌                
+                ▐J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload           ▌                
+                ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                    ▌                
+                ▐←/→          environment tab    o            out / err / both   d            restore default      ▟█████▙                     ▌                
+                ▐tab          next config group  m            minimum level      u            undo the edit       ▟███████▙                    ▌                
+                ▐1-8          jump to a group    f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌                
+                ▐n/N          next / prev match  w            wrap long lines    S            secrets               ▀▘ ▀▘                      ▌                
+                ▐↵            open selection     /            filter, or match   D            delete a secret                                  ▌                
+                ▐esc          back one level     r            refresh now        c            leave it running                                 ▌                
                 ▐                                v            reveal for 10s                                                                   ▌                
                 ▐                                y            copy the value                                                                   ▌                
                 ▐                                                                                                                              ▌                
@@ -2103,16 +2103,16 @@ q quit   j/k select   g/G first/last   r refresh   / filter   F folds   s settin
 160x16, under the nineteen rows the box needs: the sheep is boxed-only and already gone, and the borderless form has shed to its own Decoration tier, which drops the NO_COLOR sentence too, while every key row is still on screen.
 
 MOVING                          LOOKING                         CHANGING                        DOING                                                           
-j/k  ↑/↓     select a row       h  ?         this keymap        e            the config pane    x            stop                                               
-g/G home/end first / last       b            feed, full screen  space        cycle a value      R            restart                                            
-J/K          next / prev sheep  F            gather by fold     d            restore default    L            reload                                             
-ctrl-d/u     page the feed      z            collapse a fold    u            undo the edit                                                                      
-←/→          environment tab    o            out / err / both   s            shepherd settings                                                                  
-tab          next config group  m            minimum level      S            secrets                                                                            
-1-8          jump to a group    f            follow the tail    D            delete a secret                                                                    
-n/N          next / prev match  w            wrap long lines    c            leave it running                                                                   
-↵            open selection     /            filter, or match   any char     types into a box                                                                   
-esc          back one level     r            refresh now        ⌫ ↵ esc      erase, file, drop                                                                  
+j/k  ↓/↑     select a row       h  ?         this keymap        any char     types into a box   x            stop                                               
+g/G home/end first / last       b            feed, full screen  ⌫ ↵ esc      erase, file, drop  R            restart                                            
+J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload                                             
+ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                                                      
+←/→          environment tab    o            out / err / both   d            restore default                                                                    
+tab          next config group  m            minimum level      u            undo the edit                                                                      
+1-8          jump to a group    f            follow the tail    s            shepherd settings                                                                  
+n/N          next / prev match  w            wrap long lines    S            secrets                                                                            
+↵            open selection     /            filter, or match   D            delete a secret                                                                    
+esc          back one level     r            refresh now        c            leave it running                                                                   
                                 v            reveal for 10s                                                                                                     
                                 y            copy the value                                                                                                     
                                                                                                                                                                 

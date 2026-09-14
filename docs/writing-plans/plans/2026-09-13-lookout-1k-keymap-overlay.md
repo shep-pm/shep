@@ -805,7 +805,7 @@ const fn binding(press: &KeyPress) -> Binding {
         KeyPress::Secrets => row("S", Group::Changing, "secrets"),
         KeyPress::SecretDelete => row("D", Group::Changing, "delete a secret"),
         KeyPress::Continue => row("c", Group::Changing, "leave it running"),
-        KeyPress::TextChar(_) => row("a-z 0-9", Group::Changing, "types into a box"),
+        KeyPress::TextChar(_) => row("any char", Group::Changing, "types into a box"),
         KeyPress::TextBackspace | KeyPress::TextApply | KeyPress::TextAbandon => {
             row("\u{232b} \u{21b5} esc", Group::Changing, "erase, file, drop")
         }

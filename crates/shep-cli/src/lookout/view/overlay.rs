@@ -299,9 +299,9 @@ mod tests {
 
     /// The floor is the interior plus a border cell and a margin cell each
     /// side. 1g's own floor is 90 over an 86-cell interior and 1k's is 130
-    /// over a 126-cell one, and both come out of this one expression: the
-    /// design's own README states 132 for 1k, which would be a two-cell
-    /// margin neither frame asks for.
+    /// over a 126-cell one, and both come out of this one expression,
+    /// matching `docs/lookout/design-files/README.md`'s own corrected
+    /// values.
     #[test]
     fn both_frames_floors_come_out_of_one_expression() {
         assert_eq!(floor_for(86), 90, "1g");

@@ -878,8 +878,8 @@ mod tests {
         let buffer = terminal.backend().buffer();
         // Row 20 is an entry row; column 20 sits inside MOVING's own cell,
         // clear of the border glyphs at columns 16 and 143 (margin
-        // (160 - 128) / 2 = 16). Column 2 is the dimmed flock table behind
-        // the box, on the same row.
+        // (160 - 128) / 2 = 16). Column 2, same row, is the dimmed flock
+        // table behind the box.
         // `Style::reset()` sets `bg` to `Some(Color::Reset)` rather than
         // `None` (it is a sentinel meant to overwrite whatever a `patch`
         // would otherwise leave standing), so "has a ground" means "some
@@ -1048,16 +1048,7 @@ mod tests {
             !rendered.contains("decoration only"),
             "the NO_COLOR line survived: {rendered}"
         );
-        for row in crate::lookout::keymap::rows() {
-            if row.group == Group::Closing {
-                continue;
-            }
-            assert!(
-                rendered.contains(row.does),
-                "`{}` was shed with the decoration",
-                row.does
-            );
-        }
+        assert_every_visible_row_drawn(&rendered, "shed with the decoration");
     }
 
     /// Below the key rows themselves, the overlay says so rather than
@@ -1171,16 +1162,10 @@ mod tests {
                 );
             } else {
                 whole_draws += 1;
-                for row in crate::lookout::keymap::rows() {
-                    if row.group == Group::Closing {
-                        continue;
-                    }
-                    assert!(
-                        rendered.contains(row.does),
-                        "height {height} drew the headings but not `{}`'s row: {rendered}",
-                        row.does
-                    );
-                }
+                assert_every_visible_row_drawn(
+                    &rendered,
+                    &format!("height {height} drew the headings but a row went missing"),
+                );
             }
         }
 
@@ -1197,6 +1182,22 @@ mod tests {
             .draw(|frame| super::super::draw(app, frame))
             .expect("draw");
         render_text(terminal.backend().buffer())
+    }
+
+    /// Every drawn row's own sentence is in `rendered`, `Group::Closing`
+    /// excepted since it draws on its own line rather than in a column.
+    /// `context` names what the caller was checking, for the panic.
+    fn assert_every_visible_row_drawn(rendered: &str, context: &str) {
+        for row in crate::lookout::keymap::rows() {
+            if row.group == Group::Closing {
+                continue;
+            }
+            assert!(
+                rendered.contains(row.does),
+                "{context}, but `{}` is missing: {rendered}",
+                row.does
+            );
+        }
     }
 
     /// A healthy dashboard, control open, nothing frozen.

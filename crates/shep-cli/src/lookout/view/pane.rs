@@ -1646,13 +1646,11 @@ fn ungrouped_pane_lines_with_panel(
     // reason the top line is: a footer appended afterwards is a line
     // nothing counted.
     //
-    // Reserved before the BLURB too, not between the blurb and the rows,
-    // which is where this sat until a test went looking. The blurb's floor
-    // below keeps one line back for the cursor's own row, and a footer
-    // reserved afterwards took exactly that line: at a pane height of 3 a
-    // dog drew its title, its blurb and its footer, and the row the cursor
-    // was on did not draw at all. The blurb is the line to lose, since it
-    // describes the row rather than being it.
+    // Reserved before the BLURB too, not between the blurb and the rows:
+    // the blurb's floor below keeps one line back for the cursor's own
+    // row, and a footer reserved afterward would take exactly that line.
+    // The blurb is the line to lose, since it describes the row rather
+    // than being it.
     let footer = dog_footer_text(pane, body_budget);
     if footer.is_some() {
         body_budget -= 1;
@@ -1663,9 +1661,7 @@ fn ungrouped_pane_lines_with_panel(
     //
     // `push_wrapped_blurb`'s own floor of `<= 1`, not `== 0`: a long
     // wrapped help must not spend the last line reserved for the cursor's
-    // own row. `the_blurb_never_spends_the_row_the_cursor_needs` walks this
-    // pane shape and the grouped one through the same function now, so the
-    // floor cannot disagree with itself the way it once did (`f603305f`).
+    // own row.
     push_wrapped_blurb(&mut lines, &mut body_budget, pane, palette, width);
     if !pane.fields().is_empty() && body_budget > 0 {
         let total = pane.rows().len();
