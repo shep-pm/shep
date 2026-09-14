@@ -81,6 +81,11 @@ def wire(message):
 # reported and the rest stay quiet.
 _shepherd_gone = False
 
+# ping reads this back, so the reply that says the level changed is
+# answerable. Module scope because reply_to is not a method and one
+# thread owns it, the same shape _shepherd_gone above uses.
+_level = "info"
+
 
 def read_lines(channel):
     """Yields one message a line, and stops rather than raising.
@@ -186,18 +191,22 @@ def reply_to(action, params):
     than for falsiness, so a reply body that is legitimately empty stays
     a reply instead of turning into "unknown action".
     """
+    global _level
     if action == "ping":
-        return f"pong from python pid={os.getpid()}, up {time.monotonic() - STARTED:.1f}s"
+        return (
+            f"pong from python pid={os.getpid()}, "
+            f"up {time.monotonic() - STARTED:.1f}s, level {_level}"
+        )
     if action == "level":
         parsed = parse_level(params)
         if parsed is None:
             return USAGE
-        level, rest = parsed
+        _level, rest = parsed
         if not rest:
-            return f"log level is now {level}"
+            return f"log level is now {_level}"
         # wire(), not !r: it quotes and escapes the way the Rust, Go and
         # JavaScript examples do, so all four reply with the same bytes.
-        return f"log level is now {level}, ignored {wire(rest)}"
+        return f"log level is now {_level}, ignored {wire(rest)}"
     return None
 
 

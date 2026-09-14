@@ -32,7 +32,7 @@
 
 #![forbid(unsafe_code)]
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use shep_channel::CHANNEL_VERSION;
@@ -63,9 +63,10 @@ fn main() {
 
     shepherd.on_action("ping", move |_params, _name| {
         format!(
-            "pong from rust pid={}, up {:.1}s",
+            "pong from rust pid={}, up {:.1}s, level {}",
             std::process::id(),
-            started.elapsed().as_secs_f64()
+            started.elapsed().as_secs_f64(),
+            LEVELS[LEVEL.load(Ordering::Relaxed)]
         )
     });
 
@@ -82,8 +83,14 @@ fn main() {
     });
 
     shepherd.on_action("level", |params, _name| match parse_level(params) {
-        Some((level, "")) => format!("log level is now {level}"),
-        Some((level, rest)) => format!("log level is now {level}, ignored {rest:?}"),
+        Some((level, rest)) => {
+            LEVEL.store(level_index(level), Ordering::Relaxed);
+            if rest.is_empty() {
+                format!("log level is now {level}")
+            } else {
+                format!("log level is now {level}, ignored {rest:?}")
+            }
+        }
         None => usage(),
     });
 
@@ -109,6 +116,18 @@ fn main() {
 
 /// The levels `level` accepts, and the only place they are listed.
 const LEVELS: [&str; 5] = ["trace", "debug", "info", "warn", "error"];
+
+/// The level `level` last set, as an index into [`LEVELS`]. `ping` reads it
+/// back, so the reply that says the level changed is answerable.
+static LEVEL: AtomicUsize = AtomicUsize::new(2);
+
+/// Where `level` sits in [`LEVELS`]. Only ever called with a name
+/// [`parse_level`] already matched, so a miss means those two disagree and
+/// falling back to `info` is the one answer that cannot name a level the
+/// app does not have.
+fn level_index(level: &str) -> usize {
+    LEVELS.iter().position(|&l| l == level).unwrap_or(2)
+}
 
 /// What an unparsable `level` gets back. Built from [`LEVELS`] rather than
 /// spelled out, so adding one cannot leave the message listing the old set.
@@ -147,7 +166,17 @@ fn parse_level(params: Option<&str>) -> Option<(&str, &str)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{LEVELS, metric_name, parse_level, usage};
+    use super::{LEVELS, level_index, metric_name, parse_level, usage};
+
+    /// Every level parse_level accepts has a place to be stored. The
+    /// fallback in level_index exists for a disagreement between the two,
+    /// so nothing here should ever reach it.
+    #[test]
+    fn every_level_maps_to_its_own_slot() {
+        for (want, level) in LEVELS.iter().enumerate() {
+            assert_eq!(level_index(level), want, "{level} lands in the wrong slot");
+        }
+    }
 
     #[test]
     fn a_known_level_is_read_from_the_first_word() {

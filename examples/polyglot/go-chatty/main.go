@@ -174,6 +174,9 @@ func main() {
 	// this app's own writes. A metrics ticker is the usual way to end up
 	// with two, so this app emits samples from the loop instead.
 	samples := 0
+	// ping reads this back, so the reply that says the level changed is
+	// answerable. One goroutine owns both, so no mutex.
+	level := "info"
 	// A Reader, not a Scanner. Scan caps a line at 64KB by default and then
 	// ends the loop, which looks exactly like a clean end of stream; raising
 	// that cap only moves the number. The contract sets no length, and
@@ -205,7 +208,8 @@ func main() {
 		var body string
 		switch {
 		case name == "ping":
-			body = fmt.Sprintf("pong from go pid=%d, up %.1fs", os.Getpid(), time.Since(started).Seconds())
+			body = fmt.Sprintf("pong from go pid=%d, up %.1fs, level %s",
+				os.Getpid(), time.Since(started).Seconds(), level)
 		case name == "metric":
 			samples++
 			metric := metricName(message.Params)
@@ -216,12 +220,14 @@ func main() {
 			})
 			body = fmt.Sprintf("sent %s=%d", metric, samples)
 		case name == "level":
-			switch level, rest := parseLevel(message.Params); {
-			case level == "":
+			switch next, rest := parseLevel(message.Params); {
+			case next == "":
 				body = usage
 			case rest == "":
+				level = next
 				body = "log level is now " + level
 			default:
+				level = next
 				body = fmt.Sprintf("log level is now %s, ignored %q", level, rest)
 			}
 		default:

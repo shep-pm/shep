@@ -68,10 +68,10 @@ any of them:
 ```text
 $ shep trigger '*chatty' ping
 ID  NAME           OUTCOME  DETAIL
-20  chatty         replied  pong from rust pid=40076, up 7.1s
-10  go-chatty      replied  pong from go pid=40075, up 7.1s
-8   node-chatty    replied  pong from node pid=40077, up 7.1s
-9   python-chatty  replied  pong from python pid=40078, up 7.1s
+20  chatty         replied  pong from rust pid=40076, up 7.1s, level info
+10  go-chatty      replied  pong from go pid=40075, up 7.1s, level info
+8   node-chatty    replied  pong from node pid=40077, up 7.1s, level info
+9   python-chatty  replied  pong from python pid=40078, up 7.1s, level info
 ```
 
 `ping` answers, `metric` sends a sample and says what it sent, and `level`

@@ -144,6 +144,9 @@ if (opened.opening) {
 
 // The reply body is what the operator reads back from shep trigger.
 let samples = 0;
+// ping reads this back, so the reply that says the level changed is
+// answerable. One event loop owns both, so no lock.
+let level = "info";
 function handle(message) {
   // Parsing is not the same as being a message. A bare number, list, string
   // or null is all valid JSON and none of them is one of ours.
@@ -185,7 +188,7 @@ function handle(message) {
   let body;
   if (name === "ping") {
     const up = Number(process.hrtime.bigint() - started) / 1e9;
-    body = `pong from node pid=${process.pid}, up ${up.toFixed(1)}s`;
+    body = `pong from node pid=${process.pid}, up ${up.toFixed(1)}s, level ${level}`;
   } else if (name === "metric") {
     samples += 1;
     const metric = metricName(params);
@@ -195,10 +198,12 @@ function handle(message) {
     const parsed = parseLevel(params);
     if (parsed === null) {
       body = USAGE;
-    } else if (parsed.rest === "") {
-      body = `log level is now ${parsed.level}`;
     } else {
-      body = `log level is now ${parsed.level}, ignored ${JSON.stringify(parsed.rest)}`;
+      level = parsed.level;
+      body =
+        parsed.rest === ""
+          ? `log level is now ${level}`
+          : `log level is now ${level}, ignored ${JSON.stringify(parsed.rest)}`;
     }
   } else {
     body = `unknown action: ${name}`;
