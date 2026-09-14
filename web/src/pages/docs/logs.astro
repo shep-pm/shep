@@ -16,6 +16,7 @@ import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 
 const bleatsDemo = `$ shep bleats noisy --no-follow
 noisy | to stdout
@@ -72,13 +73,10 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
 ---
 
 <DocsLayout
-  title="Logs"
-  description="Where a sheep's output lands, how to read it, and the two verbs that act on the files themselves: reopen for an external rotator, flush to empty them."
-  crumb="Reference / Logs"
   activeSlug="logs"
 >
   <article>
-    <h1>Logs</h1>
+    <h1>Reading logs</h1>
     <ReferencePills slug="logs" />
     <p class="lede">
       A sheep never sees its own log file. It is spawned with its stdout and
@@ -89,7 +87,15 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
       restart, and no gap in the pipe.
     </p>
 
-    <h2>Where the lines land</h2>
+    <ShortVersion>
+      <CodeBlock>{`$SHEP_HOME/logs/<name>-<instance>-out.log
+$SHEP_HOME/logs/<name>-<instance>-err.log
+
+$ shep bleats <name>              # tail, then follow
+$ shep bleats <name> --no-follow  # tail only`}</CodeBlock>
+    </ShortVersion>
+
+    <h2 id="where-the-lines-land">Where the lines land</h2>
     <p>
       Two files per sheep, under <code>$SHEP_HOME/logs/</code>, named{" "}
       <code>&lt;name&gt;-&lt;instance&gt;-out.log</code> and{" "}
@@ -133,7 +139,7 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
       after every rotation.
     </p>
 
-    <h2>Reading them</h2>
+    <h2 id="reading-them">Reading them</h2>
     <VerbSignature
       verb="bleats"
       aliases={["logs"]}
@@ -154,10 +160,9 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
       Following prints that history first and then subscribes, rather than
       showing only new lines. A sheep that already crashed has said
       everything it is going to say, and a follow that skipped the tail
-      showed an empty screen while the reason sat in the file, which is
-      exactly how a boot-looping sheep came to look like it had logged
-      nothing at all. <code>--lines 0</code> is how you ask for the old
-      behaviour.
+      showed an empty screen while the reason sat in the file, which is why a
+      boot-looping sheep used to look like it had logged nothing at all.{" "}
+      <code>--lines 0</code> is how you ask for the old behaviour.
     </p>
     <CodeBlock>{bleatsDemo}</CodeBlock>
     <p class="fine">
@@ -170,9 +175,7 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
       both are the data you asked for. Only shep's own diagnostics, the
       dropped-event count and the shutdown notice, go to stderr, so{" "}
       <code>shep bleats &gt; file</code> captures everything the flock said
-      and nothing shep said about it. Interleaving a sheep's stderr into
-      shep's would silently lose half the output of that redirect and make{" "}
-      <code>--err</code> produce an empty file.
+      and nothing shep said about it.
     </p>
     <p>
       A log file that is not there is named on stderr rather than read as an
@@ -200,7 +203,7 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
       path is one window regardless of how large the flock or the log is.
     </p>
 
-    <h2>Telling shep what a level looks like</h2>
+    <h2 id="level-rules">Telling shep what a level looks like</h2>
     <p>
       lookout's minimum-level filter reads the level out of the line itself: a
       bare word like <code>WARN</code> near the start, or a{" "}
@@ -215,13 +218,12 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
     </p>
     <CodeBlock label="Flockfile.toml">{levelRules}</CodeBlock>
     <p>
-      The pattern is matched against the whole line, exactly as written:{" "}
-      <code>(?i)</code> folds case, and nothing is anchored for you. One that
-      will not compile is refused when the Flockfile loads, not when a line is
-      drawn. So is a list of more than 64 rules: lookout rebuilds the whole
-      list every time it redraws the feed, so the length is a per-frame cost
-      rather than a one-off one. Five levels and a few spellings each stays
-      far under it.
+      The pattern matches the whole line, exactly as written:{" "}
+      <code>(?i)</code> folds case, and nothing is anchored for you. A
+      pattern that will not compile is refused when the Flockfile loads, not
+      when a line is drawn, and so is a list past 64 rules: lookout rebuilds
+      it every redraw, so length is a per-frame cost. Five levels and a few
+      spellings each stays far under it.
     </p>
     <Callout variant="note">
       Declaring any rule replaces shep's own reading for that app rather than
@@ -230,7 +232,7 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
       shows, whatever the minimum is.
     </Callout>
 
-    <h2>Handing them to a rotator</h2>
+    <h2 id="handing-them-to-a-rotator">Handing them to a rotator</h2>
     <VerbSignature verb="reopen" usage="shep reopen [selector]">
       <p>
         Closes each matched sheep's log handle and opens the recorded path
@@ -247,10 +249,9 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
       A zero exit is a promise worth relying on: every matched sheep's log
       pump holds a handle on the recreated path, so a <code>postrotate</code>{" "}
       that waits for this command knows no live pump is still filling the
-      archive it just renamed. That holds because the shepherd reaches every
-      writer to a path it is rotating, not only the sheep the selector named.
-      Several instances can share one file, and one of them left unasked
-      would go on filling the archive.
+      archive it just renamed. The shepherd reaches every writer to a path it
+      is rotating, not only the sheep the selector named, so a sheep sharing
+      that file but left unasked still gets moved off the old archive.
     </p>
     <p>
       A matched sheep that is not running has no pump and nothing to reopen,
@@ -279,7 +280,7 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
       become the account that owns the flock first.
     </p>
 
-    <h2>Emptying them</h2>
+    <h2 id="emptying-them">Emptying them</h2>
     <VerbSignature verb="flush" usage="shep flush <selector> | shep flush --daemon">
       <p>
         Flushes what every pump still owes the file, then truncates it. What
@@ -301,11 +302,10 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
     </p>
     <p>
       The table is one row per sheep carrying both of its paths, rather than
-      the lifecycle columns every other flock-shaped verb answers with. Those
-      keep <code>out_file</code> and <code>err_file</code> out for being too
-      wide, and here they are the answer: a verb that empties files an
-      operator may have mistyped, and then reports uptime and restart counts
-      it did not touch, has said nothing about what it destroyed.
+      the lifecycle columns every other flock-shaped verb answers with. A
+      verb that empties files an operator may have mistyped and then reports
+      uptime and restart counts it never touched would say nothing about what
+      it actually destroyed.
     </p>
     <p class="fine">
       A stopped sheep is emptied like any other, since the shepherd truncates
@@ -329,9 +329,8 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
       takes no selector because no selector can reach them. Those files
       belong to the CLI: the launcher creates them before the shepherd
       exists and hands them over as plain fds 1 and 2, so the shepherd never
-      learns their paths and holds no handle it could be asked about. The
-      useful consequence is that <code>shep flush --daemon</code> needs no
-      running shepherd at all.
+      learns their paths. The useful consequence is that{" "}
+      <code>shep flush --daemon</code> needs no running shepherd at all.
     </p>
     <Callout variant="careful">
       Never reach for <code>flush</code> as part of rotating anything. Its
@@ -341,7 +340,7 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
       lines you were about to rotate. Rename, then <code>reopen</code>.
     </Callout>
 
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
 
     <div class="next-grid">
       <a href="/docs/output" class="next-card">
@@ -362,82 +361,3 @@ stderr  /tmp/shepdocs/home/logs/shepd.err.log  emptied`;
     </div>
   </article>
 </DocsLayout>
-
-<style>
-  h1 {
-    font-size: clamp(36px, 4.6vw, 56px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 29px;
-    letter-spacing: -0.03em;
-    margin: 40px 0 8px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 30px;
-    text-wrap: pretty;
-  }
-
-  p {
-    font-size: 16.5px;
-    line-height: 1.65;
-    color: var(--ink-2);
-    margin: 0 0 18px;
-  }
-
-  .fine {
-    font-size: 15px;
-    line-height: 1.6;
-    color: var(--ink-3);
-    margin: -8px 0 30px;
-  }
-
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 8px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
-  }
-</style>

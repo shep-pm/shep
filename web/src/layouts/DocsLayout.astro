@@ -15,17 +15,38 @@
 import Base from "./Base.astro";
 import DocsHeader from "../components/docs/DocsHeader.astro";
 import DocsSidebar from "../components/docs/DocsSidebar.astro";
+import ChapterBar from "../components/docs/ChapterBar.astro";
+import StillStuck from "../components/docs/StillStuck.astro";
+import { chapterFor } from "../data/docs-nav";
+import "../styles/docs-page.css";
 
 interface Props {
-  title: string;
-  description: string;
-  /** e.g. "Start here / Getting started" — the small caps line above h1. */
-  crumb: string;
   /** Sidebar slug to highlight, e.g. "getting-started". */
   activeSlug: string;
 }
 
-const { title, description, crumb, activeSlug } = Astro.props;
+const { activeSlug } = Astro.props;
+
+/*
+ * The chapter's name and part both come from docs-nav.ts, so moving a
+ * chapter or renaming one is a single edit there rather than one per page.
+ * Before this, every page hand-wrote its own crumb, and each repeated the
+ * group label, so reordering the book by hand would have left twenty-five
+ * crumbs naming parts that no longer existed.
+ *
+ * A slug that is not in the nav is a page nothing links to and the sidebar
+ * cannot show. That fails the build here rather than rendering an empty
+ * crumb nobody notices.
+ */
+const found = chapterFor(activeSlug);
+if (!found) {
+  throw new Error(
+    `activeSlug "${activeSlug}" is not in docs-nav.ts. Add the page to the nav, or fix the slug.`,
+  );
+}
+const title = found.chapter.item.label;
+const description = found.chapter.item.summary;
+const crumb = `${found.chapter.part} / ${found.chapter.item.label}`;
 ---
 
 <Base title={`shep docs · ${title}`} description={description}>
@@ -36,6 +57,8 @@ const { title, description, crumb, activeSlug } = Astro.props;
       <main data-pagefind-body>
         <div class="crumb">{crumb}</div>
         <slot />
+        <ChapterBar activeSlug={activeSlug} />
+        <StillStuck />
         <footer class="docs-footer" data-pagefind-ignore>
           <span class="license">
             shep docs · pre-release · MIT OR Apache-2.0
@@ -44,6 +67,26 @@ const { title, description, crumb, activeSlug } = Astro.props;
       </main>
     </div>
   </div>
+  <script>
+    // Turns every id-bearing section heading into something a reader can
+    // click to get its URL. Ids are authored in the pages themselves; this
+    // only draws the handle, so deep links keep working with this blocked.
+    for (const heading of document.querySelectorAll<HTMLElement>(
+      ".docs-shell main h2[id], .docs-shell main h3[id]",
+    )) {
+      const link = document.createElement("a");
+      link.className = "heading-anchor";
+      link.href = `#${heading.id}`;
+      // The glyph is a CSS ::before, not text. Text here would join the
+      // heading's own textContent, so the accessible name became
+      // "#The dogs table" and Pagefind indexed the same.
+      link.setAttribute(
+        "aria-label",
+        `Link to ${heading.textContent?.trim() ?? "this section"}`,
+      );
+      heading.prepend(link);
+    }
+  </script>
 </Base>
 
 <style>

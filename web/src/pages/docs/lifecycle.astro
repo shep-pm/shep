@@ -21,6 +21,7 @@ import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 
 const stopSurvivesDemo = `$ shep stop parked
 ID  NAME    STATUS   PID    RESTARTS  EXIT     CFG  CPU  MEM   UPTIME  FOLD  SMIT
@@ -145,9 +146,6 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
 ---
 
 <DocsLayout
-  title="Stopping and replacing a sheep"
-  description="What shep stop, restart, reload and delete each do to a running sheep and to the muster roll: one kill ladder shared by three of them, two different orders a reload can run, and the one difference between stop and delete that decides what comes back after a restart."
-  crumb="Concepts / Stopping and replacing a sheep"
   activeSlug="lifecycle"
 >
   <article>
@@ -162,35 +160,36 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       and three of them run through the exact same kill ladder underneath.
       What they don't share is what they leave behind: a stopped sheep is
       still in the flock, a deleted one is gone, and a reload can end either
-      as a clean handover or as a crash you get to watch happen. That is what
-      this page is for.
+      as a clean handover or as a crash you get to watch happen.
     </p>
 
-    <div class="verb-table">
-      <div class="row header">
-        <span>verb</span> <span>the current process</span> <span>the muster roll</span>
+    <ShortVersion>
+      <div class="verb-table">
+        <div class="row header">
+          <span>verb</span> <span>the current process</span> <span>the muster roll</span>
+        </div>
+        <div class="row">
+          <span><code>stop</code></span>
+          <span>killed, through the ladder below</span>
+          <span>stays, entry marked stopped</span>
+        </div>
+        <div class="row">
+          <span><code>restart</code></span>
+          <span>killed, then a fresh one at once</span>
+          <span>stays, marked online again</span>
+        </div>
+        <div class="row">
+          <span><code>reload</code></span>
+          <span>one instance replaced, old or new order below</span>
+          <span>unchanged, still the same app</span>
+        </div>
+        <div class="row">
+          <span><code>delete</code></span>
+          <span>killed if running, through the same ladder</span>
+          <span>removed, for good</span>
+        </div>
       </div>
-      <div class="row">
-        <span><code>stop</code></span>
-        <span>killed, through the ladder below</span>
-        <span>stays, entry marked stopped</span>
-      </div>
-      <div class="row">
-        <span><code>restart</code></span>
-        <span>killed, then a fresh one at once</span>
-        <span>stays, marked online again</span>
-      </div>
-      <div class="row">
-        <span><code>reload</code></span>
-        <span>one instance replaced, old or new order below</span>
-        <span>unchanged, still the same app</span>
-      </div>
-      <div class="row">
-        <span><code>delete</code></span>
-        <span>killed if running, through the same ladder</span>
-        <span>removed, for good</span>
-      </div>
-    </div>
+    </ShortVersion>
     <p class="fine">
       <code>shep thatlldo</code> is a hidden, working alias for{" "}
       <code>stop</code>, "graceful stop" in{" "}
@@ -199,7 +198,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       above.
     </p>
 
-    <h2>One ladder, two grace periods</h2>
+    <h2 id="one-ladder-two-grace-periods">One ladder, two grace periods</h2>
     <p>
       <code>stop</code>, <code>restart</code> and <code>delete</code> all
       end a live process the same way. First, either the app's configured{" "}
@@ -247,7 +246,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       </a>.
     </p>
 
-    <h2>What stays, what goes: the muster roll</h2>
+    <h2 id="what-stays-what-goes-the-muster-roll">What stays, what goes: the muster roll</h2>
     <p>
       shep keeps a file at <code>$SHEP_HOME/flock.json</code>, the muster
       roll, recording every registered app's config and whether it was
@@ -304,7 +303,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       <a href="/docs/whistle">whistle</a>.
     </p>
 
-    <h2>restart: back immediately</h2>
+    <h2 id="restart-back-immediately">restart: back immediately</h2>
     <VerbSignature verb="restart" usage="shep restart <selector>...">
       <p>
         Runs the kill ladder, then spawns a fresh process in the same slot
@@ -327,7 +326,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       </a>.
     </p>
 
-    <h2>reload: one instance at a time, in one of two orders</h2>
+    <h2 id="reload-one-instance-at-a-time-in-one-of-two-orders">reload: one instance at a time, in one of two orders</h2>
     <p>
       A reload overlaps the old instance and the new one by default: the
       replacement is spawned and confirmed before the old one drains, so the
@@ -375,7 +374,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       overlap: there's only ever one instance to ask.
     </p>
 
-    <h3>Overlap, done right</h3>
+    <h3 id="overlap-done-right">Overlap, done right</h3>
     <p>
       <code>worker</code> below has no probe, so it always overlaps. It
       writes to its own log file and binds nothing, so there's nothing for
@@ -391,7 +390,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       has taken the name back.
     </p>
 
-    <h3>Overlap, when the app doesn't cooperate</h3>
+    <h3 id="overlap-when-the-app-doesn-t-cooperate">Overlap, when the app doesn't cooperate</h3>
     <p>
       <code>web</code> also has no probe, so it also overlaps, but it
       binds a port and does nothing to share it. shep never sets{" "}
@@ -421,7 +420,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       right is entirely on the app.
     </Callout>
 
-    <h3>Serial: the gap you can see</h3>
+    <h3 id="serial-the-gap-you-can-see">Serial: the gap you can see</h3>
     <p>
       <code>probed</code> has a <code>readiness_probe</code> and no{" "}
       <code>reuse_port</code>, so it reloads serially. Watch the flock table
@@ -449,7 +448,8 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       actually kills versus what a sheep's process tree contains.
     </p>
 
-    <h2 id="several-sheep-at-once">Several sheep at once run in dependency order</h2>
+    <details>
+      <summary><h2 id="several-sheep-at-once">Several sheep at once run in dependency order</h2></summary>
     <p>
       Everything above describes one sheep. Once a Flockfile uses{" "}
       <code>depends_on</code>, shep sorts the flock into stages, and the
@@ -466,8 +466,9 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       matching several sheep go the other way, dependencies first. See{" "}
       <a href="/docs/boot-order">boot order</a>.
     </p>
+    </details>
 
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
 
     <div class="next-grid">
       <a href="/docs/startup" class="next-card">
@@ -503,51 +504,6 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
 </DocsLayout>
 
 <style>
-  h1 {
-    font-size: clamp(36px, 4.6vw, 56px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 29px;
-    letter-spacing: -0.03em;
-    margin: 40px 0 8px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  h3 {
-    font-size: 20px;
-    letter-spacing: -0.02em;
-    margin: 28px 0 8px;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 24px;
-    text-wrap: pretty;
-  }
-
-  p {
-    font-size: 16.5px;
-    line-height: 1.65;
-    color: var(--ink-2);
-    margin: 0 0 18px;
-  }
-
-  .fine {
-    font-size: 15px;
-    line-height: 1.6;
-    color: var(--ink-3);
-    margin: -8px 0 30px;
-  }
-
   .verb-table {
     border: 3px solid var(--line);
     border-radius: 16px;
@@ -587,41 +543,4 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
     color: var(--ink-2);
   }
 
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 8px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
-  }
 </style>

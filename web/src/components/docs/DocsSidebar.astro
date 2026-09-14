@@ -1,9 +1,18 @@
 ---
 /*
  * Docs sidebar (docs/shep-design/README.md, "Screens > 2. Docs > Sidebar").
- * Three groups from web/src/data/docsNav.ts. Active item: butter fill, ink
- * text, 700 weight, 2px ink border. Inactive: transparent, --ink-2, 400.
- * Unbuilt items carry a "soon" tag in bark on the right.
+ * Every part and numbered chapter, read off
+ * web/src/data/docs-nav.ts's flattened `chapters` list. The counts live
+ * there and nowhere else: this comment said twenty-seven for a while after
+ * the book reached twenty-nine. Active item: butter
+ * fill, ink text, 700 weight, 2px ink border. Inactive: transparent,
+ * --ink-2, 400.
+ *
+ * An unbuilt chapter renders as a <span>, not an <a>, and carries a "soon"
+ * tag. That is not cosmetic: its page does not exist, so an anchor would be
+ * a link to a 404 sitting in the sidebar of every page on the site. There
+ * were no unbuilt chapters until the book gained two, which is why this
+ * component happily rendered them as links for so long.
  *
  * Mobile (below 860px, the width DocsLayout.astro collapses the sidebar
  * column at): the handoff calls a fixed 264px column beside an 860px
@@ -11,7 +20,7 @@
  * sidebar" as one real option. This is that — a native <details>/<summary>
  * disclosure, collapsed by default so a phone visitor sees the article
  * almost immediately instead of scrolling past ten nav links first, with a
- * "Menu" bar that expands the same three groups in place.
+ * "Menu" bar that expands the same parts in place.
  *
  * No client JS: <details> is natively keyboard- and screen-reader-operable
  * as a disclosure widget, so this needs no toggle script and keeps working
@@ -25,13 +34,21 @@
  * content-visibility: visible }` is what actually beats that. Confirmed by
  * looking at a real desktop viewport, not just by reading the spec.
  */
-import { docsNav } from "../../data/docsNav";
+import { chapters } from "../../data/docs-nav";
 
 interface Props {
   activeSlug: string;
 }
 
 const { activeSlug } = Astro.props;
+
+/** Consecutive chapters sharing a part, so the markup stays one loop. */
+const parts: { label: string; chapters: typeof chapters }[] = [];
+for (const chapter of chapters) {
+  const last = parts.at(-1);
+  if (last?.label === chapter.part) last.chapters.push(chapter);
+  else parts.push({ label: chapter.part, chapters: [chapter] });
+}
 ---
 
 <details class="docs-sidebar">
@@ -43,20 +60,25 @@ const { activeSlug } = Astro.props;
   </summary>
   <div class="sidebar-content">
     {
-      docsNav.map((group) => (
+      parts.map((part) => (
         <div class="group">
-          <div class="group-label">{group.label}</div>
+          <div class="group-label">{part.label}</div>
           <div class="items">
-            {group.items.map((item) => {
+            {part.chapters.map(({ number, item }) => {
               const active = item.slug === activeSlug;
-              return (
-                <a
-                  href={`/docs/${item.slug}`}
-                  class:list={["item", active && "active"]}
-                >
-                  <span>{item.label}</span>
+              const body = (
+                <>
+                  <span class="num">{number}</span>
+                  <span class="name">{item.label}</span>
                   {!item.built && <span class="tag">soon</span>}
+                </>
+              );
+              return item.built ? (
+                <a href={`/docs/${item.slug}`} class:list={["item", active && "active"]}>
+                  {body}
                 </a>
+              ) : (
+                <span class="item unbuilt">{body}</span>
               );
             })}
           </div>
@@ -77,7 +99,9 @@ const { activeSlug } = Astro.props;
     top: 64px;
     padding: 34px 24px 60px;
     border-right: 3px solid var(--line);
-    min-height: calc(100vh - 64px);
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .menu-toggle {
@@ -113,11 +137,35 @@ const { activeSlug } = Astro.props;
     border-radius: 10px;
     padding: 8px 11px;
     cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 1.4em 1fr auto;
+    align-items: baseline;
     gap: 8px;
     text-decoration: none;
+  }
+
+  .num {
+    font-family: "Space Mono", monospace;
+    font-size: 11.5px;
+    color: var(--ink-3);
+    text-align: right;
+  }
+
+  .item.active .num {
+    color: var(--ink);
+  }
+
+  .unbuilt {
+    color: var(--ink-3);
+    cursor: default;
+  }
+
+  /* Class-and-class, because the plain `.unbuilt:hover` below it ties with
+     `.item:hover` on specificity and loses on source order: an unbuilt
+     chapter took the hover border and ink of a link it is not. */
+  .item.unbuilt:hover {
+    border-color: transparent;
+    color: var(--ink-3);
   }
 
   .item:hover {
@@ -179,7 +227,11 @@ const { activeSlug } = Astro.props;
   @media (max-width: 860px) {
     .docs-sidebar {
       position: static;
-      min-height: 0;
+      /* The desktop rule caps the column so it can scroll beside the
+         article. Here the whole disclosure is in the page flow, so the cap
+         would clip the expanded menu and give it a second scrollbar. */
+      max-height: none;
+      overflow-y: visible;
       border-right: none;
       border-bottom: 3px solid var(--line);
       padding: 0;

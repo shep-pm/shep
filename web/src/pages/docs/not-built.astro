@@ -8,18 +8,16 @@
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 ---
 
 <DocsLayout
-  title="What's not built yet"
-  description="What the Windows tier does not do, plus a short list of deliberate cuts and open design questions: sourced from docs/specs/deferred.md."
-  crumb="Reference / What's not built"
   activeSlug="not-built"
 >
   <article>
-    <h1>What's not built yet</h1>
+    <h1>What's not built</h1>
     <ReferencePills slug="not-built" />
     <p class="lede">
       shep is feature-complete for v1 on macOS and Linux: every verb in the
@@ -27,11 +25,22 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       serve/dev/runtime, and config and packaging. Windows runs the same
       build and the same day-to-day loop, minus a named handful of refusals
       it makes out loud. This page is the honest remainder: what the newest
-      platform does not do, and a short list of smaller cuts, each with the
-      reason it isn't here yet.
+      platform does not do.
     </p>
 
-    <h2>Windows: built, with named limits</h2>
+    <ShortVersion>
+      <p>
+        Windows ships today with three named limits: no graceful stop
+        signal unless the app opts into the shepherd channel, no{" "}
+        <code>user</code>/<code>group</code>, and no <code>shep startup</code>.
+        Five smaller cuts are deferred past v1 on purpose (whistle's HTTP
+        transport, cgroup v2 enforcement, the <code>@shep/io</code> shim, VCS
+        metadata, a JSON status endpoint). One item, OTLP export for the
+        metrics dog, is scheduled rather than decided against.
+      </p>
+    </ShortVersion>
+
+    <h2 id="windows-built-with-named-limits">Windows: built, with named limits</h2>
     <p>
       <strong>This section used to say the opposite.</strong> Until
       2026-08-26 every command on Windows printed <code>shep does not yet
@@ -99,7 +108,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       outright. Neither is visible to a compiler.
     </p>
 
-    <h3>A Python app can crash on its own output</h3>
+    <h3 id="a-python-app-can-crash-on-its-own-output">A Python app can crash on its own output</h3>
     <p>
       Not a shep bug, but a real operator report, so it's named here where a
       search for the error will find it:
@@ -130,7 +139,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       one. Windows has no equivalent to pass.
     </p>
 
-    <h2>Five smaller cuts, argued for rather than just missing</h2>
+    <h2 id="five-smaller-cuts-argued-for-rather-than-just-missing">Five smaller cuts, argued for rather than just missing</h2>
     <p>
       Spec §2 names these as deliberate v1.1+ scope, not oversights:
     </p>
@@ -163,7 +172,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       </li>
     </ul>
 
-    <h2>Scheduled, not decided against</h2>
+    <h2 id="scheduled-not-decided-against">Scheduled, not decided against</h2>
     <p>
       Named as v1.0 scope in the spec and hasn't reached the front of the
       queue. Lookout's three items in this section shipped in Phase 16
@@ -177,7 +186,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
         exists yet.
       </li>
     </ul>
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
 
     <div class="next-grid">
       <a href="/docs/lookout" class="next-card">
@@ -199,45 +208,6 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
 </DocsLayout>
 
 <style>
-  h1 {
-    font-size: clamp(36px, 4.6vw, 56px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 29px;
-    letter-spacing: -0.03em;
-    margin: 40px 0 8px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 30px;
-    text-wrap: pretty;
-  }
-
-  p {
-    font-size: 16.5px;
-    line-height: 1.65;
-    color: var(--ink-2);
-    margin: 0 0 18px;
-  }
-
-  .fine {
-    font-size: 15px;
-    line-height: 1.6;
-    color: var(--ink-3);
-    margin: -8px 0 30px;
-  }
-
   ul {
     margin: 0 0 24px;
     padding: 0;
@@ -260,41 +230,4 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
     color: var(--ink);
   }
 
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 8px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
-  }
 </style>

@@ -3,7 +3,7 @@
  * meet it / built" grid (docs/shep-design/README.md, "Screens > 2. Docs >
  * Terminology").
  *
- * Source of truth: web/src/data/lexiconTable.md, a four-column grid with the
+ * Source of truth: web/src/data/lexicon-table.md, a four-column grid with the
  * exact "built?" column this page needs. Unlike the landing page's six
  * hand-curated signposts (web/src/data/lexicon.ts, sourced from
  * docs/terminology.md's prose-heavy table), this one IS mechanically parsed,
@@ -17,7 +17,7 @@
  */
 // `?raw` (see web/src/data/lexicon.ts's header comment) inlines the file's
 // text content at build time.
-import lexiconSource from "./lexiconTable.md?raw";
+import lexiconSource from "./lexicon-table.md?raw";
 
 export interface LexiconRow {
   /** Plain text — rendered in the term column's own font/color, no markup. */
@@ -48,7 +48,7 @@ function parseLexiconTable(source: string): LexiconRow[] {
   const headingIndex = source.indexOf(HEADING);
   if (headingIndex === -1) {
     throw new Error(
-      `web/src/data/docsLexicon.ts: lexiconTable.md no longer has a ` +
+      `web/src/data/docs-lexicon.ts: lexicon-table.md no longer has a ` +
         `"${HEADING}" section — the Terminology page's table has nothing ` +
         `to read.`,
     );
@@ -67,8 +67,8 @@ function parseLexiconTable(source: string): LexiconRow[] {
   const [headerLine, dividerLine, ...bodyLines] = tableLines;
   if (!headerLine || !dividerLine) {
     throw new Error(
-      `web/src/data/docsLexicon.ts: found "${HEADING}" but no markdown ` +
-        `table under it in lexiconTable.md.`,
+      `web/src/data/docs-lexicon.ts: found "${HEADING}" but no markdown ` +
+        `table under it in lexicon-table.md.`,
     );
   }
 
@@ -76,7 +76,7 @@ function parseLexiconTable(source: string): LexiconRow[] {
   const headerMatches = expectedHeader.every((col, i) => header[i] === col);
   if (!headerMatches) {
     throw new Error(
-      `web/src/data/docsLexicon.ts: lexiconTable.md's table header is ` +
+      `web/src/data/docs-lexicon.ts: lexicon-table.md's table header is ` +
         `now [${header.join(", ")}] — expected [${expectedHeader.join(", ")}]. ` +
         `Update the column mapping below to match.`,
     );
@@ -86,7 +86,7 @@ function parseLexiconTable(source: string): LexiconRow[] {
     const [term, means, where, built] = splitRow(line);
     if (built !== "yes" && built !== "partly" && built !== "no") {
       throw new Error(
-        `web/src/data/docsLexicon.ts: lexicon row "${term}" has an ` +
+        `web/src/data/docs-lexicon.ts: lexicon row "${term}" has an ` +
           `unrecognized built value "${built}" (expected yes/partly/no).`,
       );
     }
@@ -99,8 +99,8 @@ function parseLexiconTable(source: string): LexiconRow[] {
     // likely a parse break than a real shrink, so fail loudly rather than
     // silently ship a half-empty table.
     throw new Error(
-      `web/src/data/docsLexicon.ts: parsed only ${rows.length} lexicon rows ` +
-        `from lexiconTable.md, expected at least 15 — check the table ` +
+      `web/src/data/docs-lexicon.ts: parsed only ${rows.length} lexicon rows ` +
+        `from lexicon-table.md, expected at least 15 — check the table ` +
         `didn't change shape.`,
     );
   }

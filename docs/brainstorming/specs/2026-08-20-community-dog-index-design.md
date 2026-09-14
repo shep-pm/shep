@@ -169,7 +169,7 @@ that stops most pull requests being wrong before they are opened.
 
 `web/src/pages/docs/community-dogs.astro`, at `/docs/community-dogs`. Flat,
 matching every other page's slug convention, with an entry in
-`web/src/data/docsNav.ts` in the same group as `dogs`. `ReferencePills`
+`web/src/data/docs-nav.ts` in the same group as `dogs`. `ReferencePills`
 requires at least a Source pill, so the nav entry carries `source:
 "docs/dogs.md"`.
 

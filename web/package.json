@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "astro dev",
-    "build": "node scripts/check-node.mjs && node --test scripts/verify-dogs-index.ts && astro build && pagefind --site dist && node scripts/verify-pagefind-index.mjs",
+    "build": "node scripts/check-node.mjs && node --test scripts/verify-dogs-index.ts && node --test scripts/verify-heading-anchors.ts && node --test scripts/verify-prose-budget.ts && node --test scripts/verify-docs-nav.ts && astro build && pagefind --site dist && node scripts/verify-pagefind-index.mjs && node --test scripts/verify-fragment-targets.ts",
     "preview": "astro preview",
     "astro": "astro"
   },

@@ -1855,7 +1855,7 @@ mod tests {
     ///
     /// The array and the generated file are two separate edits and only the
     /// first one is typing, so a stale file is the ordinary way this drifts.
-    /// `web/src/data/cliReference.ts` reads its verb list off the
+    /// `web/src/data/cli-reference.ts` reads its verb list off the
     /// `@@VERB:...@@` markers rather than keeping a second copy of the
     /// array, which leaves an entry with no block as a verb the site
     /// quietly does not have.

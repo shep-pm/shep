@@ -7,6 +7,7 @@
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import NotBuilt from "../../components/docs/NotBuilt.astro";
@@ -27,9 +28,6 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
 ---
 
 <DocsLayout
-  title="Serve"
-  description="A static file server, hand-rolled and run as a managed sheep. Loopback by default, and every unsafe default is opt-in."
-  crumb="Deploying / Serve"
   activeSlug="serve"
 >
   <article>
@@ -44,19 +42,25 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
       layer shared with the metrics dog), not built on axum or tower-http.
     </p>
 
-    <h2>Try it</h2>
-    <CodeBlock>$ shep serve ./dist --port 8080</CodeBlock>
+    <ShortVersion>
+      <CodeBlock>$ shep serve ./dist --port 8080</CodeBlock>
+      <p class="fine">
+        Binds loopback only, refuses traversal and dotfiles, and 404s any
+        symlink under the docroot: every wider behavior is a named flag, not
+        a default.
+      </p>
+    </ShortVersion>
+
+    <h2 id="try-it">Try it</h2>
     <p class="fine">
       Add <code>--foreground</code> to run the worker directly in this
       terminal instead of registering a sheep. Same worker either way, just
       without the supervision.
     </p>
 
-    <h2>The security posture, checked against real requests</h2>
+    <h2 id="the-security-posture-checked-against-real-requests">The security posture, checked against real requests</h2>
     <p>
-      Every default below is the safe one, and every unsafe one is a named
-      flag rather than a config file nobody reads. Binds loopback
-      (<code>127.0.0.1:8080</code>) unless you pass a wider{" "}
+      Binds loopback (<code>127.0.0.1:8080</code>) unless you pass a wider{" "}
       <code>--bind</code>, which prints a stderr notice naming what it just
       exposed. These four requests were run against a real{" "}
       <code>shep serve</code> process, docroot containing an{" "}
@@ -87,7 +91,7 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
     </Callout>
     <CodeBlock>{followSymlinksNotice}</CodeBlock>
 
-    <h2>The rest of the flags</h2>
+    <h2 id="the-rest-of-the-flags">The rest of the flags</h2>
     <p>
       <code>--listing</code> turns on directory listings for a folder with no{" "}
       <code>index.html</code>, off by default, since a listing publishes
@@ -111,7 +115,7 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
       request.
     </p>
 
-    <h2>Where to go next</h2>
+    <h2 id="where-to-go-next">Where to go next</h2>
 
     <div class="next-grid">
       <a href="/docs/containers" class="next-card">
@@ -131,82 +135,3 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
     </div>
   </article>
 </DocsLayout>
-
-<style>
-  h1 {
-    font-size: clamp(36px, 4.6vw, 56px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 29px;
-    letter-spacing: -0.03em;
-    margin: 40px 0 8px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 30px;
-    text-wrap: pretty;
-  }
-
-  p {
-    font-size: 16.5px;
-    line-height: 1.65;
-    color: var(--ink-2);
-    margin: 0 0 18px;
-  }
-
-  .fine {
-    font-size: 15px;
-    line-height: 1.6;
-    color: var(--ink-3);
-    margin: -8px 0 30px;
-  }
-
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 8px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
-  }
-</style>

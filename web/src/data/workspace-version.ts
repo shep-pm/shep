@@ -22,7 +22,7 @@
 import cargoTomlSource from "../../../Cargo.toml?raw";
 
 function fail(message: string): never {
-  throw new Error(`web/src/data/workspaceVersion.ts: ${message}`);
+  throw new Error(`web/src/data/workspace-version.ts: ${message}`);
 }
 
 /**
