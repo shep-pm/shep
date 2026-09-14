@@ -3089,23 +3089,15 @@ mod tests {
         let pane = web_pane();
         let lines = pane_lines(&pane, fixtures::plain(), 89, 40);
         let rows = text_of(&lines);
-        let help = field_help_under_cursor(&pane);
         let indent = |row: &str| row.len() - row.trim_start().len();
         let header = rows
             .iter()
             .find(|row| row.contains("FIELD") && row.contains("VALUE"))
             .expect("no column header");
-        // Anchored on the longest word in the help text, not its first.
-        // A first word like "Set" or "The" also appears in other rows, so
-        // the old anchor could have measured the indent of something else
-        // entirely and still passed.
-        let anchor = help
-            .split_whitespace()
-            .max_by_key(|word| word.len())
-            .expect("help is empty");
+        let anchor = blurb_anchor(&pane);
         let blurb = rows
             .iter()
-            .find(|row| row.contains(anchor))
+            .find(|row| row.contains(&anchor))
             .expect("no blurb row");
         assert_eq!(
             indent(blurb),
@@ -3121,10 +3113,10 @@ mod tests {
         let pane = web_pane();
         assert!(panel_width(89).is_none(), "89 must have no panel");
         let lines = pane_lines(&pane, fixtures::plain(), 89, 40);
-        let help = field_help_under_cursor(&pane);
+        let anchor = blurb_anchor(&pane);
         let rows = text_of(&lines);
         assert!(
-            rows.iter().any(|row| row.contains(&help)),
+            rows.iter().any(|row| row.contains(&anchor)),
             "no blurb at 89 columns: {rows:?}"
         );
     }
@@ -3155,13 +3147,32 @@ mod tests {
     fn the_panel_is_the_only_blurb_where_it_draws() {
         let pane = web_pane();
         assert!(panel_width(160).is_some(), "160 must have a panel");
-        let lines = pane_lines(&pane, fixtures::plain(), 160, 48);
-        let help = field_help_under_cursor(&pane);
-        let hits = text_of(&lines)
-            .iter()
-            .filter(|row| row.contains(&help))
-            .count();
-        assert_eq!(hits, 1, "the blurb is on screen {hits} times, not once");
+        assert!(
+            top_lines(&pane, fixtures::plain(), 160).is_empty(),
+            "the inline blurb drew beside the panel, so the help is on \
+             screen twice"
+        );
+        assert!(
+            !top_lines(&pane, fixtures::plain(), 89).is_empty(),
+            "and it must still draw where the panel cannot"
+        );
+    }
+
+    /// The longest word in the cursor's field help, which is what the blurb
+    /// tests match on.
+    ///
+    /// Not the whole help string: the blurb wraps to `BLURB_WRAP`, so a
+    /// help text longer than the wrap budget appears in no single row and a
+    /// `contains` against all of it fails for a reason unrelated to what
+    /// these tests pin. Not the first word either, since "Set" or "The"
+    /// appears in other rows. The longest word is the one least likely to
+    /// be split by a wrap or shared with another row.
+    fn blurb_anchor(pane: &ConfigPane) -> String {
+        let help = field_help_under_cursor(pane);
+        help.split_whitespace()
+            .max_by_key(|word| word.len())
+            .expect("the field help is empty")
+            .to_owned()
     }
 
     /// The `help` string of the field under the cursor, whichever it is.
