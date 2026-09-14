@@ -14,6 +14,7 @@ use globset::Glob;
 use crate::config::{
     AppConfig, CronParseError, CronSchedule, KillSignal, LevelMatcher, ProbeConfig, ProbeTarget,
 };
+use crate::paths::{HOME_DIR_VAR, SHEP_HOME_VAR};
 use crate::secrets;
 use crate::values::UpDuration;
 
@@ -834,12 +835,12 @@ impl fmt::Display for NormalizeError {
             Self::NoHomeForTilde { name, field } => write!(
                 f,
                 "`{name}`: {field} begins with `~/` but no home directory could be found. \
-                 Set $HOME, or write the path out in full."
+                 Set {HOME_DIR_VAR}, or write the path out in full."
             ),
             Self::NoShepHome { name, field } => write!(
                 f,
                 "`{name}`: {field} carries `{{{{SHEP_HOME}}}}` but no shep home could be \
-                 found. Set $SHEP_HOME, or write the path out in full."
+                 found. Set {SHEP_HOME_VAR}, or write the path out in full."
             ),
             Self::WatchWithoutCwd { name } => {
                 write!(f, "sheep `{name}` has watch = true but no cwd to watch")
@@ -971,7 +972,12 @@ mod tests {
                 "{field}: {err:?}"
             );
             let rendered = err.to_string();
-            assert!(rendered.contains("$SHEP_HOME"), "names the fix: {rendered}");
+            // The constant, not the literal: which spelling is right here
+            // is platform-dependent, and has its own test.
+            assert!(
+                rendered.contains(SHEP_HOME_VAR),
+                "names the fix: {rendered}"
+            );
             assert!(
                 !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
                 "no em or en dash in copy a user reads: {rendered}"
@@ -1161,6 +1167,45 @@ mod tests {
             expand_home_tilde("~deploy/bin/dog", Some(home)).unwrap_err(),
             TildeError::OtherUser
         );
+    }
+
+    /// fails if either remedy names a variable in a spelling the reader's
+    /// own shell does not use. Both sentences tell an operator what to set,
+    /// and `%SHEP_HOME%` is ordinary text to a unix shell exactly as
+    /// `$SHEP_HOME` is to `cmd.exe`.
+    #[test]
+    fn the_two_home_remedies_name_the_variable_this_platform_spells() {
+        let tilde = NormalizeError::NoHomeForTilde {
+            name: "web".to_string(),
+            field: "cwd",
+        }
+        .to_string();
+        let templated = NormalizeError::NoShepHome {
+            name: "web".to_string(),
+            field: "out_file".to_string(),
+        }
+        .to_string();
+
+        // Whole messages, spelled out rather than read back from the
+        // constants under test: a fragment passes while the prose around
+        // it regresses, and a constant agrees with itself.
+        let (tilde_expected, templated_expected) = if cfg!(windows) {
+            (
+                "`web`: cwd begins with `~/` but no home directory could be found. \
+                 Set %USERPROFILE%, or write the path out in full.",
+                "`web`: out_file carries `{{SHEP_HOME}}` but no shep home could be \
+                 found. Set %SHEP_HOME%, or write the path out in full.",
+            )
+        } else {
+            (
+                "`web`: cwd begins with `~/` but no home directory could be found. \
+                 Set $HOME, or write the path out in full.",
+                "`web`: out_file carries `{{SHEP_HOME}}` but no shep home could be \
+                 found. Set $SHEP_HOME, or write the path out in full.",
+            )
+        };
+        assert_eq!(tilde, tilde_expected);
+        assert_eq!(templated, templated_expected);
     }
 
     /// `reuse_port` loads because reload's overlap mode is chosen from it:

@@ -79,6 +79,27 @@ pub fn user_home(var: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
     }
 }
 
+/// How an operator on this platform spells the variable behind
+/// [`user_home`], for a refusal that has to say what to set.
+#[cfg(not(windows))]
+pub(crate) const HOME_DIR_VAR: &str = "$HOME";
+
+/// Names `%USERPROFILE%` rather than `HOME`: although [`user_home`] reads
+/// `HOME` first, a stock Windows session sets none, so `%USERPROFILE%` is
+/// the first of the three that answers.
+#[cfg(windows)]
+pub(crate) const HOME_DIR_VAR: &str = "%USERPROFILE%";
+
+/// How an operator on this platform spells `SHEP_HOME`, for a refusal that
+/// has to say what to set.
+#[cfg(not(windows))]
+pub(crate) const SHEP_HOME_VAR: &str = "$SHEP_HOME";
+
+/// How an operator on this platform spells `SHEP_HOME`, for a refusal that
+/// has to say what to set.
+#[cfg(windows)]
+pub(crate) const SHEP_HOME_VAR: &str = "%SHEP_HOME%";
+
 /// The directory a shep home defaults to, under the user's own home.
 const DEFAULT_HOME_DIR: &str = ".shep";
 
