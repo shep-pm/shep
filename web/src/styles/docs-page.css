@@ -149,3 +149,36 @@
 .docs-shell main .sv-body > :last-child {
   margin-bottom: 14px;
 }
+
+/*
+ * A collapsed section keeps its heading, inside the <summary>.
+ *
+ * Putting the id on the <details> instead looks equivalent and is not:
+ * the section leaves the document outline, leaves the anchor check's
+ * reach, loses its hover anchor, and the deep link stops working. Measured
+ * on /docs/startup#openrc-and-the-bsds, which neither scrolled nor opened.
+ *
+ * <summary> accepts one heading element by spec. The heading needs the
+ * rules above undone so it sits on the disclosure marker rather than
+ * starting its own block 48px down, and this has to live here rather than
+ * in a page's own <style> because `.docs-shell main h2` outranks a
+ * page-scoped `details summary h2`.
+ */
+.docs-shell main summary > h2,
+.docs-shell main summary > h3 {
+  display: inline;
+  font-family: "Space Mono", monospace;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--ink);
+  margin: 0;
+}
+
+.docs-shell main summary {
+  cursor: pointer;
+}
+
+.docs-shell main details {
+  margin: 0 0 34px;
+}
