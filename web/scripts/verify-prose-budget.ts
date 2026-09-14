@@ -46,7 +46,11 @@ export const BUDGETS: Record<string, number> = {
   // numbers against each reader's need.
   "getting-started": 400, // 388
   upgrading: 580, // 539
-  "from-pm2": 1650, // 1600
+  // Raised from 1650 on 2026-09-14 for the paragraph comparing this run
+  // against the previous one. A reader deciding whether to switch wants to
+  // know four figures moved against shep, and the alternative was
+  // compressing clear prose to hit a number.
+  "from-pm2": 1700, // 1674
   startup: 1250, // 1242
   dogs: 3000, // 2884
   "writing-a-dog": 4150, // 4042
