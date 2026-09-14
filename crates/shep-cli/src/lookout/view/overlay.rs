@@ -104,7 +104,13 @@ pub(super) fn draw_boxed(
 ) {
     let box_height = boxed_height(lines);
     let rows = box_height.saturating_sub(2);
-    let margin = area.width.saturating_sub(interior + 2) / 2;
+    // `saturating_add`, not `+`, so every piece of arithmetic in this
+    // function is protected the same way. `interior` is a const 126 at both
+    // call sites and 65534 is unreachable, so this is about a reader being
+    // able to tell which additions are deliberate: the line below saturates,
+    // `boxed_height` saturates, and one bare `+` in between reads as an
+    // oversight whether or not it is one.
+    let margin = area.width.saturating_sub(interior.saturating_add(2)) / 2;
     let box_x = area.x + margin;
     let box_y = area.y + area.height.saturating_sub(box_height) / 2;
     let line_style = palette.line();
@@ -119,7 +125,12 @@ pub(super) fn draw_boxed(
         line_style,
     );
     for (offset, line) in lines.iter().enumerate() {
-        let offset = u16::try_from(offset).unwrap_or(0);
+        // `expect`, not `unwrap_or(0)`: the fallback wrote line 65536 over
+        // line 0, which is the silent-wrong-position failure this module's
+        // own `boxed_height` doc spends a paragraph arguing against. The
+        // caller has already measured `lines` against `area.height` to pick
+        // this form, so a count past `u16` cannot reach here.
+        let offset = u16::try_from(offset).expect("a boxed form is at most area.height lines");
         let y = box_y + 1 + offset;
         buffer.set_string(box_x, y, BOX_LEFT.to_string(), line_style);
         blank_row(buffer, box_x + 1, y, interior, ground);

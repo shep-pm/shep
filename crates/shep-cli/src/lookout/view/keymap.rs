@@ -62,6 +62,13 @@ const SHEEP: [&str; 4] = [
 /// twice by review and declined twice, so the reason belongs here: the three
 /// together allocate roughly eighty two-byte strings per drawn frame, and a
 /// lookout frame is drawn on a keypress or a two-second tick, not at 60 fps.
+///
+/// Two more of the same tier, declined for the same reason and written down
+/// so a later round does not spend a slot re-raising them: [`rows`] runs
+/// twice when a form fits the width and not the height, since [`lines`]
+/// builds and discards one before [`draw_borderless`] builds another, and
+/// [`entry_cell`]'s `filter().nth()` scans `all_rows` once per cell, about
+/// forty-eight scans a frame.
 /// What a literal costs is the derivation: `"  "` is right only while
 /// `GUTTER` is 2, and nothing would say so when it changed. A width that
 /// disagrees with its own constant is the defect this frame's own gallery
@@ -351,6 +358,11 @@ enum Shed {
     Nothing,
     Decoration,
     Blank,
+    /// Two heights, and the variant alone does not say which output they
+    /// get: [`borderless_lines`] draws the folded gate-and-quit line at 14
+    /// and nothing at all at [`HEIGHT_FLOOR`], on a second test one
+    /// function deeper. Named here because a reader holding a `Shed` value
+    /// would otherwise have to find that test to know what it renders.
     Gate,
     Refuse,
 }

@@ -790,6 +790,10 @@ mod tests {
         // overlay would have had the room it needs.
         let frame = draw_to(&app, 130, 3);
         assert_eq!(frame.lines().next().unwrap().trim_end(), "too small");
+        // `lookout::keymap`, not `lookout::view::keymap`. Two modules carry
+        // that name: this one's sibling draws the overlay, and `Group` lives
+        // in the parent's, beside the bindings it groups. Read as a typo by
+        // review twice, so it is spelled out rather than shortened.
         for group in crate::lookout::keymap::Group::DRAWN {
             assert!(
                 !frame.contains(group.heading()),
