@@ -14928,7 +14928,10 @@ mod tests {
     /// exactly that before they were dropped from it.
     #[test]
     fn the_overlay_opens_from_every_synchronously_opened_body() {
-        let reached: [(KeyPress, fn(&App) -> bool); 3] = [
+        /// An opener paired with the predicate that says it landed.
+        type Arrival = (KeyPress, fn(&App) -> bool);
+
+        let reached: [Arrival; 3] = [
             (KeyPress::Secrets, |app| app.secrets_pane_is_open()),
             (KeyPress::Bleats, |app| app.bleats_pane().is_some()),
             (KeyPress::Confirm, |app| app.sheep_pane().is_some()),
