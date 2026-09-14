@@ -34,7 +34,7 @@ The sidebar is `position: sticky` with `min-height: calc(100vh - 64px)` and no o
 - Consumes: nothing.
 - Produces: nothing other tasks read.
 
-- [ ] **Step 1: Confirm the bug before changing anything**
+- [x] **Step 1: Confirm the bug before changing anything**
 
 Start the preview and measure. From `web/`:
 
@@ -53,7 +53,7 @@ const c = getComputedStyle(sb);
 
 Expected before the fix: `clientHeight` well above `viewport`, `overflowY: "visible"`, `canScrollAlone: false`.
 
-- [ ] **Step 2: Apply the fix**
+- [x] **Step 2: Apply the fix**
 
 In `web/src/components/docs/DocsSidebar.astro`, replace the `min-height` line in `.docs-sidebar` and add two properties:
 
@@ -71,7 +71,7 @@ In `web/src/components/docs/DocsSidebar.astro`, replace the `min-height` line in
 
 `min-height` becoming `max-height` is the fix itself: a sticky element taller than its viewport slot scrolls with the page instead of pinning. `overscroll-behavior: contain` stops the sidebar handing its scroll back to the article when it reaches either end.
 
-- [ ] **Step 3: Verify the fix in the browser**
+- [x] **Step 3: Verify the fix in the browser**
 
 Reload `http://localhost:4421/docs/getting-started` and re-run the Step 1 snippet.
 
@@ -79,7 +79,7 @@ Expected: `overflowY: "auto"` and `canScrollAlone: true`.
 
 Then scroll the sidebar itself to its last item and confirm the footnote beginning "Docs track the repo" is reachable without moving the article.
 
-- [ ] **Step 4: Check the border did not break**
+- [x] **Step 4: Check the border did not break**
 
 `border-right: 3px solid var(--line)` previously spanned the full column because `min-height` stretched the element. An `overflow` box ends at the viewport instead, so the rule may now stop short of the footer.
 
@@ -101,9 +101,27 @@ If the border stops short, move it off the scroll box and onto the grid column. 
 
 and delete `border-right: 3px solid var(--line);` from `.docs-sidebar`. Only do this if Step 4 shows a real gap; if the border still reaches, leave both files alone.
 
-The mobile rule at `max-width: 860px` already sets `border-right: none` and `position: static`, so it is unaffected either way. Confirm at a 375px viewport that the Menu disclosure still opens and closes.
+The mobile rule at `max-width: 860px` already sets `border-right: none` and `position: static`, so the border is unaffected either way.
 
-- [ ] **Step 5: Build**
+**The mobile block does need one thing this plan did not anticipate.** It resets `min-height` but nothing resets `max-height` or `overflow-y`, and below 860px the sidebar is a static `<details>` in the page flow, so the new cap clips the expanded menu. Measured at 375px with the menu open, before the reset: 745px of visible height against 1441px of content, with a second scrollbar inside a disclosure that is already inside the page. Add to the `max-width: 860px` rule:
+
+```css
+    .docs-sidebar {
+      position: static;
+      /* The desktop rule caps the column so it can scroll beside the
+         article. Here the whole disclosure is in the page flow, so the cap
+         would clip the expanded menu and give it a second scrollbar. */
+      max-height: none;
+      overflow-y: visible;
+      border-right: none;
+      border-bottom: 3px solid var(--line);
+      padding: 0;
+    }
+```
+
+Then confirm at a 375px viewport that the Menu disclosure opens, closes, and is not clipped.
+
+- [x] **Step 5: Build**
 
 ```bash
 npx astro build
@@ -115,7 +133,7 @@ npx astro check
 
 Expected: both clean.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add web/src/components/docs/DocsSidebar.astro
