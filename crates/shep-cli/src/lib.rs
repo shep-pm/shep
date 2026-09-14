@@ -226,14 +226,44 @@ fn dispatch_adopted_dog(argv: &[OsString], err: &clap::Error) -> Option<std::pro
 fn home_before(prefix: &[OsString]) -> Option<PathBuf> {
     let mut tokens = prefix.iter();
     while let Some(arg) = tokens.next() {
-        if let Some(value) = arg.to_str().and_then(|s| s.strip_prefix("--home=")) {
-            return Some(PathBuf::from(value));
+        if let Some(value) = home_equals_value(arg) {
+            return Some(value);
         }
         if arg == "--home" {
             return tokens.next().map(PathBuf::from);
         }
     }
     std::env::var_os("SHEP_HOME").map(PathBuf::from)
+}
+
+/// The value in a `--home=value` token, or `None` when `arg` is not one.
+///
+/// Split on the platform's own encoding rather than through `to_str`, which
+/// answers `None` for the whole token when the value is not valid UTF-8 and
+/// so drops a `--home=` an operator did type. Dropped, [`home_before`] falls
+/// through to `$SHEP_HOME` and an adopted dog runs against a home nobody
+/// named, which is the substitution `require_utf8` exists to refuse. The
+/// spaced `--home value` form never had this, since it copies the token
+/// whole.
+///
+/// The refusal still comes from [`resolve_paths`]; this only carries the
+/// value far enough to be refused.
+#[cfg(unix)]
+fn home_equals_value(arg: &std::ffi::OsStr) -> Option<PathBuf> {
+    use std::os::unix::ffi::OsStrExt as _;
+    let rest = arg.as_bytes().strip_prefix(b"--home=")?;
+    Some(PathBuf::from(std::ffi::OsStr::from_bytes(rest)))
+}
+
+/// [`home_equals_value`] for Windows, where a path is UTF-16 rather than
+/// bytes and the same `to_str` hole is an unpaired surrogate.
+#[cfg(windows)]
+fn home_equals_value(arg: &std::ffi::OsStr) -> Option<PathBuf> {
+    use std::os::windows::ffi::{OsStrExt as _, OsStringExt as _};
+    let wide: Vec<u16> = arg.encode_wide().collect();
+    let prefix: Vec<u16> = "--home=".encode_utf16().collect();
+    let rest = wide.strip_prefix(prefix.as_slice())?;
+    Some(PathBuf::from(OsString::from_wide(rest)))
 }
 
 /// Runs `path`, an adopted dog's binary: `extra_args` passed through as
@@ -347,6 +377,7 @@ fn resolve_paths_in(
 ) -> Result<ShepPaths, HomeRefusal> {
     if let Some(named) = global.home.as_ref() {
         require_absolute(HOME_KNOB, named)?;
+        require_utf8(HOME_KNOB, named)?;
     }
     let env = |key: &str| match key {
         "SHEP_HOME" => global
@@ -365,8 +396,30 @@ fn resolve_paths_in(
     // this arm can carry goes unread in that case.
     if global.home.is_none() {
         require_absolute(HOME_DIR_VAR, &home_dir)?;
+        require_utf8(HOME_DIR_VAR, &home_dir)?;
     }
     Ok(ShepPaths::resolve(&env, &home_dir))
+}
+
+/// Refuses `candidate` when its bytes are not valid UTF-8, naming `knob` as
+/// the spelling to fix.
+///
+/// A path is bytes on unix and UTF-16 on Windows, and neither promises valid
+/// UTF-8. Shep's own surfaces are all text, so the conversion happens
+/// somewhere regardless; this makes it happen once, loudly, at the only door
+/// an operator can name a home through.
+///
+/// # Errors
+///
+/// [`HomeRefusal::NotUtf8`], carrying `candidate` as typed.
+fn require_utf8(knob: &'static str, candidate: &Path) -> Result<(), HomeRefusal> {
+    if candidate.to_str().is_some() {
+        return Ok(());
+    }
+    Err(HomeRefusal::NotUtf8 {
+        knob,
+        given: candidate.to_path_buf(),
+    })
 }
 
 /// Refuses `candidate` when it has no root, naming `knob` as the spelling to
@@ -513,6 +566,20 @@ pub(crate) enum HomeRefusal {
         /// remedy line. `None` when that directory could not be read.
         absolute: Option<PathBuf>,
     },
+    /// Something named a path whose bytes are not valid UTF-8.
+    ///
+    /// Refused rather than carried, because the path does not stay a path:
+    /// it reaches the `{{SHEP_HOME}}` template, the Windows pipe name and
+    /// every log path on the wire as a `String`, and each of those
+    /// conversions is lossy. Shep would then read and write a directory
+    /// whose name is not the one the operator typed, and say nothing.
+    NotUtf8 {
+        /// The spelling an operator has to fix, as in [`Self::Relative`].
+        knob: &'static str,
+        /// The path as it was spelled, rendered lossily for the message.
+        /// Nothing but the message reads it.
+        given: PathBuf,
+    },
     /// `--home`/`$SHEP_HOME` named a directory that is not there. Never
     /// created: a named path is not a path shep may invent.
     Missing(PathBuf),
@@ -535,11 +602,20 @@ impl core::fmt::Display for HomeRefusal {
                 given,
                 absolute,
             } => write_relative_refusal(f, knob, given, absolute.as_deref()),
+            Self::NotUtf8 { knob, given } => write!(
+                f,
+                "{knob} must be valid UTF-8, and {given} is not\n  \
+                 shep carries the home path into the `{{{{SHEP_HOME}}}}` template, the log \
+                 paths it reports, and the control socket's own name, all of which are text, \
+                 so a byte that is not UTF-8 would be replaced and shep would use a \
+                 directory you did not name",
+                given = given.display(),
+            ),
             Self::Missing(path) => write!(
                 f,
                 "no flock at {path}\n\
-                 did you mean to drop --home? the default is ~/.shep\n\
-                 to set up a flock there deliberately: mkdir -p {quoted}",
+                 did you mean to drop {HOME_KNOB}? the default is {DEFAULT_HOME_SPELLING}\n\
+                 to set up a flock there deliberately: {MKDIR_COMMAND} {quoted}",
                 path = one_line(path),
                 quoted = shell_quoted(path),
             ),
@@ -561,8 +637,22 @@ impl core::fmt::Display for HomeRefusal {
 /// the empty invisible flock this refusal exists to prevent. Single quotes
 /// rather than backslashes because a path is one word and reads as one; an
 /// embedded `'` closes the quoting around an escaped one and reopens it.
+#[cfg(not(windows))]
 fn shell_quoted(path: &Path) -> String {
     format!("'{}'", one_line(path).replace('\'', r"'\''"))
+}
+
+/// `path` as one argument for [`MKDIR_COMMAND`], for a hint an operator
+/// copies straight into a shell.
+///
+/// Double quotes are the only wrap both shells honour. `cmd.exe` reads a
+/// single quote as an ordinary character. A Windows path cannot hold a `"`,
+/// so the wrap always closes and nothing inside it needs escaping. Neither
+/// shell's variable syntax is quoted by it, so `%TEMP%` or `$env:TEMP` in a
+/// path still expands.
+#[cfg(windows)]
+fn shell_quoted(path: &Path) -> String {
+    format!("\"{}\"", one_line(path))
 }
 
 /// `path` as a single line, for composing into prose whose line breaks a
@@ -579,7 +669,9 @@ fn one_line(path: &Path) -> String {
 impl core::error::Error for HomeRefusal {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
-            Self::Unresolved | Self::Relative { .. } | Self::Missing(_) => None,
+            Self::Unresolved | Self::Relative { .. } | Self::NotUtf8 { .. } | Self::Missing(_) => {
+                None
+            }
             Self::Io { source, .. } => Some(source),
         }
     }
@@ -592,7 +684,9 @@ impl HomeRefusal {
     /// something reasonable and shep failed at it.
     pub(crate) fn code(&self) -> ExitCode {
         match self {
-            Self::Unresolved | Self::Relative { .. } | Self::Missing(_) => ExitCode::Usage,
+            Self::Unresolved | Self::Relative { .. } | Self::NotUtf8 { .. } | Self::Missing(_) => {
+                ExitCode::Usage
+            }
             Self::Io { .. } => ExitCode::Internal,
         }
     }
@@ -1180,12 +1274,12 @@ const UNRESOLVED_HOME: &str =
 /// How an operator on this platform names the home directly, for a refusal
 /// that has to say what to fix.
 #[cfg(not(windows))]
-const HOME_KNOB: &str = "--home/$SHEP_HOME";
+pub(crate) const HOME_KNOB: &str = "--home/$SHEP_HOME";
 
 /// How an operator on this platform names the home directly, for a refusal
 /// that has to say what to fix.
 #[cfg(windows)]
-const HOME_KNOB: &str = "--home/%SHEP_HOME%";
+pub(crate) const HOME_KNOB: &str = "--home/%SHEP_HOME%";
 
 /// The variable behind the default home, named by the refusal for a root
 /// that came from there rather than from [`HOME_KNOB`].
@@ -1203,6 +1297,27 @@ pub(crate) const HOME_DIR_VAR: &str = "$HOME";
 /// first, `%USERPROFILE%` is the first of the three that answers.
 #[cfg(windows)]
 pub(crate) const HOME_DIR_VAR: &str = "%USERPROFILE%";
+
+/// How an operator on this platform spells the default home, for the
+/// refusal that offers dropping `--home`.
+#[cfg(not(windows))]
+const DEFAULT_HOME_SPELLING: &str = "~/.shep";
+
+/// Names `%USERPROFILE%` for the same reason [`UNRESOLVED_HOME`] does, and
+/// spells the separator the way this platform prints one. `cmd.exe` expands
+/// no `~`.
+#[cfg(windows)]
+const DEFAULT_HOME_SPELLING: &str = r"%USERPROFILE%\.shep";
+
+/// The command that creates a directory and every parent it needs, for a
+/// remedy an operator copies into a shell.
+#[cfg(not(windows))]
+const MKDIR_COMMAND: &str = "mkdir -p";
+
+/// `-p` is neither shell's flag. `cmd.exe` and PowerShell both create the
+/// intermediate directories from `mkdir` alone.
+#[cfg(windows)]
+const MKDIR_COMMAND: &str = "mkdir";
 
 /// The one refusal shep gives for a home with no root, whichever knob named
 /// it: `knob` is the spelling to fix, `absolute` the same path against this
@@ -1653,6 +1768,7 @@ mod tests {
     /// a space rendered `mkdir -p /tmp/my shep`, which creates two
     /// directories and reports no error, leaving exactly the empty
     /// invisible flock this refusal exists to prevent.
+    #[cfg(not(windows))]
     #[test]
     fn the_mkdir_hint_survives_a_path_a_shell_would_split() {
         let refusal = HomeRefusal::Missing(PathBuf::from("/tmp/my shep home"));
@@ -1663,6 +1779,27 @@ mod tests {
         );
         // The line above it names the path as prose, and is not a command.
         assert!(text.contains("no flock at /tmp/my shep home"), "{text}");
+    }
+
+    /// fails if the refusal offers to drop a knob the operator may never
+    /// have typed. `$SHEP_HOME` reaches this variant through clap's `env`,
+    /// so naming the flag alone sends half of them looking for something
+    /// that is not on their command line.
+    #[test]
+    fn the_missing_home_refusal_reads_exactly_this() {
+        let text = HomeRefusal::Missing(PathBuf::from("/srv/api")).to_string();
+        // Whole message, not a fragment: a substring passes while a line
+        // outside it regresses, and all three lines are per-platform.
+        let expected = if cfg!(windows) {
+            "no flock at /srv/api\n\
+             did you mean to drop --home/%SHEP_HOME%? the default is %USERPROFILE%\\.shep\n\
+             to set up a flock there deliberately: mkdir \"/srv/api\""
+        } else {
+            "no flock at /srv/api\n\
+             did you mean to drop --home/$SHEP_HOME? the default is ~/.shep\n\
+             to set up a flock there deliberately: mkdir -p '/srv/api'"
+        };
+        assert_eq!(text, expected);
     }
 
     /// fails if a path can add a line to a refusal. The table emitter keeps
@@ -1726,6 +1863,7 @@ mod tests {
 
     /// fails if an apostrophe in a path breaks out of the quoting and turns
     /// the rest of the hint into shell the operator did not mean to run.
+    #[cfg(not(windows))]
     #[test]
     fn an_apostrophe_in_a_path_cannot_escape_the_mkdir_hint() {
         let refusal = HomeRefusal::Missing(PathBuf::from("/tmp/rin's flock"));
@@ -1733,6 +1871,33 @@ mod tests {
         assert!(
             text.contains(r"mkdir -p '/tmp/rin'\''s flock'"),
             "an embedded quote must close and reopen: {text}"
+        );
+    }
+
+    /// fails if a Windows operator is handed a remedy from another
+    /// platform. `mkdir -p` parses in neither shell here, and a single
+    /// quote is an ordinary character to `cmd.exe`, so it would split the
+    /// path rather than hold it together.
+    #[cfg(windows)]
+    #[test]
+    fn the_missing_home_remedy_is_one_a_windows_shell_can_run() {
+        let spaced = HomeRefusal::Missing(PathBuf::from(r"C:\tmp\my shep home")).to_string();
+        assert_eq!(
+            spaced,
+            "no flock at C:\\tmp\\my shep home\n\
+             did you mean to drop --home/%SHEP_HOME%? the default is %USERPROFILE%\\.shep\n\
+             to set up a flock there deliberately: mkdir \"C:\\tmp\\my shep home\""
+        );
+
+        // A Windows path can hold an apostrophe, and the POSIX escaping
+        // would break it apart. Nothing inside a double-quoted wrap needs
+        // escaping, because a Windows path cannot hold a `"`.
+        let quoted = HomeRefusal::Missing(PathBuf::from(r"C:\tmp\rin's flock")).to_string();
+        assert_eq!(
+            quoted,
+            "no flock at C:\\tmp\\rin's flock\n\
+             did you mean to drop --home/%SHEP_HOME%? the default is %USERPROFILE%\\.shep\n\
+             to set up a flock there deliberately: mkdir \"C:\\tmp\\rin's flock\""
         );
     }
 
@@ -2420,6 +2585,138 @@ mod tests {
         }
     }
 
+    /// `home_before` parses argv itself, so it is a second door into the
+    /// home and has to carry a value clap would have refused rather than
+    /// dropping it. Dropped, the adopted-dog path resolves some other home
+    /// and runs the dog against it, which is the exact substitution this
+    /// branch exists to stop.
+    #[cfg(unix)]
+    #[test]
+    fn home_before_keeps_a_non_utf8_equals_value() {
+        use std::os::unix::ffi::OsStringExt as _;
+        let arg = OsString::from_vec(b"--home=/tmp/\xff".to_vec());
+        let found = home_before(&[arg]).expect("the value must survive the parse");
+        assert_eq!(
+            found,
+            non_utf8_tmp_home(),
+            "the bytes as typed, not a lossy rendering and not a fallback"
+        );
+    }
+
+    /// The Windows arm of the same hole. A path there is UTF-16, so the
+    /// byte that cannot be UTF-8 is instead a high surrogate with no low one
+    /// after it, which a filesystem accepts and `to_str` refuses.
+    ///
+    /// The first assertion is the fixture checking itself. Built wrong, the
+    /// value would be ordinary UTF-16, the old `to_str` parse would have
+    /// handled it, and the test would pass while exercising nothing.
+    #[cfg(windows)]
+    #[test]
+    fn home_before_keeps_a_lone_surrogate_equals_value() {
+        use std::os::windows::ffi::OsStringExt as _;
+        let lone = 0xD800_u16;
+        let mut typed: Vec<u16> = r"--home=C:\tmp\".encode_utf16().collect();
+        typed.push(lone);
+        let arg = OsString::from_wide(&typed);
+        assert!(
+            arg.to_str().is_none(),
+            "the fixture must be the case under test, not valid UTF-16"
+        );
+
+        let found = home_before(&[arg]).expect("the value must survive the parse");
+
+        let mut want: Vec<u16> = r"C:\tmp\".encode_utf16().collect();
+        want.push(lone);
+        assert_eq!(
+            found,
+            PathBuf::from(OsString::from_wide(&want)),
+            "the units as typed, not a lossy rendering and not a fallback"
+        );
+    }
+
+    /// `/tmp/\xff`, the value the test above passes as `--home=`.
+    #[cfg(unix)]
+    fn non_utf8_tmp_home() -> std::path::PathBuf {
+        use std::os::unix::ffi::OsStringExt as _;
+        std::path::PathBuf::from(OsString::from_vec(b"/tmp/\xff".to_vec()))
+    }
+
+    /// An absolute path whose bytes are not valid UTF-8, which only unix can
+    /// spell. Windows paths are UTF-16, so the same hole there is an unpaired
+    /// surrogate and needs its own constructor.
+    #[cfg(unix)]
+    fn non_utf8_home() -> std::path::PathBuf {
+        use std::os::unix::ffi::OsStringExt as _;
+        std::path::PathBuf::from(std::ffi::OsString::from_vec(
+            b"/tmp/shep-\xff-home".to_vec(),
+        ))
+    }
+
+    /// A home shep cannot carry as text is refused at the door rather than
+    /// replaced silently.
+    ///
+    /// Without this, `to_string_lossy` turns the byte into U+FFFD and every
+    /// path in the layout is built from a directory the operator never
+    /// named. The refusal has to come before `ShepPaths::resolve`, since that
+    /// is where the conversion happens.
+    #[cfg(unix)]
+    #[test]
+    fn a_home_that_is_not_utf8_is_refused_before_any_path_is_derived() {
+        let home = non_utf8_home();
+        let global = cli::GlobalArgs {
+            home: Some(home.clone()),
+            format: cli::Format::Table,
+            quiet: false,
+            style: None,
+        };
+        let Err(refusal) = resolve_paths(&global) else {
+            panic!("a home that is not UTF-8 must not resolve a layout");
+        };
+        assert!(
+            matches!(&refusal, HomeRefusal::NotUtf8 { knob, given }
+                if *knob == HOME_KNOB && given == &home),
+            "its own refusal, not the relative or unresolved one: {refusal:?}"
+        );
+        assert_eq!(refusal.code(), ExitCode::Usage);
+
+        let rendered = refusal.to_string();
+        assert!(
+            rendered.contains(HOME_KNOB),
+            "names the spelling to fix: {rendered}"
+        );
+        assert!(
+            rendered.contains("UTF-8"),
+            "says what is wrong with it: {rendered}"
+        );
+        assert!(
+            !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
+            "no em or en dash in copy a user reads: {rendered}"
+        );
+    }
+
+    /// The neighbouring gate still answers first for a path that is both
+    /// relative and not UTF-8, so one bad home reports one reason.
+    #[cfg(unix)]
+    #[test]
+    fn a_relative_home_is_refused_as_relative_even_when_it_is_also_not_utf8() {
+        use std::os::unix::ffi::OsStringExt as _;
+        let home =
+            std::path::PathBuf::from(std::ffi::OsString::from_vec(b"rel-\xff-home".to_vec()));
+        let global = cli::GlobalArgs {
+            home: Some(home),
+            format: cli::Format::Table,
+            quiet: false,
+            style: None,
+        };
+        let Err(refusal) = resolve_paths(&global) else {
+            panic!("a relative home must not resolve a layout");
+        };
+        assert!(
+            matches!(refusal, HomeRefusal::Relative { .. }),
+            "the rootless reason wins, since it is the one an operator hits first"
+        );
+    }
+
     /// The whole point of the gate: a home with no root puts the control
     /// socket at `rel-home/run/shep.sock`, which names one flock from the
     /// directory it was started in and a different, absent one from
@@ -2472,6 +2769,37 @@ mod tests {
 
     /// The gate is on the resolved root, not on `--home` alone: with no
     /// `--home`, the default home is the home directory plus `.shep`, and a
+    /// The other door into the same refusal. `--home` is the one an operator
+    /// types, but the home directory the OS hands back is equally capable of
+    /// carrying a byte shep cannot render, and it reaches the same
+    /// `to_string_lossy`.
+    ///
+    /// `resolve_paths_in` exists to inject this closure, so the arm is
+    /// reachable without mutating the process environment.
+    #[cfg(unix)]
+    #[test]
+    fn a_home_directory_that_is_not_utf8_is_refused_and_names_its_own_variable() {
+        use std::os::unix::ffi::OsStringExt as _;
+        // Every variable `user_home` reads, so the arm under test is the one
+        // that answered rather than a fallback.
+        let mangled = |key: &str| {
+            matches!(key, "HOME" | "USERPROFILE" | "HOMEDRIVE" | "HOMEPATH")
+                .then(|| OsString::from_vec(b"/home/\xff".to_vec()))
+        };
+        let Err(refusal) = resolve_paths_in(&global_with_home(None), &mangled) else {
+            panic!("a home directory that is not UTF-8 must not resolve a layout");
+        };
+        assert!(
+            matches!(&refusal, HomeRefusal::NotUtf8 { knob, .. } if *knob == HOME_DIR_VAR),
+            "names the variable that supplied it, not the --home knob: {refusal:?}"
+        );
+        assert_eq!(refusal.code(), ExitCode::Usage);
+        assert!(
+            refusal.to_string().contains("UTF-8"),
+            "says what is wrong with it"
+        );
+    }
+
     /// rootless home directory is the same defect one door over.
     #[test]
     fn a_relative_home_directory_is_refused_and_names_its_own_variable() {

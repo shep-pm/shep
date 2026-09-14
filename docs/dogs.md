@@ -404,15 +404,14 @@ does not change, so it keeps its own pid and its restart count stays where it
 was. What does not survive is the accepted connection, which dies with the
 old image — so a dog that does not dial again is a live process holding a
 dead socket, alive on every column a listing has and answering nothing. The
-metrics dog is measured holding its pid and `restarts 0` across six reloads
-while still serving a scrape.
+built-in dogs are both measured holding their pid and `restarts 0` across
+ten reloads, the metrics dog still serving a scrape and the bark dog still
+delivering.
 
-The bark dog is the exception, and it is on the list to fix. Its subscription
-belongs to one connection, so the stream ends when that connection does and
-the dog exits; autorestart replaces it, which costs one restart per reload on
-a dog that is otherwise healthy. It comes back on its own every time, and its
-restart budget starts a fresh window with each shepherd, so this is a count
-that reads wrong rather than an outage.
+A subscription belongs to one connection too, so a dog that holds one asks
+for a new one after a handover and reconciles whatever it missed. See
+"When the shepherd goes away" below for what a dog does when no successor
+answers.
 
 Those two are what shep ADDS, not the whole environment. A dog is a
 supervised process like any other, so it also starts from the small base
@@ -824,6 +823,99 @@ gives up on it, and the exit code or signal when its process stops.
 
 `shep bleats <name> --follow` sees the same lines live, marked the same
 way, interleaved with the dog's own output in arrival order.
+
+## When the shepherd goes away
+
+A dog's process outlives the shepherd that spawned it, and that is
+deliberate. `shep daemon reload` execs a successor over the same process:
+the listening socket crosses that exec, every accepted connection dies
+with the old image, and a dog notices only that its connection has ended.
+
+**A dog waits a bounded time for a shepherd to answer again, then exits if
+none does.** For the metrics dog this replaces staying up indefinitely: it
+used to reconnect for as long as the machine ran, so anything watching for
+that process still being alive will see it exit now. The wait is five
+seconds, the same `DOG_SILENCE_BUDGET` the
+shepherd allows a dog before acting on its silence.
+
+Both halves of that are load-bearing:
+
+- A dog that exits the moment its connection drops restarts once per
+  reload. `restarts` is the column you read to judge whether a dog is
+  healthy, so twenty reloads leave a healthy dog reporting twenty
+  restarts, and it loses whatever per-subject state it was keeping.
+- A dog that waits indefinitely is still running when an unrelated
+  shepherd binds that socket later. It attaches itself to that one,
+  beside that shepherd's own dog of the same kind, and doubles its alerts
+  quietly.
+
+A handover never comes near the budget. Measured over ten `shep daemon
+reload` runs against a three-sheep flock, the socket turned away a full
+connect, handshake and request for 38ms at the shortest and 254ms at the
+longest.
+
+An operator sees the difference in the `EXIT` column, and there are three
+answers rather than two. A dog that gave up waiting exits `5`. One a
+shepherd refused on protocol-version skew exits `6` without waiting at
+all, since the shepherd that refused is the party that can fix it. And a
+dog whose shepherd answered and then refused the request it made exits on
+that refusal's own code, `13` for an unsupported request, the same code
+the dog would have exited had the refusal come at startup instead of
+after a handover. The one an operator must never see is `5` for a
+shepherd that is running and answering, which would send them looking for
+a daemon that is not missing.
+
+### Your own dog has to do this too
+
+`ReconnectingClient` reconnects for as long as it is alive, so the bound
+is yours to impose. Two calls do it:
+
+- `link_lost(budget)` resolves once the link has been down for a whole
+  budget without coming back. Its clock runs only while the link is down,
+  and it never resolves while the link is up, so it belongs in a
+  `select!` arm beside whatever your dog does normally. For a dog that
+  touches its client only when something asks it to, like the metrics
+  dog, this is the only thing that will ever tell it.
+- `connected_within(budget)` waits for the link to come back. Use it when
+  you have something to re-arm.
+
+A subscription belongs to one connection generation, so it does not
+survive a handover and nothing re-arms it for you. That is on purpose: a
+stream that quietly papered over the gap would be worse than one that
+ends, because you would have no way to know there was a gap. Subscribe
+again, and treat the gap as a gap. Whatever the bus carried while you had
+no subscription is gone, and the only way to learn what changed is to ask
+the shepherd.
+
+`connected_within` returning `Ok` tells you where to try, not that it will
+work. The supervisor learns a connection died a moment after the socket
+does, so its answer can still read as connected for that moment, and a
+live connection can drop again immediately. Ask for what you want, and
+come back while your budget lasts.
+
+**Bound that retry loop yourself.** `connected_within` answers `Ok` for a
+link that is already up without consulting the budget at all, which is
+what makes it cheap to call in a loop. It also means it cannot be the
+thing that ends one. A shepherd that answers the handshake and then fails
+whatever you ask it, which a shepherd slow enough to miss your request's
+deadline does, leaves a loop written this way running for as long as that
+shepherd stays up:
+
+```rust
+// Wrong. Nothing here stops while the link is up and the work keeps failing.
+loop {
+    let left = budget.saturating_sub(started.elapsed());
+    client.connected_within(left).await?;
+    match client.subscribe(topics.clone()).await {
+        Ok(stream) => return Ok(stream),
+        Err(_) => continue,
+    }
+}
+```
+
+Check the budget at the top of your own loop and return when it is spent.
+shep's bark dog had this exact bug during development, and a dog with it
+stays online on every column a listing has while doing nothing at all.
 
 ## When a dog stops answering
 

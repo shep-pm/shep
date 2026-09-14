@@ -39,6 +39,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::Duration;
 
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
 // tokio's Instant, not std's: it moves with `tokio::time::pause`, and the
 // budget below is measured against a `tokio::time::sleep` that does too.
@@ -105,6 +106,42 @@ pub enum LinkState {
         message: String,
     },
 }
+
+/// Why a bounded wait on the link ended with the link still down.
+///
+/// Non-exhaustive: expect more variants.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use = "which of the two it was decides whether a dog exits unreachable or refused"]
+#[non_exhaustive]
+pub enum LinkLost {
+    /// The wait ran out with the supervisor still dialling.
+    Budget {
+        /// How long the caller waited before giving up.
+        waited: Duration,
+    },
+    /// A successor refused the handshake on protocol-version skew, so the
+    /// supervisor has stopped and no further wait could succeed.
+    Refused {
+        /// The daemon's own crate version, when it named one. `None` from a
+        /// daemon built before the refusal carried it.
+        daemon_version: Option<String>,
+        /// The daemon's refusal message, verbatim.
+        message: String,
+    },
+}
+
+impl fmt::Display for LinkLost {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Budget { waited } => write!(f, "no shepherd answered within {waited:?}"),
+            Self::Refused { message, .. } => {
+                write!(f, "the shepherd refused this connection: {message}")
+            }
+        }
+    }
+}
+
+impl core::error::Error for LinkLost {}
 
 // Exhaustive on purpose, unlike `LinkState`: the question is binary, and a
 // caller branching on it is better served by a match a third variant would
@@ -278,13 +315,16 @@ struct Shared {
     /// every reconnect. See [`ReconnectingClient::connect_as_dog`].
     dog_name: Option<String>,
     state: RwLock<State>,
+    /// What the supervisor last reported, and how a waiter hears it
+    /// change. The only home of the link state: a second copy beside the
+    /// generation would be one more thing to keep in step, and the two
+    /// have no reader that needs them to move together.
+    link: watch::Sender<LinkState>,
 }
 
-/// The generation of the connection in force right now, and what the
-/// supervisor last reported about it.
+/// The generation of the connection in force right now.
 struct State {
     client: Arc<Client>,
-    link: LinkState,
 }
 
 impl Shared {
@@ -309,14 +349,16 @@ impl Shared {
     }
 
     fn set_link(&self, link: LinkState) {
-        self.write().link = link;
+        self.link.send_replace(link);
     }
 
     /// Swaps in a freshly handshaken generation, dropping the dead one.
+    ///
+    /// The generation lands before the link is announced, so a waiter woken
+    /// by [`LinkState::Connected`] finds the connection it was told about.
     fn install(&self, client: Client) {
-        let mut state = self.write();
-        state.client = Arc::new(client);
-        state.link = LinkState::Connected;
+        self.write().client = Arc::new(client);
+        self.set_link(LinkState::Connected);
     }
 }
 
@@ -395,9 +437,9 @@ impl ReconnectingClient {
             socket: socket.to_path_buf(),
             handshake_timeout: timeout,
             dog_name: dog_name.map(str::to_owned),
+            link: watch::Sender::new(LinkState::Connected),
             state: RwLock::new(State {
                 client: Arc::new(client),
-                link: LinkState::Connected,
             }),
         });
         let supervisor = tokio::spawn(supervise(Arc::clone(&shared)));
@@ -433,7 +475,7 @@ impl ReconnectingClient {
     /// What the supervisor is doing right now.
     #[must_use]
     pub fn link(&self) -> LinkState {
-        self.shared.read().link.clone()
+        self.shared.link.borrow().clone()
     }
 
     /// Sends `body` with [`DEFAULT_DEADLINE`](crate::DEFAULT_DEADLINE) on
@@ -482,6 +524,114 @@ impl ReconnectingClient {
     /// Same as [`Self::request`].
     pub async fn subscribe(&self, topics: Vec<String>) -> Result<EventStream, RequestError> {
         self.shared.client().subscribe(topics).await
+    }
+
+    /// Waits for the supervisor to be on a connection again, for at most
+    /// `budget`, and returns at once when it already is.
+    ///
+    /// What a caller needing a fresh [`EventStream`] after a handover waits
+    /// on: a `Subscribe` issued against a dead generation fails at once
+    /// with [`RequestError::Closed`], which says nothing about whether a
+    /// successor is on its way.
+    ///
+    /// A returned `Ok` is where to try, never a promise that it will work.
+    /// The supervisor parks on the current connection dying, so its report
+    /// can still say [`LinkState::Connected`] for the moment between the
+    /// socket going and the supervisor waking, and a live connection can
+    /// die immediately afterwards anyway. A caller that needs a stream
+    /// asks for one and comes back here while its budget lasts.
+    ///
+    /// # Errors
+    ///
+    /// - [`LinkLost::Refused`]: a successor refused on protocol-version
+    ///   skew, so the supervisor has stopped and no later wait can succeed.
+    /// - [`LinkLost::Budget`]: `budget` ran out with the supervisor still
+    ///   dialling.
+    pub async fn connected_within(&self, budget: Duration) -> Result<(), LinkLost> {
+        let started = Instant::now();
+        let mut link = self.shared.link.subscribe();
+        loop {
+            // Cloned out of the guard, which must not be held across an
+            // await.
+            match link.borrow_and_update().clone() {
+                LinkState::Connected => return Ok(()),
+                LinkState::Refused {
+                    daemon_version,
+                    message,
+                } => {
+                    return Err(LinkLost::Refused {
+                        daemon_version,
+                        message,
+                    });
+                }
+                _ => {}
+            }
+            let left = budget.saturating_sub(started.elapsed());
+            if left.is_zero() {
+                return Err(LinkLost::Budget {
+                    waited: started.elapsed(),
+                });
+            }
+            match tokio::time::timeout(left, link.changed()).await {
+                Ok(Ok(())) => {}
+                // Out of budget, or a sender that is gone so the state can
+                // never move again. The second is unreachable while `&self`
+                // holds that sender.
+                Ok(Err(_)) | Err(_) => {
+                    return Err(LinkLost::Budget {
+                        waited: started.elapsed(),
+                    });
+                }
+            }
+        }
+    }
+
+    /// Waits until the link has been down for a whole `budget` without
+    /// coming back, or has been refused.
+    ///
+    /// The clock runs only while the link is down, so a connection that
+    /// drops and returns inside `budget` leaves the next one a full budget
+    /// of its own. Never resolves while the link is up, which is what lets
+    /// it sit in a `select!` arm beside the work a caller does when it is.
+    ///
+    /// One case does not get that fresh budget, and it is the watch's
+    /// nature rather than a gap to close. A [`watch`] receiver keeps only
+    /// the latest value, so a successor that connects and dies again before
+    /// this task next runs is never observed as `Connected`, and its
+    /// outage and the one before it are spent as a single budget. The
+    /// answer is the same either way: a shepherd flapping that fast is a
+    /// shepherd this dog cannot work with, and exiting is what it should
+    /// do.
+    ///
+    /// A supervised dog is the caller this exists for: one whose shepherd
+    /// is genuinely gone should exit rather than wait for a shepherd that
+    /// is not coming, since a dog still running when an unrelated shepherd
+    /// later binds that socket would attach itself to that one.
+    pub async fn link_lost(&self, budget: Duration) -> LinkLost {
+        let mut link = self.shared.link.subscribe();
+        loop {
+            // Parking here is the only await on the path a connected client
+            // takes, so it is what keeps this future yielding as well as
+            // what stops a live link spending the budget: `connected_within`
+            // returns at once while the link is up, and the outer loop would
+            // spin on it.
+            loop {
+                let up = matches!(*link.borrow_and_update(), LinkState::Connected);
+                if !up {
+                    break;
+                }
+                if link.changed().await.is_err() {
+                    // The state can never move again, so the link can never
+                    // be lost. Unreachable while `&self` holds the sender.
+                    core::future::pending::<()>().await;
+                }
+            }
+            match self.connected_within(budget).await {
+                // Back inside the budget: this was a handover, not a loss.
+                Ok(()) => {}
+                Err(lost) => return lost,
+            }
+        }
     }
 }
 
@@ -609,6 +759,24 @@ mod tests {
             shepherds.accepted(),
             client.link()
         );
+    }
+
+    /// Subscribes, cuts the connection under the subscription, and drains
+    /// the stream to its end.
+    ///
+    /// The sequence a dog actually meets: it learns its connection died by
+    /// its own event stream ending, never by reading a link state. A test
+    /// that cuts and asks straight away would be asking before the client
+    /// itself has noticed.
+    async fn subscribe_then_lose_it(client: &ReconnectingClient, shepherds: &Handovers) {
+        let mut events = client
+            .subscribe(vec!["process.*".to_owned()])
+            .await
+            .expect("the first subscription must be answered");
+        shepherds.cut().await;
+        let ended =
+            tokio::time::timeout(BOUND, async { while events.next().await.is_some() {} }).await;
+        assert!(ended.is_ok(), "the stream must end within {BOUND:?}");
     }
 
     /// Waits until `client`'s link reaches a refusal, or fails inside
@@ -1365,6 +1533,245 @@ mod tests {
             1,
             "the fake serves one connection at a time, so the cancelled dial \
              never got past the backlog"
+        );
+    }
+
+    /// fails if a caller waiting out a handover is told the link came back
+    /// when it did not, or is left waiting after it did.
+    #[tokio::test]
+    async fn a_wait_for_the_link_returns_once_the_successor_is_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Accept(ack_from(11)),
+            ],
+        );
+        let client = ReconnectingClient::connect(&path).await.unwrap();
+
+        subscribe_then_lose_it(&client, &shepherds).await;
+        let waited = tokio::time::timeout(BOUND, client.connected_within(BOUND))
+            .await
+            .expect("the wait must not outlive the bound");
+
+        assert_eq!(waited, Ok(()), "a successor did come up");
+        assert_eq!(client.link(), LinkState::Connected);
+    }
+
+    /// fails if a spent budget starts refusing a link that is already up.
+    ///
+    /// Pins the trap rather than the convenience. A caller looping on this
+    /// cannot use it as the loop's bound, because a live link answers `Ok`
+    /// without ever consulting the budget, and a caller whose own work
+    /// keeps failing against that live link would never leave the loop.
+    /// `ClientEvents::resubscribe` in the CLI checks the budget itself for
+    /// exactly this reason.
+    #[tokio::test]
+    async fn a_wait_on_a_live_link_answers_at_once_even_with_no_budget_left() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let _shepherds = fake_daemon_across_handovers(&path, vec![Handshake::Accept(ack_from(11))]);
+        let client = ReconnectingClient::connect(&path).await.unwrap();
+
+        let answered = tokio::time::timeout(BOUND, client.connected_within(Duration::ZERO))
+            .await
+            .expect("a live link must answer without waiting");
+
+        assert_eq!(answered, Ok(()));
+    }
+
+    /// fails if a dog whose shepherd is gone for good waits forever, which
+    /// is the lingering that lets it attach to an unrelated shepherd later.
+    #[tokio::test]
+    async fn a_wait_for_a_shepherd_that_never_comes_spends_its_budget_and_gives_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(&path, vec![Handshake::Accept(ack_from(11))]);
+        let client = ReconnectingClient::connect(&path).await.unwrap();
+
+        subscribe_then_lose_it(&client, &shepherds).await;
+        // Gone for good, listener and all: nothing answers this address
+        // again, which is what a stopped shepherd leaves behind.
+        drop(shepherds);
+
+        let budget = Duration::from_millis(200);
+        let started = tokio::time::Instant::now();
+        let lost = tokio::time::timeout(BOUND, client.connected_within(budget))
+            .await
+            .expect("a spent budget must return, not hang");
+        let elapsed = started.elapsed();
+
+        assert!(
+            matches!(lost, Err(LinkLost::Budget { .. })),
+            "expected a spent budget, got {lost:?}"
+        );
+        assert!(
+            elapsed >= budget,
+            "gave up after {elapsed:?}, short of the {budget:?} it was given"
+        );
+    }
+
+    /// fails if a bark dog that cannot speak the protocol waits out its
+    /// whole budget before exiting: the daemon that refused is the party
+    /// that can fix it, so there is nothing to wait for.
+    #[tokio::test]
+    async fn a_wait_ends_on_a_refusal_rather_than_serving_out_the_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Refuse(RpcError {
+                    code: RpcErrorCode::ProtocolMismatch,
+                    message: "daemon speaks protocol 3, client speaks 2".into(),
+                    daemon_version: Some("0.9.9".into()),
+                }),
+            ],
+        );
+        let client = ReconnectingClient::connect(&path).await.unwrap();
+
+        subscribe_then_lose_it(&client, &shepherds).await;
+        // An hour, so serving the budget out could never look like passing.
+        let lost = tokio::time::timeout(BOUND, client.connected_within(Duration::from_secs(3600)))
+            .await
+            .expect("a refusal must end the wait long before its budget");
+
+        let Err(LinkLost::Refused {
+            daemon_version,
+            message,
+        }) = lost
+        else {
+            panic!("expected a refusal, got {lost:?}");
+        };
+        assert_eq!(daemon_version.as_deref(), Some("0.9.9"));
+        assert!(message.contains("protocol 3"), "{message}");
+    }
+
+    /// fails if a dog watching for a lost shepherd fires while its shepherd
+    /// is right there, which would exit every dog on a healthy flock.
+    #[tokio::test]
+    async fn a_watch_for_a_lost_shepherd_stays_quiet_while_the_link_is_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let _shepherds = fake_daemon_across_handovers(&path, vec![Handshake::Accept(ack_from(11))]);
+        let client = ReconnectingClient::connect(&path).await.unwrap();
+
+        let fired =
+            tokio::time::timeout(NEGATIVE_WINDOW, client.link_lost(Duration::from_millis(1))).await;
+
+        assert!(
+            fired.is_err(),
+            "a connected client reported its shepherd lost: {fired:?}"
+        );
+    }
+
+    /// fails if a handover looks like a lost shepherd, which is the whole
+    /// distinction: the shepherd execs a successor on purpose, and every
+    /// dog is meant to cross that without exiting.
+    #[tokio::test]
+    async fn a_watch_for_a_lost_shepherd_rides_out_a_handover() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Accept(ack_from(11)),
+            ],
+        );
+        let client = ReconnectingClient::connect(&path).await.unwrap();
+
+        shepherds.cut().await;
+        // Far longer than the reconnect ladder's first rung, so a successor
+        // that is coming has room to arrive.
+        let fired = tokio::time::timeout(NEGATIVE_WINDOW, client.link_lost(BOUND)).await;
+
+        assert!(
+            fired.is_err(),
+            "a handover was reported as a lost shepherd: {fired:?}"
+        );
+        assert_eq!(client.link(), LinkState::Connected);
+    }
+
+    /// fails if a dog a shepherd refuses sits out its whole budget before
+    /// noticing. `link_lost` reaches a refusal only by delegating to
+    /// `connected_within`, so the early exit is one call away from being
+    /// lost in a refactor, and nothing else here would catch it.
+    #[tokio::test]
+    async fn a_watch_for_a_lost_shepherd_ends_on_a_refusal_rather_than_a_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &path,
+            vec![
+                Handshake::Accept(ack_from(11)),
+                Handshake::Refuse(RpcError {
+                    code: RpcErrorCode::ProtocolMismatch,
+                    message: "daemon speaks protocol 3, client speaks 2".into(),
+                    daemon_version: Some("0.9.9".into()),
+                }),
+            ],
+        );
+        let client = ReconnectingClient::connect(&path).await.unwrap();
+
+        subscribe_then_lose_it(&client, &shepherds).await;
+        // An hour, so serving the budget out could never look like passing.
+        let lost = tokio::time::timeout(BOUND, client.link_lost(Duration::from_secs(3600)))
+            .await
+            .expect("a refusal must end the watch long before its budget");
+
+        let LinkLost::Refused {
+            daemon_version,
+            message,
+        } = lost
+        else {
+            panic!("expected a refusal, got {lost:?}");
+        };
+        assert_eq!(daemon_version.as_deref(), Some("0.9.9"));
+        assert!(message.contains("protocol 3"), "{message}");
+    }
+
+    /// fails if a dog whose shepherd stopped keeps waiting: the metrics dog
+    /// has no stream to end, so this watch is the only thing that tells it.
+    #[tokio::test]
+    async fn a_watch_for_a_lost_shepherd_fires_once_the_budget_is_spent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(&path, vec![Handshake::Accept(ack_from(11))]);
+        let client = ReconnectingClient::connect(&path).await.unwrap();
+
+        drop(shepherds);
+
+        let budget = Duration::from_millis(200);
+        let lost = tokio::time::timeout(BOUND, client.link_lost(budget))
+            .await
+            .expect("a spent budget must fire, not hang");
+
+        assert!(
+            matches!(lost, LinkLost::Budget { .. }),
+            "expected a spent budget, got {lost:?}"
+        );
+    }
+
+    /// fails if a refusal reaches an operator as a timeout, which would
+    /// send them looking for a shepherd that is running and answering.
+    #[test]
+    fn a_lost_link_says_which_of_the_two_it_was() {
+        let budget = LinkLost::Budget {
+            waited: Duration::from_secs(5),
+        };
+        assert_eq!(budget.to_string(), "no shepherd answered within 5s");
+
+        let refused = LinkLost::Refused {
+            daemon_version: Some("0.9.9".into()),
+            message: "daemon speaks protocol 3, client speaks 2".into(),
+        };
+        assert_eq!(
+            refused.to_string(),
+            "the shepherd refused this connection: daemon speaks protocol 3, client speaks 2"
         );
     }
 
