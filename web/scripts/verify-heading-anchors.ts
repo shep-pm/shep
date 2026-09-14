@@ -30,7 +30,17 @@ const pagesDir = fileURLToPath(new URL("../src/pages/docs", import.meta.url));
  * checks nothing. One real page keeps it honest. Each later phase appends
  * what it converted, and nothing ever leaves.
  */
-export const ENFORCED: string[] = ["containers", "upgrading", "startup", "writing-a-dog"];
+export const ENFORCED: string[] = [
+  "containers",
+  "upgrading",
+  "startup",
+  "writing-a-dog",
+  // Part I, converted by the rewrite phase.
+  "getting-started",
+  "from-pm2",
+  "examples",
+  "terminology",
+];
 
 /**
  * Every `<h2 ...>` / `<h3 ...>` open tag in a page, with its id if it has one.
