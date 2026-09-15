@@ -110,13 +110,19 @@ use config_merge::{
 pub(crate) use error::AdoptError;
 pub use error::SupervisorError;
 pub use handle::SupervisorHandle;
-use handover::{HandoverDraft, REPORT_DEADLINE, Snapshot, spawn_handover_task};
-use logs::{flush_logs, reopen_logs, spawn_flush_task, spawn_reopen_task, truncate_log};
+#[cfg(test)]
+use handover::REPORT_DEADLINE;
+use handover::{HandoverDraft, Snapshot, spawn_handover_task};
+#[cfg(test)]
+use logs::{flush_logs, reopen_logs, truncate_log};
+use logs::{spawn_flush_task, spawn_reopen_task};
 use manual::{ActionWaits, PendingAction};
 pub(crate) use manual::{CommandOrigin, ManualKind, PendingManual};
 pub(crate) use reload::{CarriedReload, ReloadMode, ReloadPhase, ReloadSwap};
 use reload::{LadderCap, ReloadJob};
-use sheep::{SignalRequest, run_sheep, spawn_sheep_task};
+#[cfg(test)]
+use sheep::run_sheep;
+use sheep::{SignalRequest, spawn_sheep_task};
 use slot::SheepSlot;
 use tasks::{
     spawn_action_task, spawn_readiness_task, spawn_send_line_task, spawn_signal_task,
