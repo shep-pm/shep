@@ -1,5 +1,5 @@
 ---
-source: crates/shep-cli/src/lookout/view/pane/mod.rs
+source: crates/shep-cli/src/lookout/view/pane/draw.rs
 expression: "text.join(\"\\n\")"
 ---
   bark  (dog config)                                                                                                    

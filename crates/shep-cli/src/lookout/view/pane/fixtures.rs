@@ -12,6 +12,7 @@ use ratatui::text::Line;
 use super::super::super::app::App;
 use super::super::super::pane::{ConfigPane, PaneRow};
 use super::super::fixtures;
+use super::draw::pane_lines;
 use crate::lookout::frames::render_text;
 
 /// The pane the rest of this module renders: `web`, with two overridden
@@ -145,4 +146,27 @@ pub(super) fn field_help_under_cursor(pane: &ConfigPane) -> String {
         panic!("the cursor is not on a field");
     };
     pane.fields().fields()[index].help.clone()
+}
+
+/// A dog pane over the bark dog, with a sink in its section.
+pub(super) fn bark_pane() -> ConfigPane {
+    let schema = crate::dog::builtin_schema("bark").expect("bark is a built-in");
+    ConfigPane::dog(
+        "bark".into(),
+        None,
+        schema,
+        "poll = \"60s\"\nhistory_bytes = 4096\n\n[sinks.ops]\nkind = \"slack\"\nurl = \"https://hooks.example/x\"\n"
+            .into(),
+    )
+}
+/// [`pane_lines`]'s own rows for the sheep [`fixtures::app_in_sheep_pane`]
+/// opens, rendered plain: the config pane's own equivalent of
+/// [`fixtures::draw_lines`], which draws the bleats pane instead.
+pub(super) fn config_pane_lines_for_tests(
+    app: &App,
+    width: u16,
+    height: u16,
+) -> Vec<Line<'static>> {
+    let pane = app.config_pane().expect("the pane is open");
+    pane_lines(pane, fixtures::plain(), width, height)
 }
