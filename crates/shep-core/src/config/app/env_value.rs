@@ -7,7 +7,7 @@ use serde::{Deserialize, Deserializer};
 /// number an operator wrote without quoting.
 ///
 /// Exists only to read a Flockfile, where the document is hand-written and a
-/// bare value is a plausible shortcut. It never rides the wire: [`AppConfig`]
+/// bare value is a plausible shortcut. It never rides the wire: [`AppConfig`](crate::config::AppConfig)
 /// is serialized through its own impls, which see only `String`.
 ///
 /// Debug does not leak an env value. A derived one would print the contents,
@@ -46,7 +46,7 @@ impl EnvValue {
 }
 
 /// Reads an `env` table, rendering each [`EnvValue`] as the string a process
-/// receives. The `deserialize_with` on [`AppConfig::env`].
+/// receives. The `deserialize_with` on [`AppConfig::env`](crate::config::AppConfig::env).
 pub(super) fn deserialize_env<'de, D: Deserializer<'de>>(
     de: D,
 ) -> Result<BTreeMap<String, String>, D::Error> {
