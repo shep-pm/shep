@@ -8,7 +8,7 @@ use crate::output::Render;
 use crate::style::Presentation;
 use crate::vocabulary::Role;
 
-use super::process::{Paint, paint};
+use super::toolkit::{Paint, paint};
 
 /// One of the shepherd's own log files, and what `shep flush --daemon` made
 /// of it.
@@ -493,4 +493,153 @@ impl Render for StartupSteps {
 
     // Parallel to `headers()`. Three columns never narrows.
     const PRIORITIES: &'static [u8] = &[6, 0, 0];
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::tests::assert_no_drift;
+    use super::*;
+
+    #[test]
+    fn emptied_files_do_not_drift() {
+        assert_no_drift(
+            &EmptiedFiles(vec![
+                EmptiedFile {
+                    stream: "stdout",
+                    file: "/home/x/.shep/logs/shepd.out.log".to_string(),
+                    result: "emptied",
+                },
+                EmptiedFile {
+                    stream: "stderr",
+                    file: "/home/x/.shep/logs/shepd.err.log".to_string(),
+                    result: "absent",
+                },
+            ]),
+            |j| &j[0],
+            &[],
+        );
+    }
+
+    #[test]
+    fn kill_row_does_not_drift() {
+        assert_no_drift(
+            &KillRow {
+                pid: 4242,
+                socket_removed: true,
+            },
+            |j| j,
+            &[],
+        );
+    }
+
+    #[test]
+    fn saved_roll_row_does_not_drift() {
+        let row = SavedRollRow {
+            file: "/home/ada/.shep/flock.json".to_string(),
+            apps: 9,
+        };
+        assert_no_drift(&row, |json| json, &[]);
+    }
+
+    #[test]
+    fn import_rows_do_not_drift() {
+        assert_no_drift(
+            &ImportRows(vec![
+                ImportRow {
+                    name: "api".to_string(),
+                    script: "/srv/api/dist/server.js".to_string(),
+                    instances: 2,
+                    reuse_port: true,
+                },
+                ImportRow {
+                    name: "worker".to_string(),
+                    script: "/srv/worker/dist/worker.js".to_string(),
+                    instances: 1,
+                    reuse_port: false,
+                },
+            ]),
+            |j| &j[0],
+            &[],
+        );
+    }
+
+    /// Both stores, so the `-` slot an env key carries is covered too.
+    #[test]
+    fn import_env_rows_do_not_drift() {
+        assert_no_drift(
+            &ImportEnvRows(vec![
+                ImportEnvRow {
+                    key: "DB_PASSWORD".to_string(),
+                    store: "secret".to_string(),
+                    slot: "production".to_string(),
+                    bytes: 7,
+                },
+                ImportEnvRow {
+                    key: "PORT".to_string(),
+                    store: "env".to_string(),
+                    slot: "-".to_string(),
+                    bytes: 4,
+                },
+            ]),
+            |j| &j[0],
+            &[],
+        );
+    }
+
+    /// fails if a row ever grows a value: this payload is rendered from a
+    /// `.env` and every cell but `bytes` is a name (IR-41).
+    #[test]
+    fn import_env_rows_print_a_length_and_never_a_value() {
+        let rows = ImportEnvRows(vec![ImportEnvRow {
+            key: "DB_PASSWORD".to_string(),
+            store: "secret".to_string(),
+            slot: "production".to_string(),
+            bytes: "hunter2".len(),
+        }]);
+        let rendered = format!(
+            "{:?}{:?}",
+            rows.rows(),
+            serde_json::to_value(&rows).unwrap()
+        );
+        assert!(!rendered.contains("hunter2"), "{rendered}");
+        assert!(rendered.contains('7'), "{rendered}");
+    }
+
+    /// The two rows cover both shapes the payload carries: a file that was
+    /// written, and a command that was run and failed.
+    #[test]
+    fn startup_steps_do_not_drift() {
+        assert_no_drift(
+            &StartupSteps(vec![
+                StartupStep {
+                    action: "wrote",
+                    target: "/etc/systemd/system/shep-deploy.service".to_string(),
+                    result: "ok".to_string(),
+                },
+                StartupStep {
+                    action: "ran",
+                    target: "systemctl enable --now shep-deploy.service".to_string(),
+                    result: "Failed to enable unit: Unit file is masked.".to_string(),
+                },
+            ]),
+            |j| &j[0],
+            &[],
+        );
+    }
+
+    /// `DeletedIds` serializes as a bare array, so `assert_no_drift` has no
+    /// object keys to compare. This is its drift coverage instead.
+    #[test]
+    fn deleted_ids_rows_match_their_own_json_values() {
+        let ids = DeletedIds(vec![10, 20, 30]);
+        let json = serde_json::to_value(&ids).unwrap();
+        let array = json.as_array().unwrap();
+        let rows = ids.rows();
+
+        assert_eq!(rows.len(), array.len());
+        for (row, value) in rows.iter().zip(array) {
+            assert_eq!(row.len(), 1, "DeletedIds::headers() has exactly one column");
+            assert_eq!(row[0], value.to_string());
+        }
+    }
 }

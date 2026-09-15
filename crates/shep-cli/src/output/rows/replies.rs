@@ -11,7 +11,7 @@ use crate::output::Render;
 use crate::style::Presentation;
 use crate::vocabulary::Role;
 
-use super::process::{Paint, paint, reply_paint};
+use super::toolkit::{Paint, paint, reply_paint};
 
 /// `Response::Triggered(Vec<ActionReply>)`: one row per matched sheep, each
 /// carrying what happened when the daemon tried to deliver `shep trigger`'s
@@ -378,4 +378,402 @@ pub(crate) fn sinks_cell(sinks: &[SinkOutcome]) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::tests::{assert_no_drift, coloured, painted};
+    use super::*;
+
+    fn sample_replies() -> TriggeredRows {
+        TriggeredRows(vec![
+            ActionReply {
+                id: 1,
+                name: "web".to_string(),
+                outcome: ActionOutcome::Replied {
+                    body: "pong".to_string(),
+                },
+            },
+            ActionReply {
+                id: 2,
+                name: "worker".to_string(),
+                outcome: ActionOutcome::NoChannel,
+            },
+        ])
+    }
+
+    /// OUTCOME and DETAIL both derive from `outcome`, a nested object, so
+    /// both sit in `assert_no_drift`'s `formatted` list. Its key and
+    /// cell-count checks still run.
+    #[test]
+    fn triggered_rows_do_not_drift() {
+        assert_no_drift(&sample_replies(), |j| &j[0], &["OUTCOME", "DETAIL"]);
+    }
+
+    #[test]
+    fn triggered_rows_render_id_name_and_outcome_kind() {
+        let rows = sample_replies().rows();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0][0], "1");
+        assert_eq!(rows[0][1], "web");
+        assert_eq!(rows[0][2], "replied");
+        assert_eq!(rows[1][0], "2");
+        assert_eq!(rows[1][1], "worker");
+        assert_eq!(rows[1][2], "no_channel");
+    }
+
+    /// An operator reading a `no_channel` row must find the config field
+    /// that would have avoided it in the row itself, not only in `--help`.
+    #[test]
+    fn a_no_channel_detail_names_the_config_field() {
+        let rows = sample_replies().rows();
+        let detail = &rows[1][3];
+        assert!(
+            detail.contains("channel = true"),
+            "a no_channel row must name the field that opens one: {detail}"
+        );
+        assert!(
+            detail.contains("wait_ready") && detail.contains("shutdown_with_message"),
+            "and the two fields that imply it: {detail}"
+        );
+    }
+
+    #[test]
+    fn skipped_and_timed_out_details_say_why() {
+        let skipped = describe_outcome(&ActionOutcome::Skipped).1;
+        assert!(skipped.to_lowercase().contains("reload"), "{skipped}");
+
+        let timed_out = describe_outcome(&ActionOutcome::TimedOut).1;
+        assert!(
+            timed_out.to_lowercase().contains("action_timeout"),
+            "{timed_out}"
+        );
+    }
+
+    #[test]
+    fn a_short_single_line_body_previews_unchanged() {
+        assert_eq!(preview_body("pong"), "pong");
+    }
+
+    /// [`preview_body`]'s `seen == TRIGGER_BODY_PREVIEW_CHARS` check fires
+    /// one character late, so only a body past the cap is truncated.
+    #[test]
+    fn a_body_exactly_at_the_cap_is_not_truncated() {
+        let exact = "x".repeat(TRIGGER_BODY_PREVIEW_CHARS);
+        assert_eq!(preview_body(&exact), exact);
+    }
+
+    #[test]
+    fn a_body_past_the_cap_is_truncated_with_a_trailing_marker() {
+        let over = "x".repeat(TRIGGER_BODY_PREVIEW_CHARS + 1);
+        let preview = preview_body(&over);
+        let expected = "x".repeat(TRIGGER_BODY_PREVIEW_CHARS) + "...";
+        assert_eq!(preview, expected);
+    }
+
+    /// A multi-line body would otherwise split a table row across output
+    /// lines (`TriggeredRows::rows`).
+    #[test]
+    fn embedded_newlines_and_carriage_returns_are_escaped_not_literal() {
+        let preview = preview_body("line one\nline two\r\nline three");
+        assert!(!preview.contains('\n'));
+        assert!(!preview.contains('\r'));
+        assert!(preview.contains("\\n"));
+        assert!(preview.contains("\\r"));
+    }
+
+    /// Fails if truncation or escaping leaks into `Serialize` instead of
+    /// staying in [`TriggeredRows::rows`].
+    #[test]
+    fn json_carries_the_real_body_the_table_cannot() {
+        let long_body = format!(
+            "{}\nsecond line",
+            "x".repeat(TRIGGER_BODY_PREVIEW_CHARS * 2)
+        );
+        let replies = TriggeredRows(vec![ActionReply {
+            id: 1,
+            name: "web".to_string(),
+            outcome: ActionOutcome::Replied {
+                body: long_body.clone(),
+            },
+        }]);
+        let json = serde_json::to_value(&replies).unwrap();
+        assert_eq!(json[0]["outcome"]["body"], long_body);
+
+        let table_cell = &replies.rows()[0][3];
+        assert_ne!(
+            *table_cell, long_body,
+            "the table cell must be the collapsed preview, not the real body"
+        );
+    }
+
+    fn sample_signal_replies() -> SignalledRows {
+        SignalledRows(vec![
+            SignalReply {
+                id: 1,
+                name: "web".to_string(),
+                outcome: SignalOutcome::Delivered,
+            },
+            SignalReply {
+                id: 2,
+                name: "worker".to_string(),
+                outcome: SignalOutcome::NotRunning,
+            },
+        ])
+    }
+
+    /// OUTCOME and DETAIL both derive from `outcome`, a nested JSON object
+    /// rather than a scalar, as in `triggered_rows_do_not_drift`.
+    #[test]
+    fn signalled_rows_do_not_drift() {
+        assert_no_drift(&sample_signal_replies(), |j| &j[0], &["OUTCOME", "DETAIL"]);
+    }
+
+    #[test]
+    fn signalled_rows_render_id_name_and_outcome_kind() {
+        let rows = sample_signal_replies().rows();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0][0], "1");
+        assert_eq!(rows[0][1], "web");
+        assert_eq!(rows[0][2], "delivered");
+        assert_eq!(rows[1][0], "2");
+        assert_eq!(rows[1][1], "worker");
+        assert_eq!(rows[1][2], "not_running");
+    }
+
+    #[test]
+    fn a_failed_signal_details_the_kernels_reason() {
+        let rows = SignalledRows(vec![SignalReply {
+            id: 1,
+            name: "web".to_string(),
+            outcome: SignalOutcome::Failed {
+                reason: "No such process".to_string(),
+            },
+        }])
+        .rows();
+        assert_eq!(rows[0][2], "failed");
+        assert_eq!(rows[0][3], "No such process");
+    }
+
+    fn sample_line_replies() -> SentLineRows {
+        SentLineRows(vec![
+            LineReply {
+                id: 1,
+                name: "repl".to_string(),
+                outcome: LineOutcome::Sent,
+            },
+            LineReply {
+                id: 2,
+                name: "worker".to_string(),
+                outcome: LineOutcome::NoStdin,
+            },
+        ])
+    }
+
+    /// OUTCOME and DETAIL both derive from `outcome`, a nested JSON object
+    /// rather than a scalar, as in `triggered_rows_do_not_drift`.
+    #[test]
+    fn sent_line_rows_do_not_drift() {
+        assert_no_drift(&sample_line_replies(), |j| &j[0], &["OUTCOME", "DETAIL"]);
+    }
+
+    #[test]
+    fn sent_line_rows_render_id_name_and_outcome_kind() {
+        let rows = sample_line_replies().rows();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0][0], "1");
+        assert_eq!(rows[0][1], "repl");
+        assert_eq!(rows[0][2], "sent");
+        assert_eq!(rows[1][0], "2");
+        assert_eq!(rows[1][1], "worker");
+        assert_eq!(rows[1][2], "no_stdin");
+    }
+
+    /// The `whisper` sibling of `a_no_channel_detail_names_the_config_field`.
+    #[test]
+    fn a_no_stdin_detail_names_the_config_field() {
+        let rows = sample_line_replies().rows();
+        let detail = &rows[1][3];
+        assert!(
+            detail.contains("stdin = true"),
+            "a no_stdin row must name the field that opens one: {detail}"
+        );
+    }
+
+    #[test]
+    fn a_not_written_line_details_the_reason() {
+        let rows = SentLineRows(vec![LineReply {
+            id: 1,
+            name: "repl".to_string(),
+            outcome: LineOutcome::NotWritten {
+                reason: "pipe is full".to_string(),
+            },
+        }])
+        .rows();
+        assert_eq!(rows[0][2], "not_written");
+        assert_eq!(rows[0][3], "pipe is full");
+    }
+
+    /// One bark delivered to a live sink and one the shepherd wrote itself
+    /// with no sinks, shared by every test below.
+    fn sample_barks() -> BarkRows {
+        BarkRows(vec![
+            Bark {
+                at_ms: 1_700_000_000_000,
+                rule: "restart-storm".to_string(),
+                subject: "web".to_string(),
+                message: "3 restarts in 60s".to_string(),
+                sinks: vec![SinkOutcome {
+                    sink: "ops".to_string(),
+                    error: None,
+                }],
+            },
+            Bark {
+                at_ms: 1_700_000_060_000,
+                rule: "daemon".to_string(),
+                subject: "worker".to_string(),
+                message: "restart budget exhausted".to_string(),
+                sinks: vec![],
+            },
+        ])
+    }
+
+    /// `WHEN` and `SINKS` are both human renderings of their own JSON field,
+    /// so both sit in `formatted`.
+    #[test]
+    fn bark_rows_do_not_drift() {
+        assert_no_drift(&sample_barks(), |j| &j[0], &["WHEN", "SINKS"]);
+    }
+
+    /// `sinks_cell`'s coverage: delivered, refused, and a shepherd-authored
+    /// bark with no sinks at all.
+    #[test]
+    fn sinks_render_delivered_failed_and_empty() {
+        let delivered = Bark {
+            sinks: vec![SinkOutcome {
+                sink: "ops".to_string(),
+                error: None,
+            }],
+            ..sample_barks().0[0].clone()
+        };
+        assert_eq!(sinks_cell(&delivered.sinks), "ops");
+
+        let failed = Bark {
+            sinks: vec![SinkOutcome {
+                sink: "ops".to_string(),
+                error: Some("connection refused".to_string()),
+            }],
+            ..sample_barks().0[0].clone()
+        };
+        assert_eq!(sinks_cell(&failed.sinks), "ops(failed)");
+
+        assert_eq!(sinks_cell(&[]), "-");
+    }
+
+    /// A comma-separated list, each sink carrying its own label.
+    #[test]
+    fn multiple_sinks_each_carry_their_own_outcome() {
+        let sinks = vec![
+            SinkOutcome {
+                sink: "ops".to_string(),
+                error: None,
+            },
+            SinkOutcome {
+                sink: "oncall".to_string(),
+                error: Some("timed out".to_string()),
+            },
+        ];
+        assert_eq!(sinks_cell(&sinks), "ops, oncall(failed)");
+    }
+
+    /// The cell carries no more than the sink's name plus `(failed)`, never
+    /// the error string, which can quote a webhook's HTTP response.
+    #[test]
+    fn a_failed_sinks_error_text_never_reaches_the_cell() {
+        let sinks = vec![SinkOutcome {
+            sink: "ops".to_string(),
+            error: Some("HTTP 401 from discord.com/api/webhooks/...".to_string()),
+        }];
+        let cell = sinks_cell(&sinks);
+        assert_eq!(cell, "ops(failed)");
+        assert!(
+            !cell.contains("401") && !cell.contains("discord"),
+            "the error text must stay out of the table cell: {cell}"
+        );
+    }
+
+    /// `shep barks` is newest-last, matching the file on disk.
+    #[test]
+    fn bark_rows_stay_in_the_order_they_were_given() {
+        let rows = sample_barks().rows();
+        assert_eq!(rows[0][2], "web", "the older bark stays first");
+        assert_eq!(rows[1][2], "worker", "the newer bark stays last");
+    }
+
+    /// Driven through a real `TriggeredRows`, so it covers the wiring as well
+    /// as the tiers.
+    #[test]
+    fn a_reply_table_colours_its_outcome_and_leaves_its_detail_alone() {
+        let rows = TriggeredRows(vec![
+            ActionReply {
+                id: 0,
+                name: "web".to_string(),
+                outcome: ActionOutcome::Replied {
+                    body: "swept 3".to_string(),
+                },
+            },
+            ActionReply {
+                id: 1,
+                name: "api".to_string(),
+                outcome: ActionOutcome::TimedOut,
+            },
+        ])
+        .rows_for(coloured(), true);
+
+        assert_eq!(rows[0][0], painted("0", Role::Ink3), "ID is chrome");
+        assert_eq!(rows[0][1], "web", "NAME is plain");
+        assert_eq!(rows[0][2], painted("replied", Role::Meadow));
+        assert_eq!(rows[0][3], "swept 3", "DETAIL carries no colour");
+        assert_eq!(rows[1][2], painted("timed_out", Role::Bark));
+        assert_eq!(
+            rows[1][3], "no reply within the app's own action_timeout",
+            "and neither does a failure's DETAIL"
+        );
+    }
+
+    /// fails if the `-` placeholder rule stops reaching a column whose own
+    /// rule declined to paint it: `BarkRows` returns [`Paint::Default`] for a
+    /// SINKS cell holding `-`, and `Paint::Default` carries the rule.
+    #[test]
+    fn a_placeholder_falls_back_to_the_shared_rule() {
+        let rows = BarkRows(vec![Bark {
+            at_ms: 0,
+            rule: "restart-storm".to_string(),
+            subject: "web".to_string(),
+            message: "restarted 5 times".to_string(),
+            sinks: Vec::new(),
+        }])
+        .rows_for(coloured(), true);
+        assert_eq!(rows[0][4], painted("-", Role::Ink3), "no sinks reads as -");
+    }
+
+    #[test]
+    fn a_bark_whose_sink_refused_is_marked() {
+        let bark = |error: Option<String>| Bark {
+            at_ms: 0,
+            rule: "restart-storm".to_string(),
+            subject: "web".to_string(),
+            message: "restarted 5 times".to_string(),
+            sinks: vec![SinkOutcome {
+                sink: "ops".to_string(),
+                error,
+            }],
+        };
+        let delivered = BarkRows(vec![bark(None)]).rows_for(coloured(), true);
+        assert_eq!(delivered[0][4], painted("ops", Role::Meadow));
+
+        let refused =
+            BarkRows(vec![bark(Some("connection refused".to_string()))]).rows_for(coloured(), true);
+        assert_eq!(refused[0][4], painted("ops(failed)", Role::Bark));
+    }
 }

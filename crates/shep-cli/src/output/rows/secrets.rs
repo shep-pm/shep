@@ -389,3 +389,115 @@ impl Render for KvUnsetRow {
     // One column, and it is the row's whole identity.
     const PRIORITIES: &'static [u8] = &[0];
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::tests::assert_no_drift;
+    use super::*;
+
+    /// Neither column is a rendering of anything else, so `formatted` is
+    /// empty.
+    #[test]
+    fn kv_rows_do_not_drift() {
+        let rows = KvRows(vec![KvEntry {
+            key: "bark.cooldown".to_string(),
+            value: "30s".to_string(),
+        }]);
+        assert_no_drift(&rows, |j| &j[0], &[]);
+    }
+
+    #[test]
+    fn kv_unset_row_does_not_drift() {
+        assert_no_drift(&KvUnsetRow { removed: 2 }, |j| j, &[]);
+    }
+
+    /// ENVIRONMENTS is a joined rendering of a JSON array, so it is
+    /// `formatted` rather than compared cell against field.
+    #[test]
+    fn secret_key_rows_do_not_drift() {
+        let rows = SecretKeyRows(vec![SecretKeyRow {
+            key: "DB_PASSWORD".to_string(),
+            environments: vec!["all".to_string(), "staging".to_string()],
+        }]);
+        assert_no_drift(&rows, |j| &j[0], &["ENVIRONMENTS"]);
+    }
+
+    #[test]
+    fn secret_slot_row_does_not_drift() {
+        let row = SecretSlotRow {
+            key: "DB_PASSWORD".to_string(),
+            environment: "staging".to_string(),
+        };
+        assert_no_drift(&row, |j| j, &[]);
+    }
+
+    #[test]
+    fn secret_value_row_does_not_drift() {
+        let row = SecretValueRow {
+            key: "DB_PASSWORD".to_string(),
+            value: "hunter2".to_string(),
+        };
+        assert_no_drift(&row, |j| j, &[]);
+    }
+
+    /// fails if `SecretKeyRows`/`SecretSlotRow` grow a field that carries
+    /// the value itself, or if `SecretValueRow` stops redacting the one
+    /// value it does carry. All three are rendered to a terminal and to
+    /// `--format json`, so a value landing in the wrong place is a
+    /// credential in a log or a pipeline.
+    #[test]
+    fn only_secret_value_row_carries_a_value_and_its_debug_is_redacted() {
+        assert!(!SecretKeyRows::headers().contains(&"VALUE"));
+        assert!(!SecretSlotRow::headers().contains(&"VALUE"));
+        let json = serde_json::to_string(&SecretSlotRow {
+            key: "K".to_string(),
+            environment: "all".to_string(),
+        })
+        .unwrap();
+        assert!(!json.contains("value"), "{json}");
+
+        let row = SecretValueRow {
+            key: "K".to_string(),
+            value: "hunter2".to_string(),
+        };
+        let rendered = format!("{row:?}");
+        assert!(!rendered.contains("hunter2"), "{rendered}");
+        // Exact string pinned so a lazy derive(Debug) refactor fails here,
+        // matching `secrets::SecretFile`'s own redacted `Debug`.
+        assert_eq!(
+            rendered,
+            r#"SecretValueRow { key: "K", value: "<redacted>" }"#
+        );
+    }
+
+    /// The live index's single entry (`web/public/dogs.json`).
+    fn sample_available_dog() -> AvailableDog {
+        AvailableDog {
+            name: "Spot".to_string(),
+            package: "shep-log-rotate".to_string(),
+            adopt_as: "log-rotate".to_string(),
+            description: "Rotates grown log files and asks the shepherd to reopen them."
+                .to_string(),
+            repo: "https://github.com/shep-pm/shep-log-rotate".to_string(),
+            license: "MIT OR Apache-2.0".to_string(),
+            category: "logs".to_string(),
+            source: crate::dog_index::DogSourceKind::CargoGit {
+                url: "https://github.com/shep-pm/shep-log-rotate".to_string(),
+            },
+        }
+    }
+
+    /// `adopt_as`/`repo`/`license`/`source` serialize but are covered by
+    /// `JSON_ONLY` rather than a column. The four real columns are plain
+    /// strings, so `formatted` is empty.
+    #[test]
+    fn available_dog_rows_do_not_drift() {
+        assert_no_drift(
+            &AvailableDogRows(vec![sample_available_dog()]),
+            |j| &j[0],
+            &[],
+        );
+    }
+
+    // --- PRIORITIES ------------------------------------------------------
+}
