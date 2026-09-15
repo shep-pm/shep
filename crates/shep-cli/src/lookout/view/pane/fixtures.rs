@@ -4,10 +4,15 @@
 //! subject of tests in nearly every one of them, and a fixture that drifts
 //! between two copies is a test that passes for the wrong reason.
 
+use ratatui::Terminal;
+use ratatui::backend::TestBackend;
+use ratatui::layout::Rect;
 use ratatui::text::Line;
 
+use super::super::super::app::App;
 use super::super::super::pane::ConfigPane;
 use super::super::fixtures;
+use crate::lookout::frames::render_text;
 
 /// The pane the rest of this module renders: `web`, with two overridden
 /// fields, one pending and two env keys.
@@ -76,4 +81,44 @@ pub(super) fn secret_dog_pane_with_an_edit() -> ConfigPane {
     }
     pane.apply_typing();
     pane
+}
+
+/// A sheep whose `args` are `args`, for the list sub-screen's own
+/// tests.
+pub(super) fn web_with_args(args: &[&str]) -> shep_core::protocol::SheepConfigView {
+    let config = shep_core::config::AppConfig {
+        name: "web".to_string(),
+        args: args.iter().map(|arg| (*arg).to_string()).collect(),
+        ..Default::default()
+    };
+    shep_core::protocol::SheepConfigView::new(config, Vec::new(), Vec::new())
+}
+
+/// The pane's cursor, walked onto `key` the way an operator walks it.
+/// A thin wrapper: [`fixtures::select_field`] is this exact walk, and
+/// this module had its own copy before the tab row gave a field's
+/// group somewhere to switch to first.
+pub(super) fn pane_to(app: &mut App, key: &str) {
+    fixtures::select_field(app, key);
+}
+
+/// The whole frame at `height`, 120 columns wide, through the same
+/// `note_body_rows` and `draw` the event loop runs before each one.
+pub(super) fn screen_at(app: &mut App, height: u16) -> String {
+    screen_of(app, 120, height)
+}
+/// [`screen_at`] at a width of the caller's own choosing.
+pub(super) fn screen_of(app: &mut App, width: u16, height: u16) -> String {
+    let area = Rect::new(0, 0, width, height);
+    app.note_body_rows(super::super::body_rows(area));
+    app.note_body_width(width);
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal
+        .draw(|frame| super::super::draw(app, frame))
+        .unwrap();
+    render_text(terminal.backend().buffer())
+}
+/// How many rows the frame marks as selected. One, always.
+pub(super) fn marked(text: &str) -> usize {
+    text.lines().filter(|line| line.starts_with('>')).count()
 }
