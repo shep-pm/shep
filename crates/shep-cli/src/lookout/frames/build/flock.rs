@@ -711,7 +711,7 @@ mod tests {
     /// The errored scene parks on the errored sheep and spells out the
     /// exit, the signal and the restart count behind it.
     #[test]
-    #[cfg(unix)] // inherited, not measured per test: see the `build` module's docs
+    #[cfg(unix)] // the one that needs it: a synthetic signalled exit
     fn the_errored_scene_shows_the_exit_it_is_named_for() {
         // Errored: selection parked on the errored sheep.
         let errored_buffer = scene(Scene::Errored).1;

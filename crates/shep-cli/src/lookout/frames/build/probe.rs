@@ -16,6 +16,7 @@ use crate::lookout::frames::coloured_palette;
 /// The numeric-id guard on token 0 is load bearing: the status bar's
 /// own lines also open `{verb} {name} (id {id})`, so without it this
 /// could match the bar line instead of a table row.
+// Dead on Windows: only the cfg(unix) tests call it.
 #[cfg_attr(windows, allow(dead_code))]
 pub(super) fn row_for<'a>(frame: &'a str, name: &str) -> Option<&'a str> {
     frame.lines().find(|line| {
@@ -45,6 +46,7 @@ pub(super) fn row_is_selected(buffer: &Buffer, y: u16) -> bool {
 /// The rendered text of whichever row of `buffer` is selected, or
 /// `None` if none is (a section header, for instance, is never
 /// selected).
+// Dead on Windows: only the cfg(unix) tests call it.
 #[cfg_attr(windows, allow(dead_code))]
 pub(super) fn selected_line<'a>(text: &'a str, buffer: &Buffer) -> Option<&'a str> {
     (0..buffer.area.height)
@@ -82,6 +84,7 @@ pub(super) fn dog_row_for<'a>(frame: &'a str, name: &str) -> Option<&'a str> {
 /// floor `name_width` never shrinks below. Selection is read off
 /// `buffer`'s own painted gutter ([`row_is_selected`]), not a `>`
 /// glyph the gallery's palette no longer draws.
+// Dead on Windows: only the cfg(unix) tests call it.
 #[cfg_attr(windows, allow(dead_code))]
 pub(super) fn marked_row_name_starts_with(text: &str, buffer: &Buffer, prefix: &str) -> bool {
     selected_line(text, buffer).is_some_and(|line| {

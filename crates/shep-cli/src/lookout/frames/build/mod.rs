@@ -14,12 +14,15 @@
 //! `armed::tests::the_secrets_scene_shows_a_revealed_row_not_a_mask`,
 //! rather than beside the rest.
 //!
-//! Every scene test in these modules is `#[cfg(unix)]`. They were split
-//! out of a single `every_scene_shows_the_thing_it_is_named_for`, which
-//! carried the gate for a synthetic signalled exit that `signal_label`
-//! resolves against the running platform's own table. Only the errored
-//! scene is known to need it. The rest inherited the gate, and which of
-//! them could drop it has never been measured.
+//! The thirteen tests split out of
+//! `every_scene_shows_the_thing_it_is_named_for` are `#[cfg(unix)]`. The
+//! eight that already stood on their own are not, and this split changed
+//! neither. The gate was there for a synthetic signalled exit that
+//! `signal_label` resolves against the running platform's own table,
+//! which is now
+//! `flock::tests::the_errored_scene_shows_the_exit_it_is_named_for`
+//! alone. The other twelve inherited it, and which of them could drop it
+//! has never been measured.
 
 mod armed;
 mod flock;
