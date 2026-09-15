@@ -729,7 +729,6 @@ mod tests {
         );
     }
 
-
     #[cfg(unix)]
     #[test]
     fn a_created_home_is_owner_only_from_the_moment_it_exists() {
@@ -740,7 +739,6 @@ mod tests {
         let mode = std::fs::metadata(&paths.home).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o700, "a fresh $SHEP_HOME must be owner-only");
     }
-
 
     /// A rooted path on the platform running the test. `/tmp/explicit` has
     /// no drive prefix, so Windows reads it as relative and the gate in
@@ -1013,5 +1011,4 @@ mod tests {
             std::path::Path::new(EXPLICIT_HOME).join(".shep")
         );
     }
-
 }

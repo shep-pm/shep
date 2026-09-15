@@ -15,7 +15,9 @@ use crate::{cli, style};
 /// Empty covers every way this layer can say nothing, a file that will not
 /// parse included: `shep start` must still start a script by path while an
 /// operator is mid-edit.
-pub(crate) fn interpreters_from_config(shep_toml: Option<&str>) -> std::collections::BTreeMap<String, String> {
+pub(crate) fn interpreters_from_config(
+    shep_toml: Option<&str>,
+) -> std::collections::BTreeMap<String, String> {
     shep_core::config::DaemonConfig::load(shep_toml, &|_| None)
         .map(|cfg| cfg.interpreters)
         .unwrap_or_default()

@@ -23,7 +23,10 @@ use crate::{cli, commands, exit};
 /// `err.kind()` check is not redundant with the `InvalidSubcommand` context
 /// match below it: clap attaches that context to `ArgumentConflict` too,
 /// unreachable while [`cli::Cli`] sets no `args_conflicts_with_subcommands`.
-pub(crate) fn dispatch_adopted_dog(argv: &[OsString], err: &clap::Error) -> Option<std::process::ExitCode> {
+pub(crate) fn dispatch_adopted_dog(
+    argv: &[OsString],
+    err: &clap::Error,
+) -> Option<std::process::ExitCode> {
     if err.kind() != clap::error::ErrorKind::InvalidSubcommand {
         return None;
     }
@@ -150,8 +153,8 @@ fn dog_exit_code(status: std::process::ExitStatus) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
     use crate::cli::Cli;
+    use clap::Parser;
 
     #[cfg(unix)]
     #[test]

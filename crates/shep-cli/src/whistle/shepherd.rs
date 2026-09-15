@@ -99,20 +99,23 @@ fn refuse_if_skewed(client: &Client) -> Result<(), CallToolResult> {
         style: crate::style::Presentation::BARE,
         fmt: crate::cli::Format::Table,
     };
-    crate::version_guard::refuse_version_skew(&mut streams, client, crate::version_guard::VersionGuard::Enforce).map_err(
-        |_code| {
-            CallToolResult::structured_error(serde_json::json!({
-                "code": crate::exit::ExitCode::VersionSkew.code_str(),
-                "message": format!(
-                    "this shep is {}, the running shepherd is {}; \
-                     `cargo install shep` replaced the binary without \
-                     restarting it — run `shep daemon reload`",
-                    env!("CARGO_PKG_VERSION"),
-                    client.daemon().daemon_version,
-                ),
-            }))
-        },
+    crate::version_guard::refuse_version_skew(
+        &mut streams,
+        client,
+        crate::version_guard::VersionGuard::Enforce,
     )
+    .map_err(|_code| {
+        CallToolResult::structured_error(serde_json::json!({
+            "code": crate::exit::ExitCode::VersionSkew.code_str(),
+            "message": format!(
+                "this shep is {}, the running shepherd is {}; \
+                 `cargo install shep` replaced the binary without \
+                 restarting it — run `shep daemon reload`",
+                env!("CARGO_PKG_VERSION"),
+                client.daemon().daemon_version,
+            ),
+        }))
+    })
 }
 
 /// A connect failure, as an in-band tool error naming the socket once.

@@ -32,9 +32,13 @@ use output::Streams;
 use crate::client::{connect_or_spawn_client, load_command, run_daemon_command};
 use crate::commands::init;
 use crate::config::{resolve_style, style_write_is_overridden};
-use crate::home::{ensure_home, report_home_refusal, resolve_paths, scaffold_first_run_interpreters};
+use crate::home::{
+    ensure_home, report_home_refusal, resolve_paths, scaffold_first_run_interpreters,
+};
 use crate::version_guard::{VersionGuard, connect_client, flock_command};
-use crate::{cli, commands, completions, dog, exit, lookout, output, status, style, welcome, whistle};
+use crate::{
+    cli, commands, completions, dog, exit, lookout, output, status, style, welcome, whistle,
+};
 
 /// Parses, resolves `$SHEP_HOME` for the verbs that need it, and dispatches
 /// to the verb's own module.
