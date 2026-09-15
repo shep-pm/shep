@@ -1,4 +1,5 @@
-//! The settings screen's keyboard: the cursor, the cycle, the armed candidate and the write.
+//! The settings screen's keyboard: the cursor, the cycle, the armed candidate
+//! and the write.
 
 use super::*;
 

@@ -1,4 +1,5 @@
-//! The config pane: asking for a sheep's config, the keyboard over it, and closing it.
+//! The config pane: asking for a sheep's config, the keyboard over it, and
+//! closing it.
 
 use super::*;
 

@@ -1,4 +1,5 @@
-//! The sheep pane: one sheep's own screen, with its config, its feed and its actions.
+//! The sheep pane: one sheep's own screen, with its config, its feed and its
+//! actions.
 
 use super::*;
 

@@ -1,4 +1,5 @@
-//! The secrets pane's own state, and the newtypes that keep a secret out of a `Debug` string.
+//! The secrets pane's own state, and the newtypes that keep a secret out of a
+//! `Debug` string.
 
 use super::*;
 

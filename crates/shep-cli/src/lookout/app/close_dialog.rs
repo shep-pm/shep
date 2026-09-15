@@ -1,4 +1,5 @@
-//! The dialog a pane raises on the way out, and the verb it holds until every write lands.
+//! The dialog a pane raises on the way out, and the verb it holds until every
+//! write lands.
 
 use super::*;
 

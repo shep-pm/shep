@@ -1,4 +1,5 @@
-//! Moving around the secrets pane: opening it, the environment tabs, the cursor and a reload.
+//! Moving around the secrets pane: opening it, the environment tabs, the
+//! cursor and a reload.
 
 use super::*;
 

@@ -1,4 +1,5 @@
-//! The dog rows on the settings screen: the toggle, the two halves it writes, and the schema probe.
+//! The dog rows on the settings screen: the toggle, the two halves it writes,
+//! and the schema probe.
 
 use super::*;
 

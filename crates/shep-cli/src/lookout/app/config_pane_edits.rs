@@ -1,4 +1,5 @@
-//! Editing a field in the config pane: filing an edit, undoing it, and the batch that goes out on close.
+//! Editing a field in the config pane: filing an edit, undoing it, and the
+//! batch that goes out on close.
 
 use super::*;
 

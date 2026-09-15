@@ -1,4 +1,5 @@
-//! The bleats pane and the dashboard's own feed: the axes, the scroll and the match box.
+//! The bleats pane and the dashboard's own feed: the axes, the scroll and the
+//! match box.
 
 use super::*;
 

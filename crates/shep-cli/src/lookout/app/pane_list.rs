@@ -1,4 +1,5 @@
-//! The two sub-screens under a pane: a dog's array field, and a sheep's environment.
+//! The two sub-screens under a pane: a dog's array field, and a sheep's
+//! environment.
 
 use super::*;
 

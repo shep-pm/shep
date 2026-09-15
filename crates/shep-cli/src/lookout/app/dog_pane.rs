@@ -1,4 +1,5 @@
-//! A dog's own config pane: the schema probe, the section it opens on, and the write it sends back.
+//! A dog's own config pane: the schema probe, the section it opens on, and the
+//! write it sends back.
 
 use super::*;
 

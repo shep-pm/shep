@@ -1,4 +1,5 @@
-//! The lamb walk: what the shepherd found under one sheep, and when it was read.
+//! The lamb walk: what the shepherd found under one sheep, and when it was
+//! read.
 
 use super::*;
 

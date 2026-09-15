@@ -1,4 +1,5 @@
-//! One armed action at a time: what a verb targets, what refuses it, and when the confirm expires.
+//! One armed action at a time: what a verb targets, what refuses it, and when
+//! the confirm expires.
 
 use super::*;
 

@@ -8,6 +8,22 @@
 //! the whole flock map. The cursor is a [`RowKey`], not a row index: the map is
 //! replaced wholesale every two seconds, and [`App::reseat`] puts the cursor
 //! back on a real row.
+//!
+//! [`App`] and [`Body`] are declared here; everything that reads or changes
+//! them is a sibling module, one per screen or per subject, each with its own
+//! tests:
+//!
+//! - [`msg`] and [`rows`] are the vocabulary: what arrives, what departs, and
+//!   the small value types both sides name.
+//! - [`update`] is the reducer, [`keys`] the fork every keypress goes through,
+//!   and [`read`] what the renderer reads back.
+//! - [`selection`] owns which rows are visible and where the cursor sits;
+//!   [`samples`] the sparkline series; [`lambs`] the walk under one sheep.
+//! - [`action`] is the one armed verb, and [`close_dialog`] the one a pane
+//!   raises on its way out.
+//! - A screen apiece: [`settings`], [`secrets_pane`], [`config_pane`],
+//!   [`sheep_pane`], [`bleats`], [`dog_pane`], and the sub-screens in
+//!   [`pane_list`].
 
 use core::fmt;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};

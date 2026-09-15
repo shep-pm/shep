@@ -1,4 +1,5 @@
-//! The settings screen's rows, its pending edit, and the sentence each confirm shows.
+//! The settings screen's rows, its pending edit, and the sentence each confirm
+//! shows.
 
 use super::*;
 
