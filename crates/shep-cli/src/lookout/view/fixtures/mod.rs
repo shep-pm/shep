@@ -1,14 +1,14 @@
 //! Fixtures the pane test modules share.
 
 mod palette;
+mod render;
 
 pub use self::palette::{coloured, no_color, plain, plain_dimmed};
+pub use self::render::{render, render_all, rendered, row_containing, row_starting_with, rows_of};
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use ratatui::Terminal;
-use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::text::Line;
@@ -579,20 +579,6 @@ pub fn line(stream: Stream, text: &str) -> TailLine {
     }
 }
 
-/// One rendered line, styles discarded.
-pub fn rendered(line: &Line<'static>) -> String {
-    line.spans
-        .iter()
-        .map(|span| span.content.as_ref())
-        .collect()
-}
-
-/// Several rendered lines, newline-joined. Newline-joined and not
-/// concatenated, so an assertion can anchor on a line boundary.
-pub fn render_all(lines: &[Line<'static>]) -> String {
-    lines.iter().map(rendered).collect::<Vec<_>>().join("\n")
-}
-
 /// Four sheep at ids 1..=4 named `web`, `api`, `web-worker`, `cron`, with
 /// `query` typed into the filter box and applied. An empty `query` leaves the
 /// dashboard unfiltered, which is what the "nothing changed" assertions need.
@@ -1059,24 +1045,6 @@ pub fn close_dialog_with_live_edit(with_live: bool) -> CloseDialog {
     )
 }
 
-/// The one line in `lines` starting with `prefix`, after trimming leading
-/// whitespace: what a close dialog's own option-row tests read, so a test
-/// for the reload row does not pass off the first row that merely
-/// contains the letter somewhere in its sentence.
-///
-/// # Panics
-///
-/// Panics if no line starts with `prefix`, which is a fixture bug rather
-/// than a failure the test is about.
-#[track_caller]
-pub fn row_starting_with(lines: &[Line<'static>], prefix: &str) -> String {
-    lines
-        .iter()
-        .map(rendered)
-        .find(|line| line.trim_start().starts_with(prefix))
-        .unwrap_or_else(|| panic!("no row starts with {prefix:?}"))
-}
-
 /// The sheep pane, `cwd` filed and the close dialog raised the way `esc`
 /// raises it for real (`App::close_offer`, rather than a synthetic
 /// `CloseDialog::new`): what this task's own box, borderless and mute-pass
@@ -1117,20 +1085,6 @@ pub fn app_with_close_dialog() -> App {
 /// arithmetic against.
 pub fn render_dialog(width: u16, height: u16) -> Buffer {
     render(&app_with_close_dialog(), width, height)
-}
-
-/// The row in `buffer` containing `needle`.
-///
-/// # Panics
-///
-/// Panics if no row contains `needle`, a fixture bug rather than a failure
-/// the test is about.
-#[track_caller]
-pub fn row_containing(buffer: &Buffer, needle: &str) -> String {
-    rows_of(buffer)
-        .into_iter()
-        .find(|row| row.contains(needle))
-        .unwrap_or_else(|| panic!("no row contains {needle:?}"))
 }
 
 /// [`crate::lookout::view::pane::draw_pane`] alone, straight into a fresh buffer at
@@ -1441,27 +1395,6 @@ pub fn file_edit(app: &mut App, key: &str, value: &str) {
         app.update(Msg::Key(KeyPress::TextChar(character)));
     }
     app.update(Msg::Key(KeyPress::TextApply));
-}
-
-/// A frame already drawn, at `width` x `height`: every secrets-pane test
-/// reads cells straight off this rather than the `String` `render_text`
-/// gives, since a column offset only means something against the buffer it
-/// came from.
-pub fn render(app: &App, width: u16, height: u16) -> Buffer {
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
-    terminal
-        .draw(|frame| crate::lookout::view::draw(app, frame))
-        .unwrap();
-    terminal.backend().buffer().clone()
-}
-
-/// `buffer` as one `String` per row, for a `contains` search across whatever
-/// line carries the text (a group header, say) rather than one column.
-pub fn rows_of(buffer: &Buffer) -> Vec<String> {
-    crate::lookout::frames::render_text(buffer)
-        .lines()
-        .map(str::to_string)
-        .collect()
 }
 
 /// The secrets pane, opened and loaded: `DB_PASSWORD` set for `production`
