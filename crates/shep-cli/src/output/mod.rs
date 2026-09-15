@@ -11,6 +11,10 @@
 //!
 //! This module names no shep-client type and compiles on every target.
 
+mod described;
+mod diagnostics;
+mod flock;
+
 // `pub(crate)`: `lookout::theme`'s test module calls `paint::style_for`
 // directly to pin the anstyle and ratatui colour bindings against each
 // other, and neither `lookout` nor `style` is a descendant of `output`.
@@ -23,13 +27,16 @@ mod table;
 // double-width name. The same reasoning `paint` above is public for.
 pub(crate) mod width;
 
-use std::collections::BTreeSet;
 use std::io;
 
 use serde::Serialize;
-use shep_core::protocol::{HostUsage, ProcessInfo, SheepRefusal};
+use shep_core::protocol::SheepRefusal;
 
 use crate::exit::ExitCode;
+
+pub use described::emit_described;
+pub use diagnostics::{emit_error, emit_notice};
+pub use flock::emit_flock;
 
 // Re-exported for `commands/`, which names every one of these at its own
 // crate-root import. `commands/` is `#[cfg(unix)]`-gated, so on Windows
@@ -256,7 +263,7 @@ pub fn emit<T: Render>(
 /// drops first, so a first attempt asks [`Render::rows_for`] with the
 /// word on, and only if [`table::render_boxed_ex`] hid a column does a
 /// second attempt ask again with the word off.
-fn table_of<T: Render>(data: &T, presentation: Presentation) -> String {
+pub(crate) fn table_of<T: Render>(data: &T, presentation: Presentation) -> String {
     if !presentation.level.boxes() {
         return render_table(data);
     }
@@ -302,265 +309,6 @@ pub(crate) fn terminal_width() -> usize {
     #[cfg(not(unix))]
     {
         80
-    }
-}
-
-/// The `--format json` shape [`emit_flock`] writes: [`OutputEnvelope`]'s own
-/// three fields, plus `host` riding beside `data` rather than inside it.
-///
-/// A sibling field for [`DescribedEnvelope`]'s reason: `data` stays exactly
-/// the array it always was, so an existing `data[0].name` script sees no
-/// shape change, and [`SCHEMA_VERSION`] does not move for an addition
-/// outside it.
-///
-/// `Option<Option<HostUsage>>` because there are three answers and a reader
-/// has to tell them apart. Absent: this shepherd would not answer, which
-/// today means one built before `Request::HostUsage` existed. `null`: a
-/// platform `sysinfo` cannot read. An object: a reading, whose own rate
-/// fields are `null` where no window has passed yet.
-///
-/// Only ever constructed by [`emit_flock`]. `#[cfg_attr(windows,
-/// allow(dead_code))]` for [`DescribedEnvelope`]'s reason.
-#[derive(Serialize)]
-#[cfg_attr(windows, allow(dead_code))]
-struct FlockEnvelope<'a> {
-    schema_version: u32,
-    command: &'a str,
-    data: FlockRows,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    host: Option<Option<HostUsage>>,
-}
-
-/// Renders one flock listing: the sheep table, then the dogs table
-/// beneath it whenever any dog is registered.
-///
-/// JSON stays one array under `data`, every entry carrying its own `dog`
-/// marker, with `host` beside it: see [`FlockEnvelope`]. `host` is `None`
-/// for a caller with no host block to carry, which is every caller but
-/// `shep flock` itself.
-/// Table partitions on [`ProcessInfo::dog`], rendering sheep and dogs
-/// each through [`table_of`], with a blank line and `Dogs` caption
-/// between them only when a dog exists. [`silence_pointer`] adds one
-/// line under the dogs table when a dog is silent.
-///
-/// # Errors
-/// The underlying write failed.
-#[cfg_attr(windows, allow(dead_code))]
-pub fn emit_flock(
-    out: &mut dyn io::Write,
-    fmt: Format,
-    command: &str,
-    listing: Vec<ProcessInfo>,
-    host: Option<Option<HostUsage>>,
-    style: Presentation,
-) -> io::Result<()> {
-    match fmt {
-        Format::Json => {
-            let envelope = FlockEnvelope {
-                schema_version: SCHEMA_VERSION,
-                command,
-                data: FlockRows(listing),
-                host,
-            };
-            serde_json::to_writer(&mut *out, &envelope)?;
-            writeln!(out)
-        }
-        Format::Table => {
-            let (dogs, sheep): (Vec<ProcessInfo>, Vec<ProcessInfo>) =
-                listing.into_iter().partition(|p| p.dog.is_some());
-            write!(out, "{}", table_of(&FlockRows(sheep), style))?;
-            if dogs.is_empty() {
-                return Ok(());
-            }
-            // Read before `DogRows` takes the rows, which is the only
-            // reason it is not read after the table is written.
-            let pointer = silence_pointer(&dogs);
-            write!(out, "\nDogs\n")?;
-            write!(out, "{}", table_of(&DogRows(dogs), style))?;
-            match pointer {
-                None => Ok(()),
-                Some(line) => writeln!(out, "\n{line}"),
-            }
-        }
-    }
-}
-
-/// The one line under the dogs table that says where `silent` is
-/// explained, or nothing at all when no dog is silent.
-///
-/// A pointer, not the explanation: that runs to a paragraph per dog
-/// (`vocabulary::silence_note`), too much for a table an operator leaves
-/// running in a loop. Rendered after the table, outside it, so a long
-/// list of names wraps in the terminal rather than squeezing STATUS off
-/// the side of it. Named rather than counted, since the names are what
-/// the operator types into the next command.
-fn silence_pointer(dogs: &[ProcessInfo]) -> Option<String> {
-    let silent: Vec<&str> = dogs
-        .iter()
-        .filter(|dog| rows::silence_note(dog).is_some())
-        .map(|dog| dog.name.as_str())
-        .collect();
-    match silent.as_slice() {
-        [] => None,
-        [only] => Some(format!(
-            "`{only}` is silent -- its process is up and it has never answered this shepherd. \
-             Run `shep describe {only}` for what that means and what to do about it."
-        )),
-        many => Some(format!(
-            "these dogs are silent -- their processes are up and they have never answered this \
-             shepherd: {}. Run `shep describe <name>` for what that means and what to do about \
-             it.",
-            many.join(", ")
-        )),
-    }
-}
-
-/// The `--format json` shape [`emit_described`] writes: [`OutputEnvelope`]'s
-/// own three fields, plus `secrets` riding beside `data` rather than inside
-/// it.
-///
-/// A sibling field rather than a new column on [`ProcessInfo`]: `secrets`
-/// is derived by the client from local files, never a fact the shepherd
-/// reports, and `data` stays exactly the array it always was, so an
-/// existing `data[0].name` script sees no shape change. Empty skips the
-/// field entirely, matching a `fold` reply, which never computes one.
-///
-/// Only ever constructed by [`emit_described`]. `#[cfg_attr(windows,
-/// allow(dead_code))]` for [`NoticeEnvelope`]'s reason: every caller lives
-/// in `commands/` or `lib.rs`'s `#[cfg(unix)]` arms.
-#[derive(Serialize)]
-#[cfg_attr(windows, allow(dead_code))]
-struct DescribedEnvelope<'a> {
-    schema_version: u32,
-    command: &'a str,
-    data: FlockRows,
-    #[serde(skip_serializing_if = "<[rows::DescribedSecret]>::is_empty")]
-    secrets: &'a [rows::DescribedSecret],
-}
-
-/// Renders one `describe` answer: the sheep table, then each sheep's lamb
-/// tree beneath it when the reply walked and found any.
-///
-/// A silent row also gets a paragraph from
-/// [`crate::vocabulary::silence_note`] (what [`silence_pointer`] points
-/// at). A "Depends on" heading follows, once per name, naming the sheep this
-/// one waits for at a staged start; then Pending and Overridden headings,
-/// same once-per-name rule, naming `shep reload <name>` as what promotes a
-/// parked config. Never shorten the caption to "process tree": the walk
-/// follows parent-pid links while the stop ladder acts on the process group,
-/// and the two diverge.
-///
-/// `secrets` is `describe`'s own local read of this machine's secret
-/// stores, keyed by sheep name; pass an empty slice for a reply (`fold`,
-/// today) that never computes one. Printed once per name, right after
-/// Overridden, in the same "prose under the table" shape.
-///
-/// # Errors
-/// The underlying write failed.
-#[cfg_attr(windows, allow(dead_code))]
-pub fn emit_described(
-    out: &mut dyn io::Write,
-    fmt: Format,
-    command: &str,
-    listing: Vec<ProcessInfo>,
-    style: Presentation,
-    secrets: &[rows::DescribedSecret],
-) -> io::Result<()> {
-    match fmt {
-        Format::Json => {
-            let envelope = DescribedEnvelope {
-                schema_version: SCHEMA_VERSION,
-                command,
-                data: FlockRows(listing),
-                secrets,
-            };
-            serde_json::to_writer(&mut *out, &envelope)?;
-            writeln!(out)
-        }
-        Format::Table => {
-            let flock = FlockRows(listing);
-            write!(out, "{}", table_of(&flock, style))?;
-            // Before the lamb trees, because this explains a cell in the
-            // table directly above it and a lamb table would put a second
-            // table between the two.
-            for sheep in &flock.0 {
-                if let Some(note) = rows::silence_note(sheep) {
-                    writeln!(out, "\n{note}")?;
-                }
-            }
-            for sheep in &flock.0 {
-                let Some(lambs) = &sheep.lambs else {
-                    continue;
-                };
-                if lambs.is_empty() {
-                    continue;
-                }
-                writeln!(
-                    out,
-                    "\nLambs of {} (id {}) — parent-pid descendants of {}, which is not exactly \
-                     the set a stop kills",
-                    sheep.name,
-                    sheep.id,
-                    sheep
-                        .pid
-                        .map_or_else(|| "-".to_string(), |pid| pid.to_string()),
-                )?;
-                write!(out, "{}", table_of(&LambRows(lambs.clone()), style))?;
-            }
-            // Once per name, not once per row: a parked or overridden
-            // config belongs to the app, and the daemon writes the same
-            // entry onto every slot of a name. The rows themselves stay
-            // per instance, since that is a claim about the process.
-            let mut said: BTreeSet<&str> = BTreeSet::new();
-            for sheep in &flock.0 {
-                if !said.insert(sheep.name.as_str()) {
-                    continue;
-                }
-                if !sheep.depends_on.is_empty() {
-                    writeln!(out, "\nDepends on for {}:", sheep.name)?;
-                    for name in &sheep.depends_on {
-                        writeln!(out, "  {name}")?;
-                    }
-                }
-                if let Some(fields) = sheep.pending.as_deref().filter(|f| !f.is_empty()) {
-                    writeln!(
-                        out,
-                        "\nPending for {}, parked by a load; `shep reload {}` promotes it:",
-                        sheep.name, sheep.name,
-                    )?;
-                    for field in fields {
-                        writeln!(out, "  {field}")?;
-                    }
-                }
-                if let Some(fields) = sheep.overridden.as_deref().filter(|f| !f.is_empty()) {
-                    writeln!(
-                        out,
-                        "\nOverridden for {}, fields its current Flockfile does not declare:",
-                        sheep.name,
-                    )?;
-                    for field in fields {
-                        writeln!(out, "  {field}")?;
-                    }
-                }
-                let mine: Vec<&rows::DescribedSecret> = secrets
-                    .iter()
-                    .filter(|entry| entry.name == sheep.name)
-                    .collect();
-                if !mine.is_empty() {
-                    writeln!(out, "\nSecrets for {}:", sheep.name)?;
-                    for entry in mine {
-                        writeln!(
-                            out,
-                            "  {} ({}): {}",
-                            entry.reference,
-                            entry.environment,
-                            entry.status.as_table_word()
-                        )?;
-                    }
-                }
-            }
-            Ok(())
-        }
     }
 }
 
@@ -626,162 +374,6 @@ pub fn emit_partial<T: Render>(
     writeln!(out)
 }
 
-/// The `--format json` shape of a failure: `{"schema_version", "error":
-/// {"code", "message"}}`.
-#[derive(Debug, Serialize)]
-struct ErrorEnvelope<'a> {
-    schema_version: u32,
-    error: ErrorBody<'a>,
-}
-
-/// The `error` object inside [`ErrorEnvelope`].
-#[derive(Debug, Serialize)]
-struct ErrorBody<'a> {
-    code: &'a str,
-    message: &'a str,
-}
-
-/// The two strings an emitter prints, both cleaned: `code` stripped of
-/// anything that could drive a terminal, `message` in the shape `fmt`
-/// renders.
-///
-/// Both emitters go through here, so the two cannot sanitise differently.
-fn safe_parts(fmt: Format, code: &str, message: &str) -> (String, String) {
-    (
-        crate::terminal_safe::sanitise(code).0,
-        safe_message(fmt, message),
-    )
-}
-
-/// `message` with everything that could drive a terminal stripped, in the
-/// shape `fmt` renders.
-///
-/// The seam every emitted message passes through, which is why the
-/// guarantee lives here rather than at each caller. JSON collapses to one
-/// line: `jq -r .error.message` unescapes a control byte straight back
-/// onto a terminal. A table keeps the line breaks shep wrote, indents every
-/// one of them, and loses its trailing whitespace, which the caller's
-/// `writeln!` would otherwise print as a blank line.
-fn safe_message(fmt: Format, message: &str) -> String {
-    match fmt {
-        Format::Json => crate::terminal_safe::sanitise(message).0,
-        Format::Table => {
-            let clean = crate::terminal_safe::sanitise_multiline(message).0;
-            indent_continuations(clean.trim_end())
-        }
-    }
-}
-
-/// `message` with every line after the first indented by two spaces.
-///
-/// Only the first line of a table message starts at column 0, so a newline
-/// inside an interpolated value cannot forge a line that reads as shep's own
-/// or that a script anchoring `error[` there will match. It holds because
-/// `code` is sanitised too, printing ahead of it on that same line. The base
-/// indent is this function's, and a message adds its own only to nest a line
-/// under a label. An empty line stays empty rather than gaining whitespace.
-fn indent_continuations(message: &str) -> String {
-    let mut out = String::with_capacity(message.len());
-    for (n, line) in message.split('\n').enumerate() {
-        if n > 0 {
-            out.push('\n');
-            if !line.is_empty() {
-                out.push_str("  ");
-            }
-        }
-        out.push_str(line);
-    }
-    out
-}
-
-/// Renders a failure to `err` in `fmt`. `code` is `ExitCode::code_str()`.
-///
-/// `code` is a string this function only prints, not the exit code, but
-/// it prints on both surfaces: JSON carries it in `error.code`, and
-/// table mode names it too, so a human at a terminal sees the same
-/// failure name a script would.
-///
-/// # Errors
-/// The underlying write failed.
-pub fn emit_error(
-    err: &mut dyn io::Write,
-    fmt: Format,
-    code: &str,
-    message: &str,
-) -> io::Result<()> {
-    let (code, message) = safe_parts(fmt, code, message);
-    let (code, message) = (code.as_str(), message.as_str());
-    match fmt {
-        Format::Json => {
-            let envelope = ErrorEnvelope {
-                schema_version: SCHEMA_VERSION,
-                error: ErrorBody { code, message },
-            };
-            serde_json::to_writer(&mut *err, &envelope)?;
-            writeln!(err)
-        }
-        Format::Table => writeln!(err, "error[{code}]: {message}"),
-    }
-}
-
-/// The `--format json` shape of a non-failure diagnostic: `{"schema_version",
-/// "notice": {"code", "message"}}`.
-///
-/// A sibling of [`ErrorEnvelope`], not a reuse of it: a notice must not
-/// read as a failure on the wire, so it gets its own envelope key.
-///
-/// Only ever constructed by [`emit_notice`]. `#[cfg_attr(windows,
-/// allow(dead_code))]`: every caller lives in `commands/` or `lib.rs`'s
-/// `#[cfg(unix)]` arms.
-#[derive(Debug, Serialize)]
-#[cfg_attr(windows, allow(dead_code))]
-struct NoticeEnvelope<'a> {
-    schema_version: u32,
-    notice: NoticeBody<'a>,
-}
-
-/// The `notice` object inside [`NoticeEnvelope`].
-#[derive(Debug, Serialize)]
-#[cfg_attr(windows, allow(dead_code))]
-struct NoticeBody<'a> {
-    code: &'a str,
-    message: &'a str,
-}
-
-/// Renders a non-failure diagnostic to `out` in `fmt`, keyed differently
-/// than [`emit_error`] so a `--format json` consumer can tell a
-/// diagnostic from a failure without checking the exit code.
-///
-/// `out` is a plain parameter: a notice beside a separate primary output
-/// passes `streams.err`; one that is the command's whole answer passes
-/// `streams.out`. `code` is caller-defined, never part of
-/// `emit_error`'s exit-code taxonomy. A caller already holding a
-/// [`Streams`] can use [`Streams::note`] instead.
-///
-/// # Errors
-/// The underlying write failed.
-#[cfg_attr(windows, allow(dead_code))]
-pub fn emit_notice(
-    out: &mut dyn io::Write,
-    fmt: Format,
-    code: &str,
-    message: &str,
-) -> io::Result<()> {
-    let (code, message) = safe_parts(fmt, code, message);
-    let (code, message) = (code.as_str(), message.as_str());
-    match fmt {
-        Format::Json => {
-            let envelope = NoticeEnvelope {
-                schema_version: SCHEMA_VERSION,
-                notice: NoticeBody { code, message },
-            };
-            serde_json::to_writer(&mut *out, &envelope)?;
-            writeln!(out)
-        }
-        Format::Table => writeln!(out, "notice[{code}]: {message}"),
-    }
-}
-
 /// Turns the result of an `emit`/`emit_error` write into the exit code that
 /// write earned.
 ///
@@ -801,7 +393,7 @@ pub fn write_outcome(result: io::Result<()>) -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use shep_core::protocol::{DogSource, Lamb};
+    use shep_core::protocol::{DogSource, Lamb, ProcessInfo};
     use shep_core::status::ProcStatus;
 
     use super::*;
