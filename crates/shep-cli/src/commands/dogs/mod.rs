@@ -110,7 +110,10 @@ async fn connect_or_absent(
             let code = ExitCode::from(&err);
             Err(streams.fail(
                 code,
-                &format!("{err}; run `shep {}`", crate::VERSION_SKEW_REMEDY),
+                &format!(
+                    "{err}; run `shep {}`",
+                    crate::version_guard::VERSION_SKEW_REMEDY
+                ),
             ))
         }
     }

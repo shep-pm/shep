@@ -119,7 +119,7 @@ fn version_from_refusal(err: &ConnectError) -> Option<&str> {
 pub async fn reload(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
-    guard: crate::VersionGuard,
+    guard: crate::version_guard::VersionGuard,
 ) -> ExitCode {
     reload_with_wait(streams, paths, guard, admin::KILL_TEARDOWN_WAIT).await
 }
@@ -128,7 +128,7 @@ pub async fn reload(
 async fn reload_with_wait(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
-    guard: crate::VersionGuard,
+    guard: crate::version_guard::VersionGuard,
     wait: std::time::Duration,
 ) -> ExitCode {
     // Before the connection and before either arm: the handover arm execs a
@@ -255,7 +255,7 @@ async fn ask_fitness(client: &Client) -> Fitness {
 async fn hand_over(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
-    guard: crate::VersionGuard,
+    guard: crate::version_guard::VersionGuard,
     wait: std::time::Duration,
 ) -> ExitCode {
     let pid = match proven_shepherd(streams, paths) {
@@ -285,7 +285,7 @@ async fn hand_over(
             let message = "the shepherd did not come back on this version after the handover \
                            signal; starting one instead";
             streams.aside("reload", message);
-            let client = match crate::connect_or_spawn_client(streams, paths, guard).await {
+            let client = match crate::client::connect_or_spawn_client(streams, paths, guard).await {
                 Ok(client) => client,
                 Err(code) => return code,
             };
@@ -445,7 +445,7 @@ fn refusal_after_teardown_budget(
 /// Stops the shepherd, waits it out, starts a successor, and musters.
 ///
 /// [`boot::daemon_liveness`] proves the pid, `commands::admin` owns the signal
-/// and the teardown wait, and `crate::connect_or_spawn_client` is the
+/// and the teardown wait, and `crate::client::connect_or_spawn_client` is the
 /// autostart `shep start` already uses.
 ///
 /// A budget that elapses is a question rather than an answer, and
@@ -455,7 +455,7 @@ fn refusal_after_teardown_budget(
 async fn stop_and_start(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
-    guard: crate::VersionGuard,
+    guard: crate::version_guard::VersionGuard,
     wait: std::time::Duration,
 ) -> ExitCode {
     let pid = match proven_shepherd(streams, paths) {
@@ -470,7 +470,7 @@ async fn stop_and_start(
     {
         return streams.fail(code, &message);
     }
-    let client = match crate::connect_or_spawn_client(streams, paths, guard).await {
+    let client = match crate::client::connect_or_spawn_client(streams, paths, guard).await {
         Ok(client) => client,
         Err(code) => return code,
     };
@@ -480,8 +480,8 @@ async fn stop_and_start(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::VersionGuard;
     use crate::cli::Format;
+    use crate::version_guard::VersionGuard;
     use shep_core::protocol::{Request, Response};
 
     #[test]
