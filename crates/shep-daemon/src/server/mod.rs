@@ -16,5 +16,6 @@ mod peer_auth;
 mod server_lifecycle;
 #[cfg(test)]
 mod testing;
+#[cfg(unix)]
 pub use peer_auth::daemon_uid;
 pub use server_lifecycle::RpcServer;

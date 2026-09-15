@@ -257,20 +257,7 @@ mod path_advisory_tests {
 /// the restrictions it checks are real.
 #[cfg(all(test, windows))]
 mod windows_advisory_tests {
-    use super::super::testing::*;
     use super::*;
-    use super::*;
-    use super::*;
-    use crate::channel::{ChildMessage, ShepherdMessage};
-    use crate::privilege::Credentials;
-    use crate::testing::capture_logs;
-    use core::fmt;
-    use shep_core::signals::OperatorSignal;
-    use std::collections::BTreeMap;
-    use std::io;
-    use std::os::unix::fs::PermissionsExt as _;
-    use std::path::{Path, PathBuf};
-    use tokio::sync::{mpsc, oneshot};
 
     #[test]
     fn a_reserved_device_name_is_named_regardless_of_extension() {

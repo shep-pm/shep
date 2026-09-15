@@ -19,16 +19,23 @@ mod log_path_security;
 mod log_protocol;
 mod path_advisories;
 mod process_runner;
-#[cfg(test)]
+// Every fixture here reads a unix mode or a unix uid, as does every case
+// that calls one.
+#[cfg(all(test, unix))]
 mod testing;
 /// Named here only so the two test modules that assert on the refusal text
-/// can reach it; the lib build has no other reader and warns on the import.
-#[cfg(test)]
+/// can reach it; the lib build has no other reader and warns on the import,
+/// and both of those modules are unix-gated.
+#[cfg(all(test, unix))]
 pub(crate) use log_path_security::SYMLINK_REFUSED;
 pub(crate) use log_path_security::{check_log_ancestry, open_log_path};
 pub use log_protocol::{ExitOutcome, FlushError, LogCtl, LogLine, ReopenError};
 pub(crate) use path_advisories::{cwd_advisory, log_path_advisory};
+/// Gated with the type: `AdoptSpec` is the handover's, and Windows has no
+/// `execve`.
+#[cfg(unix)]
+pub use process_runner::AdoptSpec;
 pub use process_runner::{
-    AdoptSpec, Preflight, ProcIo, ProcessRunner, RunnerError, RunningProcess, SpawnSpec,
-    StdinWrite, StopSignal,
+    Preflight, ProcIo, ProcessRunner, RunnerError, RunningProcess, SpawnSpec, StdinWrite,
+    StopSignal,
 };
