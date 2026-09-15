@@ -112,9 +112,11 @@ pub async fn lookout(
     // `lookout` drives the daemon for as long as the dashboard stays open, so
     // it can never be one of `RECOVERY_VERBS`. A reconnect on the ladder is
     // not re-checked; a shepherd cannot downgrade itself mid-run.
-    if let Err(code) =
-        crate::refuse_version_skew(streams, opened.0.client(), crate::VersionGuard::Enforce)
-    {
+    if let Err(code) = crate::version_guard::refuse_version_skew(
+        streams,
+        opened.0.client(),
+        crate::version_guard::VersionGuard::Enforce,
+    ) {
         return code;
     }
 

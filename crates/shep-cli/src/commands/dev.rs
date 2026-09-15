@@ -42,17 +42,17 @@ const DEV_HOME_VAR: &str = "%SHEP_DEV_HOME%";
 /// this verb will not use.
 ///
 /// A function rather than a constant: both knobs are spelled per platform,
-/// and [`crate::HOME_KNOB`] carries the other one.
+/// and [`crate::home::HOME_KNOB`] carries the other one.
 fn home_ignored_aside() -> String {
     format!(
         "shep dev ignores {}; isolation is the whole feature — set {DEV_HOME_VAR} instead",
-        crate::HOME_KNOB
+        crate::home::HOME_KNOB
     )
 }
 
 /// Why [`dev_home`] would not name a root for this session.
 ///
-/// `shep dev`'s own refusals, not [`crate::HomeRefusal`]'s: both messages
+/// `shep dev`'s own refusals, not [`crate::home::HomeRefusal`]'s: both messages
 /// have to name `$SHEP_DEV_HOME`, which is the one variable this verb reads
 /// and the one an operator can act on.
 #[derive(Debug)]
@@ -82,7 +82,7 @@ impl core::fmt::Display for DevHomeRefusal {
                 knob,
                 given,
                 absolute,
-            } => crate::write_relative_refusal(f, knob, given, absolute.as_deref()),
+            } => crate::home::write_relative_refusal(f, knob, given, absolute.as_deref()),
         }
     }
 }
@@ -105,7 +105,7 @@ fn require_absolute(knob: &'static str, candidate: PathBuf) -> Result<PathBuf, D
     }
     Err(DevHomeRefusal::Relative {
         knob,
-        absolute: crate::absolute_form(&candidate),
+        absolute: crate::home::absolute_form(&candidate),
         given: candidate,
     })
 }
@@ -142,7 +142,7 @@ fn dev_home(
         Some(dir) => require_absolute(DEV_HOME_VAR, PathBuf::from(dir))?,
         None => {
             let dir = home_dir.ok_or(DevHomeRefusal::Unresolved)?;
-            require_absolute(crate::HOME_DIR_VAR, dir.to_path_buf())?.join(".shep-dev")
+            require_absolute(crate::home::HOME_DIR_VAR, dir.to_path_buf())?.join(".shep-dev")
         }
     };
     let inject = |key: &str| (key == "SHEP_HOME").then(|| home.to_string_lossy().into_owned());
@@ -329,13 +329,13 @@ mod tests {
         };
         assert!(
             matches!(&refusal, DevHomeRefusal::Relative { knob, given, .. }
-                if *knob == crate::HOME_DIR_VAR && given == Path::new("ada")),
+                if *knob == crate::home::HOME_DIR_VAR && given == Path::new("ada")),
             "the refusal must carry the home directory as supplied, not the joined `.shep-dev`"
         );
 
         let rendered = refusal.to_string();
         assert!(
-            rendered.contains(crate::HOME_DIR_VAR),
+            rendered.contains(crate::home::HOME_DIR_VAR),
             "an operator cannot fix $SHEP_DEV_HOME when they never set it: {rendered}"
         );
         assert!(

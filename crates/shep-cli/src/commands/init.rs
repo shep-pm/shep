@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use shep_core::config::{Depth, FlockFormat, Scaffold, discover};
 
-use crate::{Streams, cli::InitArgs, commands::runtime::get_cwd, exit::ExitCode};
+use crate::{cli::InitArgs, commands::runtime::get_cwd, exit::ExitCode, output::Streams};
 
 /// Writes a scaffolded Flockfile.
 ///

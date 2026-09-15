@@ -448,15 +448,15 @@ Usage: shep stop [OPTIONS] <SELECTORS>...
 
 Arguments:
   <SELECTORS>...
-          One or more: name, id, `name:slot`, `all`, `zeus-*`, `/regex/`, `fold:<name>`
+          One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
           
           Several are applied in turn, not atomically: `shep stop a b c` where `b` matches nothing
           still stops `a` and `c`, and the exit code is the first failure.
           
-          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `zeus-*` selects
-          `zeus-auth` and not `my-zeus-auth`. Quote it: your shell expands `zeus-*` against
-          filenames first, and zsh refuses outright when none match. A name with no such character
-          is exact, so `web.1` is the sheep called `web.1`.
+          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `api-*` selects `api-auth`
+          and not `my-api-auth`. Quote it: your shell expands `api-*` against filenames first, and
+          zsh refuses outright when none match. A name with no such character is exact, so `web.1`
+          is the sheep called `web.1`.
 
 Options:
       --format <FORMAT>
@@ -528,15 +528,15 @@ Usage: shep restart [OPTIONS] <SELECTORS>...
 
 Arguments:
   <SELECTORS>...
-          One or more: name, id, `name:slot`, `all`, `zeus-*`, `/regex/`, `fold:<name>`
+          One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
           
           Several are applied in turn, not atomically: `shep stop a b c` where `b` matches nothing
           still stops `a` and `c`, and the exit code is the first failure.
           
-          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `zeus-*` selects
-          `zeus-auth` and not `my-zeus-auth`. Quote it: your shell expands `zeus-*` against
-          filenames first, and zsh refuses outright when none match. A name with no such character
-          is exact, so `web.1` is the sheep called `web.1`.
+          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `api-*` selects `api-auth`
+          and not `my-api-auth`. Quote it: your shell expands `api-*` against filenames first, and
+          zsh refuses outright when none match. A name with no such character is exact, so `web.1`
+          is the sheep called `web.1`.
 
 Options:
       --format <FORMAT>
@@ -631,15 +631,15 @@ Usage: shep reload [OPTIONS] <SELECTORS>...
 
 Arguments:
   <SELECTORS>...
-          One or more: name, id, `name:slot`, `all`, `zeus-*`, `/regex/`, `fold:<name>`
+          One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
           
           Several are applied in turn, not atomically: `shep stop a b c` where `b` matches nothing
           still stops `a` and `c`, and the exit code is the first failure.
           
-          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `zeus-*` selects
-          `zeus-auth` and not `my-zeus-auth`. Quote it: your shell expands `zeus-*` against
-          filenames first, and zsh refuses outright when none match. A name with no such character
-          is exact, so `web.1` is the sheep called `web.1`.
+          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `api-*` selects `api-auth`
+          and not `my-api-auth`. Quote it: your shell expands `api-*` against filenames first, and
+          zsh refuses outright when none match. A name with no such character is exact, so `web.1`
+          is the sheep called `web.1`.
 
 Options:
       --format <FORMAT>
@@ -690,15 +690,15 @@ Usage: shep delete [OPTIONS] <SELECTORS>...
 
 Arguments:
   <SELECTORS>...
-          One or more: name, id, `name:slot`, `all`, `zeus-*`, `/regex/`, `fold:<name>`
+          One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
           
           Several are applied in turn, not atomically: `shep stop a b c` where `b` matches nothing
           still stops `a` and `c`, and the exit code is the first failure.
           
-          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `zeus-*` selects
-          `zeus-auth` and not `my-zeus-auth`. Quote it: your shell expands `zeus-*` against
-          filenames first, and zsh refuses outright when none match. A name with no such character
-          is exact, so `web.1` is the sheep called `web.1`.
+          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `api-*` selects `api-auth`
+          and not `my-api-auth`. Quote it: your shell expands `api-*` against filenames first, and
+          zsh refuses outright when none match. A name with no such character is exact, so `web.1`
+          is the sheep called `web.1`.
 
 Options:
       --format <FORMAT>
@@ -1180,15 +1180,15 @@ Usage: shep describe [OPTIONS] <SELECTORS>...
 
 Arguments:
   <SELECTORS>...
-          One or more: name, id, `name:slot`, `all`, `zeus-*`, `/regex/`, `fold:<name>`
+          One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
           
           Several are applied in turn, not atomically: `shep stop a b c` where `b` matches nothing
           still stops `a` and `c`, and the exit code is the first failure.
           
-          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `zeus-*` selects
-          `zeus-auth` and not `my-zeus-auth`. Quote it: your shell expands `zeus-*` against
-          filenames first, and zsh refuses outright when none match. A name with no such character
-          is exact, so `web.1` is the sheep called `web.1`.
+          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `api-*` selects `api-auth`
+          and not `my-api-auth`. Quote it: your shell expands `api-*` against filenames first, and
+          zsh refuses outright when none match. A name with no such character is exact, so `web.1`
+          is the sheep called `web.1`.
 
 Options:
       --format <FORMAT>
