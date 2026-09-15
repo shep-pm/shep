@@ -27,8 +27,8 @@ pub const MIN_HEIGHT: u16 = 6;
 ///
 /// One for the marker, one for the gap. The table itself is rendered into
 /// `width - GUTTER` starting at `x + GUTTER`, so every threshold in
-/// [`TIERS`] and every arithmetic in [`name_width`] is untouched by the
-/// marker.
+/// `columns::TIERS` and every arithmetic in
+/// [`super::columns::name_width`] is untouched by the marker.
 pub const GUTTER: u16 = 2;
 
 /// The marker for the selected row, or a blank for every other row.
@@ -107,9 +107,10 @@ pub fn fit(text: &str, width: u16) -> String {
 /// table rather than stopping where its last cell's text does.
 ///
 /// Ratatui only paints a `Span`'s background under the cells its own text
-/// occupies. `NAME` is the only column [`name_width`] can leave short of
-/// the table's full width (it floors at [`NAME_MIN`] on a narrow
-/// terminal), so without this the selected row's ground would end mid-row
+/// occupies. `NAME` is the only column [`super::columns::name_width`] can
+/// leave short of the table's full width (it floors at
+/// [`super::columns::NAME_MIN`] on a narrow terminal), so without this the
+/// selected row's ground would end mid-row
 /// on exactly the terminals narrow enough to need the signal most. A no-op
 /// when `used >= width` or `ground` carries no colour.
 pub(super) fn pad_ground(spans: &mut Vec<Span<'static>>, used: u16, width: u16, ground: Style) {
@@ -121,8 +122,9 @@ pub(super) fn pad_ground(spans: &mut Vec<Span<'static>>, used: u16, width: u16, 
 
 /// Which slice of the flock is on screen, given where the cursor is.
 ///
-/// Derived every frame from [`super::super::super::app::App::selected_index`] rather
-/// than stored beside it: a stored offset and a stored cursor can disagree,
+/// Derived every frame from
+/// [`super::super::super::app::App::selected_index`] rather than stored
+/// beside it: a stored offset and a stored cursor can disagree,
 /// and this way they cannot. The selection is centred where the flock is long
 /// enough to allow it and pinned at both ends where it is not, so the last row
 /// of the flock is always the last row of the pane.

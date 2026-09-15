@@ -56,8 +56,9 @@ pub enum Column {
     CpuSpark,
     /// Tree CPU as a percentage of one core.
     Cpu,
-    /// Resident set size against [`ProcessInfo::max_memory`], as a filled
-    /// bar. `shep flock` draws no equivalent, for the same reason as
+    /// Resident set size against
+    /// [`shep_core::protocol::ProcessInfo::max_memory`], as a filled bar.
+    /// `shep flock` draws no equivalent, for the same reason as
     /// [`Self::CpuSpark`].
     MemCeil,
     /// Tree resident set size.
