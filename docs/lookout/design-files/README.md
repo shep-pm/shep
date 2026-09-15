@@ -366,6 +366,12 @@ In this bundle:
 - `Lookout Frame Gallery (round 1, all options).dc.html` — twelve frames including the three unpicked alternatives. Context only.
 - `support.js` — the runtime both HTML files load. Needed only to open them in a browser.
 
+`support.js` is vendored from the design tool, not built here. Its header
+names a `dc-runtime` tree that has never been in this repo, so nothing in shep
+can rebuild it. The identical copy in `docs/shep-design/design-files/` is
+deliberate: each export carries its own runtime, pinned to the React and Babel
+versions it fetches at load. Git stores the two paths as one blob.
+
 In the repo, the code these frames replace or extend:
 
 | Path | What it draws today |
