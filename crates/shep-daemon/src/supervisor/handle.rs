@@ -165,7 +165,7 @@ impl SupervisorHandle {
     /// operator override. Answers `Ok(None)` when no sheep has that name.
     ///
     /// The `Some` carries the config now parked for that sheep's next spawn.
-    /// `rpc.rs` hands it to [`crate::registry::FlockRegistry::record`], the
+    /// `rpc.rs` hands it to [`crate::snapshot::FlockRegistry::record`], the
     /// way the `Scale` and `ApplyConfig` arms hand it theirs: the muster roll
     /// is written from the registry and nothing on the restore path reads the
     /// override store, so an edit that skipped this survives a

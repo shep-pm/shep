@@ -39,7 +39,7 @@ pub(crate) const DEFAULT_WATCH_DELAY: Duration = Duration::from_millis(500);
 /// zero, and `notify-debouncer-full` derives its poll tick as `delay / 4`:
 /// at zero that spins the debouncer thread in a tight sleep loop.
 ///
-/// One millisecond, not the full second [`crate::cron::MIN_MAX_SLEEP`]
+/// One millisecond, not the full second `cron::MIN_MAX_SLEEP`
 /// uses: this is a debounce, not a polling period, so a floor that high
 /// would noticeably lengthen a save-to-restart round trip.
 pub(crate) const MIN_WATCH_DELAY: Duration = Duration::from_millis(1);
