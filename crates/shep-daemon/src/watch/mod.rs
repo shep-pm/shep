@@ -11,18 +11,6 @@
 //! `watch = true` requires `cwd`; the debounce runs on notify's own OS
 //! thread, so a paused clock in tests never moves it.
 
-//! The filesystem-watch subsystem (spec §4).
-//!
-//! [`source`] bridges notify's debounced events onto a tokio channel.
-//! [`WatchFilter`] decides which delivered paths trigger a restart, and
-//! [`spawn_watch_group`] runs one name-group's restart loop over them,
-//! single-flighted like [`crate::cron`]'s.
-//!
-//! A triggering change restarts every instance of the name, stopped ones
-//! included: disarming a sheep's watch, not filtering the restart, is what
-//! keeps it down. A rescan bypasses both glob sets and always restarts.
-//! `watch = true` requires `cwd`; the debounce runs on notify's own OS
-//! thread, so a paused clock in tests never moves it.
 mod filter;
 mod group;
 pub mod source;
