@@ -13861,13 +13861,13 @@ mod tests {
     /// from, drops any of them, or returns the rows in settle order.
     ///
     /// The names are chosen so no two candidate orders agree. Ids run 0, 1, 2
-    /// in registration order; the rows come out as `[1, 0, 2]`, id order would
-    /// be `[0, 1, 2]`, and name order `[0, 2, 1]`.
+    /// in registration order; the rows come out in name order, `[0, 2, 1]`,
+    /// where settle order would be `[1, 0, 2]` and id order `[0, 1, 2]`.
     #[tokio::test(start_paused = true)]
     async fn a_trigger_answers_every_sheep_it_matched_before_it_answers_at_all() {
         let dir = tempfile::tempdir().unwrap();
         let (mut actor, mut mailbox, mut child_rx) = actor_with_an_open_channel(&dir);
-        register_sheep(&mut actor, &dir, "zeus", None);
+        register_sheep(&mut actor, &dir, "zone", None);
         let (silent_tx, mut silent_rx) = mpsc::channel(16);
         register_sheep(&mut actor, &dir, "worker", Some(silent_tx));
 
@@ -13905,7 +13905,7 @@ mod tests {
                     }
                 ),
                 row(2, "worker", ActionOutcome::TimedOut),
-                row(1, "zeus", ActionOutcome::NoChannel),
+                row(1, "zone", ActionOutcome::NoChannel),
             ])
         );
     }
