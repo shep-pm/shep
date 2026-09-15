@@ -149,7 +149,7 @@ pub fn startup(
     // `ensure_home` refuses unless the default exists. Every other verb
     // creates it before doing anything, too.
     if let Some(paths) = plan.own_default_home.clone()
-        && let Err(refusal) = crate::create_default_home(streams, paths)
+        && let Err(refusal) = crate::home::create_default_home(streams, paths)
     {
         return refuse(streams, refusal.code(), &refusal.to_string());
     }
