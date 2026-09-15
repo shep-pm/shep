@@ -406,4 +406,3 @@ pub(crate) fn resolve_target_declared(
         }),
     }
 }
-

@@ -214,4 +214,3 @@ pub(crate) async fn flock_now(client: &Client) -> Vec<shep_core::protocol::Proce
         _ => Vec::new(),
     }
 }
-

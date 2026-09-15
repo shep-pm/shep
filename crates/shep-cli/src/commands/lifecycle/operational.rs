@@ -275,7 +275,7 @@ const WALK_REFUSED_EXIT: ExitCode = ExitCode::Failure;
 /// [`applied_line`] prints a load's refusal in, so every verb that can
 /// refuse part of its work reads alike. The reason is the shepherd's own
 /// sentence.
-fn refused_line(verb: &str, refused: &[SheepRefusal]) -> Option<String> {
+pub(crate) fn refused_line(verb: &str, refused: &[SheepRefusal]) -> Option<String> {
     if refused.is_empty() {
         return None;
     }

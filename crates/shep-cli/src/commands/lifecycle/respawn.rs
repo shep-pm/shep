@@ -147,4 +147,3 @@ pub(crate) async fn resume(
     started.extend(procs);
     failure.unwrap_or(ExitCode::Success)
 }
-

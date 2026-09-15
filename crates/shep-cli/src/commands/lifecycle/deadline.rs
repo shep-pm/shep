@@ -62,4 +62,3 @@ pub(crate) fn staged_start_deadline(apps: &[AppConfig]) -> Duration {
     let slack = STAGED_START_SLACK * u32::try_from(apps.len()).unwrap_or(u32::MAX);
     (stages + slack).max(START_DEADLINE)
 }
-

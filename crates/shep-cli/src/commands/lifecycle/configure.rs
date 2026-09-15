@@ -36,7 +36,10 @@ pub(crate) fn any_restart_failed(procs: &[shep_core::protocol::ProcessInfo]) -> 
 /// Absolute, via `canonicalize`, because the daemon resolves a relative cwd
 /// against its own. A path that cannot be canonicalised is a silent no-op,
 /// and an app that sets its own `cwd` keeps it.
-pub(crate) fn default_cwd_to_flockfile_dir(apps: Vec<DeclaredApp>, flockfile: &Path) -> Vec<DeclaredApp> {
+pub(crate) fn default_cwd_to_flockfile_dir(
+    apps: Vec<DeclaredApp>,
+    flockfile: &Path,
+) -> Vec<DeclaredApp> {
     let Some(dir) = std::fs::canonicalize(flockfile)
         .ok()
         .and_then(|abs| abs.parent().map(Path::to_path_buf))
@@ -173,7 +176,10 @@ pub(crate) fn applied_line(sheep: &SheepApplied) -> Option<String> {
 ///
 /// `Path::extension` reads a dotfile like `.bashrc` as extensionless, so an
 /// entry keyed `""` can never match here.
-pub(crate) fn mapped_interpreter(script: &str, interpreters: &BTreeMap<String, String>) -> Option<String> {
+pub(crate) fn mapped_interpreter(
+    script: &str,
+    interpreters: &BTreeMap<String, String>,
+) -> Option<String> {
     let extension = Path::new(script).extension()?.to_str()?;
     interpreters.get(extension).cloned()
 }
@@ -224,4 +230,3 @@ pub(crate) fn reset_flag(args: &StartArgs) -> Option<String> {
 pub(crate) fn reset_depth(args: &StartArgs) -> ResetDepth {
     args.reset.map_or(ResetDepth::None, ResetMode::to_depth)
 }
-

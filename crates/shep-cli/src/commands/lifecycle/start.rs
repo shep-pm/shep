@@ -12,17 +12,19 @@ use shep_core::config::{AppConfig, DeclaredApp, ResetDepth};
 use shep_core::protocol::{EnvValue, ProcessInfo, Request, Response, SelectorSpec};
 
 use crate::cli::StartArgs;
-use crate::commands::selector::parse_selector;
 use crate::commands::lifecycle::configure::{
     apply_declared, apply_interpreters, first_failure, reset_depth, reset_flag,
 };
-use crate::commands::lifecycle::resolve::{TargetError, resolve_target_declared, split_assignments};
+use crate::commands::lifecycle::resolve::{
+    TargetError, resolve_target_declared, split_assignments,
+};
 use crate::commands::lifecycle::respawn::{already_registered, resume_all};
 use crate::commands::lifecycle::selectors::{
     fail_target, flock_matches, flock_now, is_reachable_as_a_name, render_outcome, request_each,
     selector_miss,
 };
 use crate::commands::lifecycle::staged_start_deadline;
+use crate::commands::selector::parse_selector;
 use crate::exit::ExitCode;
 use crate::output::{FlockRows, Streams};
 
@@ -468,4 +470,3 @@ async fn load_one(
         first_failure(failure.unwrap_or(ExitCode::Success), recorded),
     )
 }
-
