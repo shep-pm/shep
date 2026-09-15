@@ -64,10 +64,19 @@ const toneFor = (built: "yes" | "partly" | "no") =>
         lexiconTable.map((row) => (
           <div class="row">
             <span class="col-term term">{row.term}</span>{" "}
-            <span class="col-means" set:html={mdInlineToHtml(row.means)} />{" "}
-            <span class="col-where" set:html={mdInlineToHtml(row.where)} />{" "}
+            <span
+              class="col-means"
+              data-label="means"
+              set:html={mdInlineToHtml(row.means)}
+            />{" "}
+            <span
+              class="col-where"
+              data-label="where you meet it"
+              set:html={mdInlineToHtml(row.where)}
+            />{" "}
             <span
               class="col-built"
+              data-label="built"
               data-pagefind-ignore
               style={`color:${toneFor(row.built)}`}
             >
@@ -185,13 +194,17 @@ const toneFor = (built: "yes" | "partly" | "no") =>
     text-align: right;
   }
 
+  /* Named through `.lexicon-table` rather than left bare, the way from-pm2
+     names its own two. There is only one table on this page so the bare
+     version worked, but the check over the built pages reads the table class
+     out of the hiding rule, and a rule that names no table matches none. */
   @media (max-width: 640px) {
-    .row {
+    .lexicon-table .row {
       grid-template-columns: 1fr;
       gap: 6px;
     }
 
-    .row.header {
+    .lexicon-table .row.header {
       display: none;
     }
 

@@ -85,8 +85,8 @@ const verbTable: { pm2: string; shep: string; note?: string }[] = [
         verbTable.map((row) => (
           <div class="row">
             <span class="pm2-cell"><code>{row.pm2}</code></span>
-            <span class="shep-cell"><code>{row.shep}</code></span>
-            <span class="note-cell">{row.note ?? ""}</span>
+            <span class="shep-cell" data-label="shep"><code>{row.shep}</code></span>
+            <span class="note-cell" data-label="note">{row.note ?? ""}</span>
           </div>
         ))
       }
@@ -141,5 +141,27 @@ const verbTable: { pm2: string; shep: string; note?: string }[] = [
     color: var(--ink-3) !important;
     font-size: 13px;
     line-height: 1.5;
+  }
+
+  /* This one never clipped. Every column is a `minmax(0, Nfr)`, so the
+     table squeezes rather than overflowing, and at 375px it squeezed to
+     77/77/103px: `pm2 start ecosystem.config.js` broke across three lines
+     inside a 77px column and one row ran 221px tall. Stacked, the tallest
+     row is 166px.
+
+     It also keeps the rule general. Every table on this site with a header
+     row now hides that header on a phone and labels its cells, and the
+     check in scripts/verify-stacked-table-labels.ts holds all of them to
+     it. Leaving this one out would have meant a table the check had to be
+     taught to skip. */
+  @media (max-width: 640px) {
+    .verb-table .row {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+
+    .verb-table .row.header {
+      display: none;
+    }
   }
 </style>
