@@ -45,7 +45,12 @@ export const BUDGETS: Record<string, number> = {
   "writing-a-dog": 4150, // 4042
   overrides: 3380, // 3250
   "lookout-config": 3240, // 3085
-  output: 2930, // 2872
+  // Raised from 2930 on 2026-09-14 for the host line, which `shep flock`
+  // began printing on a one-shot listing and not only under `--follow`. It
+  // shows above every table on this page, so four transcripts gained a line
+  // and the page gained a section saying what the four figures are and why
+  // a rate can read `-`.
+  output: 3130, // 3111
   dogs: 2980, // 2834
   lookout: 2770, // 2629
   "first-flockfile": 2360, // 2245
@@ -55,8 +60,12 @@ export const BUDGETS: Record<string, number> = {
   "from-pm2": 1720, // 1659
   "shepherd-channel": 1690, // 1604
   "boot-order": 1670, // 1586
-  "talking-to-a-sheep": 1610, // 1530
-  "json-output": 1330, // 1275
+  "talking-to-a-sheep": 1620, // 1534
+  // Raised from 1330 on the same day and for the same feature. `host` is a
+  // fourth key beside `data`, and its three spellings are three different
+  // answers a script has to tell apart: an object, `null`, and no key at
+  // all.
+  "json-output": 1410, // 1362
   startup: 1250, // 1192
   examples: 1200, // 1156
   "not-built": 1080, // 1020
