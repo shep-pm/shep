@@ -689,7 +689,7 @@ impl Scene {
 mod tests {
     use ratatui::style::Modifier;
 
-    use super::super::GALLERY_PREAMBLE;
+    use super::super::gallery::GALLERY_PREAMBLE;
     use super::super::scene;
     use super::*;
 
