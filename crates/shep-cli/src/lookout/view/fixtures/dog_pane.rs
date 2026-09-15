@@ -6,8 +6,8 @@ use crate::lookout::app::{App, Control, KeyPress, Msg, Sent};
 
 use super::flock::{app_with, flock_of};
 use super::palette::plain;
-use super::select_field;
 use super::settings::settings_snapshot;
+use super::sheep_pane::select_field;
 
 /// The bark dog's `[bark]` section as `Request::DogConfig` would answer it:
 /// a comment, two scalars, and a sink holding a webhook credential.
