@@ -264,7 +264,13 @@ impl<R: ProcessRunner> Actor<R> {
     /// Forwards one shepherd-channel reply to the action wait it belongs to,
     /// if it belongs to one. A reply with nowhere to go is dropped silently;
     /// see [`ActionWaits::answer`].
-    pub(super) fn handle_action_reply(&mut self, id: u32, action: &str, body: String, stamp: Option<u64>) {
+    pub(super) fn handle_action_reply(
+        &mut self,
+        id: u32,
+        action: &str,
+        body: String,
+        stamp: Option<u64>,
+    ) {
         let Some(slot) = self.sheep.get_mut(&id) else {
             return;
         };

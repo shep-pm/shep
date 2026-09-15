@@ -139,7 +139,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// awaits nothing. Visited in id order, so a flock with two unsupported
     /// sheep names the same one every time.
     #[cfg(unix)]
-    pub(super) fn handle_handover_fitness(&self, reply: oneshot::Sender<Result<Fitness, SupervisorError>>) {
+    pub(super) fn handle_handover_fitness(
+        &self,
+        reply: oneshot::Sender<Result<Fitness, SupervisorError>>,
+    ) {
         let mut slots: Vec<&SheepSlot> = self.sheep.values().collect();
         slots.sort_unstable_by_key(|slot| slot.entry.id);
         let candidates: Vec<Candidate<'_>> = slots
@@ -610,7 +613,13 @@ impl<R: ProcessRunner> Actor<R> {
     /// Past the guards the wait belongs to one of two callers, which want
     /// opposite things from a deadline that elapsed; see
     /// [`Self::reload_ready_result`], which owns the reload half.
-    pub(super) fn handle_ready_result(&mut self, id: u32, epoch: u64, manually: bool, readiness: Readiness) {
+    pub(super) fn handle_ready_result(
+        &mut self,
+        id: u32,
+        epoch: u64,
+        manually: bool,
+        readiness: Readiness,
+    ) {
         if self.shutting_down {
             return;
         }

@@ -125,11 +125,8 @@ async fn reuse_port_buys_back_the_overlap_a_probe_would_otherwise_cost() {
 #[tokio::test(start_paused = true)]
 async fn a_serial_reload_spawns_into_the_slot_the_drain_emptied() {
     let dir = tempfile::tempdir().unwrap();
-    let (mut actor, _mailbox) = actor_with_one_online_sheep_of(
-        &dir,
-        probed_app("web"),
-        vec![ProcScript::never_exits()],
-    );
+    let (mut actor, _mailbox) =
+        actor_with_one_online_sheep_of(&dir, probed_app("web"), vec![ProcScript::never_exits()]);
     let (ctl_tx, _ctl_rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
     actor.sheep.get_mut(&0).expect("the fixture's sheep").ctl = Some(ctl_tx);
     let instance = actor.sheep[&0].entry.instance;

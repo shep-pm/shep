@@ -128,10 +128,7 @@ impl fmt::Debug for LateWritingPumpRunner {
 impl ProcessRunner for LateWritingPumpRunner {
     type Proc = crate::fake::FakeProc;
 
-    fn spawn(
-        &self,
-        spec: &SpawnSpec,
-    ) -> Result<(Self::Proc, ProcIo), crate::runner::RunnerError> {
+    fn spawn(&self, spec: &SpawnSpec) -> Result<(Self::Proc, ProcIo), crate::runner::RunnerError> {
         let (proc, mut io) = self.inner.spawn(spec)?;
         if spec.name != LATE_WRITING_SHEEP {
             return Ok((proc, io));
@@ -246,11 +243,10 @@ async fn a_stopped_sheeps_log_file_is_truncated_too() {
     std::fs::create_dir_all(out_file.parent().unwrap()).unwrap();
     std::fs::write(&out_file, "what the sheep logged before it stopped\n").unwrap();
 
-    let flushed =
-        tokio::time::timeout(Duration::from_secs(5), handle.flush(ProcessSelector::All))
-            .await
-            .expect("a flush aimed at a stopped sheep must not wait for an acknowledgement")
-            .expect("a stopped sheep has no pump to flush, which is not a failure");
+    let flushed = tokio::time::timeout(Duration::from_secs(5), handle.flush(ProcessSelector::All))
+        .await
+        .expect("a flush aimed at a stopped sheep must not wait for an acknowledgement")
+        .expect("a stopped sheep has no pump to flush, which is not a failure");
 
     assert_eq!(flushed.len(), 1);
     assert_eq!(flushed[0].status, ProcStatus::Stopped);
@@ -270,8 +266,7 @@ async fn a_stopped_sheeps_log_file_is_truncated_too() {
 #[tokio::test(start_paused = true)]
 async fn instances_sharing_one_log_path_answer_one_row_each() {
     let (events, _rx) = crate::bus::test_bus(64);
-    let runner =
-        ScriptedRunner::new(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
+    let runner = ScriptedRunner::new(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
     let dir = tempfile::tempdir().unwrap();
     let handle = spawn_supervisor(runner, test_paths(&dir), events);
 
@@ -393,11 +388,10 @@ async fn a_pump_that_could_not_flush_fails_the_request() {
         .await
         .unwrap();
 
-    let error =
-        tokio::time::timeout(Duration::from_secs(5), handle.flush(ProcessSelector::All))
-            .await
-            .expect("a pump that answers must not leave the flush waiting")
-            .expect_err("a flush a pump could not carry out must not answer Ok");
+    let error = tokio::time::timeout(Duration::from_secs(5), handle.flush(ProcessSelector::All))
+        .await
+        .expect("a pump that answers must not leave the flush waiting")
+        .expect_err("a flush a pump could not carry out must not answer Ok");
 
     assert_eq!(
         error,

@@ -20,8 +20,7 @@ fn is_open(fd: std::os::fd::RawFd) -> bool {
 #[tokio::test(start_paused = true)]
 async fn a_blob_from_a_live_flock_names_open_descriptors_per_sheep() {
     let (events, _rx) = crate::bus::test_bus(64);
-    let runner =
-        ScriptedRunner::new(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
+    let runner = ScriptedRunner::new(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
     let dir = tempfile::tempdir().unwrap();
     let (fds, _held) = daemon_fds(&dir);
     let handle = spawn_supervisor(runner, test_paths(&dir), events);
@@ -56,8 +55,7 @@ async fn a_blob_from_a_live_flock_names_open_descriptors_per_sheep() {
 #[tokio::test(start_paused = true)]
 async fn a_snapshot_names_no_channel_for_a_sheep_that_has_none() {
     let (events, _rx) = crate::bus::test_bus(64);
-    let runner =
-        ScriptedRunner::new(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
+    let runner = ScriptedRunner::new(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
     let dir = tempfile::tempdir().unwrap();
     let (fds, _held) = daemon_fds(&dir);
     let handle = spawn_supervisor(runner, test_paths(&dir), events);
@@ -115,11 +113,10 @@ async fn a_pump_that_never_reports_refuses_the_snapshot_instead_of_hanging() {
     // Far longer than the deadline under test, and never actually waited:
     // it buys a failure rather than a hung suite if the snapshot has no
     // deadline of its own.
-    let snapshot =
-        tokio::time::timeout(Duration::from_secs(3600), handle.handover_snapshot(fds))
-            .await
-            .expect("a snapshot over a wedged pump must answer rather than hang")
-            .unwrap();
+    let snapshot = tokio::time::timeout(Duration::from_secs(3600), handle.handover_snapshot(fds))
+        .await
+        .expect("a snapshot over a wedged pump must answer rather than hang")
+        .unwrap();
     let (candidates, _blob, _parked) = snapshot;
 
     let borrowed: Vec<crate::handover::Candidate<'_>> = candidates

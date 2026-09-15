@@ -18,7 +18,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// # Errors
     /// - Whatever [`privilege::resolve`] refused this app's `user`/`group`
     ///   for, including a non-root daemon asked to change identity.
-    pub(super) fn credentials_for_spawn(&mut self, id: u32) -> Result<Option<Credentials>, PrivilegeError> {
+    pub(super) fn credentials_for_spawn(
+        &mut self,
+        id: u32,
+    ) -> Result<Option<Credentials>, PrivilegeError> {
         let slot = self
             .sheep
             .get(&id)

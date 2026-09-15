@@ -9,8 +9,7 @@ use super::*;
 #[tokio::test(start_paused = true)]
 async fn start_lists_online_instances() {
     let (events, _rx) = crate::bus::test_bus(64);
-    let runner =
-        ScriptedRunner::new(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
+    let runner = ScriptedRunner::new(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
     let dir = tempfile::tempdir().unwrap();
     let handle = spawn_supervisor(runner, test_paths(&dir), events);
     let mut app = AppConfig::minimal("web", "./srv");
@@ -251,8 +250,7 @@ async fn a_refusal_is_counted_once_per_app_not_once_per_failed_check() {
 #[tokio::test(start_paused = true)]
 async fn delete_and_selectors_route() {
     let (events, _rx) = crate::bus::test_bus(64);
-    let runner =
-        ScriptedRunner::new(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
+    let runner = ScriptedRunner::new(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
     let dir = tempfile::tempdir().unwrap();
     let handle = spawn_supervisor(runner, test_paths(&dir), events);
     let mut a = AppConfig::minimal("api", "./a");

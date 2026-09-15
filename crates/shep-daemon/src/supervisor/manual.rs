@@ -127,7 +127,11 @@ impl ActionWaits {
     /// settles that stamp's own debt. An unstamped one settles the oldest debt
     /// of that name first, and reaches a live wait only once the debt is
     /// clear. `None` is ordinary, not an error.
-    pub(super) fn answer(&mut self, action: &str, stamp: Option<u64>) -> Option<oneshot::Sender<String>> {
+    pub(super) fn answer(
+        &mut self,
+        action: &str,
+        stamp: Option<u64>,
+    ) -> Option<oneshot::Sender<String>> {
         if let Some(stamp) = stamp {
             if let Some(pending) = self
                 .live

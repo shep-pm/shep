@@ -269,11 +269,10 @@ async fn a_pump_that_could_not_reopen_fails_the_request_and_names_its_sheep() {
         .await
         .unwrap();
 
-    let error =
-        tokio::time::timeout(Duration::from_secs(5), handle.reopen(ProcessSelector::All))
-            .await
-            .expect("a pump that answers must not leave the reopen waiting")
-            .expect_err("a reopen a pump could not carry out must not answer Ok");
+    let error = tokio::time::timeout(Duration::from_secs(5), handle.reopen(ProcessSelector::All))
+        .await
+        .expect("a pump that answers must not leave the reopen waiting")
+        .expect_err("a reopen a pump could not carry out must not answer Ok");
 
     assert_eq!(
         error,

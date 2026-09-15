@@ -30,10 +30,7 @@ impl fmt::Debug for RefusesOneSpawn {
 impl ProcessRunner for RefusesOneSpawn {
     type Proc = crate::fake::FakeProc;
 
-    fn spawn(
-        &self,
-        spec: &SpawnSpec,
-    ) -> Result<(Self::Proc, ProcIo), crate::runner::RunnerError> {
+    fn spawn(&self, spec: &SpawnSpec) -> Result<(Self::Proc, ProcIo), crate::runner::RunnerError> {
         let nth = self.attempts.fetch_add(1, AtomicOrdering::SeqCst);
         if nth == self.refuse {
             return Err(crate::runner::RunnerError::SpawnFailed(
@@ -52,8 +49,7 @@ impl ProcessRunner for RefusesOneSpawn {
 async fn a_swap_puts_each_half_of_a_reload_on_the_entry_that_owns_it() {
     let dir = tempfile::tempdir().unwrap();
     // One script for the one spawn a correct `SpawnNew` performs.
-    let (mut actor, _mailbox) =
-        actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
+    let (mut actor, _mailbox) = actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
 
     let new_id = actor
         .spawn_replacement(0, ReloadMode::Overlap)
@@ -91,8 +87,7 @@ async fn a_swap_puts_each_half_of_a_reload_on_the_entry_that_owns_it() {
 #[tokio::test(start_paused = true)]
 async fn a_reload_is_refused_once_a_shutdown_has_begun() {
     let dir = tempfile::tempdir().unwrap();
-    let (mut actor, _mailbox) =
-        actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
+    let (mut actor, _mailbox) = actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
     actor.shutting_down = true;
 
     let (reply, rx) = oneshot::channel();

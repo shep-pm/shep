@@ -11,8 +11,7 @@ use super::*;
 #[tokio::test(start_paused = true)]
 async fn a_file_load_does_not_overwrite_an_established_key() {
     let dir = tempfile::tempdir().unwrap();
-    let (mut actor, _enforcer) =
-        actor_over(&dir, &[app_with("web", |app| app.max_restarts = 3)]);
+    let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |app| app.max_restarts = 3)]);
     shep_core::overrides::put(
         &actor.paths.overrides,
         "web",

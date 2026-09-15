@@ -20,7 +20,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// - [`SupervisorError::IsADog`] - the name is a dog's. No other
     ///   request hands a client a whole `AppConfig`, so serving one here
     ///   would be a read surface that exists for dogs and nothing else.
-    pub(super) fn handle_sheep_config(&self, name: &str) -> Result<Option<SheepConfigView>, SupervisorError> {
+    pub(super) fn handle_sheep_config(
+        &self,
+        name: &str,
+    ) -> Result<Option<SheepConfigView>, SupervisorError> {
         let Some(id) = self.representative_id(name) else {
             return Ok(None);
         };

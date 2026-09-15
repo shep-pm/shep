@@ -231,16 +231,15 @@ async fn an_adopted_sheep_waits_out_only_what_is_left_of_its_delay() {
 
     let control_dir = tempfile::tempdir().unwrap();
     let (control_events, _control_rx) = crate::bus::test_bus(64);
-    let control =
-        SupervisorBuilder::new(AdoptingRunner, test_paths(&control_dir), control_events)
-            .spawn_adopted(
-                vec![without_handles(carried_owed_a_restart(
-                    "web", 7, hour, None,
-                ))],
-                counters(9),
-                Vec::new(),
-            )
-            .expect("a carried flock installs");
+    let control = SupervisorBuilder::new(AdoptingRunner, test_paths(&control_dir), control_events)
+        .spawn_adopted(
+            vec![without_handles(carried_owed_a_restart(
+                "web", 7, hour, None,
+            ))],
+            counters(9),
+            Vec::new(),
+        )
+        .expect("a carried flock installs");
 
     tokio::time::sleep(Duration::from_secs(10)).await;
 

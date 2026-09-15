@@ -56,15 +56,13 @@ mod start_stop;
 mod triggers;
 // --- end module tree ---
 
-
 /// Every process event queued right now, in order, for a case whose
 /// handler is synchronous.
 fn drained_process_kinds(
     rx: &mut tokio::sync::broadcast::Receiver<SharedEvent>,
 ) -> Vec<ProcessEventKind> {
     let mut kinds = Vec::new();
-    while let Ok(BusEvent::Process { event, .. }) = rx.try_recv().map(|event| event.to_event())
-    {
+    while let Ok(BusEvent::Process { event, .. }) = rx.try_recv().map(|event| event.to_event()) {
         kinds.push(event);
     }
     kinds
@@ -553,10 +551,7 @@ impl fmt::Debug for SilentPumpRunner {
 impl ProcessRunner for SilentPumpRunner {
     type Proc = crate::fake::FakeProc;
 
-    fn spawn(
-        &self,
-        spec: &SpawnSpec,
-    ) -> Result<(Self::Proc, ProcIo), crate::runner::RunnerError> {
+    fn spawn(&self, spec: &SpawnSpec) -> Result<(Self::Proc, ProcIo), crate::runner::RunnerError> {
         let (proc, mut io) = self.inner.spawn(spec)?;
         let (tx, mut rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
         // Replacing the sender drops the fake's own, ending the control
@@ -599,10 +594,7 @@ impl FailingPumpRunner {
 impl ProcessRunner for FailingPumpRunner {
     type Proc = crate::fake::FakeProc;
 
-    fn spawn(
-        &self,
-        spec: &SpawnSpec,
-    ) -> Result<(Self::Proc, ProcIo), crate::runner::RunnerError> {
+    fn spawn(&self, spec: &SpawnSpec) -> Result<(Self::Proc, ProcIo), crate::runner::RunnerError> {
         let (proc, mut io) = self.inner.spawn(spec)?;
         if spec.name != REFUSING_SHEEP {
             return Ok((proc, io));
@@ -813,10 +805,7 @@ impl ProcessRunner for AdoptingRunner {
         ))
     }
 
-    fn adopt(
-        &self,
-        spec: crate::runner::AdoptSpec,
-    ) -> Result<(Self::Proc, ProcIo), RunnerError> {
+    fn adopt(&self, spec: crate::runner::AdoptSpec) -> Result<(Self::Proc, ProcIo), RunnerError> {
         Ok((StandInProc { pid: spec.pid }, stand_in_io()))
     }
 }

@@ -19,7 +19,11 @@ impl<R: ProcessRunner> Actor<R> {
     /// since `instances` routes through [`Self::handle_scale`], whose
     /// `Ordering::Less` arm deletes the instances above the new count.
     /// [`ResetDepth::Env`] and `shutting_down` never reach that function.
-    pub(super) fn handle_apply_config(&mut self, apps: Vec<DeclaredApp>, reset: ResetDepth) -> Vec<Applied> {
+    pub(super) fn handle_apply_config(
+        &mut self,
+        apps: Vec<DeclaredApp>,
+        reset: ResetDepth,
+    ) -> Vec<Applied> {
         // One locked read for the whole file and one locked write at the end:
         // the store is rewritten whole on every write, so a per-app pair costs
         // an eleven-app Flockfile 22 lock acquisitions on the thread that

@@ -142,8 +142,7 @@ async fn overridden_for_reads_the_store_when_no_sibling_exists() {
 #[tokio::test(start_paused = true)]
 async fn to_info_reports_the_overridden_field_names_the_store_holds() {
     let dir = tempfile::tempdir().unwrap();
-    let (mut actor, _enforcer) =
-        actor_over(&dir, &[app_with("web", |app| app.max_restarts = 7)]);
+    let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |app| app.max_restarts = 7)]);
     shep_core::overrides::put(
         &actor.paths.overrides,
         "web",
@@ -509,8 +508,7 @@ async fn an_abandoned_reload_leaves_the_drainees_identity_alone() {
 #[tokio::test(start_paused = true)]
 async fn a_reload_orders_itself_by_the_config_its_replacement_will_carry() {
     let dir = tempfile::tempdir().unwrap();
-    let (mut actor, _enforcer) =
-        actor_over(&dir, &[app_with("web", |app| app.wait_ready = true)]);
+    let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |app| app.wait_ready = true)]);
 
     let mut file = AppConfig::minimal("web", "./srv");
     file.wait_ready = false;
@@ -685,8 +683,7 @@ async fn a_parked_config_and_its_reset_decision_survive_a_handover() {
         dog: None,
         last_exit: None,
     };
-    let carried =
-        CarriedSheep::from_entry(&entry, 0, CarriedFds::none(), false, None, false, None);
+    let carried = CarriedSheep::from_entry(&entry, 0, CarriedFds::none(), false, None, false, None);
 
     // Through serde, the boundary a handover crosses: an accessor reading
     // the source entry proves nothing about the blob.

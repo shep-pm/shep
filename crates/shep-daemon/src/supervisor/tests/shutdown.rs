@@ -9,8 +9,7 @@ use super::*;
 #[tokio::test(start_paused = true)]
 async fn shutdown_kills_all_and_stops_the_engine() {
     let (events, _rx) = crate::bus::test_bus(64);
-    let runner =
-        ScriptedRunner::new(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
+    let runner = ScriptedRunner::new(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
     let dir = tempfile::tempdir().unwrap();
     let handle = spawn_supervisor(runner, test_paths(&dir), events);
     let mut app = AppConfig::minimal("web", "./srv");

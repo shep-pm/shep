@@ -25,8 +25,7 @@ fn dog_row(listed: &[ProcessInfo], id: u32) -> ProcessInfo {
 async fn a_dog_that_restarts_is_still_a_dog() {
     let dir = tempfile::tempdir().unwrap();
     let (events, mut rx) = crate::bus::test_bus(64);
-    let runner =
-        ScriptedRunner::new(vec![ProcScript::const_exit(1), ProcScript::never_exits()]);
+    let runner = ScriptedRunner::new(vec![ProcScript::const_exit(1), ProcScript::never_exits()]);
     let handle = spawn_supervisor(runner, test_paths(&dir), events);
 
     let dog = handle
@@ -83,8 +82,7 @@ async fn a_dog_that_cannot_be_spawned_is_still_a_dog() {
 #[tokio::test(start_paused = true)]
 async fn an_app_in_the_gate_set_holds_at_starting_without_a_probe() {
     let dir = tempfile::tempdir().unwrap();
-    let (mut actor, _mailbox) =
-        actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
+    let (mut actor, _mailbox) = actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
     let (reply, rx) = oneshot::channel();
     let mut app = AppConfig::minimal("db", "./db");
     app.listen_timeout = UpDuration::from_millis(50);
@@ -103,8 +101,7 @@ async fn an_app_in_the_gate_set_holds_at_starting_without_a_probe() {
 #[tokio::test(start_paused = true)]
 async fn an_app_outside_the_gate_set_is_online_at_spawn() {
     let dir = tempfile::tempdir().unwrap();
-    let (mut actor, _mailbox) =
-        actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
+    let (mut actor, _mailbox) = actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
     let (reply, rx) = oneshot::channel();
     actor.handle_command(Command::Start {
         apps: vec![normalize(AppConfig::minimal("db", "./db")).unwrap()],
@@ -323,8 +320,7 @@ async fn a_reloaded_dog_is_still_a_dog() {
 #[tokio::test(start_paused = true)]
 async fn a_dog_is_refused_once_a_shutdown_has_begun() {
     let dir = tempfile::tempdir().unwrap();
-    let (mut actor, _mailbox) =
-        actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
+    let (mut actor, _mailbox) = actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
     actor.shutting_down = true;
 
     let (reply, rx) = oneshot::channel();

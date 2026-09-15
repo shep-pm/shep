@@ -260,7 +260,11 @@ impl<R: ProcessRunner> Actor<R> {
     /// would restart a drainee mid-`AwaitReady`. Under [`ReloadMode::Serial`]
     /// the drainee is already dead, so the `Reload` event and restore-on-failure
     /// are skipped, and this must run before `deregister_on_exit`.
-    pub(super) fn spawn_replacement(&mut self, old_id: u32, mode: ReloadMode) -> Result<u32, String> {
+    pub(super) fn spawn_replacement(
+        &mut self,
+        old_id: u32,
+        mode: ReloadMode,
+    ) -> Result<u32, String> {
         // `Credentials` is `Copy`; reused, and re-resolved only when the config
         // being promoted is what changed `user` or `group`. A drainee is
         // running, so the seam finds a resolved identity and touches nothing.
@@ -412,7 +416,12 @@ impl<R: ProcessRunner> Actor<R> {
     /// Keyed on the [`Readiness`] verdict and never on the deadline, which is
     /// what makes it correct for all three sources: `await_ready`'s `Heuristic`
     /// arm reports `Ready`, since for a heuristic the elapse is the signal.
-    pub(super) fn reload_ready_result(&mut self, new_id: u32, manually: bool, readiness: Readiness) {
+    pub(super) fn reload_ready_result(
+        &mut self,
+        new_id: u32,
+        manually: bool,
+        readiness: Readiness,
+    ) {
         let Some(name) = self.reload_of(new_id) else {
             // Defensive: nothing leaves a `Replacement` marker behind without a
             // job naming it. Take the ordinary transition rather than strand
@@ -572,7 +581,11 @@ impl<R: ProcessRunner> Actor<R> {
     /// `None` everywhere else. A serial reload already asked with the slot
     /// empty; `Channel` readiness is the replacement's own; `Heuristic` has
     /// nothing to re-run.
-    pub(super) fn post_drain_probe(&self, new_id: u32, mode: ReloadMode) -> Option<ReadinessSource> {
+    pub(super) fn post_drain_probe(
+        &self,
+        new_id: u32,
+        mode: ReloadMode,
+    ) -> Option<ReadinessSource> {
         if mode != ReloadMode::Overlap {
             return None;
         }

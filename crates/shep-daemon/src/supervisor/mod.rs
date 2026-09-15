@@ -98,28 +98,34 @@ mod tasks;
 mod types;
 mod wire;
 
-#[cfg(unix)] pub(crate) use error::AdoptError;
+pub(crate) use builder::SupervisorBuilder;
 pub use builder::spawn_supervisor;
+use command::ReplyKind;
+pub(crate) use command::{Command, Msg};
+use config_merge::{
+    EXTRAS_FIELDS, dog_config_refusal, env_override_map, merge_declared, pending_fields,
+    reached_spec, with_count,
+};
+#[cfg(unix)]
+pub(crate) use error::AdoptError;
 pub use error::SupervisorError;
 pub use handle::SupervisorHandle;
-pub(crate) use builder::SupervisorBuilder;
-pub(crate) use command::{Command, Msg};
-pub(crate) use manual::{CommandOrigin, ManualKind, PendingManual};
-pub(crate) use reload::{CarriedReload, ReloadMode, ReloadPhase, ReloadSwap};
-pub(crate) use types::{Applied, BatchPolicy, ConnId, DEFAULT_ENVIRONMENT, EnvBatch, FieldSet};
-use command::ReplyKind;
-use config_merge::{EXTRAS_FIELDS, dog_config_refusal, env_override_map, merge_declared, pending_fields, reached_spec, with_count};
 use handover::{HandoverDraft, REPORT_DEADLINE, Snapshot, spawn_handover_task};
 use logs::{flush_logs, reopen_logs, spawn_flush_task, spawn_reopen_task, truncate_log};
 use manual::{ActionWaits, PendingAction};
+pub(crate) use manual::{CommandOrigin, ManualKind, PendingManual};
+pub(crate) use reload::{CarriedReload, ReloadMode, ReloadPhase, ReloadSwap};
 use reload::{LadderCap, ReloadJob};
 use sheep::{SignalRequest, run_sheep, spawn_sheep_task};
 use slot::SheepSlot;
-use tasks::{spawn_action_task, spawn_readiness_task, spawn_send_line_task, spawn_signal_task, spawn_trigger_task, spec_prober};
+use tasks::{
+    spawn_action_task, spawn_readiness_task, spawn_send_line_task, spawn_signal_task,
+    spawn_trigger_task, spec_prober,
+};
+pub(crate) use types::{Applied, BatchPolicy, ConnId, DEFAULT_ENVIRONMENT, EnvBatch, FieldSet};
 use types::{PendingReply, Registration, Scaled, SheepCtl, Smits};
 use wire::{reload_eligible, restored_status, send_reply, swap_budget, to_info};
 // --- end module tree ---
-
 
 /// Capacity of the actor's own mailbox (commands + internal events).
 const MAILBOX_CAPACITY: usize = 256;

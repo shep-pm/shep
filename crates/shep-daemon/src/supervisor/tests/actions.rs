@@ -74,8 +74,7 @@ async fn a_ready_on_the_channel_reaches_both_the_bus_and_the_readiness_wait() {
     app.channel = true;
     app.wait_ready = true;
     // `started` subscribes the bus receiver before the start.
-    let (handle, runner, mut events) =
-        started(&dir, app, vec![ProcScript::never_exits()]).await;
+    let (handle, runner, mut events) = started(&dir, app, vec![ProcScript::never_exits()]).await;
     let io = runner.io_handles(0);
 
     io.from_child_tx.send(ChildMessage::Ready).await.unwrap();
@@ -105,8 +104,7 @@ async fn a_metric_on_the_channel_reaches_the_bus_with_its_name_and_value() {
     let dir = tempfile::tempdir().unwrap();
     let mut app = AppConfig::minimal("web", "./srv");
     app.channel = true;
-    let (_handle, runner, mut events) =
-        started(&dir, app, vec![ProcScript::never_exits()]).await;
+    let (_handle, runner, mut events) = started(&dir, app, vec![ProcScript::never_exits()]).await;
     let io = runner.io_handles(0);
 
     io.from_child_tx
@@ -146,8 +144,7 @@ async fn an_action_reply_no_trigger_is_waiting_for_still_reaches_the_bus() {
     let dir = tempfile::tempdir().unwrap();
     let mut app = AppConfig::minimal("web", "./srv");
     app.channel = true;
-    let (_handle, runner, mut events) =
-        started(&dir, app, vec![ProcScript::never_exits()]).await;
+    let (_handle, runner, mut events) = started(&dir, app, vec![ProcScript::never_exits()]).await;
     let io = runner.io_handles(0);
 
     io.from_child_tx

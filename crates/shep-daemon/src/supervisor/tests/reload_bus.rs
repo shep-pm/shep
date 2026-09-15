@@ -195,8 +195,7 @@ async fn a_deadline_from_a_finished_swap_never_ends_the_one_that_followed_it() {
 #[tokio::test(start_paused = true)]
 async fn a_deadline_before_the_commit_puts_the_instance_being_replaced_back() {
     let dir = tempfile::tempdir().unwrap();
-    let (mut actor, _mailbox) =
-        actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
+    let (mut actor, _mailbox) = actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
     // A live control sender says this instance's task is still there.
     let (ctl_tx, _ctl_rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
     actor.sheep.get_mut(&0).expect("the fixture's sheep").ctl = Some(ctl_tx);
@@ -247,8 +246,7 @@ async fn an_abandoned_reload_says_so_on_the_bus() {
     let dir = tempfile::tempdir().unwrap();
     let mut app = AppConfig::minimal("web", "./srv");
     app.wait_ready = true; // nobody ever signals the replacement
-    let (handle, _runner, mut rx) =
-        started(&dir, app, vec![ProcScript::never_exits(); 2]).await;
+    let (handle, _runner, mut rx) = started(&dir, app, vec![ProcScript::never_exits(); 2]).await;
     handle.tx.send(Msg::Ready { id: 0 }).await.unwrap();
     expect_event(&mut rx, 0, ProcessEventKind::Online).await;
 

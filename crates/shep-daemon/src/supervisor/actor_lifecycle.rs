@@ -31,7 +31,10 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// - Whatever [`privilege::resolve`] refused the intended config's
     ///   `user`/`group`.
-    pub(super) fn intended_credentials(&self, id: u32) -> Result<Option<Credentials>, PrivilegeError> {
+    pub(super) fn intended_credentials(
+        &self,
+        id: u32,
+    ) -> Result<Option<Credentials>, PrivilegeError> {
         // `expect` rather than an `Ok(None)` fallback: `None` here means "the
         // app asked for nobody", so a missing slot would spawn as the
         // shepherd.
@@ -243,7 +246,12 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// The slot must already exist: `spawn_fresh` registers before it calls
     /// this, so the sheep is visible whichever way the refusal goes.
-    pub(super) fn refuse_spawn(&mut self, id: u32, manually: bool, err: &AssembleError) -> ProcessInfo {
+    pub(super) fn refuse_spawn(
+        &mut self,
+        id: u32,
+        manually: bool,
+        err: &AssembleError,
+    ) -> ProcessInfo {
         if !err.is_retriable() {
             return self.respawn_failed(id, manually, err);
         }
