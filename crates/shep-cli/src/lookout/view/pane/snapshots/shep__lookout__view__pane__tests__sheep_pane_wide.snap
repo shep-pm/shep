@@ -1,5 +1,5 @@
 ---
-source: crates/shep-cli/src/lookout/view/pane.rs
+source: crates/shep-cli/src/lookout/view/pane/mod.rs
 expression: "text_of(&lines).join(\"\\n\")"
 ---
  ██ web  (sheep config)                                                                                                 
