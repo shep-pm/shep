@@ -1,7 +1,7 @@
 //! Fixtures more than one of `app`'s test modules leans on.
 
 use super::*;
-use crate::lookout::view::fixtures;
+pub(super) use crate::lookout::view::fixtures;
 
 pub(super) fn sheep(id: u32, name: &str, status: ProcStatus) -> ProcessInfo {
     ProcessInfo::builder(id, name, status)
