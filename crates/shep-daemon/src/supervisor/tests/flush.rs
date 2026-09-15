@@ -10,7 +10,7 @@ use super::*;
 /// selector never named, or answers with the wrong set.
 ///
 /// The counts are what make this more than a smoke test, as in
-/// [`a_reopen_reaches_every_matched_sheep_and_no_others`].
+/// [`super::reopen::a_reopen_reaches_every_matched_sheep_and_no_others`].
 #[tokio::test(start_paused = true)]
 async fn a_flush_reaches_every_matched_sheep_and_no_others() {
     let (events, _rx) = crate::bus::test_bus(64);
@@ -58,7 +58,7 @@ async fn a_flush_reaches_every_matched_sheep_and_no_others() {
 
 /// Fails if the actor awaits a flush's acknowledgement inside its own loop,
 /// the cycle
-/// [`the_actor_keeps_answering_while_a_reopen_waits_on_a_silent_pump`]
+/// [`super::reopen::the_actor_keeps_answering_while_a_reopen_waits_on_a_silent_pump`]
 /// describes, reached through the other verb. `list` is the probe: it is
 /// answered from the actor loop and nowhere else.
 #[tokio::test(start_paused = true)]
