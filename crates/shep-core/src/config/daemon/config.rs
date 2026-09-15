@@ -1,206 +1,13 @@
-//! Daemon-level configuration: `$SHEP_HOME/shep.toml`
-//!
-//! Layering (spec §5): file < `SHEP_*` env < CLI flags. This module applies
-//! the first two; the CLI applies its flags onto the returned struct.
-
-use core::fmt;
-
-use std::collections::BTreeMap;
-use std::path::PathBuf;
-
-use serde::Deserialize;
-
+use super::error::DaemonConfigError;
+use super::overrides::{DaemonOverrides, parse_daemon_bool};
+use super::sections::{
+    DaemonSection, LogLevel, MIN_CRON_SLEEP, SecretsSection, StyleSection, WhistleSection,
+};
 use crate::secrets;
 use crate::values::UpDuration;
-
-/// The `[daemon]` section
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(deny_unknown_fields, default)]
-pub struct DaemonSection {
-    /// Emit the daemon's own logs as JSON lines
-    pub log_json: bool,
-    /// Lowest severity of the daemon's own records that reaches its log
-    pub log_level: LogLevel,
-    /// The environment every sheep resolves in unless it sets its own.
-    ///
-    /// A shepherd supervising real processes on a host is production unless
-    /// somebody says otherwise.
-    pub environment: String,
-    /// Control-socket path override (default: `$SHEP_HOME/run/shep.sock`)
-    pub socket: Option<std::path::PathBuf>,
-    /// Dogs to autostart with the daemon (`shep enable` writes this)
-    pub enabled_dogs: Vec<String>,
-    /// Where an adopted dog's binary lives, keyed by dog name
-    /// (`shep adopt` writes this; `shep rehome` removes it).
-    ///
-    /// A name in [`Self::enabled_dogs`] with no entry here is a built-in
-    /// dog, an argv branch of the shep binary itself. Not recorded inside
-    /// `[dog.<name>]`: that table is the dog's own opaque configuration,
-    /// and a shep-owned key inside it would collide with a third-party
-    /// dog's schema.
-    pub adopted_dogs: BTreeMap<String, PathBuf>,
-    /// Dogs that run before every sheep, rather than after the flock.
-    ///
-    /// The default position for a dog is a final stage, for the reason
-    /// `boot.rs` gives: a metrics dog must not answer for a flock that is not
-    /// up yet. A log-rotation dog is the opposite case, since it has to be
-    /// running before a sheep starts writing. shep cannot tell which is
-    /// which, because an adopted dog is a third-party binary, so the
-    /// operator says.
-    ///
-    /// Here rather than in `dogs.toml` for the reason [`Self::adopted_dogs`]
-    /// gives: that file's `[<name>]` table is the dog's own opaque
-    /// configuration and a shep-owned key inside it would collide with a
-    /// third-party dog's schema.
-    ///
-    /// A name absent from [`Self::enabled_dogs`] is inert here.
-    pub boot_first_dogs: Vec<String>,
-    /// Longest a cron worker sleeps before re-deriving its next occurrence.
-    ///
-    /// Shorter recovers faster from a suspended laptop or an NTP step and
-    /// costs proportionally more wakeups per cron-configured sheep; longer
-    /// is cheaper and drifts further. Unset means the daemon's own default.
-    /// There is no upper bound: a very long value only degrades to sleeping
-    /// straight through to the occurrence, which still fires.
-    pub max_cron_sleep: Option<UpDuration>,
-}
-
-/// Not derived: [`DaemonSection::environment`] defaults to `"production"`,
-/// which `String`'s own `Default` cannot express.
-impl Default for DaemonSection {
-    fn default() -> Self {
-        Self {
-            log_json: false,
-            log_level: LogLevel::default(),
-            environment: "production".to_string(),
-            socket: None,
-            enabled_dogs: Vec::new(),
-            adopted_dogs: BTreeMap::new(),
-            boot_first_dogs: Vec::new(),
-            max_cron_sleep: None,
-        }
-    }
-}
-
-/// How much of the daemon's own diagnostics reaches its log.
-///
-/// Written as one of the names below in `[daemon] log_level` or in
-/// `SHEP_LOG_LEVEL`, lowercase and nothing else, the same closed grammar
-/// `log_json` accepts, so a typo is a startup error naming the value
-/// rather than a level silently reverting to the default.
-///
-/// The default is [`LogLevel::Warn`]. The daemon's records are dominated
-/// by warn-and-continue arms, each the only account of a decision the
-/// operator cannot otherwise see. [`LogLevel::Debug`] adds per-decision
-/// detail firing per dropped restart and per child metric sample, a
-/// firehose on a busy flock.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum LogLevel {
-    /// Nothing at all: the daemon writes no records of its own.
-    Off,
-    /// Only faults the daemon could not work around.
-    Error,
-    /// Faults the daemon worked around, and what working around them cost.
-    #[default]
-    Warn,
-    /// Lifecycle milestones: the daemon came up, the daemon is going down.
-    Info,
-    /// Per-decision detail: every restart weighed, every metric sampled.
-    Debug,
-    /// Everything the daemon can say about itself.
-    Trace,
-}
-
-impl LogLevel {
-    /// The one spelling this level is written as, in the file and in the
-    /// environment alike
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Off => "off",
-            Self::Error => "error",
-            Self::Warn => "warn",
-            Self::Info => "info",
-            Self::Debug => "debug",
-            Self::Trace => "trace",
-        }
-    }
-
-    /// The level `name` spells, or `None` when it spells no level.
-    ///
-    /// The inverse of [`LogLevel::as_str`], and exact: an uppercase or
-    /// mixed-case name is not a level here, because `SHEP_LOG_JSON` accepts
-    /// no `TRUE` either.
-    #[must_use]
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "off" => Some(Self::Off),
-            "error" => Some(Self::Error),
-            "warn" => Some(Self::Warn),
-            "info" => Some(Self::Info),
-            "debug" => Some(Self::Debug),
-            "trace" => Some(Self::Trace),
-            _ => None,
-        }
-    }
-}
-
-/// Floor on `[daemon] max_cron_sleep`.
-///
-/// Zero makes every sleep return immediately, spinning the loop while
-/// still firing correctly, which is what makes it hard to attribute. One
-/// second is a floor no legitimate configuration wants to be under: a
-/// five-field cron pattern cannot name anything finer than a minute.
-const MIN_CRON_SLEEP: UpDuration = UpDuration::from_millis(1_000);
-
-/// The `[whistle]` section.
-///
-/// One key, a gate rather than a tuning knob: `shep whistle`'s four
-/// control tools exist only when this is `true`; its five read-only
-/// tools exist regardless.
-///
-/// Lives only in `shep.toml`, no flag or env var, since config is
-/// auditable where a flag is not. The shepherd itself never reads this
-/// key; `shep whistle` reads the file directly. Declared here anyway
-/// because `RawDaemonConfig` denies unknown fields, so an undeclared
-/// `[whistle]` section would refuse the whole file to boot. `Debug` is
-/// derived, not redacted: one boolean, nothing to leak.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields, default)]
-pub struct WhistleSection {
-    /// Whether `shep whistle` offers its control tools. Default `false`.
-    pub allow_control: bool,
-}
-
-/// The `[secrets]` section: whether the CLI will print a stored value back.
-///
-/// One key, a gate rather than a tuning knob, for [`WhistleSection`]'s
-/// reason and read the same way: `shep secret get` reads this file itself,
-/// the shepherd never reads this key, and it is declared here so an
-/// undeclared `[secrets]` section is not a refused boot.
-///
-/// `Debug` is derived rather than redacted: one boolean, no secret.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields, default)]
-pub struct SecretsSection {
-    /// Whether `shep secret get` prints a value. Default `false`.
-    pub allow_read: bool,
-}
-
-/// The `[style]` section: how much the CLI dresses up its output.
-///
-/// Read by the CLI only. The daemon has no opinion about how anyone likes
-/// their tables, and parses this solely so an unknown key is not an error.
-///
-/// `Debug` is derived rather than redacted: one optional string, no
-/// secret, nothing a `{:?}` could leak.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields, default)]
-pub struct StyleSection {
-    /// `full`, `plain` or `bare`. Absent means the CLI decides.
-    pub level: Option<String>,
-}
+use core::fmt;
+use serde::Deserialize;
+use std::collections::BTreeMap;
 
 /// Parsed daemon configuration with raw per-dog sections.
 ///
@@ -255,7 +62,7 @@ impl fmt::Debug for DaemonConfig {
 
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, default)]
-struct RawDaemonConfig {
+pub(super) struct RawDaemonConfig {
     daemon: DaemonSection,
     whistle: WhistleSection,
     secrets: SecretsSection,
@@ -387,151 +194,17 @@ impl DaemonConfig {
     }
 }
 
-/// The CLI-flag layer of `file < env < flags` (spec §5).
-///
-/// Every field is `Option`: `None` means the flag was absent and the
-/// layer below wins. Nothing here validates; [`DaemonConfig::load_layered`]
-/// runs the single validation pass once, after all three layers.
-///
-/// `#[non_exhaustive]`: this type grows a field whenever the hidden
-/// `daemon` subcommand grows a flag. Build one with [`Self::new`] and the
-/// chained setters.
-///
-/// `Debug` is derived, not redacted: four values, none a secret.
-#[non_exhaustive]
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct DaemonOverrides {
-    /// `--log-json`
-    pub log_json: Option<bool>,
-    /// `--log-level`
-    pub log_level: Option<LogLevel>,
-    /// `--socket`
-    pub socket: Option<PathBuf>,
-    /// `--max-cron-sleep`
-    pub max_cron_sleep: Option<UpDuration>,
-}
-
-impl DaemonOverrides {
-    /// An empty layer: every flag absent.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Sets the `--log-json` override.
-    #[must_use]
-    pub fn log_json(mut self, value: Option<bool>) -> Self {
-        self.log_json = value;
-        self
-    }
-
-    /// Sets the `--log-level` override.
-    #[must_use]
-    pub fn log_level(mut self, value: Option<LogLevel>) -> Self {
-        self.log_level = value;
-        self
-    }
-
-    /// Sets the `--socket` override.
-    #[must_use]
-    pub fn socket(mut self, value: Option<PathBuf>) -> Self {
-        self.socket = value;
-        self
-    }
-
-    /// Sets the `--max-cron-sleep` override.
-    #[must_use]
-    pub fn max_cron_sleep(mut self, value: Option<UpDuration>) -> Self {
-        self.max_cron_sleep = value;
-        self
-    }
-}
-
-/// The boolean grammar of `shep.toml` and the `SHEP_*` environment: `1`,
-/// `0`, `true`, `false`, and nothing else.
-///
-/// One function so the file/env layer and the `--log-json` flag cannot
-/// drift. clap's own `BoolishValueParser` additionally accepts
-/// `yes`/`no`/`y`/`n`/`on`/`off`; using it would widen the grammar on the
-/// flag side only.
-///
-/// Not a general boolean parser: exporting it only under this name keeps
-/// exactly one answer to what counts as true in shep's daemon config.
-#[must_use]
-pub fn parse_daemon_bool(value: &str) -> Option<bool> {
-    match value {
-        "1" | "true" => Some(true),
-        "0" | "false" => Some(false),
-        _ => None,
-    }
-}
-
-/// Error type returned from [`DaemonConfig::load`].
-///
-/// `#[non_exhaustive]`: every `[daemon]` key this crate learns to validate
-/// brings its own rejection reason, and `deferred.md`'s daemon-config
-/// flags layer is a whole set of them at once.
-#[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DaemonConfigError {
-    /// `shep.toml` is invalid TOML (carries the parser message)
-    Toml(String),
-    /// A `SHEP_*` env var held an unparseable value (var name, value)
-    BadEnvValue(&'static str, String),
-    /// A `[daemon]` duration is below the floor that keeps the daemon from
-    /// spinning. Carries the key the user actually set: the TOML key or
-    /// the environment variable, whichever supplied the winning value.
-    BelowMinimum {
-        /// `max_cron_sleep` or `SHEP_MAX_CRON_SLEEP`.
-        key: &'static str,
-        /// The value as the user wrote it.
-        value: UpDuration,
-        /// The floor it failed.
-        min: UpDuration,
-    },
-    /// `[daemon] environment` is [`crate::secrets::ALL_ENVIRONMENTS`], the
-    /// secrets store's every-environment slot, or falls outside the grammar
-    /// [`crate::secrets`] keys and environment names share. Carries the
-    /// value as written.
-    InvalidEnvironment(String),
-}
-
-impl fmt::Display for DaemonConfigError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Toml(m) => write!(f, "invalid shep.toml: {m}"),
-            Self::BadEnvValue(var, v) => write!(f, "invalid value `{v}` for {var}"),
-            Self::BelowMinimum { key, value, min } => {
-                write!(
-                    f,
-                    "invalid value `{value}` for {key}: must be at least {min}"
-                )
-            }
-            Self::InvalidEnvironment(value) => write!(
-                f,
-                "invalid value `{value}` for environment: must be 1-{} bytes of \
-                 `[A-Za-z0-9._-]` not starting with `.`, and not `{}` (the secrets \
-                 store's every-environment slot)",
-                secrets::MAX_KEY_BYTES,
-                secrets::ALL_ENVIRONMENTS
-            ),
-        }
-    }
-}
-
-impl core::error::Error for DaemonConfigError {}
-
 #[cfg(test)]
 mod tests {
+    use super::super::error::DaemonConfigError;
+    use super::super::overrides::DaemonOverrides;
+    use super::super::sections::LogLevel;
+
+    use super::super::testing::*;
     use super::*;
+    use crate::secrets;
     use crate::values::UpDuration;
 
-    fn no_env(_: &str) -> Option<String> {
-        None
-    }
-
-    // fails if a serde default invents 60s in shep-core and takes the
-    // "unset" state away from the layer below
     #[test]
     fn missing_max_cron_sleep_leaves_the_field_none() {
         let cfg = DaemonConfig::load(None, &no_env).unwrap();
@@ -612,44 +285,12 @@ mod tests {
         );
     }
 
-    // fails if the message wording drifts (e.g. "invalid" alone, or the
-    // `key`/`min` operands swapped): this is what actually reaches
-    // `shepd.err.log` on exit code 4.
-    #[test]
-    fn below_minimum_display_is_exact() {
-        let err = DaemonConfigError::BelowMinimum {
-            key: "max_cron_sleep",
-            value: UpDuration::from_millis(999),
-            min: UpDuration::from_millis(1_000),
-        };
-        assert_eq!(
-            err.to_string(),
-            "invalid value `999` for max_cron_sleep: must be at least 1s"
-        );
-    }
-
     #[test]
     fn missing_file_yields_defaults() {
         let cfg = DaemonConfig::load(None, &no_env).unwrap();
         assert!(!cfg.daemon.log_json);
         assert!(cfg.daemon.enabled_dogs.is_empty());
         assert!(cfg.dog.is_empty());
-    }
-
-    #[test]
-    fn file_sets_values_and_keeps_dog_sections_raw() {
-        let src = r#"
-[daemon]
-log_json = true
-enabled_dogs = ["metrics"]
-
-[dog.metrics]
-port = 9615
-"#;
-        let cfg = DaemonConfig::load(Some(src), &no_env).unwrap();
-        assert!(cfg.daemon.log_json);
-        assert_eq!(cfg.daemon.enabled_dogs, vec!["metrics"]);
-        assert_eq!(cfg.dog["metrics"]["port"].as_integer(), Some(9615));
     }
 
     /// `adopted_dogs` needs `default` (existing files predate it) and
@@ -661,12 +302,12 @@ port = 9615
         assert!(bare.daemon.adopted_dogs.is_empty());
 
         let src = r#"
-[daemon]
-enabled_dogs = ["metrics", "otel"]
+    [daemon]
+    enabled_dogs = ["metrics", "otel"]
 
-[daemon.adopted_dogs]
-otel = "/usr/local/bin/shep-otel"
-"#;
+    [daemon.adopted_dogs]
+    otel = "/usr/local/bin/shep-otel"
+    "#;
         let cfg = DaemonConfig::load(Some(src), &no_env).unwrap();
         assert_eq!(cfg.daemon.enabled_dogs, vec!["metrics", "otel"]);
         assert_eq!(
@@ -686,10 +327,10 @@ otel = "/usr/local/bin/shep-otel"
         let config = DaemonConfig::load(
             Some(
                 r#"
-[daemon]
-enabled_dogs = ["metrics"]
-boot_first_dogs = ["log-rotate"]
-"#,
+    [daemon]
+    enabled_dogs = ["metrics"]
+    boot_first_dogs = ["log-rotate"]
+    "#,
             ),
             &no_env,
         )
@@ -709,17 +350,6 @@ boot_first_dogs = ["log-rotate"]
         let env = |k: &str| (k == "SHEP_LOG_JSON").then(|| "true".to_string());
         let cfg = DaemonConfig::load(Some("[daemon]\nlog_json = false"), &env).unwrap();
         assert!(cfg.daemon.log_json);
-    }
-
-    // The default decides what an unconfigured operator actually sees:
-    // `Off` hides every warn-and-continue arm, `Info` and below bury them.
-    // fails if `#[default]` moves, or a serde default disagrees with it.
-    #[test]
-    fn an_unset_log_level_is_warn() {
-        assert_eq!(
-            DaemonConfig::load(None, &no_env).unwrap().daemon.log_level,
-            LogLevel::Warn
-        );
     }
 
     #[test]
@@ -760,33 +390,6 @@ boot_first_dogs = ["log-rotate"]
                 DaemonConfig::load(Some(&source), &|_| None).is_err(),
                 "{bad:?} must be refused"
             );
-        }
-    }
-
-    // `as_str`, `from_name` and serde's `rename_all` are three separate
-    // spellings of the same mapping; nothing else keeps them in agreement.
-    // fails if any one drifts from the other two.
-    #[test]
-    fn every_log_level_name_means_the_same_thing_in_the_file_and_the_environment() {
-        let levels = [
-            LogLevel::Off,
-            LogLevel::Error,
-            LogLevel::Warn,
-            LogLevel::Info,
-            LogLevel::Debug,
-            LogLevel::Trace,
-        ];
-        for level in levels {
-            let name = level.as_str();
-            assert_eq!(LogLevel::from_name(name), Some(level), "from_name({name})");
-
-            let file = format!("[daemon]\nlog_level = \"{name}\"");
-            let cfg = DaemonConfig::load(Some(&file), &no_env).unwrap();
-            assert_eq!(cfg.daemon.log_level, level, "[daemon] log_level = {name:?}");
-
-            let env = |k: &str| (k == "SHEP_LOG_LEVEL").then(|| name.to_string());
-            let cfg = DaemonConfig::load(None, &env).unwrap();
-            assert_eq!(cfg.daemon.log_level, level, "SHEP_LOG_LEVEL={name}");
         }
     }
 
@@ -932,56 +535,6 @@ boot_first_dogs = ["log-rotate"]
         );
     }
 
-    // fails if validation moves back into a per-layer position: a later
-    // layer must be able to rescue a value an earlier one would reject.
-    #[test]
-    fn a_flag_rescues_a_below_floor_file_value() {
-        let cfg = DaemonConfig::load_layered(
-            Some("[daemon]\nmax_cron_sleep = \"500\"\n"),
-            &no_env,
-            &DaemonOverrides::new().max_cron_sleep(Some(UpDuration::from_millis(300_000))),
-        )
-        .unwrap();
-        assert_eq!(
-            cfg.daemon.max_cron_sleep,
-            Some(UpDuration::from_millis(300_000))
-        );
-    }
-
-    // fails if a below-floor FLAG is accepted, or if the refusal names the
-    // TOML key the operator did not set.
-    #[test]
-    fn a_below_floor_flag_is_refused_naming_the_flag() {
-        let err = DaemonConfig::load_layered(
-            None,
-            &no_env,
-            &DaemonOverrides::new().max_cron_sleep(Some(UpDuration::from_millis(500))),
-        )
-        .unwrap_err();
-        assert_eq!(
-            err,
-            DaemonConfigError::BelowMinimum {
-                key: "--max-cron-sleep",
-                value: UpDuration::from_millis(500),
-                min: MIN_CRON_SLEEP,
-            }
-        );
-        assert!(err.to_string().contains("--max-cron-sleep"), "got: {err}");
-    }
-
-    // fails if a flag stops beating the env layer.
-    #[test]
-    fn a_flag_beats_the_environment() {
-        let env = |k: &str| (k == "SHEP_LOG_LEVEL").then(|| "trace".to_string());
-        let cfg = DaemonConfig::load_layered(
-            Some("[daemon]\nlog_level = \"error\"\n"),
-            &env,
-            &DaemonOverrides::new().log_level(Some(LogLevel::Info)),
-        )
-        .unwrap();
-        assert_eq!(cfg.daemon.log_level, LogLevel::Info);
-    }
-
     // Pins that `load` and `load_layered` agree when no flag is set. Does
     // not catch a `bool` standing in for `Option<bool>`, since both sides
     // route through the same code; other tests in this file and cli_e2e
@@ -993,21 +546,6 @@ boot_first_dogs = ["log-rotate"]
             DaemonConfig::load_layered(Some(src), &no_env, &DaemonOverrides::new()).unwrap();
         let plain = DaemonConfig::load(Some(src), &no_env).unwrap();
         assert_eq!(layered, plain);
-    }
-
-    #[test]
-    fn the_bool_grammar_is_exactly_four_spellings() {
-        assert_eq!(parse_daemon_bool("1"), Some(true));
-        assert_eq!(parse_daemon_bool("0"), Some(false));
-        assert_eq!(parse_daemon_bool("true"), Some(true));
-        assert_eq!(parse_daemon_bool("false"), Some(false));
-        for wider in ["yes", "no", "on", "off", "TRUE", "y"] {
-            assert_eq!(
-                parse_daemon_bool(wider),
-                None,
-                "{wider} must not be a boolean here"
-            );
-        }
     }
 
     // fails if `[interpreters]` stops parsing as a plain extension ->
@@ -1064,17 +602,5 @@ boot_first_dogs = ["log-rotate"]
     #[test]
     fn a_non_string_interpreter_value_is_a_parse_error() {
         assert!(DaemonConfig::load(Some("[interpreters]\njs = 5\n"), &no_env).is_err());
-    }
-
-    #[test]
-    fn debug_redacts_dog_values() {
-        // Dog tables carry things like webhook URLs; a lazy derive(Debug)
-        // would land them in daemon logs. Exact string pinned so that
-        // regression fails here instead of leaking a secret.
-        let cfg = DaemonConfig::load(Some("[dog.metrics]\nport = 9615"), &no_env).unwrap();
-        assert_eq!(
-            format!("{cfg:?}"),
-            "DaemonConfig { daemon: DaemonSection { log_json: false, log_level: Warn, environment: \"production\", socket: None, enabled_dogs: [], adopted_dogs: {}, boot_first_dogs: [], max_cron_sleep: None }, whistle: WhistleSection { allow_control: false }, secrets: SecretsSection { allow_read: false }, style: StyleSection { level: None }, interpreters: {}, dog: <1 tables> }"
-        );
     }
 }
