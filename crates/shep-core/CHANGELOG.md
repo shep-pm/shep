@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-09-15
+
+### Added
+
+- A HostUsage request and reply for the machine's own numbers
+
+
 ## [0.8.0] - 2026-09-14
 
 ### Added

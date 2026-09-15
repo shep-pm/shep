@@ -13,6 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-09-15
+
+### Added
+
+- Shep flock shows the host strip, one-shot and followed
+
+### Fixed
+
+- CodeRabbit's full review of 666d5974, all three actionable
+
+
 ## [0.8.0] - 2026-09-14
 
 ### Added
