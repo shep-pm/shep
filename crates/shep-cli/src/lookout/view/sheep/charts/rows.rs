@@ -195,9 +195,9 @@ mod tests {
     }
 
     /// Thin wrapper over the real header function: `body_cells` passed
-    /// straight through, the way [`draw_charts`](super::draw_charts) hands
-    /// it the pane's own
-    /// computed value rather than a raw terminal width.
+    /// straight through, the way [`draw_charts`](super::super::draw_charts)
+    /// hands it the pane's own computed value rather than a raw terminal
+    /// width.
     fn header_with_samples(history_len: usize, body_cells: usize) -> String {
         cpu_header_text(history_len, body_cells)
     }
