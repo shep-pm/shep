@@ -562,7 +562,6 @@ cwd = "/srv/migrate"`}</CodeBlock>
     padding: 1px 6px;
   }
 
-  .field-table,
   .verb-table {
     border: 3px solid var(--line);
     border-radius: 16px;
@@ -570,13 +569,12 @@ cwd = "/srv/migrate"`}</CodeBlock>
     margin: 0 0 32px;
   }
 
-  .field-table .row {
-    display: grid;
-    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-    gap: 14px;
-    padding: 12px 18px;
-    align-items: start;
-    font-size: 14px;
+  /* Width and margin only. The rest is the shared `.field-table` block in
+     docs-page.css, which this page's own copy used to duplicate. Two
+     columns here, not the shared default of three. */
+  .field-table {
+    --field-cols: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    margin: 0 0 32px;
   }
 
   .verb-table .row {
@@ -658,7 +656,7 @@ cwd = "/srv/migrate"`}</CodeBlock>
   }
 
   @media (max-width: 640px) {
-    .field-table .row,
+    /* `.field-table` is not here: the shared block stacks it already. */
     .verb-table .row,
     .bench-table .row {
       grid-template-columns: 1fr;
