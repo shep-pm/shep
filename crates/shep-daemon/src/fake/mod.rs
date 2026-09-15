@@ -1,5 +1,8 @@
 //! Deterministic scripted [`ProcessRunner`](crate::runner::ProcessRunner) for engine tests
 //!
+// WHY: deterministic + instant under the paused tokio clock; real OS process
+// behavior is covered by `tests/real_runner.rs` and, on Windows, by
+// `tests/real_runner_windows.rs`.
 
 mod fake_process;
 mod proc_script;

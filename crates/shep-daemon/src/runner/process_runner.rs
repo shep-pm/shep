@@ -368,9 +368,8 @@ pub trait ProcessRunner: Send + Sync + 'static {
     }
 }
 
-// Every case here is `#[cfg(unix)]`, as is everything they exercise: the uid
-// model `loose_ancestor` reads, the mode bits it tests, and
-// `std::os::unix::fs::symlink`.
+// Unix-gated because the module this case was split out of is; nothing it
+// touches needs the gate.
 #[cfg(all(test, unix))]
 mod tests {
 
