@@ -13,6 +13,9 @@
 // The `#[cfg(unix)]` cases take their helpers and constants with them, so on
 // Windows those items compile unused.
 #![cfg_attr(windows, allow(dead_code))]
+// A module holding only `#[cfg(unix)]` cases is empty on Windows, so its
+// `use super::*` and this file's re-export of it are unused there.
+#![cfg_attr(windows, allow(unused_imports))]
 
 #[cfg(unix)]
 use std::collections::{BTreeMap, HashMap};
