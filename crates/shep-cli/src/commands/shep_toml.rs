@@ -1423,6 +1423,15 @@ mod tests {
                 out.status,
                 String::from_utf8_lossy(&out.stdout)
             );
+            // `--exact` against a path this binary no longer has matches
+            // nothing, and a harness that ran zero tests still exits 0. Without
+            // this, the failure above is a NotFound on shep.toml, which points
+            // at the wrong file entirely.
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            assert!(
+                stdout.contains("running 1 test"),
+                "the child ran no test, so the `--exact` path is stale: {stdout}"
+            );
         }
 
         let written = std::fs::read_to_string(&path).unwrap();
