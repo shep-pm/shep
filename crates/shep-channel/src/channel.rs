@@ -2,7 +2,7 @@ use crate::{ChannelError, ChildMessage, ShepherdMessage, endpoint, session};
 
 /// The channel with no threads: you own the loop.
 ///
-/// [`crate::serve`] is the other, documented default: it answers messages
+/// [`crate::serve()`] is the other, documented default: it answers messages
 /// you never registered a handler for. Reach for this when your app
 /// already runs its own event loop.
 #[derive(Debug)]
