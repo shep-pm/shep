@@ -25,5 +25,12 @@
       "dog_stale": null,
       "max_memory": null
     }
-  ]
+  ],
+  "host": {
+    "cpu_percent": null,
+    "memory_used_bytes": null,
+    "memory_total_bytes": null,
+    "disk_bytes_per_second": null,
+    "network_bytes_per_second": null
+  }
 }

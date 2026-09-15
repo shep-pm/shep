@@ -19,6 +19,9 @@
 //! has never heard of it decodes [`Request::Unrecognized`] and refuses by
 //! name. Version 9 bumped on removing `increment_var`, the first shape
 //! change here to subtract a field rather than add one.
+//! [`Request::HostUsage`] and [`Response::HostUsage`] rode in after it
+//! and forced nothing either, on the terms [`Request::PutSecrets`] set
+//! above.
 //!
 //! A `*_wire_v9` test pins today's shape. A
 //! `v1_*_fixture_still_deserializes` test pins an old peer's payload and
@@ -34,8 +37,8 @@ pub use events::{BusEvent, ProcessEventKind};
 pub use frame::ServerFrame;
 pub use request::{
     ActionOutcome, ActionReply, DogSectionToml, DogSource, EnvValue, Envelope, ExitInfo, Hello,
-    HelloAck, HelloReply, Lamb, LineOutcome, LineReply, ProcessInfo, ProcessInfoBuilder, Reply,
-    Request, Response, RpcError, RpcErrorCode, SelectorSpec, SheepApplied, SheepConfigView,
+    HelloAck, HelloReply, HostUsage, Lamb, LineOutcome, LineReply, ProcessInfo, ProcessInfoBuilder,
+    Reply, Request, Response, RpcError, RpcErrorCode, SelectorSpec, SheepApplied, SheepConfigView,
     SheepDrift, SheepRefusal, SignalOutcome, SignalReply, Smit, SmitError, sort_flock,
 };
 pub use shep_channel::{CHANNEL_VERSION, ChildMessage, ShepherdMessage};

@@ -56,12 +56,18 @@ import ShortVersion from "../../components/docs/ShortVersion.astro";
       <code>--format json</code> when the exact number is the thing you
       need.
     </p>
-    <CodeBlock label="shep flock">{`┌────┬──────┬───────────────┬───────┬──────────┬──────┬──────┬──────┬────────┬─────────┬──────┐
+    <CodeBlock label="shep flock">{`host  cpu  ██░░░░░░░░ 15%   mem  ███████░░░ 35.8G / 48.0G   disk  r 32.0K/s w 192.5M/s   net  rx 10.5K/s tx 1.2K/s
+
+┌────┬──────┬───────────────┬───────┬──────────┬──────┬─────┬──────┬──────┬────────┬─────────┬──────┐
 │ ID │ NAME │ STATUS        │ PID   │ RESTARTS │ EXIT │ CFG │ CPU  │ MEM  │ UPTIME │ FOLD    │ SMIT │
 ├────┼──────┼───────────────┼───────┼──────────┼──────┼─────┼──────┼──────┼────────┼─────────┼──────┤
 │ 1  │ api  │ (x.x) errored │ -     │ 15       │ 1    │ -   │ -    │ -    │ 0s     │ -       │ -    │
-│ 0  │ web  │ (o.o) online  │ 68630 │ 0        │ -    │ -   │ 0.0% │ 3.0M │ 18s    │ backend │ -    │
+│ 0  │ web  │ (o.o) online  │ 29678 │ 0        │ -    │ -   │ 0.6% │ 3.0M │ 1m 9s  │ backend │ -    │
 └────┴──────┴───────────────┴───────┴──────────┴──────┴─────┴──────┴──────┴────────┴─────────┴──────┘`}</CodeBlock>
+    <p>
+      The line above the table is the machine. See{" "}
+      <a href="#host-line">the host line</a>.
+    </p>
     <p>
       <code>SMIT</code> is a marker a dog attaches to a sheep over the client
       protocol — <code>-</code> for every sheep here because none carries
@@ -342,6 +348,30 @@ Dogs
       want the flock.
     </Callout>
 
+    <h2 id="host-line">The host line</h2>
+    <p>
+      The line above the table is the machine the flock runs on: CPU across
+      every core, memory in use against memory installed, and what the disks
+      and the network moved over the last second. Loopback is left out of the
+      network figures, since a sheep answering a local proxy would otherwise
+      count every request twice.
+    </p>
+    <Callout variant="note">
+      Three of those four are rates, and a rate needs two readings separated
+      by time. The shepherd reads the counters every second and keeps the
+      difference, so a listing takes a number that already exists rather than
+      stopping to measure one. One that booted a moment ago has nothing to
+      subtract from yet, and each rate reads <code>-</code>. Memory is not a
+      rate. <code>-</code> means not measured, never zero.
+    </Callout>
+    <CodeBlock label="shep flock, against a shepherd one second old">{`host  cpu  ░░░░░░░░░░ -   mem  ███████░░░ 35.9G / 48.0G   disk  r - w -   net  rx - tx -`}</CodeBlock>
+    <p class="fine">
+      <code>shep lookout</code> draws the memory bar from the same figures.
+      A shepherd older than this feature prints no host line at all, and
+      upgrading the binary is not enough on its own: run{" "}
+      <code>shep daemon reload</code>.
+    </p>
+
     <details>
       <summary><h2 id="row-order">Row order</h2></summary>
     <p>
@@ -368,7 +398,9 @@ Dogs
       least useful first, and names what it hid. The same flock at 60
       columns:
     </p>
-    <CodeBlock label="shep flock, 60 columns">{`┌────┬──────┬────────┬───────┬──────────┬──────┬────────┐
+    <CodeBlock label="shep flock, 60 columns">{`host  cpu  ██░░░░░░░░ 15%   mem  ███████░░░ 35.8G / 48.0G  …
+
+┌────┬──────┬────────┬───────┬──────────┬──────┬────────┐
 │ ID │ NAME │ STATUS │ PID   │ RESTARTS │ MEM  │ UPTIME │
 ├────┼──────┼────────┼───────┼──────────┼──────┼────────┤
 │ 1  │ api  │ (x.x)  │ -     │ 15       │ -    │ 0s     │
@@ -376,9 +408,11 @@ Dogs
 └────┴──────┴────────┴───────┴──────────┴──────┴────────┘
   CFG, CPU, EXIT, FOLD, SMIT hidden. Widen the window, or use --format json.`}</CodeBlock>
     <p>
-      Two things narrowed there. The status word went before any whole
-      column did, leaving the face, which is five columns rather than
-      fifteen. Then <code>SMIT</code>, <code>FOLD</code>, <code>CFG</code>,{" "}
+      Three things narrowed there. The host line is cut from the right and
+      says so with a <code>…</code>: the two bars are what you scan first,
+      so disk and network go before them. Then the status word went before
+      any whole column did, leaving the face, which is five columns rather
+      than fifteen. Then <code>SMIT</code>, <code>FOLD</code>, <code>CFG</code>,{" "}
       <code>EXIT</code> and <code>CPU</code> dropped, in that order, and the
       footer says so.{" "}
       <code>SMIT</code> goes first: it is by far the widest column, so
@@ -402,9 +436,17 @@ Dogs
       setting; a non-terminal stdout forces it, and so does{" "}
       <code>--format json</code>:
     </p>
-    <CodeBlock label="shep flock | cat">{`ID  NAME  STATUS   PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD     SMIT
+    <CodeBlock label="shep flock | cat">{`host  cpu  15%   mem  35.8G / 48.0G   disk  r 32.0K/s w 192.5M/s   net  rx 10.5K/s tx 1.2K/s
+
+ID  NAME  STATUS   PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD     SMIT
 1   api   errored  -      15        1     -    -     -     0s      -        -
-0   web   online   68630  0         -     -    0.0%  3.0M  5m 10s  backend  -`}</CodeBlock>
+0   web   online   29678  0         -     -    1.0%  4.1M  1m 9s   backend  -`}</CodeBlock>
+    <p>
+      The host line keeps its numbers and loses both bars, on the same dial
+      that takes the rules off the table. It is not cut either: a pipe has no
+      window, and trimming to the 80 columns shep assumes would lose real
+      figures to a guess.
+    </p>
     <p>
       The columns themselves do move between releases, though.{" "}
       <code>CFG</code>,{" "}
@@ -508,7 +550,7 @@ notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
     </p>
     <CodeBlock
       label="shep flock --follow, 100 columns"
-    >{`host  cpu 63%  mem 32.7G/48.0G  disk r 58.4M/s w 177.0M/s  net rx 10.4M/s tx 10.6M/s
+    >{`host  cpu  ██░░░░░░░░ 15%   mem  ███████░░░ 35.8G / 48.0G   disk  r 32.0K/s w 192.5M/s   net  rx 10…
 
 ┌────┬────────┬────────┬───────┬──────────┬──────┬─────┬──────┬──────┬─────────┬──────┬──────┐
 │ ID │ NAME   │ STATUS │ PID   │ RESTARTS │ EXIT │ CFG │ CPU  │ MEM  │ UPTIME  │ FOLD │ SMIT │
@@ -517,15 +559,12 @@ notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
 │ 1  │ worker │ online │ 27395 │ 0        │ -    │ -   │ 0.1% │ 3.1M │ 17m 31s │ -    │ -    │
 └────┴────────┴────────┴───────┴──────────┴──────┴─────┴──────┴──────┴─────────┴──────┴──────┘`}</CodeBlock>
     <p>
-      The top line is the machine, not the flock: CPU across every core, memory
-      in use against memory installed, and what the disks and the network moved
-      over the last interval. Loopback traffic is left out of the network
-      figures.
+      The <a href="#host-line">host line</a> is the one a one-shot listing
+      prints, fitted to the window again on every redraw. Changing the
+      interval does not change what it measures: the shepherd still reads
+      once a second, so <code>--interval 5</code> shows one second of
+      traffic every five seconds rather than a five-second average.
     </p>
-    <Callout variant="note">
-      Three of those four are rates, so the first frame has nothing to divide
-      and prints <code>-</code> for each. They fill in on the next redraw.
-    </Callout>
     <p>
       A follow needs a live shepherd and a real terminal. A saved roll is one
       moment, and a follow is about the moments after it. With stdout redirected

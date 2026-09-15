@@ -1,407 +1,439 @@
-//! The machine the flock runs on, as one line above a followed listing.
+//! The machine the flock runs on, as one line above a listing.
 //!
-//! Three of the four numbers are rates, so none of them exists in a single
-//! moment: CPU, disk traffic and network traffic are all differences between
-//! two samples. [`HostWatch`] holds the earlier sample between redraws, which
-//! is the only reason `shep flock --follow` can show them and a one-shot
-//! `shep flock` cannot.
+//! Nothing here reads the machine. Three of the four numbers are rates, and
+//! a rate needs two readings separated by time, so the shepherd holds the
+//! baseline and serves the difference off its own tick
+//! (`shep_daemon::host`). A one-shot `shep flock` and a followed one ask the
+//! same question and get the same answer, which is the only way the two can
+//! be made to agree.
 //!
-//! Cost is the constraint. `lookout`'s own sampler carries a comment saying a
-//! process walk is what makes `dog::metrics` expensive, and this runs on the
-//! same cadence, so nothing here refreshes anything that is not printed: no
-//! process table, no swap, no disk capacity, no component temperatures.
-//! Measured on macOS at 5.6 ms a tick, against a floor of one second between
-//! ticks.
+//! The strip is `lookout`'s, ported rather than reinvented: self-labelled
+//! segments joined in a drop order, truncated from the right so truncation
+//! is the drop order with no second mechanism, and muted except for the two
+//! gauges. See `lookout::view::host`, which argues each of those.
+//!
+//! One difference, and it is the reason rather than the rule that carries
+//! over. Lookout labels every segment `host` or `flock` because it mixes
+//! both halves on one line and a truncated `mem 12.4G` beside a bare
+//! `mem 706.0M` says nothing. This line has one half, so `host` is said once
+//! at the front, as it always has been, and each segment names only which
+//! number it is.
 
-use std::collections::BTreeSet;
-use std::time::{Duration, Instant};
+use shep_core::protocol::HostUsage;
 
-use sysinfo::{
-    CpuRefreshKind, DiskRefreshKind, Disks, IpNetwork, MemoryRefreshKind, NetworkData, Networks,
-    RefreshKind, System,
-};
-
+use crate::lookout::view::cell;
 use crate::output::human_bytes;
+use crate::output::width::char_columns;
+use crate::style::Presentation;
+use crate::vocabulary::Role;
 
-/// What one redraw reads off the machine.
+/// How many cells each gauge draws, matching `lookout`'s own two.
+const GAUGE_CELLS: usize = 10;
+
+/// What separates one segment from the next, matching `lookout`'s.
+const SEPARATOR: &str = "   ";
+
+/// The strip, fitted to `width` and painted for `style`.
 ///
-/// Every rate is `Option`: the window between two samples can be too short to
-/// divide by, and on the first redraw it always is.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct HostSample {
-    /// Every core's usage, as one percentage of one whole machine.
-    pub cpu_percent: Option<f32>,
-    /// Memory in use, as the platform reports it.
-    pub memory_used_bytes: u64,
-    /// Total physical memory.
-    pub memory_total_bytes: u64,
-    /// Bytes a second the block devices read and wrote over the window.
-    pub disk_bytes_per_second: Option<(u64, u64)>,
-    /// Bytes a second the non-loopback interfaces received and transmitted
-    /// over the window.
-    pub network_bytes_per_second: Option<(u64, u64)>,
-}
-
-impl HostSample {
-    /// The one line that sits above a followed listing.
-    ///
-    /// Rates that have no window yet render as `-` rather than as zero: a
-    /// machine doing nothing and a machine not yet measured are different
-    /// claims, and the first redraw is always the second one.
-    pub(crate) fn line(&self) -> String {
-        let cpu = match self.cpu_percent {
-            Some(percent) => format!("{percent:.0}%"),
-            None => "-".to_owned(),
-        };
-        let (disk_read, disk_write) = rate_pair(self.disk_bytes_per_second);
-        let (received, transmitted) = rate_pair(self.network_bytes_per_second);
-        format!(
-            "host  cpu {cpu}  mem {}/{}  disk r {disk_read} w {disk_write}  net rx {received} tx {transmitted}",
-            human_bytes(self.memory_used_bytes),
-            human_bytes(self.memory_total_bytes),
-        )
+/// `None` is a platform `sysinfo` cannot read at all, which is not the same
+/// claim as a rate with no window behind it yet: that one renders `-`, in
+/// its own segment, beside numbers that did arrive.
+///
+/// Two forms, on [`crate::style::StyleLevel::boxes`], the same dial that
+/// decides whether the table under this line is box-drawn. Drawn, it carries
+/// two gauges and truncates to `width` with a `…`. Plain, it drops both
+/// gauges and is not truncated at all, exactly as `output::render_table`
+/// drops its rules and ignores the width: a pipe has no window, and `width`
+/// there is the 80 [`crate::output::terminal_width`] answers when there is
+/// nothing to measure. Cutting real numbers to fit a guess would be the
+/// worst of both.
+pub(crate) fn strip(usage: Option<HostUsage>, style: Presentation, width: usize) -> String {
+    let drawn = style.level.boxes();
+    let runs = runs(usage, drawn);
+    if drawn {
+        return fit(&runs, style, width);
     }
+    runs.iter().map(|run| run.text.as_str()).collect()
 }
 
-/// One rate pair rendered, or a pair of dashes where there is no window.
-fn rate_pair(rate: Option<(u64, u64)>) -> (String, String) {
-    match rate {
-        Some((first, second)) => (
-            format!("{}/s", human_bytes(first)),
-            format!("{}/s", human_bytes(second)),
-        ),
-        None => ("-".to_owned(), "-".to_owned()),
-    }
+/// One run of the strip and the role it renders in.
+struct Run {
+    text: String,
+    ink: Ink,
 }
 
-/// Bytes one block device moved: what it has moved since boot, and what it
-/// moved over the last window.
+/// Which colour a run wears.
 ///
-/// The lifetime pair is not displayed. It is the device's identity, for
-/// [`distinct_disk_io`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DiskIo {
-    /// Bytes read and written since boot.
-    pub lifetime: (u64, u64),
-    /// Bytes read and written since the previous refresh.
-    pub window: (u64, u64),
+/// Most of the line is words and numbers with no status behind them, so it
+/// stays muted. The two gauges are the exception, for
+/// `lookout::view::host`'s reason: two bars on one line are unreadable
+/// without something to tell them apart by. The roles are lookout's own,
+/// `attention` for the busy-ness bar and `sky` for the memory one, so the
+/// same number wears the same colour in both places.
+#[derive(Clone, Copy)]
+enum Ink {
+    Muted,
+    Cpu,
+    Mem,
 }
 
-/// Totals `entries` over distinct devices, counting each one once.
-///
-/// The entries are mount points, and several of them can sit on one device.
-/// macOS is where this bites: `sysinfo` walks each APFS volume up to the
-/// `IOBlockStorageDriver` behind it, so `/` and `/System/Volumes/Data` report
-/// the same counters and a plain sum doubles every number. Measured 12 times
-/// out of 12 under a 4 GB write, both volumes byte-identical every round.
-///
-/// Lifetime counters are the identity because `sysinfo` exposes no device
-/// name to group by. Two genuinely separate devices agreeing on both 64-bit
-/// counters would collapse into one, which is only reachable at boot with
-/// both at zero, where they contribute nothing either way.
-fn distinct_disk_io(entries: impl IntoIterator<Item = DiskIo>) -> (u64, u64) {
-    let mut seen = BTreeSet::new();
-    let mut read = 0u64;
-    let mut written = 0u64;
-    for entry in entries {
-        if seen.insert(entry.lifetime) {
-            read = read.saturating_add(entry.window.0);
-            written = written.saturating_add(entry.window.1);
-        }
-    }
-    (read, written)
-}
-
-/// Whether every address on `interface` is a loopback address.
-///
-/// A followed listing counts what left the machine. On a box where a sheep
-/// answers a local proxy, loopback carries every request twice and swamps the
-/// interface an operator is actually watching. Judged by address rather than
-/// by name, since `lo` and `lo0` are two spellings of a set with no promised
-/// end. An interface with no addresses at all is not loopback; it also moves
-/// no bytes.
-fn is_loopback(interface: &NetworkData) -> bool {
-    addresses_are_loopback(interface.ip_networks())
-}
-
-/// The judgement [`is_loopback`] makes, over the addresses alone.
-///
-/// Split out because `sysinfo::NetworkData` has no public constructor, so the
-/// rule above it is untestable while it is wired to one. It decides which
-/// interfaces reach the network rate at all, and a regression would inflate
-/// or deflate every number on the host line without failing anything.
-fn addresses_are_loopback(addresses: &[IpNetwork]) -> bool {
-    !addresses.is_empty() && addresses.iter().all(|network| network.addr.is_loopback())
-}
-
-/// Whether `window` is long enough to report a rate over.
-///
-/// `MINIMUM_CPU_UPDATE_INTERVAL` is the floor for all three rates, not only
-/// for CPU. It is the shortest window `sysinfo` promises a CPU reading over,
-/// and dividing a handful of bytes by a handful of milliseconds is no more
-/// honest for the other two.
-fn is_measurable(window: Duration) -> bool {
-    window >= sysinfo::MINIMUM_CPU_UPDATE_INTERVAL
-}
-
-/// `bytes` over `window`, as bytes a second.
-///
-/// `u128` throughout: a window of a few milliseconds against a large delta
-/// overflows `u64` on the multiply long before the divide brings it back.
-fn per_second(bytes: u64, window: Duration) -> u64 {
-    let millis = window.as_millis().max(1);
-    u64::try_from(u128::from(bytes) * 1000 / millis).unwrap_or(u64::MAX)
-}
-
-/// The earlier sample, held between redraws.
-///
-/// Not `Default` and not `new()`: [`HostWatch::install`] answers `None` on a
-/// target `sysinfo` cannot read, which is a real state a caller has to render
-/// rather than an error (`dog::metrics::sample_host` makes the same call).
-#[derive(Debug)]
-pub(crate) struct HostWatch {
-    system: System,
-    disks: Disks,
-    networks: Networks,
-    sampled_at: Instant,
-}
-
-impl HostWatch {
-    /// Takes the first sample, or answers `None` where `sysinfo` reads
-    /// nothing.
-    ///
-    /// The sample taken here is never displayed. It is the anchor the first
-    /// displayed sample subtracts from.
-    pub(crate) fn install() -> Option<Self> {
-        if !sysinfo::IS_SUPPORTED_SYSTEM {
+impl Ink {
+    /// The role this ink paints through, or `None` where colour is off.
+    fn role(self, style: Presentation) -> Option<Role> {
+        if !style.colour {
             return None;
         }
-        Some(Self {
-            system: System::new_with_specifics(Self::refresh()),
-            disks: Disks::new_with_refreshed_list_specifics(Self::disk_refresh()),
-            networks: Networks::new_with_refreshed_list(),
-            sampled_at: Instant::now(),
+        Some(match self {
+            Ink::Muted => Role::Ink3,
+            Ink::Cpu => Role::Butter,
+            Ink::Mem => Role::Sky,
         })
     }
 
-    /// CPU usage and memory in use, and nothing else `System` can be asked
-    /// for.
-    ///
-    /// `with_ram()` rather than `MemoryRefreshKind::everything()`, which the
-    /// two older samplers use: swap is not on this line.
-    fn refresh() -> RefreshKind {
-        RefreshKind::nothing()
-            .with_cpu(CpuRefreshKind::nothing().with_cpu_usage())
-            .with_memory(MemoryRefreshKind::nothing().with_ram())
-    }
-
-    /// Bytes moved, and not capacity: `total_space` costs a `statvfs` per
-    /// mount point and appears nowhere on the line.
-    fn disk_refresh() -> DiskRefreshKind {
-        DiskRefreshKind::nothing().with_io_usage()
-    }
-
-    /// Refreshes every source and reports the window since the last refresh.
-    ///
-    /// Refreshing always, reporting conditionally: a refresh that is skipped
-    /// leaves the next window measuring from the wrong instant, so the short
-    /// window is spent rather than avoided. What [`is_measurable`] suppresses
-    /// is the arithmetic, not the sample.
-    pub(crate) fn sample(&mut self) -> HostSample {
-        let now = Instant::now();
-        let window = now.saturating_duration_since(self.sampled_at);
-        self.sampled_at = now;
-
-        self.system.refresh_specifics(Self::refresh());
-        self.disks.refresh_specifics(false, Self::disk_refresh());
-        self.networks.refresh(false);
-
-        let measured = is_measurable(window);
-        let disk = measured.then(|| {
-            let (read, written) = distinct_disk_io(self.disks.list().iter().map(|disk| {
-                let usage = disk.usage();
-                DiskIo {
-                    lifetime: (usage.total_read_bytes, usage.total_written_bytes),
-                    window: (usage.read_bytes, usage.written_bytes),
-                }
-            }));
-            (per_second(read, window), per_second(written, window))
-        });
-        let network = measured.then(|| {
-            let (received, transmitted) = self
-                .networks
-                .list()
-                .values()
-                .filter(|interface| !is_loopback(interface))
-                .fold((0u64, 0u64), |(received, transmitted), interface| {
-                    (
-                        received.saturating_add(interface.received()),
-                        transmitted.saturating_add(interface.transmitted()),
-                    )
-                });
-            (
-                per_second(received, window),
-                per_second(transmitted, window),
-            )
-        });
-
-        HostSample {
-            cpu_percent: measured.then(|| self.system.global_cpu_usage()),
-            memory_used_bytes: self.system.used_memory(),
-            memory_total_bytes: self.system.total_memory(),
-            disk_bytes_per_second: disk,
-            network_bytes_per_second: network,
+    /// `text` wrapped in this ink's escape span, or returned untouched.
+    fn paint(self, text: &str, style: Presentation) -> String {
+        match self.role(style) {
+            None => text.to_owned(),
+            Some(role) => {
+                let painted = crate::output::paint::style_for(role, style.deep_colour);
+                format!("{painted}{text}{painted:#}")
+            }
         }
     }
+}
+
+/// `runs` truncated to at most `width` columns.
+///
+/// `lookout::view::host`'s `Ink::fit` without the padding: a line written to
+/// a stream ends where it ends, where a ratatui buffer has to be filled to
+/// its own width. Single-width-char truncation with one column held back for
+/// the trailing `…`, so the operator can see that something was cut.
+fn fit(runs: &[Run], style: Presentation, width: usize) -> String {
+    let total: usize = runs
+        .iter()
+        .flat_map(|run| run.text.chars())
+        .map(char_columns)
+        .sum();
+    if total <= width {
+        return runs
+            .iter()
+            .map(|run| run.ink.paint(&run.text, style))
+            .collect();
+    }
+    if width == 0 {
+        return String::new();
+    }
+    let budget = width - 1;
+    let mut out = String::new();
+    let mut used = 0;
+    for run in runs {
+        if used >= budget {
+            break;
+        }
+        let mut kept = String::new();
+        for c in run.text.chars() {
+            let columns = char_columns(c);
+            if used + columns > budget {
+                break;
+            }
+            kept.push(c);
+            used += columns;
+        }
+        if !kept.is_empty() {
+            out.push_str(&run.ink.paint(&kept, style));
+        }
+    }
+    out.push_str(&Ink::Muted.paint("…", style));
+    out
+}
+
+/// The busy-ness bar.
+///
+/// A window too short to divide by draws an empty gauge rather than no
+/// gauge, which is `lookout::view::host`'s answer for its own load bar: the
+/// segment's text says `-`, and the bar holds the offsets of everything
+/// after it still while the first reading arrives.
+fn cpu_gauge(percent: Option<f32>) -> String {
+    match percent {
+        Some(percent) => cell::gauge(
+            percent.clamp(0.0, 100.0).round() as u64,
+            Some(100),
+            GAUGE_CELLS,
+        ),
+        None => cell::gauge(0, None, GAUGE_CELLS),
+    }
+}
+
+/// One rate rendered, or the dash that means it has not been measured.
+///
+/// Never a zero. A machine doing nothing and a machine not yet measured are
+/// different claims, and the first reading after a shepherd boots is always
+/// the second one.
+fn rate(bytes_per_second: Option<u64>) -> String {
+    match bytes_per_second {
+        Some(bytes) => format!("{}/s", human_bytes(bytes)),
+        None => "-".to_owned(),
+    }
+}
+
+/// The runs, widest set first. `gauges` draws the two bars.
+fn runs(usage: Option<HostUsage>, gauges: bool) -> Vec<Run> {
+    let muted = |text: String| Run {
+        text,
+        ink: Ink::Muted,
+    };
+    let Some(usage) = usage else {
+        // `lookout::view::host`'s own words for the same state, which is a
+        // platform answer rather than a reading that has not landed yet.
+        return vec![muted(
+            "host  usage is not available on this platform".to_owned(),
+        )];
+    };
+
+    let (read, written) = usage
+        .disk_bytes_per_second
+        .map_or((None, None), |(read, written)| (Some(read), Some(written)));
+    let (received, transmitted) = usage
+        .network_bytes_per_second
+        .map_or((None, None), |(received, transmitted)| {
+            (Some(received), Some(transmitted))
+        });
+    let cpu = match usage.cpu_percent {
+        Some(percent) => format!("{percent:.0}%"),
+        None => "-".to_owned(),
+    };
+    // A gauge and the number it draws are one segment, so the space between
+    // them belongs to the gauge and goes when it does.
+    let mut out = vec![
+        // Said once, at the front: everything after it is this machine's.
+        muted("host  cpu  ".to_owned()),
+    ];
+    if gauges {
+        out.push(Run {
+            text: cpu_gauge(usage.cpu_percent),
+            ink: Ink::Cpu,
+        });
+        out.push(muted(" ".to_owned()));
+    }
+    out.push(muted(cpu));
+    out.push(muted(format!("{SEPARATOR}mem  ")));
+    if gauges {
+        out.push(Run {
+            text: cell::gauge(
+                usage.memory_used_bytes,
+                Some(usage.memory_total_bytes),
+                GAUGE_CELLS,
+            ),
+            ink: Ink::Mem,
+        });
+        out.push(muted(" ".to_owned()));
+    }
+    out.extend([
+        muted(format!(
+            "{} / {}",
+            human_bytes(usage.memory_used_bytes),
+            human_bytes(usage.memory_total_bytes)
+        )),
+        // The two gauges first, then the detail: an operator scanning for
+        // "is this machine in trouble" reads a bar, and truncation takes
+        // the far end of the line.
+        muted(format!(
+            "{SEPARATOR}disk  r {} w {}",
+            rate(read),
+            rate(written)
+        )),
+        muted(format!(
+            "{SEPARATOR}net  rx {} tx {}",
+            rate(received),
+            rate(transmitted)
+        )),
+    ]);
+    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::StyleLevel;
 
-    fn io(lifetime: (u64, u64), window: (u64, u64)) -> DiskIo {
-        DiskIo { lifetime, window }
-    }
-
-    /// fails if the macOS double-count comes back: two mount points on one
-    /// device carry one device's counters, and summing them reports twice
-    /// the traffic the machine did.
-    #[test]
-    fn two_mount_points_on_one_device_are_counted_once() {
-        let volumes = [
-            io((1_089_321_177_088, 1_750_606_974_976), (2_641_920, 4_096)),
-            io((1_089_321_177_088, 1_750_606_974_976), (2_625_536, 4_096)),
-        ];
-
-        assert_eq!(distinct_disk_io(volumes), (2_641_920, 4_096));
-    }
-
-    /// fails if the dedupe over-reaches: two devices really are two devices,
-    /// and Linux reports each partition's own `/proc/diskstats` line.
-    #[test]
-    fn two_devices_are_counted_twice() {
-        let devices = [io((100, 200), (10, 20)), io((300, 400), (30, 40))];
-
-        assert_eq!(distinct_disk_io(devices), (40, 60));
-    }
-
-    /// fails if an empty list panics rather than reporting nothing moved.
-    #[test]
-    fn no_devices_move_no_bytes() {
-        assert_eq!(distinct_disk_io([]), (0, 0));
-    }
-
-    /// fails if the rate arithmetic overflows instead of scaling. A tenth of
-    /// a second holding 100 MiB is 1000 MiB a second.
-    #[test]
-    fn a_rate_scales_a_window_up_to_a_second() {
-        assert_eq!(
-            per_second(100 * 1024 * 1024, Duration::from_millis(100)),
-            1000 * 1024 * 1024
-        );
-        assert_eq!(per_second(u64::MAX, Duration::from_millis(1)), u64::MAX);
-        assert_eq!(per_second(512, Duration::from_secs(2)), 256);
-    }
-
-    /// fails if a zero window divides by zero.
-    #[test]
-    fn a_window_of_no_time_does_not_divide_by_zero() {
-        assert_eq!(per_second(4, Duration::ZERO), 4000);
-    }
-
-    /// fails if the first redraw starts printing zeroes. A rate with no
-    /// window is absent, and absent is not idle.
-    #[test]
-    fn a_sample_with_no_window_dashes_every_rate_and_still_prints_memory() {
-        let sample = HostSample {
-            cpu_percent: None,
+    /// The reading behind every example here, so one number tells the cases
+    /// apart: `rates` on or off is the whole difference between a machine
+    /// that has been measured and one that has not.
+    fn usage(rates: bool) -> HostUsage {
+        HostUsage {
+            cpu_percent: rates.then_some(11.459_433),
             memory_used_bytes: 39_963_869_184,
             memory_total_bytes: 51_539_607_552,
-            disk_bytes_per_second: None,
-            network_bytes_per_second: None,
-        };
-
-        assert_eq!(
-            sample.line(),
-            "host  cpu -  mem 37.2G/48.0G  disk r - w -  net rx - tx -"
-        );
-    }
-
-    /// fails if the measured line loses a unit or a number.
-    #[test]
-    fn a_measured_sample_names_all_four() {
-        let sample = HostSample {
-            cpu_percent: Some(11.459_433),
-            memory_used_bytes: 39_963_869_184,
-            memory_total_bytes: 51_539_607_552,
-            disk_bytes_per_second: Some((1_258_291, 491_520)),
-            network_bytes_per_second: Some((24_594, 9_260)),
-        };
-
-        assert_eq!(
-            sample.line(),
-            "host  cpu 11%  mem 37.2G/48.0G  disk r 1.2M/s w 480.0K/s  net rx 24.0K/s tx 9.0K/s"
-        );
-    }
-
-    /// fails if the first redraw starts reporting rates over a window too
-    /// short to divide by, or if the floor drifts off `sysinfo`'s own.
-    ///
-    /// A pure function rather than a real sample, deliberately: asserting
-    /// that `HostWatch::install` and the sample after it fall inside 200 ms
-    /// would be asserting that a CI runner never deschedules a thread, and
-    /// the rule under test has nothing to do with how fast the machine is.
-    #[test]
-    fn a_window_under_sysinfos_own_floor_carries_no_rate() {
-        assert!(!is_measurable(Duration::ZERO));
-        assert!(!is_measurable(Duration::from_millis(5)));
-        assert!(!is_measurable(
-            sysinfo::MINIMUM_CPU_UPDATE_INTERVAL - Duration::from_nanos(1)
-        ));
-        assert!(is_measurable(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL));
-        assert!(is_measurable(Duration::from_secs(1)), "the interval floor");
-    }
-
-    /// fails if the real sampler stops reading this machine's memory. Memory
-    /// is not a rate, so it is the one number a first sample must carry.
-    #[test]
-    fn a_real_sample_reads_this_machines_memory() {
-        let Some(mut watch) = HostWatch::install() else {
-            return;
-        };
-
-        let sample = watch.sample();
-
-        assert!(sample.memory_total_bytes > 0, "a machine has memory");
-        assert!(sample.memory_used_bytes > 0);
-    }
-
-    fn net(addr: &str) -> IpNetwork {
-        IpNetwork {
-            addr: addr.parse().expect("a literal address"),
-            prefix: 8,
+            disk_bytes_per_second: rates.then_some((1_258_291, 491_520)),
+            network_bytes_per_second: rates.then_some((24_594, 9_260)),
         }
     }
 
-    /// fails if loopback stops being judged by address. Judging by name was
-    /// the alternative, and `lo` and `lo0` are two spellings of a set with no
-    /// promised end.
+    /// Boxes on, colour off: the drawn strip, in a form an exact string can
+    /// pin. `Presentation::new` would turn colour on with the level, and
+    /// the two are separate dials everywhere else.
+    fn drawn() -> Presentation {
+        Presentation {
+            level: StyleLevel::Plain,
+            colour: false,
+            deep_colour: false,
+            width: 200,
+        }
+    }
+
+    /// Colour on too, at the 16-colour tier, so an escape in the output is a
+    /// deliberate one rather than a terminal-detection accident.
+    fn coloured() -> Presentation {
+        Presentation::new(StyleLevel::Full, None, None, None, 200)
+    }
+
+    /// fails if the strip loses a number, a unit or a gauge. Pinned whole
+    /// rather than by `contains`, because the spacing is the structure: a
+    /// reader scans the two bars at fixed offsets, which a lost space or an
+    /// extra one breaks without losing any information.
     #[test]
-    fn an_interface_is_loopback_only_when_every_address_is() {
-        assert!(addresses_are_loopback(&[net("127.0.0.1")]));
-        assert!(addresses_are_loopback(&[net("127.0.0.1"), net("::1")]));
-        assert!(!addresses_are_loopback(&[net("192.168.1.4")]));
-        assert!(
-            !addresses_are_loopback(&[net("127.0.0.1"), net("192.168.1.4")]),
-            "one routable address is enough to make an interface count"
+    fn a_measured_reading_names_all_four() {
+        assert_eq!(
+            strip(Some(usage(true)), drawn(), 200),
+            "host  cpu  █░░░░░░░░░ 11%   mem  ████████░░ 37.2G / 48.0G   \
+             disk  r 1.2M/s w 480.0K/s   net  rx 24.0K/s tx 9.0K/s"
         );
     }
 
-    /// The empty case the doc comment claims and nothing checked. An
-    /// interface with no addresses is not loopback, so it stays in the total;
-    /// it also moves no bytes, so it contributes nothing either way.
+    /// The plain form, which is what a pipe gets: no bars, and no cut to a
+    /// width nothing measured. `output::render_table` answers a pipe the
+    /// same way, with no rules and no column dropping.
+    ///
+    /// fails if a piped listing starts carrying block-drawing characters, or
+    /// starts losing the far end of the line to a guessed 80 columns.
     #[test]
-    fn an_interface_with_no_addresses_is_not_loopback() {
-        assert!(!addresses_are_loopback(&[]));
+    fn a_plain_strip_drops_both_bars_and_is_never_cut() {
+        let plain = strip(Some(usage(true)), Presentation::BARE, 80);
+
+        assert_eq!(
+            plain,
+            "host  cpu  11%   mem  37.2G / 48.0G   \
+             disk  r 1.2M/s w 480.0K/s   net  rx 24.0K/s tx 9.0K/s"
+        );
+        assert!(!plain.contains('█') && !plain.contains('░'));
+        assert!(!plain.contains('…'), "80 columns is a guess, not a window");
+    }
+
+    /// fails if a shepherd with no window yet starts printing zeroes. A rate
+    /// with no window is absent, and absent is not idle.
+    ///
+    /// The CPU bar draws empty rather than not drawing at all, which is
+    /// `lookout::view::host`'s answer for its own load bar: the `-` beside
+    /// it carries the claim, and the bar holds the offsets of everything
+    /// after it still.
+    #[test]
+    fn a_reading_with_no_window_dashes_every_rate_and_still_prints_memory() {
+        assert_eq!(
+            strip(Some(usage(false)), drawn(), 200),
+            "host  cpu  ░░░░░░░░░░ -   mem  ████████░░ 37.2G / 48.0G   \
+             disk  r - w -   net  rx - tx -"
+        );
+    }
+
+    /// fails if a platform `sysinfo` cannot read starts rendering as a
+    /// machine that is merely idle. Lookout's own words, so the two views
+    /// say one thing about one state.
+    #[test]
+    fn a_platform_that_cannot_be_read_says_so() {
+        assert_eq!(
+            strip(None, Presentation::BARE, 200),
+            "host  usage is not available on this platform"
+        );
+    }
+
+    /// There is no drop loop and no width table: [`fit`] truncates from the
+    /// right, so truncating is the drop order.
+    ///
+    /// fails if the order stops putting the two gauges first, or if a cut
+    /// stops being visible.
+    #[test]
+    fn a_narrow_strip_truncates_visibly_and_keeps_the_gauges() {
+        let narrow = strip(Some(usage(true)), drawn(), 40);
+
+        assert!(narrow.starts_with("host  cpu  "), "got {narrow:?}");
+        assert!(
+            narrow.ends_with('…'),
+            "a truncation the operator can see: {narrow:?}"
+        );
+        assert!(!narrow.contains("net  rx"), "net is the first thing off");
+        assert_eq!(
+            narrow.chars().map(char_columns).sum::<usize>(),
+            40,
+            "the cut lands on the budget, ellipsis included"
+        );
+
+        // And where it fits, nothing is cut.
+        let full = strip(Some(usage(true)), drawn(), 200);
+        assert!(!full.contains('…'));
+        assert!(full.contains("net  rx 24.0K/s"));
+    }
+
+    /// fails if a window of no columns panics rather than printing nothing.
+    /// A pty that has never been told how big it is reports zero, and
+    /// `script(1)` hands `--follow` exactly that.
+    #[test]
+    fn a_strip_with_no_columns_is_empty_rather_than_a_panic() {
+        assert_eq!(strip(Some(usage(true)), drawn(), 0), "");
+        assert_eq!(strip(Some(usage(true)), drawn(), 1), "…");
+    }
+
+    /// fails if a second colour joins the two gauges, or if one of them
+    /// loses its own. Two bars on one line are unreadable without something
+    /// to tell them apart by, and everything else on the line is words and
+    /// numbers with no status behind them.
+    #[test]
+    fn only_the_two_gauges_wear_a_colour_of_their_own() {
+        let style = coloured();
+        let painted = strip(Some(usage(true)), style, 200);
+
+        let span = |role| {
+            format!(
+                "{}",
+                crate::output::paint::style_for(role, style.deep_colour)
+            )
+        };
+        assert_eq!(
+            painted.matches(&span(Role::Butter)).count(),
+            1,
+            "the CPU bar and nothing else: {painted:?}"
+        );
+        assert_eq!(
+            painted.matches(&span(Role::Sky)).count(),
+            1,
+            "the memory bar and nothing else: {painted:?}"
+        );
+        // Butter and sky each open exactly one run, and that run is the bar
+        // rather than the label beside it.
+        assert!(painted.contains(&format!("{}█░░░░░░░░░", span(Role::Butter))));
+        assert!(painted.contains(&format!("{}████████░░", span(Role::Sky))));
+    }
+
+    /// fails if colour leaks into a bare listing, which is what a pipe gets.
+    #[test]
+    fn a_bare_strip_carries_no_escapes() {
+        let bare = strip(Some(usage(true)), Presentation::BARE, 200);
+
+        assert!(!bare.contains('\u{1b}'), "got {bare:?}");
+    }
+
+    /// fails if a truncated coloured strip leaves a colour open past its own
+    /// run. Every span closes where its run does, cut or not, so the table
+    /// under the strip is never painted by it.
+    #[test]
+    fn a_truncated_coloured_strip_closes_every_span_it_opens() {
+        let painted = strip(Some(usage(true)), coloured(), 25);
+
+        let opens = painted.matches("\u{1b}[").count();
+        let closes = painted.matches("\u{1b}[0m").count();
+        assert_eq!(
+            opens,
+            closes * 2,
+            "one open and one reset per run: {painted:?}"
+        );
     }
 }

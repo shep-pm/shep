@@ -209,6 +209,7 @@ pub use bus::{Bus, SharedEvent, new_bus};
 pub(crate) mod cron;
 pub(crate) mod entry;
 pub(crate) mod extras;
+pub(crate) mod host;
 // Unix only: `fcntl`, `execve` and raw descriptor numbers have no Windows
 // equivalent, and `Arm::for_daemon` already returns the stop arm there.
 #[cfg(unix)]

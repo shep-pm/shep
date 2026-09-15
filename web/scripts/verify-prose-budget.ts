@@ -65,14 +65,26 @@ export const BUDGETS: Record<string, number> = {
 
   // Parts II to VII, at what each measures plus headroom.
   lookout: 5750,
-  output: 2930,
+  // Raised from 2930 on 2026-09-14 for the host line, which `shep flock`
+  // began printing on a one-shot listing and not only under `--follow`. It
+  // shows above every table on this page, so four transcripts gained a line
+  // and the page gained a section saying what the four figures are and why
+  // a rate can read `-`. Cut to a callout and a paragraph first; what is
+  // left is the `-` rule, which a reader who does not have it reads an
+  // unmeasured machine as an idle one.
+  output: 3130, // 3111
   secrets: 2110,
   lifecycle: 2060,
   logs: 1900,
   "shepherd-channel": 1700,
   "boot-order": 1670,
   "talking-to-a-sheep": 1620,
-  "json-output": 1330,
+  // Raised from 1330 on the same day and for the same feature. `host` is a
+  // fourth key beside `data`, and its three spellings are three different
+  // answers a script has to tell apart: an object, `null`, and no key at
+  // all. Documenting the key without them would leave a reader unable to
+  // read its absence.
+  "json-output": 1410, // 1397
   "not-built": 1100,
   folds: 930,
   whistle: 770,

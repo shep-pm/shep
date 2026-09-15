@@ -32,6 +32,7 @@ use shep_core::status::ProcStatus;
 
 use crate::bus::{Bus, TopicFilter};
 use crate::dogs::DogSpec;
+use crate::host::HostState;
 use crate::limits::stats::StatsState;
 use crate::secrets::ProviderSecrets;
 use crate::snapshot::{FlockRegistry, SnapshotError, write_atomic};
@@ -156,6 +157,11 @@ pub struct RpcContext {
     /// is watched and record the periodic CPU baseline, and this side reads
     /// against it.
     pub(crate) stats: Arc<StatsState>,
+    /// The machine's own numbers, read on [`crate::host`]'s tick.
+    ///
+    /// Held here for [`Self::stats`]' reason and read the same way: this
+    /// side never samples, and the type is built so that it cannot.
+    pub(crate) host: Arc<HostState>,
     /// What provider dogs have pushed, written by `PutSecrets` here and
     /// read per spawn by the supervisor actor. One registry, two owners,
     /// for the reason `stats` above gives.
@@ -309,6 +315,11 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
             )))),
             Err(err) => reply(Err(rpc_error(&err))),
         },
+        // Free, unlike the two below it: the reading was taken on this
+        // daemon's own tick and this arm hands back what is already in
+        // memory. Sampling here would divide a near-zero delta by a
+        // near-zero window; `crate::host` is the argument.
+        Request::HostUsage => reply(Ok(Response::HostUsage(ctx.host.latest()))),
         // The other one. Sampled after the selector has narrowed the
         // listing, so the join below runs over the matched rows alone.
         Request::Describe { selector } => match selector_of(selector) {
@@ -1925,8 +1936,8 @@ mod tests {
     };
     use shep_core::config::{AppConfig, ApplyGroup, DeclaredApp, ResetDepth, apply_group};
     use shep_core::protocol::{
-        ActionOutcome, ActionReply, DogSource, ProcessEventKind, Request, Response, RpcErrorCode,
-        SelectorSpec,
+        ActionOutcome, ActionReply, DogSource, HostUsage, ProcessEventKind, Request, Response,
+        RpcErrorCode, SelectorSpec,
     };
     use shep_core::values::UpDuration;
     use std::collections::{BTreeMap, BTreeSet};
@@ -1961,6 +1972,44 @@ mod tests {
         let reply = reply_of(dispatch(envelope(9, Request::Ping), &h.ctx).await);
         assert_eq!(reply.id, 9);
         assert_eq!(reply.result.unwrap(), Response::Pong);
+    }
+
+    /// The door a listing actually knocks on. `HostState`'s own tests prove
+    /// the tick writes and the reader does not sample; this one proves the
+    /// request reaches that reader at all, which no test of the state alone
+    /// can see.
+    #[tokio::test(start_paused = true)]
+    async fn host_usage_serves_the_reading_the_tick_left_behind() {
+        let mut h = harness(vec![]);
+        h.ctx.host = crate::host::HostState::fixed(Some(HostUsage {
+            cpu_percent: Some(11.5),
+            memory_used_bytes: 39_963_869_184,
+            memory_total_bytes: 51_539_607_552,
+            disk_bytes_per_second: Some((1_258_291, 491_520)),
+            network_bytes_per_second: Some((24_594, 9_260)),
+        }));
+
+        let reply = reply_of(dispatch(envelope(1, Request::HostUsage), &h.ctx).await);
+
+        let Response::HostUsage(Some(usage)) = reply.result.unwrap() else {
+            panic!("expected a host reading")
+        };
+        assert_eq!(usage.cpu_percent, Some(11.5));
+        assert_eq!(usage.memory_used_bytes, 39_963_869_184);
+        assert_eq!(usage.disk_bytes_per_second, Some((1_258_291, 491_520)));
+        assert_eq!(usage.network_bytes_per_second, Some((24_594, 9_260)));
+    }
+
+    /// A platform `sysinfo` cannot read is not an error, and answering one
+    /// with `RpcErrorCode::Internal` would fail a listing over a
+    /// decoration. The harness default is exactly this state.
+    #[tokio::test(start_paused = true)]
+    async fn a_host_that_cannot_be_read_answers_none_rather_than_failing() {
+        let h = harness(vec![]);
+
+        let reply = reply_of(dispatch(envelope(1, Request::HostUsage), &h.ctx).await);
+
+        assert_eq!(reply.result.unwrap(), Response::HostUsage(None));
     }
 
     #[tokio::test(start_paused = true)]

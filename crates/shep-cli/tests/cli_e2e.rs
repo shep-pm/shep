@@ -1286,6 +1286,35 @@ fn normalize_process_info(info: &mut serde_json::Value, home: &Path, name: &str,
     }
 }
 
+/// Nulls every value under `host`, having first checked the two that are
+/// never absent.
+///
+/// The figures themselves are this machine's, and the three rates depend on
+/// how long the shepherd had been up when the listing arrived, so none of
+/// them can be committed. The key set can: the fixture pins that `host` is
+/// there at all and pins each field's name, so a renamed, dropped or
+/// misspelled one fails here rather than reaching an operator's script.
+///
+/// A no-op where the verb carries no `host` key, which is every verb but
+/// `flock`; the fixture pins the absence for those.
+fn normalize_host(envelope: &mut serde_json::Value) {
+    let Some(host) = envelope.get_mut("host") else {
+        return;
+    };
+    let Some(host) = host.as_object_mut() else {
+        panic!("host must be an object on a machine sysinfo can read: {host}");
+    };
+    for key in ["memory_used_bytes", "memory_total_bytes"] {
+        let bytes = host[key]
+            .as_u64()
+            .unwrap_or_else(|| panic!("{key} is not a rate and is never absent: {host:?}"));
+        assert!(bytes > 0, "{key} must be a live reading off the host");
+    }
+    for value in host.values_mut() {
+        *value = serde_json::Value::Null;
+    }
+}
+
 /// Whether the verb an envelope answers takes a live resource reading.
 #[derive(Debug, Clone, Copy)]
 enum Samples {
@@ -1319,6 +1348,7 @@ fn assert_envelope_matches_fixture(
         assert_eq!(data.len(), 1, "{command}: exactly one sheep is expected");
     }
     normalize_process_info(&mut envelope["data"][0], home, sheep_name, samples);
+    normalize_host(&mut envelope);
     assert_eq!(
         envelope,
         load_fixture(command),

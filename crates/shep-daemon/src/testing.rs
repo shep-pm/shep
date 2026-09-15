@@ -498,6 +498,10 @@ pub(crate) fn harness_with_runner(
             pid: 4242,
             shutdown: Arc::new(shutdown),
             stats: Arc::clone(&stats),
+            // Nothing read, which is what a platform `sysinfo` cannot see
+            // answers too. A test that needs a reading assigns its own
+            // `HostState::fixed` over this one.
+            host: crate::host::HostState::fixed(None),
             provider_secrets,
         },
         _dir: dir,

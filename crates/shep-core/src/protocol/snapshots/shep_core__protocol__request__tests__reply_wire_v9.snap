@@ -864,5 +864,50 @@ expression: replies
         }
       }
     }
+  },
+  {
+    "id": 40,
+    "result": {
+      "Ok": {
+        "kind": "host_usage",
+        "data": {
+          "cpu_percent": 11.5,
+          "memory_used_bytes": 39963869184,
+          "memory_total_bytes": 51539607552,
+          "disk_bytes_per_second": [
+            1258291,
+            491520
+          ],
+          "network_bytes_per_second": [
+            24594,
+            9260
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": 41,
+    "result": {
+      "Ok": {
+        "kind": "host_usage",
+        "data": {
+          "cpu_percent": null,
+          "memory_used_bytes": 39963869184,
+          "memory_total_bytes": 51539607552,
+          "disk_bytes_per_second": null,
+          "network_bytes_per_second": null
+        }
+      }
+    }
+  },
+  {
+    "id": 42,
+    "result": {
+      "Ok": {
+        "kind": "host_usage",
+        "data": null
+      }
+    }
   }
 ]
