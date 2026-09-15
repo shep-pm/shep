@@ -378,81 +378,11 @@ Depends on for web:
     padding: 1px 6px;
   }
 
+  /* Column widths only. Everything else is the shared `.field-table`
+     block in docs-page.css. */
   .field-table {
-    border: 3px solid var(--line);
-    border-radius: 16px;
-    overflow: hidden;
+    --field-cols: minmax(0, 190px) minmax(0, 1fr) minmax(0, 1fr);
     margin: 0 0 26px;
-  }
-
-  .field-table .row {
-    display: grid;
-    grid-template-columns: minmax(0, 190px) minmax(0, 1fr) minmax(0, 1fr);
-    gap: 14px;
-    padding: 11px 18px;
-    align-items: start;
-  }
-
-  .field-table .row.header {
-    background: var(--ink);
-    padding: 10px 18px;
-  }
-
-  .field-table .row:not(.header) {
-    border-bottom: 2px solid var(--hair);
-    background: var(--paper-2);
-  }
-
-  .field-table .row:last-child {
-    border-bottom: none;
-  }
-
-  .field-table .row.header span {
-    font-family: "Space Mono", monospace;
-    font-size: 10.5px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--ink-3);
-  }
-
-  .field-table .row.header .col-name {
-    color: var(--butter);
-  }
-
-  .col-name {
-    font-size: 13.5px;
-    line-height: 1.5;
-    color: var(--ink);
-  }
-
-  .col-does {
-    font-size: 13.5px;
-    line-height: 1.5;
-    color: var(--ink);
-  }
-
-  @media (max-width: 640px) {
-    .field-table .row {
-      grid-template-columns: 1fr;
-      gap: 5px;
-    }
-
-    /* The header row cannot survive one column, but this table's whole
-       point is the contrast between the two answers, so each cell carries
-       its own heading instead of losing it. */
-    .field-table .row.header {
-      display: none;
-    }
-
-    .field-table .col-does[data-label]::before {
-      content: attr(data-label);
-      display: block;
-      font-size: 0.75rem;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      opacity: 0.62;
-      margin-bottom: 2px;
-    }
   }
 
 </style>

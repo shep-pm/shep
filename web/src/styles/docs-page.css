@@ -232,3 +232,95 @@
   font-family: "Space Mono", monospace;
   font-size: 13px;
 }
+
+/*
+ * The three-column field table: a name, and two answers about it. Used by
+ * boot-order, first-flockfile and examples.
+ *
+ * Two pages each declared an identical copy and examples declared none, so
+ * its "What each one demonstrates" table rendered as a run of unstyled
+ * text: `display: block`, three cells per row running together into one
+ * line. It had been borrowing `.docs-shell main .row` by accident, which
+ * gave it two columns for its three cells, and lost even that when those
+ * rules were scoped to `.rows`. Third time this exact shape has bitten on
+ * this branch, after `.metrics-table` and the terminology lexicon.
+ *
+ * Column widths are the one thing that differs per page, so they come
+ * through `--field-cols` rather than a selector. A page-scoped
+ * `.field-table .row` compiles to three classes and no element, which loses
+ * to `.docs-shell main .field-table .row`; a custom property set on the
+ * container just inherits.
+ */
+.docs-shell main .field-table {
+  border: 3px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.docs-shell main .field-table .row {
+  display: grid;
+  grid-template-columns: var(
+    --field-cols,
+    minmax(0, 190px) minmax(0, 1fr) minmax(0, 1fr)
+  );
+  gap: 14px;
+  padding: 11px 18px;
+  align-items: start;
+}
+
+.docs-shell main .field-table .row.header {
+  background: var(--ink);
+  padding: 10px 18px;
+}
+
+.docs-shell main .field-table .row:not(.header) {
+  border-bottom: 2px solid var(--hair);
+  background: var(--paper-2);
+}
+
+.docs-shell main .field-table .row:last-child {
+  border-bottom: none;
+}
+
+.docs-shell main .field-table .row.header span {
+  font-family: "Space Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.docs-shell main .field-table .row.header .col-name {
+  color: var(--butter);
+}
+
+.docs-shell main .col-name,
+.docs-shell main .col-does {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+@media (max-width: 640px) {
+  .docs-shell main .field-table .row {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  /* The header row cannot survive one column, so each cell carries its own
+     heading instead of losing it. */
+  .docs-shell main .field-table .row.header {
+    display: none;
+  }
+
+  .docs-shell main .field-table .col-does[data-label]::before,
+  .docs-shell main .field-table .col-default[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.62;
+    margin-bottom: 2px;
+  }
+}

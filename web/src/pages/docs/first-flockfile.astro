@@ -647,44 +647,10 @@ DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>
     margin: 0 0 26px;
   }
 
+  /* Column widths only. Everything else is the shared `.field-table`
+     block in docs-page.css. */
   .field-table {
-    border: 3px solid var(--line);
-    border-radius: 16px;
-    overflow: hidden;
-  }
-
-  .field-table .row {
-    display: grid;
-    grid-template-columns: minmax(0, 210px) 130px minmax(0, 1fr);
-    gap: 14px;
-    padding: 11px 18px;
-    align-items: start;
-  }
-
-  .field-table .row.header {
-    background: var(--ink);
-    padding: 10px 18px;
-  }
-
-  .field-table .row:not(.header) {
-    border-bottom: 2px solid var(--hair);
-    background: var(--paper-2);
-  }
-
-  .field-table .row:last-child {
-    border-bottom: none;
-  }
-
-  .field-table .row.header span {
-    font-family: "Space Mono", monospace;
-    font-size: 10.5px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--ink-3);
-  }
-
-  .field-table .row.header .col-name {
-    color: var(--butter);
+    --field-cols: minmax(0, 210px) 130px minmax(0, 1fr);
   }
 
   .col-name code {
@@ -705,23 +671,6 @@ DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>
     font-size: 12px;
     color: var(--ink-2);
     line-height: 1.5;
-  }
-
-  .col-does {
-    font-size: 13.5px;
-    line-height: 1.5;
-    color: var(--ink);
-  }
-
-  @media (max-width: 640px) {
-    .field-table .row {
-      grid-template-columns: 1fr;
-      gap: 5px;
-    }
-
-    .field-table .row.header {
-      display: none;
-    }
   }
 
 </style>
