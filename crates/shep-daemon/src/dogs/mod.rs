@@ -23,8 +23,6 @@ pub(crate) use narrate::{narrate, narrate_by_name};
 pub use refusals::{DogRefusals, Refusal, record_refused_dog};
 pub(crate) use silent::silent_dogs;
 pub use silent::{DOG_SILENCE_BUDGET, spawn_silent_dog_watch};
-// `SilentDogs` and `check_silent_dogs` have no non-test caller: server.rs's
-// own handshake tests drive the ladder directly rather than through a real
 // Only server.rs's handshake test names these, and it is `#[cfg(unix)]`
 // because `peer_pid` answers `None` on Windows. So they go unused in a
 // non-test build and in every Windows build.
