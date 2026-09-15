@@ -25,7 +25,7 @@ use crate::secret_readers::Reader;
 use crate::style::{StyleLevel, StyleSource};
 
 use super::Scene;
-use super::{
+use super::fixtures::{
     close_dialog_config_view, dog_sheep, edit_pane_config_view, feed_for, flock_without_api,
     instance, move_settings_cursor_to, poll_twice, restarted_api, select_fold, select_group,
     select_id, settings_snapshot_for_gallery, settings_snapshot_with_dog_drift, sheep,
