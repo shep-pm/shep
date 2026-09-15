@@ -765,97 +765,10 @@ mod enrichment;
 use enrichment::{dog_staleness, handover_refusal, with_dog_contact, with_lambs, with_live_stats};
 
 
-fn rpc_error(err: &SupervisorError) -> RpcError {
-    match err {
-        SupervisorError::NotFound => not_found(),
-        SupervisorError::SpawnFailed(msg) => RpcError {
-            code: RpcErrorCode::SpawnFailed,
-            message: msg.clone(),
-            daemon_version: None,
-        },
-        // The same code as `SpawnFailed`: `RpcErrorCode` is versioned, and a
-        // client predating a new code cannot decode the reply at all. The
-        // bare payload rather than `err.to_string()`, since this message
-        // already opens with "nothing in this batch was registered".
-        SupervisorError::CannotStart(msg) => RpcError {
-            code: RpcErrorCode::SpawnFailed,
-            message: msg.clone(),
-            daemon_version: None,
-        },
-        // `Internal`, an unexpected daemon-side failure, and no code of its
-        // own since a client predating a new one could not decode the reply.
-        // `err.to_string()` rather than the bare payload: `Display` is the
-        // only thing distinguishing the two once they share a code.
-        SupervisorError::ReopenFailed(_) | SupervisorError::FlushFailed(_) => RpcError {
-            code: RpcErrorCode::Internal,
-            message: err.to_string(),
-            daemon_version: None,
-        },
-        // `Internal` under protest: an app already being reloaded is a
-        // conflict the caller can act on, and the wire has no code for one.
-        // `Display` names the app, which is the part that says what to do.
-        SupervisorError::ReloadInFlight(_) => RpcError {
-            code: RpcErrorCode::Internal,
-            message: err.to_string(),
-            daemon_version: None,
-        },
-        // Every `InvalidScale` is something the caller can ask differently: a
-        // count of `0`, a dog, or an app whose earlier scale is still
-        // shutting instances down. That last one is a conflict, like
-        // `ReloadInFlight`, and the wire has no code for one.
-        SupervisorError::InvalidScale(msg) => RpcError {
-            code: RpcErrorCode::InvalidConfig,
-            message: msg.clone(),
-            daemon_version: None,
-        },
-        // `InvalidConfig`, like `InvalidScale` above and for its reason: a
-        // request aimed at a dog is one the caller can aim elsewhere. The
-        // bare payload is the same sentence `apply_one` puts in front of an
-        // operator whose Flockfile named a dog, so the two doors read alike.
-        SupervisorError::IsADog(msg) => RpcError {
-            code: RpcErrorCode::InvalidConfig,
-            message: msg.clone(),
-            daemon_version: None,
-        },
-        // `InvalidConfig`, like `InvalidScale` above and for its reason:
-        // this is something the caller asked for that it can ask
-        // differently, and telling an operator "unexpected daemon-side
-        // failure" about their own env key would send them to the wrong
-        // place entirely. The bare payload is `normalize`'s own refusal,
-        // which already names the key.
-        SupervisorError::InvalidEnv(msg) => RpcError {
-            code: RpcErrorCode::InvalidConfig,
-            message: msg.clone(),
-            daemon_version: None,
-        },
-        // `InvalidConfig`, beside `InvalidEnv` above and for its reason:
-        // every shape that reaches it is the caller's own key or value,
-        // which it can ask differently. The bare payload rather than
-        // `err.to_string()`, again like `InvalidEnv`: the message already
-        // names the field.
-        SupervisorError::InvalidField(msg) => RpcError {
-            code: RpcErrorCode::InvalidConfig,
-            message: msg.clone(),
-            daemon_version: None,
-        },
-        // `Internal`, on the same rule the log-maintenance pair above
-        // states: an override store that cannot be read or written is an
-        // unexpected daemon-side failure, and there is no code for it that
-        // a client predating this build could decode. `err.to_string()`
-        // rather than the bare payload, so the reader is told the store was
-        // the thing that failed and not the request.
-        SupervisorError::Overrides(_) => RpcError {
-            code: RpcErrorCode::Internal,
-            message: err.to_string(),
-            daemon_version: None,
-        },
-        SupervisorError::EngineStopped => RpcError {
-            code: RpcErrorCode::Internal,
-            message: "the supervisor engine has stopped".to_string(),
-            daemon_version: None,
-        },
-    }
-}
+mod error;
+
+use error::rpc_error;
+
 
 /// A restart or reload the selector matched more than one sheep for, grouped
 /// into the stages it walks.
@@ -1305,98 +1218,10 @@ fn finished(
     }
 }
 
-fn not_found() -> RpcError {
-    RpcError {
-        code: RpcErrorCode::NotFound,
-        message: "selector matched no registered sheep".to_string(),
-        daemon_version: None,
-    }
-}
+mod selector_verbs;
 
-fn selector_of(spec: SelectorSpec) -> Result<ProcessSelector, RpcError> {
-    ProcessSelector::try_from(spec).map_err(|err| RpcError {
-        code: RpcErrorCode::InvalidConfig,
-        message: err.to_string(),
-        daemon_version: None,
-    })
-}
+use selector_verbs::{not_found, selector_call, selector_of, signal_request, trigger};
 
-/// The helper every selector-in, flock-out verb shares: convert the selector,
-/// call the supervisor, map the hits through the passed `Response`
-/// constructor.
-///
-/// The future bound is stated, not inferred, because the whole chain is
-/// awaited inside the per-connection `tokio::spawn`.
-async fn selector_call<F, Fut>(
-    id: u64,
-    spec: SelectorSpec,
-    call: F,
-    ok: fn(Vec<ProcessInfo>) -> Response,
-) -> Outcome
-where
-    F: FnOnce(ProcessSelector) -> Fut + Send,
-    Fut: Future<Output = Result<Vec<ProcessInfo>, SupervisorError>> + Send,
-{
-    let result = match selector_of(spec) {
-        Ok(selector) => call(selector).await.map(ok).map_err(|err| rpc_error(&err)),
-        Err(err) => Err(err),
-    };
-    Outcome::Reply(Reply { id, result })
-}
-
-/// `Trigger`'s own resolve-then-map path. [`selector_call`] cannot serve it:
-/// that helper maps `Vec<ProcessInfo>`, and `Response::Triggered` carries
-/// `Vec<ActionReply>`, a row `ProcessInfo` cannot hold a reply body on.
-///
-/// How long each app gets to answer is `AppConfig::action_timeout`, one value
-/// per matched sheep, read where the wait is armed (`Actor::begin_action`).
-/// `shep_core::config::normalize` refuses only a value no caller could ever
-/// outlast; one past the default budget is accepted, and the caller's own
-/// deadline decides whether that pays off.
-async fn trigger(
-    id: u64,
-    spec: SelectorSpec,
-    action: String,
-    params: Option<String>,
-    ctx: &RpcContext,
-) -> Outcome {
-    let result = match selector_of(spec) {
-        Err(err) => Err(err),
-        Ok(selector) => ctx
-            .supervisor
-            .trigger(selector, action, params)
-            .await
-            .map(Response::Triggered)
-            .map_err(|err| rpc_error(&err)),
-    };
-    Outcome::Reply(Reply { id, result })
-}
-
-/// `Signal`'s own resolve-then-map path, mirroring [`trigger`]. The signal
-/// name is re-validated here even though the CLI validated it too: peer input
-/// is untrusted, the rule `Request::Start` follows a few arms up.
-async fn signal_request(id: u64, spec: SelectorSpec, signal: String, ctx: &RpcContext) -> Outcome {
-    let result = match OperatorSignal::parse(&signal) {
-        None => Err(RpcError {
-            code: RpcErrorCode::InvalidConfig,
-            message: format!(
-                "`{signal}` is not a signal shep will send; accepted: {}",
-                OperatorSignal::ACCEPTED.join(", ")
-            ),
-            daemon_version: None,
-        }),
-        Some(sig) => match selector_of(spec) {
-            Err(err) => Err(err),
-            Ok(selector) => ctx
-                .supervisor
-                .signal(selector, sig)
-                .await
-                .map(Response::Signalled)
-                .map_err(|err| rpc_error(&err)),
-        },
-    };
-    Outcome::Reply(Reply { id, result })
-}
 
 #[cfg(test)]
 mod tests {
