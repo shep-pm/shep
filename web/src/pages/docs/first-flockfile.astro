@@ -506,8 +506,8 @@ DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>
                   <code>{f.name}</code>
                   <span class="type">{f.type}</span>
                 </span>
-                <span class="col-default">{f.default}</span>
-                <span class="col-does">{f.does}</span>
+                <span class="col-default" data-label="Default">{f.default}</span>
+                <span class="col-does" data-label="What it does">{f.does}</span>
               </div>
             ))}
           </div>
