@@ -1,0 +1,52 @@
+---
+source: crates/shep-cli/src/lookout/frames/mod.rs
+expression: render_text(&buffer)
+---
+shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
+                                                                                                                                                                
+host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host mem  ████░░░░░░ 12.4G / 32.0G     0 errored · 0 parked   flock cpu 14.7%       ▁█   flock mem 716.0M …
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                                                                
+  ID    NAME                  STATUS           PID      RESTARTS  EXIT       CFG   CPU 20s     CPU     MEM/CEIL    MEM       UPTIME    FOLD        SMIT         
+   ██ FLOCK                                                                                                                                                     
+  2     api                   online           48219    1         -          -              █  7.1%    ░░░░░░░░░░  241.0M    1h 28m    edge        -            
+  3     billing-reconciliat…  online           48230    0         -          -              ▂  0.8%    ░░░░░░░░░░  96.0M     1h 29m    -           -            
+  4     cron                  online           48233    0         -          -              ▁  0.1%    ░░░░░░░░░░  8.0M      1h 31m    -           -            
+  5     metrics               online           48240    0         -          -              ▁  0.4%    ░░░░░░░░░░  11.0M     1h 32m    -           -            
+  0     web                   online           48211    0         -          -              ▄  3.4%    ░░░░░░░░░░  182.0M    1h 25m    edge        -            
+  1     web                   online           48212    0         -          -              ▄  2.9%    ░░░░░░░░░░  178.0M    1h 26m    edge        -            
+                                                                                                                                                                
+                ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                
+                ▐MOVING                          LOOKING                         CHANGING                        DOING                         ▌                
+                ▐j/k  ↓/↑     select a row       h  ?         this keymap        any char     types into a box   x            stop             ▌                
+                ▐g/G home/end first / last       b            feed, full screen  ⌫ ↵ esc      erase, file, drop  R            restart          ▌                
+                ▐J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload           ▌                
+                ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                    ▌                
+                ▐←/→          environment tab    o            out / err / both   d            restore default      ▟█████▙                     ▌                
+                ▐tab          next config group  m            minimum level      u            undo the edit       ▟███████▙                    ▌                
+                ▐1-8          jump to a group    f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌                
+                ▐n/N          next / prev match  w            wrap long lines    S            secrets               ▀▘ ▀▘                      ▌                
+                ▐↵            open selection     /            filter, or match   D            delete a secret                                  ▌                
+                ▐esc          back one level     r            refresh now        c            leave it running                                 ▌                
+                ▐                                v            reveal for 10s                                                                   ▌                
+                ▐                                y            copy the value                                                                   ▌                
+                ▐                                                                                                                              ▌                
+                ▐ the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ read-only                                          ▌                
+                ▐ colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          ▌                
+                ▐ h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                             ▌                
+                ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟                
+                                                                                                                                                                
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                                                          
+lambs  not read yet                                                                                                                                             
+out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log                                                                           
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ██ BLEATS api  … 1 earlier line not shown                                                                                                                      
+out  GET /healthz 200 3ms                                                                                                                                       
+out  GET /v1/orders 200 44ms                                                                                                                                    
+out  POST /v1/orders 201 88ms                                                                                                                                   
+out  GET /v1/orders/8821 200 9ms                                                                                                                                
+out  connection pool: 14/50 in use                                                                                                                              
+q quit   j/k select   g/G first/last   r refresh   / filter   F folds   s settings   e edit   * yours   ! parked                                       read-only
