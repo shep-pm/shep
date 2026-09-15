@@ -170,23 +170,23 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
         </div>
         <div class="row">
           <span><code>stop</code></span>
-          <span>killed, through the ladder below</span>
-          <span>stays, entry marked stopped</span>
+          <span data-label="the current process">killed, through the ladder below</span>
+          <span data-label="the muster roll">stays, entry marked stopped</span>
         </div>
         <div class="row">
           <span><code>restart</code></span>
-          <span>killed, then a fresh one at once</span>
-          <span>stays, marked online again</span>
+          <span data-label="the current process">killed, then a fresh one at once</span>
+          <span data-label="the muster roll">stays, marked online again</span>
         </div>
         <div class="row">
           <span><code>reload</code></span>
-          <span>one instance replaced, old or new order below</span>
-          <span>unchanged, still the same app</span>
+          <span data-label="the current process">one instance replaced, old or new order below</span>
+          <span data-label="the muster roll">unchanged, still the same app</span>
         </div>
         <div class="row">
           <span><code>delete</code></span>
-          <span>killed if running, through the same ladder</span>
-          <span>removed, for good</span>
+          <span data-label="the current process">killed if running, through the same ladder</span>
+          <span data-label="the muster roll">removed, for good</span>
         </div>
       </div>
     </ShortVersion>
@@ -510,4 +510,18 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
     color: var(--ink-2);
   }
 
+  /* The three columns have 90px, 180px and 160px floors, so the row wants
+     478px and a phone gives it 271. Stacking is what the rest of the site
+     does; the `overflow-x: auto` above is the fallback for the widths in
+     between. */
+  @media (max-width: 640px) {
+    .verb-table .row {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+
+    .verb-table .row.header {
+      display: none;
+    }
+  }
 </style>

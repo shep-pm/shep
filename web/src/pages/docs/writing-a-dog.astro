@@ -293,8 +293,8 @@ watchdog  adopted  true      stopped`}</CodeBlock>
         <span>What</span>
         <span>Answers</span>
       </div>
-      <div class="row"><span>the version on line 1</span> <span>Which build of the dog this is. A difference is reported, never refused.</span></div>
-      <div class="row"><span><code>shep-protocol</code></span> <span>Whether this dog can handshake with this shepherd at all. Below the floor it can't connect; above it, shep accepts it.</span></div>
+      <div class="row"><span>the version on line 1</span> <span data-label="Answers">Which build of the dog this is. A difference is reported, never refused.</span></div>
+      <div class="row"><span><code>shep-protocol</code></span> <span data-label="Answers">Whether this dog can handshake with this shepherd at all. Below the floor it can't connect; above it, shep accepts it.</span></div>
     </div>
     <CodeBlock>{`shep-log-rotate 0.1.3
 shep-protocol: 8`}</CodeBlock>
@@ -355,10 +355,10 @@ shep-protocol: 8`}</CodeBlock>
         <span>What the candidate answers</span>
         <span>What adopt does</span>
       </div>
-      <div class="row"><span>a <code>shep-protocol</code> below the floor</span> <span>Refuses, before <code>shep.toml</code> is touched.</span></div>
-      <div class="row"><span>a protocol at or above the floor</span> <span>Adopts, and reports the version it gave.</span></div>
-      <div class="row"><span>a version and no protocol line</span> <span>Adopts, and says the protocol is unknown.</span></div>
-      <div class="row"><span>nothing, or a run that exits non-zero</span> <span>Adopts, protocol unknown, no notice.</span></div>
+      <div class="row"><span>a <code>shep-protocol</code> below the floor</span> <span data-label="What adopt does">Refuses, before <code>shep.toml</code> is touched.</span></div>
+      <div class="row"><span>a protocol at or above the floor</span> <span data-label="What adopt does">Adopts, and reports the version it gave.</span></div>
+      <div class="row"><span>a version and no protocol line</span> <span data-label="What adopt does">Adopts, and says the protocol is unknown.</span></div>
+      <div class="row"><span>nothing, or a run that exits non-zero</span> <span data-label="What adopt does">Adopts, protocol unknown, no notice.</span></div>
     </div>
     <p>The refusal names both numbers and both ways out:</p>
     <CodeBlock>{`/usr/local/bin/shep-otel: this dog was built for shep protocol 6, and this
@@ -413,10 +413,10 @@ protocol 6, or reinstall the dog against protocol 8, and restart it again`}</Cod
         <span>What the binary answers</span>
         <span>What restart does</span>
       </div>
-      <div class="row"><span>a <code>shep-protocol</code> below the floor</span> <span>Warns, then restarts.</span></div>
-      <div class="row"><span>a protocol at or above the floor</span> <span>Restarts, silently.</span></div>
-      <div class="row"><span>a version and no protocol line</span> <span>Restarts, silently.</span></div>
-      <div class="row"><span>nothing, or a run that exits non-zero</span> <span>Restarts, silently.</span></div>
+      <div class="row"><span>a <code>shep-protocol</code> below the floor</span> <span data-label="What restart does">Warns, then restarts.</span></div>
+      <div class="row"><span>a protocol at or above the floor</span> <span data-label="What restart does">Restarts, silently.</span></div>
+      <div class="row"><span>a version and no protocol line</span> <span data-label="What restart does">Restarts, silently.</span></div>
+      <div class="row"><span>nothing, or a run that exits non-zero</span> <span data-label="What restart does">Restarts, silently.</span></div>
     </div>
     <p>
       Unknown is not stale. Every dog written before this contract is in the
@@ -472,10 +472,10 @@ protocol 6, or reinstall the dog against protocol 8, and restart it again`}</Cod
         <span>How it was built</span>
         <span>Which protocol</span>
       </div>
-      <div class="row"><span><code>cargo install &lt;crate&gt;</code>, first time</span> <span><code>shep-core</code> is re-resolved to the newest compatible release, so the protocol is current.</span></div>
-      <div class="row"><span><code>cargo install &lt;crate&gt;</code>, already installed</span> <span>Nothing is built. Cargo prints <em>already installed, use --force to override</em> and exits 0, so the protocol stays exactly as stale as it was.</span></div>
-      <div class="row"><span><code>cargo install &lt;crate&gt; --force</code></span> <span>Rebuilt and re-resolved, so the protocol is current. This is the one that upgrades a dog after you upgrade shep.</span></div>
-      <div class="row"><span><code>cargo install --locked</code>, and most CI</span> <span>The shipped lockfile is honoured, so the protocol is whatever was pinned on publish day.</span></div>
+      <div class="row"><span><code>cargo install &lt;crate&gt;</code>, first time</span> <span data-label="Which protocol"><code>shep-core</code> is re-resolved to the newest compatible release, so the protocol is current.</span></div>
+      <div class="row"><span><code>cargo install &lt;crate&gt;</code>, already installed</span> <span data-label="Which protocol">Nothing is built. Cargo prints <em>already installed, use --force to override</em> and exits 0, so the protocol stays exactly as stale as it was.</span></div>
+      <div class="row"><span><code>cargo install &lt;crate&gt; --force</code></span> <span data-label="Which protocol">Rebuilt and re-resolved, so the protocol is current. This is the one that upgrades a dog after you upgrade shep.</span></div>
+      <div class="row"><span><code>cargo install --locked</code>, and most CI</span> <span data-label="Which protocol">The shipped lockfile is honoured, so the protocol is whatever was pinned on publish day.</span></div>
     </div>
     <p class="fine">
       <code>&lt;crate&gt;</code> is the package name on crates.io, which is not

@@ -302,14 +302,22 @@
 }
 
 @media (max-width: 640px) {
-  .docs-shell main .field-table .row {
+  .docs-shell main .field-table .row,
+  .docs-shell main .metrics-table .row {
     grid-template-columns: 1fr;
     gap: 5px;
   }
 
   /* The header row cannot survive one column, so each cell carries its own
-     heading instead of losing it. */
-  .docs-shell main .field-table .row.header {
+     heading instead of losing it.
+
+     Named through the table class rather than as a bare `.row.header`, for
+     the reason from-pm2 records beside its own copy: a page that scopes
+     `.metrics-table .row` gets four class-weight selectors out of Astro and
+     a bare rule here only has three, so the bare version loses and the
+     header stays on screen. */
+  .docs-shell main .field-table .row.header,
+  .docs-shell main .metrics-table .row.header {
     display: none;
   }
 
