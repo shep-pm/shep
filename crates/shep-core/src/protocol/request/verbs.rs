@@ -1,4 +1,4 @@
-//! RPC frames: requests, responses, envelopes, and structured errors
+//! [`Request`], one variant per verb, and the selector a verb names a sheep with.
 
 use std::collections::BTreeMap;
 
@@ -6,25 +6,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::{AppConfig, DeclaredApp, ResetDepth};
 
-mod config_reply;
-mod envelope;
-mod handshake;
-mod outcomes;
-mod process;
-mod redacted;
-mod response;
-mod smit;
+use super::{DogSectionToml, DogSource, EnvValue, Smit};
 
-pub use config_reply::{SheepApplied, SheepConfigView, SheepDrift, SheepRefusal};
-pub use envelope::{Envelope, HelloReply, Reply, RpcError, RpcErrorCode};
-pub use handshake::{Hello, HelloAck};
-pub use outcomes::{
-    ActionOutcome, ActionReply, LineOutcome, LineReply, SignalOutcome, SignalReply,
-};
-pub use process::{DogSource, ExitInfo, Lamb, ProcessInfo, ProcessInfoBuilder, sort_flock};
-pub use redacted::{DogSectionToml, EnvValue};
-pub use response::{HostUsage, Response};
-pub use smit::{Smit, SmitError};
+// Named by intra-doc links and by nothing rustc compiles, so the
+// import is behind `cfg(doc)` rather than flagged unused.
+#[cfg(doc)]
+use super::{Response, RpcErrorCode, SheepApplied, SheepDrift};
 
 /// Serializable selector (mirror of [`crate::selector::ProcessSelector`];
 /// regex travels as its source string)
@@ -496,9 +483,9 @@ pub enum Request {
 
 #[cfg(test)]
 mod tests {
+    use super::super::{Envelope, LineOutcome, LineReply, Response, SignalOutcome, SignalReply};
     use super::*;
-
-    use crate::config::AppConfig;
+    use crate::protocol::MIN_SUPPORTED;
 
     #[test]
     fn a_signal_request_and_its_reply_round_trip() {
@@ -649,7 +636,7 @@ mod tests {
     /// for reasons unrelated to this variant.
     #[test]
     fn the_batch_variant_did_not_raise_the_floor() {
-        assert_eq!(super::super::MIN_SUPPORTED, 8);
+        assert_eq!(MIN_SUPPORTED, 8);
     }
 
     #[test]
