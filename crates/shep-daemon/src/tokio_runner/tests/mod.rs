@@ -32,6 +32,7 @@ use super::pump::spawn_log_pump;
 
 mod handover;
 mod log_io;
+mod spawn_io;
 
 /// How long a pump gets to answer before a test calls it hung. A pump
 /// that is working answers in microseconds; this is slack for a loaded
