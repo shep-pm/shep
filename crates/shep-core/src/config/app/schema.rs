@@ -1,72 +1,10 @@
-//! Per-app configuration schema: one sheep's Flockfile entry.
-
-use core::fmt;
-
+use super::env_value::deserialize_env;
+use super::probe::ProbeConfig;
 use std::collections::BTreeMap;
-
 // use schemars::generate
-use serde::{Deserialize, Deserializer, Serialize};
-
 use crate::config::LevelRule;
 use crate::values::{MemSize, UpDuration};
-
-/// How a health probe checks a sheep
-// wire format: changing these strings is a breaking change
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(rename_all = "snake_case")]
-pub enum ProbeKind {
-    /// HTTP GET must return 2xx
-    Http,
-    /// TCP connect must succeed
-    Tcp,
-    /// Command must exit 0
-    Exec,
-}
-
-/// Readiness/liveness probe configuration (spec §7)
-// wire format: changing field names/defaults is a breaking change
-// `deny_unknown_fields` used to live here. This type rides the wire inside
-// `AppConfig` (itself carried by `Request::Start`, `Request::Add`, and
-// `Response::SheepConfig`), where an unknown field means a newer peer, not
-// a typo — denying it here would make a newer daemon's reply break an
-// older client. The denial moved to `Flockfile::parse`, where the input
-// really is a hand-written file. Do not restore the serde attribute here.
-//
-// The schema-only sibling attribute below is not the same thing and stays:
-// `schemars(deny_unknown_fields)` only shapes the generated
-// `additionalProperties: false`, which an editor uses to flag a Flockfile
-// typo before a parse ever runs. It never reaches `#[derive(Deserialize)]`
-// (schemars mirrors it into a synthesized attribute its own macro expansion
-// reads, not the real one), so the wire still tolerates an unknown field.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[cfg_attr(feature = "schema", schemars(deny_unknown_fields))]
-pub struct ProbeConfig {
-    /// Probe mechanism
-    pub kind: ProbeKind,
-    /// URL (http), `host:port` (tcp), or command line (exec)
-    pub target: String,
-    /// Time between probes (default 10s)
-    #[serde(default = "default_probe_interval")]
-    pub interval: UpDuration,
-    /// Per-probe timeout (default 5s)
-    #[serde(default = "default_probe_timeout")]
-    pub timeout: UpDuration,
-    /// Consecutive failures before the probe reports unhealthy (default 3)
-    #[serde(default = "default_failure_threshold")]
-    pub failure_threshold: u32,
-}
-
-fn default_probe_interval() -> UpDuration {
-    UpDuration::from_millis(10_000)
-}
-fn default_probe_timeout() -> UpDuration {
-    UpDuration::from_millis(5_000)
-}
-fn default_failure_threshold() -> u32 {
-    3
-}
+use serde::{Deserialize, Serialize};
 
 /// Per-app configuration — one sheep's entry in a Flockfile
 ///
@@ -606,242 +544,16 @@ pub struct AppConfig {
     pub cron_timezone: Option<String>,
 }
 
-/// One value an `env` table may carry: a string, or a bare boolean or whole
-/// number an operator wrote without quoting.
-///
-/// Exists only to read a Flockfile, where the document is hand-written and a
-/// bare value is a plausible shortcut. It never rides the wire: [`AppConfig`]
-/// is serialized through its own impls, which see only `String`.
-///
-/// Debug does not leak an env value. A derived one would print the contents,
-/// and a `{:?}` on a config mid-parse is how a secret reaches a log.
-enum EnvValue {
-    /// A quoted value, kept verbatim
-    Str(String),
-    /// A bare `true` or `false`
-    Bool(bool),
-    /// A whole number, signed or unsigned
-    Int(i128),
-}
-
-impl fmt::Debug for EnvValue {
-    /// Prints only the shape of the value, never its contents.
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Str(_) => f.write_str("<str>"),
-            Self::Bool(_) => f.write_str("<bool>"),
-            Self::Int(_) => f.write_str("<int>"),
-        }
-    }
-}
-
-impl EnvValue {
-    /// Renders the value as the string a process receives. Consuming: a borrow
-    /// would force the `Str` arm to clone.
-    #[must_use]
-    fn into_string(self) -> String {
-        match self {
-            Self::Str(s) => s,
-            Self::Bool(b) => b.to_string(),
-            Self::Int(n) => n.to_string(),
-        }
-    }
-}
-
-impl<'de> serde::de::Deserialize<'de> for EnvValue {
-    /// Reads one `env` value in whatever raw form it arrives.
-    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
-        struct EnvValueVisitor;
-
-        impl serde::de::Visitor<'_> for EnvValueVisitor {
-            type Value = EnvValue;
-
-            fn expecting(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                f.write_str("a string, boolean, or whole number")
-            }
-
-            /// A quoted value, kept verbatim.
-            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<EnvValue, E> {
-                Ok(EnvValue::Str(v.to_string()))
-            }
-
-            /// A quoted value from a non-borrowed source.
-            fn visit_string<E: serde::de::Error>(self, v: String) -> Result<EnvValue, E> {
-                Ok(EnvValue::Str(v))
-            }
-
-            /// A bare `true` or `false`.
-            fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<EnvValue, E> {
-                Ok(EnvValue::Bool(v))
-            }
-
-            /// A whole signed number.
-            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<EnvValue, E> {
-                // i128 holds the full i64 range losslessly.
-                Ok(EnvValue::Int(i128::from(v)))
-            }
-
-            /// A whole unsigned number. Only JSON can produce one beyond
-            /// `i64::MAX`; TOML's own spec bounds integers to signed 64-bit,
-            /// so its `visit_u64` input is always within `i64::MAX` and the
-            /// wider type is invisible from a TOML Flockfile. i128 holds
-            /// whatever we receive losslessly, so no value is refused.
-            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<EnvValue, E> {
-                Ok(EnvValue::Int(i128::from(v)))
-            }
-
-            /// A float, refused. `f64` carries no trailing zero and no
-            /// written precision, so `1.10` would reach the process as
-            /// `1.1`. The value is left out of the message: an `env` value
-            /// never reaches a log.
-            fn visit_f64<E: serde::de::Error>(self, _v: f64) -> Result<EnvValue, E> {
-                Err(E::custom(
-                    "a float env value loses its written form, quote it",
-                ))
-            }
-        }
-
-        de.deserialize_any(EnvValueVisitor)
-    }
-}
-
-/// Reads an `env` table, rendering each [`EnvValue`] as the string a process
-/// receives. The `deserialize_with` on [`AppConfig::env`].
-fn deserialize_env<'de, D: Deserializer<'de>>(de: D) -> Result<BTreeMap<String, String>, D::Error> {
-    Ok(BTreeMap::<String, EnvValue>::deserialize(de)?
-        .into_iter()
-        .map(|(k, v)| (k, v.into_string()))
-        .collect())
-}
-
-/// Redacts `env`: only its length is printed.
-impl fmt::Debug for AppConfig {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AppConfig")
-            .field("name", &self.name)
-            .field("script", &self.script)
-            .field("env", &format_args!("<{} vars>", self.env.len()))
-            .finish_non_exhaustive()
-    }
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            script: String::new(),
-            args: Vec::new(),
-            cwd: None,
-            interpreter: None,
-            env: BTreeMap::new(),
-            environment: None,
-            instances: 1,
-            autorestart: true,
-            autostart: true,
-            stop_exit_codes: Vec::new(),
-            min_uptime: UpDuration::from_millis(1000),
-            max_restarts: 16,
-            restart_delay: None,
-            // Not None: see the field's doc comment. An unstable exit with
-            // no restart policy configured must not restart instantly.
-            exp_backoff_restart_delay: Some(UpDuration::from_millis(100)),
-            kill_signal: None,
-            kill_timeout: UpDuration::from_millis(1600),
-            shutdown_with_message: false,
-            listen_timeout: UpDuration::from_millis(3000),
-            graceful_timeout: UpDuration::from_millis(8000),
-            action_timeout: UpDuration::from_millis(3000),
-            max_memory: None,
-            watch: false,
-            ignore_watch: Vec::new(),
-            watch_delay: None,
-            cron_restart: None,
-            fold: None,
-            depends_on: Vec::new(),
-            user: None,
-            group: None,
-            out_file: None,
-            err_file: None,
-            merge_logs: false,
-            level_rules: Vec::new(),
-            channel: false,
-            stdin: false,
-            wait_ready: false,
-            reuse_port: false,
-            readiness_probe: None,
-            liveness_probe: None,
-            watch_options: Vec::new(),
-            cron_timezone: None,
-        }
-    }
-}
-
-impl AppConfig {
-    /// A minimal config with spec defaults, the programmatic entry point.
-    #[must_use]
-    pub fn minimal(name: &str, script: &str) -> Self {
-        Self {
-            name: name.to_string(),
-            script: script.to_string(),
-            ..Self::default()
-        }
-    }
-
-    /// The names of the fields whose values differ between `self` and
-    /// `other`, in field-name order.
-    ///
-    /// Names only, never values. The one caller sends this list across the
-    /// wire to be printed at an operator, and [`AppConfig::env`] carries
-    /// secrets, so a differing `env` reports `"env"` and stops there.
-    ///
-    /// Compare configs that have both been through
-    /// [`normalize`](fn@crate::config::normalize). Two configs differing only
-    /// in what normalization would have filled in are not a difference an
-    /// operator can act on, and reporting them would make the caller noisy
-    /// about nothing.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use shep_core::config::AppConfig;
-    ///
-    /// let stored = AppConfig::minimal("web", "./srv");
-    /// let mut edited = stored.clone();
-    /// edited.cwd = Some("/srv".to_string());
-    ///
-    /// assert_eq!(stored.drifted_fields(&edited), vec!["cwd".to_string()]);
-    /// assert!(stored.drifted_fields(&stored).is_empty());
-    /// ```
-    #[must_use]
-    pub fn drifted_fields(&self, other: &Self) -> Vec<String> {
-        if self == other {
-            return Vec::new();
-        }
-        // Serde-compared, not field by field: a new field needs no edit here.
-        // Sorted since `serde_json::Map` is a `BTreeMap` only while
-        // `preserve_order` is off crate-wide. An empty result means no
-        // drift, or none could be computed.
-        let (Ok(serde_json::Value::Object(mine)), Ok(serde_json::Value::Object(theirs))) =
-            (serde_json::to_value(self), serde_json::to_value(other))
-        else {
-            return Vec::new();
-        };
-        let mut fields: Vec<String> = mine
-            .iter()
-            .filter(|(key, value)| theirs.get(key.as_str()) != Some(value))
-            .map(|(key, _)| key.clone())
-            .collect();
-        fields.sort_unstable();
-        fields
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::super::probe::ProbeKind;
 
-    use crate::config::{LevelRule, LineLevel, NormalizeError};
+    // use schemars::generate
+
+    use super::*;
     use crate::values::{MemSize, UpDuration};
+
+    use super::super::testing::*;
 
     #[test]
     fn minimal_config_gets_spec_defaults() {
@@ -898,14 +610,14 @@ mod tests {
     #[test]
     fn toml_round_trip_with_newtypes() {
         let toml_src = r#"
-name = "worker"
-script = "python3"
-args = ["job.py", "--fast"]
-max_memory = "512M"
-min_uptime = "5s"
-fold = "backend"
-env = { RUST_LOG = "info" }
-"#;
+    name = "worker"
+    script = "python3"
+    args = ["job.py", "--fast"]
+    max_memory = "512M"
+    min_uptime = "5s"
+    fold = "backend"
+    env = { RUST_LOG = "info" }
+    "#;
         let app: AppConfig = toml::from_str(toml_src).unwrap();
         assert_eq!(app.max_memory, Some("512M".parse::<MemSize>().unwrap()));
         assert_eq!(app.min_uptime, UpDuration::from_millis(5000));
@@ -922,10 +634,10 @@ env = { RUST_LOG = "info" }
     #[test]
     fn env_coerces_raw_scalars_to_their_string_form() {
         let src = r#"
-name = "web"
-script = "./srv"
-env = { SOME_BOOL = true, PORT = 8080, NEG = -1, STR = "plain" }
-"#;
+    name = "web"
+    script = "./srv"
+    env = { SOME_BOOL = true, PORT = 8080, NEG = -1, STR = "plain" }
+    "#;
         let app: AppConfig = toml::from_str(src).unwrap();
         assert_eq!(app.env["SOME_BOOL"], "true");
         assert_eq!(app.env["PORT"], "8080");
@@ -1007,10 +719,10 @@ env = { SOME_BOOL = true, PORT = 8080, NEG = -1, STR = "plain" }
     #[test]
     fn env_serialization_is_always_string_regardless_of_input_form() {
         let src = r#"
-name = "web"
-script = "./srv"
-env = { SOME_BOOL = true, PORT = 8080, STR = "hello" }
-"#;
+    name = "web"
+    script = "./srv"
+    env = { SOME_BOOL = true, PORT = 8080, STR = "hello" }
+    "#;
         let app: AppConfig = toml::from_str(src).unwrap();
         let wire = serde_json::to_value(&app).unwrap();
         for (key, expected) in [("SOME_BOOL", "true"), ("PORT", "8080"), ("STR", "hello")] {
@@ -1054,13 +766,13 @@ env = { SOME_BOOL = true, PORT = 8080, STR = "hello" }
     #[test]
     fn probe_config_parses_with_defaults() {
         let src = r#"
-name = "api"
-script = "./api"
+    name = "api"
+    script = "./api"
 
-[readiness_probe]
-kind = "http"
-target = "http://127.0.0.1:8080/healthz"
-"#;
+    [readiness_probe]
+    kind = "http"
+    target = "http://127.0.0.1:8080/healthz"
+    "#;
         let app: AppConfig = toml::from_str(src).unwrap();
         let probe = app.readiness_probe.unwrap();
         assert_eq!(probe.kind, ProbeKind::Http);
@@ -1081,74 +793,6 @@ target = "http://127.0.0.1:8080/healthz"
         assert_eq!(
             format!("{app:?}"),
             "AppConfig { name: \"web\", script: \"./srv\", env: <2 vars>, .. }"
-        );
-    }
-
-    /// `EnvValue::Debug` prints only the kind, never the value — the exact
-    /// string is pinned so a derived `Debug` (which prints the contents) fails
-    /// here. This is the unit half of the redaction guarantee.
-    #[test]
-    fn env_value_debug_never_prints_the_value() {
-        let cases = [
-            (EnvValue::Str("postgres://secret".to_string()), "<str>"),
-            (EnvValue::Bool(true), "<bool>"),
-            (EnvValue::Int(9_223_372_036_854_775_807), "<int>"),
-        ];
-        for (value, expected) in cases {
-            assert_eq!(format!("{value:?}"), expected);
-        }
-    }
-
-    #[test]
-    fn an_unedited_config_has_drifted_in_no_field() {
-        let app = AppConfig::minimal("web", "./srv");
-
-        assert!(app.drifted_fields(&app.clone()).is_empty());
-    }
-
-    #[test]
-    fn drift_names_every_edited_field_and_no_other() {
-        // Two fields, not one, so a comparator that stopped at the first
-        // difference fails here.
-        let stored = AppConfig::minimal("proto-api", "./proto-enum-api");
-        let mut edited = stored.clone();
-        edited.cwd = Some("/srv/pogo-proto-api".to_string());
-        edited.args = vec!["-config".to_string(), "config.toml".to_string()];
-
-        assert_eq!(
-            stored.drifted_fields(&edited),
-            vec!["args".to_string(), "cwd".to_string()]
-        );
-    }
-
-    #[test]
-    fn drift_reports_env_by_name_and_never_by_value() {
-        let stored = AppConfig::minimal("web", "./srv");
-        let mut edited = stored.clone();
-        edited
-            .env
-            .insert("DATABASE_URL".to_string(), "postgres://hunter2".to_string());
-
-        let fields = edited.drifted_fields(&stored);
-
-        assert_eq!(fields, vec!["env".to_string()]);
-        // Names go to an operator; a value never should.
-        assert!(!fields.concat().contains("hunter2"));
-    }
-
-    #[test]
-    fn drift_is_symmetric() {
-        let stored = AppConfig::minimal("web", "./srv");
-        let mut edited = stored.clone();
-        edited.instances = 4;
-
-        assert_eq!(
-            stored.drifted_fields(&edited),
-            edited.drifted_fields(&stored)
-        );
-        assert_eq!(
-            stored.drifted_fields(&edited),
-            vec!["instances".to_string()]
         );
     }
 
@@ -1195,386 +839,6 @@ target = "http://127.0.0.1:8080/healthz"
         }
     }
 
-    /// Where a per-field `refuses` clause is enforced.
-    ///
-    /// A panel naming a refusal nothing makes is the defect this table
-    /// exists to stop, so a claim is either exercised against `normalize`
-    /// or carries the reason it cannot be.
-    enum Proof {
-        /// `normalize` refuses this config, with an error this predicate
-        /// accepts.
-        Refused {
-            /// A sheep whose only fault is the one the claim names.
-            /// Boxed so this arm does not set the size of every row.
-            value: Box<AppConfig>,
-            /// The variant the refusal must arrive as.
-            matches: fn(&NormalizeError) -> bool,
-        },
-        /// Enforced somewhere `normalize` cannot reach, named here so the
-        /// gap stays a decision rather than an oversight.
-        Elsewhere(&'static str),
-    }
-
-    /// One clause of one field's `refuses` list, with its proof.
-    struct RefusalClaim {
-        /// The Flockfile field carrying the clause.
-        field: &'static str,
-        /// The clause, character for character as the schema writes it.
-        refusal: &'static str,
-        /// What makes it true.
-        proof: Proof,
-    }
-
-    /// A claim `normalize` proves.
-    fn refused(
-        field: &'static str,
-        refusal: &'static str,
-        value: AppConfig,
-        matches: fn(&NormalizeError) -> bool,
-    ) -> RefusalClaim {
-        RefusalClaim {
-            field,
-            refusal,
-            proof: Proof::Refused {
-                value: Box::new(value),
-                matches,
-            },
-        }
-    }
-
-    /// A claim enforced past `normalize`, with `where` naming the enforcer.
-    fn elsewhere(field: &'static str, refusal: &'static str, place: &'static str) -> RefusalClaim {
-        RefusalClaim {
-            field,
-            refusal,
-            proof: Proof::Elsewhere(place),
-        }
-    }
-
-    /// A minimal sheep with one thing changed, so a row carries only the
-    /// value its own claim is about.
-    fn sheep(edit: impl FnOnce(&mut AppConfig)) -> AppConfig {
-        let mut app = AppConfig::minimal("web", "./srv");
-        edit(&mut app);
-        app
-    }
-
-    /// A probe of `kind` with everything else at its default, read from the
-    /// same functions serde fills a missing field from.
-    fn probe(kind: ProbeKind, target: &str) -> ProbeConfig {
-        ProbeConfig {
-            kind,
-            target: target.to_owned(),
-            interval: default_probe_interval(),
-            timeout: default_probe_timeout(),
-            failure_threshold: default_failure_threshold(),
-        }
-    }
-
-    /// Every `refuses` clause in the schema, paired with what enforces it.
-    ///
-    /// Ordered by field, then as the field writes them. A clause naming
-    /// several spellings gets a row for each, since one of them passing
-    /// says nothing about the rest.
-    ///
-    /// Refusals only. Most fields have nothing validating them, so proving
-    /// an `accepts` clause by handing `normalize` a value it never inspects
-    /// would pass whatever the clause said.
-    fn refusal_claims() -> Vec<RefusalClaim> {
-        vec![
-            refused(
-                "args",
-                "an unclosed {{ token",
-                sheep(|a| a.args = vec!["{{name".to_owned()]),
-                |e| matches!(e, NormalizeError::BadTemplate { .. }),
-            ),
-            refused(
-                "args",
-                "a token shep does not define",
-                sheep(|a| a.args = vec!["{{slot}}".to_owned()]),
-                |e| matches!(e, NormalizeError::BadTemplate { .. }),
-            ),
-            refused(
-                "cron_restart",
-                "a field outside its valid range",
-                sheep(|a| a.cron_restart = Some("99 * * * *".to_owned())),
-                |e| matches!(e, NormalizeError::InvalidCron { .. }),
-            ),
-            refused(
-                "cron_restart",
-                "a sixth seconds field, or L, W, # or ?",
-                sheep(|a| a.cron_restart = Some("0 0 * * * *".to_owned())),
-                |e| matches!(e, NormalizeError::InvalidCron { .. }),
-            ),
-            refused(
-                "cron_restart",
-                "a sixth seconds field, or L, W, # or ?",
-                sheep(|a| a.cron_restart = Some("0 0 L * *".to_owned())),
-                |e| matches!(e, NormalizeError::InvalidCron { .. }),
-            ),
-            refused(
-                "cron_restart",
-                "a sixth seconds field, or L, W, # or ?",
-                sheep(|a| a.cron_restart = Some("0 0 15W * *".to_owned())),
-                |e| matches!(e, NormalizeError::InvalidCron { .. }),
-            ),
-            refused(
-                "cron_restart",
-                "a sixth seconds field, or L, W, # or ?",
-                sheep(|a| a.cron_restart = Some("0 0 * * 1#2".to_owned())),
-                |e| matches!(e, NormalizeError::InvalidCron { .. }),
-            ),
-            refused(
-                "cron_restart",
-                "a sixth seconds field, or L, W, # or ?",
-                sheep(|a| a.cron_restart = Some("0 0 ? * *".to_owned())),
-                |e| matches!(e, NormalizeError::InvalidCron { .. }),
-            ),
-            refused(
-                "cron_restart",
-                "a pattern croner cannot parse",
-                sheep(|a| a.cron_restart = Some("every tuesday".to_owned())),
-                |e| matches!(e, NormalizeError::InvalidCron { .. }),
-            ),
-            refused(
-                "cron_timezone",
-                "a name outside the IANA database",
-                sheep(|a| a.cron_timezone = Some("Mars/Olympus".to_owned())),
-                |e| matches!(e, NormalizeError::InvalidTimezone { .. }),
-            ),
-            refused(
-                "depends_on",
-                "this sheep's own name",
-                sheep(|a| a.depends_on = vec!["web".to_owned()]),
-                |e| matches!(e, NormalizeError::SelfDependency(_)),
-            ),
-            refused(
-                "depends_on",
-                "a name:slot instance reference",
-                sheep(|a| a.depends_on = vec!["api:0".to_owned()]),
-                |e| matches!(e, NormalizeError::InstanceDependency { .. }),
-            ),
-            elsewhere(
-                "env",
-                "a float, since 1.10 would arrive as 1.1",
-                "EnvValue's Deserialize, before normalize sees the table",
-            ),
-            refused(
-                "env",
-                "a token shep does not define",
-                sheep(|a| {
-                    a.env.insert("WORKER".to_owned(), "{{slot}}".to_owned());
-                }),
-                |e| matches!(e, NormalizeError::BadTemplate { .. }),
-            ),
-            refused(
-                "env",
-                "SHEP_INSTANCE, SHEP_NAME, or SHEP_ENVIRONMENT, which shep sets itself",
-                sheep(|a| {
-                    a.env.insert("SHEP_INSTANCE".to_owned(), "0".to_owned());
-                }),
-                |e| matches!(e, NormalizeError::ReservedEnvVar { .. }),
-            ),
-            refused(
-                "env",
-                "SHEP_INSTANCE, SHEP_NAME, or SHEP_ENVIRONMENT, which shep sets itself",
-                sheep(|a| {
-                    a.env.insert("SHEP_NAME".to_owned(), "web".to_owned());
-                }),
-                |e| matches!(e, NormalizeError::ReservedEnvVar { .. }),
-            ),
-            refused(
-                "env",
-                "SHEP_INSTANCE, SHEP_NAME, or SHEP_ENVIRONMENT, which shep sets itself",
-                sheep(|a| {
-                    a.env
-                        .insert("SHEP_ENVIRONMENT".to_owned(), "staging".to_owned());
-                }),
-                |e| matches!(e, NormalizeError::ReservedEnvVar { .. }),
-            ),
-            refused(
-                "env",
-                "an unclosed {{ token",
-                sheep(|a| {
-                    a.env.insert("GREETING".to_owned(), "{{name".to_owned());
-                }),
-                |e| matches!(e, NormalizeError::BadTemplate { .. }),
-            ),
-            refused(
-                "environment",
-                "all, the store's every-environment slot",
-                sheep(|a| a.environment = Some(crate::secrets::ALL_ENVIRONMENTS.to_owned())),
-                |e| matches!(e, NormalizeError::InvalidEnvironment { .. }),
-            ),
-            refused(
-                "environment",
-                "a name outside letters, digits, dot, underscore, or dash",
-                sheep(|a| a.environment = Some("staging!".to_owned())),
-                |e| matches!(e, NormalizeError::InvalidEnvironment { .. }),
-            ),
-            refused(
-                "err_file",
-                "a {{secret:...}} token",
-                sheep(|a| a.err_file = Some("/var/log/{{secret:tenant}}.log".to_owned())),
-                |e| matches!(e, NormalizeError::SecretInLogPath { .. }),
-            ),
-            refused(
-                "err_file",
-                "one path for every instance, without merge_logs",
-                sheep(|a| {
-                    a.instances = 2;
-                    a.err_file = Some("/var/log/web-err.log".to_owned());
-                }),
-                |e| matches!(e, NormalizeError::SharedLogPath { .. }),
-            ),
-            elsewhere(
-                "group",
-                "a name with no group entry",
-                "shep-daemon's privilege::resolve, at spawn",
-            ),
-            elsewhere(
-                "group",
-                "another group, unless the shepherd runs as root",
-                "shep-daemon's privilege::resolve, at spawn",
-            ),
-            refused(
-                "ignore_watch",
-                "a pattern globset cannot compile",
-                sheep(|a| a.ignore_watch = vec!["[".to_owned()]),
-                |e| matches!(e, NormalizeError::InvalidWatchGlob { .. }),
-            ),
-            refused(
-                "kill_signal",
-                "a signal outside that list",
-                sheep(|a| a.kill_signal = Some("SIGKILL".to_owned())),
-                |e| matches!(e, NormalizeError::InvalidKillSignal { .. }),
-            ),
-            refused(
-                "level_rules",
-                "an empty pattern, which would claim every line",
-                sheep(|a| {
-                    a.level_rules = vec![LevelRule {
-                        pattern: String::new(),
-                        level: LineLevel::Error,
-                    }];
-                }),
-                |e| matches!(e, NormalizeError::InvalidLevelRule { .. }),
-            ),
-            refused(
-                "level_rules",
-                "a pattern regex cannot compile",
-                sheep(|a| {
-                    a.level_rules = vec![LevelRule {
-                        pattern: "[unterminated".to_owned(),
-                        level: LineLevel::Error,
-                    }];
-                }),
-                |e| matches!(e, NormalizeError::InvalidLevelRule { .. }),
-            ),
-            refused(
-                "liveness_probe",
-                "a failure_threshold of 0",
-                sheep(|a| {
-                    let mut p = probe(ProbeKind::Tcp, "127.0.0.1:8080");
-                    p.failure_threshold = 0;
-                    a.liveness_probe = Some(p);
-                }),
-                |e| matches!(e, NormalizeError::ZeroFailureThreshold { .. }),
-            ),
-            refused(
-                "liveness_probe",
-                "an interval below its own floor",
-                sheep(|a| {
-                    let mut p = probe(ProbeKind::Tcp, "127.0.0.1:8080");
-                    p.interval = UpDuration::from_millis(500);
-                    a.liveness_probe = Some(p);
-                }),
-                |e| matches!(e, NormalizeError::IntervalBelowMinimum { .. }),
-            ),
-            refused(
-                "name",
-                "a path separator or a colon",
-                sheep(|a| a.name = "web/api".to_owned()),
-                |e| matches!(e, NormalizeError::InvalidName(_)),
-            ),
-            refused(
-                "name",
-                "a path separator or a colon",
-                sheep(|a| a.name = r"web\api".to_owned()),
-                |e| matches!(e, NormalizeError::InvalidName(_)),
-            ),
-            refused(
-                "name",
-                "a path separator or a colon",
-                sheep(|a| a.name = "web:0".to_owned()),
-                |e| matches!(e, NormalizeError::InvalidName(_)),
-            ),
-            refused(
-                "name",
-                "a bare . or ..",
-                sheep(|a| a.name = ".".to_owned()),
-                |e| matches!(e, NormalizeError::InvalidName(_)),
-            ),
-            refused(
-                "name",
-                "a bare . or ..",
-                sheep(|a| a.name = "..".to_owned()),
-                |e| matches!(e, NormalizeError::InvalidName(_)),
-            ),
-            refused(
-                "out_file",
-                "a {{secret:...}} token",
-                sheep(|a| a.out_file = Some("/var/log/{{secret:tenant}}.log".to_owned())),
-                |e| matches!(e, NormalizeError::SecretInLogPath { .. }),
-            ),
-            refused(
-                "out_file",
-                "one path for every instance, without merge_logs",
-                sheep(|a| {
-                    a.instances = 2;
-                    a.out_file = Some("/var/log/web-out.log".to_owned());
-                }),
-                |e| matches!(e, NormalizeError::SharedLogPath { .. }),
-            ),
-            refused(
-                "readiness_probe",
-                "a failure_threshold of 0",
-                sheep(|a| {
-                    let mut p = probe(ProbeKind::Tcp, "127.0.0.1:8080");
-                    p.failure_threshold = 0;
-                    a.readiness_probe = Some(p);
-                }),
-                |e| matches!(e, NormalizeError::ZeroFailureThreshold { .. }),
-            ),
-            refused(
-                "readiness_probe",
-                "an interval below its own floor",
-                sheep(|a| {
-                    let mut p = probe(ProbeKind::Tcp, "127.0.0.1:8080");
-                    p.interval = UpDuration::from_millis(0);
-                    a.readiness_probe = Some(p);
-                }),
-                |e| matches!(e, NormalizeError::IntervalBelowMinimum { .. }),
-            ),
-            elsewhere(
-                "user",
-                "a name with no passwd entry",
-                "shep-daemon's privilege::resolve, at spawn",
-            ),
-            elsewhere(
-                "user",
-                "another user, unless the shepherd runs as root",
-                "shep-daemon's privilege::resolve, at spawn",
-            ),
-            refused(
-                "watch_options",
-                "a pattern globset cannot compile",
-                sheep(|a| a.watch_options = vec!["[".to_owned()]),
-                |e| matches!(e, NormalizeError::InvalidWatchGlob { .. }),
-            ),
-        ]
-    }
-
     /// fails if a field claims a refusal `normalize` does not make. The
     /// static tables behind the same panel are parser-backed in
     /// `shep-cli`'s `lookout::validation`; a per-field clause is only
@@ -1592,55 +856,10 @@ target = "http://127.0.0.1:8080/healthz"
                 Err(err) => assert!(
                     matches(&err),
                     "{field}'s \"{refusal}\" was refused as {err:?}, which is not the variant \
-                     the table names"
+                         the table names"
                 ),
             }
         }
-    }
-
-    /// fails if a clause starts or stops leaning on an enforcer outside
-    /// this crate. The list is written twice on purpose: without a second
-    /// copy, `Proof::Elsewhere` is a free pass past the test above.
-    #[test]
-    fn the_clauses_enforced_outside_normalize_are_the_ones_named() {
-        let claims = refusal_claims();
-        let outside: Vec<(&str, &str, &str)> = claims
-            .iter()
-            .filter_map(|claim| match claim.proof {
-                Proof::Elsewhere(place) => Some((claim.field, claim.refusal, place)),
-                Proof::Refused { .. } => None,
-            })
-            .collect();
-        assert_eq!(
-            outside,
-            vec![
-                (
-                    "env",
-                    "a float, since 1.10 would arrive as 1.1",
-                    "EnvValue's Deserialize, before normalize sees the table",
-                ),
-                (
-                    "group",
-                    "a name with no group entry",
-                    "shep-daemon's privilege::resolve, at spawn",
-                ),
-                (
-                    "group",
-                    "another group, unless the shepherd runs as root",
-                    "shep-daemon's privilege::resolve, at spawn",
-                ),
-                (
-                    "user",
-                    "a name with no passwd entry",
-                    "shep-daemon's privilege::resolve, at spawn",
-                ),
-                (
-                    "user",
-                    "another user, unless the shepherd runs as root",
-                    "shep-daemon's privilege::resolve, at spawn",
-                ),
-            ]
-        );
     }
 
     /// fails if a value the panel offers with one keypress is one
@@ -1709,8 +928,8 @@ target = "http://127.0.0.1:8080/healthz"
         assert!(
             unproved.is_empty() && stale.is_empty(),
             "a refusal and its proof live together, in refusal_claims in this file.\n  \
-             claimed by a field, proved nowhere: {unproved:?}\n  \
-             proved here, claimed by no field: {stale:?}"
+                 claimed by a field, proved nowhere: {unproved:?}\n  \
+                 proved here, claimed by no field: {stale:?}"
         );
     }
 }
