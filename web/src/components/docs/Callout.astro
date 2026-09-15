@@ -13,7 +13,7 @@ const { variant } = Astro.props;
 
 <div class:list={["callout", variant]}>
   <span class="tag">{variant}</span>
-  <p><slot /></p>
+  <div class="body"><slot /></div>
 </div>
 
 <style>
@@ -56,11 +56,30 @@ const { variant } = Astro.props;
     color: var(--ink);
   }
 
-  .callout p {
-    margin: 0;
+  /*
+   * A div, not a p, because a caller can pass paragraphs and a <p> cannot
+   * hold one: the parser closes the wrapper and every paragraph becomes a
+   * grid item of its own. On /docs/writing-a-dog that put a paragraph in the
+   * tag's column, which is sized to its content, so the column took 267px of
+   * the 327 available and the body column was left at zero. The text ran
+   * 54px past the right edge of the page, and the page scrolled sideways.
+   */
+  .callout .body {
     font-size: 15px;
     line-height: 1.55;
     color: var(--ink-2);
+  }
+
+  /* The prose belongs to the caller, so these have to reach out of scope. */
+  .callout .body :global(p) {
+    margin: 0;
+    font-size: inherit;
+    line-height: inherit;
+    color: inherit;
+  }
+
+  .callout .body :global(p + p) {
+    margin-top: 12px;
   }
 
   .callout :global(code) {
