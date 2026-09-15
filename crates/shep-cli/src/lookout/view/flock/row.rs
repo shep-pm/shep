@@ -179,7 +179,7 @@ fn group_cell(app: &App, name: &str, column: Column, totals: &GroupTotals) -> St
 /// ([`super::layout::gutter`]) is no longer the only tell.
 ///
 /// `grouped` says whether a group header sits above this row, which is the
-/// only thing that changes NAME, FOLD and SMIT. See [`cell`].
+/// only thing that changes NAME, FOLD and SMIT. See [`cell()`].
 #[must_use]
 pub fn row_line(
     app: &App,

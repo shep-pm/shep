@@ -78,7 +78,7 @@ impl Classifier {
     /// none.
     ///
     /// A list that will not compile answers with [`level_of`] too.
-    /// [`shep_core::config::normalize`] refuses one before it can be stored,
+    /// [`shep_core::config::normalize()`] refuses one before it can be stored,
     /// so that is unreachable rather than lenient; falling back still beats
     /// a feed that silently classifies nothing.
     #[must_use]

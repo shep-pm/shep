@@ -319,7 +319,8 @@ const SCALAR_VALUE_W: u16 = 30;
 /// saying anything and there is nothing left to trade.
 const SCALAR_VALUE_MIN: u16 = 10;
 /// SOURCE column width: `$SHEP_STYLE` and `the default` are both 11 columns,
-/// the widest two words [`crate::style::StyleSource::Display`] ever prints.
+/// the widest two words [`crate::style::StyleSource`]'s `Display` ever
+/// prints.
 const SCALAR_SOURCE_W: u16 = 11;
 /// The floor on the apply-cost column once the terminal is too narrow to
 /// give it the remainder: enough for `needs`, never a whole sentence.

@@ -237,7 +237,8 @@ const fn colour_sentence() -> &'static str {
 ///
 /// # Panics
 ///
-/// Never, in practice: [`binding`] is an exhaustive match with no wildcard
+/// Never, in practice: `keymap::binding` is an exhaustive match with no
+/// wildcard
 /// arm, and its `KeyPress::Quit` arm is the only one that returns a
 /// [`Group::Closing`] row, so [`rows`] always carries exactly one. The
 /// `.expect` stays rather than a silent fallback, because the alternative

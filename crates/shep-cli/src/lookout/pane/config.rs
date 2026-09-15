@@ -453,7 +453,7 @@ impl ConfigPane {
     /// field body's own scroll walk lays out. [`Self::rows`] is the
     /// cursor's whole walk, env rows included; this is the narrower list
     /// the renderer needs to lay the field portion out on its own, since
-    /// [`super::view::scroll::to_cursor`] has to know how many rows exist
+    /// `view::scroll::to_cursor` has to know how many rows exist
     /// in the body it is walking, not in the cursor's wider one.
     #[must_use]
     pub(in crate::lookout) fn field_rows(&self) -> Vec<PaneRow> {

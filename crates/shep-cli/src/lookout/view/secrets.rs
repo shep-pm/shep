@@ -3,7 +3,7 @@
 //!
 //! Every cell goes through [`fit`], so a long key ends in `…` rather than
 //! spilling into the next column. Rows carry no gap between columns, unlike
-//! [`super::flock`]'s two-space-separated table: [`cell`] reads a column
+//! [`super::flock`]'s two-space-separated table: `cell` reads a column
 //! back by stepping [`Column::width`] alone, so a gap here would be a gap
 //! `cell` never accounts for.
 
@@ -321,7 +321,7 @@ fn row_cell(
 }
 
 /// One row's [`Line`], every column packed against the next with no gap
-/// (see the module doc): [`GUTTER`] plus `columns` is exactly what [`cell`]
+/// (see the module doc): [`GUTTER`] plus `columns` is exactly what `cell`
 /// reads back.
 fn row_line(
     pane: &SecretsPane,

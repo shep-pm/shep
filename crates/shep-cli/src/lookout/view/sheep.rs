@@ -1,6 +1,6 @@
 //! The sheep pane: one sheep given the whole screen.
 //!
-//! [`super::mod`]'s own `draw` spends this module's whole area on the
+//! [`view::draw`](super::draw) spends this module's whole area on the
 //! identity band and the two charts; Tasks 9 and 10 add the read-only
 //! config column and the feed to what is still blank below them.
 
@@ -54,7 +54,7 @@ const AXIS_ROW: u16 = 16;
 /// The full-width hairline rule's row, relative to `area`, between the axis
 /// and the column headers.
 const HAIRLINE_ROW: u16 = AXIS_ROW + 1;
-/// Terminal rows [`super::mod`]'s own `draw` spends outside this pane's
+/// Terminal rows [`view::draw`](super::draw) spends outside this pane's
 /// body: the title band above it and the status bar below it
 /// (`view/mod.rs`). An operator counts terminal rows, and every doc that
 /// repeats decision 8's row ladder states its thresholds that way, but
@@ -217,7 +217,8 @@ pub(crate) fn column_len(config: Option<&SheepConfigView>) -> usize {
 /// One field's row: the name, `!`-flagged and butter when
 /// [`SheepConfigView::pending`] names it, `*`-flagged when
 /// [`SheepConfigView::overridden`] names it instead (pending wins when both
-/// apply, [`super::pane::field_line`]'s own rule, since the value on screen
+/// apply, `view::pane::field_row::field_line`'s own rule, since the value on
+/// screen
 /// is not what the running child holds), the value, `(unset)`/`(default)`
 /// muted like the name, anything else in the column's own body colour, and
 /// `awaits respawn` right-aligned when pending.
@@ -501,8 +502,9 @@ fn write_feed_row(buffer: &mut Buffer, area: Rect, row: u16, line: &Line<'static
 /// histories over rows `CPU_HEADER_ROW` through `AXIS_ROW`, and nothing
 /// else yet.
 ///
-/// `area` is the whole pane body, under the title band [`super::mod`]'s own
-/// `draw` already painted and over the status bar it paints after this
+/// `area` is the whole pane body, under the title band
+/// [`view::draw`](super::draw) already painted and over the status bar it
+/// paints after this
 /// returns, not a sub-rect of either, the way every other full-screen
 /// pane's own `draw` is handed one.
 pub fn draw(app: &App, pane: &SheepPane, area: Rect, buffer: &mut Buffer) {

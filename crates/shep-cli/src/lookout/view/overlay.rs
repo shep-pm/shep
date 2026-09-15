@@ -158,7 +158,8 @@ pub(super) fn draw_boxed(
 ///
 /// [`Buffer::set_line`] only ever writes as many cells as its `Line` carries
 /// content for, so a blank separator row (`Line::from(Span::raw(""))`,
-/// [`close_dialog_lines`]'s own two of them) writes nothing and would leave
+/// [`close_dialog_lines`](super::pane::close::close_dialog_lines)'s own two
+/// of them) writes nothing and would leave
 /// whatever the field list drew there showing through, muted, in the middle
 /// of what is meant to read as a solid dialog. Called ahead of every row
 /// this module draws the dialog's own lines into, boxed or not.
