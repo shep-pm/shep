@@ -8,6 +8,9 @@
 //!
 //! `stop`/`restart`/`delete` and `shutdown` resolve their selector up front,
 //! then answer once every matched sheep is terminal.
+//!
+//! This file holds the `Actor` struct and the mailbox capacities. The impl is
+//! split across the `actor_*` modules, one per group of handlers.
 
 use core::cmp::Ordering;
 use core::fmt;
