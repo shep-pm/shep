@@ -63,8 +63,39 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 ```
 ```bash
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features --document-private-items
 ```
+
+**`--document-private-items`, and the flag is most of that step's value.**
+Most of shep-daemon and shep-cli is `pub(crate)`, so without it the gate reads
+a small fraction of the doc prose this repo writes, and an intra-doc link in a
+private module can point at nothing forever. Turning it on for the first time
+on 2026-09-15 found 74, 66 of them in shep-cli. Seven described something that
+has never existed: a `PanePending` type, `reveal_selected` and `visible`
+attributed to the wrong types, a `Display` variant on an enum that has a
+`Display` impl instead, and a link to `super::mod` three times, which is not
+an item name and so resolved in no build ever. Thirty-one were first written
+by one prose-only comment sweep, where nothing compiles a link and no reviewer
+follows one. The flag costs 0.4s on a cold `cargo doc`, 2.3s against 2.8s
+measured twice, and takes `target/doc` from 34 MB to 74 MB, which nothing
+publishes.
+
+**It does not reach `#[cfg(test)]` modules, and nothing else does either.**
+`cargo doc` never turns `cfg(test)` on, so a broken link inside a test module
+is reported zero times, flag or no flag. Measured 2026-09-15 with two canaries
+in one run: an unresolvable link in `supervisor/tests/flush.rs` drew nothing
+while one in `watch/mod.rs` drew its own warning. `RUSTDOCFLAGS="--cfg test"`
+does not rescue it, because dev-dependencies are not linked for `cargo doc`:
+the build fails with 20 errors before a link is checked. Clippy compiles test
+modules but will not help either, since `broken_intra_doc_links` is a rustdoc
+lint and rustc accepts `-W rustdoc::broken_intra_doc_links` while never running
+it. Both canaries went unreported there. Test-module doc links are unguarded by
+anything in this toolchain, so read them by hand when a split moves a test file.
+
+**To count them, drop `-D warnings` for that one run.** Deny makes the first
+offending crate a hard error and cargo cancels every job behind it, so a deny
+run reports one crate's worth and reads like the whole answer. Two sessions
+independently reported 34 that way on the morning the real number was 74.
 
 **Bare `cargo test --workspace`, deliberately, not `--lib --bins`.** The global
 rule preferring `--lib --bins` was measured on a project where doctests
