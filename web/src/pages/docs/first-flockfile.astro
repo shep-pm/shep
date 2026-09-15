@@ -506,8 +506,8 @@ DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>
                   <code>{f.name}</code>
                   <span class="type">{f.type}</span>
                 </span>
-                <span class="col-default">{f.default}</span>
-                <span class="col-does">{f.does}</span>
+                <span class="col-default" data-label="Default">{f.default}</span>
+                <span class="col-does" data-label="What it does">{f.does}</span>
               </div>
             ))}
           </div>
@@ -594,39 +594,7 @@ DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>
       all: a leading <code>#:schema &lt;path&gt;</code> comment (the taplo
       convention) does the same job, invisibly to the parser.
     </p>
-
-    <h2 id="where-to-go-next">Where to go next</h2>
-    <div class="next-grid">
-      <a href="/docs/overrides" class="next-card">
-        <div class="next-title">Overrides →</div>
-        <div class="next-body">
-          What a second load of the same file does, and the two flags that
-          hand a setting back to the template.
-        </div>
-      </a>
-      <a href="/docs/folds" class="next-card">
-        <div class="next-title">Folds →</div>
-        <div class="next-body">
-          What the <code>fold</code> field is for, and how to select a whole
-          fold from any verb.
-        </div>
-      </a>
-      <a href="/docs/json-output" class="next-card">
-        <div class="next-title">JSON output →</div>
-        <div class="next-body">
-          How this same config surfaces back out through{" "}
-          <code>shep flock --format json</code>.
-        </div>
-      </a>
-      <a href="/docs/from-pm2" class="next-card">
-        <div class="next-title">Coming from pm2 →</div>
-        <div class="next-body">
-          Turn a real dump.pm2 into a Flockfile instead of writing one by
-          hand.
-        </div>
-      </a>
-    </div>
-  </article>
+</article>
 </DocsLayout>
 
 <style>
@@ -679,44 +647,10 @@ DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>
     margin: 0 0 26px;
   }
 
+  /* Column widths only. Everything else is the shared `.field-table`
+     block in docs-page.css. */
   .field-table {
-    border: 3px solid var(--line);
-    border-radius: 16px;
-    overflow: hidden;
-  }
-
-  .field-table .row {
-    display: grid;
-    grid-template-columns: minmax(0, 210px) 130px minmax(0, 1fr);
-    gap: 14px;
-    padding: 11px 18px;
-    align-items: start;
-  }
-
-  .field-table .row.header {
-    background: var(--ink);
-    padding: 10px 18px;
-  }
-
-  .field-table .row:not(.header) {
-    border-bottom: 2px solid var(--hair);
-    background: var(--paper-2);
-  }
-
-  .field-table .row:last-child {
-    border-bottom: none;
-  }
-
-  .field-table .row.header span {
-    font-family: "Space Mono", monospace;
-    font-size: 10.5px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--ink-3);
-  }
-
-  .field-table .row.header .col-name {
-    color: var(--butter);
+    --field-cols: minmax(0, 210px) 130px minmax(0, 1fr);
   }
 
   .col-name code {
@@ -737,23 +671,6 @@ DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>
     font-size: 12px;
     color: var(--ink-2);
     line-height: 1.5;
-  }
-
-  .col-does {
-    font-size: 13.5px;
-    line-height: 1.5;
-    color: var(--ink);
-  }
-
-  @media (max-width: 640px) {
-    .field-table .row {
-      grid-template-columns: 1fr;
-      gap: 5px;
-    }
-
-    .field-table .row.header {
-      display: none;
-    }
   }
 
 </style>

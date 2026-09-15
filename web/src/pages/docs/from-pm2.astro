@@ -303,52 +303,52 @@ PORT_BASE = "3000"`}</CodeBlock>
         <span>shep</span>
       </div>
       <div class="row">
-        <span><code>name</code></span>
-        <span><code>name</code>: the grouping key</span>
+        <span data-label="pm2"><code>name</code></span>
+        <span data-label="shep"><code>name</code>: the grouping key</span>
       </div>
       <div class="row">
-        <span><code>pm_cwd</code></span>
-        <span><code>cwd</code></span>
+        <span data-label="pm2"><code>pm_cwd</code></span>
+        <span data-label="shep"><code>cwd</code></span>
       </div>
       <div class="row">
-        <span><code>pm_exec_path</code></span>
-        <span><code>script</code></span>
+        <span data-label="pm2"><code>pm_exec_path</code></span>
+        <span data-label="shep"><code>script</code></span>
       </div>
       <div class="row">
-        <span><code>args</code></span>
-        <span><code>args</code></span>
+        <span data-label="pm2"><code>args</code></span>
+        <span data-label="shep"><code>args</code></span>
       </div>
       <div class="row">
-        <span><code>exec_interpreter</code></span>
-        <span><code>interpreter</code>: absent when it was <code>"none"</code></span>
+        <span data-label="pm2"><code>exec_interpreter</code></span>
+        <span data-label="shep"><code>interpreter</code>: absent when it was <code>"none"</code></span>
       </div>
       <div class="row">
-        <span><code>autorestart</code></span>
-        <span><code>autorestart</code></span>
+        <span data-label="pm2"><code>autorestart</code></span>
+        <span data-label="shep"><code>autorestart</code></span>
       </div>
       <div class="row">
-        <span><code>restart_delay</code> (ms)</span>
-        <span><code>restart_delay</code></span>
+        <span data-label="pm2"><code>restart_delay</code> (ms)</span>
+        <span data-label="shep"><code>restart_delay</code></span>
       </div>
       <div class="row">
-        <span><code>merge_logs</code></span>
-        <span><code>merge_logs</code></span>
+        <span data-label="pm2"><code>merge_logs</code></span>
+        <span data-label="shep"><code>merge_logs</code></span>
       </div>
       <div class="row">
-        <span><code>max_memory_restart</code> (bytes)</span>
-        <span><code>max_memory</code>: enforced against the whole process tree, not just the root pid</span>
+        <span data-label="pm2"><code>max_memory_restart</code> (bytes)</span>
+        <span data-label="shep"><code>max_memory</code>: enforced against the whole process tree, not just the root pid</span>
       </div>
       <div class="row">
-        <span>rows sharing a <code>name</code></span>
-        <span><code>instances</code>: the row count</span>
+        <span data-label="pm2">rows sharing a <code>name</code></span>
+        <span data-label="shep"><code>instances</code>: the row count</span>
       </div>
       <div class="row">
-        <span><code>exec_mode == "cluster_mode"</code></span>
-        <span>a stderr notice, and nothing in the Flockfile</span>
+        <span data-label="pm2"><code>exec_mode == "cluster_mode"</code></span>
+        <span data-label="shep">a stderr notice, and nothing in the Flockfile</span>
       </div>
       <div class="row">
-        <span><code>NODE_APP_INSTANCE</code> in a row's env</span>
-        <span>an <code>[app.env]</code> entry set to <code>{'"{{instance}}"'}</code>, plus a stderr notice</span>
+        <span data-label="pm2"><code>NODE_APP_INSTANCE</code> in a row's env</span>
+        <span data-label="shep">an <code>[app.env]</code> entry set to <code>{'"{{instance}}"'}</code>, plus a stderr notice</span>
       </div>
     </div>
 
@@ -448,9 +448,9 @@ cwd = "/srv/migrate"`}</CodeBlock>
         benchTable.map((row) => (
           <div class="row">
             <span class="note-cell">{row.metric}</span>
-            <span class="shep-cell"><code>{row.shep}</code></span>
-            <span class="pm2-cell"><code>{row.pm2}</code></span>
-            <span class="note-cell">{row.ratio}</span>
+            <span class="shep-cell" data-label="shep"><code>{row.shep}</code></span>
+            <span class="pm2-cell" data-label="pm2"><code>{row.pm2}</code></span>
+            <span class="note-cell" data-label="ratio">{row.ratio}</span>
           </div>
         ))
       }
@@ -460,6 +460,11 @@ cwd = "/srv/migrate"`}</CodeBlock>
       three binaries, <code>shep</code>, <code>shep-runtime</code> and{" "}
       <code>shep-dev</code>, at 17.94 MiB each, against pm2's whole{" "}
       <code>node_modules</code> tree. The download is 20.20 MiB compressed.
+      That tree does not run on its own: Node is another 72.73 MiB on the
+      machine this was measured on, which puts the totals at 53.85 against
+      95.84 and turns the row around. It stays out of the table because
+      most people running pm2 have Node already, and what a Node install
+      weighs varies by platform and packager.
     </p>
 
     <Callout variant="careful">
@@ -533,31 +538,7 @@ cwd = "/srv/migrate"`}</CodeBlock>
       signals, which a container that skips this step accumulates until{" "}
       <code>docker stop</code> waits out the full grace period.
     </p>
-
-    <h2 id="where-to-go-next">Where to go next</h2>
-    <div class="next-grid">
-      <a href="/docs/cli" class="next-card">
-        <div class="next-title">CLI reference →</div>
-        <div class="next-body">
-          Every verb this page names, generated straight from the binary's
-          own --help.
-        </div>
-      </a>
-      <a href="/docs/getting-started" class="next-card">
-        <div class="next-title">Quickstart →</div>
-        <div class="next-body">
-          Building shep from source and starting a flock for the first time.
-        </div>
-      </a>
-      <a href="/docs/terminology" class="next-card">
-        <div class="next-title">Terminology →</div>
-        <div class="next-body">
-          Flock, fold, dog, bark: the words this page uses without
-          stopping to define them.
-        </div>
-      </a>
-    </div>
-  </article>
+</article>
 </DocsLayout>
 
 <style>
@@ -586,7 +567,6 @@ cwd = "/srv/migrate"`}</CodeBlock>
     padding: 1px 6px;
   }
 
-  .field-table,
   .verb-table {
     border: 3px solid var(--line);
     border-radius: 16px;
@@ -594,13 +574,12 @@ cwd = "/srv/migrate"`}</CodeBlock>
     margin: 0 0 32px;
   }
 
-  .field-table .row {
-    display: grid;
-    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-    gap: 14px;
-    padding: 12px 18px;
-    align-items: start;
-    font-size: 14px;
+  /* Width and margin only. The rest is the shared `.field-table` block in
+     docs-page.css, which this page's own copy used to duplicate. Two
+     columns here, not the shared default of three. */
+  .field-table {
+    --field-cols: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    margin: 0 0 32px;
   }
 
   .verb-table .row {
@@ -682,14 +661,20 @@ cwd = "/srv/migrate"`}</CodeBlock>
   }
 
   @media (max-width: 640px) {
-    .field-table .row,
+    /* `.field-table` is not here: the shared block stacks it already. */
     .verb-table .row,
     .bench-table .row {
       grid-template-columns: 1fr;
       gap: 4px;
     }
 
-    .row.header {
+    /* Named through the table class, not as a bare `.row.header`. Astro
+       scopes both, so `.verb-table .row` is four class-weight selectors
+       against this rule's three, and the bare version lost: the bench
+       header stayed on screen and stacked into four lines nothing lined up
+       with. */
+    .verb-table .row.header,
+    .bench-table .row.header {
       display: none;
     }
   }

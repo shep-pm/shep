@@ -70,6 +70,13 @@ row is three times 14.23 MiB. The row said "Install footprint" until
 2026-09-14. The harness's own printed label said "shep binary" the whole
 time.
 
+Neither side counts a runtime. shep's binaries are static and pm2's tree is
+not: it needs Node, another 72.73 MiB installed on the machine these were
+measured on. `m_footprint` does not measure that, deliberately, since most
+people running pm2 have Node already and its size varies by platform and
+packager. Read the row as "what the tool itself weighs", not "what it costs
+to run".
+
 The log-plane figure is worth its own sentence. shep cost 32.8 us per line
 before the 2026-08-28 audit, so pm2 was ahead by 8x on this measure until the
 day before these numbers were taken.

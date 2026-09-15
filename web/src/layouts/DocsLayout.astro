@@ -16,8 +16,8 @@ import Base from "./Base.astro";
 import DocsHeader from "../components/docs/DocsHeader.astro";
 import DocsSidebar from "../components/docs/DocsSidebar.astro";
 import ChapterBar from "../components/docs/ChapterBar.astro";
-import StillStuck from "../components/docs/StillStuck.astro";
 import { chapterFor } from "../data/docs-nav";
+import { REPO, REPO_ISSUES_NEW } from "../data/repo";
 import "../styles/docs-page.css";
 
 interface Props {
@@ -58,10 +58,13 @@ const crumb = `${found.chapter.part} / ${found.chapter.item.label}`;
         <div class="crumb">{crumb}</div>
         <slot />
         <ChapterBar activeSlug={activeSlug} />
-        <StillStuck />
         <footer class="docs-footer" data-pagefind-ignore>
           <span class="license">
             shep docs · pre-release · MIT OR Apache-2.0
+          </span>
+          <span class="footer-links">
+            <a href={REPO_ISSUES_NEW} rel="noopener">Open an issue</a>
+            <a href={REPO} rel="noopener">Browse the source</a>
           </span>
         </footer>
       </main>
@@ -135,12 +138,20 @@ const crumb = `${found.chapter.part} / ${found.chapter.item.label}`;
     color: var(--ink-3);
   }
 
-  .dl-link {
-    font-size: 14px;
-    font-weight: 700;
+  /* The "didn't find it here" card used to sit above this footer on every
+     page, a bordered box between the chapter bar and the licence line. It
+     is these two links now, because that is all it ever was. */
+  .footer-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    font-size: 13px;
+  }
+
+  .footer-links a {
     color: var(--sky);
     text-decoration: none;
-    border-bottom: 2.5px solid var(--sky);
+    border-bottom: 2px solid var(--sky);
   }
 
   @media (max-width: 860px) {

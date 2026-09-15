@@ -20,74 +20,66 @@ import { fileURLToPath } from "node:url";
 const pagesDir = fileURLToPath(new URL("../src/pages/docs", import.meta.url));
 
 /**
- * Maximum prose words per page, by slug.
+ * Maximum prose words per page, by slug, at what each measures plus about
+ * five percent.
  *
- * The docs-shell phase rewrites nothing, so none of these is a rewrite
- * target. They are the six pages already short enough not to need one,
- * seeded at roughly their current length plus headroom, so the guard holds
- * a real line from its first day. An empty map passes whatever it is handed
- * and is indistinguishable from a guard that checks nothing.
+ * A number here only ever comes down. It came down across the board on
+ * 2026-09-14, when the "Where to go next" cards were cut from all 25 pages
+ * that carried them: 539 lines and the two-card pitch at the foot of each
+ * chapter. The chapter bar already says what comes next, and the sidebar
+ * lists every chapter on every page.
  *
- * Each later phase adds the pages it rewrote, at the target the spec sets.
- * A number here only ever comes down.
+ * Two pages had no entry at all until that pass. `lookout-config` and
+ * `pm2-verbs` shipped after the phase that seeded this map and nothing
+ * noticed, which is what the "every page has a budget" test below is for.
+ * `lookout` is the other tell: it sat at 5750 against a page measuring
+ * 2629, a ceiling so far above the text that it could not have failed.
+ *
+ * Raising one is allowed and has happened twice, both on 2026-09-14, both
+ * for a correction rather than for prose: `getting-started` for the note
+ * saying `./server` is the reader's own binary, and `from-pm2` for the
+ * clause saying which of the three binaries 17.94 MiB is. Say why in a
+ * comment when you do it.
  */
 export const BUDGETS: Record<string, number> = {
-  terminology: 250, // 243 today
-  "community-dogs": 400, // 288
-  cli: 500, // 355
-  examples: 1200, // 1182
-  serve: 650, // 488
-  kv: 750, // 564
-  containers: 750, // 572
-
-  // The eight pages the moves phase touched, at their post-move counts plus
-  // a little headroom. These are not rewrite targets either: they are a
-  // floor that stops a page growing back before the rewrite phase sets real
-  // numbers against each reader's need.
-  // Raised from 400 on 2026-09-14 for the note saying `./server` is the
-  // reader's own binary and pointing at `shep serve` for anyone who has no
-  // app to hand. The quickstart's three blocks were not runnable from a
-  // fresh install without it.
-  "getting-started": 450, // 440
-  upgrading: 580, // 539
-  // Raised from 1650 on 2026-09-14 for the paragraph comparing this run
-  // against the previous one. A reader deciding whether to switch wants to
-  // know four figures moved against shep, and the alternative was
-  // compressing clear prose to hit a number. Raised again the same day, to
-  // 1720, for the clause saying which of the three binaries 17.94 MiB is:
-  // without it the paragraph compared one binary against three.
-  "from-pm2": 1720, // 1708
-  startup: 1250, // 1242
-  dogs: 3000, // 2884
   "writing-a-dog": 4150, // 4042
-  "first-flockfile": 2450, // 2343
-  overrides: 3380, // 3314
-
-  // Parts II to VII, at what each measures plus headroom.
-  lookout: 5750,
+  overrides: 3380, // 3250
+  "lookout-config": 3240, // 3085
   // Raised from 2930 on 2026-09-14 for the host line, which `shep flock`
   // began printing on a one-shot listing and not only under `--follow`. It
   // shows above every table on this page, so four transcripts gained a line
   // and the page gained a section saying what the four figures are and why
-  // a rate can read `-`. Cut to a callout and a paragraph first; what is
-  // left is the `-` rule, which a reader who does not have it reads an
-  // unmeasured machine as an idle one.
+  // a rate can read `-`.
   output: 3130, // 3111
-  secrets: 2110,
-  lifecycle: 2060,
-  logs: 1900,
-  "shepherd-channel": 1700,
-  "boot-order": 1670,
-  "talking-to-a-sheep": 1620,
+  dogs: 2980, // 2834
+  lookout: 2770, // 2629
+  "first-flockfile": 2360, // 2245
+  secrets: 2080, // 1977
+  lifecycle: 2020, // 1919
+  logs: 1900, // 1805
+  "from-pm2": 1720, // 1659
+  "shepherd-channel": 1690, // 1604
+  "boot-order": 1670, // 1586
+  "talking-to-a-sheep": 1620, // 1534
   // Raised from 1330 on the same day and for the same feature. `host` is a
   // fourth key beside `data`, and its three spellings are three different
   // answers a script has to tell apart: an object, `null`, and no key at
-  // all. Documenting the key without them would leave a reader unable to
-  // read its absence.
-  "json-output": 1410, // 1397
-  "not-built": 1100,
-  folds: 930,
-  whistle: 770,
+  // all.
+  "json-output": 1410, // 1362
+  startup: 1250, // 1192
+  examples: 1200, // 1156
+  "not-built": 1080, // 1020
+  folds: 900, // 852
+  whistle: 710, // 675
+  containers: 560, // 526
+  upgrading: 560, // 526
+  kv: 550, // 519
+  serve: 480, // 448
+  "getting-started": 440, // 413
+  cli: 380, // 356
+  "community-dogs": 300, // 277
+  terminology: 210, // 199
+  "pm2-verbs": 40, // 36
 };
 
 
@@ -190,6 +182,25 @@ test("every budgeted slug is a page that exists", async () => {
       `BUDGETS names "${slug}" but src/pages/docs/${slug}.astro does not exist`,
     );
   }
+});
+
+test("every page that exists has a budget", async () => {
+  // The other direction, and the one that was missing. `lookout-config` and
+  // `pm2-verbs` shipped after the phase that seeded BUDGETS, so they had no
+  // ceiling at all: the report below printed them without one and nothing
+  // failed. A page with no ceiling is a page that can grow back.
+  const files = await readdir(pagesDir);
+  const missing = files
+    .filter((f) => f.endsWith(".astro"))
+    .map((f) => f.replace(/\.astro$/, ""))
+    // `index` is the redirect to chapter 1, not a chapter. Same exclusion
+    // verify-docs-nav.ts makes, for the same reason.
+    .filter((slug) => slug !== "index" && !(slug in BUDGETS));
+  assert.deepEqual(
+    missing,
+    [],
+    `no prose budget for ${missing.join(", ")}; add an entry at the page's current count plus a little headroom`,
+  );
 });
 
 test("report every page's prose count, so the unbudgeted ones stay visible", async () => {
