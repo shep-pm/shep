@@ -1,6 +1,7 @@
 //! Fixtures more than one of `app`'s test modules leans on.
 
 use super::*;
+use crate::lookout::view::fixtures;
 
 pub(super) fn sheep(id: u32, name: &str, status: ProcStatus) -> ProcessInfo {
     ProcessInfo::builder(id, name, status)
@@ -92,4 +93,40 @@ pub(super) fn wire(effect: Effect) -> Request {
         Effect::Send(sent) => sent.request(),
         other => panic!("expected a request, got {other:?}"),
     }
+}
+
+/// A dashboard whose filter is set without any keymap involved.
+///
+/// Four sheep, two of which contain `web`: `api-web` at id 1 and
+/// `web-worker` at id 4, with `cron` and `queue` between them. The table
+/// sorts by name, so the gap is what makes `j` stepping over a hidden row
+/// falsifiable.
+pub(super) fn filtered(query: &str) -> App {
+    let t0 = Instant::now();
+    let mut app = App::new(
+        Palette::detect(None, None, None),
+        Control::ReadOnly,
+        "/home/ada/.shep".to_string(),
+        t0,
+    );
+    app.update(Msg::Snapshot {
+        rows: vec![
+            sheep(1, "api-web", ProcStatus::Online),
+            sheep(2, "cron", ProcStatus::Online),
+            sheep(3, "queue", ProcStatus::Online),
+            sheep(4, "web-worker", ProcStatus::Online),
+        ],
+        at: t0,
+    });
+    app.set_filter(query.to_string());
+    app
+}
+
+/// Walks the pane's cursor onto `key`. The pane is a public type with
+/// no public "go to this field" key, so the cursor is driven the way
+/// an operator drives it. A thin wrapper: `view::fixtures::select_field`
+/// is this exact walk, and this module had its own copy before the tab
+/// row gave a field's group somewhere to switch to first.
+pub(super) fn pane_to(app: &mut App, key: &str) {
+    fixtures::select_field(app, key);
 }
