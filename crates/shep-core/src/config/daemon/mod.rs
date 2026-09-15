@@ -1,7 +1,8 @@
 //! Daemon-level configuration: `$SHEP_HOME/shep.toml`
 //!
-//! Layering (spec §5): file < `SHEP_*` env < CLI flags. This module applies
-//! the first two; the CLI applies its flags onto the returned struct.
+//! Layering (spec §5): file < `SHEP_*` env < CLI flags. [`DaemonConfig::load_layered`]
+//! applies all three and validates the result; [`DaemonConfig::load`] applies
+//! only the file and environment layers.
 
 mod config;
 mod error;
