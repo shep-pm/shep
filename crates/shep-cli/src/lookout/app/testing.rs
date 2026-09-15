@@ -1,6 +1,7 @@
 //! Fixtures more than one of `app`'s test modules leans on.
 
 use super::*;
+pub(super) use crate::lookout::edits::EditKey;
 pub(super) use crate::lookout::view::fixtures;
 
 pub(super) fn sheep(id: u32, name: &str, status: ProcStatus) -> ProcessInfo {
@@ -129,4 +130,82 @@ pub(super) fn filtered(query: &str) -> App {
 /// row gave a field's group somewhere to switch to first.
 pub(super) fn pane_to(app: &mut App, key: &str) {
     fixtures::select_field(app, key);
+}
+
+/// Lands a `Request::SheepConfig` reply for `web` carrying `env_keys`,
+/// the way the event loop lands one after a write or an `r`.
+pub(super) fn refresh_config(app: &mut App, env_keys: &[&str]) {
+    let mut config = shep_core::config::AppConfig {
+        name: "web".to_string(),
+        ..Default::default()
+    };
+    for key in env_keys {
+        config.env.insert((*key).to_string(), "x".to_string());
+    }
+    app.update(Msg::Replied {
+        sent: Sent::SheepConfig {
+            name: "web".to_string(),
+        },
+        result: Ok(Response::SheepConfig(Box::new(
+            shep_core::protocol::SheepConfigView::new(config, Vec::new(), Vec::new()),
+        ))),
+    });
+}
+
+/// `esc`, and `c` right behind it if that raised the close dialog
+/// instead of writing outright.
+///
+/// What every write-on-close test in this module wants now: every
+/// sheep fixture here parks `kill_signal` unconditionally
+/// (`sheep_config_view`'s own default), so a bare `esc` only asks. `c`
+/// is what actually gets the write onto the wire, the same as an
+/// operator continuing past the dialog would; harmless when nothing
+/// asked, since [`App::close_dialog`] is `None` and this returns
+/// `esc`'s own effect unchanged.
+pub(super) fn close_writing(app: &mut App) -> Effect {
+    let effect = app.update(Msg::Key(KeyPress::Escape));
+    if app.close_dialog().is_some() {
+        app.update(Msg::Key(KeyPress::Continue))
+    } else {
+        effect
+    }
+}
+
+/// Every request a closed pane's batch would put on the wire, in the
+/// order it sends them.
+pub(super) fn wire_all(effect: Effect) -> Vec<Request> {
+    match effect {
+        Effect::SendAll(batch) => batch.iter().map(Sent::request).collect(),
+        other => panic!("expected a batch, got {other:?}"),
+    }
+}
+
+/// The `Sent` values a closed pane's batch carries.
+pub(super) fn wire_batch(effect: Effect) -> Vec<Sent> {
+    match effect {
+        Effect::SendAll(batch) => batch,
+        other => panic!("expected a batch, got {other:?}"),
+    }
+}
+
+/// The one request a closed pane's batch carries, or a panic naming
+/// how many it carried instead.
+pub(super) fn one_wire(effect: Effect) -> Request {
+    let mut requests = wire_all(effect);
+    assert_eq!(requests.len(), 1, "{requests:?}");
+    requests.remove(0)
+}
+
+/// The value the open pane has filed for `key`.
+pub(super) fn filed_value(app: &App, key: &str) -> serde_json::Value {
+    let entry = app
+        .config_pane()
+        .expect("the pane is open")
+        .edits()
+        .get(&EditKey::Field(key.to_owned()))
+        .unwrap_or_else(|| panic!("nothing filed for {key}"));
+    match entry.edit() {
+        PaneEdit::Set { value, .. } => value.as_value().clone(),
+        other => panic!("expected a field set, got {other:?}"),
+    }
 }
