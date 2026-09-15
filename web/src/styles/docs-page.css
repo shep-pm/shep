@@ -63,48 +63,6 @@
   margin: -8px 0 30px;
 }
 
-.docs-shell main .next-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
-  margin-top: 8px;
-}
-
-.docs-shell main .next-card {
-  text-align: left;
-  background: var(--paper-2);
-  border: 3px solid var(--line);
-  border-radius: 18px;
-  box-shadow: 5px 5px 0 var(--shadow);
-  padding: 20px;
-  color: var(--ink);
-  text-decoration: none;
-  display: block;
-}
-
-.docs-shell main .next-card:hover {
-  transform: translate(2px, 2px);
-  box-shadow: 3px 3px 0 var(--shadow);
-  color: var(--ink);
-}
-
-.docs-shell main .next-title {
-  font-family: "Bricolage Grotesque", sans-serif;
-  font-weight: 800;
-  font-size: 17px;
-  margin-bottom: 7px;
-}
-
-.docs-shell main .next-body {
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--ink-2);
-}
-
-.docs-shell main .next-body code {
-  font-size: 0.85em;
-}
-
 /*
  * Anchor affordance. The id is what makes a section linkable; this is only
  * the visible handle. The marker is a real <a> injected by DocsLayout rather
