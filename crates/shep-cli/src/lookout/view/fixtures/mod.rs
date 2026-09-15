@@ -1,9 +1,11 @@
 //! Fixtures the pane test modules share.
 
 mod palette;
+mod refusals;
 mod render;
 
 pub use self::palette::{coloured, no_color, plain, plain_dimmed};
+pub use self::refusals::{a_refusal, invalid_config};
 pub use self::render::{render, render_all, rendered, row_containing, row_starting_with, rows_of};
 
 use std::path::{Path, PathBuf};
@@ -14,9 +16,7 @@ use ratatui::layout::Rect;
 use ratatui::text::Line;
 use shep_client::RequestError;
 use shep_core::config::{AppConfig, ProbeConfig, ProbeKind};
-use shep_core::protocol::{
-    BusEvent, DogSource, Lamb, ProcessInfo, Response, RpcError, RpcErrorCode, SheepConfigView,
-};
+use shep_core::protocol::{BusEvent, DogSource, Lamb, ProcessInfo, Response, SheepConfigView};
 use shep_core::status::ProcStatus;
 use shep_core::values::UpDuration;
 
@@ -1966,16 +1966,6 @@ pub fn app_in_sheep_pane_with_one_edit() -> App {
     app
 }
 
-/// The daemon's refusal for a write that fails config validation: what a
-/// `cwd` the shepherd's user cannot enter comes back as.
-pub fn invalid_config() -> RequestError {
-    RequestError::Rpc(RpcError {
-        code: RpcErrorCode::InvalidConfig,
-        message: "cwd: no such directory".to_string(),
-        daemon_version: None,
-    })
-}
-
 /// The active group's own field rows, as their key names: a bounded slice
 /// of the config pane's state rather than a search over the rendered
 /// frame, which is what keeps a test on this from passing off a match in
@@ -2203,14 +2193,4 @@ pub fn config_pane_panel_focused_on(app: &App, key: &str, width: u16) -> Vec<Str
         .iter()
         .map(rendered)
         .collect()
-}
-
-/// The shepherd's refusal of one write, for the tests about what a reply
-/// says once the pane that asked for it has gone.
-pub fn a_refusal() -> RequestError {
-    RequestError::Rpc(shep_core::protocol::RpcError {
-        code: shep_core::protocol::RpcErrorCode::InvalidConfig,
-        message: "the store is locked by another shep".to_owned(),
-        daemon_version: None,
-    })
 }
