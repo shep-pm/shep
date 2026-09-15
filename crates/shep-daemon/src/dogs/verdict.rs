@@ -193,7 +193,7 @@ mod tests {
         let contacts = PeerContacts::new();
         // `Unreachable` is only ever read off a map that has been watching
         // long enough to claim it.
-        tokio::time::advance(super::super::PEER_CONTACT_WARMUP * 2).await;
+        tokio::time::advance(super::super::contacts::PEER_CONTACT_WARMUP * 2).await;
         contacts.connected(11);
         contacts.named_a_dog(12);
 

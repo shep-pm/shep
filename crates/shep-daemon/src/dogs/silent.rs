@@ -241,7 +241,7 @@ mod tests {
     use super::*;
     use crate::fake::ProcScript;
 
-    use super::super::PEER_CONTACT_WARMUP;
+    use super::super::contacts::PEER_CONTACT_WARMUP;
     use super::super::test_support::start_test_dog;
 
     /// How often [`settle_until`] looks while the watch works.

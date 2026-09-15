@@ -239,7 +239,7 @@ impl Contacts {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dogs::silent::{Silence, stale_verdict};
+    use crate::dogs::verdict::{Silence, stale_verdict};
 
     /// The whole diagnosis rests on that difference: one means the dog is not
     /// reaching the socket, the other that it is reaching it and not naming
