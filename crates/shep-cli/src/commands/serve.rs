@@ -299,7 +299,7 @@ async fn register(
     // `serve` registers a sheep, so it is not one of
     // `crate::RECOVERY_VERBS` and there is no value but `Enforce` here.
     let client =
-        match crate::connect_or_spawn_client(streams, paths, crate::VersionGuard::Enforce).await {
+        match crate::client::connect_or_spawn_client(streams, paths, crate::version_guard::VersionGuard::Enforce).await {
             Ok(client) => client,
             Err(code) => return code,
         };

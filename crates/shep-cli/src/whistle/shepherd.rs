@@ -80,7 +80,7 @@ impl Shepherd {
 }
 
 /// Refuses `client` if its shepherd disagrees with this binary's crate
-/// version, reusing [`crate::refuse_version_skew`].
+/// version, reusing [`crate::version_guard::refuse_version_skew`].
 ///
 /// Never writes to stdout: `out` is [`std::io::sink`] and only `err` is
 /// the real stderr, since stdout is whistle's MCP transport. The model
@@ -99,7 +99,7 @@ fn refuse_if_skewed(client: &Client) -> Result<(), CallToolResult> {
         style: crate::style::Presentation::BARE,
         fmt: crate::cli::Format::Table,
     };
-    crate::refuse_version_skew(&mut streams, client, crate::VersionGuard::Enforce).map_err(
+    crate::version_guard::refuse_version_skew(&mut streams, client, crate::version_guard::VersionGuard::Enforce).map_err(
         |_code| {
             CallToolResult::structured_error(serde_json::json!({
                 "code": crate::exit::ExitCode::VersionSkew.code_str(),

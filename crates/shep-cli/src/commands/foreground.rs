@@ -41,9 +41,9 @@ enum Ending {
 /// version. [`run`] connects on its own, so the guard is applied here.
 ///
 /// # Errors
-/// [`ExitCode::VersionSkew`], as [`crate::refuse_version_skew`].
+/// [`ExitCode::VersionSkew`], as [`crate::version_guard::refuse_version_skew`].
 fn refuse_if_skewed(streams: &mut Streams<'_>, client: &Client) -> Result<(), ExitCode> {
-    crate::refuse_version_skew(streams, client, crate::VersionGuard::Enforce)
+    crate::version_guard::refuse_version_skew(streams, client, crate::version_guard::VersionGuard::Enforce)
 }
 
 /// Boots a shepherd in this process, starts `options.apps`, streams their
