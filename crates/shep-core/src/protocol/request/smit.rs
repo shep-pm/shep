@@ -84,6 +84,12 @@ impl<'de> Deserialize<'de> for Smit {
 }
 
 /// Why a string is not a [`Smit`].
+///
+/// `#[non_exhaustive]`: the grammar can gain a reason to reject, and an
+/// out-of-tree consumer matching exhaustively would break on a new variant
+/// with no version bump to say so. It buys nothing on the wire. This enum is
+/// not serialized: a smit that fails to decode arrives as a serde error
+/// carrying the [`fmt::Display`] text below.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SmitError {
