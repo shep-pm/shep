@@ -1,6 +1,9 @@
 //! Fixtures the pane test modules share.
 
-use std::ffi::OsStr;
+mod palette;
+
+pub use self::palette::{coloured, no_color, plain, plain_dimmed};
+
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -8,7 +11,6 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::Style;
 use ratatui::text::Line;
 use shep_client::RequestError;
 use shep_core::config::{AppConfig, ProbeConfig, ProbeKind};
@@ -18,39 +20,27 @@ use shep_core::protocol::{
 use shep_core::status::ProcStatus;
 use shep_core::values::UpDuration;
 
-use super::super::app::{
+use crate::commands::settings::{DogView, ScalarView, SettingField, SettingsSnapshot};
+use crate::lookout::app::{
     ActionVerb, App, Body, CloseDialog, Control, Effect, KeyPress, LambWalk, Msg, RevealedValue,
     RowKey, Sent, SettingsRow,
 };
-use super::super::level::Level;
-use super::super::pane::{ConfigPane, ReloadKind};
-use super::super::secrets::{SecretRow, SecretsModel, Source};
-use super::super::source::HostSample;
-use super::super::tail::{Stream, Tail, TailLine};
-use super::super::theme::Palette;
-use crate::commands::settings::{DogView, ScalarView, SettingField, SettingsSnapshot};
+use crate::lookout::level::Level;
+use crate::lookout::pane::{ConfigPane, ReloadKind};
+use crate::lookout::secrets::{SecretRow, SecretsModel, Source};
+use crate::lookout::source::HostSample;
+use crate::lookout::tail::{Stream, Tail, TailLine};
+use crate::lookout::theme::Palette;
 use crate::secret_readers::Reader;
 use crate::style::StyleSource;
 
 /// What the last dial said when the ladder ran out, in
-/// `super::super::source::LinkError::Unreachable`'s own shape.
+/// `crate::lookout::source::LinkError::Unreachable`'s own shape.
 ///
 /// The link panel renders it verbatim, so every test that freezes a
 /// dashboard feeds it verbatim rather than inventing a shorter sentence the
 /// panel would never see.
 pub const FROZEN_WHY: &str = "the shepherd did not answer: could not connect to `/home/ada/.shep/run/shep.sock`: Connection refused (os error 61)";
-
-/// No colour at all: the palette every fixture uses unless the test is about
-/// colour.
-pub fn plain() -> Palette {
-    Palette::detect(None, None, None)
-}
-
-/// The 256-colour palette, for the two tests that assert on a specific
-/// foreground.
-pub fn coloured() -> Palette {
-    Palette::detect(None, Some(OsStr::new("xterm-256color")), None)
-}
 
 /// A dashboard with `flock` listed and nothing else applied.
 pub fn app_with(flock: Vec<ProcessInfo>, palette: Palette) -> App {
@@ -115,7 +105,7 @@ pub fn sheep_with(
 
 /// One instance of a grouped app, at `slot`, carrying `fold`: the same
 /// shape [`sheep_in_fold`] builds, with an instance slot set so
-/// [`super::super::app::App::is_grouped`] gathers it under a
+/// [`crate::lookout::app::App::is_grouped`] gathers it under a
 /// [`RowKey::Group`] header.
 pub fn instance_in_fold(id: u32, name: &str, slot: u32, fold: Option<&str>) -> ProcessInfo {
     ProcessInfo::builder(id, name, ProcStatus::Online)
@@ -360,7 +350,7 @@ fn reply_for(id: u32, walk: &LambWalk) -> Result<Response, RequestError> {
 /// it. Panics if the pane has none, so a regression that dropped the line
 /// entirely cannot pass by comparing two absences.
 pub fn lamb_line_of(app: &App) -> String {
-    render_all(&super::detail::detail_lines(app, 200))
+    render_all(&crate::lookout::view::detail::detail_lines(app, 200))
         .lines()
         .find(|line| line.starts_with("lambs  "))
         .map(str::to_string)
@@ -517,20 +507,20 @@ pub fn bleats_pane_with_long_line() -> App {
     app
 }
 
-/// [`super::bleats_full::draw`]'s own lines, for a test that needs the
+/// [`crate::lookout::view::bleats_full::draw`]'s own lines, for a test that needs the
 /// bleats pane's rendered rows without a [`Buffer`] round trip. Thin
-/// wrapper: [`super::bleats_full::draw_lines`] is `pub(crate)` for exactly
+/// wrapper: [`crate::lookout::view::bleats_full::draw_lines`] is `pub(crate)` for exactly
 /// this, but lives in a sibling module the top-level fixture callers in
 /// `app.rs` do not otherwise reach.
 ///
 /// [`Buffer`]: ratatui::buffer::Buffer
 pub fn draw_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
-    super::bleats_full::draw_lines(app, width, rows)
+    crate::lookout::view::bleats_full::draw_lines(app, width, rows)
 }
 
 /// One sheep, `catcher`, selected, with a two-line feed applied and its log
 /// paths pointing at real files in a leaked tempdir, so `fs::metadata` in
-/// [`super::detail::log_row`] succeeds the way it would against a live
+/// [`crate::lookout::view::detail::log_row`] succeeds the way it would against a live
 /// sheep's own logs.
 ///
 /// The tempdir is whatever [`tempfile`] resolves for the host: no attempt is
@@ -820,7 +810,7 @@ fn settings_snapshot_with_dogs(dogs: Vec<DogView>) -> SettingsSnapshot {
 
 /// `otel` runs online while the file disables it: a removed name still
 /// running. `ledger` is enabled in the file and absent from the flock: a dog
-/// that failed to start. Exercises [`super::settings::dog_rows`]'s join, not
+/// that failed to start. Exercises [`crate::lookout::view::settings::dog_rows`]'s join, not
 /// the toggle.
 pub fn app_in_settings_with_dog_drift() -> App {
     let flock = vec![
@@ -851,7 +841,7 @@ pub fn app_in_settings_with_dog_drift() -> App {
 }
 
 /// `bark` is up but has never completed a handshake
-/// (`handshook: Some(false)`), so [`super::settings::dog_rows`] must read it
+/// (`handshook: Some(false)`), so [`crate::lookout::view::settings::dog_rows`] must read it
 /// `silent`, not `online`, the same correction [`crate::vocabulary::Reported`]
 /// makes for the flock table.
 pub fn app_in_settings_with_silent_dog() -> App {
@@ -1143,7 +1133,7 @@ pub fn row_containing(buffer: &Buffer, needle: &str) -> String {
         .unwrap_or_else(|| panic!("no row contains {needle:?}"))
 }
 
-/// [`super::pane::draw_pane`] alone, straight into a fresh buffer at
+/// [`crate::lookout::view::pane::draw_pane`] alone, straight into a fresh buffer at
 /// `width` x `height`, with the close dialog raised: what the mute-pass
 /// test reads a cell from, since [`render`] draws the whole frame and the
 /// config pane does not start at the buffer's own origin there.
@@ -1157,21 +1147,8 @@ pub fn draw_pane_with_dialog_and_palette(width: u16, height: u16, palette: Palet
     let area = Rect::new(0, 0, width, height);
     let mut buffer = Buffer::empty(area);
     let pane = app.config_pane().expect("the pane is open");
-    super::pane::draw_pane(&app, pane, area, &mut buffer);
+    crate::lookout::view::pane::draw_pane(&app, pane, area, &mut buffer);
     buffer
-}
-
-/// The palette `NO_COLOR` selects: no ink anywhere, so the mute pass's own
-/// second call (`palette.muted()`) is a no-op.
-pub fn no_color() -> Palette {
-    Palette::detect(Some(OsStr::new("1")), None, None)
-}
-
-/// The style [`plain`]'s ink leaves a cell in once the mute pass has run:
-/// the pane's own reset-then-muted sequence, replayed here so a fixture
-/// never has to agree with a colour literal in `theme.rs` by coincidence.
-pub fn plain_dimmed() -> Style {
-    Style::reset().patch(plain().muted())
 }
 
 /// The bark dog's `[bark]` section as `Request::DogConfig` would answer it:
@@ -1472,7 +1449,9 @@ pub fn file_edit(app: &mut App, key: &str, value: &str) {
 /// came from.
 pub fn render(app: &App, width: u16, height: u16) -> Buffer {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
-    terminal.draw(|frame| super::draw(app, frame)).unwrap();
+    terminal
+        .draw(|frame| crate::lookout::view::draw(app, frame))
+        .unwrap();
     terminal.backend().buffer().clone()
 }
 
