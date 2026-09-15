@@ -1,8 +1,9 @@
 //! The sheep pane: one sheep given the whole screen.
 //!
-//! [`view::draw`](super::draw) spends this module's whole area on the
-//! identity band and the two charts; Tasks 9 and 10 add the read-only
-//! config column and the feed to what is still blank below them.
+//! [`view::draw`](super::draw) hands this module the whole body between the
+//! title band and the status bar, never a sub-rect. [`draw`] spends it on the
+//! identity band, the two charts, and below them the read-only config column
+//! beside the bleats feed.
 
 use std::time::Duration;
 
@@ -499,14 +500,14 @@ fn write_feed_row(buffer: &mut Buffer, area: Rect, row: u16, line: &Line<'static
 }
 
 /// Draws the pane into `area`: the identity band on its first row, the two
-/// histories over rows `CPU_HEADER_ROW` through `AXIS_ROW`, and nothing
-/// else yet.
+/// histories over rows `CPU_HEADER_ROW` through `AXIS_ROW`, then the
+/// read-only config column and the bleats feed either side of
+/// `DIVIDER_COL`.
 ///
 /// `area` is the whole pane body, under the title band
 /// [`view::draw`](super::draw) already painted and over the status bar it
-/// paints after this
-/// returns, not a sub-rect of either, the way every other full-screen
-/// pane's own `draw` is handed one.
+/// paints after this returns, not a sub-rect of either, the way every other
+/// full-screen pane's own `draw` is handed one.
 pub fn draw(app: &App, pane: &SheepPane, area: Rect, buffer: &mut Buffer) {
     if area.height == 0 {
         return;
