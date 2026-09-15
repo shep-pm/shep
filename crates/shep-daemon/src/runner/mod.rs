@@ -6,10 +6,11 @@
 //! messages without the runner blocking on delivery.
 //!
 //! Also owns the log plane's vocabulary ([`LogCtl`] and its two errors) and
-//! this crate's only opener of a sheep's log file, `open_log_path`, with the
-//! ancestry guard that runs ahead of it. The log pump and `shep flush` both
-//! go through the pair, so neither can drift on what it will open. The
-//! `#[cfg(unix)]` items are the handover's; Windows has no `execve`.
+//! this crate's only opener of a sheep's log file, `log_path_security`'s
+//! `open_log_path`, with the ancestry guard that runs ahead of it. The log
+//! pump and `shep flush` both go through the pair, so neither can drift on
+//! what it will open. The `#[cfg(unix)]` items are the handover's; Windows
+//! has no `execve`.
 
 /// Re-exported so [`AdoptSpec`]'s public signature can name it: the reaper
 /// itself lives in the crate-private `handover` module.
