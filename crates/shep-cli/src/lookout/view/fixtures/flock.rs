@@ -9,7 +9,7 @@ use crate::lookout::app::{ActionVerb, App, Control, KeyPress, Msg, RowKey};
 use crate::lookout::tail::{Stream, Tail};
 use crate::lookout::theme::Palette;
 
-use super::line;
+use super::bleats::line;
 use super::palette::plain;
 
 /// A dashboard with `flock` listed and nothing else applied.
