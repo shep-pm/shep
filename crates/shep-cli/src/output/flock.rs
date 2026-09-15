@@ -123,3 +123,203 @@ fn silence_pointer(dogs: &[ProcessInfo]) -> Option<String> {
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use shep_core::protocol::DogSource;
+
+    use crate::output::rows::tests::dog_info;
+
+    use super::super::tests::{mixed_listing, sheep_info, silent_dog};
+    use super::*;
+
+    /// The dogs table needs no flag: a dead bark dog is what an operator
+    /// needs to notice, and hiding it means finding out by not being
+    /// paged.
+    #[test]
+    fn a_flock_listing_prints_the_dogs_in_their_own_table() {
+        let mut out = Vec::new();
+        emit_flock(
+            &mut out,
+            Format::Table,
+            "flock",
+            mixed_listing(),
+            None,
+            Presentation::BARE,
+        )
+        .unwrap();
+        let text = String::from_utf8(out).unwrap();
+
+        let (sheep_table, dogs_table) = text.split_once("\nDogs\n").expect("a Dogs caption");
+        assert!(sheep_table.contains("web"));
+        assert!(!sheep_table.contains("bark"), "a dog is not a sheep");
+        assert!(dogs_table.contains("bark"));
+        assert!(!dogs_table.contains("web"));
+        // The dogs table carries an ID column, and its columns line up
+        // with the sheep table's for every header the two share.
+        assert!(
+            dogs_table.starts_with("ID"),
+            "the dogs table leads with ID, as the sheep table does: {dogs_table}"
+        );
+        let shared: Vec<&str> = dogs_table
+            .lines()
+            .next()
+            .unwrap()
+            .split_whitespace()
+            .take(9)
+            .collect();
+        assert_eq!(
+            shared,
+            [
+                "ID", "NAME", "STATUS", "PID", "RESTARTS", "EXIT", "CPU", "MEM", "UPTIME"
+            ],
+            "the nine shared columns, in the sheep table's own order"
+        );
+        assert!(
+            dogs_table
+                .lines()
+                .next()
+                .unwrap()
+                .trim_end()
+                .ends_with("SOURCE"),
+            "and this table's own column last"
+        );
+    }
+
+    /// `silent` names a relationship, not a state, and an operator cannot
+    /// act on it from this table alone: the paragraph lives in `describe`.
+    #[test]
+    fn a_silent_dog_is_pointed_at_the_view_that_explains_it() {
+        let mut out = Vec::new();
+        emit_flock(
+            &mut out,
+            Format::Table,
+            "flock",
+            vec![sheep_info("web"), silent_dog("log-rotate", Some(true))],
+            None,
+            Presentation::BARE,
+        )
+        .unwrap();
+        let text = String::from_utf8(out).unwrap();
+
+        assert!(text.contains("silent"), "the cell still says it: {text}");
+        assert!(
+            text.contains("shep describe log-rotate"),
+            "and the pointer names the dog, so it can be typed: {text}"
+        );
+    }
+
+    /// Adding a consequence for `silent` must add no column and move no
+    /// cell.
+    #[test]
+    fn the_silence_pointer_sits_below_the_table_and_changes_no_column() {
+        // The SAME dog either way, differing only in whether it has
+        // answered. A different dog would widen the NAME column on its own
+        // and the comparison below would be measuring the fixture rather
+        // than the pointer.
+        let silent = vec![sheep_info("web"), silent_dog("log-rotate", Some(true))];
+        let mut talking = silent.clone();
+        talking[1].handshook = Some(true);
+        talking[1].dog_stale = Some(false);
+
+        let render = |listing: Vec<ProcessInfo>| {
+            let mut out = Vec::new();
+            emit_flock(
+                &mut out,
+                Format::Table,
+                "flock",
+                listing,
+                None,
+                Presentation::BARE,
+            )
+            .unwrap();
+            String::from_utf8(out).unwrap()
+        };
+
+        let with_pointer = render(silent);
+        let header = with_pointer
+            .split_once("\nDogs\n")
+            .expect("a Dogs caption")
+            .1
+            .lines()
+            .next()
+            .unwrap()
+            .to_string();
+        assert_eq!(
+            header,
+            render(talking)
+                .split_once("\nDogs\n")
+                .expect("a Dogs caption")
+                .1
+                .lines()
+                .next()
+                .unwrap(),
+            "the pointer is prose under the table, never a column in it"
+        );
+        assert!(
+            with_pointer.trim_end().ends_with("what to do about it."),
+            "and it comes last, after the table it annotates: {with_pointer}"
+        );
+    }
+
+    /// The same rule the `Dogs` caption itself follows: a listing with
+    /// nothing to report prints nothing extra.
+    #[test]
+    fn a_flock_with_no_silent_dog_says_nothing_about_silence() {
+        let mut out = Vec::new();
+        let mut talking = dog_info("bark", DogSource::BuiltIn);
+        talking.handshook = Some(true);
+        talking.dog_stale = Some(false);
+        emit_flock(
+            &mut out,
+            Format::Table,
+            "flock",
+            vec![sheep_info("web"), talking],
+            None,
+            Presentation::BARE,
+        )
+        .unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert!(!text.contains("silent"), "{text}");
+        assert!(!text.contains("shep describe"), "{text}");
+    }
+
+    /// The machine surface is the single registry: one array, every entry
+    /// carrying its own marker, never split to match the tables.
+    #[test]
+    fn the_json_surface_stays_one_array_of_every_entry() {
+        let mut out = Vec::new();
+        emit_flock(
+            &mut out,
+            Format::Json,
+            "flock",
+            mixed_listing(),
+            None,
+            Presentation::BARE,
+        )
+        .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(json["schema_version"], 1);
+        assert_eq!(json["data"].as_array().unwrap().len(), 2);
+        assert_eq!(json["data"][0]["dog"], serde_json::Value::Null);
+        assert_eq!(json["data"][1]["dog"]["kind"], "built_in");
+    }
+
+    /// An empty table still prints its header row, so a caption here
+    /// would surface a bare header line under every dogless listing.
+    #[test]
+    fn a_flock_with_no_dogs_prints_one_table_and_no_caption() {
+        let mut out = Vec::new();
+        emit_flock(
+            &mut out,
+            Format::Table,
+            "flock",
+            vec![sheep_info("web")],
+            None,
+            Presentation::BARE,
+        )
+        .unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert!(!text.contains("Dogs"));
+    }
+}
