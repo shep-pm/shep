@@ -1,7 +1,7 @@
 //! What `shep --help` and `shep --version` render.
 //!
 //! The grouped verb listing in [`HELP_TEMPLATE`] is hand-written, because
-//! clap has no subcommand grouping of its own. [`HELP_GROUPS`] is the same
+//! clap has no subcommand grouping of its own. `HELP_GROUPS` is the same
 //! listing as data, and the tests below are what stop the two drifting from
 //! each other or from the real command tree.
 
