@@ -47,7 +47,8 @@ impl Client {
 /// client end.
 ///
 /// A real transport on both platforms, a socketpair on unix and a named
-/// pipe on Windows, rather than an in-memory duplex: several tests below
+/// pipe on Windows, rather than an in-memory duplex: several cases in
+/// `conn_protocol`
 /// turn on what a peer sees when the other side closes.
 pub(super) async fn connected(ctx: RpcContext) -> Client {
     let (server, client) = shep_core::transport::connected_pair().await.unwrap();
@@ -118,7 +119,8 @@ pub(super) async fn dog_row(ctx: &RpcContext, name: &str) -> ProcessInfo {
 ///
 /// The restart a refusal triggers runs on its own task, so there is no
 /// handle to await. The elapsed time is returned because the
-/// never-restart-twice test below sizes its negative window against it.
+/// `conn_protocol`'s `a_twice_refused_dog_is_reported_stale_and_never_restarted_again`
+/// sizes its negative window against it.
 pub(super) async fn await_dog(ctx: &RpcContext, name: &str, pid: u32) -> Duration {
     let began = tokio::time::Instant::now();
     let seen = tokio::time::timeout(RECV_TIMEOUT, async {
