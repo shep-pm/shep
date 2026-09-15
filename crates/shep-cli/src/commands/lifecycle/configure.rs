@@ -1,8 +1,8 @@
 //! Merges a load's declared config into the app the flock already has.
 //!
 //! The declared-key merge, interpreter resolution, cwd defaulting, reset
-//! depth and the per-app refusal line that [`start::load`](super::start::load)
-//! applies before it respawns anything.
+//! depth and the per-app refusal line that `start::load` applies before it
+//! respawns anything.
 
 use std::collections::BTreeMap;
 use std::path::Path;

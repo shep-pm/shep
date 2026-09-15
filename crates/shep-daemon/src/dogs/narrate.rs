@@ -22,7 +22,8 @@ const SHEP_VOICE: &str = "[shep]";
 ///
 /// The file is written directly rather than through the pump, which ends when
 /// its sheep's streams reach EOF, before there is anything to say about how the
-/// dog exited. Safe because [`open_append`] opens with `O_APPEND`: every write
+/// dog exited. Safe because [`crate::tokio_runner::open_append`] opens with
+/// `O_APPEND`: every write
 /// seeks to end atomically, so the whole line is assembled and written in one
 /// call. The cost is ordering, since a narration line can land ahead of dog
 /// output still in the pump's buffer, bounded by `IDLE_FLUSH`.

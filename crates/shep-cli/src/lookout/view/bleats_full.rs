@@ -68,7 +68,8 @@ pub(crate) fn draw_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static
     lines(app, pane, width, rows)
 }
 
-/// Shared by [`draw`] and [`draw_lines`], so the two never drift.
+/// Shared by [`draw`] and the `#[cfg(test)]` `draw_lines`, so the two never
+/// drift.
 fn lines(app: &App, pane: &BleatsPane, width: u16, rows: usize) -> Vec<Line<'static>> {
     let mut out = Vec::with_capacity(rows);
     out.push(title_line(app, pane, width));

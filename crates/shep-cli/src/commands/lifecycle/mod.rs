@@ -1,9 +1,10 @@
 //! Lifecycle verbs: `start`, `stop`, `restart`, `delete`.
 //!
-//! Every verb here receives an already-connected [`Client`]. `start` alone
-//! resolves a target into [`AppConfig`]s before anything reaches the wire;
-//! [`resolve_target`] is that resolution, kept out of the RPC so it stays
-//! pure.
+//! Every verb here receives an already-connected
+//! [`Client`](shep_client::Client). `start` alone resolves a target into
+//! [`AppConfig`](shep_core::config::AppConfig)s before anything reaches the
+//! wire; [`resolve_target`] is that resolution, kept out of the RPC so it
+//! stays pure.
 
 pub(crate) mod configure;
 pub(crate) mod deadline;

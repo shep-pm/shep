@@ -78,7 +78,7 @@ pub(crate) struct SecretsPane {
 
 /// A delete armed on the secrets pane: the key and when it armed, one value
 /// rather than two so a caller cannot set one without the other, the same
-/// pairing [`PanePending::Armed`] keeps for the config pane.
+/// pairing [`Pending::Armed`] keeps for the settings pane.
 #[derive(Debug, Clone)]
 pub(crate) struct ArmedDelete {
     /// The key waiting on `Enter` to confirm the delete.
@@ -119,7 +119,7 @@ impl SecretsPane {
     /// Every index into `model.rows` this pane currently draws: a
     /// collapsed namespace's members contribute none, the same rows
     /// `view::secrets::draw` skips on screen. Never the `+ new key` row,
-    /// which is not a `model.rows` index: [`Self::reveal_selected`] reads
+    /// which is not a `model.rows` index: [`App::reveal_selected`] reads
     /// this to decide whether anything real is even on screen, so it stays
     /// real-rows-only rather than growing the affordance into it.
     pub(super) fn visible_row_indices(&self) -> Vec<usize> {
@@ -144,7 +144,8 @@ impl SecretsPane {
     /// which case the affordance is first on screen instead.
     ///
     /// The single source of truth for where the affordance goes.
-    /// [`Self::screen_slots`] (the cursor) and [`view::secrets::draw`] (the
+    /// [`Self::screen_slots`] (the cursor) and
+    /// [`view::secrets::draw`](crate::lookout::view::secrets::draw) (the
     /// render) both derive their placement from this rather than each
     /// running its own scan, so the two cannot disagree about which line
     /// the affordance is on.
@@ -159,7 +160,8 @@ impl SecretsPane {
     }
 
     /// Every screen slot `j`/`k`/`g`/`G` can land the cursor on, in the
-    /// order [`view::secrets::draw`] draws them: `None` is the `+ new key`
+    /// order [`view::secrets::draw`](crate::lookout::view::secrets::draw)
+    /// draws them: `None` is the `+ new key`
     /// affordance, placed right after [`Self::new_key_anchor`], or first on
     /// screen when there is none, matching `view::secrets::draw`'s own
     /// placement.

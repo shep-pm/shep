@@ -135,7 +135,7 @@ pub enum KeyPress {
     /// ignores it: there is no stream axis outside the pane.
     StreamCycle,
     /// `m`: cycles the bleats pane's minimum-level axis through every
-    /// [`Level`](crate::lookout::level::Level) in ascending order, then back
+    /// [`Level`] in ascending order, then back
     /// to `None`. Chosen over a design-named key because the status bar's own
     /// list names none for this axis; a global binding, ignored on the
     /// dashboard the same way [`Self::StreamCycle`] is.

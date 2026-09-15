@@ -158,7 +158,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install nightly --profile minimal
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - run: cargo +nightly doc --workspace --all-features --no-deps
+      # `--document-private-items` for the reason CLAUDE.md's task gate
+      # carries it: most of shep-daemon and shep-cli is `pub(crate)`, so
+      # without it this job never reads the modules where a broken intra-doc
+      # link can sit forever. 74 had accumulated by the time it went on.
+      # It does not reach `#[cfg(test)]` modules: `cargo doc` never turns
+      # `cfg(test)` on, and no other tool here checks those links either.
+      - run: cargo +nightly doc --workspace --all-features --no-deps --document-private-items
         env: { RUSTDOCFLAGS: "-Dwarnings --cfg docsrs" }
   typos:
     # Compiles nothing, so the floor is the whole value here.

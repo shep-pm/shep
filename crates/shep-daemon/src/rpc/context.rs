@@ -128,7 +128,7 @@ pub struct RpcContext {
     /// What has connected to this daemon's socket, by peer pid.
     ///
     /// Written by the connection layer, the one place that can see a peer's
-    /// credentials, and read by [`crate::dogs::record_silent_dog`]. It tells
+    /// credentials, and read by `dogs::silent::record_silent_dog`. It tells
     /// a dog that never reached the socket apart from one that reached it and
     /// did not name itself: two silences with opposite fixes.
     pub(crate) peer_contacts: crate::dogs::PeerContacts,

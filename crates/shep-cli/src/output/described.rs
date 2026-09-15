@@ -12,9 +12,9 @@ use crate::style::Presentation;
 
 use super::{FlockRows, LambRows, SCHEMA_VERSION, rows, table_of};
 
-/// The `--format json` shape [`emit_described`] writes: [`OutputEnvelope`]'s
-/// own three fields, plus `secrets` riding beside `data` rather than inside
-/// it.
+/// The `--format json` shape [`emit_described`] writes:
+/// [`super::OutputEnvelope`]'s own three fields, plus `secrets` riding
+/// beside `data` rather than inside it.
 ///
 /// A sibling field rather than a new column on [`ProcessInfo`]: `secrets`
 /// is derived by the client from local files, never a fact the shepherd
@@ -23,7 +23,8 @@ use super::{FlockRows, LambRows, SCHEMA_VERSION, rows, table_of};
 /// field entirely, matching a `fold` reply, which never computes one.
 ///
 /// Only ever constructed by [`emit_described`]. `#[cfg_attr(windows,
-/// allow(dead_code))]` for [`NoticeEnvelope`]'s reason: every caller lives
+/// allow(dead_code))]` for `diagnostics::NoticeEnvelope`'s reason: every
+/// caller lives
 /// in `commands/` or `lib.rs`'s `#[cfg(unix)]` arms.
 #[derive(Serialize)]
 #[cfg_attr(windows, allow(dead_code))]
@@ -39,7 +40,7 @@ struct DescribedEnvelope<'a> {
 /// tree beneath it when the reply walked and found any.
 ///
 /// A silent row also gets a paragraph from
-/// [`crate::vocabulary::silence_note`] (what [`silence_pointer`] points
+/// [`crate::vocabulary::silence_note`] (what `flock::silence_pointer` points
 /// at). A "Depends on" heading follows, once per name, naming the sheep this
 /// one waits for at a staged start; then Pending and Overridden headings,
 /// same once-per-name rule, naming `shep reload <name>` as what promotes a

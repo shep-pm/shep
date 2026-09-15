@@ -54,8 +54,8 @@ async fn report_reload_waiting(
 const DOG_SETTLE_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Gap between [`report_dog_staleness`]'s asks. Coarser than
-/// [`SUCCESSOR_POLL_INTERVAL`]: this waits on a process being killed and
-/// respawned rather than an `execve`.
+/// `reload::SUCCESSOR_POLL_INTERVAL`: this waits on a process being killed
+/// and respawned rather than an `execve`.
 const DOG_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
 
 /// Reports the dogs that could not come back, once the shepherd has heard

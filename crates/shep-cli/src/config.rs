@@ -34,12 +34,14 @@ pub(crate) fn style_from_config(shep_toml: Option<&str>) -> Option<style::StyleL
 /// Resolves the level in force and which layer chose it: `--style`, then
 /// `$SHEP_STYLE`, then `shep.toml`'s `[style] level`, then `full`.
 ///
-/// Reads `shep.toml` via [`resolve_paths`] rather than [`ensure_home`], so
+/// Reads `shep.toml` via [`resolve_paths`] rather than
+/// [`crate::home::ensure_home`], so
 /// `--style` still works with no `$SHEP_HOME` resolvable and nothing here
 /// creates a directory. An unreadable `shep.toml` reads as an empty config.
 ///
 /// Unforced: the hard rule that `--format json` or a piped stdout means
-/// [`style::StyleLevel::Bare`] is applied in [`run_argv`], so `shep style`'s
+/// [`style::StyleLevel::Bare`] is applied in [`crate::entry::run_argv`], so
+/// `shep style`'s
 /// report says what is configured.
 pub(crate) fn resolve_style(global: &GlobalArgs) -> (style::StyleLevel, style::StyleSource) {
     let config_text = resolve_paths(global)
@@ -52,7 +54,8 @@ pub(crate) fn resolve_style(global: &GlobalArgs) -> (style::StyleLevel, style::S
     )
 }
 
-/// Whether a level [`Commands::Style`]'s set form just wrote to `shep.toml`
+/// Whether a level [`crate::cli::Commands::Style`]'s set form just wrote to
+/// `shep.toml`
 /// is actually the level that will run.
 ///
 /// Only `Flag` and `Env` can say no: they are the two layers
@@ -69,7 +72,7 @@ pub(crate) fn style_write_is_overridden(source: style::StyleSource) -> bool {
 /// for. `shep completions` writes shell a stray escape would execute as code.
 ///
 /// Terminal-ness is a parameter: the real `is_terminal()` call happens once,
-/// in [`run_argv`].
+/// in [`crate::entry::run_argv`].
 pub(crate) fn must_render_bare(stdout_is_terminal: bool, fmt: cli::Format) -> bool {
     !stdout_is_terminal || fmt == cli::Format::Json
 }

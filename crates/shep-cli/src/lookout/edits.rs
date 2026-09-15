@@ -43,8 +43,8 @@ impl EditKey {
 /// [`PaneEdit`] rather than a value type of this module's own, because it
 /// is already the shape a write takes and already carries both a config
 /// field's [`FieldValue`](super::pane::FieldValue) and an env key's
-/// [`EnvValue`](super::pane::EnvValue). A second enum beside it would say
-/// the same thing twice and make a mismatched pair expressible.
+/// [`EnvValue`](shep_core::protocol::EnvValue). A second enum beside it
+/// would say the same thing twice and make a mismatched pair expressible.
 ///
 /// `Debug` is derived, safe because `PaneEdit`'s own `Debug` withholds
 /// both value types (IR-41).

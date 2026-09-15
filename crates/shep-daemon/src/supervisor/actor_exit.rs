@@ -70,7 +70,7 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// Synchronous and `&self` for the reason [`Self::handle_reopen`] gives.
     /// The entries are cloned because the assembly runs after the loop, which
-    /// is what [`OwnedCandidate`](OwnedCandidate) exists for.
+    /// is what [`OwnedCandidate`] exists for.
     ///
     /// Every registered sheep is described, with no selector: a handover
     /// carries one process image, so the flock goes whole or not at all.

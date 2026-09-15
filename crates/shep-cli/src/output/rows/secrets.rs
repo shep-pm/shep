@@ -362,7 +362,8 @@ pub struct KvUnsetRow {
     pub removed: u32,
 }
 
-/// No colour, for [`DeletedIds`]' reason: one column, which is also the whole
+/// No colour, for [`super::DeletedIds`]' reason: one column, which is also
+/// the whole
 /// content. `removed` is a count rather than an outcome, and `0` reads as
 /// `0`.
 impl Render for KvUnsetRow {

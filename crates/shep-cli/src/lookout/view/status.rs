@@ -456,7 +456,8 @@ fn secrets_hint(control: Control) -> String {
 /// there, and the list also names `d`/`K`/`J`, worded `d remove` there since
 /// it drops an element rather than restoring a default. `* yours`/`! parked`
 /// repeat the field list's glyphs
-/// ([`super::pane::field_line`]); the flock table's `CFG` column carries the
+/// (`view::pane::field_row::field_line`); the flock table's `CFG` column
+/// carries the
 /// same two with no legend of its own.
 ///
 /// `Control::Allowed` at [`PaneScreen::Fields`] said `esc write & close`,

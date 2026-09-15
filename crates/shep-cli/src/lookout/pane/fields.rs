@@ -83,7 +83,7 @@ pub(crate) fn sheep_fields(config: &AppConfig) -> (FieldSet, Map<String, Value>)
 /// operator would otherwise have to already know the convention for.
 ///
 /// Shared by [`ConfigPane::display_value`] and the sheep pane's read-only
-/// column ([`super::view::sheep::field_value_text`]), the same move
+/// column (`view::sheep::field_value_text`), the same move
 /// [`sheep_fields`] made for the field set itself: two rows reading the same
 /// value off two different screens and disagreeing on its units is exactly
 /// the divergence a shared function forecloses rather than a pair of tests

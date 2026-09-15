@@ -1,7 +1,6 @@
 //! Brings stopped sheep back up without touching live ones.
 //!
-//! The resume/dedupe layer [`start::load`](super::start::load) calls after
-//! registration.
+//! The resume/dedupe layer `start::load` calls after registration.
 
 use shep_client::Client;
 use shep_core::protocol::{ProcessInfo, Request, Response, SelectorSpec};
