@@ -1,9 +1,11 @@
 //! Fixtures the pane test modules share.
 
+mod host;
 mod palette;
 mod refusals;
 mod render;
 
+pub use self::host::{sample, with_host, with_host_none};
 pub use self::palette::{coloured, no_color, plain, plain_dimmed};
 pub use self::refusals::{a_refusal, invalid_config};
 pub use self::render::{render, render_all, rendered, row_containing, row_starting_with, rows_of};
@@ -28,7 +30,6 @@ use crate::lookout::app::{
 use crate::lookout::level::Level;
 use crate::lookout::pane::{ConfigPane, ReloadKind};
 use crate::lookout::secrets::{SecretRow, SecretsModel, Source};
-use crate::lookout::source::HostSample;
 use crate::lookout::tail::{Stream, Tail, TailLine};
 use crate::lookout::theme::Palette;
 use crate::secret_readers::Reader;
@@ -180,41 +181,6 @@ pub fn app_with_a_built_in_dog_selected_and_control() -> App {
     let mut app = app_with(vec![decoy, dog], plain());
     app.set_control_for_tests(Control::Allowed);
     app.update(Msg::Key(KeyPress::SelectDown));
-    app
-}
-
-/// One plausible host reading: the same numbers the gallery's scenes use, so
-/// a failure here and a frame under review name the same figures.
-pub fn sample() -> HostSample {
-    HostSample {
-        load: (2.31, 4.10, 3.88),
-        cores: Some(10),
-        memory_total_bytes: 32 << 30,
-        memory_used_bytes: 12 * (1 << 30) + (410 << 20),
-        uptime_seconds: 6 * 86_400 + 3 * 3_600,
-    }
-}
-
-/// A dashboard that has had one host sample applied.
-pub fn with_host(sample: HostSample, flock: Vec<ProcessInfo>) -> App {
-    let mut app = app_with(flock, plain());
-    app.update(Msg::Host {
-        sample: Some(sample),
-    });
-    app
-}
-
-/// A dashboard with no host reading. The two ways of having none are not the
-/// same state: `unsupported: true` applies `Msg::Host { sample: None }`, the
-/// signal a `sysinfo` that does not support the platform produces, and the
-/// strip says so. `unsupported: false` applies no `Msg::Host` at all, the
-/// state before the first heartbeat, and the strip says `not read yet`
-/// instead.
-pub fn with_host_none(flock: Vec<ProcessInfo>, unsupported: bool) -> App {
-    let mut app = app_with(flock, plain());
-    if unsupported {
-        app.update(Msg::Host { sample: None });
-    }
     app
 }
 
