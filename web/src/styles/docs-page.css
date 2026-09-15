@@ -313,8 +313,11 @@
     display: none;
   }
 
-  .docs-shell main .field-table .col-does[data-label]::before,
-  .docs-shell main .field-table .col-default[data-label]::before {
+  /* Any stacked cell, in any of these tables, not just the two column
+     classes the field tables happen to use. from-pm2's pm2-to-shep mapping
+     is a pair of bare spans, and without this it stacked as two values with
+     nothing saying which side was which. */
+  .docs-shell main .row > [data-label]::before {
     content: attr(data-label);
     display: block;
     font-size: 0.75rem;

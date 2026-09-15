@@ -303,52 +303,52 @@ PORT_BASE = "3000"`}</CodeBlock>
         <span>shep</span>
       </div>
       <div class="row">
-        <span><code>name</code></span>
-        <span><code>name</code>: the grouping key</span>
+        <span data-label="pm2"><code>name</code></span>
+        <span data-label="shep"><code>name</code>: the grouping key</span>
       </div>
       <div class="row">
-        <span><code>pm_cwd</code></span>
-        <span><code>cwd</code></span>
+        <span data-label="pm2"><code>pm_cwd</code></span>
+        <span data-label="shep"><code>cwd</code></span>
       </div>
       <div class="row">
-        <span><code>pm_exec_path</code></span>
-        <span><code>script</code></span>
+        <span data-label="pm2"><code>pm_exec_path</code></span>
+        <span data-label="shep"><code>script</code></span>
       </div>
       <div class="row">
-        <span><code>args</code></span>
-        <span><code>args</code></span>
+        <span data-label="pm2"><code>args</code></span>
+        <span data-label="shep"><code>args</code></span>
       </div>
       <div class="row">
-        <span><code>exec_interpreter</code></span>
-        <span><code>interpreter</code>: absent when it was <code>"none"</code></span>
+        <span data-label="pm2"><code>exec_interpreter</code></span>
+        <span data-label="shep"><code>interpreter</code>: absent when it was <code>"none"</code></span>
       </div>
       <div class="row">
-        <span><code>autorestart</code></span>
-        <span><code>autorestart</code></span>
+        <span data-label="pm2"><code>autorestart</code></span>
+        <span data-label="shep"><code>autorestart</code></span>
       </div>
       <div class="row">
-        <span><code>restart_delay</code> (ms)</span>
-        <span><code>restart_delay</code></span>
+        <span data-label="pm2"><code>restart_delay</code> (ms)</span>
+        <span data-label="shep"><code>restart_delay</code></span>
       </div>
       <div class="row">
-        <span><code>merge_logs</code></span>
-        <span><code>merge_logs</code></span>
+        <span data-label="pm2"><code>merge_logs</code></span>
+        <span data-label="shep"><code>merge_logs</code></span>
       </div>
       <div class="row">
-        <span><code>max_memory_restart</code> (bytes)</span>
-        <span><code>max_memory</code>: enforced against the whole process tree, not just the root pid</span>
+        <span data-label="pm2"><code>max_memory_restart</code> (bytes)</span>
+        <span data-label="shep"><code>max_memory</code>: enforced against the whole process tree, not just the root pid</span>
       </div>
       <div class="row">
-        <span>rows sharing a <code>name</code></span>
-        <span><code>instances</code>: the row count</span>
+        <span data-label="pm2">rows sharing a <code>name</code></span>
+        <span data-label="shep"><code>instances</code>: the row count</span>
       </div>
       <div class="row">
-        <span><code>exec_mode == "cluster_mode"</code></span>
-        <span>a stderr notice, and nothing in the Flockfile</span>
+        <span data-label="pm2"><code>exec_mode == "cluster_mode"</code></span>
+        <span data-label="shep">a stderr notice, and nothing in the Flockfile</span>
       </div>
       <div class="row">
-        <span><code>NODE_APP_INSTANCE</code> in a row's env</span>
-        <span>an <code>[app.env]</code> entry set to <code>{'"{{instance}}"'}</code>, plus a stderr notice</span>
+        <span data-label="pm2"><code>NODE_APP_INSTANCE</code> in a row's env</span>
+        <span data-label="shep">an <code>[app.env]</code> entry set to <code>{'"{{instance}}"'}</code>, plus a stderr notice</span>
       </div>
     </div>
 
@@ -448,9 +448,9 @@ cwd = "/srv/migrate"`}</CodeBlock>
         benchTable.map((row) => (
           <div class="row">
             <span class="note-cell">{row.metric}</span>
-            <span class="shep-cell"><code>{row.shep}</code></span>
-            <span class="pm2-cell"><code>{row.pm2}</code></span>
-            <span class="note-cell">{row.ratio}</span>
+            <span class="shep-cell" data-label="shep"><code>{row.shep}</code></span>
+            <span class="pm2-cell" data-label="pm2"><code>{row.pm2}</code></span>
+            <span class="note-cell" data-label="ratio">{row.ratio}</span>
           </div>
         ))
       }
@@ -668,7 +668,13 @@ cwd = "/srv/migrate"`}</CodeBlock>
       gap: 4px;
     }
 
-    .row.header {
+    /* Named through the table class, not as a bare `.row.header`. Astro
+       scopes both, so `.verb-table .row` is four class-weight selectors
+       against this rule's three, and the bare version lost: the bench
+       header stayed on screen and stacked into four lines nothing lined up
+       with. */
+    .verb-table .row.header,
+    .bench-table .row.header {
       display: none;
     }
   }
