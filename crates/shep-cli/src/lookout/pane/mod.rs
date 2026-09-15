@@ -15,6 +15,8 @@ use shep_core::config::{ApplyGroup, GROUP_ORDER, apply_group, reaches_running};
 use shep_core::protocol::{EnvValue, SheepConfigView};
 
 mod fields;
+#[cfg(test)]
+mod fixtures;
 mod types;
 
 pub(crate) use fields::{resolved_display, sheep_fields};
@@ -1584,47 +1586,14 @@ const fn reload_mode(wait_ready: bool, has_probe: bool, reuse_port: bool) -> Rel
 
 #[cfg(test)]
 mod tests {
+    use super::fixtures::{
+        bark_pane, field, filed, filed_impact, secret_dog_pane, web, web_with_args,
+    };
     use shep_core::values::{MemSize, UpDuration};
 
     use shep_core::config::{AppConfig, ProbeConfig, ProbeKind};
 
     use super::*;
-
-    fn web() -> SheepConfigView {
-        let mut config = AppConfig {
-            name: "web".into(),
-            max_restarts: 32,
-            ..AppConfig::default()
-        };
-        config
-            .env
-            .insert("DB_HOST".into(), "{{shared:DB_HOST}}".into());
-        SheepConfigView::new(config, vec!["max_restarts".into()], vec!["env".into()])
-    }
-
-    /// The value the pane has filed for the config field `key`, or
-    /// [`None`] when nothing is filed for it.
-    fn filed(pane: &ConfigPane, key: &str) -> Option<Value> {
-        match pane.edits().get(&EditKey::Field(key.to_owned()))?.edit() {
-            PaneEdit::Set { value, .. } => Some(value.as_value().clone()),
-            PaneEdit::SetEnv { .. } => None,
-        }
-    }
-
-    /// What the pane recorded that filed edit as costing.
-    fn filed_impact(pane: &ConfigPane, key: &str) -> Option<ApplyGroup> {
-        pane.edits().get(&EditKey::Field(key.to_owned()))?.impact()
-    }
-
-    fn web_with_args(args: &[&str]) -> SheepConfigView {
-        let config = AppConfig {
-            name: "web".into(),
-            args: args.iter().map(|arg| (*arg).to_string()).collect(),
-            stop_exit_codes: vec![0, 143],
-            ..AppConfig::default()
-        };
-        SheepConfigView::new(config, Vec::new(), Vec::new())
-    }
 
     #[test]
     fn a_sheep_pane_has_forty_two_fields_in_eight_groups() {
@@ -2127,17 +2096,6 @@ mod tests {
         ));
     }
 
-    /// The bark section every dog test below reads: a comment, a scalar,
-    /// and a sink carrying a credential.
-    fn bark_section() -> String {
-        "# how often\npoll = \"60s\"\nhistory_bytes = 4096\n\n[sinks.ops]\nkind = \"slack\"\nurl = \"https://hooks.example/x\"\n".to_owned()
-    }
-
-    fn bark_pane() -> ConfigPane {
-        let schema = crate::dog::builtin_schema("bark").expect("bark is a built-in");
-        ConfigPane::dog("bark".into(), None, schema, bark_section())
-    }
-
     /// A dog's schema carries no group, so the pane draws no headers, and
     /// shep does not classify a dog's field cost: `cost` answers `None`
     /// for one.
@@ -2180,24 +2138,6 @@ mod tests {
         assert_eq!(pane.lock("sinks"), Some(Lock::NoWidget));
         assert_eq!(pane.lock("rules"), Some(Lock::NoWidget));
         assert_eq!(pane.lock("poll"), None);
-    }
-
-    /// A dog whose schema declares one secret string. No built-in has one:
-    /// bark's only secret is a map, and a map has no editor to type a
-    /// secret into, so a typed secret is not reachable from any fixture
-    /// the pane already had.
-    fn secret_dog_pane() -> ConfigPane {
-        let schema = serde_json::json!({
-            "properties": {
-                "webhook": { "type": "string", "x-shep-secret": true },
-            }
-        });
-        ConfigPane::dog(
-            "pydog".into(),
-            None,
-            schema,
-            "webhook = \"https://hook/OLD\"\n".to_owned(),
-        )
     }
 
     /// The one editor a secret can be typed into, and `secret_dog_pane` is
@@ -2249,15 +2189,6 @@ mod tests {
         pane.begin_typing();
         let typing = pane.typing().expect("the editor is open");
         assert_eq!(typing.buffer, "staging");
-    }
-
-    /// A field edit, filed the way [`Edits::set`] wants it, for the tests
-    /// below that build a batch by hand rather than by keystroke.
-    fn field(key: &str, value: serde_json::Value) -> PaneEdit {
-        PaneEdit::Set {
-            key: key.to_owned(),
-            value: value.into(),
-        }
     }
 
     /// Re-rendering from parsed values would delete every comment in a
