@@ -1,26 +1,19 @@
-//! The dog contract: what a dog is spawned as, and how it is served its own
-//! configuration
+//! The dogs subsystem: what a dog is, the handshake-refusal ladder, silent-dog
+//! detection, shep's own narration into a dog's log, and the local restart
+//! bookkeeping the daemon keeps for its plugin processes.
 //!
-//! A dog is an ordinary supervised process that speaks the control protocol.
-//! [`dog_app`] assembles the same [`ResolvedApp`] a Flockfile entry would, and
-//! the supervisor supervises it as a sheep. Both [`DogSpec::source`] kinds run
-//! at the daemon's own trust level.
-//!
-//! Configuration travels over the socket through [`dog_section`]: a dog
-//! inherits `$SHEP_HOME` and `$SHEP_DOG_NAME`, then asks for its `[<name>]`
-//! section of `dogs.toml`. No section value reaches the child's environment,
-//! which is readable from the process table and inherited by every child.
+//! Split by concern across this directory's files; this module just wires
+//! them together and re-exports what the rest of the daemon calls by the old
+//! `dogs::` path.
 
-use core::fmt;
 use core::time::Duration;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use shep_core::barks::{self, Bark};
-use shep_core::config::{AppConfig, DogsConfig, ResolvedApp, normalize};
-use shep_core::paths::ShepPaths;
-use shep_core::protocol::{BusEvent, DogSource, ProcessEventKind, ProcessInfo};
+use shep_core::config::{AppConfig, DogsConfig};
+use shep_core::protocol::{BusEvent, ProcessEventKind, ProcessInfo};
 use shep_core::selector::ProcessSelector;
 use shep_core::status::ProcStatus;
 use tokio::sync::broadcast::{self, error::RecvError};
@@ -29,169 +22,13 @@ use tokio::time::Instant;
 use crate::bus::{Bus, SharedEvent};
 use crate::supervisor::SupervisorHandle;
 
-/// One dog the daemon knows about: its name, and where its binary comes from.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DogSpec {
-    /// The dog's name: the `[<name>]` key and the entry's name.
-    pub name: String,
-    /// Where its binary comes from.
-    pub source: DogSource,
-}
+mod narrate;
+mod spec;
+#[cfg(test)]
+mod test_support;
 
-/// Error assembling a dog's app config, or reading its section
-///
-/// `Debug` needs no redaction: a path, a normalizer complaint, or a TOML
-/// parser message, never a value read out of a parsed `[<name>]` table. A
-/// syntax error can quote a line of the section's own source, but only to
-/// the peer that asked, which peer-cred auth already established owns the
-/// file.
-///
-/// [`Self::NoBinary`] and [`Self::Io`] wrap their [`std::io::Error`] rather
-/// than rendering it, which costs this enum `Clone`, `PartialEq` and `Eq`.
-#[non_exhaustive]
-#[derive(Debug)]
-pub enum DogError {
-    /// A built-in dog has no program it can be spawned with: either
-    /// [`std::env::current_exe`] failed, or handover-target resolution refused
-    /// every candidate.
-    NoBinary(std::io::Error),
-    /// The dog's binary comes from a source this build cannot spawn (carries
-    /// the source as `Debug` renders it). [`DogSource`] is `#[non_exhaustive]`,
-    /// so a name enabled by a newer shep can reach an older daemon.
-    UnsupportedSource(String),
-    /// The assembled config failed `normalize`, or the file read is not
-    /// valid `shep.toml`, or the section it holds cannot be rendered back to
-    /// TOML (carries the rejection message)
-    Config(String),
-    /// The file exists and could not be read
-    Io(std::io::Error),
-}
-
-impl fmt::Display for DogError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NoBinary(err) => write!(f, "this binary's own path is unresolvable: {err}"),
-            Self::UnsupportedSource(source) => {
-                write!(f, "no way to spawn a dog from source {source}")
-            }
-            Self::Config(msg) => write!(f, "dog configuration is unusable: {msg}"),
-            Self::Io(err) => write!(f, "dog configuration could not be read: {err}"),
-        }
-    }
-}
-
-impl core::error::Error for DogError {
-    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
-        match self {
-            Self::NoBinary(err) | Self::Io(err) => Some(err),
-            Self::UnsupportedSource(_) | Self::Config(_) => None,
-        }
-    }
-}
-
-/// The program a built-in dog is spawned as: this binary's own resolved path.
-///
-/// Through `handover::exec_target` rather than [`std::env::current_exe`],
-/// which on Linux answers `"<path> (deleted)"` once a package manager has
-/// replaced the running binary, and that cannot be exec'd. A respawned dog
-/// can therefore run newer code than the shepherd currently has loaded, if
-/// the binary was replaced before this shepherd reloaded or handed over.
-#[cfg(unix)]
-fn builtin_program() -> Result<PathBuf, DogError> {
-    crate::handover::exec_target().map_err(DogError::NoBinary)
-}
-
-/// The program a built-in dog is spawned as, on a platform with no handover.
-///
-/// Windows refuses to replace a running executable, so no unlinked inode can
-/// exist for `current_exe` to name.
-#[cfg(windows)]
-fn builtin_program() -> Result<PathBuf, DogError> {
-    std::env::current_exe().map_err(DogError::NoBinary)
-}
-
-/// The app config the daemon spawns `spec` from.
-///
-/// A built-in dog is `<this binary> dog <name>`; an adopted one is the
-/// operator's binary with no arguments. The environment carries exactly
-/// `SHEP_HOME` and `SHEP_DOG_NAME`, never a `[<name>]` value: a dog asks for
-/// its section over the socket.
-///
-/// # Errors
-/// - [`DogError::NoBinary`] if a built-in dog has no program to run.
-/// - [`DogError::UnsupportedSource`] if the source is a kind this build does
-///   not know how to spawn.
-/// - [`DogError::Config`] if the assembled config failed `normalize`.
-pub fn dog_app(spec: &DogSpec, paths: &ShepPaths) -> Result<ResolvedApp, DogError> {
-    let (script, args) = match &spec.source {
-        DogSource::BuiltIn => (
-            builtin_program()?.display().to_string(),
-            vec!["dog".to_string(), spec.name.clone()],
-        ),
-        // No arguments: an adopted dog is somebody else's binary, and an argv
-        // shep invented for it is one more thing it has to agree with.
-        DogSource::Adopted { path } => (path.clone(), Vec::new()),
-        source => return Err(DogError::UnsupportedSource(format!("{source:?}"))),
-    };
-
-    let mut config = AppConfig::minimal(&spec.name, &script);
-    config.args = args;
-    config
-        .env
-        .insert("SHEP_HOME".to_string(), paths.home.display().to_string());
-    // The `[<name>]` key this dog's section lives beneath, and so the `name`
-    // it puts in `Request::DogConfig`. An adopted dog has no argv to read it
-    // from, so this is its only channel.
-    config
-        .env
-        .insert("SHEP_DOG_NAME".to_string(), spec.name.clone());
-    normalize(config).map_err(|err| DogError::Config(err.to_string()))
-}
-
-/// Starts every dog in `specs`, warning and carrying on for each one that
-/// will not start.
-///
-/// Never fails the boot: a dog that cannot be spawned is a monitoring gap, and
-/// refusing to bring the flock up over it turns that gap into an outage.
-/// [`SupervisorHandle::start_dog`] is idempotent by name, so an `Ok` reply
-/// carrying no `dog` means a sheep already held the name and nothing started.
-pub async fn spawn_enabled_dogs(
-    specs: &[DogSpec],
-    paths: &ShepPaths,
-    supervisor: &SupervisorHandle,
-    events: &Bus,
-) {
-    for spec in specs {
-        let app = match dog_app(spec, paths) {
-            Ok(app) => app,
-            Err(err) => {
-                tracing::warn!(dog = %spec.name, %err, "a dog did not start");
-                continue;
-            }
-        };
-        // Read before `start_dog` takes the app: this is the one place that
-        // knows which file the spawn resolved to.
-        let script = app.config().script.clone();
-        match supervisor.start_dog(app, spec.source.clone()).await {
-            Ok(info) if info.dog.is_none() => tracing::warn!(
-                dog = %spec.name,
-                "a sheep is already registered under this name; the dog did not start"
-            ),
-            Ok(info) => {
-                // `start_dog` is idempotent by name, so this reply may be a
-                // dog that was already running: the wording is about the
-                // binary this shepherd resolved, not about a spawn.
-                narrate(
-                    events,
-                    &info,
-                    &format!("shep has this dog enabled, running the binary at {script}"),
-                )
-                .await;
-            }
-            Err(err) => tracing::warn!(dog = %spec.name, %err, "a dog did not start"),
-        }
-    }
-}
+pub(crate) use narrate::{narrate, narrate_by_name};
+pub use spec::{DogError, DogSpec, dog_app, spawn_enabled_dogs};
 
 /// The `[<name>]` section of `path`, a `dogs.toml`, as the operator wrote
 /// it, as a document in its own right: headers rebased off `name`, and no
@@ -1093,113 +930,6 @@ pub fn spawn_silent_dog_watch(
     })
 }
 
-/// The marker every line shep writes into a dog's own log begins with, once
-/// the timestamp is past.
-///
-/// A dog's log is the dog's voice and shep writes into that file too, so the
-/// file has to say which lines are whose. Short and bracketed because it sits
-/// behind a 30-character timestamp.
-const SHEP_VOICE: &str = "[shep]";
-
-/// Writes one line of shep's own narration into `info`'s log, and publishes
-/// it to whoever is following that log live.
-///
-/// The file is written directly rather than through the pump, which ends when
-/// its sheep's streams reach EOF, before there is anything to say about how the
-/// dog exited. Safe because [`open_append`] opens with `O_APPEND`: every write
-/// seeks to end atomically, so the whole line is assembled and written in one
-/// call. The cost is ordering, since a narration line can land ahead of dog
-/// output still in the pump's buffer, bounded by `IDLE_FLUSH`.
-///
-/// A dog with no `err_file` still reaches a live follower.
-pub(crate) async fn narrate(events: &Bus, info: &ProcessInfo, message: &str) {
-    let line = format!("{SHEP_VOICE} {message}");
-    if let Some(path) = &info.err_file {
-        let mut written = String::with_capacity(line.len() + 32);
-        shep_core::logstamp::stamp_into(&mut written);
-        written.push_str(&line);
-        written.push('\n');
-        // A failed open is already logged by `open_append`; a failed write is
-        // not. Neither is propagated: a log shep cannot write to must not
-        // change what shep does about the dog.
-        if let Ok(mut file) = crate::tokio_runner::open_append(Path::new(path)).await {
-            use tokio::io::AsyncWriteExt as _;
-            // Taken after the open: the pump waits on this lock for every line
-            // it writes, so holding it across a filesystem open would stall a
-            // sheep's output. Held across the write and the flush together.
-            let _record = crate::tokio_runner::record_lock(Path::new(path))
-                .lock_owned()
-                .await;
-            // `tokio::fs::File` hands the real `write(2)` to the blocking pool
-            // and does not flush on drop, so `write_all` returning means the
-            // bytes were accepted rather than written.
-            let written = async {
-                file.write_all(written.as_bytes()).await?;
-                file.flush().await
-            }
-            .await;
-            if let Err(error) = written {
-                tracing::warn!(
-                    dog = %info.name,
-                    %error,
-                    "shep's own narration did not reach this dog's log"
-                );
-            }
-        }
-    }
-    events.publish_log(BusEvent::LogErr { id: info.id, line });
-}
-
-/// `narrate`, for a caller that knows a dog's name and not its listing.
-///
-/// Spawned rather than awaited: both callers are connection handlers
-/// mid-handshake, and neither may be held up by a listing round trip and a
-/// file open. A name that does not resolve to a dog is silently nothing.
-pub(crate) fn narrate_by_name(
-    supervisor: &SupervisorHandle,
-    events: &Bus,
-    name: &str,
-    message: String,
-) {
-    let supervisor = supervisor.clone();
-    let events = events.clone();
-    let name = name.to_string();
-    tokio::spawn(async move {
-        let Ok(infos) = supervisor.list_checked().await else {
-            return;
-        };
-        if let Some(info) = infos
-            .iter()
-            .find(|info| info.name == name && info.dog.is_some())
-        {
-            narrate(&events, info, &message).await;
-        }
-    });
-}
-
-/// How a dog's process stopped existing, in the plainest words there are.
-///
-/// A signal number rather than a name, the rule
-/// [`ExitInfo::signal`](shep_core::protocol::ExitInfo::signal) states for
-/// itself: a dog's log is read next to `journalctl`.
-fn exit_words(info: &ProcessInfo) -> String {
-    match info.last_exit {
-        Some(exit) => match (exit.code, exit.signal) {
-            (Some(code), _) => format!("this dog's process exited with code {code}"),
-            (None, Some(signal)) => {
-                format!("this dog's process was killed by signal {signal}")
-            }
-            (None, None) => {
-                "this dog's process stopped, and the OS reported neither an exit code nor a signal"
-                    .to_string()
-            }
-        },
-        // Reachable rather than defensive: `last_exit` is `None` when the peer
-        // that built this listing predates the field.
-        None => "this dog's process stopped, and this shepherd has no record of how".to_string(),
-    }
-}
-
 /// Watches the bus and records, locally, every enabled dog that exhausts its
 /// restart budget, and writes each dog's spawn and exit into its own log.
 ///
@@ -1249,7 +979,7 @@ pub fn spawn_dog_watch(
                             .await;
                         }
                         ProcessEventKind::Exit => {
-                            narrate(&publish, info, &exit_words(info)).await;
+                            narrate(&publish, info, &narrate::exit_words(info)).await;
                         }
                         _ => {}
                     }
@@ -1353,142 +1083,8 @@ mod tests {
 
     use super::*;
     use crate::fake::ProcScript;
-    use crate::testing::test_paths;
-    use shep_core::protocol::ProcessInfo;
+    use shep_core::protocol::{DogSource, ProcessInfo};
     use shep_core::status::ProcStatus;
-
-    /// `current_exe` cannot safely be made to return `" (deleted)"`, so this
-    /// drives `crate::handover::resolve_target`, which `builtin_program`
-    /// delegates to. Unix only, because `handover` is.
-    #[cfg(unix)]
-    #[test]
-    fn a_deleted_inode_answer_from_current_exe_never_becomes_a_dogs_script() {
-        let refusal = crate::handover::resolve_target(
-            [None, Some(PathBuf::from("/opt/shep/shep (deleted)"))],
-            None,
-        )
-        .unwrap_err();
-        let err = DogError::NoBinary(refusal);
-        assert_eq!(
-            err.to_string(),
-            "this binary's own path is unresolvable: no binary to exec: \
-             /opt/shep/shep (deleted) (names a deleted inode, not a file)"
-        );
-    }
-
-    /// Asserted over the assembled spec rather than the config, because
-    /// `assemble` is where an env map would be merged. `SHEP_DOG_NAME` is no
-    /// exception to the rule: it is the key a dog needs to ask for its section
-    /// at all.
-    #[test]
-    fn a_dogs_child_environment_carries_shep_home_and_its_name_and_no_configuration() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = test_paths(&dir);
-        std::fs::write(
-            &paths.dogs_config,
-            "[bark]\nwebhook = \"https://example.invalid/hook\"\n",
-        )
-        .unwrap();
-        let spec = DogSpec {
-            name: "bark".to_string(),
-            source: DogSource::BuiltIn,
-        };
-        let app = dog_app(&spec, &paths).unwrap();
-        // A dog's config is built by `dog_app`, never operator-templated,
-        // so an empty view resolves everything it holds.
-        let assembled = crate::assemble::assemble(
-            &app,
-            0,
-            &paths,
-            None,
-            &shep_core::secrets::SecretView::empty("production".to_string()),
-        )
-        .expect("a dog's own config carries no template to refuse");
-        assert_eq!(
-            assembled.env.get("SHEP_HOME"),
-            Some(&paths.home.display().to_string())
-        );
-        assert_eq!(
-            assembled.env.get("SHEP_DOG_NAME"),
-            Some(&"bark".to_string()),
-            "a dog is told the name its own section lives under"
-        );
-        assert!(
-            !assembled
-                .env
-                .values()
-                .any(|v| v.contains("example.invalid")),
-            "a dog's configuration never travels in its environment: {:?}",
-            assembled.env
-        );
-    }
-
-    #[test]
-    fn a_built_in_dog_runs_this_binary_and_an_adopted_one_runs_its_own() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = test_paths(&dir);
-
-        let built_in = dog_app(
-            &DogSpec {
-                name: "metrics".to_string(),
-                source: DogSource::BuiltIn,
-            },
-            &paths,
-        )
-        .unwrap();
-        assert_eq!(
-            built_in.config().script,
-            std::env::current_exe().unwrap().display().to_string()
-        );
-        assert_eq!(built_in.config().args, vec!["dog", "metrics"]);
-
-        let adopted = dog_app(
-            &DogSpec {
-                name: "otel".to_string(),
-                source: DogSource::Adopted {
-                    path: "/usr/local/bin/shep-otel".to_string(),
-                },
-            },
-            &paths,
-        )
-        .unwrap();
-        assert_eq!(adopted.config().script, "/usr/local/bin/shep-otel");
-        assert!(adopted.config().args.is_empty());
-        assert_eq!(
-            adopted.config().name,
-            "otel",
-            "the NAME is the config key, never the filename"
-        );
-    }
-
-    /// An adopted dog is given no argv, so the environment is its only
-    /// channel, and a mismatch looks exactly like a dog with no configuration.
-    /// The name is the one the operator chose, not the binary's file stem.
-    #[test]
-    fn an_adopted_dog_is_told_the_name_it_was_registered_under() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = test_paths(&dir);
-
-        let adopted = dog_app(
-            &DogSpec {
-                name: "telemetry".to_string(),
-                source: DogSource::Adopted {
-                    path: "/usr/local/bin/shep-otel".to_string(),
-                },
-            },
-            &paths,
-        )
-        .unwrap();
-
-        assert!(
-            adopted.config().args.is_empty(),
-            "the name arrives without shep inventing an argv for a foreign binary"
-        );
-        assert_eq!(
-            adopted.config().env.get("SHEP_DOG_NAME"),
-            Some(&"telemetry".to_string())
-        );
-    }
 
     #[test]
     fn a_dogs_section_comes_back_as_its_own_table_and_nothing_else() {
@@ -1882,12 +1478,6 @@ mod tests {
         );
     }
 
-    /// How long [`start_test_dog`] waits on the supervisor before calling it a
-    /// hang rather than a slow start.
-    ///
-    /// Generous on purpose: a deadlock guard, not a timing assertion.
-    const DOG_FIXTURE_START_BUDGET: Duration = Duration::from_secs(10);
-
     /// How often [`settle_until`] looks while the watch works.
     ///
     /// Finer than [`DOG_SILENCE_POLL`] so a rung is seen inside the poll
@@ -1929,24 +1519,7 @@ mod tests {
         began.elapsed()
     }
 
-    async fn start_test_dog(ctx: &crate::rpc::RpcContext, name: &str) {
-        let spec = DogSpec {
-            name: name.to_string(),
-            source: DogSource::BuiltIn,
-        };
-        let app = dog_app(&spec, &ctx.paths).expect("the dog fixture must assemble");
-        // Bounded, because the callers below run under a paused clock and this
-        // await is the one thing in them not already forced. `start_paused`
-        // auto-advances to the next deadline once every task is idle, so the
-        // timeout fires rather than waiting on a wall clock.
-        tokio::time::timeout(
-            DOG_FIXTURE_START_BUDGET,
-            ctx.supervisor.start_dog(app, DogSource::BuiltIn),
-        )
-        .await
-        .expect("the dog fixture must start inside its budget")
-        .expect("the dog fixture must start");
-    }
+    use super::test_support::start_test_dog;
 
     /// The production case for the inference: a dog on an older protocol
     /// cannot send `Hello::dog_name`, so the refusal it earns is anonymous and
@@ -2482,73 +2055,5 @@ mod tests {
             Silence::Unattributed,
             "no pid is no attribution, which is a different answer from no contact"
         );
-    }
-
-    /// Fails if shep's own account of a dog stays in `shepd.err.log`, where the
-    /// dog's operator was never told to look.
-    ///
-    /// Both halves are asserted: the file is what survives to be read
-    /// afterwards, and the bus is what a `shep bleats --follow` sees live.
-    #[tokio::test]
-    async fn shep_s_own_account_of_a_dog_reaches_that_dog_s_log() {
-        let h = crate::testing::harness(vec![ProcScript::never_exits()]);
-        start_test_dog(&h.ctx, "log-rotate").await;
-        let info = h
-            .ctx
-            .supervisor
-            .list()
-            .await
-            .into_iter()
-            .find(|info| info.name == "log-rotate")
-            .expect("the dog fixture must be listed");
-        let err_log = info
-            .err_file
-            .clone()
-            .expect("a dog's log paths are resolved");
-
-        // A real `log.*` forwarder: `Bus::publish_log` skips the whole publish
-        // while nothing has registered an interest in log topics, so a plain
-        // `subscribe()` would assert the gate is shut. Registered first,
-        // because a broadcast receiver starts at the channel's current tail.
-        let (out_tx, mut following) = tokio::sync::mpsc::channel(16);
-        let forwarder = crate::bus::spawn_forwarder(
-            &h.ctx.events,
-            crate::bus::TopicFilter::new(&["log.*".to_string()]).unwrap(),
-            out_tx,
-        );
-
-        narrate(&h.ctx.events, &info, "shep did a thing worth saying").await;
-
-        let written = std::fs::read_to_string(&err_log).expect("the narration must reach the log");
-        let line = written
-            .strip_suffix('\n')
-            .expect("one whole line, newline included");
-        assert!(
-            line.ends_with("[shep] shep did a thing worth saying"),
-            "the line must be marked as shep's voice, not the dog's: {line:?}"
-        );
-        let (stamp, rest) = line.split_at(shep_core::logstamp::LOG_STAMP_BYTES);
-        assert_eq!(
-            rest, "[shep] shep did a thing worth saying",
-            "the stamp is the same fixed-width prefix every other line carries: {line:?}"
-        );
-        chrono::DateTime::parse_from_rfc3339(stamp.trim_end())
-            .unwrap_or_else(|err| panic!("{stamp:?} must parse as RFC 3339: {err}"));
-
-        let frame = tokio::time::timeout(Duration::from_secs(5), following.recv())
-            .await
-            .expect("a follower must be told inside the budget")
-            .expect("the forwarder must deliver rather than end");
-        match shep_core::protocol::decode_frame::<BusEvent>(&frame).unwrap() {
-            BusEvent::LogErr { id, line } => {
-                assert_eq!(id, info.id, "the line belongs to the dog it is about");
-                assert_eq!(
-                    line, "[shep] shep did a thing worth saying",
-                    "a follower sees the marker and not the file's stamp"
-                );
-            }
-            other => panic!("narration must reach a follower as a log line, got {other:?}"),
-        }
-        forwarder.abort();
     }
 }
