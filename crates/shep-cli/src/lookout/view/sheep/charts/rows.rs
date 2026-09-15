@@ -12,7 +12,7 @@ use crate::lookout::app::CPU_CEILING_FLOOR;
 use crate::lookout::pane_sheep::{scale_top, window};
 
 use super::super::super::cell;
-use super::super::{CPU_ROWS, GUTTER, MEM_ROWS};
+use super::super::layout::{CPU_ROWS, GUTTER, MEM_ROWS};
 
 /// `d` as `MmSSs`: `4m40s`, not `4m 40s` or a dropped `0m`. Neither
 /// `output::human_duration`'s spacing nor its dropped-zero minor unit
@@ -70,7 +70,8 @@ pub(super) fn mem_header_text(max_memory: Option<u64>, window_peak: u64) -> Stri
 }
 
 /// The memory chart's `MEM_ROWS` rows, and which one (if any) is the row
-/// nearest a real `max_memory` ceiling: that row is [`draw_charts`](super::draw_charts)'s cue
+/// nearest a real `max_memory` ceiling: that row is
+/// [`draw_charts`](super::draw_charts)'s cue
 /// to paint it in `--butter` instead of the chart's own colour.
 ///
 /// Scales to `max(max_memory, window peak)` rather than `max_memory`
@@ -194,7 +195,8 @@ mod tests {
     }
 
     /// Thin wrapper over the real header function: `body_cells` passed
-    /// straight through, the way [`draw_charts`] hands it the pane's own
+    /// straight through, the way [`draw_charts`](super::draw_charts) hands
+    /// it the pane's own
     /// computed value rather than a raw terminal width.
     fn header_with_samples(history_len: usize, body_cells: usize) -> String {
         cpu_header_text(history_len, body_cells)

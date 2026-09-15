@@ -14,7 +14,7 @@ use crate::lookout::app::{App, HISTORY};
 use crate::lookout::theme::Palette;
 
 use super::super::{cell, flock};
-use super::{
+use super::layout::{
     AXIS_ROW, CPU_CHART_ROW, CPU_HEADER_ROW, FULL_TIER_MIN_HEIGHT, GUTTER, HAIRLINE_ROW, MARGIN,
     MEM_CHART_ROW, MEM_HEADER_ROW, MIN_HEIGHT_FOR_CHARTS, TERMINAL_OVERHEAD,
 };
@@ -210,7 +210,8 @@ fn mem_line_text(current_rss: u64, max_memory: Option<u64>) -> String {
 }
 
 /// The full-width hairline rule at [`HAIRLINE_ROW`], between the axis and
-/// the column headers: the same `─` run [`super::super::status::rule_line`] draws
+/// the column headers: the same `─` run
+/// [`super::super::status::rule_line`] draws
 /// under the pane's own header elsewhere in `lookout`.
 pub(super) fn draw_hairline(area: Rect, buffer: &mut Buffer, palette: Palette) {
     write_row(
@@ -245,7 +246,8 @@ pub(super) fn draw_sparkline_row(
 }
 
 /// Writes one styled line into `buffer`, `row` cells below `area`'s own
-/// top. Callers only reach here once [`draw`](super::draw) has already checked `area`
+/// top. Callers only reach here once [`draw`](super::draw) has already
+/// checked `area`
 /// is tall enough for `row`.
 fn write_row(buffer: &mut Buffer, area: Rect, row: u16, text: &str, style: Style) {
     let line = Line::from(Span::styled(text.to_string(), style));
@@ -265,7 +267,7 @@ fn write_row(buffer: &mut Buffer, area: Rect, row: u16, text: &str, style: Style
 /// [`cpu_header_text`] reading `collecting` forever even once the buffer is
 /// full. Which charts draw at which width past that point is task 11's own
 /// tier; this is only the ceiling the header's own claim has to respect.
-fn chart_body_cells(width: u16) -> usize {
+pub(super) fn chart_body_cells(width: u16) -> usize {
     usize::from(width)
         .saturating_sub(GUTTER + MARGIN)
         .min(HISTORY)
@@ -283,7 +285,7 @@ mod tests {
 
     use super::super::super::fixtures;
     use super::super::draw;
-    use super::super::{CPU_ROWS, MEM_ROWS};
+    use super::super::layout::{CPU_ROWS, MEM_ROWS};
     use super::*;
 
     /// The chart-drawing twin of the test above: pane pinned to alpha,

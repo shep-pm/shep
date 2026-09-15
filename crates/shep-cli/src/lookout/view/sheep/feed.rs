@@ -17,15 +17,17 @@ use crate::lookout::theme::Palette;
 
 use super::super::detail::chip_text;
 use super::super::flock::fit;
-use super::{COLUMN_BODY_ROWS, FEED_WIDTH, FEED_X};
+use super::layout::{COLUMN_BODY_ROWS, FEED_WIDTH, FEED_X};
 
-/// `top` (the same row [`draw_column`](super::column::draw_column) and [`draw_divider`](super::column::draw_divider) were handed)
+/// `top` (the same row [`draw_column`](super::column::draw_column) and
+/// [`draw_divider`](super::column::draw_divider) were handed)
 /// through [`COLUMN_BODY_ROWS`] rows below it, right of the divider: the
 /// header, then the window's newest surviving lines that fit, oldest at
 /// the top.
 ///
 /// Reads [`SheepPane::feed_sheep`]'s tail through [`App::feed`], never
-/// [`App::selected`]: the same rule [`draw`](super::draw)'s own identity band, charts and
+/// [`App::selected`]: the same rule [`draw`](super::draw)'s own identity
+/// band, charts and
 /// config column already follow, now enforced one level up too, in
 /// [`App::feed_row`] itself: `app.feed()` already answers with the pinned
 /// sheep's own lines while this pane is open, not the dashboard's selection.
@@ -57,7 +59,8 @@ pub(super) fn draw_feed(
 }
 
 /// One feed line: the stream tag, muted the same way
-/// [`super::super::bleats::feed_lines`] draws it (stderr is most runtimes' default,
+/// [`super::super::bleats::feed_lines`] draws it (stderr is most runtimes'
+/// default,
 /// not `--bark`), then the text, truncated rather than wrapped, since this
 /// column has no row budget to spend on a second line for one that
 /// overruns.
@@ -148,7 +151,8 @@ mod tests {
     use crate::lookout::tail::Tail;
 
     use super::super::super::fixtures;
-    use super::super::{MIN_HEIGHT_FOR_COLUMN, draw};
+    use super::super::draw;
+    use super::super::layout::MIN_HEIGHT_FOR_COLUMN;
     use super::*;
 
     /// `draw_feed` draws whatever `App::feed` holds, filtered through the

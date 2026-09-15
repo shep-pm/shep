@@ -20,12 +20,15 @@ use crate::lookout::pane_sheep::SheepPane;
 use crate::lookout::theme::Palette;
 
 use super::super::flock::fit;
-use super::{COLUMN_BODY_ROWS, COLUMN_HEADER_ROW, COLUMN_NAME_W, COLUMN_WIDTH, DIVIDER_COL};
+use super::layout::{
+    COLUMN_BODY_ROWS, COLUMN_HEADER_ROW, COLUMN_NAME_W, COLUMN_WIDTH, DIVIDER_COL,
+};
 
 /// Where the config/env column and the feed start, in rows relative to
 /// `area`: [`COLUMN_HEADER_ROW`] whenever `height` still reaches it, or
 /// right below the identity band once it drops under
-/// [`MIN_HEIGHT_FOR_CHARTS`](super::MIN_HEIGHT_FOR_CHARTS) and the charts stop drawing at all. The config
+/// [`MIN_HEIGHT_FOR_CHARTS`](super::layout::MIN_HEIGHT_FOR_CHARTS) and the
+/// charts stop drawing at all. The config
 /// and feed columns are what the pane is for, so they give ground last,
 /// reclaiming the rows the charts would have used rather than staying
 /// pinned to a row a short terminal can never reach.
@@ -244,8 +247,10 @@ fn column_header_line(pane: &SheepPane, palette: Palette) -> Line<'static> {
 /// a short terminal moves the whole column up rather than truncating it
 /// from a fixed row that terminal can never reach.
 ///
-/// Reads [`SheepPane::config`], never [`App::selected`]: the same rule
-/// [`draw`](super::draw)'s own identity band and [`draw_charts`](super::charts::draw_charts) already follow, for
+/// Reads [`SheepPane::config`], never
+/// [`App::selected`](crate::lookout::app::App::selected): the same rule
+/// [`draw`](super::draw)'s own identity band and
+/// [`draw_charts`](super::charts::draw_charts) already follow, for
 /// the reason both of their own doc comments give.
 pub(super) fn draw_column(
     pane: &SheepPane,
@@ -277,7 +282,8 @@ fn write_column_row(buffer: &mut Buffer, area: Rect, row: u16, line: &Line<'stat
 
 /// The `\u{2502}` rule between the config/env column and the feed, one cell
 /// wide, for every row the two sides draw into, from `top` (the same row
-/// [`draw_column`] and [`draw_feed`](super::feed::draw_feed) were handed) through
+/// [`draw_column`] and [`draw_feed`](super::feed::draw_feed) were handed)
+/// through
 /// [`COLUMN_BODY_ROWS`] below it.
 pub(super) fn draw_divider(top: u16, area: Rect, buffer: &mut Buffer, palette: Palette) {
     let rule = Line::from(Span::styled("\u{2502}", palette.muted()));
@@ -299,7 +305,8 @@ mod tests {
     use crate::lookout::frames::render_text;
 
     use super::super::super::fixtures;
-    use super::super::{COLUMN_LAST_ROW, FEED_WIDTH, FEED_X, MIN_HEIGHT_FOR_COLUMN, draw};
+    use super::super::draw;
+    use super::super::layout::{COLUMN_LAST_ROW, FEED_WIDTH, FEED_X, MIN_HEIGHT_FOR_COLUMN};
     use super::*;
 
     /// `web`, with `max_memory` parked until a respawn and two env keys.
