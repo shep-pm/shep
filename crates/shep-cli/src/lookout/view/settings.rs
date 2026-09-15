@@ -30,7 +30,8 @@ use crate::vocabulary::Reported;
 const DOGS_CAPTION: &str = "space arms, Enter applies; a dog needs no reload";
 
 /// The floor on the dogs table's NAME column, mirroring
-/// [`super::flock::columns::NAME_MIN`]: never shrinks below a name worth reading.
+/// [`super::flock::columns::NAME_MIN`]: never shrinks below a name worth
+/// reading.
 const DOG_NAME_MIN: u16 = 8;
 
 /// Columns spent on the selection mark and the space after it, before any

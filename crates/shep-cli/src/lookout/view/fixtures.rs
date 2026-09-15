@@ -989,9 +989,9 @@ const DIALOG_PID: u32 = 71_578;
 
 /// A close dialog naming `unsent` filed edits and `parked` shepherd
 /// fields, over a plain overlapping-reload sheep: what
-/// [`close_dialog_lines`](crate::lookout::view::pane::close::close_dialog_lines)'s
-/// own heading and naming-sentence tests read, without driving a real key
-/// sequence to raise one.
+/// [`close_dialog_lines`](crate::lookout::view::pane::close::close_dialog_lines)
+/// reads in its own heading and naming-sentence tests, without driving a
+/// real key sequence to raise one.
 pub fn close_dialog_with(unsent: usize, parked: usize) -> CloseDialog {
     let pane = close_dialog_pane(true, false, false, 1);
     let unsent_fields = (0..unsent).map(|i| format!("field{i}")).collect();
