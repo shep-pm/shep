@@ -347,8 +347,9 @@ pub fn app_in_sheep_pane_with_one_edit() -> App {
 }
 
 /// [`app_in_sheep_pane`], named for the one test that cares the palette
-/// carries no colour. [`app_in_sheep_pane`] already builds on [`plain`], so
-/// this alias adds no behaviour; it exists to make that guarantee visible
+/// carries no colour. [`app_in_sheep_pane`] already builds on
+/// [`plain`](super::palette::plain), so this alias adds no behaviour; it
+/// exists to make that guarantee visible
 /// at the call site rather than left implicit in a fixture named for
 /// something else.
 pub fn app_with_plain_palette_in_sheep_pane() -> App {
