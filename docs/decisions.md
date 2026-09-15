@@ -41,6 +41,7 @@ go for the full argument. The commit that removed them names itself.
 - [Config pane writes](#config-pane-writes) (1)
 - [Boot ordering](#boot-ordering) (8)
 - [Following the flock](#following-the-flock) (3)
+- [Design assets](#design-assets) (1)
 
 ## Core types and the daemon's shape
 
@@ -2278,3 +2279,46 @@ root, since nothing else reads them. Neither adds a crate on any of the three
 platforms.
 
 `verified crates/shep-cli/src/host.rs (distinct_disk_io, is_loopback), crates/shep-cli/Cargo.toml (the sysinfo entry)`
+
+## Design assets
+
+### The design-tool runtime is committed twice on purpose, and the rebuild command in its header belongs to another repo
+
+`support.js` sits at two paths, byte-identical at 1911 lines:
+`docs/lookout/design-files/` and `docs/shep-design/design-files/`. Both copies
+are live. Five `.dc.html` scenes load it, three under shep-design and two under
+lookout, each through `<script src="./support.js">` relative to its own
+directory. `web/` does not load it at all; the Astro components only cite the
+design files in doc comments as a source of truth.
+
+The file is vendored, not generated here. Its header names
+`cd dc-runtime && bun run build`, and `dc-runtime` has never existed in this
+repo, in its history, or anywhere on disk. It is the design tool's own source
+tree, and the header travelled with the artifact. Nothing in shep can
+regenerate the file, so it changes only when a design is re-exported.
+
+**Why:** The duplicate costs a tree entry rather than 69 KB, because both paths
+carry the same content hash and git stores one blob for them. The bundle is
+also a version contract rather than a shared library: it hard-pins React
+18.3.1, react-dom 18.3.1 and Babel standalone 7.29.0, and fetches all three
+from unpkg at load. The two copies match because two exports 24 days apart,
+2026-08-13 and 2026-09-06, happened to ship the same runtime, not because
+anything holds them in step, so a single shared copy would quietly retarget one
+design at the other's runtime the next time either is re-exported. A relative
+reference would not survive that re-export in any case: every scene carries the
+same `<script src="./support.js">` on line 6, byte-identical across two
+independent exports, which reads as tool-emitted rather than hand-written.
+That last point is inferred from the file structure, since the design tool's
+own docs are not available locally. A symlink is worse than either option,
+because CI checks out on `windows-latest` and without `core.symlinks` a symlink
+materializes as a text file holding a path, so the scene would silently load
+nothing there.
+
+Verifying one of these files needs a real HTTP origin. Opened from `file://`,
+or as the `data:` URL the preview pane converts a local file into, the relative
+script never resolves and `window.React` stays undefined, yet the inline
+`<style>` and static markup still render. A screenshot then reads as success
+while the runtime has not run at all. The visible tell is an unfilled `{{ }}`
+template hole.
+
+`verified docs/lookout/design-files/README.md, docs/shep-design/README.md, and the five .dc.html scenes in those two directories`
