@@ -18,7 +18,7 @@ use crate::output::width::char_columns;
 pub(super) const GUTTER: u16 = 2;
 
 /// The close dialog's own interior width, once it is boxed: what
-/// [`close_dialog_lines`] lays its rows out to when [`draw_close_dialog`]
+/// [`super::close::close_dialog_lines`] lays its rows out to when [`super::close::draw_close_dialog`]
 /// draws the boxed form.
 pub(super) const BOX_WIDTH: u16 = 86;
 
