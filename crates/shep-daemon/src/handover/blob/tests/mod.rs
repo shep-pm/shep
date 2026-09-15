@@ -80,10 +80,7 @@ fn a_resolved_secret_never_reaches_the_blob() {
         "production".to_string(),
         std::collections::BTreeMap::from([(
             "DB_PASSWORD".to_string(),
-            std::collections::BTreeMap::from([(
-                "production".to_string(),
-                SENTINEL.to_string(),
-            )]),
+            std::collections::BTreeMap::from([("production".to_string(), SENTINEL.to_string())]),
         )]),
         shep_core::secrets::ProviderCache::default(),
     );

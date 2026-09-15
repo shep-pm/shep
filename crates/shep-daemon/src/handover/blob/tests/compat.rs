@@ -312,8 +312,8 @@ fn a_dogs_marker_crosses_the_blob() {
     let mut blob = sample_handover();
     blob.sheep[0] = CarriedSheep::from_entry(&entry, 7, fds_at(11), false, None, false, None);
 
-    let loaded = Handover::load_value(serde_json::to_value(&blob).unwrap())
-        .expect("a current blob loads");
+    let loaded =
+        Handover::load_value(serde_json::to_value(&blob).unwrap()).expect("a current blob loads");
 
     assert_eq!(
         loaded.sheep[0].dog(),
@@ -339,8 +339,8 @@ fn a_plain_sheep_crosses_the_blob_without_one() {
         None,
     );
 
-    let loaded = Handover::load_value(serde_json::to_value(&blob).unwrap())
-        .expect("a current blob loads");
+    let loaded =
+        Handover::load_value(serde_json::to_value(&blob).unwrap()).expect("a current blob loads");
 
     assert_eq!(loaded.sheep[0].dog(), None);
 }
