@@ -101,8 +101,8 @@ mod tests {
     use ratatui::layout::Rect;
     use ratatui::style::Style;
 
-    use super::super::Scene;
     use super::super::scene;
+    use super::super::scene::Scene;
     use super::*;
 
     /// `sgr`/`render_ansi` were foreground-only before this task: a band's
