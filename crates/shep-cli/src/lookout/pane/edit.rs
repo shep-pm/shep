@@ -12,6 +12,13 @@ use super::super::edits::{EditKey, Edits};
 use super::super::field::{Field, FieldKind};
 use super::{ConfigPane, PaneEdit, PaneRow, PaneTarget};
 
+// Link-only (IR-32): the env editor this one is never open beside, and
+// the group a structural field carries.
+#[cfg(doc)]
+use super::EnvTyping;
+#[cfg(doc)]
+use shep_core::config::ApplyGroup;
+
 /// The pane's open text editor: which field, and what has been typed.
 ///
 /// A struct rather than the three-variant enum this was. Nothing arms and
@@ -28,7 +35,7 @@ use super::{ConfigPane, PaneEdit, PaneRow, PaneTarget};
 /// buffer is what the operator is halfway through typing.
 #[derive(Clone, PartialEq, Eq)]
 pub struct PaneTyping {
-    /// Which field. Owns [`super::app::InputMode::Text`] for as long as
+    /// Which field. Owns [`super::super::app::InputMode::Text`] for as long as
     /// this exists.
     pub key: String,
     /// What has been typed so far.
@@ -211,7 +218,7 @@ impl ConfigPane {
     /// The one door every config edit files through, which is what keeps
     /// [`ApplyGroup::Structural`] out of the set at all: every caller has
     /// already refused a locked row, and [`Self::lock`] locks exactly the
-    /// Structural ones. [`super::app::App::close_offer`]'s own walk over
+    /// Structural ones. [`super::super::app::App::close_offer`]'s own walk over
     /// [`Edits::iter`], which is what decides whether the close dialog
     /// appears, rests on that: it never has to ask what a Structural
     /// edit would cost, because one can never be in the set to ask about.
@@ -511,7 +518,7 @@ mod tests {
         assert_eq!(filed_impact(&pane, "history_bytes"), None);
     }
 
-    /// The invariant [`super::app::App::close_offer`]'s own walk over
+    /// The invariant [`super::super::app::App::close_offer`]'s own walk over
     /// [`Edits::iter`] rests on: nothing a keystroke can do files a
     /// `Structural` edit, because [`ConfigPane::sheep`] marks those fields
     /// not editable and every filing door checks [`ConfigPane::lock`]

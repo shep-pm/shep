@@ -10,6 +10,10 @@ use shep_core::protocol::EnvValue;
 
 use super::{ConfigPane, PaneEdit, PaneRow};
 
+// Link-only (IR-32): the field editor this one is never open beside.
+#[cfg(doc)]
+use super::PaneTyping;
+
 /// The pane's open env editor: which key, and what has been typed.
 ///
 /// `key` is [`None`] on the `+ add a key` row, where the buffer is the
