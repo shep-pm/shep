@@ -10,7 +10,7 @@ use ratatui::layout::Rect;
 use ratatui::text::Line;
 
 use super::super::super::app::App;
-use super::super::super::pane::ConfigPane;
+use super::super::super::pane::{ConfigPane, PaneRow};
 use super::super::fixtures;
 use crate::lookout::frames::render_text;
 
@@ -121,4 +121,28 @@ pub(super) fn screen_of(app: &mut App, width: u16, height: u16) -> String {
 /// How many rows the frame marks as selected. One, always.
 pub(super) fn marked(text: &str) -> usize {
     text.lines().filter(|line| line.starts_with('>')).count()
+}
+
+/// The longest word in the cursor's field help, which is what the blurb
+/// tests match on.
+///
+/// Not the whole help string: the blurb wraps to `BLURB_WRAP`, so a
+/// help text longer than the wrap budget appears in no single row and a
+/// `contains` against all of it fails for a reason unrelated to what
+/// these tests pin. Not the first word either, since "Set" or "The"
+/// appears in other rows. The longest word is the one least likely to
+/// be split by a wrap or shared with another row.
+pub(super) fn blurb_anchor(pane: &ConfigPane) -> String {
+    let help = field_help_under_cursor(pane);
+    help.split_whitespace()
+        .max_by_key(|word| word.len())
+        .expect("the field help is empty")
+        .to_owned()
+}
+/// The `help` string of the field under the cursor, whichever it is.
+pub(super) fn field_help_under_cursor(pane: &ConfigPane) -> String {
+    let Some(PaneRow::Field(index)) = pane.cursor() else {
+        panic!("the cursor is not on a field");
+    };
+    pane.fields().fields()[index].help.clone()
 }
