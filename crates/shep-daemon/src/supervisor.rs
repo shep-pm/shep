@@ -13865,9 +13865,13 @@ mod tests {
     /// where settle order would be `[1, 0, 2]` and id order `[0, 1, 2]`.
     #[tokio::test(start_paused = true)]
     async fn a_trigger_answers_every_sheep_it_matched_before_it_answers_at_all() {
+        // Must sort after `worker`, or name order and settle order coincide.
+        let third = "zone";
+        assert!(third > "worker", "`{third}` must sort after `worker`");
+
         let dir = tempfile::tempdir().unwrap();
         let (mut actor, mut mailbox, mut child_rx) = actor_with_an_open_channel(&dir);
-        register_sheep(&mut actor, &dir, "zone", None);
+        register_sheep(&mut actor, &dir, third, None);
         let (silent_tx, mut silent_rx) = mpsc::channel(16);
         register_sheep(&mut actor, &dir, "worker", Some(silent_tx));
 
@@ -13905,7 +13909,7 @@ mod tests {
                     }
                 ),
                 row(2, "worker", ActionOutcome::TimedOut),
-                row(1, "zone", ActionOutcome::NoChannel),
+                row(1, third, ActionOutcome::NoChannel),
             ])
         );
     }
