@@ -1,9 +1,8 @@
 //! Real [`crate::runner::ProcessRunner`] over actual OS processes.
 //!
-//! Split by concern: [`runner`] holds [`TokioRunner`] and [`TokioProc`] and
-//! their trait impls, [`log_file`] is the buffered per-stream log writer,
-//! and [`pump`] holds the tasks that drain a child's stdout, stderr and
-//! shepherd channel.
+//! Split by concern: `runner` holds `TokioRunner` and `TokioProc` and their
+//! trait impls, `log_file` is the buffered per-stream log writer, and `pump`
+//! holds the tasks that drain a child's stdout, stderr and shepherd channel.
 
 use core::time::Duration;
 
@@ -53,6 +52,9 @@ const FINAL_DRAIN: Duration = Duration::from_millis(100);
 mod log_file;
 mod pump;
 mod runner;
+
+#[cfg(test)]
+mod tests;
 
 pub use runner::{TokioProc, TokioRunner};
 
