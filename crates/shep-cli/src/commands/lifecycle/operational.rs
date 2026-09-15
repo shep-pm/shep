@@ -54,7 +54,8 @@ pub async fn stop(client: &Client, streams: &mut Streams<'_>, args: &SelectorArg
 /// request handler, and one edge routinely clears 5s: the daemon holds each
 /// stage for its members' `listen_timeout` before issuing the next, so a
 /// client on the default abandons a restart the shepherd is still doing.
-/// Not [`staged_start_deadline`], which needs the `AppConfig`s a load holds
+/// Not [`super::staged_start_deadline`], which needs the `AppConfig`s a load
+/// holds
 /// and a selector does not: nothing the CLI has says how many stages this
 /// selector spans or what their timeouts are, and asking would cost a round
 /// trip and still race the actor. The daemon clamps at its own 60s ceiling
@@ -272,7 +273,8 @@ const WALK_REFUSED_EXIT: ExitCode = ExitCode::Failure;
 /// every one it named
 ///
 /// `did not <verb>: name: reason`, carrying the `name: reason` shape
-/// [`applied_line`] prints a load's refusal in, so every verb that can
+/// [`super::configure::applied_line`] prints a load's refusal in, so every
+/// verb that can
 /// refuse part of its work reads alike. The reason is the shepherd's own
 /// sentence.
 pub(crate) fn refused_line(verb: &str, refused: &[SheepRefusal]) -> Option<String> {

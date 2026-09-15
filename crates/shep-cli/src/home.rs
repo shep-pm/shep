@@ -397,7 +397,8 @@ pub(crate) fn scaffold_first_run_interpreters(paths: &ShepPaths) {
 }
 
 /// Creates `paths.home` if it is not there, with the first-run scaffold the
-/// shared gate in [`run`] gives every other verb's fresh home.
+/// shared gate in [`crate::dispatch::run`] gives every other verb's fresh
+/// home.
 ///
 /// `startup` is the caller, for its own default home: the target user's
 /// `<passwd home>/.shep`, which [`ensure_home`] cannot resolve since it

@@ -14,10 +14,12 @@ use crate::style::Presentation;
 
 use super::{DogRows, FlockRows, SCHEMA_VERSION, rows, table_of};
 
-/// The `--format json` shape [`emit_flock`] writes: [`OutputEnvelope`]'s own
-/// three fields, plus `host` riding beside `data` rather than inside it.
+/// The `--format json` shape [`emit_flock`] writes:
+/// [`super::OutputEnvelope`]'s own three fields, plus `host` riding beside
+/// `data` rather than inside it.
 ///
-/// A sibling field for [`DescribedEnvelope`]'s reason: `data` stays exactly
+/// A sibling field for `described::DescribedEnvelope`'s reason: `data` stays
+/// exactly
 /// the array it always was, so an existing `data[0].name` script sees no
 /// shape change, and [`SCHEMA_VERSION`] does not move for an addition
 /// outside it.
@@ -29,7 +31,7 @@ use super::{DogRows, FlockRows, SCHEMA_VERSION, rows, table_of};
 /// fields are `null` where no window has passed yet.
 ///
 /// Only ever constructed by [`emit_flock`]. `#[cfg_attr(windows,
-/// allow(dead_code))]` for [`DescribedEnvelope`]'s reason.
+/// allow(dead_code))]` for `described::DescribedEnvelope`'s reason.
 #[derive(Serialize)]
 #[cfg_attr(windows, allow(dead_code))]
 struct FlockEnvelope<'a> {

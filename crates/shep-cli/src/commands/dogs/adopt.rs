@@ -72,7 +72,7 @@ pub async fn adopt(streams: &mut Streams<'_>, paths: &ShepPaths, args: &AdoptArg
 /// [`vet_binary`]: as given, with a leading `~/` expanded against `home`,
 /// then looked up on `path_var`. First hit wins; if none finds anything,
 /// `raw` comes back unchanged so `vet_binary` reports the same
-/// [`AdoptRefusal::Missing`] it always has.
+/// [`AdoptRefusal::Missing`](super::vet::AdoptRefusal::Missing) it always has.
 ///
 /// `home` and `path_var` are parameters, read once by [`adopt`], so this
 /// stays a pure function of its inputs: this crate forbids `unsafe`, and a

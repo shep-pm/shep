@@ -418,8 +418,9 @@ impl ShepToml {
     /// `[daemon] log_json`, or `None` when the document never wrote it.
     ///
     /// A key written to its own default is still `Some`.
-    /// [`DaemonConfig::load`]'s `#[serde(default)]` loses that distinction,
-    /// so this reader and its four siblings below read the document itself.
+    /// [`shep_core::config::DaemonConfig::load`]'s `#[serde(default)]`
+    /// loses that distinction, so this reader and its four siblings below
+    /// read the document itself.
     #[must_use]
     pub fn daemon_log_json(&self) -> Option<bool> {
         self.table("daemon")?.get("log_json")?.as_bool()
@@ -427,7 +428,8 @@ impl ShepToml {
 
     /// `[daemon] log_level`, or `None` when the document never wrote it,
     /// as the raw string on disk. Whether it names a real `LogLevel` is
-    /// [`DaemonConfig::load`]'s question, not this reader's.
+    /// [`shep_core::config::DaemonConfig::load`]'s question, not this
+    /// reader's.
     #[must_use]
     pub fn daemon_log_level(&self) -> Option<String> {
         self.table("daemon")?
@@ -478,8 +480,8 @@ impl ShepToml {
 
     /// Writes `[daemon] log_level = "<value>"`, creating `[daemon]` when
     /// this document has none yet. `value` is written as given, unchecked:
-    /// [`DaemonConfig::load`] is what refuses a name that is not a real
-    /// `LogLevel`.
+    /// [`shep_core::config::DaemonConfig::load`] is what refuses a name
+    /// that is not a real `LogLevel`.
     ///
     /// # Errors
     /// [`ShepTomlError::WrongShape`] if `daemon` is already there as
@@ -506,8 +508,8 @@ impl ShepToml {
 
     /// Writes `[daemon] max_cron_sleep = "<value>"`, creating `[daemon]`
     /// when this document has none yet. `value` is written as given,
-    /// unchecked: [`DaemonConfig::load`] is what refuses a duration below
-    /// the floor or one that does not parse at all.
+    /// unchecked: [`shep_core::config::DaemonConfig::load`] is what refuses
+    /// a duration below the floor or one that does not parse at all.
     ///
     /// # Errors
     /// [`ShepTomlError::WrongShape`] if `daemon` is already there as

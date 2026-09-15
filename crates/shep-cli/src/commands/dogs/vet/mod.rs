@@ -586,15 +586,16 @@ pub(super) fn fail_adopt(
     streams.fail(code, &message)
 }
 
-/// [`emit_notice`] code for the group-writable warning: caller-defined, and
-/// not one of [`ExitCode::code_str`]'s, since `adopt` still succeeds here.
+/// [`emit_notice`](crate::output::emit_notice) code for the group-writable
+/// warning: caller-defined, and not one of [`ExitCode::code_str`]'s, since
+/// `adopt` still succeeds here.
 const GROUP_WRITABLE_NOTICE: &str = "group_writable";
 
 /// Warns that `path` is group-writable, and lets the adopt proceed.
 ///
-/// Goes out through [`emit_notice`] rather than [`emit_error`] so a
-/// `--format json` consumer can tell a diagnostic on a successful command
-/// from a failure.
+/// Goes out through [`emit_notice`](crate::output::emit_notice) rather
+/// than [`emit_error`](crate::output::emit_error) so a `--format json`
+/// consumer can tell a diagnostic on a successful command from a failure.
 pub(super) fn warn_group_writable(streams: &mut Streams<'_>, path: &Path) {
     let message = format!(
         "{} is writable by its group; anyone in that group can replace the binary \
@@ -604,8 +605,8 @@ pub(super) fn warn_group_writable(streams: &mut Streams<'_>, path: &Path) {
     streams.aside(GROUP_WRITABLE_NOTICE, &message);
 }
 
-/// [`emit_notice`] code for the version report; like
-/// [`GROUP_WRITABLE_NOTICE`], not a failure.
+/// [`emit_notice`](crate::output::emit_notice) code for the version report;
+/// like [`GROUP_WRITABLE_NOTICE`], not a failure.
 const DOG_VERSION_NOTICE: &str = "dog_version";
 
 /// Tells the operator what the candidate answered.
@@ -629,7 +630,8 @@ pub(super) fn report_dog_version(streams: &mut Streams<'_>, name: &str, answer: 
     streams.aside(DOG_VERSION_NOTICE, &message);
 }
 
-/// [`emit_notice`] code for the unreadable-schema warning; not a failure.
+/// [`emit_notice`](crate::output::emit_notice) code for the
+/// unreadable-schema warning; not a failure.
 const DOG_SCHEMA_UNREADABLE_NOTICE: &str = "dog_schema_unreadable";
 
 /// Warns that `name` answered the schema flag with something that is not

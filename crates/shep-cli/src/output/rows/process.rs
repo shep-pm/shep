@@ -156,7 +156,8 @@ impl Render for FlockRows {
 ///
 /// Not `#[serde(transparent)]`: this type's JSON is never read, since
 /// `describe --format json` serializes the listing as [`FlockRows`] with its
-/// own `lambs`. It exists to reach [`render_table`](super::render_table).
+/// own `lambs`. It exists to reach
+/// [`render_table`](crate::output::render_table).
 #[derive(Debug, Serialize)]
 pub struct LambRows(pub Vec<Lamb>);
 

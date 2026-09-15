@@ -12,10 +12,11 @@
 //! `adopt` puts [`vet::vet_binary`] ahead of both.
 //!
 //! One file per verb, plus [`vet`] for the binary-vetting machinery
-//! `adopt` alone needs: [`enable`], [`disable`], [`adopt`], [`rehome`],
-//! [`barks`]. This module holds only what every verb shares: the
-//! connect-or-absent dance, the config-error mapping, and the two status
-//! strings a verb's own report reaches for when no shepherd answered.
+//! `adopt` alone needs: [`mod@enable`], [`mod@disable`], [`mod@adopt`],
+//! [`mod@rehome`], [`mod@barks`]. This module holds only what every verb
+//! shares: the connect-or-absent dance, the config-error mapping, and the
+//! two status strings a verb's own report reaches for when no shepherd
+//! answered.
 
 use shep_client::{Client, ConnectError};
 use shep_core::paths::ShepPaths;
@@ -50,15 +51,18 @@ pub(crate) use disable::disable_in_config;
 pub(crate) use enable::{EnableRefusal, enable_in_config};
 pub(crate) use vet::{VERSION_BUDGET, ask_schema, dog_env};
 
-/// [`DogEnabledRow::status`] when `enable` wrote the config and no shepherd
-/// answered. A success outcome: `enable` never autostarts one.
+/// [`DogEnabledRow::status`](crate::output::DogEnabledRow::status) when
+/// `enable` wrote the config and no shepherd answered. A success outcome:
+/// `enable` never autostarts one.
 const NO_SHEPHERD_ENABLE_STATUS: &str = "will start with the next shepherd";
 
-/// [`DogDisabledRow::status`] when `disable` wrote the config and no
-/// shepherd answered: the mirror of [`NO_SHEPHERD_ENABLE_STATUS`].
+/// [`DogDisabledRow::status`](crate::output::DogDisabledRow::status) when
+/// `disable` wrote the config and no shepherd answered: the mirror of
+/// [`NO_SHEPHERD_ENABLE_STATUS`].
 const NO_SHEPHERD_DISABLE_STATUS: &str = "not running; will not start with the next shepherd";
 
-/// [`DogDisabledRow::status`] when a shepherd stopped the dog.
+/// [`DogDisabledRow::status`](crate::output::DogDisabledRow::status) when a
+/// shepherd stopped the dog.
 const DISABLED_STATUS: &str = "stopped";
 
 /// Renders `err` and returns the exit code a config-write failure reports.

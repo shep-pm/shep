@@ -15,7 +15,7 @@ use crate::{cli, exit, lookout, output, style};
 use exit::ExitCode;
 
 /// Builds the argument vector an alias binary should be parsed as: `verb`
-/// inserted after argv[0].
+/// inserted after `argv[0]`.
 ///
 /// `daemon` and `dog` pass through untouched. The supervisor spawns those two
 /// as `std::env::current_exe()` plus the verb, and under an alias binary

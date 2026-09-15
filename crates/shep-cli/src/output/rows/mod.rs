@@ -1,4 +1,5 @@
-//! Every rendered payload type in the binary, and the [`Render`] impl that
+//! Every rendered payload type in the binary, and the [`super::Render`] impl
+//! that
 //! makes each one's table and JSON renderings one source of truth.
 //!
 //! They live here rather than under `commands/` because nothing here carries

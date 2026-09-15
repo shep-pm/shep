@@ -603,8 +603,7 @@ fn matches_filter(filter: &str, haystacks: &[&str]) -> bool {
 /// `SHEP_DOG_INDEX` is an operator's own string and nothing stops a
 /// password reaching it. This message is built here rather than by
 /// [`dog_index::IndexError`], so the refusals inside [`crate::fetch`] do
-/// not cover it, and it asks
-/// [`fetch::url_for_message`](crate::fetch::url_for_message) rather than
+/// not cover it, and it asks [`fetch::url_for_message`] rather than
 /// deciding for itself: an earlier version asked
 /// `url_carries_credentials` instead and printed urls that `parse_url`
 /// had just withheld.

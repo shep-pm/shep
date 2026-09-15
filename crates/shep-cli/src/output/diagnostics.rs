@@ -139,7 +139,7 @@ struct NoticeBody<'a> {
 /// passes `streams.err`; one that is the command's whole answer passes
 /// `streams.out`. `code` is caller-defined, never part of
 /// `emit_error`'s exit-code taxonomy. A caller already holding a
-/// [`Streams`] can use [`Streams::note`] instead.
+/// [`super::Streams`] can use [`super::Streams::note`] instead.
 ///
 /// # Errors
 /// The underlying write failed.
