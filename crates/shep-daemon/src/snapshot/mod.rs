@@ -812,13 +812,13 @@ mod tests {
             version: SNAPSHOT_VERSION,
             saved_at_ms: 0,
             apps: vec![SavedApp {
-                app: AppConfig::minimal("zeus-auth", "./zeus-auth"),
+                app: AppConfig::minimal("api-auth", "./api-auth"),
                 instances_running: 0,
             }],
         };
         let restorable = restorable(roll);
         assert_eq!(restorable.members.len(), 1, "stopping is not forgetting");
-        assert_eq!(restorable.members[0].config().name, "zeus-auth");
+        assert_eq!(restorable.members[0].config().name, "api-auth");
         assert!(
             restorable.to_start.is_empty(),
             "but it stays stopped: it was not running when the roll was written"
