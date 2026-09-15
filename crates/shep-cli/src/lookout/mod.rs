@@ -1413,8 +1413,8 @@ mod tests {
 
     /// Drives the `Effect::LoadSecrets` arm itself, the only test that does
     /// for this bug: every other secrets-pane regression lives in
-    /// `app::tests` and calls `App::update` directly, so nothing else runs
-    /// this loop's own read of `pane.tab`.
+    /// `app::secrets_keys::tests` and calls `App::update` directly, so
+    /// nothing else runs this loop's own read of `pane.tab`.
     ///
     /// `TabNext`'s own clamp (`(tab + 1).min(last)`) re-derives the index
     /// from whatever list is current, so it cannot go stale no matter how
@@ -1424,9 +1424,9 @@ mod tests {
     /// the end than a lone subtraction can walk back: three environments
     /// down to one, sitting on the last tab, `TabPrev` once. Three down to
     /// two self-corrects either direction, which is why the narrower
-    /// `app::tests::a_shrinking_environment_list_leaves_the_tab_somewhere_valid`
-    /// cannot exercise this arm, since it is the reducer-level half of this
-    /// same bug, not this one.
+    /// `a_shrinking_environment_list_leaves_the_tab_somewhere_valid`, over in
+    /// `app::secrets_keys::tests`, cannot exercise this arm: it is the
+    /// reducer-level half of this same bug, not this one.
     #[tokio::test]
     async fn a_tab_past_a_shrunk_environment_list_does_not_panic_the_loop() {
         let dir = tempfile::Builder::new().prefix("s").tempdir().unwrap();
