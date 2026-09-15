@@ -1,28 +1,19 @@
-//! Deterministic scripted [`ProcessRunner`](crate::runner::ProcessRunner) for engine tests
-//!
-// WHY: deterministic + instant under the paused tokio clock; real OS process
-// behavior is covered by `tests/real_runner.rs` and, on Windows, by
-// `tests/real_runner_windows.rs`.
-
+use super::fake_process::{FakeIo, FakeProc, ProcState};
+use super::proc_script::ProcScript;
+use crate::channel::{ChildMessage, ShepherdMessage};
+use crate::privilege::Credentials;
+use crate::runner::{LogCtl, Preflight, ProcIo, ProcessRunner, RunnerError, SpawnSpec, StdinWrite};
 use core::fmt;
+use shep_core::signals::OperatorSignal;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-
-use shep_core::signals::OperatorSignal;
 use tokio::sync::{Notify, mpsc, watch};
-use tokio::time::{Duration, Instant, sleep_until};
-
-use crate::channel::{ChildMessage, ShepherdMessage};
-use crate::privilege::Credentials;
-use crate::runner::{
-    ExitOutcome, LogCtl, LogLine, Preflight, ProcIo, ProcessRunner, RunnerError, RunningProcess,
-    SpawnSpec, StdinWrite, StopSignal,
-};
+use tokio::time::{Duration, Instant};
 
 /// Capacity of every channel the fake wires up: generous enough that no
 /// test blocks on backpressure without meaning to.
-const CHANNEL_CAPACITY: usize = 32;
+pub(super) const CHANNEL_CAPACITY: usize = 32;
 
 /// Delay used by [`ProcScript::never_exits`], [`ProcScript::ignores_signals`]
 /// and [`ProcScript::never_reports_its_exit`].
@@ -30,303 +21,10 @@ const CHANNEL_CAPACITY: usize = 32;
 /// Large enough that no test's `tokio::time::advance` ever reaches it, small
 /// enough (~30 days of milliseconds) to stay far under tokio's timer-wheel
 /// range and never risk an `Instant + Duration` overflow.
-const NEVER_MS: u64 = 30 * 24 * 60 * 60 * 1000;
-
-/// How one scripted process behaves when spawned & waited by [`ScriptedRunner`]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ProcScript {
-    /// Milliseconds after spawn the process exits on its own
-    pub delay_ms: u64,
-    /// The outcome reported when the natural exit deadline is reached
-    pub outcome: ExitOutcome,
-    /// Whether the process honors `signal()`/`Shutdown` by exiting early
-    pub obeys_signal: bool,
-    /// Whether `kill_tree()` resolves its `wait()`. `true` for every ordinary
-    /// process (`SIGKILL` cannot be caught), `false` only for
-    /// [`ProcScript::never_reports_its_exit`], which models the one child a
-    /// kill ladder cannot end.
-    pub obeys_kill: bool,
-    /// Whether a forked lamb keeps the child's stdout and stderr open past
-    /// the child's own exit, so neither stream ever reaches EOF. See
-    /// [`ProcScript::with_a_lamb_holding_the_pipe`].
-    pub lamb_holds_the_pipe: bool,
-    /// Whether a stdin write to this proc is acknowledged. `true` for every
-    /// ordinary process, and `false` only for
-    /// [`ProcScript::never_reads_its_stdin`], which models an app that has
-    /// stopped reading fd 0.
-    pub reads_stdin: bool,
-}
-
-impl ProcScript {
-    /// Exits immediately with `code`
-    #[must_use]
-    pub fn const_exit(code: i32) -> Self {
-        Self::stable_then_exit(0, code)
-    }
-
-    /// Exits after `ms` milliseconds with `code`
-    #[must_use]
-    pub fn stable_then_exit(ms: u64, code: i32) -> Self {
-        Self {
-            delay_ms: ms,
-            outcome: ExitOutcome {
-                code: Some(code),
-                signal: None,
-            },
-            obeys_signal: true,
-            obeys_kill: true,
-            lamb_holds_the_pipe: false,
-            reads_stdin: true,
-        }
-    }
-
-    /// Never exits on its own; still obeys signals
-    #[must_use]
-    pub fn never_exits() -> Self {
-        Self {
-            delay_ms: NEVER_MS,
-            outcome: ExitOutcome {
-                code: None,
-                signal: None,
-            },
-            obeys_signal: true,
-            obeys_kill: true,
-            lamb_holds_the_pipe: false,
-            reads_stdin: true,
-        }
-    }
-
-    /// Never exits on its own and ignores signals: only `kill_tree` ends it
-    #[must_use]
-    pub fn ignores_signals() -> Self {
-        Self {
-            obeys_signal: false,
-            ..Self::never_exits()
-        }
-    }
-
-    /// Never resolves its `wait()` at all: not on a signal, and not on
-    /// `kill_tree` either.
-    ///
-    /// Models the one child a kill ladder cannot end: wedged in
-    /// uninterruptible sleep, where `SIGKILL` is delivered and accepted by
-    /// the kernel but `wait(2)` never returns. Lets a test see what the
-    /// supervisor does when a message it is waiting on never comes.
-    ///
-    /// The kill is still delivered and counted
-    /// ([`ScriptedRunner::kill_counts`]); only the exit is withheld.
-    #[must_use]
-    pub fn never_reports_its_exit() -> Self {
-        Self {
-            obeys_kill: false,
-            ..Self::ignores_signals()
-        }
-    }
-
-    /// This script, with a forked lamb holding the child's stdout and stderr
-    /// open past the child's own exit.
-    ///
-    /// A scripted proc's log-control task otherwise ends with the proc: both
-    /// streams reach EOF when the child does. A lamb that inherited them
-    /// keeps the pump alive on one of its other conditions instead: the
-    /// `logs` receiver going away, or the last control sender dropping.
-    #[must_use]
-    pub fn with_a_lamb_holding_the_pipe(self) -> Self {
-        Self {
-            lamb_holds_the_pipe: true,
-            ..self
-        }
-    }
-
-    /// With [`SpawnSpec::stdin`] enabled, accepts every stdin write and
-    /// answers none of them: models an app that stopped reading fd 0. The
-    /// write is delivered and recorded, but the `done` acknowledgement is
-    /// withheld. With `stdin` disabled the runner closes the writer instead.
-    #[must_use]
-    pub fn never_reads_its_stdin() -> Self {
-        Self {
-            reads_stdin: false,
-            ..Self::never_exits()
-        }
-    }
-}
-
-/// The IO endpoints [`ScriptedRunner::io_handles`] hands back for a spawn:
-/// the test-side counterparts to the [`ProcIo`] the same spawn returned.
-#[derive(Debug)]
-pub struct FakeIo {
-    /// Injects stdout/stderr lines into the spawned [`ProcIo::logs`]
-    pub logs_tx: mpsc::Sender<LogLine>,
-    /// Injects child→daemon messages into the spawned [`ProcIo::from_child`]
-    pub from_child_tx: mpsc::Sender<ChildMessage>,
-    /// Observes every message the daemon sends on the spawned [`ProcIo::to_child`]
-    pub to_child_rx: mpsc::Receiver<ShepherdMessage>,
-}
-
-/// Shared, thread-safe state for one scripted proc: lives in an `Arc` so
-/// [`FakeProc`]'s clones (used to drive `wait()` and `signal()`/`kill_tree()`
-/// from separate tasks in tests) and the `to_child` relay task all observe
-/// the same signal/kill events.
-struct ProcState {
-    /// Spawn-relative exit instant, computed once at spawn (cancel-safety: a
-    /// dropped-and-recreated `wait()` future must never restart this clock).
-    exit_deadline: Instant,
-    /// Outcome reported when `exit_deadline` is reached naturally
-    outcome: ExitOutcome,
-    /// Whether a signal/shutdown event resolves the wait early
-    obeys_signal: bool,
-    /// Whether a `kill_tree()` event resolves the wait; see
-    /// [`ProcScript::obeys_kill`]
-    obeys_kill: bool,
-    /// Notified on `signal()` or a `Shutdown` message; permit buffers if
-    /// nobody is awaiting yet, so events firing before OR during a `wait()`
-    /// both resolve it.
-    signal_notify: Notify,
-    /// Raw signal number recorded by the most recent explicit `signal()`
-    /// call. A `Shutdown` message does not set this (see `record_shutdown`),
-    /// so `wait()`'s fallback naturally reports `StopSignal::Term` for it.
-    pending_signal: Mutex<Option<i32>>,
-    /// Every raw signal number an explicit `signal()` call has recorded, in
-    /// call order, read back via [`ScriptedRunner::signals`]. A `Shutdown`
-    /// message does not append here, so tests can assert "no `signal()` call
-    /// happened" even though the wait still resolved.
-    signals: Mutex<Vec<i32>>,
-    /// Every `signal_process` call, in call order. Separate from `signals`,
-    /// which records group deliveries; see `ScriptedRunner::process_signals`.
-    process_signals: Mutex<Vec<OperatorSignal>>,
-    /// Notified on `kill_tree()`; same before-or-during buffering as above
-    kill_notify: Notify,
-    /// `kill_tree()` call count, read back via [`ScriptedRunner::kill_counts`]
-    kill_count: AtomicU32,
-    /// Latches the first resolved outcome so a repeated `wait()` re-reports
-    /// it instead of racing the notify/sleep branches again: matches
-    /// `tokio::process::Child::wait`'s documented repeat-call behavior.
-    resolved: Mutex<Option<ExitOutcome>>,
-    /// Flipped to `true` when `wait()` latches an outcome, and watched by
-    /// this proc's log-control task so that task ends with the proc, unless
-    /// [`ProcScript::lamb_holds_the_pipe`] says the streams outlive it.
-    ///
-    /// Without it the fake would answer a reopen aimed at a proc that exited
-    /// long ago, while the real runner's pump (and with it the receiving end
-    /// of [`ProcIo::log_ctl`]) is gone once the child's streams reach EOF. A
-    /// caller's "the pump is already gone" branch would then be unreachable
-    /// from this tier.
-    exited: watch::Sender<bool>,
-}
-
-impl ProcState {
-    /// Records an explicit `signal()` call: appends to the `signals` ledger,
-    /// arms `pending_signal` with the raw number `wait()` should report, and
-    /// wakes a pending (or buffers for a future) wait.
-    fn record_signal(&self, raw: i32) {
-        self.signals.lock().unwrap().push(raw);
-        *self.pending_signal.lock().unwrap() = Some(raw);
-        self.signal_notify.notify_one();
-    }
-
-    /// A `Shutdown` message resolves an obeys_signal wait exactly like
-    /// `signal()` would (falling back to `StopSignal::Term` since
-    /// `pending_signal` is left untouched), but is not itself an explicit
-    /// `signal()` call: it never appears in `signals`.
-    fn record_shutdown(&self) {
-        self.signal_notify.notify_one();
-    }
-
-    fn record_kill(&self) {
-        self.kill_count.fetch_add(1, Ordering::SeqCst);
-        self.kill_notify.notify_one();
-    }
-
-    fn record_process_signal(&self, sig: OperatorSignal) {
-        self.process_signals.lock().unwrap().push(sig);
-    }
-}
-
-impl fmt::Debug for ProcState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ProcState")
-            .field("exit_deadline", &self.exit_deadline)
-            .field("outcome", &self.outcome)
-            .field("obeys_signal", &self.obeys_signal)
-            .field("kill_count", &self.kill_count.load(Ordering::SeqCst))
-            .finish_non_exhaustive()
-    }
-}
-
-/// A single scripted live child produced by [`ScriptedRunner::spawn`]
-///
-/// `Clone`s share the same underlying state (private `ProcState`, held in an
-/// `Arc`), which lets one handle drive `wait()` on a spawned task while
-/// another delivers `signal()`/`kill_tree()` concurrently, the pattern the
-/// daemon's kill ladder uses against the real runner too. A control event
-/// (signal, shutdown, kill) resolves exactly one waiting `wait()` call, not
-/// every clone independently: `tokio::sync::Notify::notify_one` semantics.
-#[derive(Debug, Clone)]
-pub struct FakeProc {
-    pid: u32,
-    state: Arc<ProcState>,
-}
-
-impl RunningProcess for FakeProc {
-    fn pid(&self) -> u32 {
-        self.pid
-    }
-
-    async fn wait(&mut self) -> ExitOutcome {
-        if let Some(outcome) = *self.state.resolved.lock().unwrap() {
-            return outcome;
-        }
-
-        // Every branch resolves the wait: an event this wait doesn't obey
-        // isn't a candidate branch (the `if` guard), not a fallthrough. With
-        // both guards off, only `exit_deadline` remains, which for
-        // `never_reports_its_exit` is `NEVER_MS` away.
-        let outcome = tokio::select! {
-            () = sleep_until(self.state.exit_deadline) => self.state.outcome,
-            () = self.state.signal_notify.notified(), if self.state.obeys_signal => {
-                let raw = self.state.pending_signal.lock().unwrap().take();
-                ExitOutcome {
-                    code: None,
-                    signal: Some(raw.unwrap_or_else(|| StopSignal::Term.as_raw())),
-                }
-            }
-            () = self.state.kill_notify.notified(), if self.state.obeys_kill => {
-                ExitOutcome { code: None, signal: Some(StopSignal::Kill.as_raw()) }
-            }
-        };
-        *self.state.resolved.lock().unwrap() = Some(outcome);
-        // Ends this proc's log-control task; see `ProcState::exited`.
-        // `send_replace` rather than `send` because the task may already be
-        // gone, and a proc having exited is not news the fake can fail on.
-        self.state.exited.send_replace(true);
-        outcome
-    }
-
-    // A scripted proc models exactly one process with no descendants, so
-    // `signal`'s group-wide contract and a leader-only delivery are
-    // indistinguishable here. Neither is evidence that a real sheep's
-    // forked lambs are signalled; `tests/real_runner.rs` proves that.
-    fn signal(&mut self, sig: StopSignal) -> Result<(), RunnerError> {
-        self.state.record_signal(sig.as_raw());
-        Ok(())
-    }
-
-    fn kill_tree(&mut self) -> Result<(), RunnerError> {
-        self.state.record_kill();
-        Ok(())
-    }
-
-    // Recorded on its own list, not `record_signal`'s: which one the
-    // supervisor called is exactly what a `shep signal` test needs. Does
-    // not resolve the wait; only `signal` does.
-    fn signal_process(&mut self, sig: OperatorSignal) -> Result<(), RunnerError> {
-        self.state.record_process_signal(sig);
-        Ok(())
-    }
-}
+pub(super) const NEVER_MS: u64 = 30 * 24 * 60 * 60 * 1000;
 
 /// One spawn's shared state plus its still-unclaimed [`FakeIo`] test handles
-struct SpawnedProc {
+pub(super) struct SpawnedProc {
     state: Arc<ProcState>,
     io: Option<FakeIo>,
     /// The sheep name this spawn carried, copied off [`SpawnSpec::name`] and
@@ -426,6 +124,37 @@ impl fmt::Debug for ScriptedRunner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ScriptedRunner").finish_non_exhaustive()
     }
+}
+
+/// Six real, distinct, open descriptors for a fake pump to report, and the
+/// handles that keep them open.
+///
+/// `/dev/null`, since the fake never writes to them: a handover blob only
+/// needs the numbers to name something open. Six covers the widest shape a
+/// blob carries, stdin pipe and shepherd channel included.
+///
+/// # Panics
+///
+/// If `/dev/null` cannot be opened six times: the process is out of
+/// descriptors.
+#[cfg(unix)]
+#[track_caller]
+pub(super) fn open_reportable_fds() -> ([std::fs::File; 6], crate::handover::CarriedFds) {
+    use std::os::fd::AsRawFd as _;
+
+    let files = core::array::from_fn(|_| {
+        std::fs::File::open("/dev/null").expect("a test host must be able to open /dev/null")
+    });
+    let files: [std::fs::File; 6] = files;
+    let fds = crate::handover::CarriedFds {
+        out_pipe: Some(files[0].as_raw_fd()),
+        err_pipe: Some(files[1].as_raw_fd()),
+        out_log: Some(files[2].as_raw_fd()),
+        err_log: Some(files[3].as_raw_fd()),
+        stdin: Some(files[4].as_raw_fd()),
+        channel: Some(files[5].as_raw_fd()),
+    };
+    (files, fds)
 }
 
 impl ScriptedRunner {
@@ -586,8 +315,8 @@ impl ScriptedRunner {
     /// Whether the log-control task for the proc spawned at `spawn_index` is
     /// still running.
     ///
-    /// It runs while something holds a [`ProcIo::log_ctl`] sender, something
-    /// holds the [`ProcIo::logs`] receiver, and the proc has not exited,
+    /// It runs while something holds a [`ProcIo::log_ctl`](crate::runner::ProcIo::log_ctl) sender, something
+    /// holds the [`ProcIo::logs`](crate::runner::ProcIo::logs) receiver, and the proc has not exited,
     /// unless a lamb holds the pipe
     /// ([`ProcScript::with_a_lamb_holding_the_pipe`]).
     ///
@@ -606,7 +335,7 @@ impl ScriptedRunner {
     /// has been sent.
     ///
     /// The fake writes no files, so this proves only that the request
-    /// reached this spawn's end of [`ProcIo::log_ctl`]. Whether a reopened
+    /// reached this spawn's end of [`ProcIo::log_ctl`](crate::runner::ProcIo::log_ctl). Whether a reopened
     /// handle lands on a recreated inode is `tests/real_runner.rs`'s question.
     ///
     /// # Panics
@@ -626,7 +355,7 @@ impl ScriptedRunner {
     /// A separate counter from [`Self::reopens`], not one shared "control
     /// requests" total, so a `flush` wired to the wrong variant still moves
     /// the wrong counter. The fake writes no files, so this proves only
-    /// that the request reached this spawn's end of [`ProcIo::log_ctl`].
+    /// that the request reached this spawn's end of [`ProcIo::log_ctl`](crate::runner::ProcIo::log_ctl).
     ///
     /// # Panics
     ///
@@ -660,7 +389,7 @@ impl ScriptedRunner {
     /// Every line the daemon has written to the stdin of the proc spawned at
     /// `spawn_index`, in write order.
     ///
-    /// Proves only that the line reached [`ProcIo::to_stdin`] intact; a
+    /// Proves only that the line reached [`ProcIo::to_stdin`](crate::runner::ProcIo::to_stdin) intact; a
     /// real `\n`-terminated line landing in a real fd 0 is
     /// `tests/real_runner.rs`'s question.
     ///
@@ -692,37 +421,6 @@ impl ScriptedRunner {
             .and_then(|p| p.io.take())
             .expect("io_handles: no unclaimed IO bundle at this spawn index")
     }
-}
-
-/// Six real, distinct, open descriptors for a fake pump to report, and the
-/// handles that keep them open.
-///
-/// `/dev/null`, since the fake never writes to them: a handover blob only
-/// needs the numbers to name something open. Six covers the widest shape a
-/// blob carries, stdin pipe and shepherd channel included.
-///
-/// # Panics
-///
-/// If `/dev/null` cannot be opened six times: the process is out of
-/// descriptors.
-#[cfg(unix)]
-#[track_caller]
-fn open_reportable_fds() -> ([std::fs::File; 6], crate::handover::CarriedFds) {
-    use std::os::fd::AsRawFd as _;
-
-    let files = core::array::from_fn(|_| {
-        std::fs::File::open("/dev/null").expect("a test host must be able to open /dev/null")
-    });
-    let files: [std::fs::File; 6] = files;
-    let fds = crate::handover::CarriedFds {
-        out_pipe: Some(files[0].as_raw_fd()),
-        err_pipe: Some(files[1].as_raw_fd()),
-        out_log: Some(files[2].as_raw_fd()),
-        err_log: Some(files[3].as_raw_fd()),
-        stdin: Some(files[4].as_raw_fd()),
-        channel: Some(files[5].as_raw_fd()),
-    };
-    (files, fds)
 }
 
 impl ProcessRunner for ScriptedRunner {
@@ -974,30 +672,17 @@ impl ProcessRunner for ScriptedRunner {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-    use std::path::PathBuf;
-    use std::time::Duration;
+    use super::super::proc_script::ProcScript;
 
-    use super::*;
     use crate::channel::{ChildMessage, ShepherdMessage};
+    use tokio::time::Duration;
+
     use crate::runner::{
-        ExitOutcome, ProcessRunner, RunnerError, RunningProcess, SpawnSpec, StopSignal,
+        ExitOutcome, LogCtl, ProcessRunner, RunnerError, RunningProcess, SpawnSpec, StopSignal,
     };
 
-    fn spec() -> SpawnSpec {
-        SpawnSpec {
-            name: "web".to_string(),
-            program: "/bin/true".to_string(),
-            args: vec![],
-            cwd: None,
-            env: BTreeMap::new(),
-            out_file: PathBuf::from("/tmp/shep-test-out.log"),
-            err_file: PathBuf::from("/tmp/shep-test-err.log"),
-            channel: true,
-            stdin: false,
-            credentials: None,
-        }
-    }
+    use super::super::testing::*;
+    use super::*;
 
     #[tokio::test(start_paused = true)]
     async fn const_exit_resolves_immediately_with_code() {
@@ -1062,47 +747,6 @@ mod tests {
         );
     }
 
-    /// fails if a signal aimed at one sheep is recorded as a group delivery, or
-    /// not recorded at all. `signal` and `signal_process` are two different
-    /// contracts against the same OS primitive, and a fake that answered both from
-    /// one counter could not tell a reviewer which one the supervisor called.
-    #[tokio::test(start_paused = true)]
-    async fn a_process_signal_is_recorded_apart_from_a_group_signal() {
-        let runner = ScriptedRunner::new(vec![ProcScript::never_exits()]);
-        let (mut proc, _io) = runner.spawn(&spec()).unwrap();
-
-        proc.signal_process(OperatorSignal::Hup).unwrap();
-        proc.signal_process(OperatorSignal::Usr1).unwrap();
-
-        assert_eq!(
-            runner.process_signals(0),
-            vec![OperatorSignal::Hup, OperatorSignal::Usr1]
-        );
-        assert!(
-            runner.signals(0).is_empty(),
-            "a per-process signal must not be counted as a group signal"
-        );
-    }
-
-    /// `signal_process` must not resolve the scripted proc's `wait()`:
-    /// `signal` does that (the stop ladder's polite rung), and a nudge that
-    /// ended the sheep would read `Delivered` off a process that had just died.
-    #[tokio::test(start_paused = true)]
-    async fn a_process_signal_does_not_end_the_scripted_proc() {
-        let runner = ScriptedRunner::new(vec![ProcScript::never_exits()]);
-        let (proc, _io) = runner.spawn(&spec()).unwrap();
-        let mut waiter = proc.clone();
-        let mut signaller = proc;
-        let waiting = tokio::spawn(async move { waiter.wait().await });
-
-        tokio::time::advance(Duration::from_millis(1)).await;
-        signaller.signal_process(OperatorSignal::Hup).unwrap();
-        tokio::time::advance(Duration::from_secs(1)).await;
-
-        assert!(!waiting.is_finished(), "signal_process resolved the wait");
-        waiting.abort();
-    }
-
     #[tokio::test(start_paused = true)]
     async fn kill_tree_resolves_pending_wait_and_counts() {
         let runner = ScriptedRunner::new(vec![ProcScript::ignores_signals()]);
@@ -1130,36 +774,6 @@ mod tests {
         assert_eq!(
             err,
             RunnerError::SpawnFailed("script exhausted".to_string())
-        );
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn cancel_safety_deadline_survives_drop_and_reawait() {
-        let runner = ScriptedRunner::new(vec![ProcScript::stable_then_exit(5_000, 7)]);
-        let (mut proc, _io) = runner.spawn(&spec()).unwrap();
-
-        // Drive `wait()` on a spawned task so we can abort (drop) it
-        // mid-flight, the "sheep task owns the proc" shape
-        // `RunningProcess::wait` documents.
-        let mut first_wait = proc.clone();
-        let handle = tokio::spawn(async move { first_wait.wait().await });
-        tokio::time::advance(Duration::from_secs(1)).await;
-        assert!(
-            !handle.is_finished(),
-            "wait() must still be pending 1s into a 5s delay"
-        );
-        handle.abort(); // drop the wait() future without ever resolving it
-
-        // If the deadline were recomputed from this re-await instead of the
-        // original spawn-relative one, 4 more seconds would not be enough.
-        tokio::time::advance(Duration::from_secs(4)).await;
-        let outcome = proc.wait().await;
-        assert_eq!(
-            outcome,
-            ExitOutcome {
-                code: Some(7),
-                signal: None
-            }
         );
     }
 
@@ -1246,7 +860,7 @@ mod tests {
     /// Fails if the fake's control task outlives its proc: `log_ctl.send`
     /// would keep succeeding against a proc that exited long ago, and the
     /// "the pump is already gone" branch every caller of
-    /// [`ProcIo::log_ctl`] is told to take would be unreachable from this
+    /// [`ProcIo::log_ctl`](crate::runner::ProcIo::log_ctl) is told to take would be unreachable from this
     /// tier. A test for reopening a stopped sheep would then pass whether or
     /// not the code handled one.
     #[tokio::test(start_paused = true)]
@@ -1275,24 +889,6 @@ mod tests {
         // A request that never reaches a pump resolves the caller's
         // acknowledgement as an error rather than leaving it pending.
         assert!(ack.await.is_err());
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn repeated_wait_returns_the_same_cached_outcome() {
-        // MINOR-8 regression guard: a second wait() must re-report the latched
-        // outcome instead of racing the (already-fired) select! branches again.
-        let runner = ScriptedRunner::new(vec![ProcScript::const_exit(3)]);
-        let (mut proc, _io) = runner.spawn(&spec()).unwrap();
-        let first = proc.wait().await;
-        let second = proc.wait().await;
-        assert_eq!(first, second);
-        assert_eq!(
-            first,
-            ExitOutcome {
-                code: Some(3),
-                signal: None
-            }
-        );
     }
 
     /// A fake that accepted every write would make `no_stdin` unreachable
