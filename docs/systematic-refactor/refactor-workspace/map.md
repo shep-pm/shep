@@ -416,7 +416,7 @@ src/
              `Request::SaveRoll` reaches, answering `Option<SavedRoll { path, apps }>` —
       Drift (2026-08-18, recorded): the selector grammar takes globs. A target carrying `*`,
              `?`, `[` or `{` compiles through `globset` and becomes a `ProcessSelector::Regex`,
-             anchored, so `zeus-*` selects `zeus-auth` and not `my-zeus-auth`. Deliberately NOT
+             anchored, so `api-*` selects `api-auth` and not `my-api-auth`. Deliberately NOT
              a `SelectorSpec` variant of its own: that type is the wire, and an older daemon
              could not deserialize an unknown variant, so a glob works against a shepherd built
              before globs existed. `globset` owns the semantics rather than a hand-rolled
