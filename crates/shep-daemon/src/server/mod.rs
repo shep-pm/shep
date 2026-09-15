@@ -1,7 +1,9 @@
 //! The connection layer: peer auth, handshake, subscriptions
 //!
 //! [`RpcServer`] owns the bound [`Listener`](shep_core::transport::Listener) and accepts connections until
-//! told to stop. Each runs `handle_conn` in its own task: a same-uid check
+//! told to stop. Each runs
+//! [`handle_conn`](crate::server::conn_protocol::handle_conn) in its own task:
+//! a same-uid check
 //! ([`check_peer`](peer_auth::check_peer), unix only), a version handshake, then a read loop that
 //! decodes envelopes and hands them to
 //! [`rpc::dispatch`](crate::rpc::dispatch), which never sees a socket.

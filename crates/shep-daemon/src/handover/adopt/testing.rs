@@ -71,7 +71,8 @@ pub(super) fn blob_with(socket: &Path, sheep: Vec<CarriedSheep>) -> Handover {
 /// still owned here rather than leaked into a number.
 ///
 /// [`blob_with`] hands its listener and pidfile to `into_raw_fd`, which
-/// suits a case about `adopt`. `dry_run`'s contract is that the caller
+/// suits a case about `adopt`. [`dry_run`](crate::handover::adopt::dry_run)'s
+/// contract is that the caller
 /// still owns everything afterwards, which nothing can check against
 /// numbers no value holds.
 pub(super) struct Predecessor {

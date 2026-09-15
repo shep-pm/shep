@@ -28,7 +28,8 @@ pub struct LogLine {
 /// truncates.
 ///
 /// `#[non_exhaustive]`: this crate is published, and an out-of-tree
-/// `ProcessRunner` matching exhaustively would break on the next variant.
+/// [`ProcessRunner`](crate::runner::ProcessRunner) matching exhaustively would
+/// break on the next variant.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum LogCtl {

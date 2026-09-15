@@ -65,7 +65,8 @@ impl ProcScript {
         }
     }
 
-    /// Never exits on its own and ignores signals: only `kill_tree` ends it
+    /// Never exits on its own and ignores signals: only
+    /// [`kill_tree`](crate::runner::RunningProcess::kill_tree) ends it
     #[must_use]
     pub fn ignores_signals() -> Self {
         Self {
@@ -75,7 +76,7 @@ impl ProcScript {
     }
 
     /// Never resolves its `wait()` at all: not on a signal, and not on
-    /// `kill_tree` either.
+    /// [`kill_tree`](crate::runner::RunningProcess::kill_tree) either.
     ///
     /// Models the one child a kill ladder cannot end: wedged in
     /// uninterruptible sleep, where `SIGKILL` is delivered and accepted by

@@ -2,8 +2,9 @@
 //!
 //! The assembler takes a validated `ResolvedApp` and produces a fully-resolved
 //! [`SpawnSpec`](crate::runner::SpawnSpec) ready for [`ProcessRunner::spawn`](crate::runner::ProcessRunner::spawn).
-//! No I/O here: the defaults, the process env, the paths, the credentials and
-//! the secret store are all read by the daemon before the assembler is called.
+//! No I/O here: the defaults, the paths, the credentials and the secret store
+//! are all read by the daemon before the assembler is called. The process env
+//! is the exception, read here through a closure a test can substitute.
 //!
 //! Two builders, and only one of them may be spawned. [`assemble`] resolves
 //! every `{{secret:...}}` and refuses the spec when one will not; the private

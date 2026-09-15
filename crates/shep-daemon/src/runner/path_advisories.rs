@@ -168,7 +168,7 @@ pub(super) fn windows_name_advisory(path: &Path) -> Option<String> {
     None
 }
 
-/// Unlike the module above, these run on every platform this crate ships
+/// Unlike `log_path_security`'s cases, these run on every platform this crate ships
 /// on: `cwd_advisory` and `log_path_advisory` read nothing platform-specific
 /// except through `windows_name_advisory`, which gets its own module below.
 #[cfg(test)]
