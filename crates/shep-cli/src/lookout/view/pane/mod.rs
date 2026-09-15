@@ -12,10 +12,9 @@
 //! A sheep pane is 40 rows plus a title, eight headers and seven blank
 //! separators: sixteen lines of chrome before a marker is paid for.
 //!
-//! `layout` holds the width budget and `field_row` one row; `chrome`, `env`,
-//! `list` and `panel` hold the regions around them; `body` decides which
-//! rows fit and `draw` puts the whole thing together. `close` is the dialog
-//! that runs over the top of it.
+//! `layout` holds the width budget, `field_row` one row, and `chrome`,
+//! `env`, `list` and `panel` the regions around them. `body` decides which
+//! rows fit, `draw` assembles the pane, `close` is the dialog over it.
 
 mod body;
 mod chrome;

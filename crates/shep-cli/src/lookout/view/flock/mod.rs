@@ -8,9 +8,8 @@
 //! Column widths are fixed rather than measured from content: a live table
 //! whose columns resize as a pid gains a digit is a table that shivers.
 //!
-//! `columns` holds the two schemas and their tier ladders, `layout` the
-//! measuring every cell goes through on its way to a span, and `row` and
-//! `fold` the two row renderers that sit on top of both.
+//! `columns` holds the two schemas, `layout` the measuring, and `row` and
+//! `fold` the two renderers over both.
 
 pub(super) mod columns;
 mod fold;
