@@ -600,8 +600,7 @@ The probe also carries `SHEP_DOG_NAME` now, for the same reason it carries
 The original entry follows.
 
 Found 2026-08-20, the hard way, while building `shep-log-rotate`. It came
-within a `max_size` default of rotating the live `~/.shep` that supervises
-`zeus-auth`.
+within a `max_size` default of rotating the maintainer's own live `~/.shep`.
 
 `vet` proves a kernel can exec the candidate by actually execing it
 (`crates/shep-cli/src/commands/dogs.rs:384`):
@@ -628,7 +627,7 @@ different one.
 For a rotator that means: connect to the live daemon, `ListFlock` the real
 flock, and rotate real logs, during a command whose entire purpose was to
 decide whether to trust this binary at all. Measured: nothing was lost only
-because `max_size` defaults to 10M and `zeus-auth-0-out.log` was 200 KB. That
+because `max_size` defaults to 10M and the live log was 200 KB. That
 is a coincidence, not a guard.
 
 Three fixes, cheap, and they compose:
