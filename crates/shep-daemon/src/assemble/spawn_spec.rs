@@ -1,210 +1,14 @@
-//! Spawn assembly: pure functions that build [`SpawnSpec`] from app config.
-//!
-//! The assembler takes a validated `ResolvedApp` and produces a fully-resolved
-//! [`SpawnSpec`] ready for [`ProcessRunner::spawn`](crate::runner::ProcessRunner::spawn).
-//! No I/O here: the defaults, the process env, the paths, the credentials and
-//! the secret store are all read by the daemon before the assembler is called.
-//!
-//! Two builders, and only one of them may be spawned. [`assemble`] resolves
-//! every `{{secret:...}}` and refuses the spec when one will not; the private
-//! `describe` is for the callers that read a spec's log paths or build its
-//! prober without ever starting a process.
-//!
-//! Public for its two out-of-crate readers and nothing else: `tests/real_runner.rs`
-//! calls [`assemble`] to build a spec it then spawns for real, and
-//! [`instance_slots`]'s doc example is compiled as its own crate.
-
-use core::convert::Infallible;
-use core::fmt;
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-
-use shep_core::config::ResolvedApp;
-use shep_core::config::template::{self, RenderError};
-use shep_core::paths::ShepPaths;
-use shep_core::secrets::SecretView;
-
+use super::assembly_errors::AssembleError;
+use super::environment_inheritance::{INHERITED, InheritedEnv, inherited_env};
+use super::log_path_resolution::anchor_log_path;
 use crate::privilege::Credentials;
 use crate::runner::SpawnSpec;
-
-/// Finds the `count` lowest-free instance slot numbers from an existing set.
-///
-/// Used to allocate instance slots for clustered apps. Assumes `existing` is
-/// sorted; returns a new vector of `count` distinct slots, smallest first,
-/// none of which appear in `existing`.
-///
-/// # Examples
-///
-/// ```
-/// use shep_daemon::assemble::instance_slots;
-///
-/// assert_eq!(instance_slots(&[], 3), vec![0, 1, 2]);
-/// assert_eq!(instance_slots(&[0, 2], 2), vec![1, 3]);
-/// ```
-#[must_use]
-pub fn instance_slots(existing: &[u32], count: u32) -> Vec<u32> {
-    let mut result = Vec::with_capacity(count as usize);
-    let mut candidate = 0u32;
-
-    for _ in 0..count {
-        while existing.contains(&candidate) || result.contains(&candidate) {
-            candidate += 1;
-        }
-        result.push(candidate);
-        candidate += 1;
-    }
-
-    result
-}
-
-/// The env every spawned child starts from, before the app's own `env` map
-/// is folded on top (app config always wins on conflict), plus `PATH`:
-/// without one, a bare program or interpreter name can never be found by
-/// exec, so it's seeded unconditionally rather than left to `keys`.
-///
-/// [`build`] calls this with the platform-selected [`INHERITED`] and a
-/// `std::env::var` reader; a test can pass [`INHERITED_WINDOWS`] and a fake
-/// reader instead, on any host, without touching real process env.
-/// Mutating that from a test is unsound under a parallel test binary, and
-/// `std::env::set_var` is itself `unsafe` since edition 2024.
-fn inherited_env(
-    keys: &[&str],
-    env_reader: &dyn Fn(&str) -> Option<String>,
-) -> BTreeMap<String, String> {
-    let mut env = BTreeMap::new();
-    // An empty PATH ("PATH=") is treated as absent: `Some("")` would
-    // otherwise slip through `unwrap_or_else`, and an empty PATH resolves a
-    // bare program against the cwd instead of searching.
-    let path = env_reader("PATH")
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| DEFAULT_PATH.to_string());
-    env.insert("PATH".to_string(), path);
-    for key in keys {
-        if let Some(value) = env_reader(key) {
-            env.insert((*key).to_string(), value);
-        }
-    }
-    env
-}
-
-/// The `PATH` a child gets when the daemon itself has none.
-#[cfg(unix)]
-const DEFAULT_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
-/// The `PATH` a child gets when the daemon itself has none.
-///
-/// Not expanded via `%SystemRoot%`: these literal paths are correct on
-/// every standard Windows install and need no variable to resolve.
-#[cfg(windows)]
-const DEFAULT_PATH: &str = r"C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem";
-
-/// Variables inherited from the daemon's own environment, on top of `PATH`.
-const INHERITED_UNIX: &[&str] = &["HOME", "USER", "LANG", "TZ"];
-
-/// Variables inherited from the daemon's own environment, on top of `PATH`.
-///
-/// Longer than the unix list because Windows children need it: many Win32
-/// APIs read `%SystemRoot%` directly, and `PATHEXT`/`COMSPEC` let a child
-/// resolve and run `.cmd` files at all. `TEMP`/`TMP` and the
-/// `USERPROFILE`/`APPDATA`/`LOCALAPPDATA` trio are where most runtimes keep
-/// per-user state. Still a closed allowlist, not inherit-everything.
-///
-/// `PYTHONUTF8`/`PYTHONIOENCODING` are here for one specific failure: a
-/// non-console stdio handle (a pipe, which is what every spawned child gets)
-/// makes CPython up to 3.14 fall back to the legacy ANSI code page for
-/// `sys.stdout`/`sys.stderr` on Windows, and any non-ASCII byte an app prints
-/// then raises `UnicodeEncodeError`. CPython 3.15 turns UTF-8 mode on by
-/// default (PEP 686), so these two matter for an older interpreter and for
-/// anything that sets `PYTHONUTF8=0`. Neither has a unix equivalent to piggyback
-/// on. `LANG` is what decides a child's stdio encoding there and
-/// [`INHERITED_UNIX`] forwards it, which is not the same as setting one: a
-/// daemon started with no `LANG`, or with one naming a non-UTF-8 locale,
-/// hands that to its children. Windows has no variable in that role to
-/// forward at all. Setting either in the daemon's own environment now
-/// reaches every spawned app; an app can still set them itself, per-app, in
-/// its Flockfile `env`.
-const INHERITED_WINDOWS: &[&str] = &[
-    "SystemRoot",
-    "windir",
-    "SystemDrive",
-    "COMSPEC",
-    "PATHEXT",
-    "TEMP",
-    "TMP",
-    "USERPROFILE",
-    "HOMEDRIVE",
-    "HOMEPATH",
-    "APPDATA",
-    "LOCALAPPDATA",
-    "PROCESSOR_ARCHITECTURE",
-    "NUMBER_OF_PROCESSORS",
-    "OS",
-    "LANG",
-    "TZ",
-    "PYTHONUTF8",
-    "PYTHONIOENCODING",
-];
-
-/// The list [`build`] actually reads on this build. Picked with `cfg!`
-/// rather than `#[cfg(...)]` gating [`INHERITED_UNIX`]/[`INHERITED_WINDOWS`]
-/// themselves: both stay referenced on every target this way, so a test can
-/// run either platform's list (and [`inherited_env`]'s filtering) on any
-/// host, the same way this crate's unit-file renderers are pinned by text
-/// on a Mac without a systemd host, and `-D warnings` never calls the other
-/// platform's list dead code.
-const INHERITED: &[&str] = if cfg!(windows) {
-    INHERITED_WINDOWS
-} else {
-    INHERITED_UNIX
-};
-
-/// Which of an app's fields carried a `{{secret:...}}` that would not
-/// resolve, and why.
-///
-/// Redacted by construction (IR-41): `field` is an env key or a field's own
-/// name, and [`RenderError`] quotes only the reference, the namespace and
-/// the environment. Neither half can hold a secret's value.
-#[non_exhaustive]
-#[derive(Debug)]
-pub enum AssembleError {
-    /// A template in `field` could not be rendered.
-    Template {
-        /// The env key it was in, or the field's own name (`args`,
-        /// `out_file`, `err_file`).
-        field: String,
-        /// Why.
-        source: RenderError,
-    },
-}
-
-impl AssembleError {
-    /// Whether waiting could make this spec assemble.
-    ///
-    /// `true` only for a namespace no provider dog has pushed to yet; see
-    /// [`RenderError::is_retriable`]. A caller that calls every refusal
-    /// retriable turns a key nobody has set into a crash loop.
-    #[must_use]
-    pub fn is_retriable(&self) -> bool {
-        match self {
-            Self::Template { source, .. } => source.is_retriable(),
-        }
-    }
-}
-
-impl fmt::Display for AssembleError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Template { field, source } => write!(f, "`{field}`: {source}"),
-        }
-    }
-}
-
-impl core::error::Error for AssembleError {
-    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
-        match self {
-            Self::Template { source, .. } => Some(source),
-        }
-    }
-}
+use core::convert::Infallible;
+use shep_core::config::ResolvedApp;
+use shep_core::config::template::{self};
+use shep_core::paths::ShepPaths;
+use shep_core::secrets::SecretView;
+use std::path::PathBuf;
 
 /// Assembles a [`SpawnSpec`] from a validated app config and instance slot.
 ///
@@ -315,14 +119,6 @@ pub(crate) fn describe(
     }
 }
 
-/// [`inherited_env`]'s two arguments bundled into one: a key list plus a
-/// reader, so [`build`] takes one parameter for this instead of two, and a
-/// test can substitute both without touching real process env.
-struct InheritedEnv<'a> {
-    keys: &'a [&'a str],
-    reader: &'a dyn Fn(&str) -> Option<String>,
-}
-
 /// [`assemble`] and [`describe`] over one body: `render` is handed each
 /// templated value with the field name to blame, and decides what an
 /// unresolvable `{{secret:...}}` costs. Both callers in this module pass
@@ -331,7 +127,7 @@ struct InheritedEnv<'a> {
 /// # Errors
 ///
 /// Whatever `render` returns, at the first value it refuses.
-fn build<E>(
+pub(super) fn build<E>(
     app: &ResolvedApp,
     instance: u32,
     paths: &ShepPaths,
@@ -412,73 +208,18 @@ fn build<E>(
     })
 }
 
-/// Anchors an explicit log path at the sheep's `cwd` when it is relative.
-///
-/// The shepherd opens these files itself, so a bare relative path resolves
-/// against the shepherd's directory rather than the sheep's: the same config
-/// names one file under the shepherd a handover started from and another
-/// under its successor, and `shep bleats` reads a third under the CLI's.
-///
-/// A sheep with no `cwd` already runs in the shepherd's own directory.
-fn anchor_log_path(rendered: String, cwd: Option<&Path>) -> PathBuf {
-    let path = PathBuf::from(rendered);
-    match cwd {
-        Some(cwd) if path.is_relative() => cwd.join(path),
-        _ => path,
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use super::super::environment_inheritance::{INHERITED_WINDOWS, InheritedEnv};
+    use core::convert::Infallible;
+
+    use std::path::PathBuf;
+
+    use shep_core::secrets::SecretView;
+
+    use super::super::testing::*;
     use super::*;
     use shep_core::config::{AppConfig, normalize};
-
-    fn test_paths() -> ShepPaths {
-        ShepPaths {
-            home: PathBuf::from("/home/ada/.shep"),
-            daemon_config: PathBuf::from("/home/ada/.shep/shep.toml"),
-            dogs_config: PathBuf::from("/home/ada/.shep/dogs.toml"),
-            snapshot: PathBuf::from("/home/ada/.shep/flock.json"),
-            logs: PathBuf::from("/home/ada/.shep/logs"),
-            pids: PathBuf::from("/home/ada/.shep/pids"),
-            run: PathBuf::from("/home/ada/.shep/run"),
-            socket: PathBuf::from("/home/ada/.shep/run/shep.sock"),
-            barks: PathBuf::from("/home/ada/.shep/barks.jsonl"),
-            kv: PathBuf::from("/home/ada/.shep/kv.json"),
-            overrides: PathBuf::from("/home/ada/.shep/overrides.json"),
-            secrets: PathBuf::from("/home/ada/.shep/secrets.json"),
-            secrets_cache: PathBuf::from("/home/ada/.shep/secrets-cache.json"),
-        }
-    }
-
-    /// A view holding nothing, in the environment a host defaults to.
-    fn no_secrets() -> SecretView {
-        SecretView::empty("production".to_string())
-    }
-
-    /// A view holding exactly `key` in `environment`, and nothing else.
-    fn view_with(environment: &str, key: &str, value: &str) -> SecretView {
-        SecretView::new(
-            environment.to_string(),
-            BTreeMap::from([(
-                key.to_string(),
-                BTreeMap::from([(environment.to_string(), value.to_string())]),
-            )]),
-            shep_core::secrets::ProviderCache::default(),
-        )
-    }
-
-    #[test]
-    fn slots_empty_request() {
-        let result = instance_slots(&[], 3);
-        assert_eq!(result, vec![0, 1, 2]);
-    }
-
-    #[test]
-    fn slots_skip_occupied() {
-        let result = instance_slots(&[0, 2], 2);
-        assert_eq!(result, vec![1, 3]);
-    }
 
     #[test]
     fn every_child_learns_its_slot_and_its_name() {
@@ -1058,39 +799,6 @@ mod tests {
         assert_eq!(
             spec.env.get("SHEP_ENVIRONMENT").map(String::as_str),
             Some("staging")
-        );
-    }
-
-    #[test]
-    fn a_missing_key_refuses_the_spawn_and_names_the_field() {
-        let mut config = AppConfig::minimal("web", "./srv");
-        config.env.insert("PW".into(), "{{secret:ABSENT}}".into());
-        let app = normalize(config).unwrap();
-        let err = assemble(
-            &app,
-            0,
-            &test_paths(),
-            None,
-            &SecretView::empty("production".into()),
-        )
-        .unwrap_err();
-        assert!(!err.is_retriable());
-        // Exact strings for both renderings (IR-41): the type is meant to
-        // carry a field name and a reference and never a value, and a
-        // substring check cannot see a field it was never told about.
-        assert_eq!(
-            err.to_string(),
-            "`PW`: `{{secret:ABSENT}}` has no value in the `production` environment"
-        );
-        assert_eq!(
-            format!("{err:?}"),
-            "Template { field: \"PW\", source: Unresolved { reference: \"{{secret:ABSENT}}\", \
-             environment: \"production\" } }"
-        );
-        let rendered = err.to_string();
-        assert!(
-            !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
-            "no em or en dash in copy a user reads: {rendered}"
         );
     }
 
