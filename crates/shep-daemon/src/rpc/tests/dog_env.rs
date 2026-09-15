@@ -447,10 +447,7 @@ async fn a_removed_key_stays_removed_and_stays_reported_across_reloads() {
                                 .iter()
                                 .map(|k| (*k).to_string())
                                 .collect(),
-                            declared_env: ["DB_PASS"]
-                                .iter()
-                                .map(|k| (*k).to_string())
-                                .collect(),
+                            declared_env: ["DB_PASS"].iter().map(|k| (*k).to_string()).collect(),
                         }],
                         reset: ResetDepth::None,
                     },

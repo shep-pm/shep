@@ -303,8 +303,7 @@ async fn a_batch_in_a_knot_the_named_path_leaves_out_is_still_refused() {
 
     let mut web = AppConfig::minimal("web", "./srv");
     web.depends_on = vec!["api".to_string()];
-    let reply =
-        reply_of(dispatch(envelope(3, Request::Start { apps: vec![web] }), &h.ctx).await);
+    let reply = reply_of(dispatch(envelope(3, Request::Start { apps: vec![web] }), &h.ctx).await);
     let err = reply.result.unwrap_err();
     assert_eq!(err.code, RpcErrorCode::InvalidConfig);
     assert!(

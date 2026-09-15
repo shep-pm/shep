@@ -27,10 +27,10 @@ use crate::supervisor::{ConnId, SupervisorError};
 
 mod context;
 
-pub use context::{RpcContext, SavedRoll};
-pub(crate) use context::{KnownDogs, Outcome};
 #[cfg(test)]
 use context::{DEFAULT_DEADLINE_MS, MAX_DEADLINE_MS, budget};
+pub(crate) use context::{KnownDogs, Outcome};
+pub use context::{RpcContext, SavedRoll};
 
 mod dispatch;
 

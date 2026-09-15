@@ -21,7 +21,9 @@ use crate::supervisor::{BatchPolicy, ConnId};
 
 use super::batch::{duplicate_name, persists, staged_plan};
 use super::context::{Outcome, RpcContext, budget};
-use super::enrichment::{dog_staleness, handover_refusal, with_dog_contact, with_lambs, with_live_stats};
+use super::enrichment::{
+    dog_staleness, handover_refusal, with_dog_contact, with_lambs, with_live_stats,
+};
 use super::error::rpc_error;
 use super::selector_verbs::{not_found, selector_call, selector_of, signal_request, trigger};
 use super::walk::{reload_request, restart_request};

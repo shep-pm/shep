@@ -89,7 +89,10 @@ pub(super) async fn handover_refusal(_ctx: &RpcContext) -> Option<String> {
 /// against, which is the number [`ProcessInfo::pid`] carries. Only `ListFlock`
 /// and `Describe` call this; the lifecycle verbs answer with [`ProcessInfo`]
 /// too, but none of them is where an operator reads resource usage.
-pub(super) async fn with_live_stats(stats: &Arc<StatsState>, mut infos: Vec<ProcessInfo>) -> Vec<ProcessInfo> {
+pub(super) async fn with_live_stats(
+    stats: &Arc<StatsState>,
+    mut infos: Vec<ProcessInfo>,
+) -> Vec<ProcessInfo> {
     let stats = Arc::clone(stats);
     let Ok(sample) = tokio::task::spawn_blocking(move || stats.sample_now()).await else {
         // The blocking pool is gone or the task panicked: report the flock
@@ -141,7 +144,10 @@ pub(super) fn with_dog_contact(
 /// A row with no pid is left `None` rather than `Some(vec![])`, which is the
 /// "not walked" case the field's own doc distinguishes from "walked and
 /// empty".
-pub(super) async fn with_lambs(stats: &Arc<StatsState>, mut infos: Vec<ProcessInfo>) -> Vec<ProcessInfo> {
+pub(super) async fn with_lambs(
+    stats: &Arc<StatsState>,
+    mut infos: Vec<ProcessInfo>,
+) -> Vec<ProcessInfo> {
     if infos.iter().all(|info| info.pid.is_none()) {
         // Nothing to walk for: skip the table refresh entirely rather than
         // pay for it and assign `None` anyway.

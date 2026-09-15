@@ -99,8 +99,7 @@ async fn start_web_with_a_secret(ctx: &RpcContext) {
     config
         .env
         .insert("DB_PASS".to_string(), "hunter2".to_string());
-    let started =
-        reply_of(dispatch(envelope(1, Request::Start { apps: vec![config] }), ctx).await);
+    let started = reply_of(dispatch(envelope(1, Request::Start { apps: vec![config] }), ctx).await);
     assert!(started.result.is_ok(), "{:?}", started.result);
 }
 

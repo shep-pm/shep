@@ -178,4 +178,3 @@ impl From<Applied> for SheepApplied {
         )
     }
 }
-

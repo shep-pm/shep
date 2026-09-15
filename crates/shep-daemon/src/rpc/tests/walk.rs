@@ -480,8 +480,7 @@ async fn a_reload_stage_is_bounded_by_the_swaps_it_is_waiting_for() {
     let mut web = AppConfig::minimal("web", "./web");
     web.listen_timeout = UpDuration::from_millis(4_000);
     web.graceful_timeout = UpDuration::from_millis(6_000);
-    let started =
-        reply_of(dispatch(envelope(1, Request::Start { apps: vec![web] }), &h.ctx).await);
+    let started = reply_of(dispatch(envelope(1, Request::Start { apps: vec![web] }), &h.ctx).await);
     assert!(started.result.is_ok(), "web comes up: {started:?}");
 
     let one = [("web".to_string(), 1)].into_iter().collect();
@@ -582,8 +581,7 @@ async fn an_instance_a_reload_skips_carries_no_deadline() {
     let mut web = AppConfig::minimal("web", "./web");
     web.listen_timeout = UpDuration::from_millis(4_000);
     web.graceful_timeout = UpDuration::from_millis(6_000);
-    let started =
-        reply_of(dispatch(envelope(1, Request::Start { apps: vec![web] }), &h.ctx).await);
+    let started = reply_of(dispatch(envelope(1, Request::Start { apps: vec![web] }), &h.ctx).await);
     assert!(started.result.is_ok(), "web comes up: {started:?}");
     let stopped = reply_of(
         dispatch(

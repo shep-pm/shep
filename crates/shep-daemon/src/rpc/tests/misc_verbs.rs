@@ -294,8 +294,7 @@ async fn subscribe_hands_back_a_compiled_filter() {
 #[tokio::test(start_paused = true)]
 async fn kill_daemon_asks_for_shutdown_without_taking_the_engine_down_itself() {
     let mut h = harness(vec![]);
-    let Outcome::Shutdown(reply) = dispatch(envelope(1, Request::KillDaemon), &h.ctx).await
-    else {
+    let Outcome::Shutdown(reply) = dispatch(envelope(1, Request::KillDaemon), &h.ctx).await else {
         panic!("expected a shutdown outcome")
     };
     assert_eq!(reply.result.unwrap(), Response::ShuttingDown);

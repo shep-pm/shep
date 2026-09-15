@@ -83,7 +83,12 @@ pub(super) async fn trigger(
 /// `Signal`'s own resolve-then-map path, mirroring [`trigger`]. The signal
 /// name is re-validated here even though the CLI validated it too: peer input
 /// is untrusted, the rule `Request::Start` follows a few arms up.
-pub(super) async fn signal_request(id: u64, spec: SelectorSpec, signal: String, ctx: &RpcContext) -> Outcome {
+pub(super) async fn signal_request(
+    id: u64,
+    spec: SelectorSpec,
+    signal: String,
+    ctx: &RpcContext,
+) -> Outcome {
     let result = match OperatorSignal::parse(&signal) {
         None => Err(RpcError {
             code: RpcErrorCode::InvalidConfig,
