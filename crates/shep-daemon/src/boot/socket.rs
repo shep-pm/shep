@@ -6,6 +6,7 @@
 //! run it. [`write_ready`] answers the parent that re-exec'd this process,
 //! which is waiting on the bind and nothing later.
 
+#[cfg(unix)]
 use std::io::ErrorKind;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
