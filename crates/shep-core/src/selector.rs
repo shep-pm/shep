@@ -248,7 +248,7 @@ mod tests {
 
     #[test]
     fn a_name_without_a_metacharacter_is_still_an_exact_name() {
-        for plain in ["zeus-auth", "web.1", "api_v2", "a-b-c"] {
+        for plain in ["api-auth", "web.1", "api_v2", "a-b-c"] {
             let parsed = ProcessSelector::parse(plain).unwrap();
             assert!(
                 matches!(&parsed, ProcessSelector::Name(name) if name == plain),
@@ -259,12 +259,12 @@ mod tests {
 
     #[test]
     fn a_glob_matches_by_prefix_and_not_by_substring() {
-        let ProcessSelector::Regex(re) = ProcessSelector::parse("zeus-*").unwrap() else {
+        let ProcessSelector::Regex(re) = ProcessSelector::parse("api-*").unwrap() else {
             panic!("a pattern with `*` is compiled to a regex");
         };
-        assert!(re.is_match("zeus-auth"));
-        assert!(re.is_match("zeus-create"));
-        assert!(!re.is_match("my-zeus-auth"), "anchored: no substring match");
+        assert!(re.is_match("api-auth"));
+        assert!(re.is_match("api-create"));
+        assert!(!re.is_match("my-api-auth"), "anchored: no substring match");
         assert!(!re.is_match("reactmap"));
     }
 
@@ -274,8 +274,8 @@ mod tests {
     fn each_glob_metacharacter_compiles_and_matches() {
         let cases = [
             ("*api*", "my-api-thing", "web"),
-            ("zeus-?", "zeus-1", "zeus-auth"),
-            ("zeus-[ab]*", "zeus-auth", "zeus-create"),
+            ("api-?", "api-1", "api-auth"),
+            ("api-[ab]*", "api-auth", "api-create"),
             ("{web,api}", "api", "worker"),
         ];
         for (pattern, hit, miss) in cases {
@@ -298,17 +298,17 @@ mod tests {
             matches!(&fold, ProcessSelector::Fold(name) if name == "back*end"),
             "a fold name may contain a metacharacter and is still a fold, got {fold:?}"
         );
-        let ProcessSelector::Regex(re) = ProcessSelector::parse("/^zeus-/").unwrap() else {
+        let ProcessSelector::Regex(re) = ProcessSelector::parse("/^api-/").unwrap() else {
             panic!("an explicit regex stays a regex");
         };
-        assert!(re.is_match("zeus-auth"));
+        assert!(re.is_match("api-auth"));
     }
 
     /// A glob `globset` refuses is reported as such rather than silently
     /// becoming a name that can never match.
     #[test]
     fn an_unparseable_glob_is_refused() {
-        let err = ProcessSelector::parse("zeus-[").expect_err("an unclosed class is not a glob");
+        let err = ProcessSelector::parse("api-[").expect_err("an unclosed class is not a glob");
         assert!(
             matches!(err, SelectorError::BadGlob(_)),
             "expected BadGlob, got {err:?}"
