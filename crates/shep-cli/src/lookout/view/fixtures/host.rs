@@ -5,7 +5,7 @@ use shep_core::protocol::ProcessInfo;
 use crate::lookout::app::{App, Msg};
 use crate::lookout::source::HostSample;
 
-use super::app_with;
+use super::flock::app_with;
 use super::palette::plain;
 
 /// One plausible host reading: the same numbers the gallery's scenes use, so
