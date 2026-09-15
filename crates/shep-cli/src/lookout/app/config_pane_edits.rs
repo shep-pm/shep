@@ -1154,4 +1154,19 @@ mod tests {
         };
         assert_eq!(key, "autorestart");
     }
+
+    /// The pane-level test reaches `begin_typing` directly, so it passes
+    /// over a dead key path. This one presses the key.
+    #[test]
+    fn e_opens_the_editor_on_a_suggested_field() {
+        let mut app = fixtures::app_in_sheep_pane_with_control();
+        pane_to(&mut app, "kill_signal");
+        let _ = app.update(Msg::Key(KeyPress::Edit));
+        assert_eq!(
+            app.config_pane()
+                .and_then(ConfigPane::typing)
+                .map(|typing| typing.key.as_str()),
+            Some("kill_signal")
+        );
+    }
 }
