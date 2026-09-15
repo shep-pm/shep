@@ -17,16 +17,18 @@ mod test_support;
 mod verdict;
 mod watch;
 
+pub use config::{dog_section, set_dog_section};
+pub use contacts::{Contact, PeerContacts};
 pub(crate) use narrate::{narrate, narrate_by_name};
+pub use refusals::{DogRefusals, Refusal, record_refused_dog};
 pub(crate) use silent::silent_dogs;
+pub use silent::{DOG_SILENCE_BUDGET, spawn_silent_dog_watch};
+// `SilentDogs` and `check_silent_dogs` have no non-test caller: server.rs's
+// own handshake tests drive the ladder directly rather than through a real
 // Only server.rs's handshake test names these, and it is `#[cfg(unix)]`
 // because `peer_pid` answers `None` on Windows. So they go unused in a
 // non-test build and in every Windows build.
 #[cfg_attr(any(not(test), not(unix)), allow(unused_imports))]
 pub(crate) use silent::{SilentDogs, check_silent_dogs};
-pub use config::{dog_section, set_dog_section};
-pub use contacts::{Contact, PeerContacts};
-pub use refusals::{DogRefusals, Refusal, record_refused_dog};
-pub use silent::{DOG_SILENCE_BUDGET, spawn_silent_dog_watch};
 pub use spec::{DogError, DogSpec, dog_app, spawn_enabled_dogs};
 pub use watch::spawn_dog_watch;

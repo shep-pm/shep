@@ -2,15 +2,26 @@
 //! place, the [`Handover`] blob that describes it, and the exec that carries
 //! it.
 //!
-//! [`fitness`] is the gate, and it refuses whole. One refusal: a live sheep
-//! whose log pump did not report its descriptors in time. A sheep's stdout,
-//! stderr, log files, stdin pipe and shepherd channel all cross the exec, per
-//! sheep rather than per app.
+//! [`fitness`](fn@fitness) is the gate, and it refuses whole. One refusal: a
+//! live sheep whose log pump did not report its descriptors in time. A
+//! sheep's stdout, stderr, log files, stdin pipe and shepherd channel all
+//! cross the exec, per sheep rather than per app.
 
 pub(crate) mod adopt;
 mod fds;
+mod fitness;
 pub(crate) mod reap;
 pub(crate) mod uptime;
+
+#[cfg(test)]
+mod fixtures;
+
+pub use fitness::{Candidate, Fitness, OwnedCandidate, fitness};
+#[allow(
+    unused_imports,
+    reason = "the payload of `Fitness::Refused`, named by this crate's own tests"
+)]
+pub use fitness::RefusedReason;
 
 use core::convert::Infallible;
 use std::ffi::CString;
@@ -32,108 +43,6 @@ use shep_core::status::ProcStatus;
 use crate::entry::{ProcessEntry, ReloadState};
 use crate::privilege::SpawnIdentity;
 use crate::supervisor::{CarriedReload, PendingManual};
-
-/// Whether a flock can be handed over in place, or must fall back to a
-/// stop-and-start.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Fitness {
-    /// Every sheep in the flock is carryable.
-    Carryable,
-    /// At least one sheep is not carryable, and why.
-    Refused(RefusedReason),
-}
-
-/// Why a flock cannot be handed over in place. The caller falls back to the
-/// stop arm.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum RefusedReason {
-    /// The sheep's log pump did not report its descriptors before the
-    /// snapshot's deadline, so nothing knows which descriptors it holds.
-    PumpUnresponsive {
-        /// The sheep's name.
-        sheep: String,
-    },
-}
-
-impl core::fmt::Display for RefusedReason {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        // Load-bearing text: `cli_e2e` probes for "falls back to a
-        // stop-and-start" to tell a carried flock from a stopped one.
-        match self {
-            Self::PumpUnresponsive { sheep } => write!(
-                f,
-                "sheep '{sheep}' has a log pump that did not report its descriptors in \
-                 time; reload falls back to a stop-and-start instead"
-            ),
-        }
-    }
-}
-
-/// One sheep's carryability-relevant facts: a [`ProcessEntry`] plus the one
-/// fact that does not live on it.
-#[derive(Debug, Clone, Copy)]
-pub struct Candidate<'a> {
-    /// The sheep's lifecycle entry.
-    pub entry: &'a ProcessEntry,
-    /// Whether this sheep's log pump was asked for its descriptors and did
-    /// not answer in time.
-    ///
-    /// Distinct from [`CarriedFds::none`], which is what a stopped sheep
-    /// reports: a wedged live pump collapsed into it is carried with its
-    /// descriptors silently dropped.
-    pub pump_unresponsive: bool,
-}
-
-/// A [`Candidate`] that owns its entry.
-///
-/// Snapshot assembly awaits every log pump, which may not happen on the actor
-/// loop, so it runs on a task of its own and the entries travel there.
-#[derive(Debug, Clone)]
-pub struct OwnedCandidate {
-    /// The sheep's lifecycle entry, cloned off the supervisor's slot.
-    pub entry: ProcessEntry,
-    /// Whether this sheep's log pump missed the snapshot's deadline; see
-    /// [`Candidate::pump_unresponsive`].
-    pub pump_unresponsive: bool,
-}
-
-impl OwnedCandidate {
-    /// Borrow this as the [`Candidate`] [`fitness`] takes.
-    #[must_use]
-    pub fn as_candidate(&self) -> Candidate<'_> {
-        Candidate {
-            entry: &self.entry,
-            pump_unresponsive: self.pump_unresponsive,
-        }
-    }
-}
-
-/// Decide whether a flock can be handed over in place.
-///
-/// Whole-flock: the blob describes one process image, so a flock is carried
-/// whole or refused whole. An empty flock is carryable.
-#[must_use]
-pub fn fitness(sheep: &[Candidate<'_>]) -> Fitness {
-    for candidate in sheep {
-        if let Some(reason) = refusal(candidate) {
-            return Fitness::Refused(reason);
-        }
-    }
-    Fitness::Carryable
-}
-
-/// Why `candidate` alone refuses the flock, if it does.
-fn refusal(candidate: &Candidate<'_>) -> Option<RefusedReason> {
-    let entry = candidate.entry;
-    let config = entry.spec.config();
-    let name = || config.name.clone();
-
-    if candidate.pump_unresponsive {
-        return Some(RefusedReason::PumpUnresponsive { sheep: name() });
-    }
-    None
-}
 
 /// The blob format this daemon writes, and the only one it can read.
 ///
@@ -1045,166 +954,10 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     use super::*;
-    use crate::entry::{ReloadState, RestartBudget};
-    use crate::privilege::SpawnIdentity;
+    use crate::entry::ReloadState;
+    use crate::handover::fixtures::{carried, entry_fixture, fds_at, plain};
     use crate::supervisor::{CommandOrigin, ManualKind, ReloadMode, ReloadPhase, ReloadSwap};
     use crate::testing::{app_with, test_paths};
-
-    /// A plain, `Online` entry: no channel, not a dog, one instance, no
-    /// in-flight reload. Every field a real spawn would set is present.
-    fn entry_fixture(mutate: impl FnOnce(&mut AppConfig)) -> ProcessEntry {
-        let spec = app_with("web", mutate);
-        ProcessEntry {
-            id: 1,
-            spec,
-            pending: None,
-            pending_reidentifies: false,
-            overridden: Vec::new(),
-            instance: 0,
-            status: ProcStatus::Online,
-            pid: Some(100),
-            restarts: 0,
-            started_at: None,
-            budget: RestartBudget::default(),
-            reload: ReloadState::None,
-            credentials: SpawnIdentity::Resolved(None),
-            out_file: PathBuf::from("/tmp/shep-handover-test-out.log"),
-            err_file: PathBuf::from("/tmp/shep-handover-test-err.log"),
-            dog: None,
-            last_exit: None,
-        }
-    }
-
-    fn plain(entry: &ProcessEntry) -> Candidate<'_> {
-        Candidate {
-            entry,
-            pump_unresponsive: false,
-        }
-    }
-
-    /// A candidate whose log pump missed the snapshot's deadline, which is the
-    /// one thing that refuses a flock.
-    fn wedged(entry: &ProcessEntry) -> Candidate<'_> {
-        Candidate {
-            entry,
-            pump_unresponsive: true,
-        }
-    }
-
-    #[test]
-    fn a_plain_sheep_is_carryable() {
-        let e = entry_fixture(|_| {});
-        assert_eq!(fitness(&[plain(&e)]), Fitness::Carryable);
-    }
-
-    #[test]
-    fn one_unsupported_sheep_refuses_the_whole_flock() {
-        let carryable = entry_fixture(|_| {});
-        let unsupported = entry_fixture(|_| {});
-        assert!(matches!(
-            fitness(&[plain(&carryable), wedged(&unsupported)]),
-            Fitness::Refused(_)
-        ));
-    }
-
-    #[test]
-    fn the_refusal_names_which_sheep_and_why() {
-        let unsupported = entry_fixture(|_| {});
-        let Fitness::Refused(r) = fitness(&[wedged(&unsupported)]) else {
-            panic!("expected a refusal")
-        };
-        let text = r.to_string();
-        assert!(text.contains("did not report its descriptors"), "{text}");
-        assert!(text.contains("web"), "{text}");
-        assert!(
-            text.contains("falls back to a stop-and-start"),
-            "the refusal must say what happens instead, not only that it declined: {text}"
-        );
-    }
-
-    #[test]
-    fn a_pump_that_did_not_report_in_time_refuses_as_a_fault_not_a_feature() {
-        let e = entry_fixture(|_| {});
-        let candidate = Candidate {
-            entry: &e,
-            pump_unresponsive: true,
-        };
-        let Fitness::Refused(r) = fitness(&[candidate]) else {
-            panic!("a sheep whose descriptors are unknown cannot be carried")
-        };
-        let text = r.to_string();
-        assert!(
-            text.contains("did not report its descriptors in time"),
-            "{text}"
-        );
-        assert!(
-            !text.contains("cannot yet"),
-            "a wedged pump is not a feature a later phase ships: {text}"
-        );
-    }
-
-    #[test]
-    fn an_empty_flock_is_carryable() {
-        assert_eq!(fitness(&[]), Fitness::Carryable);
-    }
-
-    #[test]
-    fn a_sheep_with_a_channel_is_carried() {
-        let e = entry_fixture(|app| app.channel = true);
-        assert_eq!(fitness(&[plain(&e)]), Fitness::Carryable);
-    }
-
-    #[test]
-    fn wait_ready_alone_is_carried() {
-        let e = entry_fixture(|app| app.wait_ready = true);
-        assert_eq!(fitness(&[plain(&e)]), Fitness::Carryable);
-    }
-
-    /// `shutdown_with_message` is the one of the three whose channel traffic
-    /// runs from the shepherd to the child, so the writer half has to work.
-    #[test]
-    fn shutdown_with_message_alone_is_carried() {
-        let e = entry_fixture(|app| app.shutdown_with_message = true);
-        assert_eq!(fitness(&[plain(&e)]), Fitness::Carryable);
-    }
-
-    #[test]
-    fn a_sheep_with_stdin_is_carried() {
-        let e = entry_fixture(|app| app.stdin = true);
-        assert_eq!(fitness(&[plain(&e)]), Fitness::Carryable);
-    }
-
-    /// Both sources, since a gate reading only `DogSource::BuiltIn` would pass
-    /// on one of them.
-    #[test]
-    fn a_dog_is_carried_rather_than_refused() {
-        let mut built_in = entry_fixture(|_| {});
-        built_in.dog = Some(DogSource::BuiltIn);
-        assert_eq!(fitness(&[plain(&built_in)]), Fitness::Carryable);
-
-        let mut adopted = entry_fixture(|_| {});
-        adopted.dog = Some(DogSource::Adopted {
-            path: "/opt/bin/shep-log-rotate".to_string(),
-        });
-        assert_eq!(fitness(&[plain(&adopted)]), Fitness::Carryable);
-    }
-
-    /// Both slots, since a version that stopped reading `instances` on slot 0
-    /// alone would pass a one-candidate case.
-    #[test]
-    fn an_app_with_more_than_one_instance_is_carried() {
-        let mut zero = entry_fixture(|app| app.instances = 2);
-        let mut one = entry_fixture(|app| app.instances = 2);
-        one.id = 2;
-        one.instance = 1;
-        one.pid = Some(101);
-        assert_eq!(fitness(&[plain(&zero), plain(&one)]), Fitness::Carryable);
-        // A gate that read only the first candidate would pass the assertion
-        // above too.
-        zero.instance = 1;
-        one.instance = 0;
-        assert_eq!(fitness(&[plain(&one), plain(&zero)]), Fitness::Carryable);
-    }
 
     /// [`CarriedSheep::instance`] is carried per row rather than re-derived
     /// from a count: without that, two live pids write into each other's log
@@ -1315,25 +1068,6 @@ mod tests {
             }),
             "both halves of the marker must survive the blob, not just that one exists"
         );
-    }
-
-    /// The six descriptor numbers a running sheep would have, counting up
-    /// from `base`, so two instances can be given disjoint sets.
-    const fn fds_at(base: RawFd) -> CarriedFds {
-        CarriedFds {
-            out_pipe: Some(base),
-            err_pipe: Some(base + 1),
-            out_log: Some(base + 2),
-            err_log: Some(base + 3),
-            stdin: Some(base + 4),
-            channel: Some(base + 5),
-        }
-    }
-
-    /// One carried sheep off `entry`, with the descriptor numbers a
-    /// running sheep would have.
-    fn carried(entry: &ProcessEntry) -> CarriedSheep {
-        CarriedSheep::from_entry(entry, 7, fds_at(11), false, None, false, None)
     }
 
     fn handover_over(entry: &ProcessEntry) -> Handover {
