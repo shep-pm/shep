@@ -16,7 +16,7 @@ use std::path::Path;
 /// `tokio_runner`'s `definitely_absent` documents for the identical
 /// tradeoff: a false "missing" reads worse than the one real gap this
 /// misses.
-pub(super) fn missing_directory(path: &Path) -> Option<&'static str> {
+fn missing_directory(path: &Path) -> Option<&'static str> {
     match std::fs::metadata(path) {
         Ok(meta) if meta.is_dir() => None,
         Ok(_) => Some("exists but is not a directory"),
@@ -85,7 +85,7 @@ pub(crate) fn log_path_advisory(path: &Path) -> Option<String> {
 /// daemon evaluating it will actually resolve the path.
 #[cfg(windows)]
 #[must_use]
-pub(super) fn windows_name_advisory(path: &Path) -> Option<String> {
+fn windows_name_advisory(path: &Path) -> Option<String> {
     use std::os::windows::ffi::OsStrExt as _;
 
     /// Characters no Windows filesystem accepts anywhere in a path.

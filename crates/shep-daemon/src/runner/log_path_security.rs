@@ -39,7 +39,7 @@ pub(crate) async fn open_log_path(
 /// Darwin's `open(2)` matches. The kind is carried over; only the message
 /// changes.
 #[cfg(unix)]
-pub(super) fn name_the_symlink(error: io::Error) -> io::Error {
+fn name_the_symlink(error: io::Error) -> io::Error {
     if error.raw_os_error() == Some(nix::libc::ELOOP) {
         io::Error::new(error.kind(), SYMLINK_REFUSED)
     } else {
@@ -50,7 +50,7 @@ pub(super) fn name_the_symlink(error: io::Error) -> io::Error {
 /// The non-unix arm of [`name_the_symlink`]: no `O_NOFOLLOW`, so no refusal
 /// to relabel.
 #[cfg(not(unix))]
-pub(super) fn name_the_symlink(error: io::Error) -> io::Error {
+fn name_the_symlink(error: io::Error) -> io::Error {
     error
 }
 
@@ -83,14 +83,14 @@ pub(crate) fn check_log_ancestry(path: &Path) -> io::Result<()> {
 /// The effective uid a shepherd has to be running as for a loose ancestor to
 /// be an escalation rather than a footgun.
 #[cfg(unix)]
-pub(super) const ROOT_UID: u32 = 0;
+const ROOT_UID: u32 = 0;
 
 /// The permission bit that lets every local user create entries in a
 /// directory. Narrower than `boot`'s socket-directory check (`0o022`, group
 /// or world): a group-writable log directory names accounts an operator
 /// chose, while this bit names everyone.
 #[cfg(unix)]
-pub(super) const WORLD_WRITABLE: u32 = 0o002;
+const WORLD_WRITABLE: u32 = 0o002;
 
 /// Log paths whose loose ancestry has already been reported, so an
 /// unprivileged shepherd says it once rather than on every open.
@@ -99,7 +99,7 @@ pub(super) const WORLD_WRITABLE: u32 = 0o002;
 /// operator asking which of their apps this is about is asking. Bounded by
 /// the number of distinct log paths in the flock.
 #[cfg(unix)]
-pub(super) static WARNED_LOOSE_LOG_PATHS: std::sync::LazyLock<
+static WARNED_LOOSE_LOG_PATHS: std::sync::LazyLock<
     std::sync::Mutex<std::collections::HashSet<PathBuf>>,
 > = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
 
@@ -110,7 +110,7 @@ pub(super) static WARNED_LOOSE_LOG_PATHS: std::sync::LazyLock<
 ///
 /// [`check_log_ancestry`]'s.
 #[cfg(unix)]
-pub(super) fn check_log_ancestry_as(path: &Path, daemon_uid: u32) -> io::Result<()> {
+fn check_log_ancestry_as(path: &Path, daemon_uid: u32) -> io::Result<()> {
     let Some(loose) = loose_ancestor(path, daemon_uid) else {
         return Ok(());
     };
@@ -145,7 +145,7 @@ pub(super) fn check_log_ancestry_as(path: &Path, daemon_uid: u32) -> io::Result<
 /// where that path lands.
 #[cfg(unix)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct LooseAncestor {
+struct LooseAncestor {
     /// The offending component, as it appears in the log path.
     path: PathBuf,
     /// Why it offends: reads as the predicate in `"<path> <reason>"`.
@@ -155,7 +155,7 @@ pub(super) struct LooseAncestor {
 /// Why an ancestor of a log path counts as loose.
 #[cfg(unix)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum LooseReason {
+enum LooseReason {
     /// Owned by a uid that is neither the daemon's own nor root's, so its
     /// owner can replace or redirect it under the daemon (carries that uid).
     /// Also how a symlinked component is caught: the link's own owner is the
@@ -189,7 +189,7 @@ impl fmt::Display for LooseReason {
 /// nine-component path on macOS, so it runs inline rather than paying a
 /// `spawn_blocking` hop.
 #[cfg(unix)]
-pub(super) fn loose_ancestor(path: &Path, daemon_uid: u32) -> Option<LooseAncestor> {
+fn loose_ancestor(path: &Path, daemon_uid: u32) -> Option<LooseAncestor> {
     use std::os::unix::fs::MetadataExt as _;
 
     path.parent()?

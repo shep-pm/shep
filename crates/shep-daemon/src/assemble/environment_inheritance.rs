@@ -32,17 +32,17 @@ pub(super) fn inherited_env(
 
 /// The `PATH` a child gets when the daemon itself has none.
 #[cfg(unix)]
-pub(super) const DEFAULT_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
+const DEFAULT_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
 
 /// The `PATH` a child gets when the daemon itself has none.
 ///
 /// Not expanded via `%SystemRoot%`: these literal paths are correct on
 /// every standard Windows install and need no variable to resolve.
 #[cfg(windows)]
-pub(super) const DEFAULT_PATH: &str = r"C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem";
+const DEFAULT_PATH: &str = r"C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem";
 
 /// Variables inherited from the daemon's own environment, on top of `PATH`.
-pub(super) const INHERITED_UNIX: &[&str] = &["HOME", "USER", "LANG", "TZ"];
+const INHERITED_UNIX: &[&str] = &["HOME", "USER", "LANG", "TZ"];
 
 /// Variables inherited from the daemon's own environment, on top of `PATH`.
 ///

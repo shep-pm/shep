@@ -158,7 +158,7 @@ pub(super) fn open_fd_count() -> usize {
 /// Closes every duplicate it holds, unless [`Self::release`] is called
 /// first: `fds::duplicate_raw` hands back a bare number with no owner,
 /// and a `Handover` holding it closes nothing on drop.
-pub(super) struct Duplicates(Vec<RawFd>);
+struct Duplicates(Vec<RawFd>);
 
 impl Duplicates {
     fn of(&mut self, fd: RawFd) -> io::Result<RawFd> {

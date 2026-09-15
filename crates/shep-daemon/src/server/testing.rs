@@ -11,7 +11,7 @@ use serde::de::DeserializeOwned;
 use shep_core::protocol::{DogSource, ProcessInfo};
 use tokio_util::codec::Framed;
 
-pub(super) const RECV_TIMEOUT: Duration = Duration::from_secs(5);
+const RECV_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub(super) struct Client {
     pub(super) frames:

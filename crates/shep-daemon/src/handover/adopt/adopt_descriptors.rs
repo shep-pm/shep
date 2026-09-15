@@ -108,7 +108,7 @@ pub(super) fn adopt_listener(fd: RawFd) -> io::Result<tokio::net::UnixListener> 
 }
 
 /// Rebuild one sheep's six handles.
-pub(super) fn adopt_sheep(carried: &CarriedSheep) -> io::Result<AdoptedSheep> {
+fn adopt_sheep(carried: &CarriedSheep) -> io::Result<AdoptedSheep> {
     let CarriedFds {
         out_pipe,
         err_pipe,

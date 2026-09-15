@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// `logs/` or `pids/` directory the user keeps inside the watched tree;
 /// they do not cover shep's own log writes, which is what
 /// `own_log_ignores` is for.
-pub(super) const DEFAULT_IGNORE_GLOBS: &[&str] = &[
+const DEFAULT_IGNORE_GLOBS: &[&str] = &[
     "**/.*",
     "**/.*/**",
     "**/node_modules/**",
@@ -20,7 +20,7 @@ pub(super) const DEFAULT_IGNORE_GLOBS: &[&str] = &[
 /// Pattern standing in for "no `watch_options` configured": matches every
 /// relative path, so an app that names none is filtered by the default
 /// ignores alone.
-pub(super) const MATCH_EVERYTHING: &str = "**";
+const MATCH_EVERYTHING: &str = "**";
 
 /// Ignore patterns covering a sheep's own log files: one per path in `logs`
 /// that lies under `root`, nothing for the ones that don't.
@@ -44,7 +44,7 @@ pub(crate) fn own_log_ignores<'a>(
 /// One path's root-relative form as a glob matching it and nothing else, or
 /// `None` when it does not lie under `root` (the ordinary case, since the
 /// default log paths live in `$SHEP_HOME`) or cannot be spelled as a pattern.
-pub(super) fn literal_glob_under(root: &Path, path: &Path) -> Option<String> {
+fn literal_glob_under(root: &Path, path: &Path) -> Option<String> {
     let relative = canonical_parent_of(path);
     let relative = relative.strip_prefix(root).ok()?;
     // Assembled component by component rather than from `to_str`, because a
@@ -67,7 +67,7 @@ pub(super) fn literal_glob_under(root: &Path, path: &Path) -> Option<String> {
 /// respawned child has written a byte, while its directory does by the
 /// time a spawn succeeds. Falls back to `path` untouched when even the
 /// parent will not resolve.
-pub(super) fn canonical_parent_of(path: &Path) -> PathBuf {
+fn canonical_parent_of(path: &Path) -> PathBuf {
     let (Some(parent), Some(file)) = (path.parent(), path.file_name()) else {
         return path.to_path_buf();
     };
@@ -83,7 +83,7 @@ pub struct WatchFilter {
 
 /// Compiles `patterns` into one [`GlobSet`], attributing a rejected pattern
 /// to itself rather than reporting globset's own aggregate failure.
-pub(super) fn build_glob_set(patterns: &[String]) -> Result<GlobSet, WatchFilterError> {
+fn build_glob_set(patterns: &[String]) -> Result<GlobSet, WatchFilterError> {
     let mut builder = GlobSetBuilder::new();
     for pattern in patterns {
         let glob = Glob::new(pattern).map_err(|err| WatchFilterError::Glob {

@@ -18,7 +18,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
-pub(super) type Frames = FramedRead<ServerReadHalf, LengthDelimitedCodec>;
+type Frames = FramedRead<ServerReadHalf, LengthDelimitedCodec>;
 
 // The ordering here is load-bearing (see `handshake` and `converse` below):
 // auth before a single byte is read from the peer, the handshake before any
@@ -64,7 +64,7 @@ pub(super) async fn handle_conn(stream: ServerStream, ctx: RpcContext) -> Result
     outcome
 }
 
-pub(super) async fn converse(
+async fn converse(
     frames: &mut Frames,
     out: &mpsc::Sender<Bytes>,
     conn: ConnId,
@@ -84,7 +84,7 @@ pub(super) async fn converse(
     outcome
 }
 
-pub(super) async fn read_loop(
+async fn read_loop(
     frames: &mut Frames,
     out: &mpsc::Sender<Bytes>,
     conn: ConnId,
@@ -116,7 +116,7 @@ pub(super) async fn read_loop(
     Ok(())
 }
 
-pub(super) async fn handshake(
+async fn handshake(
     frames: &mut Frames,
     out: &mpsc::Sender<Bytes>,
     peer: Option<u32>,
@@ -216,7 +216,7 @@ pub(super) async fn handshake(
     send(out, &ack).await
 }
 
-pub(super) async fn write_loop(
+async fn write_loop(
     mut sink: FramedWrite<ServerWriteHalf, LengthDelimitedCodec>,
     mut rx: mpsc::Receiver<Bytes>,
 ) {
@@ -227,10 +227,7 @@ pub(super) async fn write_loop(
     }
 }
 
-pub(super) async fn send<T: Serialize>(
-    out: &mpsc::Sender<Bytes>,
-    value: &T,
-) -> Result<(), ConnError> {
+async fn send<T: Serialize>(out: &mpsc::Sender<Bytes>, value: &T) -> Result<(), ConnError> {
     let bytes = encode_frame(value).map_err(ConnError::Encode)?;
     out.send(bytes).await.map_err(|_| ConnError::PeerGone)
 }

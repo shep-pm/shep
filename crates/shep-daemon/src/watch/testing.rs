@@ -26,7 +26,7 @@ pub(super) const EVENT_WAIT: Duration = Duration::from_secs(30);
 /// How many `tokio::task::yield_now` rounds [`settle`] spends: headroom
 /// for the group loop, the actor and a sheep's task each needing a
 /// scheduling turn. Never advances the paused clock itself.
-pub(super) const SETTLE_YIELDS: usize = 16;
+const SETTLE_YIELDS: usize = 16;
 
 pub(super) async fn settle() {
     for _ in 0..SETTLE_YIELDS {
@@ -200,7 +200,7 @@ pub(super) struct Batch {
     pub(super) gap: Duration,
 }
 
-pub(super) fn gap_strategy() -> impl proptest::strategy::Strategy<Value = Duration> {
+fn gap_strategy() -> impl proptest::strategy::Strategy<Value = Duration> {
     use proptest::strategy::Strategy as _; // `prop_map` below
     // Zero (a send landing mid-restart) is drawn half the time. The
     // other two arms straddle the generated kill timeout's own

@@ -13,7 +13,7 @@ use tokio::time::{Duration, Instant};
 
 /// Capacity of every channel the fake wires up: generous enough that no
 /// test blocks on backpressure without meaning to.
-pub(super) const CHANNEL_CAPACITY: usize = 32;
+const CHANNEL_CAPACITY: usize = 32;
 
 /// Delay used by [`ProcScript::never_exits`], [`ProcScript::ignores_signals`]
 /// and [`ProcScript::never_reports_its_exit`].
@@ -24,7 +24,7 @@ pub(super) const CHANNEL_CAPACITY: usize = 32;
 pub(super) const NEVER_MS: u64 = 30 * 24 * 60 * 60 * 1000;
 
 /// One spawn's shared state plus its still-unclaimed [`FakeIo`] test handles
-pub(super) struct SpawnedProc {
+struct SpawnedProc {
     state: Arc<ProcState>,
     io: Option<FakeIo>,
     /// The sheep name this spawn carried, copied off [`SpawnSpec::name`] and
@@ -139,7 +139,7 @@ impl fmt::Debug for ScriptedRunner {
 /// descriptors.
 #[cfg(unix)]
 #[track_caller]
-pub(super) fn open_reportable_fds() -> ([std::fs::File; 6], crate::handover::CarriedFds) {
+fn open_reportable_fds() -> ([std::fs::File; 6], crate::handover::CarriedFds) {
     use std::os::fd::AsRawFd as _;
 
     let files = core::array::from_fn(|_| {

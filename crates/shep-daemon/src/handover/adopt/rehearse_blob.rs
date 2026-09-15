@@ -90,7 +90,7 @@ pub fn dry_run(blob: &Handover) -> io::Result<()> {
 ///
 /// `fd` is reserved or not open, it could not be duplicated, or the adoption
 /// refused the duplicate.
-pub(super) fn rehearse<T>(
+fn rehearse<T>(
     fd: RawFd,
     what: &str,
     adopt_one: impl FnOnce(RawFd) -> io::Result<T>,
