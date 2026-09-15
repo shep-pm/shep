@@ -460,6 +460,11 @@ cwd = "/srv/migrate"`}</CodeBlock>
       three binaries, <code>shep</code>, <code>shep-runtime</code> and{" "}
       <code>shep-dev</code>, at 17.94 MiB each, against pm2's whole{" "}
       <code>node_modules</code> tree. The download is 20.20 MiB compressed.
+      That tree does not run on its own: Node is another 72.73 MiB on the
+      machine this was measured on, which puts the totals at 53.85 against
+      95.84 and turns the row around. It stays out of the table because
+      most people running pm2 have Node already, and what a Node install
+      weighs varies by platform and packager.
     </p>
 
     <Callout variant="careful">
