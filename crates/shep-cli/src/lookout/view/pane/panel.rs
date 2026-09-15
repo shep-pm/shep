@@ -37,7 +37,7 @@ pub(super) fn bounded_row(
 
 /// The right-hand explanation panel: everything about `field` alone, drawn
 /// at `width` columns, clamped to [`PANEL_MAX`] as a defensive floor under
-/// a caller that has not already run `width` through [`panel_width`]'s own
+/// a caller that has not already run `width` through [`super::layout::panel_width`]'s own
 /// ladder.
 ///
 /// Six regions, top to bottom, each omitted entirely when its own source is
@@ -319,7 +319,7 @@ mod tests {
     /// fixture built to reach [`panel_lines`] directly.
     ///
     /// The panel draws across a range, from the design target down to
-    /// [`panel_width`]'s own floor at 90 columns, not only at the design
+    /// [`super::layout::panel_width`]'s own floor at 90 columns, not only at the design
     /// target. What this pins is the floor: nothing below it.
     #[test]
     fn the_panel_draws_beside_the_field_list_at_the_design_target() {

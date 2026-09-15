@@ -129,7 +129,7 @@ pub(super) fn hairline_line(palette: Palette, width: u16) -> Line<'static> {
 }
 
 /// The column header row: `KEY`, `VALUE` and `COST`, aligned over
-/// [`field_line`]'s own cells. Unconditional: a slot that could vanish
+/// [`super::field_row::field_line`]'s own cells. Unconditional: a slot that could vanish
 /// under a wrapped blurb has nowhere left to put `LANDS`, so the header
 /// stays and the blurb takes the room below it.
 pub(super) fn column_header_line(palette: Palette, width: u16, show_lands: bool) -> Line<'static> {
@@ -152,7 +152,7 @@ pub(super) fn column_header_line(palette: Palette, width: u16, show_lands: bool)
 /// this pane answers to (`view::status::pane_hint`), so this line explains
 /// the glyphs instead, adapted from the design's own legend
 /// (`docs/lookout/design-files/README.md`, the 1e frame's row 45) to the
-/// four the pane actually draws (see [`field_line`]).
+/// four the pane actually draws (see [`super::field_row::field_line`]).
 ///
 /// Names no key: `status.rs`'s `esc close` is the one place that wording
 /// lives, and a second copy here would only need to be kept in sync with
@@ -179,7 +179,7 @@ pub(super) fn legend_line(palette: Palette, width: u16) -> Line<'static> {
 /// One entry of the pending-edits section: the field or env key it is
 /// filed under, and what it will send.
 ///
-/// A field edit shows `old -> new`, the same cell [`field_line`] draws for
+/// A field edit shows `old -> new`, the same cell [`super::field_row::field_line`] draws for
 /// one still visible in the active group, and masks a secret field's
 /// values the same way that cell does: nothing today reaches either path,
 /// since the Flockfile schema marks no field secret and a dog never

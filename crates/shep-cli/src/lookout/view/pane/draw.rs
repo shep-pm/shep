@@ -51,7 +51,7 @@ pub(super) fn grouped_pane_lines(
 /// reverse-video band and the hairlines the rest of the way, rather than
 /// leaving blank space to the right of a pane pinned at 160. `panel_width`
 /// governs how much of that width the panel itself claims; nothing here
-/// grows the panel past [`PANEL_MAX`].
+/// grows the panel past [`super::layout::PANEL_MAX`].
 ///
 /// Only reached when [`panel_width`] returns `Some`; a narrower terminal
 /// never calls this and keeps today's single column.
@@ -192,7 +192,7 @@ pub(super) fn merge_beside_panel(
 ///
 /// Text only; the caller decides whether reserving it costs one line of
 /// `body_budget`, since [`pane_lines`]'s plain branch and
-/// [`ungrouped_pane_with_panel_lines`] both need that decision made before
+/// `ungrouped_pane_lines_with_panel` both need that decision made before
 /// this call, not after.
 pub(super) fn dog_footer_text(pane: &ConfigPane, body_budget: usize) -> Option<String> {
     let PaneTarget::Dog { name, .. } = pane.target() else {
@@ -222,7 +222,7 @@ pub(super) fn push_footer_line(
 ///
 /// `height` counts lines, and no more than that ever come back. Zero means
 /// unlimited, which is what a test with no terminal behind it gets. See
-/// [`super::scroll`] for why the viewport's offset is a starting point
+/// [`super::super::scroll`] for why the viewport's offset is a starting point
 /// here, not an answer.
 ///
 /// The close dialog is not drawn here: it overlays the whole field list

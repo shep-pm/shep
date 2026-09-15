@@ -16,7 +16,7 @@ use super::super::flock::{fit, mark};
 use super::layout::{BLURB_WRAP, body_width, cost_label, mask_secret, panel_width, widths, wrap};
 
 /// A section header, indented to match every field row's own mark-and-gap
-/// prefix, the same as [`super::settings`]'s own.
+/// prefix, the same as [`super::super::settings`]'s own.
 pub(super) fn section_header(label: &str, palette: Palette) -> Line<'static> {
     Line::from(Span::styled(format!("  {label}"), palette.muted()))
 }
@@ -203,7 +203,7 @@ pub(super) fn top_lines(pane: &ConfigPane, palette: Palette, width: u16) -> Vec<
 }
 
 /// What an operator would call `field`'s shape: not the schema keyword, the
-/// grammar the widget and [`super::super::validation`] already treat it as.
+/// grammar the widget and [`super::super::super::validation`] already treat it as.
 pub(super) fn type_label(field: &Field) -> &'static str {
     match field.value_kind {
         Some(ValueKind::UpDuration) => return "duration",

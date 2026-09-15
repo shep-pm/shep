@@ -12,9 +12,9 @@ use shep_core::config::ApplyGroup;
 use crate::output::width::char_columns;
 
 /// The columns every line spends on the selection mark and the space after
-/// it, before any cell is drawn. [`super::settings::GUTTER`]'s twin, and it
-/// exists for the reason that one does: a budget that forgets it is a budget
-/// every line overruns.
+/// it, before any cell is drawn. `settings::GUTTER`'s twin, private there,
+/// and it exists for the reason that one does: a budget that forgets it is
+/// a budget every line overruns.
 pub(super) const GUTTER: u16 = 2;
 
 /// The close dialog's own interior width, once it is boxed: what
@@ -72,10 +72,10 @@ pub(super) const PANEL_MAX: u16 = 72;
 /// falls out of the formula rather than being special cased. Below it the
 /// clamp to [`PANEL_MAX`] holds the panel at the design target's own width
 /// rather than growing it to fill a wider terminal: the left column takes
-/// the remainder instead, the same way [`super::flock`]'s own table grows.
+/// the remainder instead, the same way [`super::super::flock`]'s own table grows.
 /// Above [`LEFT_MIN`] short of `width` the panel cannot hold a wrapped
 /// blurb and a validation list beside a left column with room for a
-/// marker, a key and a value, and [`pane_lines`] falls back to the single
+/// marker, a key and a value, and [`super::draw::pane_lines`] falls back to the single
 /// column it always drew.
 pub(super) fn panel_width(width: u16) -> Option<u16> {
     let wanted = (u32::from(width) * 45 / 100) as u16;
@@ -137,7 +137,7 @@ pub(super) const fn cost_label(group: ApplyGroup) -> &'static str {
 /// `width`, so no line can overrun the terminal it was laid out for.
 /// COST goes first when the terminal narrows: arming a field repeats its
 /// cost verbatim in the status bar, which is the same reasoning
-/// [`super::settings`] gives for dropping its own cost cell first.
+/// [`super::super::settings`] gives for dropping its own cost cell first.
 ///
 /// `show_lands` is `false` only where the explanation panel is drawn and
 /// the terminal is too narrow to hold both beside it (see
@@ -163,9 +163,9 @@ pub(super) fn widths(width: u16, show_lands: bool) -> (u16, u16, u16) {
 ///
 /// The one rule every render path in this file applies to a secret before
 /// its value reaches the screen, and every one of them calls this rather
-/// than spelling the condition again: [`field_line`]'s stored cell and its
-/// `old -> new` cell, [`list_line`]'s elements, and both halves of
-/// [`pending_edit_line`]. Four inline copies of it agreed with each other
+/// than spelling the condition again: [`super::field_row::field_line`]'s stored cell and its
+/// `old -> new` cell, `list::list_line`'s elements, and both halves of
+/// [`super::chrome::pending_edit_line`]. Four inline copies of it agreed with each other
 /// until they were routed through here, which is the state a fifth call
 /// site would have had to keep up.
 pub(super) fn mask_secret(secret: bool, raw: String) -> String {
@@ -176,7 +176,7 @@ pub(super) fn mask_secret(secret: bool, raw: String) -> String {
     }
 }
 
-/// How many columns `text` occupies, the same count [`fit`] and
+/// How many columns `text` occupies, the same count [`super::super::flock::fit`] and
 /// [`clipped`] measure against.
 pub(super) fn columns(text: &str) -> usize {
     text.chars().map(char_columns).sum()
@@ -196,7 +196,7 @@ pub(super) fn line_columns(line: &Line<'_>) -> usize {
 
 /// Wraps `text` at `width` columns, breaking on spaces. A single word
 /// longer than `width` is placed on its own (overlong) line rather than
-/// split mid-word: [`Field::help`] is prose, not data, and a rare overlong
+/// split mid-word: [`super::super::super::field::Field::help`] is prose, not data, and a rare overlong
 /// word is a smaller wrong than a hyphen this module invented.
 pub(super) fn wrap(text: &str, width: usize) -> Vec<String> {
     if width == 0 {
@@ -224,9 +224,9 @@ pub(super) fn wrap(text: &str, width: usize) -> Vec<String> {
 }
 
 /// `text`, truncated (never padded) to at most `width` columns, marking a
-/// cut with a trailing `…` the way [`fit`] does.
+/// cut with a trailing `…` the way [`super::super::flock::fit`] does.
 ///
-/// Not [`fit`]: the panel's rows are prose, not a fixed-width table cell,
+/// Not [`super::super::flock::fit`]: the panel's rows are prose, not a fixed-width table cell,
 /// so a short value stays short rather than growing padded trailing spaces
 /// across the column. This is the guard the panel's own width tests check:
 /// a row built from a live value or a schema-authored sentence cannot push

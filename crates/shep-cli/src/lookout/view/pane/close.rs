@@ -355,7 +355,7 @@ fn close_dialog_rows(
 /// cannot show, it says, the same rule the bleats feed follows when it
 /// counts the lines it discarded.
 ///
-/// `width` is the whole row's, [`GUTTER`] included, since that is what a
+/// `width` is the whole row's, [`super::layout::GUTTER`] included, since that is what a
 /// marked row must still fit inside.
 fn shed_dialog_rows(rows: &mut Vec<(DialogRow, Line<'static>)>, height: u16, width: u16) {
     let height = usize::from(height);

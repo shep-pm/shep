@@ -94,7 +94,7 @@ pub(super) fn pending_and_env_lines(
 }
 
 /// The cursor's own row, alone: [`pending_and_env_lines`]'s floor fallback,
-/// [`cursor_only`]'s twin for the env rows below the field list. Panics if
+/// [`super::body::cursor_only`]'s twin for the env rows below the field list. Panics if
 /// the cursor is not on [`PaneRow::Env`] or [`PaneRow::AddEnv`]; every
 /// caller has already checked.
 pub(super) fn cursor_env_row_line(

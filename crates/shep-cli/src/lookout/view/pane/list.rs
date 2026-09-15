@@ -59,7 +59,7 @@ pub(super) fn list_lines(
 ///
 /// The position is drawn because `K` and `J` move an element by one, so a
 /// row that did not say where it was would leave an operator counting.
-/// `secret` masks an unset element the same way [`field_line`] masks a
+/// `secret` masks an unset element the same way [`super::field_row::field_line`] masks a
 /// `x-shep-secret` field; nothing in today's schemas sets it on an array,
 /// but a future one could.
 pub(super) fn list_line(
@@ -112,7 +112,7 @@ pub(super) fn list_line(
 
 /// Lays the sub-screen's body out from row `offset`, spending at most
 /// `budget` lines. Both markers are reserved before a row is admitted, the
-/// same rule [`body_from`] follows.
+/// same rule [`super::body::body_from`] follows.
 pub(super) fn list_body_from(
     list: &ListPane,
     palette: Palette,
