@@ -25,7 +25,7 @@ pub(super) const SCRIPT_CHANNEL_CAPACITY: usize = 8;
 /// them without `.await`. This enum carries the rest, each armed at most
 /// once.
 pub(super) enum ScriptCommand {
-    /// Arms the next request to receive an [`RpcError`] with this `code`
+    /// Arms the next request to receive an [`RpcError`](shep_core::protocol::RpcError) with this `code`
     /// and `message` instead of a normal response.
     ReplyErr(RpcErrorCode, String),
     /// Arms the next request to receive a [`sample_info`]-based

@@ -33,7 +33,7 @@ pub async fn fake_daemon(path: &Path, reply: HelloReply) -> JoinHandle<Hello> {
 /// first request with `response`, and returns the received envelope.
 ///
 /// Unlike [`fake_client_on`] and its siblings, this does not connect its own
-/// [`Client`]: it only listens, for a caller (`shep-cli`'s `DogRuntime::start`)
+/// [`Client`](crate::client::Client): it only listens, for a caller (`shep-cli`'s `DogRuntime::start`)
 /// that performs its own `Client::connect`.
 ///
 /// Panics on any accept, handshake, decode or encode failure.

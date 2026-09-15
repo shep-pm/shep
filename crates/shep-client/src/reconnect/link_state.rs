@@ -1,9 +1,7 @@
 use core::fmt;
 use std::time::Duration;
-// tokio's Instant, not std's: it moves with `tokio::time::pause`, and the
-// budget below is measured against a `tokio::time::sleep` that does too.
 
-/// What a [`ReconnectingClient`]'s supervisor is currently doing.
+/// What a [`ReconnectingClient`](crate::reconnect::ReconnectingClient)'s supervisor is currently doing.
 ///
 /// Non-exhaustive: expect more variants.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,12 +10,12 @@ pub enum LinkState {
     /// Connected. Requests go out on this generation of the connection.
     Connected,
     /// The connection dropped and the supervisor is re-establishing it.
-    /// Requests issued now fail with [`RequestError::Closed`]; they are not
+    /// Requests issued now fail with [`RequestError::Closed`](crate::client::RequestError::Closed); they are not
     /// queued and not retried.
     Reconnecting,
     /// A successor refused the handshake on protocol-version skew. The
     /// supervisor has stopped, and every later request fails with
-    /// [`RequestError::Closed`]: the daemon that refused is the party
+    /// [`RequestError::Closed`](crate::client::RequestError::Closed): the daemon that refused is the party
     /// that can fix it, not a retry.
     Refused {
         /// The daemon's own crate version, when it named one. `None` from a
@@ -67,7 +65,7 @@ impl core::error::Error for LinkLost {}
 // Exhaustive on purpose, unlike `LinkState`: the question is binary, and a
 // caller branching on it is better served by a match a third variant would
 // break than by a wildcard arm that goes on compiling.
-/// Whether a [`Client::reconnect`] reached the daemon it was talking to
+/// Whether a [`Client::reconnect`](crate::client::Client::reconnect) reached the daemon it was talking to
 /// before, or a different one.
 ///
 /// See this module's own docs for how the two are told apart.
@@ -90,9 +88,6 @@ pub enum Reconnected {
 mod tests {
 
     use std::time::Duration;
-
-    // tokio's Instant, not std's: it moves with `tokio::time::pause`, and the
-    // budget below is measured against a `tokio::time::sleep` that does too.
 
     use super::*;
 

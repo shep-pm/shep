@@ -200,7 +200,7 @@ pub async fn fake_client_capturing_envelopes(path: &Path) -> (Client, mpsc::Rece
 }
 
 /// Binds `path`, handshakes with [`sample_ack`], and answers the one
-/// request that arrives with an [`RpcError`] carrying `code` and `message`.
+/// request that arrives with an [`RpcError`](shep_core::protocol::RpcError) carrying `code` and `message`.
 ///
 /// Backed by a [`FakeDaemon`] so the connection keeps serving afterward,
 /// unlike a bespoke one-shot task that would die after the scripted reply.

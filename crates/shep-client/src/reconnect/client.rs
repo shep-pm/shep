@@ -25,7 +25,7 @@ impl Client {
     /// `&mut self` holds the handle exclusively, so none of its own requests
     /// can be in flight while this runs. A successor still coming up is
     /// retried, from [`RECONNECT_MIN_DELAY`] doubling to
-    /// [`RECONNECT_MAX_DELAY`]; a refusal is not. An [`EventStream`] taken
+    /// [`RECONNECT_MAX_DELAY`]; a refusal is not. An [`EventStream`](crate::events::EventStream) taken
     /// before this call belongs to the old connection, so a caller wanting
     /// events past it subscribes again.
     ///

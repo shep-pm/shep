@@ -1,6 +1,4 @@
 use std::time::Duration;
-// tokio's Instant, not std's: it moves with `tokio::time::pause`, and the
-// budget below is measured against a `tokio::time::sleep` that does too.
 
 /// How long the supervisor waits after its FIRST failed reconnect attempt
 /// before trying again.
@@ -14,7 +12,7 @@ pub const RECONNECT_MIN_DELAY: Duration = Duration::from_millis(50);
 
 /// The ceiling [`RECONNECT_MIN_DELAY`] doubles up to.
 ///
-/// Same order as [`HANDSHAKE_TIMEOUT`]: past this point one further attempt
+/// Same order as [`HANDSHAKE_TIMEOUT`](crate::connection::HANDSHAKE_TIMEOUT): past this point one further attempt
 /// costs about as much as the wait between attempts, so the loop is
 /// bounded noise rather than a spin. A dog whose daemon is genuinely gone
 /// sits here indefinitely: the daemon that would have reaped it is the one
@@ -25,7 +23,7 @@ pub const RECONNECT_MAX_DELAY: Duration = Duration::from_secs(5);
 /// [`RECONNECT_MAX_DELAY`].
 ///
 /// Both reconnect paths walk this one ladder: the supervisor behind
-/// [`ReconnectingClient`], and [`Client::reconnect_within`]. Shared so a
+/// [`ReconnectingClient`](crate::reconnect::ReconnectingClient), and [`Client::reconnect_within`](crate::client::Client::reconnect_within). Shared so a
 /// change to the schedule cannot reach one of them and miss the other.
 pub(super) fn next_delay(current: Duration) -> Duration {
     // Saturating: `Duration`'s `Mul` panics on overflow, and a ladder that
@@ -37,9 +35,6 @@ pub(super) fn next_delay(current: Duration) -> Duration {
 mod tests {
 
     use std::time::Duration;
-
-    // tokio's Instant, not std's: it moves with `tokio::time::pause`, and the
-    // budget below is measured against a `tokio::time::sleep` that does too.
 
     use super::*;
 
