@@ -13863,6 +13863,7 @@ mod tests {
     /// The names are chosen so no two candidate orders agree. Ids run 0, 1, 2
     /// in registration order; the rows come out in name order, `[0, 2, 1]`,
     /// where settle order would be `[1, 0, 2]` and id order `[0, 1, 2]`.
+    /// `spawn_trigger_task` sorts by `(name, id)`.
     #[tokio::test(start_paused = true)]
     async fn a_trigger_answers_every_sheep_it_matched_before_it_answers_at_all() {
         // Must sort after `worker`, or name order and settle order coincide.
