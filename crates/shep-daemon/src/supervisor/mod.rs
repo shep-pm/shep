@@ -88,6 +88,7 @@ mod command;
 mod config_merge;
 mod error;
 mod handle;
+#[cfg(unix)]
 mod handover;
 mod logs;
 mod manual;
@@ -110,16 +111,19 @@ use config_merge::{
 pub(crate) use error::AdoptError;
 pub use error::SupervisorError;
 pub use handle::SupervisorHandle;
-#[cfg(test)]
+#[cfg(all(test, unix))]
 use handover::REPORT_DEADLINE;
+#[cfg(unix)]
 use handover::{HandoverDraft, Snapshot, spawn_handover_task};
 #[cfg(test)]
 use logs::{flush_logs, reopen_logs, truncate_log};
 use logs::{spawn_flush_task, spawn_reopen_task};
 use manual::{ActionWaits, PendingAction};
 pub(crate) use manual::{CommandOrigin, ManualKind, PendingManual};
-pub(crate) use reload::{CarriedReload, ReloadMode, ReloadPhase, ReloadSwap};
+#[cfg(unix)]
+pub(crate) use reload::CarriedReload;
 use reload::{LadderCap, ReloadJob};
+pub(crate) use reload::{ReloadMode, ReloadPhase, ReloadSwap};
 #[cfg(test)]
 use sheep::run_sheep;
 use sheep::{SignalRequest, spawn_sheep_task};

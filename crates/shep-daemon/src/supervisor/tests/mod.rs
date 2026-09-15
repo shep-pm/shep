@@ -27,8 +27,11 @@ use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
 // --- module tree ---
 mod actions;
+#[cfg(unix)]
 mod adopt;
+#[cfg(unix)]
 mod adopt_restart;
+#[cfg(unix)]
 mod adopt_swap;
 mod config_load;
 mod config_promote;
@@ -39,6 +42,7 @@ mod credentials;
 mod dogs;
 mod env_batch;
 mod flush;
+#[cfg(unix)]
 mod handover;
 mod interleaving;
 mod readiness;
