@@ -13,6 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-09-16
+
+### Changed
+
+- Narrow what the split widened, and unstrand two comments
+- Name the sibling a comment is talking about
+- Restore a comment the split deleted, and name four siblings
+- Stop qualifying names that are not paths
+- Stop qualifying names that are not paths ([#279](https://github.com/shep-pm/shep/pull/279))
+
+
 ## [0.8.1] - 2026-09-15
 
 ### Added
