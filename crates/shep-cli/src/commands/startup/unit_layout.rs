@@ -3,6 +3,8 @@ use super::target_resolution::StartupPlan;
 use super::unit::UnitSpec;
 use crate::cli::Init;
 use crate::output::StartupStep;
+#[cfg(target_os = "linux")]
+use std::path::Path;
 use std::path::PathBuf;
 
 /// `$SHEP_HOME`'s own directory name under a user's home, mirroring
