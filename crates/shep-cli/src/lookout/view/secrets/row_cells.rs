@@ -100,7 +100,7 @@ pub(super) fn value_cell(
 /// included, since `all` is a slot a key can hold and a tab an operator can
 /// select. Every tab named once each is the common case and needs no list;
 /// anything short of that names which ones.
-pub(super) fn set_in_cell(row: &SecretRow, environment_count: usize) -> String {
+fn set_in_cell(row: &SecretRow, environment_count: usize) -> String {
     if row.set_in.is_empty() {
         return "-".to_string();
     }
@@ -116,7 +116,7 @@ pub(super) fn set_in_cell(row: &SecretRow, environment_count: usize) -> String {
 }
 
 /// The reveal countdown's gauge, in cells.
-pub(super) const GAUGE_CELLS: usize = 10;
+const GAUGE_CELLS: usize = 10;
 
 /// How long a revealed value has left, in words and in blocks.
 ///
@@ -146,7 +146,7 @@ pub(super) fn countdown(until: Instant, now: Instant) -> String {
 /// `Lands` carries the reveal's own countdown for the revealed row and `-`
 /// everywhere else: no [`SecretRow`] field carries a propagation ETA yet,
 /// and `-` is `view/detail.rs`'s convention for an absent value.
-pub(super) fn row_cell(
+fn row_cell(
     row: &SecretRow,
     column: Column,
     revealed: Option<&Reveal>,

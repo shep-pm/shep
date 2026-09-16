@@ -22,7 +22,7 @@ pub(in crate::lookout::view) const INTERIOR: u16 = 126;
 
 pub(super) const COLUMN_COUNT: u16 = 4;
 
-pub(super) const GAP: u16 = 1;
+const GAP: u16 = 1;
 
 pub(super) const GUTTER: u16 = 2;
 
@@ -30,7 +30,7 @@ pub(super) const COLUMN: u16 = KEY_CELL + GAP + TEXT_CELL;
 
 /// The entry row the sheep's first line draws at (zero-indexed): "entry
 /// rows 5 through 8" in the design's own numbering.
-pub(super) const SHEEP_FIRST_ROW: usize = 4;
+const SHEEP_FIRST_ROW: usize = 4;
 
 /// The one decoration in the whole TUI that carries no information, drawn
 /// in the DOING column's own thirty cells at entry rows five through eight.
@@ -67,7 +67,7 @@ pub(super) const SHEEP: [&str; 4] = [
 /// `GUTTER` is 2, and nothing would say so when it changed. A width that
 /// disagrees with its own constant is the defect this frame's own gallery
 /// scenes exist to catch, so the constant wins over the allocation.
-pub(super) fn gutter_span() -> Span<'static> {
+fn gutter_span() -> Span<'static> {
     Span::raw(" ".repeat(usize::from(GUTTER)))
 }
 
@@ -100,7 +100,7 @@ pub(super) fn heading_line_for(groups: &[Group], palette: Palette) -> Line<'stat
 
 /// The boxed form's heading row: [`heading_line_for`] over all four of
 /// [`Group::DRAWN`].
-pub(super) fn heading_line(palette: Palette) -> Line<'static> {
+fn heading_line(palette: Palette) -> Line<'static> {
     heading_line_for(&Group::DRAWN, palette)
 }
 
@@ -138,7 +138,7 @@ pub(super) fn entry_line_for(
 /// own ink-2, "default fg"); the sheep at entry rows five through eight of
 /// the DOING column once that group runs out and `show_sheep` says so; a
 /// blank cell otherwise.
-pub(super) fn entry_cell(
+fn entry_cell(
     group: Group,
     binding: Option<Binding>,
     index: usize,
@@ -202,7 +202,7 @@ pub(super) fn gate_line(app: &App, palette: Palette, width: u16) -> Line<'static
 /// [`gate_line`]'s own sentence, unfit: split out so
 /// [`folded_gate_and_quit_line`] can combine it with the quit caption
 /// before either is padded to a width.
-pub(super) fn gate_text(app: &App) -> String {
+fn gate_text(app: &App) -> String {
     if matches!(app.link(), Link::Lost { .. }) {
         " the three above are refused  \u{b7}  \u{2588} the link is down  \u{b7}  nothing acts"
             .to_string()
@@ -220,7 +220,7 @@ pub(super) fn gate_text(app: &App) -> String {
 
 /// The `NO_COLOR` disclosure. Its own function so [`Shed::Decoration`](crate::lookout::view::keymap::shed::Shed::Decoration) can
 /// drop it without touching the quit line beside it.
-pub(super) const fn colour_sentence() -> &'static str {
+const fn colour_sentence() -> &'static str {
     " colour is decoration only: every coloured cell says the same \
      thing in words. NO_COLOR loses nothing but the colour."
 }
@@ -240,7 +240,7 @@ pub(super) const fn colour_sentence() -> &'static str {
 /// is a worse failure than a panic in a private function guarded by a
 /// match the compiler already checks is exhaustive.
 #[track_caller]
-pub(super) fn quit_text(all_rows: &[Binding]) -> String {
+fn quit_text(all_rows: &[Binding]) -> String {
     let quit = all_rows
         .iter()
         .find(|row| row.group == Group::Closing)

@@ -79,7 +79,7 @@ pub(super) enum Shed {
 /// [`draw_borderless`] spent on banks beyond the first: the ladder is one
 /// bank's worth of shedding, and an extra bank costs rows before this
 /// function ever sees them.
-pub(super) const fn rows_for_height(height: u16) -> Shed {
+const fn rows_for_height(height: u16) -> Shed {
     if height >= 19 {
         Shed::Boxed
     } else if height >= 17 {

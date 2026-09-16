@@ -18,7 +18,7 @@ use ratatui::text::{Line, Span};
 /// Two short lines, not one long sentence: `Buffer::set_line` truncates at
 /// `max_width` in silence, and this exists for terminals narrower than
 /// `MIN_TERM_WIDTH`.
-pub(super) fn draw_too_small(frame: &mut Frame<'_>, area: Rect) {
+fn draw_too_small(frame: &mut Frame<'_>, area: Rect) {
     if area.width == 0 || area.height == 0 {
         return;
     }
@@ -59,7 +59,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
 /// Whichever of the six [`Body`] variants is up, plus the title band and
 /// the status bar around it. Never the keymap overlay: [`draw`] draws that
 /// once, over whatever this left on the screen.
-pub(super) fn draw_body(app: &App, frame: &mut Frame<'_>) {
+fn draw_body(app: &App, frame: &mut Frame<'_>) {
     let area = frame.area();
     let (width, height) = (area.width, area.height);
     let palette = app.palette();
@@ -390,7 +390,7 @@ pub(super) fn draw_body(app: &App, frame: &mut Frame<'_>) {
 /// [`App::keymap_open`]'s own doc says it is reached from every body's own
 /// `Help` arm; [`draw`] calls this once, after [`draw_body`] returns from
 /// whichever of the six it took.
-pub(super) fn draw_keymap_overlay(app: &App, area: Rect, buffer: &mut Buffer, palette: Palette) {
+fn draw_keymap_overlay(app: &App, area: Rect, buffer: &mut Buffer, palette: Palette) {
     if app.keymap_open() {
         super::overlay::mute(buffer, area, palette);
         super::keymap::draw(app, area, buffer);
@@ -411,7 +411,7 @@ pub(super) fn draw_keymap_overlay(app: &App, area: Rect, buffer: &mut Buffer, pa
 /// its whole width on what happened and when, since every other number on
 /// the screen is now history and the flock count is one of them;
 /// `super::status::banner_line` picks up the `$SHEP_HOME` this loses.
-pub(super) fn title_band(app: &App, width: u16) -> Line<'static> {
+fn title_band(app: &App, width: u16) -> Line<'static> {
     let (left, right, role) = match app.link() {
         Link::Lost { at_local, .. } => (
             format!(" THE SHEPHERD HAS DIED  \u{2596}  these values are frozen as of {at_local}"),
@@ -460,7 +460,7 @@ pub(super) fn section_band(
 /// Shared by callers that build their own text rather than going through
 /// [`super::cell::band`], so a band's `REVERSED` modifier paints every cell of the
 /// row rather than stopping where the text does.
-pub(super) fn band_line(text: String, width: u16, style: Style) -> Line<'static> {
+fn band_line(text: String, width: u16, style: Style) -> Line<'static> {
     let drawn = text
         .chars()
         .map(crate::output::width::char_columns)

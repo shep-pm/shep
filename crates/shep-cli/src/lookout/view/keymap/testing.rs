@@ -55,13 +55,13 @@ pub(super) fn assert_every_visible_row_drawn(rendered: &str, context: &str) {
 }
 
 /// A healthy dashboard, control open, nothing frozen.
-pub(super) fn healthy_app() -> App {
+fn healthy_app() -> App {
     healthy_app_with_palette(fixtures::plain())
 }
 
 /// The same, at `palette`: what the ground test reads, since
 /// [`Palette::ground`] is a no-op under [`fixtures::plain`].
-pub(super) fn healthy_app_with_palette(palette: Palette) -> App {
+fn healthy_app_with_palette(palette: Palette) -> App {
     let mut app = fixtures::app_with(
         vec![
             ProcessInfo::builder(1, "web", ProcStatus::Online)

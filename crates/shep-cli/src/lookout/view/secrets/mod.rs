@@ -3,9 +3,9 @@
 //!
 //! Every cell goes through [`fit`](super::flock::fit), so a long key ends in `…` rather than
 //! spilling into the next column. Rows carry no gap between columns, unlike
-//! [`super::flock`]'s two-space-separated table: `cell` reads a column
-//! back by stepping [`Column::width`](column_tiers::Column::width) alone, so a gap here would be a gap
-//! `cell` never accounts for.
+//! [`super::flock`]'s two-space-separated table: `draw_layout::cell` reads a
+//! column back by stepping [`Column::width`](column_tiers::Column::width)
+//! alone, so a gap here would be a gap that function never accounts for.
 
 mod column_tiers;
 mod detail_panels;

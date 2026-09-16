@@ -62,8 +62,8 @@ pub(super) fn header_environment_count(buffer: &Buffer) -> usize {
 pub(super) const FIRST_DATA_ROW: &str =
     "\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588} 9 bytes";
 
-/// The whole rendered frame as text, for the assertions below that
-/// have to say a thing is *not* drawn: [`row_of`] panics instead.
+/// The whole rendered frame as text, for the tests that have to say a thing
+/// is *not* drawn: [`row_of`] panics instead.
 pub(super) fn frame_text(buffer: &Buffer) -> String {
     (0..buffer.area.height)
         .map(|y| {

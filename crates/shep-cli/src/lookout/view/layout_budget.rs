@@ -9,7 +9,7 @@ use ratatui::layout::Rect;
 /// `#[cfg(test)]`: `draw` lays these out one `y += 1` at a time rather than
 /// summing them, so this constant has no production call site.
 #[cfg(test)]
-pub(super) const CHROME_ROWS: u16 = 4;
+const CHROME_ROWS: u16 = 4;
 
 /// The host strip is one line.
 /// The shortest terminal that gets the design's two blank chrome rows, one
@@ -47,7 +47,7 @@ pub struct Panes {
 /// The drop order is least-diagnostic first. 24 is the classic terminal
 /// height, chosen so a plain 80x24 gets all three panes with a flock table
 /// worth reading.
-pub(super) const PANE_TIERS: &[(u16, Panes)] = &[
+const PANE_TIERS: &[(u16, Panes)] = &[
     (
         24,
         Panes {

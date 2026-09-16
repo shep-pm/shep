@@ -8,8 +8,7 @@ use crate::vocabulary::Role;
 use ratatui::text::{Line, Span};
 
 /// [`pane_band`]'s label.
-pub(super) const PANE_BAND_LABEL: &str =
-    "SECRETS   flock-wide values a Flockfile refers to and never carries";
+const PANE_BAND_LABEL: &str = "SECRETS   flock-wide values a Flockfile refers to and never carries";
 
 /// What the store is, never printed to a log or read before spawn.
 pub(super) const STORE_LINE: &str = "store $SHEP_HOME/secrets.json \u{b7} not encrypted \u{b7} never \
@@ -142,11 +141,11 @@ pub(super) fn tab_line(pane: &SecretsPane, palette: Palette, width: u16) -> Line
 }
 
 /// The gap between two tabs, and between the last tab and the suffix.
-pub(super) const TAB_GAP: usize = 2;
+const TAB_GAP: usize = 2;
 
 /// What a run of hidden tabs costs the row: the `\u{2026}` standing in for it,
 /// plus its own gap.
-pub(super) const TAB_ELISION: usize = TAB_GAP + 1;
+const TAB_ELISION: usize = TAB_GAP + 1;
 
 /// The widest run of labels around `active` that fits `budget`, both ends
 /// inclusive.
@@ -155,7 +154,7 @@ pub(super) const TAB_ELISION: usize = TAB_GAP + 1;
 /// row hiding the tab you are on says less than nothing. The run grows
 /// rightwards first, so a cursor at the head of the list reads left to
 /// right, and each step pays for the `\u{2026}` its own side still owes.
-pub(super) fn tab_window(labels: &[String], active: usize, budget: usize) -> (usize, usize) {
+fn tab_window(labels: &[String], active: usize, budget: usize) -> (usize, usize) {
     let (mut first, mut last) = (active, active);
     let mut used = labels.get(active).map_or(0, |l| l.chars().count());
     loop {

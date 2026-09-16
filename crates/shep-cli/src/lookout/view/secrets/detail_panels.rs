@@ -13,12 +13,12 @@ use ratatui::text::{Line, Span};
 /// The FOCUSED panel's width, fixed: the frame's own layout,
 /// `docs/brainstorming/specs/2026-09-08-lookout-1h-secrets-design.md`
 /// ("The frame"). WHO READS IT takes whatever is left of the row.
-pub(super) const FOCUSED_WIDTH: u16 = 88;
+const FOCUSED_WIDTH: u16 = 88;
 
 /// How many rows the two panels' own content spends, below their shared
 /// header line: fixed at the frame's own count, whatever either panel has
 /// to say.
-pub(super) const PANEL_CONTENT_ROWS: u16 = 4;
+const PANEL_CONTENT_ROWS: u16 = 4;
 
 /// Everything below the hairline: the panels' own header line plus their
 /// content, on top of the hairline itself.
@@ -30,7 +30,7 @@ pub(super) const PANEL_ROWS: u16 = 1 + 1 + PANEL_CONTENT_ROWS;
 /// Never "holds the value": nothing tells a sheep spawned before a `set`
 /// from one spawned after, so the caption states only what the roll can
 /// prove either way.
-pub(super) fn reader_line(reader: &Reader) -> String {
+fn reader_line(reader: &Reader) -> String {
     if reader.online {
         format!(
             "\u{2588} {}   online, was given a value at spawn",
@@ -47,7 +47,7 @@ pub(super) fn reader_line(reader: &Reader) -> String {
 /// What both panels say when no row is selected, so the `+ new key`
 /// affordance cannot have one panel calling it nothing and the other
 /// describing a key that does not exist.
-pub(super) const NO_KEY_SELECTED: &str = "no key selected";
+const NO_KEY_SELECTED: &str = "no key selected";
 
 /// FOCUSED's four content lines for `row`, or a placeholder when nothing is
 /// selected (the `+ new key` row, or an empty pane).
@@ -56,7 +56,7 @@ pub(super) const NO_KEY_SELECTED: &str = "no key selected";
 /// notice, since that notice reaches an operator after the value is already
 /// on their system clipboard: this is the standing warning, read before `y`
 /// is ever pressed.
-pub(super) fn focused_lines(
+fn focused_lines(
     row: Option<&SecretRow>,
     width: u16,
 ) -> [Line<'static>; PANEL_CONTENT_ROWS as usize] {
@@ -100,14 +100,14 @@ pub(super) fn focused_lines(
 
 /// How many readers [`who_reads_it_lines`] has room to list before it has
 /// to spend a line on an overflow notice instead.
-pub(super) const READER_ROWS: usize = PANEL_CONTENT_ROWS as usize - 1;
+const READER_ROWS: usize = PANEL_CONTENT_ROWS as usize - 1;
 
 /// The text for each of [`READER_ROWS`] reader lines: one per reader when
 /// they all fit, otherwise the first `READER_ROWS - 1` plus a line naming
 /// how many more there are, so this panel's own total always matches
 /// [`focused_lines`]' `named by {} of the flock` rather than looking
 /// complete at three when a key has five.
-pub(super) fn reader_row_texts(readers: &[Reader]) -> Vec<String> {
+fn reader_row_texts(readers: &[Reader]) -> Vec<String> {
     if readers.is_empty() {
         return vec!["nothing names this key".to_string()];
     }
@@ -126,7 +126,7 @@ pub(super) fn reader_row_texts(readers: &[Reader]) -> Vec<String> {
 /// WHO READS IT's four content lines for `row`: up to [`READER_ROWS`]
 /// readers, then a caption naming where a reference can live, matching
 /// [`focused_lines`]' own row count so the two panels stay lined up.
-pub(super) fn who_reads_it_lines(
+fn who_reads_it_lines(
     row: Option<&SecretRow>,
     width: u16,
 ) -> [Line<'static>; PANEL_CONTENT_ROWS as usize] {

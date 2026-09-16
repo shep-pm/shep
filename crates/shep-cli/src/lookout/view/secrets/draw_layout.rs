@@ -17,7 +17,7 @@ use ratatui::text::{Line, Span};
 /// band, the store's terms, the two gates, the roll's status, the tab row,
 /// the heading row and the hairline. `the_chrome_is_the_rows_it_claims`
 /// reads the count back off a render, so the two cannot drift.
-pub(super) const CHROME_ROWS: u16 = 7;
+const CHROME_ROWS: u16 = 7;
 
 /// The shortest `area` with room for the chrome, a secret, and both
 /// panels.
@@ -26,7 +26,7 @@ pub(super) const CHROME_ROWS: u16 = 7;
 /// the first row of each source, so a body one row shorter than this spends
 /// everything it has left on the header and shows the panels over an empty
 /// table. Captured at 100x16 before this counted the header.
-pub(super) const PANELS_MIN_ROWS: u16 = CHROME_ROWS + 2 + PANEL_ROWS;
+const PANELS_MIN_ROWS: u16 = CHROME_ROWS + 2 + PANEL_ROWS;
 
 /// `area`'s own bottom, short by [`PANEL_ROWS`] whenever there is room for
 /// the two panels below it, so no data row ever draws underneath them.
@@ -35,7 +35,7 @@ pub(super) const PANELS_MIN_ROWS: u16 = CHROME_ROWS + 2 + PANEL_ROWS;
 /// themselves reserved six rows at every height from `PANEL_ROWS + 1` up,
 /// and `draw`'s own chrome guards reached that boundary first: the panels
 /// were skipped and their rows stayed blank.
-pub(super) fn content_bottom(area: Rect) -> u16 {
+fn content_bottom(area: Rect) -> u16 {
     let bottom = area.y + area.height;
     if area.height >= PANELS_MIN_ROWS {
         bottom - PANEL_ROWS
@@ -53,7 +53,7 @@ pub(super) fn content_bottom(area: Rect) -> u16 {
 /// The one place `draw` places it: right after the last visible operator
 /// row and before the first namespace group's header, closing the operator
 /// group even when that group has no members of its own to close.
-pub(super) fn draw_new_key_row(
+fn draw_new_key_row(
     pane: &SecretsPane,
     columns: &[Column],
     palette: Palette,
@@ -89,7 +89,7 @@ pub(super) fn draw_new_key_row(
 /// `Buffer::set_line` truncates in silence, so a refusal written as one
 /// sentence could lose the number it is about. The way out is already on
 /// the status bar (`esc/S close`) and is not repeated here.
-pub(super) fn draw_too_narrow(width: u16, palette: Palette, area: Rect, buffer: &mut Buffer) {
+fn draw_too_narrow(width: u16, palette: Palette, area: Rect, buffer: &mut Buffer) {
     buffer.set_line(
         area.x,
         area.y,
