@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-09-16
+
+### Changed
+
+- Turn supervisor.rs into a module directory
+- Give the supervisor tests their own directory
+- Say where the actor impl went in the module doc
+- Rustfmt the signatures the visibility prefix lengthened
+- Gate the five test-only re-exports behind cfg(test)
+- Gate the unix-only parts of the module tree
+
+### Fixed
+
+- Carry the unix gates the runner and server splits dropped
+
+
 ## [0.8.1] - 2026-09-15
 
 ### Added

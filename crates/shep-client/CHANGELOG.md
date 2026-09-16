@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-09-16
+
+### Fixed
+
+- Repair what the split did to doc links and one module name
+
+
 ## [0.8.1] - 2026-09-15
 
 
