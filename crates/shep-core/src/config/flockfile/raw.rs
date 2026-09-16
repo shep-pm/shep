@@ -79,6 +79,14 @@ pub(super) struct RawFlockfile {
 }
 
 impl RawFlockfile {
+    /// Parses `source`, refusing any key no field claims.
+    ///
+    /// Shared by `Flockfile::parse` and `parse_declared`: both read a
+    /// Flockfile off disk (never a value off the wire), so both refuse a typo
+    /// the same way. `deny_unknown_fields` used to live on `AppConfig`
+    /// itself, which made every new Flockfile field a protocol event: the
+    /// same type rides the wire, where an unknown field means a newer peer
+    /// rather than a typo. The denial belongs here instead.
     pub(super) fn new(source: &str, format: FlockFormat) -> Result<Self, FlockfileError> {
         let mut unknown = Vec::new();
         let raw: RawFlockfile = parse_into_ignoring(source, format, |path| {
