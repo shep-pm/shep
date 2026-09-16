@@ -10,7 +10,7 @@ use cli::{Format, GlobalArgs};
 use commands::shep_toml::ShepToml;
 use exit::ExitCode;
 use output::Streams;
-use shep_core::paths::{ShepPaths, user_home};
+use shep_core::paths::{HOME_DIR_VAR, ShepPaths, user_home};
 
 use crate::client::emit_error_locked;
 use crate::{cli, commands, exit, output, status, welcome};
@@ -443,23 +443,6 @@ pub(crate) const HOME_KNOB: &str = "--home/$SHEP_HOME";
 /// that has to say what to fix.
 #[cfg(windows)]
 pub(crate) const HOME_KNOB: &str = "--home/%SHEP_HOME%";
-
-/// The variable behind the default home, named by the refusal for a root
-/// that came from there rather than from [`HOME_KNOB`].
-///
-/// `pub(crate)`: `commands::dev` falls back to the same directory and owes
-/// the same spelling when it refuses one.
-#[cfg(not(windows))]
-pub(crate) const HOME_DIR_VAR: &str = "$HOME";
-
-/// The variable behind the default home, named by the refusal for a root
-/// that came from there rather than from [`HOME_KNOB`].
-///
-/// Names `%USERPROFILE%` for the same reason [`UNRESOLVED_HOME`] does: a
-/// Windows session sets no `HOME`, so although [`user_home`] reads that
-/// first, `%USERPROFILE%` is the first of the three that answers.
-#[cfg(windows)]
-pub(crate) const HOME_DIR_VAR: &str = "%USERPROFILE%";
 
 /// How an operator on this platform spells the default home, for the
 /// refusal that offers dropping `--home`.

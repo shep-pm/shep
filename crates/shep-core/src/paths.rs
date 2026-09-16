@@ -6,6 +6,14 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
+/// The environment variable used to describe the user's home directory in
+/// platform-specific diagnostics.
+#[cfg(not(windows))]
+pub const HOME_DIR_VAR: &str = "$HOME";
+
+#[cfg(windows)]
+pub const HOME_DIR_VAR: &str = "%USERPROFILE%";
+
 /// Drops the `\\?\` extended-length prefix Windows' `canonicalize` adds
 ///
 /// For paths leaving shep: written to config, shown to an operator, or
