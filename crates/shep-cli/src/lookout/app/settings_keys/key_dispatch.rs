@@ -249,6 +249,8 @@ mod tests {
     fn no_key_route_writes_the_config_while_the_gate_is_closed() {
         use KeyPress::{Confirm, Cycle, SelectDown, TextApply, TextChar};
 
+        // `Settings::rows` puts the six scalars first, then the fixture's two
+        // dogs: two `SelectDown`s reach `socket`, six the first dog row.
         let routes: &[(&str, &[KeyPress])] = &[
             ("space on a cycled scalar", &[Cycle, Confirm]),
             (
