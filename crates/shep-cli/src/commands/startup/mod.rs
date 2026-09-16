@@ -1,4 +1,4 @@
-//! `shep startup`/`step_execution::unstartup`: installs and removes the init unit that
+//! `shep startup`/`unstartup`: installs and removes the init unit that
 //! starts the shepherd at boot. [`mod@unit`] renders a unit from a
 //! [`unit::UnitSpec`] with no filesystem or process access; this module
 //! resolves a real `unit::UnitSpec`, decides whether this process may install

@@ -93,7 +93,7 @@ mod tests {
     /// The sinks map carries the credential marker, and the rules beside
     /// it do not.
     ///
-    /// Marked at the map rather than at each `sinks::Sink`'s `sinks::url`, because
+    /// Marked at the map rather than at each `sinks::Sink`'s `url`, because
     /// `#[shep(secret)]` names a field of the type being asked and the URL
     /// belongs to a type one level down. `rules::Rule` is checked under `$defs`,
     /// the one place a marker could land on `Rule::sinks`.

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 /// Everything resolved before any privilege is needed: the unit to render,
 /// where it goes, and the command to print if this process cannot install it
-/// (built from `unit::spec`'s own `exec`, `user` and `home`).
+/// (built from `spec`'s own `exec`, `user` and `home`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StartupPlan {
     /// Which init system this build writes for.

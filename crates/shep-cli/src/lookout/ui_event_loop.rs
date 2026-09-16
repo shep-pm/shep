@@ -190,7 +190,7 @@ where
         match app.update(msg) {
             Effect::Quit => break,
             Effect::PollNow => {
-                // `try_send`, not `link::send`: a full poll channel means a repair
+                // `try_send`, not `send`: a full poll channel means a repair
                 // is already queued, and blocking the UI on it would stall the
                 // screen. A closed one means the link ended, which the reducer
                 // handles by refusing `r` once the link is `Lost`.
@@ -213,7 +213,7 @@ where
                 dirty = true;
             }
             Effect::Send(sent) => {
-                // `try_send`, not `link::send`: blocking the UI on a full channel
+                // `try_send`, not `send`: blocking the UI on a full channel
                 // would stall the screen. A failure goes back to the reducer,
                 // which is already showing an in-flight line about it.
                 if let Err(err) = requests.try_send(sent) {
@@ -446,7 +446,7 @@ where
                 // The `bool` is `unset`'s own answer: `false` means there was
                 // no slot to remove. It reaches `Msg::SecretWritten` rather
                 // than being dropped, so a delete that removed nothing
-                // cannot arrive looking like a delete that worked. A `edits::set`
+                // cannot arrive looking like a delete that worked. A `set`
                 // always changed the store, so it says `true`.
                 let handle = tokio::task::spawn_blocking(move || match edit.value {
                     Some(value) => {

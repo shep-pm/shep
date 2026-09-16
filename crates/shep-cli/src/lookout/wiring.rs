@@ -43,7 +43,7 @@ mod tests {
     /// `assert_eq!(1)` and not `<= 2`: the exact number is the property.
     ///
     /// Not `start_paused`, for the reason
-    /// `entry::a_heartbeat_puts_the_host_strip_on_the_frame` gives: `MIN_REDRAW`
+    /// `a_heartbeat_puts_the_host_strip_on_the_frame` gives: `MIN_REDRAW`
     /// reads a real [`std::time::Instant`], which a virtual clock never
     /// advances.
     #[tokio::test]

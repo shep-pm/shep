@@ -38,7 +38,7 @@ pub trait ConfigSource: Send + Sync {
     fn section(&self) -> impl Future<Output = Result<String, RequestError>> + Send;
 }
 
-/// Re-asks `dog_lifecycle::source` for `[bark]` and rebuilds what a config change can
+/// Re-asks `source` for `[bark]` and rebuilds what a config change can
 /// swap, or `None` when the answer cannot be used.
 ///
 /// Every failure is reported and dropped, never propagated: a dog that

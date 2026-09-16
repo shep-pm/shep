@@ -4,9 +4,9 @@ use tokio::sync::mpsc;
 /// Delivers an [`Effect::SendAll`](crate::lookout::app::Effect::SendAll) batch to the link task, in order, without
 /// blocking [`run_ui`](crate::lookout::ui_event_loop::run_ui).
 ///
-/// One task, one cloned sender, one `link::send` per entry, awaited in sequence:
+/// One task, one cloned sender, one `send` per entry, awaited in sequence:
 /// a channel deeper than the batch never stalls the screen, and a channel
-/// merely full is a wait rather than a loss. `link::send` only fails once the
+/// merely full is a wait rather than a loss. `send` only fails once the
 /// channel is closed, so the entry it hands back there is the first
 /// casualty of a shepherd that is gone; every entry after it would fail
 /// the same way, so this stops rather than piling up identical reports.
@@ -85,7 +85,7 @@ mod tests {
     }
 
     /// The channel closing mid-batch, rather than merely filling, is the
-    /// one case `link::send` actually fails: the shepherd going away must still
+    /// one case `send` actually fails: the shepherd going away must still
     /// report, not be swallowed by the fix for the full case above.
     #[tokio::test]
     async fn send_batch_reports_the_first_casualty_once_the_channel_is_closed() {

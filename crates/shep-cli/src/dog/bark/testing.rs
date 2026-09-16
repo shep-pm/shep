@@ -261,7 +261,7 @@ pub(super) fn errored_event(name: &str) -> BusEvent {
     process_event(name, ProcessEventKind::Errored)
 }
 
-/// A JSON sink POSTing to `sinks::url` with the default body. Every sink
+/// A JSON sink POSTing to `url` with the default body. Every sink
 /// these tests configure is this one.
 pub(super) fn json_sink(url: String) -> Sink {
     Sink::Json { url, body: None }
