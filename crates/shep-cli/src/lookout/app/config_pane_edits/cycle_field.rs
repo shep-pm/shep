@@ -10,7 +10,7 @@ impl App {
     /// stops a sheep has.
     pub(in crate::lookout::app) fn cycle_field(&mut self) -> Effect {
         // The lock is checked ahead of the control gate, the same order
-        // `confirm_field::confirm_field` takes: it is the more specific fact, and
+        // `confirm_field` takes: it is the more specific fact, and
         // `--allow-control` would not change it. A screen that answers
         // one question two ways teaches an operator to believe neither.
         if let Some((key, lock)) = self
