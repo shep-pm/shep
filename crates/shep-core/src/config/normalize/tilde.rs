@@ -125,9 +125,276 @@ pub(super) fn expand_paths(app: &mut AppConfig, home: Option<&Path>) -> Result<(
 
 #[cfg(test)]
 mod tests {
-    use super::super::{normalize_with_home, shep_home_fixture};
     use super::*;
-    use crate::config::AppConfig;
+    use crate::config::normalize::shep_home_fixture;
+    use crate::config::normalize::{normalize, normalize_with_home};
+    use crate::paths::SHEP_HOME_VAR;
+
+    /// A resolved secret in a log path becomes a filename on disk and is
+    /// reported by `shep flock` and `shep describe`, so it is refused at
+    /// config time rather than rendered. Nothing pinned this before, in
+    /// either field.
+    #[test]
+    fn a_secret_in_either_log_path_is_refused() {
+        for (field, set) in [
+            (
+                "out_file",
+                (|app: &mut AppConfig| {
+                    app.out_file = Some("/var/log/{{secret:LOG_KEY}}.log".to_string());
+                }) as fn(&mut AppConfig),
+            ),
+            ("err_file", |app| {
+                app.err_file = Some("/var/log/{{secret:vercel/LOG_KEY}}.log".to_string());
+            }),
+        ] {
+            let mut app = AppConfig::minimal("web", "/srv/server.js");
+            set(&mut app);
+            let err = normalize_with_home(app, Some(Path::new("/home/ada")), shep_home_fixture())
+                .expect_err("a log path may not hold a secret");
+            assert!(
+                matches!(&err, NormalizeError::SecretInLogPath { field: got, .. } if *got == field),
+                "{field}: {err:?}"
+            );
+            let rendered = err.to_string();
+            assert!(rendered.contains(field), "names the field: {rendered}");
+            assert!(
+                !rendered.contains("LOG_KEY"),
+                "and never echoes the key back: {rendered}"
+            );
+        }
+    }
+
+    /// The token is refused where nothing could expand it, rather than
+    /// reaching a child as a filename with braces in it. Every templated
+    /// field kind, since one shared validator sees all four.
+    #[test]
+    fn shep_home_with_no_shep_home_is_refused_in_every_templated_field() {
+        for (field, mutate) in [
+            (
+                "out_file",
+                (|app: &mut AppConfig| {
+                    app.out_file = Some("{{SHEP_HOME}}/logs/out.log".to_string());
+                }) as fn(&mut AppConfig),
+            ),
+            ("err_file", |app| {
+                app.err_file = Some("{{SHEP_HOME}}/logs/err.log".to_string());
+            }),
+            ("env.DATA_DIR", |app| {
+                app.env
+                    .insert("DATA_DIR".to_string(), "{{SHEP_HOME}}/data".to_string());
+            }),
+            ("args[0]", |app| {
+                app.args = vec!["--state={{SHEP_HOME}}/state".to_string()];
+            }),
+        ] {
+            let mut app = AppConfig::minimal("web", "/srv/server.js");
+            mutate(&mut app);
+            let err = normalize_with_home(app, Some(Path::new("/home/ada")), None)
+                .expect_err("nothing to expand it against");
+            assert!(
+                matches!(&err, NormalizeError::NoShepHome { field: got, .. } if got == field),
+                "{field}: {err:?}"
+            );
+            let rendered = err.to_string();
+            // The constant, not the literal: which spelling is right here
+            // is platform-dependent, and has its own test.
+            assert!(
+                rendered.contains(SHEP_HOME_VAR),
+                "names the fix: {rendered}"
+            );
+            assert!(
+                !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
+                "no em or en dash in copy a user reads: {rendered}"
+            );
+        }
+    }
+
+    #[test]
+    fn shep_home_is_accepted_once_there_is_one() {
+        let mut app = AppConfig::minimal("web", "/srv/server.js");
+        app.out_file = Some("{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log".to_string());
+        app.env
+            .insert("DATA_DIR".to_string(), "{{SHEP_HOME}}/data".to_string());
+        app.args = vec!["--state={{SHEP_HOME}}/state".to_string()];
+        let resolved = normalize_with_home(app, Some(Path::new("/home/ada")), shep_home_fixture())
+            .expect("every field accepts it");
+        // Stored as written: the token expands at spawn, per instance, not
+        // here. Unlike `~`, which `expand_paths` resolves in place.
+        assert_eq!(
+            resolved.config().out_file.as_deref(),
+            Some("{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log")
+        );
+    }
+
+    /// The collision check reads the rendered path, and `{{SHEP_HOME}}`
+    /// renders alike for every slot, so a path carrying only that one still
+    /// collides. Same rule `{{name}}` alone already falls under.
+    #[test]
+    fn a_shep_home_log_path_still_needs_an_instance_token() {
+        let mut app = AppConfig::minimal("web", "/srv/server.js");
+        app.instances = 2;
+        app.out_file = Some("{{SHEP_HOME}}/logs/{{name}}-out.log".to_string());
+        let err = normalize_with_home(app, Some(Path::new("/home/ada")), shep_home_fixture())
+            .expect_err("both slots render one path");
+        assert!(matches!(
+            err,
+            NormalizeError::SharedLogPath {
+                field: "out_file",
+                ..
+            }
+        ));
+
+        let mut app = AppConfig::minimal("web", "/srv/server.js");
+        app.instances = 2;
+        app.out_file = Some("{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log".to_string());
+        assert!(
+            normalize_with_home(app, Some(Path::new("/home/ada")), shep_home_fixture()).is_ok(),
+            "the slot tells them apart"
+        );
+    }
+
+    #[test]
+    fn an_explicit_log_path_shared_by_every_instance_is_refused() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.instances = 3;
+        app.out_file = Some("/var/log/web.log".to_string());
+        let err = normalize(app).unwrap_err();
+        let rendered = err.to_string();
+        assert!(rendered.contains("out_file"), "names the field: {rendered}");
+        assert!(
+            rendered.contains("{{instance}}") && rendered.contains("merge_logs"),
+            "and both ways out: {rendered}"
+        );
+        assert!(
+            !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
+            "no em or en dash in copy a user reads: {rendered}"
+        );
+    }
+
+    #[test]
+    fn the_three_ways_out_of_the_shared_log_refusal_all_work() {
+        // A slot in the path.
+        let mut templated = AppConfig::minimal("web", "./srv");
+        templated.instances = 3;
+        templated.out_file = Some("/var/log/web-{{instance}}.log".to_string());
+        assert!(normalize(templated).is_ok());
+
+        // Asking for the merge on purpose.
+        let mut merged = AppConfig::minimal("web", "./srv");
+        merged.instances = 3;
+        merged.out_file = Some("/var/log/web.log".to_string());
+        merged.merge_logs = true;
+        assert!(normalize(merged).is_ok());
+
+        // One instance cannot collide with itself.
+        let mut single = AppConfig::minimal("web", "./srv");
+        single.out_file = Some("/var/log/web.log".to_string());
+        assert!(normalize(single).is_ok());
+    }
+
+    #[test]
+    fn an_escaped_template_in_a_log_path_does_not_satisfy_the_refusal() {
+        // `{{{{instance}}}}` spells the token but renders to one literal path
+        // for every instance, so a substring check would wave it through.
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.instances = 3;
+        app.out_file = Some("/var/log/web-{{{{instance}}}}.log".to_string());
+        assert!(normalize(app).is_err());
+    }
+
+    #[test]
+    fn a_name_only_template_does_not_resolve_the_collision() {
+        // `{{name}}` is the same for every instance, so a path carrying only it
+        // still puts every instance on one file. Presence of a token is not the
+        // test; rendering differently is.
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.instances = 3;
+        app.out_file = Some("/var/log/{{name}}.log".to_string());
+        assert!(normalize(app).is_err());
+    }
+
+    /// A resolved `env` value reaches the child and nothing else. A
+    /// resolved log path reaches `ProcessInfo`, every bus event carrying
+    /// one, `shep flock`, `shep describe`, `shep lookout` and a filename
+    /// under `$SHEP_HOME/logs`, which is four more places than the design
+    /// says a plaintext secret ever lives.
+    #[test]
+    fn a_secret_in_a_log_path_is_refused() {
+        for field in ["out_file", "err_file"] {
+            let mut app = AppConfig::minimal("web", "./srv");
+            let path = Some("/var/log/{{secret:TOKEN}}.log".to_string());
+            if field == "out_file" {
+                app.out_file = path;
+            } else {
+                app.err_file = path;
+            }
+            match normalize(app).unwrap_err() {
+                NormalizeError::SecretInLogPath { name, field: got } => {
+                    assert_eq!(name, "web");
+                    assert_eq!(got, field);
+                }
+                other => panic!("expected SecretInLogPath for {field}, got {other:?}"),
+            }
+        }
+    }
+
+    /// The refusal is the `secret:` prefix alone: a multi-instance app
+    /// needs `{{instance}}` in its log paths, and `{{name}}` is how the
+    /// other two path fields are written.
+    #[test]
+    fn the_positional_tokens_still_render_in_a_log_path() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.instances = 2;
+        app.out_file = Some("/var/log/{{name}}-{{instance}}.out".to_string());
+        app.err_file = Some("/var/log/{{name}}-{{instance}}.err".to_string());
+        assert!(normalize(app).is_ok());
+    }
+
+    /// A namespaced reference is the same refusal: `SecretRef::parse` reads
+    /// both shapes, and only one of them being refused would be a hole
+    /// nobody could guess at.
+    #[test]
+    fn a_namespaced_secret_in_a_log_path_is_refused_too() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.err_file = Some("/var/log/{{secret:vercel/TOKEN}}.log".to_string());
+        assert!(matches!(
+            normalize(app).unwrap_err(),
+            NormalizeError::SecretInLogPath { .. }
+        ));
+    }
+
+    #[test]
+    fn a_bad_template_in_a_log_path_is_reported_as_bad_template_not_shared_path() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.instances = 3;
+        app.out_file = Some("/var/log/web-{{instnace}}.log".to_string());
+        match normalize(app).unwrap_err() {
+            NormalizeError::BadTemplate { field, reason, .. } => {
+                assert_eq!(field, "out_file");
+                assert!(reason.contains("instnace"), "{reason}");
+            }
+            other => panic!("expected BadTemplate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_typo_in_an_env_template_is_refused_and_names_the_field() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.env
+            .insert("WORKER".to_string(), "w-{{instnace}}".to_string());
+        let err = normalize(app).unwrap_err();
+        let rendered = err.to_string();
+        assert!(rendered.contains("instnace"), "names the typo: {rendered}");
+        assert!(rendered.contains("WORKER"), "and the field: {rendered}");
+    }
+
+    #[test]
+    fn a_typo_in_an_arg_template_is_refused_too() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.args = vec!["--port".to_string(), "91{{slot}}".to_string()];
+        let err = normalize(app).unwrap_err();
+        assert!(err.to_string().contains("slot"), "{err}");
+    }
 
     /// All four path fields expand `~/`, and expanding some but not others
     /// would be worse than expanding none: it teaches that tildes work and
