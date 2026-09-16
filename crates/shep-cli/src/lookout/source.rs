@@ -383,9 +383,12 @@ mod tests {
             style: crate::style::Presentation::BARE,
             fmt: crate::cli::Format::Table,
         };
-        let code =
-            crate::refuse_version_skew(&mut streams, flock.client(), crate::VersionGuard::Enforce)
-                .expect_err("a differing crate version must be refused");
+        let code = crate::version_guard::refuse_version_skew(
+            &mut streams,
+            flock.client(),
+            crate::version_guard::VersionGuard::Enforce,
+        )
+        .expect_err("a differing crate version must be refused");
         assert_eq!(code, crate::exit::ExitCode::VersionSkew);
     }
 
@@ -410,7 +413,11 @@ mod tests {
             style: crate::style::Presentation::BARE,
             fmt: crate::cli::Format::Table,
         };
-        crate::refuse_version_skew(&mut streams, flock.client(), crate::VersionGuard::Enforce)
-            .expect("a matching version is not a skew");
+        crate::version_guard::refuse_version_skew(
+            &mut streams,
+            flock.client(),
+            crate::version_guard::VersionGuard::Enforce,
+        )
+        .expect("a matching version is not a skew");
     }
 }

@@ -58,6 +58,12 @@ contro = "contro"
 # two characters right.
 settin = "settin"
 
+# `NO_COLOR loses nothin…`: the keymap overlay's own NO_COLOR sentence,
+# truncated the same way at 100 columns in the `keymap_narrow` gallery
+# snapshot. Regenerated output, not prose, the same reasoning as `settin`
+# above.
+nothin = "nothin"
+
 # `instnace`: deliberate misspelling. `{{instnace}}` proves an unknown
 # template token is refused by name; tests in config/normalize.rs and
 # config/template.rs assert the error names it.

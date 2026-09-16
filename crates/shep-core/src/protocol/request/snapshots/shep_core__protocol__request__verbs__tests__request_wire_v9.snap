@@ -1,0 +1,474 @@
+---
+source: crates/shep-core/src/protocol/request/verbs.rs
+expression: requests
+---
+[
+  {
+    "id": 1,
+    "deadline_ms": 5000,
+    "body": {
+      "kind": "ping"
+    }
+  },
+  {
+    "id": 2,
+    "deadline_ms": null,
+    "body": {
+      "kind": "list_flock"
+    }
+  },
+  {
+    "id": 3,
+    "deadline_ms": null,
+    "body": {
+      "kind": "stop",
+      "selector": {
+        "kind": "name",
+        "value": "web"
+      }
+    }
+  },
+  {
+    "id": 4,
+    "deadline_ms": null,
+    "body": {
+      "kind": "start",
+      "apps": [
+        {
+          "name": "web",
+          "script": "./srv",
+          "args": [],
+          "cwd": null,
+          "interpreter": null,
+          "env": {},
+          "environment": null,
+          "instances": 1,
+          "autorestart": true,
+          "autostart": true,
+          "stop_exit_codes": [],
+          "min_uptime": "1s",
+          "max_restarts": 16,
+          "restart_delay": null,
+          "exp_backoff_restart_delay": "100",
+          "kill_signal": null,
+          "kill_timeout": "1600",
+          "shutdown_with_message": false,
+          "listen_timeout": "3s",
+          "graceful_timeout": "8s",
+          "action_timeout": "3s",
+          "max_memory": null,
+          "watch": false,
+          "ignore_watch": [],
+          "watch_delay": null,
+          "cron_restart": null,
+          "fold": null,
+          "depends_on": [],
+          "user": null,
+          "group": null,
+          "out_file": null,
+          "err_file": null,
+          "merge_logs": false,
+          "level_rules": [],
+          "channel": false,
+          "stdin": false,
+          "wait_ready": false,
+          "reuse_port": false,
+          "readiness_probe": null,
+          "liveness_probe": null,
+          "watch_options": [],
+          "cron_timezone": null
+        }
+      ]
+    }
+  },
+  {
+    "id": 5,
+    "deadline_ms": null,
+    "body": {
+      "kind": "reopen",
+      "selector": {
+        "kind": "all"
+      }
+    }
+  },
+  {
+    "id": 6,
+    "deadline_ms": null,
+    "body": {
+      "kind": "flush",
+      "selector": {
+        "kind": "all"
+      }
+    }
+  },
+  {
+    "id": 7,
+    "deadline_ms": null,
+    "body": {
+      "kind": "reload",
+      "selector": {
+        "kind": "name",
+        "value": "web"
+      }
+    }
+  },
+  {
+    "id": 8,
+    "deadline_ms": null,
+    "body": {
+      "kind": "trigger",
+      "selector": {
+        "kind": "name",
+        "value": "web"
+      },
+      "action": "set-log-level",
+      "params": "debug"
+    }
+  },
+  {
+    "id": 9,
+    "deadline_ms": null,
+    "body": {
+      "kind": "save_roll"
+    }
+  },
+  {
+    "id": 10,
+    "deadline_ms": null,
+    "body": {
+      "kind": "muster"
+    }
+  },
+  {
+    "id": 11,
+    "deadline_ms": null,
+    "body": {
+      "kind": "dog_config",
+      "name": "bark"
+    }
+  },
+  {
+    "id": 12,
+    "deadline_ms": null,
+    "body": {
+      "kind": "enable_dog",
+      "name": "metrics",
+      "source": {
+        "kind": "built_in"
+      }
+    }
+  },
+  {
+    "id": 13,
+    "deadline_ms": null,
+    "body": {
+      "kind": "disable_dog",
+      "name": "metrics"
+    }
+  },
+  {
+    "id": 14,
+    "deadline_ms": null,
+    "body": {
+      "kind": "describe",
+      "selector": {
+        "kind": "id",
+        "value": 7
+      }
+    }
+  },
+  {
+    "id": 15,
+    "deadline_ms": null,
+    "body": {
+      "kind": "describe",
+      "selector": {
+        "kind": "regex",
+        "value": "^web-"
+      }
+    }
+  },
+  {
+    "id": 16,
+    "deadline_ms": null,
+    "body": {
+      "kind": "describe",
+      "selector": {
+        "kind": "fold",
+        "value": "api"
+      }
+    }
+  },
+  {
+    "id": 17,
+    "deadline_ms": null,
+    "body": {
+      "kind": "signal",
+      "selector": {
+        "kind": "name",
+        "value": "web"
+      },
+      "signal": "SIGHUP"
+    }
+  },
+  {
+    "id": 18,
+    "deadline_ms": null,
+    "body": {
+      "kind": "scale",
+      "name": "web",
+      "count": 4
+    }
+  },
+  {
+    "id": 19,
+    "deadline_ms": null,
+    "body": {
+      "kind": "send_line",
+      "selector": {
+        "kind": "all"
+      },
+      "line": "reload-config"
+    }
+  },
+  {
+    "id": 20,
+    "deadline_ms": null,
+    "body": {
+      "kind": "set_smit",
+      "sheep": "web",
+      "smit": "▲ main@a1b2c3"
+    }
+  },
+  {
+    "id": 21,
+    "deadline_ms": null,
+    "body": {
+      "kind": "set_smit",
+      "sheep": "web",
+      "smit": null
+    }
+  },
+  {
+    "id": 22,
+    "deadline_ms": null,
+    "body": {
+      "kind": "config_drift",
+      "apps": []
+    }
+  },
+  {
+    "id": 23,
+    "deadline_ms": null,
+    "body": {
+      "kind": "restart",
+      "selector": {
+        "kind": "instance",
+        "value": {
+          "name": "web",
+          "slot": 2
+        }
+      }
+    }
+  },
+  {
+    "id": 24,
+    "deadline_ms": null,
+    "body": {
+      "kind": "handover_fitness"
+    }
+  },
+  {
+    "id": 25,
+    "deadline_ms": null,
+    "body": {
+      "kind": "dog_staleness"
+    }
+  },
+  {
+    "id": 26,
+    "deadline_ms": null,
+    "body": {
+      "kind": "apply_config",
+      "apps": [
+        {
+          "config": {
+            "name": "web",
+            "script": "./srv",
+            "args": [],
+            "cwd": null,
+            "interpreter": null,
+            "env": {},
+            "environment": null,
+            "instances": 1,
+            "autorestart": true,
+            "autostart": true,
+            "stop_exit_codes": [],
+            "min_uptime": "1s",
+            "max_restarts": 16,
+            "restart_delay": null,
+            "exp_backoff_restart_delay": "100",
+            "kill_signal": null,
+            "kill_timeout": "1600",
+            "shutdown_with_message": false,
+            "listen_timeout": "3s",
+            "graceful_timeout": "8s",
+            "action_timeout": "3s",
+            "max_memory": null,
+            "watch": false,
+            "ignore_watch": [],
+            "watch_delay": null,
+            "cron_restart": null,
+            "fold": null,
+            "depends_on": [],
+            "user": null,
+            "group": null,
+            "out_file": null,
+            "err_file": null,
+            "merge_logs": false,
+            "level_rules": [],
+            "channel": false,
+            "stdin": false,
+            "wait_ready": false,
+            "reuse_port": false,
+            "readiness_probe": null,
+            "liveness_probe": null,
+            "watch_options": [],
+            "cron_timezone": null
+          },
+          "declared": [
+            "name",
+            "script"
+          ],
+          "declared_env": [
+            "DATABASE_URL"
+          ]
+        }
+      ],
+      "reset": "policy"
+    }
+  },
+  {
+    "id": 27,
+    "deadline_ms": null,
+    "body": {
+      "kind": "add",
+      "apps": [
+        {
+          "name": "web",
+          "script": "./srv",
+          "args": [],
+          "cwd": null,
+          "interpreter": null,
+          "env": {},
+          "environment": null,
+          "instances": 1,
+          "autorestart": true,
+          "autostart": true,
+          "stop_exit_codes": [],
+          "min_uptime": "1s",
+          "max_restarts": 16,
+          "restart_delay": null,
+          "exp_backoff_restart_delay": "100",
+          "kill_signal": null,
+          "kill_timeout": "1600",
+          "shutdown_with_message": false,
+          "listen_timeout": "3s",
+          "graceful_timeout": "8s",
+          "action_timeout": "3s",
+          "max_memory": null,
+          "watch": false,
+          "ignore_watch": [],
+          "watch_delay": null,
+          "cron_restart": null,
+          "fold": null,
+          "depends_on": [],
+          "user": null,
+          "group": null,
+          "out_file": null,
+          "err_file": null,
+          "merge_logs": false,
+          "level_rules": [],
+          "channel": false,
+          "stdin": false,
+          "wait_ready": false,
+          "reuse_port": false,
+          "readiness_probe": null,
+          "liveness_probe": null,
+          "watch_options": [],
+          "cron_timezone": null
+        }
+      ]
+    }
+  },
+  {
+    "id": 28,
+    "deadline_ms": null,
+    "body": {
+      "kind": "sheep_config",
+      "name": "web"
+    }
+  },
+  {
+    "id": 29,
+    "deadline_ms": null,
+    "body": {
+      "kind": "set_sheep_env",
+      "name": "web",
+      "key": "DATABASE_URL",
+      "value": "postgres://localhost/app"
+    }
+  },
+  {
+    "id": 30,
+    "deadline_ms": null,
+    "body": {
+      "kind": "set_sheep_field",
+      "name": "web",
+      "key": "max_restarts",
+      "value": 32
+    }
+  },
+  {
+    "id": 31,
+    "deadline_ms": null,
+    "body": {
+      "kind": "set_dog_config",
+      "name": "bark",
+      "toml": "debounce = \"30s\"\n"
+    }
+  },
+  {
+    "id": 32,
+    "deadline_ms": null,
+    "body": {
+      "kind": "put_secrets",
+      "namespace": "vercel",
+      "environment": "production",
+      "entries": {
+        "API_KEY": "sk_live_placeholder"
+      }
+    }
+  },
+  {
+    "id": 33,
+    "deadline_ms": null,
+    "body": {
+      "kind": "set_sheep_env_batch",
+      "name": "web",
+      "entries": {
+        "API_KEY": "sk_live_placeholder",
+        "DATABASE_URL": "postgres://localhost/app"
+      },
+      "force": true,
+      "dry_run": true
+    }
+  },
+  {
+    "id": 34,
+    "deadline_ms": null,
+    "body": {
+      "kind": "host_usage"
+    }
+  }
+]

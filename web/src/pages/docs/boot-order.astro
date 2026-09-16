@@ -5,11 +5,16 @@
  * crates/shep-core/src/config/app.rs for the depends_on field itself and
  * crates/shep-core/src/config/daemon.rs for boot_first_dogs). Every
  * transcript below was run against target/release/shep on 2026-09-06.
+ *
+ * Restructured 2026-09-14 per docs/writing-plans/plans/2026-09-14-docs-the-rest.md,
+ * Task 3/4: a short version up top; the two failure-case sections moved
+ * behind <details>.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 
 interface GraphRow {
   problem: string;
@@ -53,9 +58,6 @@ ID  NAME  STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM   UPTIME  FOLD  SMIT
 ---
 
 <DocsLayout
-  title="Boot order"
-  description="depends_on names what a sheep waits for. shep sorts the flock into stages and starts them in order."
-  crumb="Concepts / Boot order"
   activeSlug="boot-order"
 >
   <article>
@@ -69,7 +71,14 @@ ID  NAME  STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM   UPTIME  FOLD  SMIT
       waiting for a database waits for the database instead.
     </p>
 
-    <h2>Naming a dependency</h2>
+    <ShortVersion>
+      <CodeBlock label="Flockfile.toml">{`[[app]]
+name       = "api"
+script     = "./api"
+depends_on = ["db"]`}</CodeBlock>
+    </ShortVersion>
+
+    <h2 id="naming-a-dependency">Naming a dependency</h2>
     <p>
       <code>depends_on</code> is a list of other sheep, or of dogs. It goes
       in the app's own Flockfile, because a requirement the app has belongs
@@ -102,7 +111,7 @@ depends_on = ["api"]`}</CodeBlock>
       waits for every instance of it.
     </p>
 
-    <h2>What ready means, and what it costs</h2>
+    <h2 id="what-ready-means-and-what-it-costs">What ready means, and what it costs</h2>
     <p>
       A stage advances when its members have settled. An app with{" "}
       <code>wait_ready</code> or a <code>readiness_probe</code> settles the
@@ -142,7 +151,7 @@ depends_on = ["db"]`}</CodeBlock>
       the app's own startup time or the probe buys you nothing at boot.
     </Callout>
 
-    <h2>Dogs run last, unless you move one</h2>
+    <h2 id="dogs-run-last-unless-you-move-one">Dogs run last, unless you move one</h2>
     <p>
       A dog is a node in the same graph, and by default it lands in a final
       stage after every sheep. That is the right place for the metrics dog:
@@ -168,8 +177,7 @@ stage 2  web
       shepherd spawns dogs in two groups, the promoted ones before the
       restore and the rest after it, and neither group sits at a stage
       boundary. A sheep depending on an unpromoted dog is warned about and
-      started anyway. <code>boot_first_dogs</code> is the lever that
-      actually reorders one.
+      started anyway.
     </p>
     <Callout variant="careful">
       Promotion moves the spawn, not the link. The shepherd binds its socket
@@ -181,8 +189,9 @@ stage 2  web
       seconds.
     </Callout>
 
-    <h2>When the graph is wrong</h2>
-    <p>
+    <details>
+      <summary><h2 id="when-the-graph-is-wrong">When the graph is wrong</h2></summary>
+      <p>
       What happens depends on who is watching. An operator typing{" "}
       <code>shep start</code> or <code>shep add</code> is there to fix a
       typo. A machine rebooting at 4am is not, and stranding its whole flock
@@ -239,8 +248,9 @@ error[invalid_config]: the daemon reported InvalidConfig: dependency cycle: api 
       explicit statement in one app's own config is not overridden by a
       field in another app's file.
     </Callout>
+    </details>
 
-    <h2>Shutdown runs backwards</h2>
+    <h2 id="shutdown-runs-backwards">Shutdown runs backwards</h2>
     <p>
       A shepherd going down walks the stages in reverse, so{" "}
       <code>web</code> gets its SIGTERM, then <code>api</code>, then{" "}
@@ -302,8 +312,9 @@ error[invalid_config]: the daemon reported InvalidConfig: dependency cycle: api 
       back errored.
     </p>
 
-    <h2>What a staged start leaves behind</h2>
-    <p>
+    <details>
+      <summary><h2 id="what-a-staged-start-leaves-behind">What a staged start leaves behind</h2></summary>
+      <p>
       Checks shep can make in advance still refuse a batch before anything
       is registered. Once spawning has begun there is nothing to make them
       against: stage 0 is running by the time stage 1 proves unstartable,
@@ -317,8 +328,9 @@ error[spawn_failed]: the daemon reported SpawnFailed: nothing in this batch was 
       <code>shep stop db</code> if you want it down. Nothing after the
       failing stage is attempted in that same invocation.
     </p>
+    </details>
 
-    <h2>Two things this does not do</h2>
+    <h2 id="two-things-this-does-not-do">Two things this does not do</h2>
     <p>
       Ordering applies to a batch. <code>shep start api</code> on its own
       starts <code>api</code>, immediately, whatever it depends on, because
@@ -331,7 +343,7 @@ error[spawn_failed]: the daemon reported SpawnFailed: nothing in this batch was 
       Boot ordering has no opinion about it.
     </p>
 
-    <h2>Reading it back</h2>
+    <h2 id="reading-it-back">Reading it back</h2>
     <p>
       <code>shep describe</code> lists a sheep's dependencies, which is what
       answers "why did <code>web</code> start six seconds in":
@@ -349,61 +361,10 @@ Depends on for web:
       <code>--format json</code> every sheep carries a{" "}
       <code>depends_on</code> array.
     </p>
-
-    <h2>Where to go next</h2>
-    <div class="next-grid">
-      <a href="/docs/first-flockfile" class="next-card">
-        <div class="next-title">Your first Flockfile →</div>
-        <div class="next-body">
-          <code>depends_on</code> in the full field reference, next to{" "}
-          <code>listen_timeout</code> and <code>readiness_probe</code>.
-        </div>
-      </a>
-      <a href="/docs/dogs" class="next-card">
-        <div class="next-title">Dogs →</div>
-        <div class="next-body">
-          What a dog is, how <code>shep enable</code> writes one into{" "}
-          <code>shep.toml</code>, and where <code>boot_first_dogs</code>{" "}
-          sits.
-        </div>
-      </a>
-    </div>
-  </article>
+</article>
 </DocsLayout>
 
 <style>
-  h1 {
-    font-size: clamp(36px, 4.6vw, 56px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 27px;
-    letter-spacing: -0.03em;
-    margin: 40px 0 12px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 30px;
-    text-wrap: pretty;
-  }
-
-  p {
-    font-size: 16.5px;
-    line-height: 1.65;
-    color: var(--ink-2);
-    margin: 0 0 18px;
-  }
-
   p.fine {
     font-size: 14.5px;
     color: var(--ink-3);
@@ -417,122 +378,11 @@ Depends on for web:
     padding: 1px 6px;
   }
 
+  /* Column widths only. Everything else is the shared `.field-table`
+     block in docs-page.css. */
   .field-table {
-    border: 3px solid var(--line);
-    border-radius: 16px;
-    overflow: hidden;
+    --field-cols: minmax(0, 190px) minmax(0, 1fr) minmax(0, 1fr);
     margin: 0 0 26px;
   }
 
-  .field-table .row {
-    display: grid;
-    grid-template-columns: minmax(0, 190px) minmax(0, 1fr) minmax(0, 1fr);
-    gap: 14px;
-    padding: 11px 18px;
-    align-items: start;
-  }
-
-  .field-table .row.header {
-    background: var(--ink);
-    padding: 10px 18px;
-  }
-
-  .field-table .row:not(.header) {
-    border-bottom: 2px solid var(--hair);
-    background: var(--paper-2);
-  }
-
-  .field-table .row:last-child {
-    border-bottom: none;
-  }
-
-  .field-table .row.header span {
-    font-family: "Space Mono", monospace;
-    font-size: 10.5px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--ink-3);
-  }
-
-  .field-table .row.header .col-name {
-    color: var(--butter);
-  }
-
-  .col-name {
-    font-size: 13.5px;
-    line-height: 1.5;
-    color: var(--ink);
-  }
-
-  .col-does {
-    font-size: 13.5px;
-    line-height: 1.5;
-    color: var(--ink);
-  }
-
-  @media (max-width: 640px) {
-    .field-table .row {
-      grid-template-columns: 1fr;
-      gap: 5px;
-    }
-
-    /* The header row cannot survive one column, but this table's whole
-       point is the contrast between the two answers, so each cell carries
-       its own heading instead of losing it. */
-    .field-table .row.header {
-      display: none;
-    }
-
-    .field-table .col-does[data-label]::before {
-      content: attr(data-label);
-      display: block;
-      font-size: 0.75rem;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      opacity: 0.62;
-      margin-bottom: 2px;
-    }
-  }
-
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 8px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
-  }
-
-  .next-body code {
-    font-size: 0.85em;
-  }
 </style>

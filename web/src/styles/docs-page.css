@@ -1,0 +1,337 @@
+/*
+ * Shared chrome for every page under /docs, imported by DocsLayout.astro.
+ *
+ * These rules lived in 24 separate page <style> blocks until 2026-09-14, by
+ * which point h2 alone had drifted into nine variants (26px/44/14 through
+ * 29px/40/18) and output.astro had lost its copy entirely. global.css sets
+ * h1, h2, h3 { margin: 0 }, so a page with no local rule rendered its
+ * section headings at the browser default with no gap above them, which
+ * astro build and astro check are both blind to.
+ *
+ * Every value below is the one the majority of pages already used, with one
+ * deliberate change: h2's top margin goes from 40px to 48px, which is the
+ * extra air between sections that the readability pass asked for.
+ *
+ * Scoped to `.docs-shell main` rather than left bare so it cannot reach the
+ * landing page, and so it outranks any page-scoped leftover during the
+ * migration.
+ */
+
+.docs-shell main h1 {
+  font-size: clamp(36px, 4.6vw, 56px);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  margin: 0 0 18px;
+}
+
+.docs-shell main h2 {
+  font-size: 29px;
+  letter-spacing: -0.03em;
+  margin: 48px 0 10px;
+}
+
+.docs-shell main h2:first-of-type {
+  margin-top: 0;
+}
+
+.docs-shell main h3 {
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+  margin: 28px 0 8px;
+}
+
+.docs-shell main p {
+  font-size: 16.5px;
+  line-height: 1.65;
+  color: var(--ink-2);
+  margin: 0 0 18px;
+}
+
+.docs-shell main .lede {
+  font-size: 19px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin: 0 0 30px;
+  text-wrap: pretty;
+}
+
+.docs-shell main .fine {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-3);
+  margin: -8px 0 30px;
+}
+
+/*
+ * Anchor affordance. The id is what makes a section linkable; this is only
+ * the visible handle. The marker is a real <a> injected by DocsLayout rather
+ * than a ::after pseudo-element, because a pseudo-element cannot be clicked
+ * or focused. Without JavaScript the ids still resolve, the handle is just
+ * not drawn.
+ */
+.docs-shell main h2[id],
+.docs-shell main h3[id] {
+  position: relative;
+}
+
+.docs-shell main .heading-anchor {
+  position: absolute;
+  left: -0.85em;
+  opacity: 0;
+  text-decoration: none;
+  color: var(--ink-3);
+  font-weight: 400;
+  border: 0;
+}
+
+.docs-shell main .heading-anchor::before {
+  content: "#";
+}
+
+.docs-shell main h2[id]:hover .heading-anchor,
+.docs-shell main h3[id]:hover .heading-anchor,
+.docs-shell main .heading-anchor:focus-visible {
+  opacity: 1;
+}
+
+@media (max-width: 860px) {
+  /* No hover on a phone, and the negative offset would sit off-screen. */
+  .docs-shell main .heading-anchor {
+    display: none;
+  }
+}
+
+/* The short version box supplies its own bottom padding, so the last
+   paragraph inside it must not add another 18px under itself. */
+.docs-shell main .sv-body > :last-child {
+  margin-bottom: 14px;
+}
+
+/*
+ * A collapsed section keeps its heading, inside the <summary>.
+ *
+ * Putting the id on the <details> instead looks equivalent and is not:
+ * the section leaves the document outline, leaves the anchor check's
+ * reach, loses its hover anchor, and the deep link stops working. Measured
+ * on /docs/startup#openrc-and-the-bsds, which neither scrolled nor opened.
+ *
+ * <summary> accepts one heading element by spec. The heading needs the
+ * rules above undone so it sits on the disclosure marker rather than
+ * starting its own block 48px down, and this has to live here rather than
+ * in a page's own <style> because `.docs-shell main h2` outranks a
+ * page-scoped `details summary h2`.
+ */
+.docs-shell main summary > h2,
+.docs-shell main summary > h3 {
+  display: inline;
+  font-family: "Space Mono", monospace;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--ink);
+  margin: 0;
+}
+
+.docs-shell main summary {
+  cursor: pointer;
+}
+
+.docs-shell main details {
+  margin: 0 0 34px;
+}
+
+/*
+ * The two-column definition table, used by folds, output, overrides and
+ * secrets.
+ *
+ * Three pages each declared an identical copy and folds declared none, so
+ * its table rendered unstyled: no border, no padding, no monospace term
+ * column. That is the same fault the page chrome had before this file
+ * existed, in a smaller shape, and it was live rather than theoretical.
+ *
+ * Every row selector names `.rows` as its parent. `.row` on its own is a
+ * class shared with eight other tables on the site, and `.docs-shell main
+ * .row` outranks the page-scoped `.row` those pages declare, so a bare
+ * selector here reached tables it knows nothing about. The lexicon on
+ * /docs/terminology has four cells per row and was being laid out in the
+ * two columns below.
+ */
+.docs-shell main .rows {
+  border: 3px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  margin: 0 0 30px;
+}
+
+.docs-shell main .rows > .row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2.4fr);
+  gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 2px solid var(--line);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+.docs-shell main .rows > .row:last-child {
+  border-bottom: none;
+}
+
+.docs-shell main .rows > .row > span:first-child {
+  font-family: "Space Mono", monospace;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/*
+ * The two-column table with a header row, used by dogs and writing-a-dog.
+ *
+ * It lived in dogs.astro's scoped block, where Astro pinned every selector
+ * to that one page. writing-a-dog renders four of these and matched none of
+ * them: no border, no grid, no header band, `display: block` on every row.
+ * Distinct from `.rows` above, which has no header row and a wider second
+ * column.
+ */
+.docs-shell main .metrics-table {
+  border: 3px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  margin: 0 0 20px;
+}
+
+.docs-shell main .metrics-table .row {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+  gap: 14px;
+  padding: 11px 18px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.docs-shell main .metrics-table .row:not(:last-child) {
+  border-bottom: 2px solid var(--hair);
+}
+
+.docs-shell main .metrics-table .row.header {
+  background: var(--paper-2);
+  font-family: "Space Mono", monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 700;
+}
+
+.docs-shell main .metrics-table .row:not(.header) span:last-child {
+  color: var(--ink-2);
+}
+
+.docs-shell main .metrics-table code {
+  font-family: "Space Mono", monospace;
+  font-size: 13px;
+}
+
+/*
+ * The three-column field table: a name, and two answers about it. Used by
+ * boot-order, first-flockfile and examples.
+ *
+ * Two pages each declared an identical copy and examples declared none, so
+ * its "What each one demonstrates" table rendered as a run of unstyled
+ * text: `display: block`, three cells per row running together into one
+ * line. It had been borrowing `.docs-shell main .row` by accident, which
+ * gave it two columns for its three cells, and lost even that when those
+ * rules were scoped to `.rows`. Third time this exact shape has bitten on
+ * this branch, after `.metrics-table` and the terminology lexicon.
+ *
+ * Column widths are the one thing that differs per page, so they come
+ * through `--field-cols` rather than a selector. A page-scoped
+ * `.field-table .row` compiles to three classes and no element, which loses
+ * to `.docs-shell main .field-table .row`; a custom property set on the
+ * container just inherits.
+ */
+.docs-shell main .field-table {
+  border: 3px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.docs-shell main .field-table .row {
+  display: grid;
+  grid-template-columns: var(
+    --field-cols,
+    minmax(0, 190px) minmax(0, 1fr) minmax(0, 1fr)
+  );
+  gap: 14px;
+  padding: 11px 18px;
+  align-items: start;
+}
+
+.docs-shell main .field-table .row.header {
+  background: var(--ink);
+  padding: 10px 18px;
+}
+
+.docs-shell main .field-table .row:not(.header) {
+  border-bottom: 2px solid var(--hair);
+  background: var(--paper-2);
+}
+
+.docs-shell main .field-table .row:last-child {
+  border-bottom: none;
+}
+
+.docs-shell main .field-table .row.header span {
+  font-family: "Space Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.docs-shell main .field-table .row.header .col-name {
+  color: var(--butter);
+}
+
+.docs-shell main .col-name,
+.docs-shell main .col-does {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+@media (max-width: 640px) {
+  .docs-shell main .field-table .row,
+  .docs-shell main .metrics-table .row {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  /* The header row cannot survive one column, so each cell carries its own
+     heading instead of losing it.
+
+     Named through the table class rather than as a bare `.row.header`, for
+     the reason from-pm2 records beside its own copy: a page that scopes
+     `.metrics-table .row` gets four class-weight selectors out of Astro and
+     a bare rule here only has three, so the bare version loses and the
+     header stays on screen. */
+  .docs-shell main .field-table .row.header,
+  .docs-shell main .metrics-table .row.header {
+    display: none;
+  }
+
+  /* Any stacked cell, in any of these tables, not just the two column
+     classes the field tables happen to use. from-pm2's pm2-to-shep mapping
+     is a pair of bare spans, and without this it stacked as two values with
+     nothing saying which side was which. */
+  .docs-shell main .row > [data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.62;
+    margin-bottom: 2px;
+  }
+}

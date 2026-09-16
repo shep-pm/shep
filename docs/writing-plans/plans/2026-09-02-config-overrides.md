@@ -1594,7 +1594,7 @@ git commit -m "feat: a CFG column and a describe section, so pending config is v
 
 **Files:**
 - Modify: `web/src/pages/docs/first-flockfile.astro`, `web/src/pages/docs/getting-started.astro`
-- Create: `web/src/pages/docs/overrides.astro`, and its entry in `web/src/data/docsNav.ts`
+- Create: `web/src/pages/docs/overrides.astro`, and its entry in `web/src/data/docs-nav.ts`
 - Modify: `docs/decisions.md`, `docs/specs/deferred.md`, `CLAUDE.md`
 - Regenerate: `web/src/data/cli-reference.generated.txt`
 

@@ -221,7 +221,7 @@ pub(crate) fn openrc_script(spec: &UnitSpec) -> String {
 /// `start_postcmd` polls the shepherd's own control socket, since
 /// `daemon(8)` reports the service started as soon as it forks, before
 /// the muster restore runs. `spec.user` must already pass
-/// [`super::is_rc_safe_user`]: `name`, `rcvar` and `shep_<user>_*` are
+/// [`super::privilege_check::is_rc_safe_user`]: `name`, `rcvar` and `shep_<user>_*` are
 /// shell identifiers, interpolated raw; any other single-shell value
 /// uses [`sh_double_quoted`] alone.
 ///
@@ -287,7 +287,7 @@ pub(crate) fn freebsd_rc_script(spec: &UnitSpec) -> String {
 /// Renders the OpenBSD `rc.d` script, `/etc/rc.d/shep_<user>`.
 ///
 /// Like [`freebsd_rc_script`], `spec.user` must already pass
-/// [`super::is_rc_safe_user`] and is interpolated raw as an identifier.
+/// [`super::privilege_check::is_rc_safe_user`] and is interpolated raw as an identifier.
 /// OpenBSD's `rc.subr(8)` has no post-start hook: `rc_pre` runs before
 /// `start`, `rc_post` after *stop*; `shep --home <home> flock` is the
 /// manual readiness check instead.

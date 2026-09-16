@@ -1868,9 +1868,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.43"
+version = "0.23.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0283386ce02abc0151e1761d08802dfe86c173b0b494af5cbc086574e453da06"
+checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
 dependencies = [
  "once_cell",
  "ring",
@@ -2068,7 +2068,7 @@ dependencies = [
 
 [[package]]
 name = "shep"
-version = "0.7.4"
+version = "0.8.2"
 dependencies = [
  "anstyle",
  "assert_cmd",
@@ -2108,7 +2108,7 @@ dependencies = [
 
 [[package]]
 name = "shep-channel"
-version = "0.7.4"
+version = "0.8.2"
 dependencies = [
  "command-fds",
  "serde",
@@ -2119,11 +2119,11 @@ dependencies = [
 
 [[package]]
 name = "shep-cli"
-version = "0.7.4"
+version = "0.8.2"
 
 [[package]]
 name = "shep-client"
-version = "0.7.4"
+version = "0.8.2"
 dependencies = [
  "futures-util",
  "nix 0.29.0",
@@ -2139,7 +2139,7 @@ dependencies = [
 
 [[package]]
 name = "shep-core"
-version = "0.7.4"
+version = "0.8.2"
 dependencies = [
  "annotate-snippets",
  "anstyle",
@@ -2172,7 +2172,7 @@ dependencies = [
 
 [[package]]
 name = "shep-daemon"
-version = "0.7.4"
+version = "0.8.2"
 dependencies = [
  "bytes",
  "chrono",
@@ -2202,7 +2202,7 @@ dependencies = [
 
 [[package]]
 name = "shep-examples"
-version = "0.7.4"
+version = "0.8.2"
 dependencies = [
  "nix 0.29.0",
  "shep-channel",
@@ -2210,7 +2210,7 @@ dependencies = [
 
 [[package]]
 name = "shep-macros"
-version = "0.7.4"
+version = "0.8.2"
 dependencies = [
  "proc-macro2",
  "quote 1.0.47",

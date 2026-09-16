@@ -8,7 +8,7 @@
 #   ./web/scripts/generate-cli-reference.sh
 #
 # Re-run whenever a verb, alias, or flag changes in crates/shep-cli/src/cli.rs.
-# A stale copy is not a build failure: `web/src/data/cliReference.ts` parses
+# A stale copy is not a build failure: `web/src/data/cli-reference.ts` parses
 # it at Astro build time, so `git diff` after running is the check.
 
 set -euo pipefail
@@ -60,7 +60,7 @@ VERBS=(
 
 {
   # No version line here: the reference page reads the workspace version
-  # from Cargo.toml at Astro build time (web/src/data/workspaceVersion.ts),
+  # from Cargo.toml at Astro build time (web/src/data/workspace-version.ts),
   # so what is committed here changes only when the CLI surface itself does.
   echo "@@TOPLEVEL@@"
   shep --help

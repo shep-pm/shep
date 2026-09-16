@@ -49,7 +49,7 @@ pub fn scale_top(peak: f64, floor: f64) -> f64 {
 /// and a filter set, neither of which is a value the pane withholds; and a
 /// [`RowKey`] is a bare integer.
 ///
-/// The left column ([`super::view::sheep::draw_column`]) is the only
+/// The left column (`view::sheep::draw_column`) is the only
 /// scroller a sheep pane owns today: the two charts have no cursor, and the
 /// feed is [`BleatsPane`]'s own. `Viewport` counts lines rather than data
 /// rows here, since a group header costs a blank, a rule and a label that

@@ -16,6 +16,7 @@ import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 
 const hupDemo = `$ shep signal web HUP
 ID  NAME  OUTCOME    DETAIL
@@ -73,9 +74,6 @@ ID  NAME    OUTCOME   DETAIL
 ---
 
 <DocsLayout
-  title="Talking to a sheep"
-  description="Reaching an app that is already running: a unix signal, a line on its stdin, or a named action over the shepherd channel. None of the three restarts it, though a signal it does not handle can still kill it."
-  crumb="Concepts / Talking to a sheep"
   activeSlug="talking-to-a-sheep"
 >
   <article>
@@ -90,7 +88,19 @@ ID  NAME    OUTCOME   DETAIL
       replace the process. This page is the three verbs that don't.
     </p>
 
-    <h2>Signals</h2>
+    <ShortVersion>
+      <p>
+        <code>shep signal &lt;selector&gt; &lt;name&gt;</code> sends a real
+        unix signal to a sheep's own process, nothing else.{" "}
+        <code>shep whisper &lt;selector&gt; &lt;line&gt;</code> writes one
+        line to its stdin, for an app that set <code>stdin = true</code>.{" "}
+        <code>shep trigger &lt;selector&gt; &lt;action&gt;</code> sends a
+        named action over the shepherd channel and reports what the app
+        answered.
+      </p>
+    </ShortVersion>
+
+    <h2 id="signals">Signals</h2>
     <VerbSignature verb="signal" usage="shep signal <selector> <signal>">
       <p>
         Delivers one signal to each matched sheep's <strong>own</strong>{" "}
@@ -102,7 +112,7 @@ ID  NAME    OUTCOME   DETAIL
       </p>
     </VerbSignature>
 
-    <h2>A config change is not a binary upgrade</h2>
+    <h2 id="a-config-change-is-not-a-binary-upgrade">A config change is not a binary upgrade</h2>
     <p>
       shep prices those two identically, and your app almost certainly does
       not. Replacing a process throws away everything it had built up in
@@ -126,14 +136,12 @@ ID  NAME    OUTCOME   DETAIL
     <p>
       Only the application can make the second one true. shep delivers the
       signal and reports that it was delivered; what <code>SIGHUP</code>{" "}
-      means is the app's convention, though a widely kept one. Server
-      software has treated it as "re-read your configuration" for decades,
-      and plenty of application frameworks and long-running daemons do the
-      same. Here is a sheep that traps it, saying so in its own output:
+      means is the app's convention, though a widely kept one. Here is a
+      sheep that traps it, saying so in its own output:
     </p>
     <CodeBlock>{hupDemo}</CodeBlock>
 
-    <h2>The nine names</h2>
+    <h2 id="the-nine-names">The nine names</h2>
     <p>
       <code>SIGHUP</code>, <code>SIGINT</code>, <code>SIGQUIT</code>,{" "}
       <code>SIGTERM</code>, <code>SIGUSR1</code>, <code>SIGUSR2</code>,{" "}
@@ -187,7 +195,7 @@ ID  NAME    OUTCOME   DETAIL
       <code>SIGUSR2</code>.
     </p>
 
-    <h2>Which sheep the selector reaches</h2>
+    <h2 id="which-sheep-the-selector-reaches">Which sheep the selector reaches</h2>
     <p>
       The same grammar every other verb takes: a name, a numeric id,{" "}
       <code>name:slot</code> for one instance of a clustered app, a glob, a{" "}
@@ -211,7 +219,7 @@ ID  NAME    OUTCOME   DETAIL
       silent refusal with nowhere to explain itself.
     </p>
 
-    <h2>What the rows say, and what the exit code says</h2>
+    <h2 id="what-the-rows-say-and-what-the-exit-code-says">What the rows say, and what the exit code says</h2>
     <p>
       Three outcomes per matched sheep. <code>delivered</code>: the kernel
       accepted the signal for that pid. <code>not_running</code>: the sheep
@@ -231,7 +239,7 @@ ID  NAME    OUTCOME   DETAIL
       registered sheep at all.
     </p>
 
-    <h2>What it is not</h2>
+    <h2 id="what-it-is-not">What it is not</h2>
     <p>
       <code>shep signal &lt;name&gt; TERM</code> is not{" "}
       <code>shep stop</code>. A stop runs the ladder: the configured{" "}
@@ -259,7 +267,7 @@ ID  NAME    OUTCOME   DETAIL
       while reading as success.
     </Callout>
 
-    <h2>A line on its stdin</h2>
+    <h2 id="a-line-on-its-stdin">A line on its stdin</h2>
     <VerbSignature
       verb="whisper"
       aliases={["sendline"]}
@@ -301,70 +309,20 @@ ID  NAME    OUTCOME   DETAIL
       second command rather than a repeat of the first.
     </Callout>
 
-    <h2>A named action</h2>
+    <h2 id="a-named-action">A named action</h2>
     <p>
       The third way in is <code>shep trigger</code>, which sends an action
       name and optional parameters over the sheep's shepherd channel and
       reports what the app answered. It is the only one of the three where
       the app talks back, and it needs the channel open:{" "}
       <code>channel = true</code>, or either of the two fields that imply it.
-      It has a page to itself.
+      It has a page to itself:{" "}
+      <a href="/docs/shepherd-channel">the shepherd channel</a>.
     </p>
-
-    <h2>Where to go next</h2>
-
-    <div class="next-grid">
-      <a href="/docs/shepherd-channel" class="next-card">
-        <div class="next-title">The shepherd channel →</div>
-        <div class="next-body">
-          <code>shep trigger</code>, the fd-3 pipe it speaks over, and what
-          an app has to answer for a reply to come back.
-        </div>
-      </a>
-      <a href="/docs/cli" class="next-card">
-        <div class="next-title">CLI reference →</div>
-        <div class="next-body">
-          Every flag on <code>signal</code>, <code>whisper</code> and{" "}
-          <code>trigger</code>, generated from the binary's own help.
-        </div>
-      </a>
-    </div>
-  </article>
+</article>
 </DocsLayout>
 
 <style>
-  h1 {
-    font-size: clamp(36px, 4.6vw, 56px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 29px;
-    letter-spacing: -0.03em;
-    margin: 40px 0 8px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 30px;
-    text-wrap: pretty;
-  }
-
-  p {
-    font-size: 16.5px;
-    line-height: 1.65;
-    color: var(--ink-2);
-    margin: 0 0 18px;
-  }
-
   ul {
     font-size: 16.5px;
     line-height: 1.65;
@@ -377,48 +335,4 @@ ID  NAME    OUTCOME   DETAIL
     margin-bottom: 8px;
   }
 
-  .fine {
-    font-size: 15px;
-    line-height: 1.6;
-    color: var(--ink-3);
-    margin: -8px 0 30px;
-  }
-
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 8px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
-  }
 </style>

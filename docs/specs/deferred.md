@@ -724,67 +724,28 @@ field would leave one case in a different style from seven siblings and barely
 reduce the risk, since the exposure is the whole blob rather than any one
 key.
 
-### The bark dog still restarts once per reload -- open, 2026-08-31
+### ~~The bark dog still restarts once per reload~~ -- done, 2026-09-13
 
-Phase 3 carries every dog across the handover with no restart, and the
-metrics dog is measured doing exactly that. **Bark is not**, and it is the
-one thing G7 asks for that phase 3 did not deliver.
+Bark now re-subscribes across a handover instead of exiting, and both dogs
+exit when their shepherd is genuinely gone. Measured on one machine with
+the same `dogs.toml` either way: the base binary took bark from `restarts
+0` to `restarts 3` across three `shep daemon reload` runs, moving its pid
+each time, while this change held bark at pid 26504 and `restarts 0` across
+ten. A `SIGKILL` to the shepherd then ended both dogs after 5.4 seconds
+rather than instantly or never.
 
-The mechanism, from task 1's measurement: bark's `EventStream` belongs to one
-connection generation, so when that connection dies the stream ends,
-`run_loop`'s `None` arm breaks the select loop, the dog exits 0, and
-`autorestart` replaces it. Measured across two reloads: pid moving each time,
-`restarts` 25 -> 26 -> 27, `online` after every one, while metrics held its
-pid at `restarts 0`.
+What unblocked it was the ruling this entry was waiting on, and it applies
+to every dog rather than to bark: **a dog that loses its shepherd waits a
+bounded time for a successor, then exits.** A reload is not losing your
+shepherd, so the wait is what separates the two. The budget is
+`DOG_SILENCE_BUDGET`, and `docs/dogs.md` carries the contract for
+third-party dogs. The reasoning is in `docs/decisions.md` under "A dog
+whose shepherd is gone exits".
 
-**What it costs, and what it does not.** The count is a false reading on the
-one column an operator uses to decide whether a dog is unhealthy: twenty
-reloads leave a perfectly healthy dog reporting `restarts 20`. It does NOT
-risk an outage -- `install_adopted` gives every adopted entry a fresh
-`RestartBudget`, so reloads cannot exhaust one -- and it is loud rather than
-silent, which is the whole difference from the defect this phase was built
-to fix. Bark also loses `rules::Rules`' per-subject debounce state across the
-restart, so a sheep already alerted on can be alerted on twice.
-
-**The fix is not "re-arm the stream inside the client".** Task 1 declined
-that and the argument still holds: `ReconnectingClient::subscribe` re-arming
-its own stream would silently swallow the gap between a connection dying and
-the successor accepting a fresh `Subscribe`, and an event stream that hides a
-gap is worse than one that ends.
-
-**The fix belongs in bark, where the gap already has an answer.**
-`run_loop`'s `Some(Err(dropped))` arm reconciles against `ListFlock` the
-moment the bus reports a lag, on the reasoning that a drop carries no
-information about what was lost and the only way to know is to ask the
-shepherd what things look like now. A handover gap is the same class of loss
-and deserves the same answer: re-subscribe, then reconcile. Nothing new is
-invented; the state-based rules and the per-subject debounce are already
-built for a subject seen twice by two routes.
-
-**What stops it being small, and why it is its own task rather than a line
-in phase 3 task 4:**
-
-- `EventSource` needs a `resubscribe`, which means a production adapter
-  holding the `ReconnectingClient` alongside the stream and its topics.
-  `run_bark` moves that client into `ClientFlockSource` today.
-- The adapter has to WAIT for the link to come back before it can subscribe:
-  a `Subscribe` issued against a dead generation fails immediately with
-  `Closed`. `ReconnectingClient` exposes `link()` as a reading, not a future
-  to await, so this needs an API the type does not have.
-- `LinkState::Refused` has to exit rather than retry, so G8's one restart
-  from disk still applies to a bark dog that cannot speak this protocol.
-- **And it needs a ruling on the ORPHANED dog, which is about every dog and
-  not about bark.** Today bark exits when its shepherd goes away for any
-  reason; a dog that re-subscribed instead would linger, and would attach
-  itself to whatever shepherd next binds that socket -- beside that
-  shepherd's
-  own bark dog, double-alerting quietly. The metrics dog already has that
-  hazard through `ReconnectingClient`'s own supervisor, which retries
-  forever, and nobody has ruled on it.
-
-The last of those is the reason this is deferred rather than squeezed in: the
-question is what a dog does when its shepherd is gone, and answering it for
-bark alone would leave two dogs answering it differently for the third time.
+The bound went into the dogs rather than into `ReconnectingClient`: the
+supervisor dies with the process, so once a dog exits there is nothing left
+reconnecting, and what lingers is the dog. shep-client gained only the two
+waits that let a dog impose it.
 
 ### `EXTEND_TIMEOUT_USEC` would remove an operator's readiness homework, open, 2026-09-06
 

@@ -609,7 +609,7 @@ mod tests {
         let headers = ["ID", "NAME", "STATUS", "PID", "FOLD"];
         let rows = vec![vec![
             "0".into(),
-            "zeus-auth".into(),
+            "api-auth".into(),
             "(o.o) online".into(),
             "24963".into(),
             "backend".into(),

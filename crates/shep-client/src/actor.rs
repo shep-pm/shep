@@ -5,8 +5,8 @@
 //! Only the actor touches the transport. That is what lets one
 //! [`Client`](crate::client::Client) be shared across concurrent callers
 //! (`&self`, not `&mut self`) despite owning a single, non-cloneable
-//! [`Frames`](crate::connection::Frames): each caller sends a [`Command`]
-//! and awaits its own [`oneshot`](tokio::sync::oneshot) reply.
+//! [`Frames`]: each caller sends a [`Command`]
+//! and awaits its own [`oneshot`] reply.
 
 use std::collections::HashMap;
 

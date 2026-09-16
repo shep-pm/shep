@@ -1,13 +1,18 @@
 ---
 /*
  * The KV store (docs/kv.md, `shep set/get/unset --help`). Terminal output
- * below was run for real against target/release/shep on 2026-08-16 — see
+ * below was run for real against target/release/shep on 2026-08-16: see
  * this page's PR for the transcript.
+ *
+ * Restructured 2026-09-14 per docs/writing-plans/plans/2026-09-14-docs-the-rest.md,
+ * Task 3: the three verbs, already this page's lead, moved into
+ * <ShortVersion>.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 
 const threeVerbs = `$ shep set bark.cooldown 30s
 $ shep get bark.cooldown
@@ -41,9 +46,6 @@ KEY  VALUE`;
 ---
 
 <DocsLayout
-  title="The KV store"
-  description="Three verbs, a file-locked JSON store, and no shepherd required: for the small stuff that has nowhere else to live."
-  crumb="Concepts / The KV store"
   activeSlug="kv"
 >
   <article>
@@ -59,6 +61,10 @@ KEY  VALUE`;
       primary config path.
     </p>
 
+    <ShortVersion>
+      <CodeBlock>{threeVerbs}</CodeBlock>
+    </ShortVersion>
+
     <Callout variant="note">
       Reaching for this to configure a <em>sheep</em>? Put it in the
       Flockfile. Configuring a <em>dog</em>? Put it under{" "}
@@ -66,8 +72,7 @@ KEY  VALUE`;
       only for what's left after those two.
     </Callout>
 
-    <h2>The three verbs</h2>
-    <CodeBlock>{threeVerbs}</CodeBlock>
+    <h2 id="the-three-verbs">The three verbs</h2>
     <p>
       <code>shep set &lt;key&gt; &lt;value&gt;</code> writes a key, replacing
       whatever was there. <code>shep get &lt;key&gt;</code> prints one value;{" "}
@@ -79,7 +84,7 @@ KEY  VALUE`;
       something different depending on your own store.
     </p>
 
-    <h2>Real output</h2>
+    <h2 id="real-output">Real output</h2>
     <p>Run against a fresh <code>$SHEP_HOME</code>, no shepherd listening:</p>
     <CodeBlock>{realOutput}</CodeBlock>
     <p class="fine">
@@ -90,7 +95,7 @@ KEY  VALUE`;
       "missing."
     </p>
 
-    <h2>The key grammar</h2>
+    <h2 id="the-key-grammar">The key grammar</h2>
     <p>
       A key is <code>[A-Za-z0-9._-]</code>, one to 128 bytes, and can't start
       with a dot. <strong>A dot is part of a name, not a path</strong>:{" "}
@@ -105,7 +110,7 @@ KEY  VALUE`;
       quietly becoming a blob store.
     </p>
 
-    <h2>No shepherd required</h2>
+    <h2 id="no-shepherd-required">No shepherd required</h2>
     <p>
       <code>shep set</code>/<code>get</code>/<code>unset</code> never touch
       the socket: they read and write <code>$SHEP_HOME/kv.json</code>{" "}
@@ -119,7 +124,7 @@ KEY  VALUE`;
       already has every property a socket round trip would have bought it.
     </p>
 
-    <h2>Concurrent writers lose nothing</h2>
+    <h2 id="concurrent-writers-lose-nothing">Concurrent writers lose nothing</h2>
     <p>
       Two <code>shep set</code> invocations racing (two provisioning
       scripts, or an operator and a dog) are serialized by an exclusive
@@ -131,104 +136,5 @@ KEY  VALUE`;
       <code>git add</code> and diff like any other small config file. Mode is{" "}
       <code>0600</code>.
     </p>
-    <h2>Where to go next</h2>
-
-    <div class="next-grid">
-      <a href="/docs/lookout" class="next-card">
-        <div class="next-title">Lookout →</div>
-        <div class="next-body">
-          <code>lookout.allow_control</code> is a KV key: set it with{" "}
-          <code>shep set</code> instead of the <code>--allow-control</code>{" "}
-          flag if you'd rather it stick.
-        </div>
-      </a>
-      <a href="/docs/dogs" class="next-card">
-        <div class="next-title">Dogs →</div>
-        <div class="next-body">
-          Per-dog settings live under <code>[&lt;name&gt;]</code> in{" "}
-          <code>dogs.toml</code>, not here. This page explains where the
-          line falls.
-        </div>
-      </a>
-    </div>
-  </article>
+</article>
 </DocsLayout>
-
-<style>
-  h1 {
-    font-size: clamp(36px, 4.6vw, 56px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 29px;
-    letter-spacing: -0.03em;
-    margin: 40px 0 8px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 30px;
-    text-wrap: pretty;
-  }
-
-  p {
-    font-size: 16.5px;
-    line-height: 1.65;
-    color: var(--ink-2);
-    margin: 0 0 18px;
-  }
-
-  .fine {
-    font-size: 15px;
-    line-height: 1.6;
-    color: var(--ink-3);
-    margin: -8px 0 30px;
-  }
-
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 8px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
-  }
-</style>

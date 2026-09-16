@@ -1,0 +1,913 @@
+---
+source: crates/shep-core/src/protocol/request/response.rs
+expression: replies
+---
+[
+  {
+    "id": 1,
+    "result": {
+      "Ok": {
+        "kind": "pong"
+      }
+    }
+  },
+  {
+    "id": 2,
+    "result": {
+      "Ok": {
+        "kind": "flock",
+        "data": [
+          {
+            "id": 3,
+            "name": "web",
+            "status": "online",
+            "pid": 4242,
+            "restarts": 1,
+            "uptime_ms": 60000,
+            "fold": "backend",
+            "depends_on": [],
+            "out_file": "/home/ada/.shep/logs/web-0-out.log",
+            "err_file": "/home/ada/.shep/logs/web-0-err.log",
+            "cpu_percent": 12.5,
+            "memory_bytes": 50331648,
+            "cpu_ms": null,
+            "dog": null,
+            "lambs": null,
+            "last_exit": {
+              "code": 1,
+              "signal": null
+            },
+            "smit": null,
+            "instance": null,
+            "handshook": null,
+            "dog_stale": null,
+            "max_memory": 536870912,
+            "level_rules": [
+              {
+                "pattern": "\\[ERROR\\]",
+                "level": "error"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": 3,
+    "result": {
+      "Err": {
+        "code": "not_found",
+        "message": "no sheep matches `web`"
+      }
+    }
+  },
+  {
+    "id": 4,
+    "result": {
+      "Ok": {
+        "kind": "triggered",
+        "data": [
+          {
+            "id": 3,
+            "name": "web",
+            "outcome": {
+              "kind": "replied",
+              "body": "ok"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": 5,
+    "result": {
+      "Ok": {
+        "kind": "roll_saved",
+        "data": {
+          "path": "/home/ada/.shep/flock.json",
+          "apps": 2
+        }
+      }
+    }
+  },
+  {
+    "id": 6,
+    "result": {
+      "Ok": {
+        "kind": "flock",
+        "data": [
+          {
+            "id": 7,
+            "name": "otel",
+            "status": "online",
+            "pid": 4242,
+            "restarts": 1,
+            "uptime_ms": 60000,
+            "fold": "backend",
+            "depends_on": [],
+            "out_file": "/home/ada/.shep/logs/web-0-out.log",
+            "err_file": "/home/ada/.shep/logs/web-0-err.log",
+            "cpu_percent": 12.5,
+            "memory_bytes": 50331648,
+            "cpu_ms": null,
+            "dog": {
+              "kind": "adopted",
+              "path": "/usr/local/bin/shep-otel"
+            },
+            "lambs": null,
+            "last_exit": {
+              "code": 1,
+              "signal": null
+            },
+            "smit": null,
+            "instance": null,
+            "handshook": null,
+            "dog_stale": null,
+            "max_memory": 536870912,
+            "level_rules": [
+              {
+                "pattern": "\\[ERROR\\]",
+                "level": "error"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": 7,
+    "result": {
+      "Ok": {
+        "kind": "dog_section",
+        "data": {
+          "toml": "port = 9615\n"
+        }
+      }
+    }
+  },
+  {
+    "id": 8,
+    "result": {
+      "Ok": {
+        "kind": "dog_started",
+        "data": {
+          "id": 4,
+          "name": "metrics",
+          "status": "online",
+          "pid": 4242,
+          "restarts": 1,
+          "uptime_ms": 60000,
+          "fold": "backend",
+          "depends_on": [],
+          "out_file": "/home/ada/.shep/logs/web-0-out.log",
+          "err_file": "/home/ada/.shep/logs/web-0-err.log",
+          "cpu_percent": 12.5,
+          "memory_bytes": 50331648,
+          "cpu_ms": null,
+          "dog": {
+            "kind": "built_in"
+          },
+          "lambs": null,
+          "last_exit": {
+            "code": 1,
+            "signal": null
+          },
+          "smit": null,
+          "instance": null,
+          "handshook": null,
+          "dog_stale": null,
+          "max_memory": 536870912,
+          "level_rules": [
+            {
+              "pattern": "\\[ERROR\\]",
+              "level": "error"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": 9,
+    "result": {
+      "Ok": {
+        "kind": "described",
+        "data": []
+      }
+    }
+  },
+  {
+    "id": 10,
+    "result": {
+      "Ok": {
+        "kind": "started",
+        "data": []
+      }
+    }
+  },
+  {
+    "id": 11,
+    "result": {
+      "Ok": {
+        "kind": "stopped",
+        "data": []
+      }
+    }
+  },
+  {
+    "id": 12,
+    "result": {
+      "Ok": {
+        "kind": "restarted",
+        "data": {
+          "accepted": [],
+          "refused": [
+            {
+              "name": "db",
+              "reason": "selector matched no registered sheep"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": 13,
+    "result": {
+      "Ok": {
+        "kind": "reloading",
+        "data": {
+          "accepted": [],
+          "refused": [
+            {
+              "name": "db",
+              "reason": "db is already being reloaded"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": 14,
+    "result": {
+      "Ok": {
+        "kind": "deleted",
+        "data": [
+          7,
+          8
+        ]
+      }
+    }
+  },
+  {
+    "id": 15,
+    "result": {
+      "Ok": {
+        "kind": "reopened",
+        "data": []
+      }
+    }
+  },
+  {
+    "id": 16,
+    "result": {
+      "Ok": {
+        "kind": "flushed",
+        "data": []
+      }
+    }
+  },
+  {
+    "id": 17,
+    "result": {
+      "Ok": {
+        "kind": "mustered",
+        "data": []
+      }
+    }
+  },
+  {
+    "id": 18,
+    "result": {
+      "Ok": {
+        "kind": "subscribed"
+      }
+    }
+  },
+  {
+    "id": 19,
+    "result": {
+      "Ok": {
+        "kind": "shutting_down"
+      }
+    }
+  },
+  {
+    "id": 20,
+    "result": {
+      "Ok": {
+        "kind": "signalled",
+        "data": [
+          {
+            "id": 1,
+            "name": "web",
+            "outcome": {
+              "kind": "delivered"
+            }
+          },
+          {
+            "id": 2,
+            "name": "web",
+            "outcome": {
+              "kind": "not_running"
+            }
+          },
+          {
+            "id": 3,
+            "name": "api",
+            "outcome": {
+              "kind": "failed",
+              "reason": "no such process"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": 21,
+    "result": {
+      "Ok": {
+        "kind": "scaled",
+        "data": [
+          {
+            "id": 3,
+            "name": "web",
+            "status": "online",
+            "pid": 4242,
+            "restarts": 1,
+            "uptime_ms": 60000,
+            "fold": "backend",
+            "depends_on": [],
+            "out_file": "/home/ada/.shep/logs/web-0-out.log",
+            "err_file": "/home/ada/.shep/logs/web-0-err.log",
+            "cpu_percent": 12.5,
+            "memory_bytes": 50331648,
+            "cpu_ms": null,
+            "dog": null,
+            "lambs": null,
+            "last_exit": {
+              "code": 1,
+              "signal": null
+            },
+            "smit": null,
+            "instance": null,
+            "handshook": null,
+            "dog_stale": null,
+            "max_memory": 536870912,
+            "level_rules": [
+              {
+                "pattern": "\\[ERROR\\]",
+                "level": "error"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": 22,
+    "result": {
+      "Ok": {
+        "kind": "sent_line",
+        "data": [
+          {
+            "id": 1,
+            "name": "repl",
+            "outcome": {
+              "kind": "sent"
+            }
+          },
+          {
+            "id": 2,
+            "name": "web",
+            "outcome": {
+              "kind": "no_stdin"
+            }
+          },
+          {
+            "id": 3,
+            "name": "stuck",
+            "outcome": {
+              "kind": "not_written",
+              "reason": "the app did not read its stdin within 2s"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": 23,
+    "result": {
+      "Ok": {
+        "kind": "described",
+        "data": [
+          {
+            "id": 3,
+            "name": "web",
+            "status": "online",
+            "pid": 4242,
+            "restarts": 0,
+            "uptime_ms": 0,
+            "fold": null,
+            "depends_on": [],
+            "out_file": null,
+            "err_file": null,
+            "cpu_percent": null,
+            "memory_bytes": null,
+            "cpu_ms": null,
+            "dog": null,
+            "lambs": [
+              {
+                "pid": 4243,
+                "name": "node"
+              },
+              {
+                "pid": 4244,
+                "name": "sh"
+              }
+            ],
+            "last_exit": null,
+            "smit": null,
+            "instance": null,
+            "handshook": null,
+            "dog_stale": null,
+            "max_memory": null
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": 24,
+    "result": {
+      "Ok": {
+        "kind": "flock",
+        "data": [
+          {
+            "id": 5,
+            "name": "worker",
+            "status": "stopped",
+            "pid": null,
+            "restarts": 1,
+            "uptime_ms": 0,
+            "fold": null,
+            "depends_on": [],
+            "out_file": null,
+            "err_file": null,
+            "cpu_percent": null,
+            "memory_bytes": null,
+            "cpu_ms": null,
+            "dog": null,
+            "lambs": null,
+            "last_exit": {
+              "code": null,
+              "signal": 15
+            },
+            "smit": null,
+            "instance": null,
+            "handshook": null,
+            "dog_stale": null,
+            "max_memory": null
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": 25,
+    "result": {
+      "Ok": {
+        "kind": "smit_painted",
+        "data": [
+          {
+            "id": 3,
+            "name": "web",
+            "status": "online",
+            "pid": 4242,
+            "restarts": 0,
+            "uptime_ms": 0,
+            "fold": null,
+            "depends_on": [],
+            "out_file": null,
+            "err_file": null,
+            "cpu_percent": null,
+            "memory_bytes": null,
+            "cpu_ms": null,
+            "dog": null,
+            "lambs": null,
+            "last_exit": null,
+            "smit": "▲ main@a1b2c3",
+            "instance": null,
+            "handshook": null,
+            "dog_stale": null,
+            "max_memory": null
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": 26,
+    "result": {
+      "Ok": {
+        "kind": "drifted",
+        "data": [
+          {
+            "name": "web",
+            "fields": [
+              "cwd"
+            ]
+          },
+          {
+            "name": "api",
+            "fields": [
+              "args",
+              "env",
+              "script"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": 27,
+    "result": {
+      "Ok": {
+        "kind": "flock",
+        "data": [
+          {
+            "id": 9,
+            "name": "web",
+            "status": "online",
+            "pid": 5150,
+            "restarts": 0,
+            "uptime_ms": 0,
+            "fold": null,
+            "depends_on": [],
+            "out_file": null,
+            "err_file": null,
+            "cpu_percent": null,
+            "memory_bytes": null,
+            "cpu_ms": null,
+            "dog": null,
+            "lambs": null,
+            "last_exit": null,
+            "smit": null,
+            "instance": 2,
+            "handshook": null,
+            "dog_stale": null,
+            "max_memory": null
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": 28,
+    "result": {
+      "Ok": {
+        "kind": "handover_fitness",
+        "data": {
+          "refusal": null
+        }
+      }
+    }
+  },
+  {
+    "id": 29,
+    "result": {
+      "Ok": {
+        "kind": "handover_fitness",
+        "data": {
+          "refusal": "sheep 'web' has a shepherd channel"
+        }
+      }
+    }
+  },
+  {
+    "id": 30,
+    "result": {
+      "Ok": {
+        "kind": "dog_staleness",
+        "data": {
+          "stale": [
+            "metrics"
+          ],
+          "pending": [
+            "bark"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": 31,
+    "result": {
+      "Ok": {
+        "kind": "flock",
+        "data": [
+          {
+            "id": 10,
+            "name": "log-rotate",
+            "status": "online",
+            "pid": 208341,
+            "restarts": 0,
+            "uptime_ms": 0,
+            "fold": null,
+            "depends_on": [],
+            "out_file": null,
+            "err_file": null,
+            "cpu_percent": null,
+            "memory_bytes": null,
+            "cpu_ms": null,
+            "dog": {
+              "kind": "adopted",
+              "path": "/usr/local/bin/shep-log-rotate"
+            },
+            "lambs": null,
+            "last_exit": null,
+            "smit": null,
+            "instance": null,
+            "handshook": false,
+            "dog_stale": false,
+            "max_memory": null
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": 32,
+    "result": {
+      "Ok": {
+        "kind": "flock",
+        "data": [
+          {
+            "id": 10,
+            "name": "log-rotate",
+            "status": "online",
+            "pid": 208341,
+            "restarts": 0,
+            "uptime_ms": 0,
+            "fold": null,
+            "depends_on": [],
+            "out_file": null,
+            "err_file": null,
+            "cpu_percent": null,
+            "memory_bytes": null,
+            "cpu_ms": null,
+            "dog": {
+              "kind": "adopted",
+              "path": "/usr/local/bin/shep-log-rotate"
+            },
+            "lambs": null,
+            "last_exit": null,
+            "smit": null,
+            "instance": null,
+            "handshook": false,
+            "dog_stale": true,
+            "max_memory": null
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": 32,
+    "result": {
+      "Ok": {
+        "kind": "applied",
+        "data": [
+          {
+            "name": "web",
+            "applied": [
+              "max_memory"
+            ],
+            "pending": [],
+            "refused": null
+          },
+          {
+            "name": "api",
+            "applied": [],
+            "pending": [
+              "args",
+              "env"
+            ],
+            "refused": null
+          },
+          {
+            "name": "worker",
+            "applied": [],
+            "pending": [],
+            "refused": "worker is not registered"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": 33,
+    "result": {
+      "Ok": {
+        "kind": "added",
+        "data": []
+      }
+    }
+  },
+  {
+    "id": 34,
+    "result": {
+      "Ok": {
+        "kind": "sheep_config",
+        "data": {
+          "name": "web",
+          "config": {
+            "name": "web",
+            "script": "./srv",
+            "args": [],
+            "cwd": null,
+            "interpreter": null,
+            "env": {},
+            "environment": null,
+            "instances": 1,
+            "autorestart": true,
+            "autostart": true,
+            "stop_exit_codes": [],
+            "min_uptime": "1s",
+            "max_restarts": 16,
+            "restart_delay": null,
+            "exp_backoff_restart_delay": "100",
+            "kill_signal": null,
+            "kill_timeout": "1600",
+            "shutdown_with_message": false,
+            "listen_timeout": "3s",
+            "graceful_timeout": "8s",
+            "action_timeout": "3s",
+            "max_memory": null,
+            "watch": false,
+            "ignore_watch": [],
+            "watch_delay": null,
+            "cron_restart": null,
+            "fold": null,
+            "depends_on": [],
+            "user": null,
+            "group": null,
+            "out_file": null,
+            "err_file": null,
+            "merge_logs": false,
+            "level_rules": [],
+            "channel": false,
+            "stdin": false,
+            "wait_ready": false,
+            "reuse_port": false,
+            "readiness_probe": null,
+            "liveness_probe": null,
+            "watch_options": [],
+            "cron_timezone": null
+          },
+          "env_keys": [
+            "DATABASE_URL"
+          ],
+          "env_secrets": [],
+          "overridden": [
+            "max_restarts"
+          ],
+          "pending": [
+            "env"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": 35,
+    "result": {
+      "Ok": {
+        "kind": "sheep_env_set",
+        "data": {
+          "name": "web",
+          "key": "DATABASE_URL"
+        }
+      }
+    }
+  },
+  {
+    "id": 36,
+    "result": {
+      "Ok": {
+        "kind": "sheep_field_set",
+        "data": {
+          "name": "web",
+          "key": "script",
+          "pending": true
+        }
+      }
+    }
+  },
+  {
+    "id": 37,
+    "result": {
+      "Ok": {
+        "kind": "dog_config_set",
+        "data": {
+          "name": "bark"
+        }
+      }
+    }
+  },
+  {
+    "id": 38,
+    "result": {
+      "Ok": {
+        "kind": "secrets_put",
+        "data": {
+          "accepted": 2
+        }
+      }
+    }
+  },
+  {
+    "id": 39,
+    "result": {
+      "Ok": {
+        "kind": "sheep_env_batch",
+        "data": {
+          "name": "web",
+          "set": [
+            "DATABASE_URL",
+            "API_KEY"
+          ],
+          "unchanged": [
+            "LOG_LEVEL"
+          ],
+          "collisions": [
+            "API_KEY"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": 40,
+    "result": {
+      "Ok": {
+        "kind": "host_usage",
+        "data": {
+          "cpu_percent": 11.5,
+          "memory_used_bytes": 39963869184,
+          "memory_total_bytes": 51539607552,
+          "disk_bytes_per_second": [
+            1258291,
+            491520
+          ],
+          "network_bytes_per_second": [
+            24594,
+            9260
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": 41,
+    "result": {
+      "Ok": {
+        "kind": "host_usage",
+        "data": {
+          "cpu_percent": null,
+          "memory_used_bytes": 39963869184,
+          "memory_total_bytes": 51539607552,
+          "disk_bytes_per_second": null,
+          "network_bytes_per_second": null
+        }
+      }
+    }
+  },
+  {
+    "id": 42,
+    "result": {
+      "Ok": {
+        "kind": "host_usage",
+        "data": null
+      }
+    }
+  }
+]

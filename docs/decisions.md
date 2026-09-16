@@ -41,6 +41,7 @@ go for the full argument. The commit that removed them names itself.
 - [Config pane writes](#config-pane-writes) (1)
 - [Boot ordering](#boot-ordering) (8)
 - [Following the flock](#following-the-flock) (3)
+- [Design assets](#design-assets) (1)
 
 ## Core types and the daemon's shape
 
@@ -850,13 +851,33 @@ shep flock prints the sheep table, then an always-visible Dogs table beneath it 
 
 ### shep-client gets an explicit, opt-in Client::reconnect (&mut self) API rather than a transparent retry inside request()
 
-Ruled explicitly against making a dropped connection silently re-dial inside the ordinary request() call path; instead Client::reconnect()/reconnect_within() are new, separately-called methods returning Reconnected::{SameDaemon, NewDaemon} (distinguished via the pid already carried in HelloAck), and the documented remedy for a SUPERVISED dog specifically is to exit on RequestError::Closed rather than reconnect at all.
+Ruled explicitly against making a dropped connection silently re-dial inside the ordinary request() call path; instead Client::reconnect()/reconnect_within() are new, separately-called methods returning Reconnected::{SameDaemon, NewDaemon} (distinguished via the pid already carried in HelloAck), and the documented remedy for a SUPERVISED dog was to exit on RequestError::Closed rather than reconnect at all. **That last clause is superseded by the 2026-09-13 ruling below** ("A dog whose shepherd is gone exits, and a reload is not a shepherd being gone"): a dog exiting on the first Closed restarts once per reload, which is the defect that ruling fixes. Everything else in this entry stands.
 
 **Why:** Instance ids are minted per daemon lifetime and never persisted (ProcessEntry has no Serialize); a request like `Delete{selector: Id(7)}` transparently re-dialed after a daemon restart could silently land on a totally different process (or none) under a NEW daemon where id 7 means something else - converting a loud, safe failure into a silent, wrong action, which is exactly the shape of shep-deploy's own worst production defects. `&mut self` (rather than interior mutability that would slide back toward transparent silent reconnection) also forces a caller to hold exclusive access at exactly the moment a connection's identity changes, deliberately trading away the crate's own documented Arc<Client>-sharing convenience for that safety property. The clearest evidence that this is the right signature came from a CodeRabbit thread on 2026-09-13 arguing that a predecessor request could still complete after reconnect_within returned: it cannot, because request takes &self and reconnect_within takes &mut self, so the borrow checker excludes the case rather than the actor's shutdown timing having to handle it. ReconnectingClient needs that guarantee and does not get it, since its swap happens in a supervisor task concurrently with &self requests, which is exactly why its own docs have to promise that in-flight requests fail. Client::reconnect never makes the promise because the signature makes it unnecessary. A supervised dog reconnecting instead of exiting risks becoming a SECOND copy racing the new daemon's own freshly-autostarted instance of itself.
 
 **On the pid:** it is the right discriminator, but not because a pid identifies a process. A handover is an `execve`, which KEEPS the pid (`crates/shep-daemon/src/handover/adopt.rs:34` says so in as many words), so a pid comparison reports SameDaemon straight across `shep daemon reload` - and that is correct, because the same handover blob carries `next_id` and every sheep with it (`crates/shep-daemon/src/handover/mod.rs:174`). The pid is preserved by exactly the transition that also preserves the id space, which is the whole argument. A handover the fitness gate refuses falls back to stop-and-start, and Windows has no `execve` at all, so both get a fresh process and a fresh id space: new pid, NewDaemon, correct again. The one gap is pid reuse inside a single reconnect window, which would need the OS to recycle the number in milliseconds; nothing on the wire today could tell that apart, and closing it would mean a new HelloAck field that the handover blob then has to carry too.
 
 `docs/writing-plans/plans/2026-08-27-dog-prerequisites.md:2124 (shipped 2026-09-13 in crates/shep-client/src/reconnect.rs)`
+
+### A dog whose shepherd is gone exits, and a reload is not a shepherd being gone
+
+A dog waits a bounded time for a shepherd to answer again and exits if none does. The budget is `DOG_SILENCE_BUDGET`, five seconds, reused rather than invented. Both built-in dogs do it, and `docs/dogs.md` states it as the contract a third-party dog is expected to keep. The bound lives in the dogs; shep-client gained `ReconnectingClient::link_lost` and `connected_within` so a dog can impose it, and its supervisor still reconnects for as long as it is alive.
+
+**Why the question had to be answered for every dog at once:** it had been answered differently twice already. Bark exited on the first dropped connection, so it restarted once per `shep daemon reload`, moving its pid and climbing `restarts` on the one column an operator reads to judge a dog's health, and dropping every rule's per-subject debounce on the way out. The metrics dog went the other way through `ReconnectingClient`, whose supervisor retries forever, so a metrics dog whose shepherd stopped would still be running when an unrelated shepherd bound that socket later, and would attach itself to that one beside that shepherd's own metrics dog. Answering this for bark alone would have made it three different answers.
+
+**Why a bounded wait rather than either extreme:** a handover is not a shepherd going away. The shepherd execs a successor on purpose, the listening socket crosses the exec and the accepted connection does not, so every dog loses a connection generation and is meant to carry on. Exiting on that is the bark defect. Waiting through it forever is the metrics hazard. The wait is what tells the two apart, and it only has to be longer than a handover.
+
+**Why five seconds:** measured over ten `shep daemon reload` runs against a three-sheep flock on one machine, the control socket turned away a full connect, handshake and request for 38ms at the shortest, 254ms at the longest, 80ms on average. A larger flock and a busier host both push that up, so the budget wants a wide margin rather than a tight fit, and the cost of being generous is bounded: five seconds of waiting is not the lingering this guards against, which is measured in however long it takes another shepherd to come along. `DOG_SILENCE_BUDGET` is around twenty times the worst handover measured and is already the number the shepherd judges a quiet dog by, so a dog that waits exactly that long cannot outlive the budget it is judged by, and there is one number to keep in step rather than two.
+
+**Why the bound is in the dogs rather than in ReconnectingClient:** the supervisor reconnecting forever is not itself the problem, because it dies with the process. Once the dog exits there is nothing left reconnecting, so what lingers is the dog, and the dog is what needs bounding. Putting it in the client would have meant either an option nobody sets, leaving the default as the behaviour the ruling forbids, or a changed default on a published crate that buys nothing here.
+
+**What an operator sees:** a dog that gave up waiting exits 5 (`daemon_unreachable`) rather than 0, since a dog that stopped because nothing answered has not finished its work. One a shepherd refused on protocol-version skew exits 6 (`protocol_mismatch`) without waiting, because the daemon that refused is the party that can fix it and waiting cannot change its answer.
+
+**On re-subscribing, and why the verdict does not decide it:** a subscription belongs to one connection generation, so a dog re-subscribes after a handover whether `Reconnected` says `SameDaemon` or `NewDaemon`. Bark then reconciles against `ListFlock` in both cases. The verdict says whether ids held across the gap still mean anything, and bark holds none: every subject it keys a debounce on is a sheep's name rather than an id the shepherd minted. What actually changed is that frames sent while there was no subscription are gone, which is true whoever answered, and it is the same loss the loop already answers for a lagged bus.
+
+The gap is left where `ReconnectingClient::subscribe` found it rather than re-armed inside the client, which was declined once and stays declined: a stream that swallowed the gap between one connection dying and the successor accepting a fresh `Subscribe` would be worse than one that ends, because nothing downstream could tell there had been a gap.
+
+The maintainer, 2026-09-06; built 2026-09-13.
 
 ### shep.toml has exactly one writer (the CLI); the daemon only reads, and re-reads on every DogConfig request
 
@@ -1698,7 +1719,7 @@ render_boxed drops columns by descending priority until the table fits the termi
 
 ### Default $SHEP_HOME is auto-created; an explicitly-named missing home is refused, never created
 
-ensure_home_at creates ~/.shep silently on first use, but a --home/$SHEP_HOME path that's missing is refused with a message pointing at `mkdir -p` and at dropping back to the default.
+ensure_home_at creates ~/.shep silently on first use, but a --home/$SHEP_HOME path that's missing is refused with a message pointing at a `mkdir` this platform can run and at dropping back to the default.
 
 **Why:** ~/.shep is a name shep chose, so shep may conjure it; an operator-typed path is more likely a typo than intent, and silently creating it would produce a second, empty, invisible flock whose bug report reads as "shep lost all my processes" when the truth is "you're looking at a different flock". Uses DirBuilder::new().mode(DIR_MODE) at creation, not create_dir_all+chmod, to avoid a window where the directory exists world-readable.
 
@@ -2258,3 +2279,46 @@ root, since nothing else reads them. Neither adds a crate on any of the three
 platforms.
 
 `verified crates/shep-cli/src/host.rs (distinct_disk_io, is_loopback), crates/shep-cli/Cargo.toml (the sysinfo entry)`
+
+## Design assets
+
+### The design-tool runtime is committed twice on purpose, and the rebuild command in its header belongs to another repo
+
+`support.js` sits at two paths, byte-identical at 1911 lines:
+`docs/lookout/design-files/` and `docs/shep-design/design-files/`. Both copies
+are live. Five `.dc.html` scenes load it, three under shep-design and two under
+lookout, each through `<script src="./support.js">` relative to its own
+directory. `web/` does not load it at all; the Astro components only cite the
+design files in doc comments as a source of truth.
+
+The file is vendored, not generated here. Its header names
+`cd dc-runtime && bun run build`, and `dc-runtime` has never existed in this
+repo, in its history, or anywhere on disk. It is the design tool's own source
+tree, and the header travelled with the artifact. Nothing in shep can
+regenerate the file, so it changes only when a design is re-exported.
+
+**Why:** The duplicate costs a tree entry rather than 69 KB, because both paths
+carry the same content hash and git stores one blob for them. The bundle is
+also a version contract rather than a shared library: it hard-pins React
+18.3.1, react-dom 18.3.1 and Babel standalone 7.29.0, and fetches all three
+from unpkg at load. The two copies match because two exports 24 days apart,
+2026-08-13 and 2026-09-06, happened to ship the same runtime, not because
+anything holds them in step, so a single shared copy would quietly retarget one
+design at the other's runtime the next time either is re-exported. A relative
+reference would not survive that re-export in any case: every scene carries the
+same `<script src="./support.js">` on line 6, byte-identical across two
+independent exports, which reads as tool-emitted rather than hand-written.
+That last point is inferred from the file structure, since the design tool's
+own docs are not available locally. A symlink is worse than either option,
+because CI checks out on `windows-latest` and without `core.symlinks` a symlink
+materializes as a text file holding a path, so the scene would silently load
+nothing there.
+
+Verifying one of these files needs a real HTTP origin. Opened from `file://`,
+or as the `data:` URL the preview pane converts a local file into, the relative
+script never resolves and `window.React` stays undefined, yet the inline
+`<style>` and static markup still render. A screenshot then reads as success
+while the runtime has not run at all. The visible tell is an unfilled `{{ }}`
+template hole.
+
+`verified docs/lookout/design-files/README.md, docs/shep-design/README.md, and the five .dc.html scenes in those two directories`

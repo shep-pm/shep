@@ -12,15 +12,13 @@
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
 ---
 
 <DocsLayout
-  title="The shepherd channel"
-  description="A plain file descriptor carrying newline JSON: readiness, custom metrics, and answering shep trigger."
-  crumb="Concepts / The shepherd channel"
   activeSlug="shepherd-channel"
 >
   <article>
@@ -34,7 +32,24 @@ import VerbSignature from "../../components/docs/VerbSignature.astro";
       it.
     </p>
 
-    <h2>Getting a channel</h2>
+    <ShortVersion>
+      <ul>
+        <li>Ask for a channel with <code>channel = true</code> (or get one free from <code>wait_ready</code> / <code>shutdown_with_message</code>).</li>
+        <li>Read <code>SHEP_CHANNEL_FD</code> on unix, or <code>SHEP_CHANNEL_PIPE</code> on Windows, where the channel is a named pipe your app opens by path rather than an inherited fd. Exactly one is ever set, so branch on which one is present, not on the platform. Then read/write newline-delimited JSON.</li>
+        <li>A plain blocking read works: no event loop required.</li>
+        <li>Reply to every <code>action</code> message you receive, even ones you don't recognize, exactly once, promptly.</li>
+        <li>Echo the <code>id</code>: one field, and it's what makes a slow action's answer land on the right trigger.</li>
+        <li>What you put in <code>body</code> is what the operator reads back, and what anyone on <code>channel.*</code> reads too.</li>
+      </ul>
+    </ShortVersion>
+    <p class="fine">
+      <code>SHEP_CHANNEL_VERSION</code> is <code>1</code> today. It isn't
+      negotiated: a mismatch only warns rather than refuses, because every
+      wire change so far has been additive and an older reader ignores a
+      field it doesn't know.
+    </p>
+
+    <h2 id="getting-a-channel">Getting a channel</h2>
     <p>
       shep opens the channel (a socketpair, one end handed to your process
       as an extra file descriptor) only when your app's Flockfile config
@@ -64,10 +79,7 @@ channel = true`}</CodeBlock>
       <code>read()</code> parks your process until the daemon has something
       to say, exactly like any other pipe. No event loop, non-blocking I/O,
       or polling required: a shell script doing{" "}
-      <code>read -r line &lt;&amp;3</code> works. The daemon also exports{" "}
-      <code>SHEP_CHANNEL_VERSION</code> (currently <code>1</code>) so a
-      defensive app can notice a wire it's never seen rather than failing to
-      parse a line with nothing to connect that failure to.
+      <code>read -r line &lt;&amp;3</code> works.
     </p>
     <p>
       <strong>Rust and Go apps do not have to speak this by hand.</strong>{" "}
@@ -81,17 +93,9 @@ channel = true`}</CodeBlock>
     </p>
     <p>
       <strong>Four working apps ship in the repository</strong>, one per
-      language, and a Flockfile starts each of them:{" "}
-      <code>examples/src/bin/chatty.rs</code> over the crate, and{" "}
-      <code>go-chatty</code>, <code>node-chatty.js</code> and{" "}
-      <code>python-chatty.py</code> under <code>examples/polyglot/</code>{" "}
-      framing the wire themselves. All four answer the same actions, so one{" "}
-      <code>shep trigger</code> reads the same way against any of them. The
-      three hand-rolled ones carry both platform arms and were run on
-      Windows against a real named pipe: two of them read and write from a
-      single loop, and the JavaScript one is the overlapped case instead,
-      since libuv drives a pipe asynchronously. See{" "}
-      <a href="/docs/examples#channel">Examples</a>.
+      language: <code>chatty.rs</code> over the crate, and hand-rolled Go,
+      Node and Python under <code>examples/polyglot/</code>, each with both
+      platform arms. See <a href="/docs/examples#channel">Examples</a>.
     </p>
     <p>
       <strong>Go types are generated from the Rust enums, not typed by
@@ -104,7 +108,7 @@ channel = true`}</CodeBlock>
       an id of zero.
     </p>
 
-    <h2>The wire format</h2>
+    <h2 id="the-wire-format">The wire format</h2>
     <p>
       Newline-delimited JSON, one complete message per line, in both
       directions. No framing header, no length prefix: just{" "}
@@ -112,22 +116,22 @@ channel = true`}</CodeBlock>
       act on it; build a JSON object, append <code>\n</code>, write it.
     </p>
 
-    <h3>What you send (daemon reads this)</h3>
+    <h3 id="what-you-send-daemon-reads-this">What you send (daemon reads this)</h3>
     <div class="wire-table">
       <div class="row header"><span>Message</span> <span>Meaning</span></div>
-      <div class="row"><span><code>{`{"kind":"ready"}`}</code></span> <span>You are up and ready to serve. Only meaningful if <code>wait_ready = true</code>.</span></div>
-      <div class="row"><span><code>{`{"kind":"metric","name":"<n>","value":<num>}`}</code></span> <span>A custom metric sample. Currently logged by the daemon at debug level and nothing more. No dog reads it yet.</span></div>
-      <div class="row"><span><code>{`{"kind":"action-reply","action":"<n>","body":"<t>","id":<num>}`}</code></span> <span>Your answer to a triggered action. <code>id</code> is optional: echo the one from the <code>action</code> message and shep matches your reply to that exact request.</span></div>
+      <div class="row"><span><code>{`{"kind":"ready"}`}</code></span> <span data-label="Meaning">You are up and ready to serve. Only meaningful if <code>wait_ready = true</code>.</span></div>
+      <div class="row"><span><code>{`{"kind":"metric","name":"<n>","value":<num>}`}</code></span> <span data-label="Meaning">A custom metric sample. Currently logged by the daemon at debug level and nothing more. No dog reads it yet.</span></div>
+      <div class="row"><span><code>{`{"kind":"action-reply","action":"<n>","body":"<t>","id":<num>}`}</code></span> <span data-label="Meaning">Your answer to a triggered action. <code>id</code> is optional: echo the one from the <code>action</code> message and shep matches your reply to that exact request.</span></div>
     </div>
 
-    <h3>What you receive (daemon writes this)</h3>
+    <h3 id="what-you-receive-daemon-writes-this">What you receive (daemon writes this)</h3>
     <div class="wire-table">
       <div class="row header"><span>Message</span> <span>Meaning</span></div>
-      <div class="row"><span><code>{`{"kind":"shutdown"}`}</code></span> <span>Sent instead of a stop signal when <code>shutdown_with_message = true</code>. The daemon still escalates to <code>SIGKILL</code> after <code>kill_timeout</code> if you take too long.</span></div>
-      <div class="row"><span><code>{`{"kind":"action","name":"<n>","id":<num>}`}</code></span> <span>An operator ran <code>shep trigger</code> against you, optionally with <code>{`"params":"<text>"`}</code>. <code>id</code> is always present: echo it on your reply.</span></div>
+      <div class="row"><span><code>{`{"kind":"shutdown"}`}</code></span> <span data-label="Meaning">Sent instead of a stop signal when <code>shutdown_with_message = true</code>. The daemon still escalates to <code>SIGKILL</code> after <code>kill_timeout</code> if you take too long.</span></div>
+      <div class="row"><span><code>{`{"kind":"action","name":"<n>","id":<num>}`}</code></span> <span data-label="Meaning">An operator ran <code>shep trigger</code> against you, optionally with <code>{`"params":"<text>"`}</code>. <code>id</code> is always present: echo it on your reply.</span></div>
     </div>
 
-    <h2>A worked example</h2>
+    <h2 id="a-worked-example">A worked example</h2>
     <p>
       Two apps below, both answering the same <code>Flockfile.toml</code>{" "}
       shape (<code>channel = true</code> and <code>wait_ready = true</code>)
@@ -161,7 +165,7 @@ for line in r:
         w.flush()
     elif msg["kind"] == "shutdown":
         sys.exit(0)`}</CodeBlock>
-    <h3>On Windows: open a named pipe instead</h3>
+    <h3 id="on-windows-open-a-named-pipe-instead">On Windows: open a named pipe instead</h3>
     <p>
       Windows has no fd-3 inheritance an app can rely on, so the daemon
       exports{" "}
@@ -216,14 +220,12 @@ ID  NAME    OUTCOME  DETAIL
 $ shep trigger chatty ping --format json
 {"schema_version":1,"command":"trigger","data":[{"id":5,"name":"chatty","outcome":{"kind":"replied","body":"handled ping params=None"}}]}`}</CodeBlock>
     <p class="fine">
-      That sheep is the sample above, which answers every action the same
-      way. The repository ships a different app under the same name,{" "}
-      <code>examples/src/bin/chatty.rs</code>, which knows three actions and
-      refuses the rest by name. Run <code>reload-config</code> against that
-      one and it replies <code>unknown action: reload-config</code>.
+      That sheep is the sample above. The shipped{" "}
+      <code>examples/src/bin/chatty.rs</code> knows three actions, so it
+      answers this one with <code>unknown action: reload-config</code>.
     </p>
 
-    <h2>Custom actions: the part most worth reading closely</h2>
+    <h2 id="custom-actions-the-part-most-worth-reading-closely">Custom actions: the part most worth reading closely</h2>
     <VerbSignature verb="trigger" usage="shep trigger <selector> <action> [params]">
       <p>
         How an operator reaches a running app directly, for whatever your
@@ -284,7 +286,7 @@ $ shep trigger chatty ping --format json
       you make that impossible.
     </p>
 
-    <h2>Not every sheep has a channel, and that's not a silent failure</h2>
+    <h2 id="not-every-sheep-has-a-channel-and-that-s-not-a-silent-failure">Not every sheep has a channel, and that's not a silent failure</h2>
     <p>
       An app configured with none of <code>channel</code>/<code>wait_ready</code>/
       <code>shutdown_with_message</code> still gets a row back from{" "}
@@ -301,7 +303,7 @@ ID  NAME  OUTCOME     DETAIL
       costs the operator a timeout; both are refused immediately.
     </p>
 
-    <h2>Everything you write here is also public on the bus</h2>
+    <h2 id="everything-you-write-here-is-also-public-on-the-bus">Everything you write here is also public on the bus</h2>
     <p>
       Every message you send on fd 3 (<code>ready</code>,{" "}
       <code>metric</code>, <code>action-reply</code>) is republished on the
@@ -320,83 +322,10 @@ ID  NAME  OUTCOME     DETAIL
       log aggregator, or a dog might render. Put in it what you'd be
       comfortable with any subscriber seeing.
     </p>
-
-    <h2>Summary for the impatient</h2>
-    <ul>
-      <li>Ask for a channel with <code>channel = true</code> (or get one free from <code>wait_ready</code> / <code>shutdown_with_message</code>).</li>
-      <li>Read <code>SHEP_CHANNEL_FD</code> on unix, or <code>SHEP_CHANNEL_PIPE</code> on Windows, where the channel is a named pipe your app opens by path rather than an inherited fd. Exactly one is ever set, so branch on which one is present, not on the platform. Then read/write newline-delimited JSON.</li>
-      <li>A plain blocking read works: no event loop required.</li>
-      <li>Reply to every <code>action</code> message you receive, even ones you don't recognize, exactly once, promptly.</li>
-      <li>Echo the <code>id</code>: one field, and it's what makes a slow action's answer land on the right trigger.</li>
-      <li>What you put in <code>body</code> is what the operator reads back, and what anyone on <code>channel.*</code> reads too.</li>
-    </ul>
-    <h2>Where to go next</h2>
-
-    <div class="next-grid">
-      <a href="/docs/dogs" class="next-card">
-        <div class="next-title">Dogs →</div>
-        <div class="next-body">
-          The other way something plugs into shep: the shepherd's own
-          plugins, not your app.
-        </div>
-      </a>
-      <a href="/docs/whistle" class="next-card">
-        <div class="next-title">whistle →</div>
-        <div class="next-body">
-          <code>shep trigger</code> has a namesake tool over MCP: an AI
-          agent can send the same actions, when control is turned on.
-        </div>
-      </a>
-    </div>
-  </article>
+</article>
 </DocsLayout>
 
 <style>
-  h1 {
-    font-size: clamp(36px, 4.6vw, 56px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 27px;
-    letter-spacing: -0.03em;
-    margin: 44px 0 8px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  h3 {
-    font-size: 17px;
-    letter-spacing: -0.01em;
-    margin: 26px 0 8px;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 30px;
-    text-wrap: pretty;
-  }
-
-  p {
-    font-size: 16.5px;
-    line-height: 1.65;
-    color: var(--ink-2);
-    margin: 0 0 18px;
-  }
-
-  .fine {
-    font-size: 15px;
-    line-height: 1.6;
-    color: var(--ink-3);
-    margin: 0 0 22px;
-  }
-
   ul {
     margin: 0 0 20px;
     padding-left: 22px;
@@ -449,41 +378,19 @@ ID  NAME  OUTCOME     DETAIL
     overflow-wrap: anywhere;
   }
 
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 36px;
-  }
+  /* The message column has a 200px floor and the JSON in it does not
+     shrink past that, so the two tables want 379px and 371px against a
+     phone's 321. `overflow: hidden` above is there to round the corners,
+     and it swallows the difference too: the right edge of every meaning
+     went missing with no scrollbar to get it back. */
+  @media (max-width: 640px) {
+    .wire-table .row {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
 
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
+    .wire-table .row.header {
+      display: none;
+    }
   }
 </style>

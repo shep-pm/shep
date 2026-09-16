@@ -35,6 +35,7 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 
 const template = `[[app]]
 name   = "web"
@@ -172,13 +173,10 @@ const store = `$ cat $SHEP_HOME/overrides.json
 ---
 
 <DocsLayout
-  title="Overrides"
-  description="A Flockfile is a template your app's repository owns. What you tune on a running flock lives somewhere shep owns, and a load appends rather than overwrites."
-  crumb="Concepts / Overrides"
   activeSlug="overrides"
 >
   <article>
-    <h1>Overrides</h1>
+    <h1>Changing a setting</h1>
     <ReferencePills slug="overrides" />
     <p class="lede">
       A Flockfile is committed to the app's repository, and shep never writes
@@ -188,7 +186,30 @@ const store = `$ cat $SHEP_HOME/overrides.json
       settings nobody has spoken for yet.
     </p>
 
-    <h2>Why a template and not just config</h2>
+    <ShortVersion>
+      <p>
+        A Flockfile is a template your app's repository owns, not live
+        config. Loading one can only add a setting nobody has touched yet;
+        it never overwrites one that is already established.{" "}
+        <code>shep start Flockfile.toml --reset=&lt;mode&gt;</code> is how
+        you put the file back in charge.
+      </p>
+      <p>
+        Three doors write an override directly, and each bypasses the file
+        from then on: a <code>NAME=VALUE</code> in front of{" "}
+        <code>shep start</code> or <code>shep add</code>, the config pane in{" "}
+        <code>shep lookout</code>, and <code>shep import env</code>.
+      </p>
+    </ShortVersion>
+
+    <h2 id="a-flockfile-is-a-template">A Flockfile is a template, not live config</h2>
+    <p>
+      A Flockfile lives in the repository of the app it starts, committed
+      like anything else there, and shep never writes to it. That is what
+      makes it safe to load one onto a flock that is already running without
+      reading the diff first: <code>shep start Flockfile.toml</code> appends
+      the settings nobody has established yet and overwrites nothing.
+    </p>
     <p>
       The alternative was letting <code>shep start Flockfile.toml</code>{" "}
       overwrite whatever it found. That reads fine on a laptop and is
@@ -200,20 +221,27 @@ const store = `$ cat $SHEP_HOME/overrides.json
     <p>
       So a load appends. It writes the settings nobody has established yet
       and leaves everything else exactly as it is, which means the worst a
-      merged change can do to a running flock is nothing.{" "}
-      <code>--reset=&lt;mode&gt;</code> is how you say the file wins, and it is
-      something a person types.
+      merged change can do to a running flock is nothing.
     </p>
-    <Callout variant="note">
-      A Flockfile is read when you name a file, or when{" "}
-      <code>shep start</code> with no target finds one in the directory you
-      ran it from. Naming a <em>sheep</em> reads no file at all:{" "}
-      <code>shep start web</code> starts <code>web</code> from the config the
-      shepherd already holds, and cannot be turned into a load by anything
-      sitting in the current directory.
-    </Callout>
+    <p>
+      The corollary is the part worth remembering. Editing a line in a
+      Flockfile and loading it again does not move a setting that is already
+      established; <code>shep start Flockfile.toml --reset=policy</code> is
+      how you say the file wins. The rest of this page is that whole story,
+      including which settings change under a running process and which
+      wait for the next spawn.
+    </p>
+    <p class="fine">
+      Naming a sheep reads no Flockfile at all. <code>shep start web</code>{" "}
+      starts the sheep called <code>web</code> from the config the shepherd
+      already holds, and cannot be turned into a load by anything sitting in
+      the current directory. Three things are a load, and nothing else is: a
+      path you name, a Flockfile discovered in the directory you ran the
+      command from, and <code>-</code>, which reads Flockfile JSON on stdin.
+    </p>
 
-    <h2>Three things a load with no flag will not do</h2>
+    <details>
+      <summary><h2 id="three-things-a-load-with-no-flag-will-not-do">Three things a load with no flag will not do</h2></summary>
     <div class="rows">
       <div class="row"><span>never registers</span><span>The merge adds no app. An app the file names and the flock does not have is skipped by the merge, and the <code>shep start</code> carrying it registers and starts that app as it always has, because starting things is what you typed. What the merge cannot do is reach a host through config alone: the load half of a merged pull request can only touch sheep that are already there.</span></div>
       <div class="row"><span>never prunes</span><span>An app the file does not mention is left alone. shep has no record of which Flockfile a sheep came from, so loading <code>./a/Flockfile.toml</code> and then <code>./b/Flockfile.toml</code> would otherwise have the second wipe the first's flock.</span></div>
@@ -235,8 +263,9 @@ const store = `$ cat $SHEP_HOME/overrides.json
       could set its <code>script</code> would be a way to swap the binary on
       the next restart.
     </p>
+    </details>
 
-    <h2>What a load looks like</h2>
+    <h2 id="what-a-load-looks-like">What a load looks like</h2>
     <p>
       One app and two environment variables with no values in them. The
       empty strings are deliberate and there is a section on them below:
@@ -261,7 +290,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       guess.
     </p>
 
-    <h2>The CFG column</h2>
+    <h2 id="the-cfg-column">The CFG column</h2>
     <p>
       <code>!1</code> in <code>CFG</code> means one field is parked on this
       sheep. <code>*1</code> means one field an operator has taken ownership
@@ -291,7 +320,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       sheep's original start and costs no lookup.
     </p>
 
-    <h2>A second load does not repeat the first</h2>
+    <h2 id="a-second-load-does-not-repeat-the-first">A second load does not repeat the first</h2>
     <p>
       Once a key has been established, the file stops speaking for it. Move{" "}
       <code>max_memory</code> to <code>2G</code> and load again and shep says
@@ -370,9 +399,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
     </Callout>
     <CodeBlock>{resetScales}</CodeBlock>
     <p>
-      Four instances, a <code>policy</code> reset against a two-line
-      Flockfile that does not mention <code>instances</code>, one instance
-      left. Nothing there is a bug and nothing was silent: the report names{" "}
+      Nothing there is a bug and nothing was silent: the report names{" "}
       <code>instances</code> among what it applied.{" "}
       <code>--reset=file</code> against the same file would have left all
       four running, because the file says nothing to put back. Against a
@@ -387,7 +414,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       <code>shep flock</code> underneath is the settled count.
     </p>
 
-    <h2>Empty values are the point</h2>
+    <h2 id="empty-values-are-the-point">Empty values are the point</h2>
     <p>
       <code>env = &#123; DB_HOST = "", DB_PASSWORD = "" &#125;</code> is doing
       what a committed <code>.env.example</code> does. It says which
@@ -416,7 +443,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       again to fill it in.
     </p>
 
-    <h2>Registering before starting</h2>
+    <h2 id="registering-before-starting">Registering before starting</h2>
     <p>
       <code>shep add</code> takes the targets <code>shep start</code> takes
       and runs the same load. The one difference is that nothing spawns: the
@@ -459,7 +486,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       <code>notice[add]: web is already registered; nothing to add.</code>
     </p>
 
-    <h2>Setting one from the command line</h2>
+    <h2 id="setting-one-from-the-command-line">Setting one from the command line</h2>
     <p>
       An assignment in front of a target is an override, written the way a
       shell writes one:
@@ -501,13 +528,11 @@ const store = `$ cat $SHEP_HOME/overrides.json
       <a href="/docs/secrets">secrets</a> carry the value instead.
     </Callout>
 
-    <h2>A template may add, never overwrite</h2>
+    <details>
+      <summary><h2 id="a-template-may-add-never-overwrite">A template may add, never overwrite</h2></summary>
     <p>
-      That is the sentence the whole design reduces to, and it is worth
-      stating on its own because every awkward consequence on this page
-      follows from it. A Flockfile can introduce a setting nobody had.
-      It cannot change one somebody has. A person at a terminal, holding a
-      flag, can do both.
+      A Flockfile can introduce a setting nobody had. It cannot change one
+      somebody has. A person at a terminal, holding a flag, can do both.
     </p>
     <p>
       The awkward consequence is deletion. Removing a line from a Flockfile
@@ -518,8 +543,10 @@ const store = `$ cat $SHEP_HOME/overrides.json
       default, since it is now a key the file is silent on; <code>all</code>{" "}
       does the same for a deleted <code>env</code> key.
     </p>
+    </details>
 
-    <h2>Where it is kept</h2>
+    <details>
+      <summary><h2 id="where-it-is-kept">Where it is kept</h2></summary>
     <p>
       <code>$SHEP_HOME/overrides.json</code>, one entry per sheep name,
       mode <code>0600</code>, written through the same read-modify-rename
@@ -589,8 +616,10 @@ const store = `$ cat $SHEP_HOME/overrides.json
       edits with no copy anywhere else, and there is no undo for a downgrade
       that overwrites it.
     </p>
+    </details>
 
-    <h2>When a load refuses</h2>
+    <details>
+      <summary><h2 id="when-a-load-refuses">When a load refuses</h2></summary>
     <p>
       Per app, and the rest of the file still loads: one bad app in a file of
       eleven costing the other ten their load is the failure that would make
@@ -605,137 +634,7 @@ const store = `$ cat $SHEP_HOME/overrides.json
       what travels on the wire and matching on its exact wording would break
       the first time anybody improved it.
     </p>
-
-    <h2>Where to go next</h2>
-    <div class="next-grid">
-      <a href="/docs/first-flockfile" class="next-card">
-        <div class="next-title">Your first Flockfile →</div>
-        <div class="next-body">
-          Every field a template can carry, and the grammars that reject a
-          typo before it reaches a sheep.
-        </div>
-      </a>
-      <a href="/docs/lifecycle" class="next-card">
-        <div class="next-title">Stopping and replacing a sheep →</div>
-        <div class="next-body">
-          What <code>shep reload</code> actually does to a running process,
-          and when it overlaps rather than drains.
-        </div>
-      </a>
-      <a href="/docs/output" class="next-card">
-        <div class="next-title">Terminal output →</div>
-        <div class="next-body">
-          Where <code>CFG</code> sits in the table, and which column your
-          window drops first.
-        </div>
-      </a>
-    </div>
-  </article>
+    </details>
+</article>
 </DocsLayout>
 
-<style>
-  h1 {
-    font-size: clamp(36px, 4.6vw, 56px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 27px;
-    letter-spacing: -0.03em;
-    margin: 44px 0 12px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 30px;
-    text-wrap: pretty;
-  }
-
-  p {
-    font-size: 16.5px;
-    line-height: 1.65;
-    color: var(--ink-2);
-    margin: 0 0 18px;
-  }
-
-  .fine {
-    font-size: 15px;
-    line-height: 1.6;
-    color: var(--ink-3);
-    margin: -8px 0 30px;
-  }
-
-  .rows {
-    border: 3px solid var(--line);
-    border-radius: 14px;
-    overflow: hidden;
-    margin: 0 0 30px;
-  }
-
-  .row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 2.4fr);
-    gap: 14px;
-    padding: 12px 16px;
-    border-bottom: 2px solid var(--line);
-    font-size: 15px;
-    line-height: 1.55;
-    color: var(--ink-2);
-  }
-
-  .row:last-child {
-    border-bottom: none;
-  }
-
-  .row span:first-child {
-    font-family: "Space Mono", monospace;
-    font-weight: 700;
-    color: var(--ink);
-  }
-
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 8px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
-  }
-</style>

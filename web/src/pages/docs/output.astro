@@ -11,12 +11,10 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 ---
 
 <DocsLayout
-  title="Terminal output"
-  description="shep draws boxes, colour and sheep at a terminal, and plain columns everywhere else. One dial changes how much, and a pipe always gets the plain version."
-  crumb="Reference / Terminal output"
   activeSlug="output"
 >
   <article>
@@ -30,7 +28,15 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       is the default both ways.
     </p>
 
-    <h2>What a terminal shows</h2>
+    <ShortVersion label="Three style levels">
+      <div class="rows">
+        <div class="row"><span><code>full</code></span><span>sheep, boxes, colour. The default.</span></div>
+        <div class="row"><span><code>plain</code></span><span>boxes and colour, no faces</span></div>
+        <div class="row"><span><code>bare</code></span><span>exactly what a pipe gets</span></div>
+      </div>
+    </ShortVersion>
+
+    <h2 id="what-a-terminal-shows">What a terminal shows</h2>
     <p>
       <code>shep flock</code> in a 120-column window. Every colour here says
       something a number alone would take a second glance to notice: STATUS
@@ -50,19 +56,25 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       <code>--format json</code> when the exact number is the thing you
       need.
     </p>
-    <CodeBlock label="shep flock">{`┌────┬──────┬───────────────┬───────┬──────────┬──────┬──────┬──────┬────────┬─────────┬──────┐
+    <CodeBlock label="shep flock">{`host  cpu  ██░░░░░░░░ 15%   mem  ███████░░░ 35.8G / 48.0G   disk  r 32.0K/s w 192.5M/s   net  rx 10.5K/s tx 1.2K/s
+
+┌────┬──────┬───────────────┬───────┬──────────┬──────┬─────┬──────┬──────┬────────┬─────────┬──────┐
 │ ID │ NAME │ STATUS        │ PID   │ RESTARTS │ EXIT │ CFG │ CPU  │ MEM  │ UPTIME │ FOLD    │ SMIT │
 ├────┼──────┼───────────────┼───────┼──────────┼──────┼─────┼──────┼──────┼────────┼─────────┼──────┤
 │ 1  │ api  │ (x.x) errored │ -     │ 15       │ 1    │ -   │ -    │ -    │ 0s     │ -       │ -    │
-│ 0  │ web  │ (o.o) online  │ 68630 │ 0        │ -    │ -   │ 0.0% │ 3.0M │ 18s    │ backend │ -    │
+│ 0  │ web  │ (o.o) online  │ 29678 │ 0        │ -    │ -   │ 0.6% │ 3.0M │ 1m 9s  │ backend │ -    │
 └────┴──────┴───────────────┴───────┴──────────┴──────┴─────┴──────┴──────┴────────┴─────────┴──────┘`}</CodeBlock>
+    <p>
+      The line above the table is the machine. See{" "}
+      <a href="#host-line">the host line</a>.
+    </p>
     <p>
       <code>SMIT</code> is a marker a dog attaches to a sheep over the client
       protocol — <code>-</code> for every sheep here because none carries
       one. See <a href="/docs/terminology">terminology</a>.
     </p>
 
-    <h3>The faces</h3>
+    <h3 id="the-faces">The faces</h3>
     <p>
       Five faces across six statuses, because two of them mean the same
       thing to someone glancing at a table:
@@ -85,7 +97,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       colour, which would turn every column measurement into guesswork.
     </p>
 
-    <h3>The EXIT column</h3>
+    <h3 id="the-exit-column">The EXIT column</h3>
     <p>
       A sheep that is not running shows why it stopped: an exit code, or a
       signal name. A running one shows <code>-</code>, the same convention{" "}
@@ -336,7 +348,32 @@ Dogs
       want the flock.
     </Callout>
 
-    <h2 id="row-order">Row order</h2>
+    <h2 id="host-line">The host line</h2>
+    <p>
+      The line above the table is the machine the flock runs on: CPU across
+      every core, memory in use against memory installed, and what the disks
+      and the network moved over the last second. Loopback is left out of the
+      network figures, since a sheep answering a local proxy would otherwise
+      count every request twice.
+    </p>
+    <Callout variant="note">
+      Three of those four are rates, and a rate needs two readings separated
+      by time. The shepherd reads the counters every second and keeps the
+      difference, so a listing takes a number that already exists rather than
+      stopping to measure one. One that booted a moment ago has nothing to
+      subtract from yet, and each rate reads <code>-</code>. Memory is not a
+      rate. <code>-</code> means not measured, never zero.
+    </Callout>
+    <CodeBlock label="shep flock, against a shepherd one second old">{`host  cpu  ░░░░░░░░░░ -   mem  ███████░░░ 35.9G / 48.0G   disk  r - w -   net  rx - tx -`}</CodeBlock>
+    <p class="fine">
+      <code>shep lookout</code> draws the memory bar from the same figures.
+      A shepherd older than this feature prints no host line at all, and
+      upgrading the binary is not enough on its own: run{" "}
+      <code>shep daemon reload</code>.
+    </p>
+
+    <details>
+      <summary><h2 id="row-order">Row order</h2></summary>
     <p>
       Every listing shep prints is sorted by name, then by id. That covers{" "}
       <code>shep flock</code>, every lifecycle verb above,{" "}
@@ -353,14 +390,17 @@ Dogs
       refreshes, and it is still what you type at{" "}
       <code>shep stop 11</code>.
     </p>
+    </details>
 
-    <h2>Narrow windows</h2>
+    <h2 id="narrow-windows">Narrow windows</h2>
     <p>
       The table measures your terminal and drops columns until it fits,
       least useful first, and names what it hid. The same flock at 60
       columns:
     </p>
-    <CodeBlock label="shep flock, 60 columns">{`┌────┬──────┬────────┬───────┬──────────┬──────┬────────┐
+    <CodeBlock label="shep flock, 60 columns">{`host  cpu  ██░░░░░░░░ 15%   mem  ███████░░░ 35.8G / 48.0G  …
+
+┌────┬──────┬────────┬───────┬──────────┬──────┬────────┐
 │ ID │ NAME │ STATUS │ PID   │ RESTARTS │ MEM  │ UPTIME │
 ├────┼──────┼────────┼───────┼──────────┼──────┼────────┤
 │ 1  │ api  │ (x.x)  │ -     │ 15       │ -    │ 0s     │
@@ -368,9 +408,11 @@ Dogs
 └────┴──────┴────────┴───────┴──────────┴──────┴────────┘
   CFG, CPU, EXIT, FOLD, SMIT hidden. Widen the window, or use --format json.`}</CodeBlock>
     <p>
-      Two things narrowed there. The status word went before any whole
-      column did, leaving the face, which is five columns rather than
-      fifteen. Then <code>SMIT</code>, <code>FOLD</code>, <code>CFG</code>,{" "}
+      Three things narrowed there. The host line is cut from the right and
+      says so with a <code>…</code>: the two bars are what you scan first,
+      so disk and network go before them. Then the status word went before
+      any whole column did, leaving the face, which is five columns rather
+      than fifteen. Then <code>SMIT</code>, <code>FOLD</code>, <code>CFG</code>,{" "}
       <code>EXIT</code> and <code>CPU</code> dropped, in that order, and the
       footer says so.{" "}
       <code>SMIT</code> goes first: it is by far the widest column, so
@@ -388,18 +430,26 @@ Dogs
       about.
     </p>
 
-    <h2>What a pipe gets</h2>
+    <h2 id="what-a-pipe-gets">What a pipe gets</h2>
     <p>
       Redirect it and the boxes, colour and faces all go away. This is not a
       setting; a non-terminal stdout forces it, and so does{" "}
       <code>--format json</code>:
     </p>
-    <CodeBlock label="shep flock | cat">{`ID  NAME  STATUS   PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD     SMIT
+    <CodeBlock label="shep flock | cat">{`host  cpu  15%   mem  35.8G / 48.0G   disk  r 32.0K/s w 192.5M/s   net  rx 10.5K/s tx 1.2K/s
+
+ID  NAME  STATUS   PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD     SMIT
 1   api   errored  -      15        1     -    -     -     0s      -        -
-0   web   online   68630  0         -     -    0.0%  3.0M  5m 10s  backend  -`}</CodeBlock>
+0   web   online   29678  0         -     -    1.0%  4.1M  1m 9s   backend  -`}</CodeBlock>
     <p>
-      None of the pretty rendering survives a pipe, which is the point. The
-      columns themselves do move between releases though. <code>CFG</code>,{" "}
+      The host line keeps its numbers and loses both bars, on the same dial
+      that takes the rules off the table. It is not cut either: a pipe has no
+      window, and trimming to the 80 columns shep assumes would lose real
+      figures to a guess.
+    </p>
+    <p>
+      The columns themselves do move between releases, though.{" "}
+      <code>CFG</code>,{" "}
       <code>EXIT</code> and <code>SMIT</code> are all recent, so parse{" "}
       <code>--format json</code> instead if a script depends on the shape.
     </p>
@@ -413,8 +463,17 @@ Dogs
       name their code on the first line and indent everything after it:
     </p>
     <CodeBlock label="shep --home /tmp/no-such flock">{`error[usage]: no flock at /tmp/no-such
-  did you mean to drop --home? the default is ~/.shep
+  did you mean to drop --home/$SHEP_HOME? the default is ~/.shep
   to set up a flock there deliberately: mkdir -p '/tmp/no-such'`}</CodeBlock>
+    <Callout variant="note">
+      That transcript is a unix one. The layout is identical on Windows and the
+      middle two lines are not. There the knob reads{" "}
+      <code>--home/%SHEP_HOME%</code>, the default reads{" "}
+      <code>%USERPROFILE%\.shep</code>, and the remedy wraps the path in double
+      quotes after a bare <code>mkdir</code>. Neither <code>cmd.exe</code> nor
+      PowerShell takes <code>-p</code>, and <code>cmd.exe</code> reads a single
+      quote as an ordinary character rather than as quoting.
+    </Callout>
     <p>
       Only that first line starts at column 0. So a script anchoring{" "}
       <code>error[</code> or <code>notice[</code> to the start of a line gets
@@ -425,15 +484,10 @@ Dogs
       instead, and is still the thing to parse if you have the choice.
     </p>
 
-    <h2>Choosing how much</h2>
+    <h2 id="choosing-how-much">Choosing how much</h2>
     <p>
-      Three levels, set with <code>shep style</code>:
+      The three levels above the fold are set with <code>shep style</code>:
     </p>
-    <div class="rows">
-      <div class="row"><span><code>full</code></span><span>sheep, boxes, colour. The default.</span></div>
-      <div class="row"><span><code>plain</code></span><span>boxes and colour, no faces</span></div>
-      <div class="row"><span><code>bare</code></span><span>exactly what a pipe gets</span></div>
-    </div>
     <CodeBlock label="shep style">{`$ shep style
 notice[style]: full (from the default)
 
@@ -456,7 +510,8 @@ notice[style]: plain (from shep.toml)`}</CodeBlock>
     <CodeBlock label="a higher layer says so">{`$ SHEP_STYLE=full shep style
 notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
 
-    <h3>NO_COLOR</h3>
+    <details>
+      <summary><h3 id="no-color">NO_COLOR</h3></summary>
     <p>
       <a href="https://no-color.org/">The <code>NO_COLOR</code> convention</a>{" "}
       is honoured at every level, and it is a separate axis rather than a
@@ -468,8 +523,10 @@ notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
     <p class="fine">
       An empty <code>NO_COLOR=</code> counts as unset, per the convention.
     </p>
+    </details>
 
-    <h2>Where sheep appear</h2>
+    <details>
+      <summary><h2 id="where-sheep-appear">Where sheep appear</h2></summary>
     <p>
       Beyond the status column, three moments get art, each one a screen with
       nothing else on it: a flock with nothing in it yet, a flock that is
@@ -483,8 +540,9 @@ notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
       failure makes it harder to read, and a cheerful one after deleting a
       service is simply wrong.
     </Callout>
+    </details>
 
-    <h2>Following the flock</h2>
+    <h2 id="following-the-flock">Following the flock</h2>
     <p>
       <code>shep flock --follow</code> keeps the table on screen and paints a
       fresh one over it every second. <code>--interval</code> changes the
@@ -492,7 +550,7 @@ notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
     </p>
     <CodeBlock
       label="shep flock --follow, 100 columns"
-    >{`host  cpu 63%  mem 32.7G/48.0G  disk r 58.4M/s w 177.0M/s  net rx 10.4M/s tx 10.6M/s
+    >{`host  cpu  ██░░░░░░░░ 15%   mem  ███████░░░ 35.8G / 48.0G   disk  r 32.0K/s w 192.5M/s   net  rx 10…
 
 ┌────┬────────┬────────┬───────┬──────────┬──────┬─────┬──────┬──────┬─────────┬──────┬──────┐
 │ ID │ NAME   │ STATUS │ PID   │ RESTARTS │ EXIT │ CFG │ CPU  │ MEM  │ UPTIME  │ FOLD │ SMIT │
@@ -501,15 +559,12 @@ notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
 │ 1  │ worker │ online │ 27395 │ 0        │ -    │ -   │ 0.1% │ 3.1M │ 17m 31s │ -    │ -    │
 └────┴────────┴────────┴───────┴──────────┴──────┴─────┴──────┴──────┴─────────┴──────┴──────┘`}</CodeBlock>
     <p>
-      The top line is the machine, not the flock: CPU across every core, memory
-      in use against memory installed, and what the disks and the network moved
-      over the last interval. Loopback traffic is left out of the network
-      figures.
+      The <a href="#host-line">host line</a> is the one a one-shot listing
+      prints, fitted to the window again on every redraw. Changing the
+      interval does not change what it measures: the shepherd still reads
+      once a second, so <code>--interval 5</code> shows one second of
+      traffic every five seconds rather than a five-second average.
     </p>
-    <Callout variant="note">
-      Three of those four are rates, so the first frame has nothing to divide
-      and prints <code>-</code> for each. They fill in on the next redraw.
-    </Callout>
     <p>
       A follow needs a live shepherd and a real terminal. A saved roll is one
       moment, and a follow is about the moments after it. With stdout redirected
@@ -522,7 +577,7 @@ notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
       many it dropped. <code>shep lookout</code> scrolls. This does not.
     </p>
 
-    <h2>Following logs</h2>
+    <h2 id="following-logs">Following logs</h2>
     <p>
       <code>shep bleats</code> prints the tail of each log before it starts
       following, so a sheep that has already died still tells you why rather
@@ -551,3 +606,4 @@ web:2 | listening`}</CodeBlock>
     </p>
   </article>
 </DocsLayout>
+

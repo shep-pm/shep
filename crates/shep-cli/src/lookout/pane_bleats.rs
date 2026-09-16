@@ -306,9 +306,9 @@ impl Filters {
     /// Each axis short-circuits the line out the moment it fails; an axis
     /// left `None` holds automatically, which is how the three compose
     /// with AND rather than needing a combinator. `levels` is this sheep's
-    /// own reading of a level, built once by the caller ([`Self::visible`])
-    /// rather than per line; the match axis needs no such hoist, holding a
-    /// matcher already compiled.
+    /// own reading of a level, built once by the caller
+    /// ([`BleatsPane::visible`]) rather than per line; the match axis needs
+    /// no such hoist, holding a matcher already compiled.
     fn keeps(&self, line: &TailLine, levels: &Classifier) -> bool {
         if let Some(stream) = self.stream
             && line.stream != stream

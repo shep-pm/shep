@@ -10,6 +10,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-09-16
+
+### Fixed
+
+- Repair what the split did to doc links and one module name
+
+
+## [0.8.1] - 2026-09-15
+
+
+## [0.8.0] - 2026-09-14
+
+### Added
+
+- Add Client::reconnect and reconnect_within
+- Let a dog wait a bounded time for its shepherd
+
+### Changed
+
+- Correct two doc claims about teardown, and fold eight test blocks into a helper
+- Share the reconnect ladder between both paths, and pin its shape
+
+### Fixed
+
+- Make next_delay total so the ladder cannot panic on overflow
+- Bound a dog's re-subscribe on its own budget, not on the link
+- Make LinkLost must_use, so a dog cannot drop the reason
+- Keep a dog's re-subscribe inside the budget it promises
+
+
 ## [0.7.4] - 2026-09-12
 
 

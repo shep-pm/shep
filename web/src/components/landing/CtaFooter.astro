@@ -1,4 +1,5 @@
 ---
+import { REPO } from "../../data/repo";
 /*
  * Closing CTA. Copy verbatim from docs/shep-design/README.md,
  * "Screens > 1. Landing page > CTA footer", except "1030 tests" -> "Over a
@@ -28,7 +29,7 @@
           </p>
         </div>
         <div class="buttons">
-          <a href="https://github.com/shep-pm/shep" class="btn butter press" style="--shadow-offset:6px; --shadow-color:var(--ink); --press-offset:3px;">
+          <a href={REPO} class="btn butter press" style="--shadow-offset:6px; --shadow-color:var(--ink); --press-offset:3px;">
             Clone the repo
           </a>
           <a href="/docs" class="btn cream press" style="--shadow-offset:6px; --shadow-color:var(--ink); --press-offset:3px;">

@@ -38,9 +38,21 @@ const DEV_HOME_VAR: &str = "$SHEP_DEV_HOME";
 #[cfg(windows)]
 const DEV_HOME_VAR: &str = "%SHEP_DEV_HOME%";
 
+/// The aside `shep dev` prints when `--home` or `$SHEP_HOME` named a home
+/// this verb will not use.
+///
+/// A function rather than a constant: both knobs are spelled per platform,
+/// and [`crate::home::HOME_KNOB`] carries the other one.
+fn home_ignored_aside() -> String {
+    format!(
+        "shep dev ignores {}; isolation is the whole feature — set {DEV_HOME_VAR} instead",
+        crate::home::HOME_KNOB
+    )
+}
+
 /// Why [`dev_home`] would not name a root for this session.
 ///
-/// `shep dev`'s own refusals, not [`crate::HomeRefusal`]'s: both messages
+/// `shep dev`'s own refusals, not [`crate::home::HomeRefusal`]'s: both messages
 /// have to name `$SHEP_DEV_HOME`, which is the one variable this verb reads
 /// and the one an operator can act on.
 #[derive(Debug)]
@@ -70,7 +82,7 @@ impl core::fmt::Display for DevHomeRefusal {
                 knob,
                 given,
                 absolute,
-            } => crate::write_relative_refusal(f, knob, given, absolute.as_deref()),
+            } => crate::home::write_relative_refusal(f, knob, given, absolute.as_deref()),
         }
     }
 }
@@ -93,7 +105,7 @@ fn require_absolute(knob: &'static str, candidate: PathBuf) -> Result<PathBuf, D
     }
     Err(DevHomeRefusal::Relative {
         knob,
-        absolute: crate::absolute_form(&candidate),
+        absolute: crate::home::absolute_form(&candidate),
         given: candidate,
     })
 }
@@ -130,7 +142,7 @@ fn dev_home(
         Some(dir) => require_absolute(DEV_HOME_VAR, PathBuf::from(dir))?,
         None => {
             let dir = home_dir.ok_or(DevHomeRefusal::Unresolved)?;
-            require_absolute(crate::HOME_DIR_VAR, dir.to_path_buf())?.join(".shep-dev")
+            require_absolute(crate::home::HOME_DIR_VAR, dir.to_path_buf())?.join(".shep-dev")
         }
     };
     let inject = |key: &str| (key == "SHEP_HOME").then(|| home.to_string_lossy().into_owned());
@@ -178,11 +190,7 @@ pub async fn dev(
     args: &DevArgs,
 ) -> ExitCode {
     if home_given {
-        streams.aside(
-            "home_ignored",
-            "shep dev ignores --home/$SHEP_HOME; isolation is the whole feature — set \
-             $SHEP_DEV_HOME instead",
-        );
+        streams.aside("home_ignored", &home_ignored_aside());
     }
 
     let target = match &args.target {
@@ -321,13 +329,13 @@ mod tests {
         };
         assert!(
             matches!(&refusal, DevHomeRefusal::Relative { knob, given, .. }
-                if *knob == crate::HOME_DIR_VAR && given == Path::new("ada")),
+                if *knob == crate::home::HOME_DIR_VAR && given == Path::new("ada")),
             "the refusal must carry the home directory as supplied, not the joined `.shep-dev`"
         );
 
         let rendered = refusal.to_string();
         assert!(
-            rendered.contains(crate::HOME_DIR_VAR),
+            rendered.contains(crate::home::HOME_DIR_VAR),
             "an operator cannot fix $SHEP_DEV_HOME when they never set it: {rendered}"
         );
         assert!(
@@ -384,5 +392,29 @@ mod tests {
         apps[0].cwd = Some("/srv/explicit".to_string());
         default_watch_cwd(&mut apps);
         assert_eq!(apps[0].cwd.as_deref(), Some("/srv/explicit"));
+    }
+
+    /// `web/src/pages/docs/containers.astro` quotes this line verbatim, so
+    /// a drifting unix rendering leaves that page wrong.
+    #[cfg(not(windows))]
+    #[test]
+    fn the_ignored_home_aside_names_both_knobs_the_unix_way() {
+        assert_eq!(
+            home_ignored_aside(),
+            "shep dev ignores --home/$SHEP_HOME; isolation is the whole feature — set \
+             $SHEP_DEV_HOME instead"
+        );
+    }
+
+    /// fails if a Windows operator is told to set a variable in a spelling
+    /// their shell reads as ordinary text.
+    #[cfg(windows)]
+    #[test]
+    fn the_ignored_home_aside_names_both_knobs_the_windows_way() {
+        assert_eq!(
+            home_ignored_aside(),
+            "shep dev ignores --home/%SHEP_HOME%; isolation is the whole feature \u{2014} set \
+             %SHEP_DEV_HOME% instead"
+        );
     }
 }

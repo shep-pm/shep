@@ -28,7 +28,17 @@
   --sky: #4e9dd3;
   --barn: #c6432e;
   --shadow: #17251c;
-  --code-bg: #f1ebd8;
+  /* A code surface has to read as a different surface. It was #f1ebd8,
+     1.10 against --paper, where dark mode's equivalent step is 1.28: light
+     had half the separation, so terminals and inline code sat beige on
+     beige. This is 1.28 against --paper, matching dark, and 11.5 against
+     --ink. */
+  --code-bg: #e6dbb8;
+  /* The docs sidebar. It used to inherit --paper and read as one flat
+     field with the article beside it. 1.12 against --paper, about the step
+     --paper-2 has in dark mode: enough to separate the rail, not enough to
+     stripe the page. */
+  --rail: #f2e9d2;
   --dot: rgba(23, 37, 28, 0.1);
 
   /* alias used throughout the design files for --paper-2 */
@@ -51,6 +61,7 @@
     --sky: #78beec;
     --shadow: #050a07;
     --code-bg: #22332a;
+    --rail: #0e1712;
     --dot: rgba(240, 236, 220, 0.08);
   }
 }
@@ -70,6 +81,7 @@
   --sky: #78beec;
   --shadow: #050a07;
   --code-bg: #22332a;
+  --rail: #0e1712;
   --dot: rgba(240, 236, 220, 0.08);
 }
 

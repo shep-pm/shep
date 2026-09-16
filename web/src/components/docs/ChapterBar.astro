@@ -1,0 +1,109 @@
+---
+/*
+ * The page-turn, between a page's own "where to go next" cards and the
+ * escape hatch. Those cards are curated and answer "what else is relevant";
+ * this answers "what do I read next", which is the question a book's reader
+ * has and the cards were never ordered to answer.
+ *
+ * Both neighbours skip unbuilt chapters, so the bar never offers a 404.
+ * Chapter 1 has no previous and the last has no next; the slot is left
+ * empty rather than filled with something, so the arrows stay where the
+ * reader expects them.
+ */
+import { chapterFor } from "../../data/docs-nav";
+
+interface Props {
+  activeSlug: string;
+}
+
+const { activeSlug } = Astro.props;
+const found = chapterFor(activeSlug);
+const previous = found?.previous;
+const next = found?.next;
+---
+
+<nav class="chapter-bar" aria-label="Chapter navigation">
+  {
+    previous ? (
+      <a class="side prev" href={`/docs/${previous.item.slug}`}>
+        <span class="dir">Previous</span>
+        <span class="name">
+          {previous.number}. {previous.item.label}
+        </span>
+      </a>
+    ) : (
+      <span class="side" />
+    )
+  }
+  {
+    next ? (
+      <a class="side next" href={`/docs/${next.item.slug}`}>
+        <span class="dir">Next</span>
+        <span class="name">
+          {next.number}. {next.item.label}
+        </span>
+      </a>
+    ) : (
+      <span class="side" />
+    )
+  }
+</nav>
+
+<style>
+  .chapter-bar {
+    margin-top: 44px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .side {
+    display: block;
+    padding: 16px 18px;
+    border: 3px solid var(--line);
+    border-radius: 14px;
+    background: var(--paper-2);
+    text-decoration: none;
+    color: var(--ink);
+  }
+
+  /* An empty slot holds the column without drawing a card. */
+  span.side {
+    border-color: transparent;
+    background: none;
+  }
+
+  a.side:hover {
+    transform: translate(2px, 2px);
+  }
+
+  .next {
+    text-align: right;
+  }
+
+  .dir {
+    display: block;
+    font-family: "Space Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 5px;
+  }
+
+  .name {
+    font-family: "Bricolage Grotesque", sans-serif;
+    font-weight: 800;
+    font-size: 16px;
+  }
+
+  @media (max-width: 560px) {
+    .chapter-bar {
+      grid-template-columns: 1fr;
+    }
+
+    .next {
+      text-align: left;
+    }
+  }
+</style>

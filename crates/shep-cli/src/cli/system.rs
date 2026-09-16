@@ -1,0 +1,376 @@
+//! Arguments for the verbs that run or configure shep itself rather than
+//! a sheep: `startup`, `unstartup`, `daemon`, `runtime`, `dev`, `init`,
+//! `completions` and `style`.
+//!
+//! Nothing here takes a selector, because none of these verbs picks out
+//! something the flock already has. The three value parsers at the bottom
+//! belong with [`DaemonArgs`], the only struct that uses them: they exist
+//! so a flag and its `SHEP_*` environment variable cannot drift into
+//! accepting different spellings of the same value.
+
+use std::path::PathBuf;
+
+use super::Init;
+
+/// Arguments shared by `shep startup` and `shep unstartup`.
+///
+/// One struct for both verbs: the unit is named after the user it runs the
+/// shepherd as, and, since Task 6, after which init system it targets.
+/// `--home` is read from [`GlobalArgs`](crate::cli::GlobalArgs) by `startup` and ignored by
+/// `unstartup`, which removes a unit rather than writing one.
+#[derive(Debug, clap::Args)]
+pub struct StartupArgs {
+    /// The user the unit runs the shepherd as (default: $SUDO_USER, else the invoking user)
+    #[arg(long)]
+    pub user: Option<String>,
+    /// Write a unit for this init system instead of the detected one.
+    ///
+    /// `unstartup` takes it too: a unit installed under one init has to be
+    /// removable after the host has changed to another.
+    #[arg(long, value_enum)]
+    pub init: Option<Init>,
+}
+
+/// Arguments to `shep completions`.
+#[derive(Debug, clap::Args)]
+pub struct CompletionArgs {
+    /// Shell to generate a completion script for
+    #[arg(value_enum)]
+    pub shell: clap_complete::aot::Shell,
+}
+
+/// Arguments to `shep style`.
+#[derive(Debug, clap::Args)]
+pub struct StyleArgs {
+    /// `full`, `plain`, or `bare`
+    ///
+    /// Sets `shep.toml`'s `[style] level`. Omit to report the level
+    /// currently in force instead of changing it.
+    // The same `StyleLevel` grammar `--style` parses, so `shep style loud`
+    // and `shep --style loud` are rejected identically -- see
+    // `style_verb_parses_the_same_grammar_as_the_style_flag` below.
+    #[arg(value_enum)]
+    pub level: Option<crate::style::StyleLevel>,
+}
+
+/// Arguments to the hidden `shep daemon` subcommand.
+///
+/// The last four are the CLI-flag layer of spec §5's `file < env < flags`,
+/// one per `SHEP_*` variable `DaemonConfig::load` already reads. They live
+/// here rather than on `GlobalArgs` because they configure **the shepherd**,
+/// and this is the only invocation that runs one — `--log-level` on
+/// `shep flock` would configure nothing.
+///
+/// Their real audience is an init unit's `ExecStart`, which can now say
+/// `shep daemon --foreground --log-level info` without a config file.
+#[derive(Debug, clap::Args)]
+pub struct DaemonArgs {
+    /// What to do to the shepherd. Omit to BE the shepherd.
+    ///
+    /// `None` is the boot path and the reason this is optional at all: the
+    /// binary daemonizes by re-execing itself with `daemon` and nothing
+    /// else (`crate::launch::launch_daemon`), so a required subcommand here
+    /// would break daemonization itself rather than merely a verb.
+    #[command(subcommand)]
+    pub cmd: Option<DaemonCmd>,
+    /// Boot without restoring the saved muster roll
+    #[arg(long)]
+    pub no_restore: bool,
+    /// Run supervised by an init system: do not expect to have been
+    /// daemonized, and report readiness once the flock is back
+    #[arg(long)]
+    pub foreground: bool,
+    /// Emit the shepherd's own logs as JSON lines (overrides shep.toml and
+    /// SHEP_LOG_JSON). Accepts 1, 0, true, false; bare means true.
+    #[arg(
+        long,
+        value_name = "BOOL",
+        num_args = 0..=1,
+        default_missing_value = "true",
+        value_parser = bool_flag
+    )]
+    pub log_json: Option<bool>,
+    /// Lowest severity of the shepherd's own records that reaches its log
+    #[arg(long, value_name = "LEVEL", value_parser = log_level_flag)]
+    pub log_level: Option<shep_core::config::LogLevel>,
+    /// Control-socket path override
+    #[arg(long, value_name = "PATH")]
+    pub socket: Option<PathBuf>,
+    /// Longest a cron worker sleeps before re-deriving its next occurrence
+    #[arg(long, value_name = "DURATION", value_parser = duration_flag)]
+    pub max_cron_sleep: Option<shep_core::values::UpDuration>,
+}
+
+/// The one thing `shep daemon` can be asked to do rather than be.
+///
+/// A separate enum rather than a flag on [`DaemonArgs`] because it is a
+/// different verb: `shep daemon` runs a shepherd in this process, and
+/// `shep daemon reload` replaces the one already running with this
+/// binary's own code.
+#[derive(Debug, clap::Subcommand)]
+pub enum DaemonCmd {
+    /// Replace the running shepherd with this binary, and bring the flock back
+    ///
+    /// `cargo install shep` replaces the binary and leaves the shepherd
+    /// running the old code. This is what restarts it, and it is the
+    /// command a version-skew refusal names.
+    Reload,
+}
+
+/// Arguments to `shep init`.
+#[derive(Debug, clap::Args)]
+pub struct InitArgs {
+    /// Where to write it. The extension picks the format: toml, yaml, yml,
+    /// json or json5. Defaults to Flockfile.toml in this directory
+    #[arg(value_name = "PATH")]
+    pub path: Option<PathBuf>,
+    /// Show every option the grammar has, not just the common ones
+    #[arg(long)]
+    pub all: bool,
+    /// Overwrite the Flockfile that is already here, keeping its own format
+    #[arg(long)]
+    pub force: bool,
+}
+
+/// Arguments to `shep runtime`.
+#[derive(Debug, clap::Args)]
+pub struct RuntimeArgs {
+    /// Flockfile to run (default: discovered in the current directory)
+    pub target: Option<String>,
+    /// Run the supervisor in this process rather than splitting off an init.
+    ///
+    /// Set by the init half of a PID-1 split when it re-execs this binary,
+    /// and never by a person. Also a safety catch: with this set the split
+    /// cannot happen, so a mis-read pid can never produce a fork loop.
+    #[arg(long, hide = true)]
+    pub supervise: bool,
+}
+
+/// Arguments to `shep dev`.
+///
+/// No `--home` of its own, and the global one does not apply — see
+/// `commands::dev::dev_home`.
+#[derive(Debug, clap::Args)]
+pub struct DevArgs {
+    /// Script or Flockfile to run (default: discovered in this directory)
+    pub target: Option<String>,
+    /// Name for this sheep (script form only)
+    #[arg(long)]
+    pub name: Option<String>,
+}
+
+/// clap value parser over shep's own four boolean spellings — NOT clap's
+/// `BoolishValueParser`, which also takes yes/no/y/n/on/off and would widen
+/// the grammar on the flag side only.
+fn bool_flag(value: &str) -> Result<bool, String> {
+    shep_core::config::parse_daemon_bool(value)
+        .ok_or_else(|| format!("expected one of 1, 0, true, false; got `{value}`"))
+}
+
+/// clap value parser over [`shep_core::config::LogLevel::from_name`] — the
+/// same lowercase-only grammar `SHEP_LOG_LEVEL` accepts.
+fn log_level_flag(value: &str) -> Result<shep_core::config::LogLevel, String> {
+    shep_core::config::LogLevel::from_name(value).ok_or_else(|| {
+        format!("expected one of off, error, warn, info, debug, trace; got `{value}`")
+    })
+}
+
+/// clap value parser over `UpDuration`'s `FromStr`.
+fn duration_flag(value: &str) -> Result<shep_core::values::UpDuration, String> {
+    value
+        .parse::<shep_core::values::UpDuration>()
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+    use crate::cli::{Cli, Commands};
+
+    #[test]
+    fn log_json_has_three_states() {
+        use clap::Parser;
+        let cases = [
+            (vec!["shep", "daemon"], None),
+            (vec!["shep", "daemon", "--log-json"], Some(true)),
+            (vec!["shep", "daemon", "--log-json=false"], Some(false)),
+            (vec!["shep", "daemon", "--log-json=1"], Some(true)),
+        ];
+        for (argv, expected) in cases {
+            match Cli::try_parse_from(&argv).unwrap().command {
+                Commands::Daemon(args) => assert_eq!(args.log_json, expected, "{argv:?}"),
+                other => panic!("expected Daemon, got {other:?}"),
+            }
+        }
+    }
+
+    /// `shep daemon` with no subcommand is how this binary daemonizes:
+    /// `launch::launch_daemon` re-execs it with exactly that one argument.
+    /// An optional subcommand must not turn a bare invocation into a
+    /// missing-subcommand error, or daemonization itself stops working and
+    /// nothing in shep starts.
+    #[test]
+    fn a_bare_shep_daemon_still_boots_and_is_not_a_subcommand_error() {
+        use clap::Parser;
+        let parsed =
+            Cli::try_parse_from(["shep", "daemon"]).expect("`shep daemon` must still parse");
+        let Commands::Daemon(args) = parsed.command else {
+            panic!("`shep daemon` must still parse as the daemon verb");
+        };
+        assert!(
+            args.cmd.is_none(),
+            "bare `shep daemon` must remain the boot path"
+        );
+    }
+
+    /// fails if the subcommand changes what any existing `daemon` flag
+    /// means. clap can behave surprisingly when a subcommand and a struct's
+    /// own flags share one `Args` type, and every one of these flags is an
+    /// init unit's `ExecStart` line somewhere.
+    #[test]
+    fn the_daemon_flags_still_parse_alongside_the_subcommand() {
+        use clap::Parser;
+        let argv = [
+            "shep",
+            "daemon",
+            "--foreground",
+            "--no-restore",
+            "--log-json=false",
+            "--log-level",
+            "info",
+            "--socket",
+            "run/shep.sock",
+            "--max-cron-sleep",
+            "30s",
+        ];
+        let parsed = Cli::try_parse_from(argv).unwrap_or_else(|e| panic!("{argv:?} failed: {e}"));
+        let Commands::Daemon(args) = parsed.command else {
+            panic!("expected the daemon verb")
+        };
+        assert!(args.foreground);
+        assert!(args.no_restore);
+        assert_eq!(args.log_json, Some(false));
+        assert_eq!(args.log_level, Some(shep_core::config::LogLevel::Info));
+        assert_eq!(args.socket.as_deref(), Some(Path::new("run/shep.sock")));
+        assert_eq!(
+            args.max_cron_sleep
+                .map(shep_core::values::UpDuration::as_duration),
+            Some(std::time::Duration::from_secs(30))
+        );
+        assert!(
+            args.cmd.is_none(),
+            "flags alone must not select a subcommand"
+        );
+    }
+
+    /// The verb the version-skew refusal names. It has to parse, or that
+    /// refusal points an operator at a command that does not exist.
+    #[test]
+    fn daemon_reload_parses_as_the_reload_subcommand() {
+        use clap::Parser;
+        let parsed = Cli::try_parse_from(["shep", "daemon", "reload"])
+            .expect("`shep daemon reload` must parse");
+        let Commands::Daemon(args) = parsed.command else {
+            panic!("expected the daemon verb")
+        };
+        assert!(
+            matches!(args.cmd, Some(DaemonCmd::Reload)),
+            "got {:?}",
+            args.cmd
+        );
+    }
+
+    /// fails if the flag grammar widens past the env grammar — the exact
+    /// drift `parse_daemon_bool` exists to prevent.
+    #[test]
+    fn the_flag_bool_grammar_matches_the_env_grammar() {
+        use clap::Parser;
+        for wider in ["--log-json=yes", "--log-json=on", "--log-json=TRUE"] {
+            assert!(
+                Cli::try_parse_from(["shep", "daemon", wider]).is_err(),
+                "{wider} must not parse"
+            );
+        }
+    }
+
+    /// fails if `runtime` stops parsing, or if `--supervise` becomes
+    /// visible. It is the init's own re-exec flag; a person typing it
+    /// should not find it in `--help`.
+    #[test]
+    fn runtime_parses_and_its_supervise_flag_is_hidden() {
+        use clap::Parser;
+
+        let bare = Cli::try_parse_from(["shep", "runtime"]).unwrap();
+        let Commands::Runtime(args) = bare.command else {
+            panic!("expected runtime")
+        };
+        assert_eq!(args.target, None, "no target means discover");
+        assert!(!args.supervise, "a person never sets this");
+
+        let with_target = Cli::try_parse_from(["shep", "runtime", "./Flockfile.toml"]).unwrap();
+        let Commands::Runtime(args) = with_target.command else {
+            panic!("expected runtime")
+        };
+        assert_eq!(args.target.as_deref(), Some("./Flockfile.toml"));
+
+        let supervised = Cli::try_parse_from(["shep", "runtime", "--supervise"]).unwrap();
+        let Commands::Runtime(args) = supervised.command else {
+            panic!("expected runtime")
+        };
+        assert!(args.supervise, "the init passes --supervise to its child");
+
+        use clap::CommandFactory;
+        let cmd = Cli::command();
+        let runtime = cmd.find_subcommand("runtime").unwrap();
+        assert!(!runtime.is_hide_set(), "runtime is a real, documented verb");
+        let supervise_arg = runtime
+            .get_arguments()
+            .find(|a| a.get_id().as_str() == "supervise")
+            .expect("RuntimeArgs must still carry a hidden `supervise` field");
+        assert!(
+            supervise_arg.is_hide_set(),
+            "--supervise must stay hidden from --help"
+        );
+    }
+
+    /// fails if `StyleArgs::level` reverts to `Option<String>` (the
+    /// original defect: a value that parsed but was read by nothing), or
+    /// if the verb's grammar ever drifts from `--style`'s -- a value
+    /// clap accepts on one spelling and rejects on the other would leave
+    /// an operator unable to guess which one is broken.
+    #[test]
+    fn style_verb_parses_the_same_grammar_as_the_style_flag() {
+        use crate::style::StyleLevel;
+        use clap::Parser;
+
+        let cli = Cli::try_parse_from(["shep", "style"]).unwrap();
+        match cli.command {
+            Commands::Style(args) => {
+                assert_eq!(args.level, None, "bare `shep style` still reports")
+            }
+            other => panic!("expected Style, got {other:?}"),
+        }
+
+        for (raw, expected) in [
+            ("full", StyleLevel::Full),
+            ("plain", StyleLevel::Plain),
+            ("bare", StyleLevel::Bare),
+        ] {
+            let cli = Cli::try_parse_from(["shep", "style", raw]).unwrap();
+            match cli.command {
+                Commands::Style(args) => assert_eq!(args.level, Some(expected), "style {raw}"),
+                other => panic!("expected Style, got {other:?}"),
+            }
+        }
+
+        let bad_flag = Cli::try_parse_from(["shep", "--style", "loud", "flock"]).unwrap_err();
+        let bad_verb = Cli::try_parse_from(["shep", "style", "loud"]).unwrap_err();
+        assert_eq!(
+            bad_flag.kind(),
+            bad_verb.kind(),
+            "a bad value fails the same way through either spelling"
+        );
+    }
+}

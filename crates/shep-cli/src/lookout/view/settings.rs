@@ -30,7 +30,8 @@ use crate::vocabulary::Reported;
 const DOGS_CAPTION: &str = "space arms, Enter applies; a dog needs no reload";
 
 /// The floor on the dogs table's NAME column, mirroring
-/// [`super::flock::NAME_MIN`]: never shrinks below a name worth reading.
+/// [`super::flock::columns::NAME_MIN`]: never shrinks below a name worth
+/// reading.
 const DOG_NAME_MIN: u16 = 8;
 
 /// Columns spent on the selection mark and the space after it, before any
@@ -78,7 +79,7 @@ impl DogColumn {
     }
 
     /// The fixed width of this column's cells. `Name` reports `0`; see
-    /// [`super::flock::Column::width`].
+    /// [`super::flock::columns::Column::width`].
     #[must_use]
     const fn width(self) -> u16 {
         match self {
@@ -111,7 +112,7 @@ const FLOOR_DOG_COLUMNS: &[DogColumn] = &[DogColumn::Name, DogColumn::Running];
 /// terminal.
 const DOG_MIN_WIDTH: u16 = DogColumn::Running.width() + DOG_NAME_MIN + 2;
 
-/// Width thresholds, widest first, mirroring [`super::flock::TIERS`]:
+/// Width thresholds, widest first, mirroring `flock::columns::TIERS`:
 /// least-diagnostic column drops first. SOURCE (widest) drops before IN
 /// FILE; NAME and RUNNING are the floor.
 const DOG_TIERS: &[(u16, &[DogColumn])] = &[
@@ -133,7 +134,7 @@ pub fn columns_for(width: u16) -> &'static [DogColumn] {
 }
 
 /// What NAME gets once the fixed dogs-table columns and their separators
-/// are paid for. [`super::flock::name_width`]'s own twin.
+/// are paid for. [`super::flock::columns::name_width`]'s own twin.
 fn dog_name_width(width: u16, columns: &[DogColumn]) -> u16 {
     let fixed: u16 = columns.iter().map(|column| column.width()).sum();
     let gaps = u16::try_from(columns.len().saturating_sub(1)).unwrap_or(0) * 2;
@@ -318,7 +319,8 @@ const SCALAR_VALUE_W: u16 = 30;
 /// saying anything and there is nothing left to trade.
 const SCALAR_VALUE_MIN: u16 = 10;
 /// SOURCE column width: `$SHEP_STYLE` and `the default` are both 11 columns,
-/// the widest two words [`crate::style::StyleSource::Display`] ever prints.
+/// the widest two words [`crate::style::StyleSource`]'s `Display` ever
+/// prints.
 const SCALAR_SOURCE_W: u16 = 11;
 /// The floor on the apply-cost column once the terminal is too narrow to
 /// give it the remainder: enough for `needs`, never a whole sentence.
@@ -361,7 +363,7 @@ const SCALAR_FLOOR: &[ScalarColumn] = &[ScalarColumn::Name, ScalarColumn::Value]
 const SCALAR_MIN_WIDTH: u16 = SCALAR_NAME_W + 2 + SCALAR_VALUE_MIN;
 
 /// Width thresholds for the scalar rows, widest first, the same shape
-/// [`DOG_TIERS`] and [`super::flock::TIERS`] both use.
+/// [`DOG_TIERS`] and `flock::columns::TIERS` both use.
 ///
 /// The apply cost drops first, then SOURCE, the reverse of the dogs
 /// table's order: the cost also shows in the confirm and the status bar,

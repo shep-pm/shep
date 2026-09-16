@@ -7,6 +7,7 @@
  * and go all actually installed, before this page was written.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
@@ -64,45 +65,9 @@ const rustRows: ExampleRow[] = [
     watch: "shep trigger chatty ping, then nonsense for the unknown-action reply. shep stop sends a JSON shutdown instead of a signal.",
   },
 ];
-
-const polyglotRows: ExampleRow[] = [
-  {
-    program: "node-http / node-http-cluster",
-    demonstrates: "A plain Node HTTP server, plus instances above 1.",
-    watch: "curl 127.0.0.1:19090/, then 19091 through 19094 for each clustered instance.",
-  },
-  {
-    program: "bun-http",
-    demonstrates: "interpreter, and shep.toml's [interpreters] mapping.",
-    watch: "The same node-http.js, curl 127.0.0.1:19095/, and a runtime field in the response body instead of a different file.",
-  },
-  {
-    program: "python-app",
-    demonstrates: "interpreter pointed at a venv's own python, not a bare python3.",
-    watch: "curl 127.0.0.1:19096/ after examples/polyglot/setup-venv.sh.",
-  },
-  {
-    program: "go-http",
-    demonstrates: "A build step, then no interpreter field at all.",
-    watch: "curl 127.0.0.1:19097/ after examples/polyglot/go-http/build.sh.",
-  },
-  {
-    program: "node-chatty / python-chatty / go-chatty",
-    demonstrates: "The shepherd channel framed by hand, three times, both platform arms each.",
-    watch: "shep trigger '*-chatty' ping answers identically in all three, and shep trigger '*chatty' ping adds the Rust one.",
-  },
-  {
-    program: "static-site",
-    demonstrates: "shep serve — no program of the operator's own.",
-    watch: "curl 127.0.0.1:19098/ after shep serve examples/polyglot/static-site --port 19098.",
-  },
-];
 ---
 
 <DocsLayout
-  title="Examples"
-  description="Small Rust programs and a Flockfile that need only cargo and a Unix host, plus a second, polyglot layer over the top for Node, Bun, Python and Go — watch shep's supervision behaviours happen instead of reading about them."
-  crumb="Start here / Examples"
   activeSlug="examples"
 >
   <article>
@@ -111,56 +76,73 @@ const polyglotRows: ExampleRow[] = [
     <p class="lede">
       Every page in this section describes what shep does. This one is
       a set of tiny programs and a Flockfile that make it happen where you can
-      watch: a probe waiting, a stop signal being ignored, a memory ceiling
-      firing, a crash loop backing off. Everything lives under{" "}
-      <code>examples/</code> — a workspace member of its own, built by{" "}
-      <code>cargo build --release</code> but never on the path a plain{" "}
+      watch: a probe waiting, a memory ceiling firing, a crash loop backing
+      off. Everything lives under{" "}
+      <code>examples/</code>, a workspace member built by{" "}
+      <code>cargo build --release</code>, never on the path a plain{" "}
       <code>cargo install shep</code> walks.
     </p>
     <p>
-      That first set is Rust on purpose: it needs nothing but a Rust
-      toolchain, works from a fresh clone, and is what{" "}
+      That first set is Rust on purpose. It needs nothing but a Rust
+      toolchain, runs from a fresh clone, and is what{" "}
       <code>examples/Flockfile.toml</code> starts. A second layer,{" "}
       <code>examples/Flockfile.polyglot.toml</code>, runs the same ideas
-      against Node, Bun, Python and Go — the stacks most shep operators
-      actually run, and the ones the Rust set structurally can't stand in
-      for: a real Node HTTP server, the same source file under two
-      different runtimes, a Python interpreter resolved through a venv
-      instead of PATH, a Go binary with a build step, and a static site
-      served with no program of the operator's own at all. It's a separate
-      file and a separate section below because it needs runtimes the Rust
-      set doesn't — see <a href="#polyglot">The polyglot layer</a> for
-      exactly which ones, and what happens to the rest of the file when one
-      is missing.
+      against the stacks most shep operators actually run: Node, Bun,
+      Python and Go. It needs those runtimes installed, so it lives in its
+      own file, below.
     </p>
+
+    <ShortVersion label="Pick yours">
+      <ul class="chooser">
+        <li>
+          <a href="#one-file-two-runtimes">One file, two runtimes</a>: the
+          same script, once under Node and once under Bun.
+        </li>
+        <li>
+          <a href="#instances-without-reuse-port">
+            Instances, without reuse_port
+          </a>: one script, several copies, each on its own port.
+        </li>
+        <li>
+          <a href="#a-venvs-own-python">A venv's own python</a>: an
+          interpreter pinned to a virtualenv, not PATH.
+        </li>
+        <li>
+          <a href="#a-build-step-then-no-interpreter">
+            A build step, then no interpreter
+          </a>: compile once, run the binary directly.
+        </li>
+        <li>
+          <a href="#shep-serve-not-an-app">shep serve, not an app</a>: a
+          static directory, no program of your own.
+        </li>
+      </ul>
+    </ShortVersion>
 
     <Callout variant="careful">
       Unix, not just cargo. All but one build and run anywhere Rust
       does, but <code>stubborn</code> traps <code>SIGTERM</code> with a
-      Unix signal mask — on any other platform it prints why and exits 1
-      instead of running at all. <code>shep start</code> works through a
-      Flockfile in stage order, and top to bottom inside a stage, stopping
-      at the first app that fails to spawn (see <a href="#polyglot">the
-      polyglot layer</a> below for the same rule hitting a missing
-      runtime). This file declares no <code>depends_on</code>, so it is one
-      stage in file order, and on a non-Unix host it does not run straight
-      through as shown. Comment out{" "}
-      <code>stubborn</code>'s <code>[[app]]</code> block to run the other
-      six.
+      Unix signal mask: on any other platform it prints why and exits 1
+      instead of running at all. That is an exit, not a refusal to spawn,
+      so the start succeeds and the rest come up. <code>stubborn</code>{" "}
+      then restarts into the same exit until <code>max_restarts</code> (16)
+      is spent and it settles at <code>errored</code>. Comment out its{" "}
+      <code>[[app]]</code> block to skip that. A missing runtime is harsher:
+      a spawn that fails ends the start where it stands, as{" "}
+      <a href="#polyglot">the polyglot layer</a> below shows.
     </Callout>
 
     <Callout variant="careful">
       No config edits needed otherwise. Every path in{" "}
       <code>examples/Flockfile.toml</code> is relative to{" "}
-      <code>examples/</code> itself — a Flockfile app with no{" "}
-      <code>cwd</code> runs where its Flockfile lives — so cloning the repo
-      and running the commands below just works, on a Unix host.
+      <code>examples/</code> itself: a Flockfile app with no{" "}
+      <code>cwd</code> runs where its Flockfile lives.
     </Callout>
 
-    <h2>Run it</h2>
+    <h2 id="run-it">Run it</h2>
     <p>
       Two of them — <code>leaky</code> and <code>crasher</code> — restart
-      on purpose and by design, and <code>shep start</code> registers into
+      on purpose, and <code>shep start</code> registers into
       whatever <code>$SHEP_HOME</code> is already pointed at. The{" "}
       <code>export</code> below is not optional: skip it and this starts
       inside your own real daemon, alongside whatever it's already
@@ -172,8 +154,12 @@ const polyglotRows: ExampleRow[] = [
       <div><span class="prompt">$</span> ./target/release/shep start examples/Flockfile.toml</div>
       <div><span class="prompt">$</span> ./target/release/shep flock</div>
     </div>
+    <p class="fine">
+      <code>examples/src/bin/</code> holds the source of each, and{" "}
+      <code>examples/Flockfile.toml</code> wires them up.
+    </p>
 
-    <h2>What each one demonstrates</h2>
+    <h2 id="what-each-one-demonstrates">What each one demonstrates</h2>
     <div class="field-table">
       <div class="row header">
         <span class="col-name">Program</span>
@@ -186,55 +172,12 @@ const polyglotRows: ExampleRow[] = [
             <span class="col-name">
               <code>{r.program}</code>
             </span>
-            <span class="col-does">{r.demonstrates}</span>
-            <span class="col-does">{r.watch}</span>
+            <span class="col-does" data-label="Demonstrates">{r.demonstrates}</span>
+            <span class="col-does" data-label="Watch for">{r.watch}</span>
           </div>
         ))
       }
     </div>
-
-    <h2>The exec probe, in full</h2>
-    <p>
-      <code>readiness_probe</code> with <code>kind = "exec"</code> has no
-      everyday real-world stand-in the way an HTTP or TCP probe does —
-      <code>ready_when_told</code> is the minimal program that makes one
-      demonstrable. It exits <code>0</code> once a file exists on disk and
-      non-zero otherwise; the Flockfile points a probe at it, gated on a
-      sentinel path this page and the file both agree on:
-    </p>
-    <CodeBlock label="examples/Flockfile.toml">{`[app.readiness_probe]
-kind     = "exec"
-target   = "../target/release/ready_when_told /tmp/shep-examples-sentinel"
-interval = "3s"
-timeout  = "1s"`}</CodeBlock>
-    <div class="terminal">
-      <div><span class="prompt">$</span> touch /tmp/shep-examples-sentinel</div>
-    </div>
-    <p class="fine">
-      The next poll — within <code>interval</code> — flips{" "}
-      <code>http-server-gated-by-sentinel</code> from <code>starting</code> to{" "}
-      <code>online</code>.
-    </p>
-
-    <h2>kill_timeout, not graceful_timeout</h2>
-    <p>
-      <code>stubborn</code> blocks <code>SIGTERM</code> and never acts on it,
-      so shep's kill ladder has to escalate to <code>SIGKILL</code> — a
-      signal nothing can trap. The field that governs how long shep waits
-      before that escalation on a plain <code>shep stop</code>/
-      <code>restart</code>/<code>delete</code> is <code>kill_timeout</code>,
-      not <code>graceful_timeout</code>: the latter only governs a{" "}
-      <em>reload</em>'s drain window for the old instance. This example sets{" "}
-      <code>kill_timeout</code> to 3 seconds, short enough to watch land:
-    </p>
-    <div class="terminal">
-      <div><span class="prompt">$</span> ./target/release/shep stop stubborn</div>
-    </div>
-    <p class="fine">
-      Roughly three seconds pass — one <code>"caught SIGTERM, still not
-      dying"</code> line in its log, then silence — before{" "}
-      <code>shep flock</code> reports it stopped by <code>SIGKILL</code>.
-    </p>
 
     <h2 id="polyglot">The polyglot layer</h2>
     <p>
@@ -249,24 +192,6 @@ timeout  = "1s"`}</CodeBlock>
       <div><span class="prompt">$</span> examples/polyglot/go-chatty/build.sh</div>
       <div><span class="prompt">$</span> export SHEP_HOME="$(mktemp -d)"</div>
       <div><span class="prompt">$</span> ./target/release/shep start examples/Flockfile.polyglot.toml</div>
-    </div>
-    <div class="field-table">
-      <div class="row header">
-        <span class="col-name">Program</span>
-        <span class="col-does">Demonstrates</span>
-        <span class="col-does">Watch for</span>
-      </div>
-      {
-        polyglotRows.map((r) => (
-          <div class="row">
-            <span class="col-name">
-              <code>{r.program}</code>
-            </span>
-            <span class="col-does">{r.demonstrates}</span>
-            <span class="col-does">{r.watch}</span>
-          </div>
-        ))
-      }
     </div>
 
     <Callout variant="careful">
@@ -287,7 +212,7 @@ timeout  = "1s"`}</CodeBlock>
       leaves running.
     </Callout>
 
-    <h3>One file, two runtimes</h3>
+    <h2 id="one-file-two-runtimes">One file, two runtimes</h2>
     <p>
       <code>node-http</code> and <code>bun-http</code> run the exact same
       script, <code>examples/polyglot/node-http.js</code> — only{" "}
@@ -316,15 +241,11 @@ args        = ["19095"]`}</CodeBlock>
 js = "node"
 py = "python3"`}</CodeBlock>
     <p class="fine">
-      An app's own <code>interpreter</code> field, when it sets one — as
-      every interpreted app in <code>examples/Flockfile.polyglot.toml</code>{" "}
-      does, though <code>go-http</code> sets none because a compiled binary
-      runs directly — always wins over the extension map. The map exists for a flock of
-      apps that all use the same handful of extensions and would rather
-      not repeat <code>interpreter = "node"</code> five times.
+      An app's own <code>interpreter</code> field, when it sets one, always
+      wins over the extension map.
     </p>
 
-    <h3>instances, without reuse_port</h3>
+    <h2 id="instances-without-reuse-port">instances, without reuse_port</h2>
     <p>
       <code>node-http-cluster</code> is the same script again,{" "}
       <code>instances = 4</code>. Each instance gets its own{" "}
@@ -344,12 +265,12 @@ py = "python3"`}</CodeBlock>
       overlap: an app that claims it wrongly gets a replacement that takes{" "}
       <code>EADDRINUSE</code>.
       This example offsets the port rather than sharing it, so the question
-      never arises: four listeners, four ports, nothing to share. See{" "}
+      never arises. See{" "}
       <a href="/docs/from-pm2">Coming from pm2</a> for how this compares to
       pm2's own cluster mode.
     </p>
 
-    <h3>A venv's own python</h3>
+    <h2 id="a-venvs-own-python">A venv's own python</h2>
     <p>
       The classic failure <code>python-app</code> exists to head off: an
       app that runs fine from a shell — your venv is active — and does not
@@ -364,7 +285,7 @@ script      = "polyglot/python-app.py"
 interpreter = "polyglot/venv/bin/python3"
 args        = ["19096"]`}</CodeBlock>
 
-    <h3>A build step, then no interpreter</h3>
+    <h2 id="a-build-step-then-no-interpreter">A build step, then no interpreter</h2>
     <p>
       <code>go-http</code> is compiled, not interpreted:{" "}
       <code>examples/polyglot/go-http/build.sh</code> runs{" "}
@@ -373,17 +294,11 @@ args        = ["19096"]`}</CodeBlock>
       already runs itself.
     </p>
 
-    <h3 id="channel">The shepherd channel, in four languages</h3>
+    <h2 id="channel">The shepherd channel, in four languages</h2>
     <p>
-      <code>chatty</code> and the three <code>*-chatty</code> apps are the
-      same program written four times: readiness, a metric, and three
-      custom actions. The Rust one takes the{" "}
-      <code>shep-channel</code> crate; Go, Node and Python frame the wire
-      themselves, because those languages either have no shep library or
-      would need a dependency this directory deliberately avoids. All four
-      set <code>channel</code>, <code>wait_ready</code> and{" "}
-      <code>shutdown_with_message</code>, so all three of the fields that
-      open a channel are visible in one entry.
+      <code>chatty</code> and the three <code>*-chatty</code> apps are one
+      program in four languages: Rust over <code>shep-channel</code>, the
+      rest by hand, all to <a href="/docs/shepherd-channel">one contract</a>.
     </p>
     <div class="terminal">
       <div><span class="prompt">$</span> ./target/release/shep trigger '*chatty' ping</div>
@@ -393,11 +308,6 @@ args        = ["19096"]`}</CodeBlock>
       <div>8   node-chatty    replied  pong from node pid=40077, up 7.1s, level info</div>
       <div>9   python-chatty  replied  pong from python pid=40078, up 7.1s, level info</div>
     </div>
-    <p>
-      Trigger a name none of them knows and every one still answers, which
-      is the rule the contract cares about most: an operator's typo costs
-      them a reply rather than the whole <code>action_timeout</code>.
-    </p>
     <div class="terminal">
       <div><span class="prompt">$</span> ./target/release/shep trigger '*chatty' nonsense</div>
       <div>ID  NAME           OUTCOME  DETAIL</div>
@@ -406,15 +316,8 @@ args        = ["19096"]`}</CodeBlock>
       <div>8   node-chatty    replied  unknown action: nonsense</div>
       <div>9   python-chatty  replied  unknown action: nonsense</div>
     </div>
-    <p class="fine">
-      <code>examples/polyglot/go-chatty/build.sh</code> compiles the Go one,
-      and refuses to build if its copy of shep's generated Go wire types has
-      drifted from the canonical file. See{" "}
-      <a href="/docs/shepherd-channel">The shepherd channel</a> for the
-      contract all four hold to.
-    </p>
 
-    <h3>shep serve, not an app</h3>
+    <h2 id="shep-serve-not-an-app">shep serve, not an app</h2>
     <p>
       <code>examples/polyglot/static-site</code> isn't in the Flockfile at
       all. <code>shep serve</code> registers its own sheep for a directory
@@ -428,64 +331,52 @@ args        = ["19096"]`}</CodeBlock>
       <code>--auth</code>, and everything else it refuses by default.
     </p>
 
-    <h2>Where to go next</h2>
-    <div class="next-grid">
-      <a href="/docs/first-flockfile" class="next-card">
-        <div class="next-title">Your first Flockfile →</div>
-        <div class="next-body">
-          Every field <code>examples/Flockfile.toml</code> uses, and every one
-          it doesn't.
-        </div>
-      </a>
-      <a href="/docs/output" class="next-card">
-        <div class="next-title">Terminal output →</div>
-        <div class="next-body">
-          What the columns in <code>shep flock</code>'s table above actually
-          mean.
-        </div>
-      </a>
+    <h2 id="the-exec-probe-in-full">The exec probe, in full</h2>
+    <p>
+      <code>readiness_probe</code> with <code>kind = "exec"</code> has no
+      everyday real-world stand-in the way an HTTP or TCP probe does —
+      <code>ready_when_told</code> is the minimal program that makes one
+      demonstrable. It exits <code>0</code> once a file exists on disk and
+      non-zero otherwise; the Flockfile points a probe at it, gated on a
+      sentinel path this page and the file both agree on:
+    </p>
+    <CodeBlock label="examples/Flockfile.toml">{`[app.readiness_probe]
+kind     = "exec"
+target   = "../target/release/ready_when_told /tmp/shep-examples-sentinel"
+interval = "3s"
+timeout  = "1s"`}</CodeBlock>
+    <div class="terminal">
+      <div><span class="prompt">$</span> touch /tmp/shep-examples-sentinel</div>
     </div>
-  </article>
+    <p class="fine">
+      The next poll — within <code>interval</code> — flips{" "}
+      <code>http-server-gated-by-sentinel</code> from <code>starting</code> to{" "}
+      <code>online</code>.
+    </p>
+
+    <h2 id="kill-timeout-not-graceful-timeout">kill_timeout, not graceful_timeout</h2>
+    <p>
+      <code>stubborn</code> blocks <code>SIGTERM</code> and never acts on it,
+      so shep's kill ladder has to escalate to <code>SIGKILL</code> — a
+      signal nothing can trap. The field that governs how long shep waits
+      before that escalation on a plain <code>shep stop</code>/
+      <code>restart</code>/<code>delete</code> is <code>kill_timeout</code>,
+      not <code>graceful_timeout</code>: the latter only governs a{" "}
+      <em>reload</em>'s drain window for the old instance. This example sets{" "}
+      <code>kill_timeout</code> to 3 seconds, short enough to watch land:
+    </p>
+    <div class="terminal">
+      <div><span class="prompt">$</span> ./target/release/shep stop stubborn</div>
+    </div>
+    <p class="fine">
+      Roughly three seconds pass — one <code>"caught SIGTERM, still not
+      dying"</code> line in its log, then silence — before{" "}
+      <code>shep flock</code> reports it stopped by <code>SIGKILL</code>.
+    </p>
+</article>
 </DocsLayout>
 
 <style>
-  h1 {
-    font-size: clamp(36px, 4.6vw, 56px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 27px;
-    letter-spacing: -0.03em;
-    margin: 44px 0 12px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 30px;
-    text-wrap: pretty;
-  }
-
-  p {
-    font-size: 16.5px;
-    line-height: 1.65;
-    color: var(--ink-2);
-    margin: 0 0 18px;
-  }
-
-  .fine {
-    font-size: 14.5px;
-    color: var(--ink-3);
-  }
-
   code {
     font-family: "Space Mono", monospace;
     font-size: 0.88em;
@@ -510,108 +401,17 @@ args        = ["19096"]`}</CodeBlock>
     margin-right: 8px;
   }
 
-  .field-table {
-    border: 3px solid var(--line);
-    border-radius: 16px;
-    overflow: hidden;
-    margin: 0 0 26px;
+  .chooser {
+    margin: 0;
+    padding-left: 20px;
   }
 
-  .field-table .row {
-    display: grid;
-    grid-template-columns: minmax(0, 190px) minmax(0, 1fr) minmax(0, 1fr);
-    gap: 14px;
-    padding: 11px 18px;
-    align-items: start;
-  }
-
-  .field-table .row.header {
-    background: var(--ink);
-    padding: 10px 18px;
-  }
-
-  .field-table .row:not(.header) {
-    border-bottom: 2px solid var(--hair);
-    background: var(--paper-2);
-  }
-
-  .field-table .row:last-child {
-    border-bottom: none;
-  }
-
-  .field-table .row.header span {
-    font-family: "Space Mono", monospace;
-    font-size: 10.5px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--ink-3);
-  }
-
-  .field-table .row.header .col-name {
-    color: var(--butter);
-  }
-
-  .col-name code {
-    font-size: 12.5px;
-    padding: 1px 5px;
-  }
-
-  .col-does {
-    font-size: 13.5px;
+  .chooser li {
+    margin-bottom: 8px;
     line-height: 1.5;
-    color: var(--ink);
   }
 
-  @media (max-width: 640px) {
-    .field-table .row {
-      grid-template-columns: 1fr;
-      gap: 5px;
-    }
-
-    .field-table .row.header {
-      display: none;
-    }
-  }
-
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 8px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
-  }
-
-  .next-body code {
-    font-size: 0.85em;
+  .chooser li:last-child {
+    margin-bottom: 0;
   }
 </style>
