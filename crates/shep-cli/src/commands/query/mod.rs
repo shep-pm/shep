@@ -1,8 +1,8 @@
-//! Query verbs: `flock`, `describe`, `fold`, `ping`. None mutate the flock,
+//! Query verbs: `flock_display::flock`, `secret_inspection::describe`, `flock_display::fold`, `ping`. None mutate the flock,
 //! and none autostart: `main` hands each one an already-connected [`Client`](shep_client::Client).
 //!
-//! `describe` and `fold` share one shape (`Request::Describe` against a
-//! [`SelectorSpec`](shep_core::protocol::SelectorSpec)); `fold` supplies `SelectorSpec::Fold` directly.
+//! `secret_inspection::describe` and `flock_display::fold` share one shape (`Request::Describe` against a
+//! [`SelectorSpec`](shep_core::protocol::SelectorSpec)); `flock_display::fold` supplies `SelectorSpec::Fold` directly.
 //!
 //! `ping` does not ask the daemon for its version and pid: the handshake
 //! already answered that, in the

@@ -66,7 +66,7 @@ pub(super) fn fit_rows(frame: &str, columns: u16, rows: u16) -> String {
 ///
 /// Only [`fit_rows`]'s notice reaches this, and only on a window too narrow
 /// to print it whole.
-pub(super) fn clip_rows(text: &str, columns: usize, rows: usize) -> String {
+fn clip_rows(text: &str, columns: usize, rows: usize) -> String {
     let ceiling = rows.saturating_mul(columns);
     if width::visible_width(text) <= ceiling {
         return text.to_owned();
@@ -89,7 +89,7 @@ pub(super) fn notice(dropped: usize) -> String {
 /// How many terminal rows `line` occupies once it wraps at `columns`.
 ///
 /// An empty line still occupies one.
-pub(super) fn line_rows(line: &str, columns: usize) -> usize {
+fn line_rows(line: &str, columns: usize) -> usize {
     width::visible_width(line).div_ceil(columns).max(1)
 }
 

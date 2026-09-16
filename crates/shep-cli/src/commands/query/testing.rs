@@ -68,9 +68,9 @@ pub(super) async fn listing(client: &Client, fmt: Format) -> (ExitCode, String) 
 }
 
 /// A roll entry, an operator store entry and no provider cache at all:
-/// the three verdicts `gather_secrets` can produce from local files
-/// alone, exercised through the real `describe` verb rather than
-/// `render_describe_secrets` in isolation.
+/// the three verdicts `secret_inspection::gather_secrets` can produce from local files
+/// alone, exercised through the real `secret_inspection::describe` verb rather than
+/// `secret_inspection::render_describe_secrets` in isolation.
 pub(super) async fn describe_with_a_seeded_web(
     fmt: Format,
 ) -> (ExitCode, shep_core::paths::ShepPaths, Vec<u8>) {
@@ -138,12 +138,14 @@ pub(super) fn out_contains(value: &serde_json::Value, needle: &str) -> bool {
     value.to_string().contains(needle)
 }
 
+// --- sheep_flourish ---
+
 /// A sheep with `status` pinned and nothing else.
 pub(super) fn sheep(id: u32, status: ProcStatus) -> ProcessInfo {
     ProcessInfo::builder(id, format!("s{id}"), status).build()
 }
 
-/// A registered dog, which `sheep_flourish` must never count as a sheep.
+/// A registered dog, which `flock_display::sheep_flourish` must never count as a sheep.
 pub(super) fn dog(id: u32) -> ProcessInfo {
     ProcessInfo::builder(id, format!("d{id}"), ProcStatus::Online)
         .dog(Some(DogSource::BuiltIn))

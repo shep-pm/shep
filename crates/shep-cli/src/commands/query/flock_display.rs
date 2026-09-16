@@ -148,7 +148,7 @@ pub async fn flock(client: &Client, streams: &mut Streams<'_>) -> ExitCode {
 /// before this existed. Not a warning line, which would fire on every
 /// listing for as long as the skew lasts, on the verb an operator types
 /// most.
-pub(super) async fn host_usage(client: &Client) -> Option<Option<HostUsage>> {
+async fn host_usage(client: &Client) -> Option<Option<HostUsage>> {
     match client.request(Request::HostUsage).await {
         Ok(Response::HostUsage(usage)) => Some(usage),
         // A shepherd that answered something else, and one that refused.
@@ -244,7 +244,7 @@ pub(crate) async fn flock_follow(
         // readings would let a resize land between them, fitting the strip
         // to the old width and then trimming the frame to the new one.
         let size = crossterm::terminal::size().ok();
-        // A width of zero is not a window. `fit_rows` answers that case for
+        // A width of zero is not a window. `terminal_fitting::fit_rows` answers that case for
         // itself, further down, by declining to trim at all.
         let columns = size
             .filter(|&(columns, _)| columns > 0)
@@ -277,7 +277,7 @@ pub(crate) async fn flock_follow(
 ///
 /// Separate so the loop above reads as "paint, and stop if that failed"
 /// rather than four discarded results in a row.
-pub(super) fn paint(out: &mut dyn io::Write, frame: &str) -> io::Result<()> {
+fn paint(out: &mut dyn io::Write, frame: &str) -> io::Result<()> {
     out.queue(MoveTo(0, 0))?;
     out.queue(Clear(ClearType::FromCursorDown))?;
     write!(out, "{frame}")?;
@@ -290,11 +290,7 @@ pub(super) fn paint(out: &mut dyn io::Write, frame: &str) -> io::Result<()> {
 /// The host line goes above rather than below so it holds still while the
 /// tables under it change length, and so it is the last thing [`fit_rows`]
 /// gives up.
-pub(super) fn follow_frame(
-    listing: Vec<ProcessInfo>,
-    style: Presentation,
-    strip: Option<String>,
-) -> String {
+fn follow_frame(listing: Vec<ProcessInfo>, style: Presentation, strip: Option<String>) -> String {
     let mut frame = Vec::new();
     if let Some(strip) = strip {
         // Writing to a `Vec` cannot fail, here or below.
@@ -635,7 +631,7 @@ mod tests {
         assert_eq!(json["data"][0]["name"], "web");
     }
 
-    /// `fold` shares `describe_selector` but must stay byte-identical to
+    /// `fold` shares `secret_inspection::describe_selector` but must stay byte-identical to
     /// before this feature existed: no local file I/O, no `secrets` field.
     #[tokio::test]
     async fn fold_never_computes_or_prints_a_secrets_section() {
@@ -648,7 +644,7 @@ mod tests {
         // Deliberately no `paths.snapshot` on disk: if `fold` ever reads it,
         // the missing file is tolerated (`read_roll`), which would hide the
         // bug this test exists to catch. The real guard is the assertion
-        // below, on `command == "fold"` never entering `gather_secrets`.
+        // below, on `command == "fold"` never entering `secret_inspection::gather_secrets`.
         let paths = ShepPaths::resolve(&|_| None, dir.path());
 
         let mut out = Vec::new();

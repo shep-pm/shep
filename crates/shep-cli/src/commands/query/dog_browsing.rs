@@ -8,7 +8,7 @@ use shep_client::Client;
 use shep_core::protocol::{Request, Response};
 
 /// Lists the dogs and nothing else: the same `Request::ListFlock` [`flock`](crate::commands::query::flock_display::flock)
-/// sends, filtered to the entries carrying a `dog` marker
+/// sends, filtered to the entries carrying a `testing::dog` marker
 ///
 /// `args.filter` is a case-insensitive substring match against the dog's
 /// name, the one field a running dog and a community-index entry share.
@@ -39,7 +39,7 @@ pub async fn dogs(client: &Client, streams: &mut Streams<'_>, args: &DogsArgs) -
 /// Whether `filter` matches any of `haystacks`, case-insensitively. Shared
 /// by [`dogs`] (name alone) and [`available_dogs`] (name, package and
 /// description).
-pub(super) fn matches_filter(filter: &str, haystacks: &[&str]) -> bool {
+fn matches_filter(filter: &str, haystacks: &[&str]) -> bool {
     let filter = filter.to_lowercase();
     haystacks.iter().any(|h| h.to_lowercase().contains(&filter))
 }
@@ -114,11 +114,11 @@ pub async fn available_dogs(streams: &mut Streams<'_>, args: &DogsArgs) -> ExitC
 
 /// The clause both notices below end in: the counts describe the fetched
 /// document, not the filtered listing they are printed beside.
-pub(super) const INDEX_WIDE: &str = ", across the whole index rather than this listing";
+const INDEX_WIDE: &str = ", across the whole index rather than this listing";
 
 /// Prints [`dog_index::Index::skipped`]/[`dog_index::Index::sanitised`] as
 /// footer notices when either is non-zero, whatever the filter matched.
-pub(super) fn note_index_costs(streams: &mut Streams<'_>, skipped: usize, sanitised: usize) {
+fn note_index_costs(streams: &mut Streams<'_>, skipped: usize, sanitised: usize) {
     if skipped > 0 {
         streams.aside(
             "dogs_skipped",
@@ -145,10 +145,7 @@ pub(super) fn note_index_costs(streams: &mut Streams<'_>, skipped: usize, saniti
 ///
 /// # Errors
 /// The underlying write failed.
-pub(super) fn render_detail(
-    out: &mut dyn std::io::Write,
-    dog: &AvailableDog,
-) -> std::io::Result<()> {
+fn render_detail(out: &mut dyn std::io::Write, dog: &AvailableDog) -> std::io::Result<()> {
     writeln!(out, "{} . {} . {}", dog.name, dog.package, dog.category)?;
     writeln!(out, "{}", dog.description)?;
     writeln!(out, "{} . {}", dog.license, dog.repo)?;
@@ -164,7 +161,7 @@ pub(super) fn render_detail(
 /// The `$ ...` line [`render_detail`] prints for how to build `source`'s
 /// binary. [`DogSourceKind::Manual`] carries prose instead of a command, so
 /// it prints with no `$`, just the two-space indent the command lines share.
-pub(super) fn install_line(source: &DogSourceKind, package: &str) -> String {
+fn install_line(source: &DogSourceKind, package: &str) -> String {
     match source {
         DogSourceKind::Cargo {
             version: Some(version),
@@ -185,7 +182,7 @@ pub(super) fn install_line(source: &DogSourceKind, package: &str) -> String {
 /// [`DogSourceKind::Manual`] has no predictable install path, so its line
 /// names the placeholder literally. `--name` is always spelled, since
 /// nothing enforces the naming convention on a user-contributed `package`.
-pub(super) fn adopt_line(source: &DogSourceKind, adopt_as: &str, package: &str) -> String {
+fn adopt_line(source: &DogSourceKind, adopt_as: &str, package: &str) -> String {
     match source {
         DogSourceKind::Cargo { .. } | DogSourceKind::CargoGit { .. } => {
             format!("  $ shep adopt ~/.cargo/bin/{package} --name {adopt_as}")

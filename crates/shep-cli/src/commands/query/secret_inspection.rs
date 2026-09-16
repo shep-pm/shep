@@ -11,13 +11,13 @@ use shep_core::secrets::Resolution;
 use shep_core::secrets::{self, SecretRef, SecretView};
 use std::collections::BTreeMap;
 
-/// `describe` and `fold`'s shared body: one `Request::Describe` against
+/// `describe` and `flock_display::fold`'s shared body: one `Request::Describe` against
 /// `selector`, rendered through [`emit_described`] as the sheep table and
 /// each sheep's lamb tree beneath it. `command` is the verb name the output
 /// envelope reports.
 ///
-/// `include_secrets` alone gates [`gather_secrets`]: `fold` passes `false`
-/// and stays byte-identical to before this section existed, because `fold`
+/// `include_secrets` alone gates [`gather_secrets`]: `flock_display::fold` passes `false`
+/// and stays byte-identical to before this section existed, because `flock_display::fold`
 /// is a group view across a selector's sheep, not the single-sheep
 /// diagnostic this feature was built for.
 ///
@@ -141,7 +141,7 @@ pub(super) fn gather_secrets(
 /// [`emit_notice`](crate::output::emit_notice) code for the warning
 /// `describe` prints when the operator's secret store will not read. Not a
 /// failure: the sheep still describes.
-pub(super) const SECRET_STORE_UNREADABLE_NOTICE: &str = "secret_store_unreadable";
+const SECRET_STORE_UNREADABLE_NOTICE: &str = "secret_store_unreadable";
 
 /// Describes the sheep matching `args.selector` in detail.
 pub async fn describe(
