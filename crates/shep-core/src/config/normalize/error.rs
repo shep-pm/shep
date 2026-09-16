@@ -263,10 +263,20 @@ impl fmt::Display for NormalizeError {
                  store's every-environment slot)",
                 secrets::ALL_ENVIRONMENTS
             ),
-            Self::ReservedEnvVar { name, var } => write!(
-                f,
-                "sheep `{name}` sets `{var}` in env, but shep injects it: use a different name, or `{{{{instance}}}}` in your own variable"
-            ),
+            Self::ReservedEnvVar { name, var } => {
+                // The two identity variables have a template to borrow
+                // instead; the environment is not a template token, so its
+                // advice points at the field that selects one (#284).
+                let advice = match *var {
+                    "SHEP_INSTANCE" => "or `{{instance}}` in your own variable",
+                    "SHEP_NAME" => "or `{{name}}` in your own variable",
+                    _ => "or set `environment` on the app",
+                };
+                write!(
+                    f,
+                    "sheep `{name}` sets `{var}` in env, but shep injects it: use a different name, {advice}"
+                )
+            }
             Self::MissingScript => f.write_str("app config is missing a script"),
             Self::ZeroInstances => f.write_str("instances must be at least 1"),
             Self::InvalidCron { pattern, reason } => {

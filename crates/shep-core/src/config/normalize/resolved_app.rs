@@ -359,14 +359,39 @@ mod tests {
         assert!(normalize(AppConfig::minimal("web-2", "./srv")).is_ok());
     }
 
+    /// Each reserved variable is refused with advice that fits it (#284):
+    /// the `{{instance}}` and `{{name}}` templates for the two identity
+    /// variables, and the `environment` field for the one that is not a
+    /// template token at all. Nothing carries another variable's advice.
     #[test]
     fn the_reserved_env_vars_are_refused_rather_than_overwritten() {
-        for var in ["SHEP_INSTANCE", "SHEP_NAME", "SHEP_ENVIRONMENT"] {
+        let cases = [
+            (
+                "SHEP_INSTANCE",
+                "or `{{instance}}` in your own variable",
+                "`{{name}}`",
+            ),
+            (
+                "SHEP_NAME",
+                "or `{{name}}` in your own variable",
+                "`{{instance}}`",
+            ),
+            ("SHEP_ENVIRONMENT", "or set `environment` on the app", "{{"),
+        ];
+        for (var, advice, other_advice) in cases {
             let mut app = AppConfig::minimal("web", "./srv");
             app.env.insert(var.to_string(), "mine".to_string());
             let err = normalize(app).unwrap_err();
             let rendered = err.to_string();
             assert!(rendered.contains(var), "names the variable: {rendered}");
+            assert!(
+                rendered.contains(advice),
+                "{var} gets advice that fits it: {rendered}"
+            );
+            assert!(
+                !rendered.contains(other_advice),
+                "{var} carries no other variable's advice: {rendered}"
+            );
             assert!(
                 !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
                 "no em or en dash in copy a user reads: {rendered}"
