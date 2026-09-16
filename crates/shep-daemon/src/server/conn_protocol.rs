@@ -1,299 +1,30 @@
-//! The connection layer: peer auth, handshake, subscriptions
-//!
-//! [`RpcServer`] owns the bound [`Listener`] and accepts connections until
-//! told to stop. Each runs `handle_conn` in its own task: a same-uid check
-//! ([`check_peer`], unix only), a version handshake, then a read loop that
-//! decodes envelopes and hands them to
-//! [`rpc::dispatch`](crate::rpc::dispatch), which never sees a socket.
-//!
-//! The OS transport lives in [`shep_core::transport`], so everything here is
-//! one implementation over a unix socket and a Windows named pipe alike;
-//! [`check_peer`] is the only genuine platform difference left.
-//! [`RpcServer`]'s doc is the daemon's security writeup.
-
-use core::fmt;
-use core::time::Duration;
-
-use bytes::Bytes;
-use futures_util::{SinkExt, StreamExt};
-use serde::Serialize;
-use tokio::sync::{mpsc, watch};
-use tokio::task::JoinHandle;
-use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
-
-use shep_core::protocol::{
-    Envelope, Hello, HelloAck, HelloReply, MIN_SUPPORTED, PROTOCOL_VERSION, RpcError, RpcErrorCode,
-    WireError, codec, decode_frame, encode_frame,
-};
-use shep_core::transport::{Listener, ServerReadHalf, ServerStream, ServerWriteHalf};
-
+use super::peer_auth::ConnError;
+#[cfg(unix)]
+use super::peer_auth::{check_peer, daemon_uid, peer_pid};
+use super::server_lifecycle::{CONN_QUEUE, HANDSHAKE_TIMEOUT_MS};
 use crate::bus::spawn_forwarder;
 use crate::rpc::{Outcome, RpcContext, dispatch};
 use crate::supervisor::ConnId;
-
-/// Frames queued toward one client before the connection back-pressures.
-pub const CONN_QUEUE: usize = 64;
-/// How long a connected peer has to send its `Hello` before the daemon closes.
-pub const HANDSHAKE_TIMEOUT_MS: u64 = 5_000;
+use bytes::Bytes;
+use core::time::Duration;
+use futures_util::{SinkExt, StreamExt};
+use serde::Serialize;
+use shep_core::protocol::{
+    Envelope, Hello, HelloAck, HelloReply, MIN_SUPPORTED, PROTOCOL_VERSION, RpcError, RpcErrorCode,
+    codec, decode_frame, encode_frame,
+};
+use shep_core::transport::{ServerReadHalf, ServerStream, ServerWriteHalf};
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
 type Frames = FramedRead<ServerReadHalf, LengthDelimitedCodec>;
-
-/// The control socket: shep's privilege boundary
-///
-/// # Security
-///
-/// The daemon's canonical writeup; other modules link here. On unix a
-/// connection is refused unless `SO_PEERCRED`/`getpeereid` ([`check_peer`])
-/// names the daemon's own uid, and refused too when the OS will not answer.
-/// `$SHEP_HOME/run`'s `0700` is [`crate::boot::init_dirs`]'s job; Windows has
-/// neither, and refuses at open time through the pipe's ACL. Skew, frame size,
-/// a `Subscribe`'s glob count and a `/regex/` selector's compiled size are all
-/// capped, and every call carries a clamped deadline. A same-uid peer is fully
-/// trusted; there is no idle timeout and no per-uid connection cap.
-#[derive(Debug)]
-pub struct RpcServer {
-    listener: Listener,
-    ctx: RpcContext,
-}
-
-impl RpcServer {
-    /// Wraps an already-bound listener with the request-handling context.
-    #[must_use]
-    pub fn new(listener: Listener, ctx: RpcContext) -> Self {
-        Self { listener, ctx }
-    }
-
-    /// Accepts connections, each on its own task, until `shutdown` flips to
-    /// `true` or its sender drops.
-    ///
-    /// Both `select!` branches are cancel-safe. A transient accept error such
-    /// as `EMFILE` is logged and the loop continues.
-    ///
-    /// Connection tasks are spawned and detached, so `serve` returning does
-    /// not mean every in-flight connection has finished. Draining them would
-    /// need a `tokio::task::JoinSet` here.
-    pub async fn serve(self, mut shutdown: watch::Receiver<bool>) {
-        // `mut` because `Listener::accept` needs `&mut self` on both
-        // platforms: a Windows named pipe server instance is consumed by
-        // whoever connects to it, so accepting means handing that instance
-        // out and creating the next one. See `shep_core::transport::Listener`.
-        let Self { mut listener, ctx } = self;
-        // A shutdown signal already `true` before the first `changed()` would
-        // otherwise never be observed: `changed()` only resolves on a value
-        // newer than the one this receiver has seen.
-        if *shutdown.borrow() {
-            return;
-        }
-        loop {
-            tokio::select! {
-                accepted = listener.accept() => {
-                    match accepted {
-                        Ok(stream) => {
-                            let ctx = ctx.clone();
-                            tokio::spawn(async move {
-                                if let Err(err) = handle_conn(stream, ctx).await {
-                                    tracing::debug!(%err, "connection ended");
-                                }
-                            });
-                        }
-                        Err(err) => tracing::warn!(%err, "accept failed; continuing"),
-                    }
-                }
-                changed = shutdown.changed() => {
-                    // An `Err` means the sender dropped: stop serving either
-                    // way.
-                    if changed.is_err() || *shutdown.borrow() {
-                        break;
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Checks that a connected peer runs as the daemon's own user.
-///
-// `UnixStream::peer_cred()` rather than nix's `PeerCredentials`, which nix
-// gates behind `#[cfg(linux_android)]`, so it does not exist on macOS.
-// tokio's `UCred` dispatches to `SO_PEERCRED`, `getpeereid` or
-// `LOCAL_PEERCRED` per platform.
-///
-/// # Errors
-/// - [`AuthError::NoCredentials`]: the OS would not report peer credentials.
-/// - [`AuthError::ForeignUid`]: the peer's uid is not the daemon's.
-///
-/// # Platform
-///
-/// Unix only. The Windows pipe's ACL answers this question at open time; see
-/// [`shep_core::transport`]'s module doc.
-#[cfg(unix)]
-pub fn check_peer(stream: &tokio::net::UnixStream, daemon_uid: u32) -> Result<u32, AuthError> {
-    let cred = stream
-        .peer_cred()
-        .map_err(|err| AuthError::NoCredentials(err.to_string()))?;
-    let peer = cred.uid();
-    if peer == daemon_uid {
-        Ok(peer)
-    } else {
-        Err(AuthError::ForeignUid {
-            peer,
-            daemon: daemon_uid,
-        })
-    }
-}
-
-/// The connecting peer's pid, when the OS will name one.
-///
-/// Separate from [`check_peer`], which reads the same
-/// [`UCred`](tokio::net::unix::UCred): that answer admits or ends the
-/// connection, and this is a diagnostic that must never do either.
-///
-/// `None` does not mean no process is there, only that the platform has no
-/// answer; callers degrade through
-/// [`Contact::Unknown`](crate::dogs::Contact::Unknown). Unix only.
-#[cfg(unix)]
-#[must_use]
-pub fn peer_pid(stream: &tokio::net::UnixStream) -> Option<u32> {
-    // Every failure is the same answer: an OS that would not say. No platform
-    // here produces a pid too wide for `u32`.
-    u32::try_from(stream.peer_cred().ok()?.pid()?).ok()
-}
-
-/// The daemon's effective uid.
-///
-/// # Platform
-///
-/// Unix only, alongside [`check_peer`], its only caller.
-#[cfg(unix)]
-#[must_use]
-pub fn daemon_uid() -> u32 {
-    nix::unistd::geteuid().as_raw()
-}
-
-/// Why [`check_peer`] refused a connection.
-///
-/// `#[non_exhaustive]`: a future check, a group membership or a peer
-/// certificate, would need its own variant rather than stretching
-/// [`Self::ForeignUid`] to mean something it does not.
-#[non_exhaustive]
-#[cfg_attr(windows, allow(dead_code))]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AuthError {
-    /// The OS would not report peer credentials on this socket (carries the
-    /// OS error message).
-    NoCredentials(String),
-    /// The peer runs as another user (carries both uids).
-    ForeignUid {
-        /// The connecting peer's uid.
-        peer: u32,
-        /// The daemon's own uid.
-        daemon: u32,
-    },
-}
-
-impl fmt::Display for AuthError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NoCredentials(msg) => write!(f, "could not read peer credentials: {msg}"),
-            Self::ForeignUid { peer, daemon } => {
-                write!(f, "peer uid {peer} does not match daemon uid {daemon}")
-            }
-        }
-    }
-}
-
-impl core::error::Error for AuthError {}
-
-/// Error type ending one connection.
-///
-/// Every variant is terminal: the connection layer logs it and closes the
-/// socket. A malformed or hostile peer can only cost itself its connection.
-///
-/// `#[non_exhaustive]`: a future failure point, a TLS handshake or a
-/// rate-limit refusal, would add its own variant rather than overloading
-/// [`Self::Auth`], which is specifically [`check_peer`]'s verdict.
-#[non_exhaustive]
-#[derive(Debug)]
-pub enum ConnError {
-    /// [`check_peer`] refused the connection.
-    Auth(AuthError),
-    /// The framed transport failed reading or writing a length-delimited frame.
-    Frame(std::io::Error),
-    /// A frame's payload failed to decode as the expected type.
-    Decode(WireError),
-    /// A reply or event failed to encode onto the wire.
-    Encode(WireError),
-    /// The peer's `Hello.protocol` fell below [`MIN_SUPPORTED`] (carries
-    /// the client's claimed version; the refusal is written before this is
-    /// returned).
-    ProtocolMismatch {
-        /// The protocol version the client sent.
-        client: u32,
-    },
-    /// The peer did not send `Hello` within [`HANDSHAKE_TIMEOUT_MS`].
-    HandshakeTimeout,
-    /// The peer closed the connection before sending `Hello`.
-    NoHandshake,
-    /// The connection's write queue is gone: the writer task exited.
-    PeerGone,
-}
-
-impl fmt::Display for ConnError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Auth(err) => write!(f, "peer-credential check failed: {err}"),
-            Self::Frame(err) => write!(f, "frame transport error: {err}"),
-            Self::Decode(err) => write!(f, "frame decode error: {err}"),
-            Self::Encode(err) => write!(f, "frame encode error: {err}"),
-            Self::ProtocolMismatch { client } => write!(
-                f,
-                "client sent protocol {client}, daemon speaks {PROTOCOL_VERSION}"
-            ),
-            Self::HandshakeTimeout => write!(
-                f,
-                "peer did not send Hello within {HANDSHAKE_TIMEOUT_MS} ms"
-            ),
-            Self::NoHandshake => f.write_str("peer closed before sending Hello"),
-            Self::PeerGone => f.write_str("connection's write queue is gone"),
-        }
-    }
-}
-
-impl core::error::Error for ConnError {
-    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
-        match self {
-            Self::Auth(err) => Some(err),
-            Self::Frame(err) => Some(err),
-            Self::Decode(err) | Self::Encode(err) => Some(err),
-            Self::ProtocolMismatch { .. }
-            | Self::HandshakeTimeout
-            | Self::NoHandshake
-            | Self::PeerGone => None,
-        }
-    }
-}
-
-impl From<AuthError> for ConnError {
-    fn from(source: AuthError) -> Self {
-        Self::Auth(source)
-    }
-}
-
-// `Decode` and `Encode` both wrap `WireError`, so only one could claim
-// `impl From<WireError> for ConnError` and a bare `?` would silently mislabel
-// the other direction. Both stay explicit `map_err` calls.
-
-impl From<std::io::Error> for ConnError {
-    fn from(source: std::io::Error) -> Self {
-        Self::Frame(source)
-    }
-}
 
 // The ordering here is load-bearing (see `handshake` and `converse` below):
 // auth before a single byte is read from the peer, the handshake before any
 // request, and the writer task joined on every exit path so a protocol-skew
 // refusal is guaranteed to reach the wire before the socket closes.
-async fn handle_conn(stream: ServerStream, ctx: RpcContext) -> Result<(), ConnError> {
+pub(super) async fn handle_conn(stream: ServerStream, ctx: RpcContext) -> Result<(), ConnError> {
     // Unix only. On Windows the pipe's own ACL refuses a foreign user's
     // open-for-write before a byte reaches this function, so the equivalent
     // check has already happened in the kernel.
@@ -503,70 +234,26 @@ async fn send<T: Serialize>(out: &mpsc::Sender<Bytes>, value: &T) -> Result<(), 
 
 #[cfg(test)]
 mod tests {
-    // Real time: every test here drives a real socket, and a paused clock
-    // auto-advances when the runtime idles, expiring HANDSHAKE_TIMEOUT_MS
-    // before the peer's bytes arrive.
-    use super::*;
-    use crate::bus::SharedEvent;
-    use crate::fake::{FIRST_SCRIPTED_PID, ProcScript};
-    use crate::testing::harness;
-    use futures_util::{SinkExt, StreamExt};
-    use serde::Serialize;
-    use serde::de::DeserializeOwned;
+    use super::super::server_lifecycle::CONN_QUEUE;
+
+    use futures_util::SinkExt;
+
     use shep_core::protocol::{
-        BusEvent, DogSource, Envelope, Hello, HelloReply, PROTOCOL_VERSION, ProcessEventKind,
-        ProcessInfo, Request, Response, RpcErrorCode, ServerFrame, codec, decode_frame,
-        encode_frame,
+        Envelope, Hello, HelloReply, MIN_SUPPORTED, PROTOCOL_VERSION, RpcErrorCode,
     };
+
+    use crate::bus::SharedEvent;
+    use crate::fake::ProcScript;
+    use crate::testing::harness;
+
+    use shep_core::protocol::{
+        BusEvent, ProcessEventKind, ProcessInfo, Request, Response, ServerFrame,
+    };
+
+    use super::super::testing::*;
+    use crate::fake::FIRST_SCRIPTED_PID;
+    use core::time::Duration;
     use shep_core::status::ProcStatus;
-    use tokio_util::codec::Framed;
-
-    const RECV_TIMEOUT: Duration = Duration::from_secs(5);
-
-    struct Client {
-        frames: Framed<shep_core::transport::ClientStream, tokio_util::codec::LengthDelimitedCodec>,
-    }
-
-    impl Client {
-        async fn send<T: Serialize>(&mut self, value: &T) {
-            self.frames
-                .send(encode_frame(value).unwrap())
-                .await
-                .unwrap();
-        }
-
-        async fn recv<T: DeserializeOwned>(&mut self) -> T {
-            let frame = tokio::time::timeout(RECV_TIMEOUT, self.frames.next())
-                .await
-                .expect("timed out waiting for a frame")
-                .expect("connection closed early")
-                .unwrap();
-            decode_frame(&frame).unwrap()
-        }
-
-        async fn closed(&mut self) -> bool {
-            tokio::time::timeout(RECV_TIMEOUT, self.frames.next())
-                .await
-                .expect("timed out waiting for close")
-                .is_none()
-        }
-    }
-
-    /// Spawns `handle_conn` over a real connected pair and hands back the
-    /// client end.
-    ///
-    /// A real transport on both platforms, a socketpair on unix and a named
-    /// pipe on Windows, rather than an in-memory duplex: several tests below
-    /// turn on what a peer sees when the other side closes.
-    async fn connected(ctx: RpcContext) -> Client {
-        let (server, client) = shep_core::transport::connected_pair().await.unwrap();
-        tokio::spawn(async move {
-            let _ = handle_conn(server, ctx).await;
-        });
-        Client {
-            frames: Framed::new(client, codec()),
-        }
-    }
 
     #[tokio::test]
     async fn handshake_acks_a_matching_protocol() {
@@ -813,27 +500,6 @@ mod tests {
         );
     }
 
-    /// `cfg(unix)`, like [`check_peer`] itself: the Windows pipe's ACL
-    /// refuses a foreign user before `handle_conn` is reached at all.
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn peer_credentials_gate_on_uid() {
-        // `UnixStream::pair()` reports both ends as this process's own uid,
-        // and `UCred` has no synthetic constructor, so only the `daemon_uid`
-        // argument can vary: this pins the comparison, not a real cross-uid
-        // connection.
-        let (a, _b) = tokio::net::UnixStream::pair().unwrap();
-        let me = daemon_uid();
-        assert_eq!(check_peer(&a, me).unwrap(), me);
-        assert_eq!(
-            check_peer(&a, me + 1).unwrap_err(),
-            AuthError::ForeignUid {
-                peer: me,
-                daemon: me + 1
-            }
-        );
-    }
-
     #[tokio::test]
     async fn a_slow_subscriber_gets_a_dropped_notice_instead_of_hanging_the_bus() {
         // Drives the Lagged-to-Dropped translation through the real
@@ -891,146 +557,6 @@ mod tests {
         );
     }
 
-    // --- G8: what a refused DOG's handshake costs it ------------------
-    //
-    // A refused handshake never reaches a request, so `Hello.dog_name` is the
-    // only place the daemon learns which dog it just refused.
-
-    /// Registers `name` as a built-in dog and returns the row it produced.
-    ///
-    /// Straight through [`crate::supervisor::SupervisorHandle::start_dog`]:
-    /// `Request::EnableDog` would need a handshaken connection of its own.
-    async fn start_dog(ctx: &RpcContext, name: &str) -> ProcessInfo {
-        let spec = crate::dogs::DogSpec {
-            name: name.to_string(),
-            source: DogSource::BuiltIn,
-        };
-        let app = crate::dogs::dog_app(&spec, &ctx.paths).expect("the dog fixture must assemble");
-        ctx.supervisor
-            .start_dog(app, DogSource::BuiltIn)
-            .await
-            .expect("the dog fixture must start")
-    }
-
-    /// One refused handshake, announcing `dog` (or nothing, for a client
-    /// that is not a dog), returning once the daemon has closed on it.
-    ///
-    /// The daemon records the refusal and decides what it owes the dog before
-    /// it returns the error that closes the socket, so a caller that has seen
-    /// the close can read the verdict without racing it. The restart itself
-    /// runs on its own task and needs [`await_dog`].
-    async fn refuse_as(ctx: &RpcContext, dog: Option<&str>) {
-        let mut client = connected(ctx.clone()).await;
-        client
-            .send(&Hello {
-                client_version: "0.1.14".to_string(),
-                protocol: MIN_SUPPORTED - 1,
-                dog_name: dog.map(str::to_owned),
-            })
-            .await;
-        let refusal: HelloReply = client.recv().await;
-        refusal.expect_err("a protocol below the floor must be refused");
-        assert!(
-            client.closed().await,
-            "the daemon must close after refusing"
-        );
-    }
-
-    /// The flock row named `name`, or a panic naming what was there.
-    async fn dog_row(ctx: &RpcContext, name: &str) -> ProcessInfo {
-        ctx.supervisor
-            .list()
-            .await
-            .into_iter()
-            .find(|info| info.name == name)
-            .unwrap_or_else(|| panic!("no row named {name}"))
-    }
-
-    /// Waits until `name` is running as `pid`, or fails inside
-    /// [`RECV_TIMEOUT`], returning how long it took.
-    ///
-    /// The restart a refusal triggers runs on its own task, so there is no
-    /// handle to await. The elapsed time is returned because the
-    /// never-restart-twice test below sizes its negative window against it.
-    async fn await_dog(ctx: &RpcContext, name: &str, pid: u32) -> Duration {
-        let began = tokio::time::Instant::now();
-        let seen = tokio::time::timeout(RECV_TIMEOUT, async {
-            loop {
-                if dog_row(ctx, name).await.pid == Some(pid) {
-                    return;
-                }
-                tokio::task::yield_now().await;
-            }
-        })
-        .await;
-        assert!(
-            seen.is_ok(),
-            "{name} never reached pid {pid} within {RECV_TIMEOUT:?}: {:?}",
-            ctx.supervisor.list().await
-        );
-        began.elapsed()
-    }
-
-    /// fails if a refused dog is left mute. The daemon is the only party that
-    /// can restart it: the dog's own client has stopped rather than spinning.
-    ///
-    /// The pid moving is the assertion, not the restart count: a restart that
-    /// re-registered the row without re-spawning leaves the dog as mute.
-    #[tokio::test]
-    async fn a_refused_dog_is_restarted_once_from_the_binary_on_disk() {
-        let h = harness(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
-        let started = start_dog(&h.ctx, "metrics").await;
-        assert_eq!(started.pid, Some(FIRST_SCRIPTED_PID));
-
-        refuse_as(&h.ctx, Some("metrics")).await;
-
-        await_dog(&h.ctx, "metrics", FIRST_SCRIPTED_PID + 1).await;
-        assert!(
-            h.ctx.dog_refusals.stale().is_empty(),
-            "one refusal buys a restart; it does not condemn the dog"
-        );
-    }
-
-    /// fails if the daemon restarts a dog it has already restarted, the spin
-    /// G8 forbids. A second refusal proves the binary on disk cannot satisfy
-    /// this daemon either, since the restart already ran it.
-    ///
-    /// The pid must not move inside a window sized against the restart that
-    /// really happened earlier in this test, and the harness is scripted with
-    /// exactly the two spawns G8 permits.
-    #[tokio::test]
-    async fn a_twice_refused_dog_is_reported_stale_and_never_restarted_again() {
-        let h = harness(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
-        start_dog(&h.ctx, "metrics").await;
-
-        refuse_as(&h.ctx, Some("metrics")).await;
-        let restart_took = await_dog(&h.ctx, "metrics", FIRST_SCRIPTED_PID + 1).await;
-
-        refuse_as(&h.ctx, Some("metrics")).await;
-        assert_eq!(
-            h.ctx.dog_refusals.stale(),
-            vec!["metrics".to_string()],
-            "the second refusal must be reported, not swallowed"
-        );
-
-        // Ten times the restart that did happen, floored so a fast machine
-        // still watches for a real interval.
-        let window = (restart_took * 10).max(Duration::from_millis(200));
-        tokio::time::sleep(window).await;
-
-        let after = dog_row(&h.ctx, "metrics").await;
-        assert_eq!(
-            after.pid,
-            Some(FIRST_SCRIPTED_PID + 1),
-            "a second restart within {window:?} is the spin G8 forbids"
-        );
-        assert_eq!(
-            after.status,
-            ProcStatus::Online,
-            "a third spawn would exhaust the script and error the dog"
-        );
-    }
-
     /// fails if a dog that got back in stays condemned. Without the mark
     /// clearing, the dog is reported stale forever while answering perfectly.
     #[tokio::test]
@@ -1057,29 +583,7 @@ mod tests {
         );
     }
 
-    /// fails if an operator running an older `shep` has a dog restarted under
-    /// them. The CLI cannot name a dog, so a refusal carrying no name must
-    /// leave the flock exactly as it was.
-    #[tokio::test]
-    async fn a_refused_client_that_is_not_a_dog_touches_nothing() {
-        let h = harness(vec![ProcScript::never_exits()]);
-        let started = start_dog(&h.ctx, "metrics").await;
-
-        for _ in 0..3 {
-            refuse_as(&h.ctx, None).await;
-        }
-
-        assert!(h.ctx.dog_refusals.stale().is_empty());
-        let after = dog_row(&h.ctx, "metrics").await;
-        assert_eq!(
-            after.pid, started.pid,
-            "a nameless refusal must not restart anything"
-        );
-        assert_eq!(after.status, ProcStatus::Online);
-    }
-
     // --- The incident: a dog that reaches shep and never names itself ---
-
     /// fails if a dog that is CONNECTED to this shepherd is reported as a
     /// binary that cannot talk to it.
     ///
@@ -1209,5 +713,86 @@ mod tests {
             !written.contains("cannot reach this shep"),
             "this dog reached shep; nothing here may claim otherwise: {written}"
         );
+    }
+
+    /// fails if a refused dog is left mute. The daemon is the only party that
+    /// can restart it: the dog's own client has stopped rather than spinning.
+    ///
+    /// The pid moving is the assertion, not the restart count: a restart that
+    /// re-registered the row without re-spawning leaves the dog as mute.
+    #[tokio::test]
+    async fn a_refused_dog_is_restarted_once_from_the_binary_on_disk() {
+        let h = harness(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
+        let started = start_dog(&h.ctx, "metrics").await;
+        assert_eq!(started.pid, Some(FIRST_SCRIPTED_PID));
+
+        refuse_as(&h.ctx, Some("metrics")).await;
+
+        await_dog(&h.ctx, "metrics", FIRST_SCRIPTED_PID + 1).await;
+        assert!(
+            h.ctx.dog_refusals.stale().is_empty(),
+            "one refusal buys a restart; it does not condemn the dog"
+        );
+    }
+
+    /// fails if the daemon restarts a dog it has already restarted, the spin
+    /// G8 forbids. A second refusal proves the binary on disk cannot satisfy
+    /// this daemon either, since the restart already ran it.
+    ///
+    /// The pid must not move inside a window sized against the restart that
+    /// really happened earlier in this test, and the harness is scripted with
+    /// exactly the two spawns G8 permits.
+    #[tokio::test]
+    async fn a_twice_refused_dog_is_reported_stale_and_never_restarted_again() {
+        let h = harness(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
+        start_dog(&h.ctx, "metrics").await;
+
+        refuse_as(&h.ctx, Some("metrics")).await;
+        let restart_took = await_dog(&h.ctx, "metrics", FIRST_SCRIPTED_PID + 1).await;
+
+        refuse_as(&h.ctx, Some("metrics")).await;
+        assert_eq!(
+            h.ctx.dog_refusals.stale(),
+            vec!["metrics".to_string()],
+            "the second refusal must be reported, not swallowed"
+        );
+
+        // Ten times the restart that did happen, floored so a fast machine
+        // still watches for a real interval.
+        let window = (restart_took * 10).max(Duration::from_millis(200));
+        tokio::time::sleep(window).await;
+
+        let after = dog_row(&h.ctx, "metrics").await;
+        assert_eq!(
+            after.pid,
+            Some(FIRST_SCRIPTED_PID + 1),
+            "a second restart within {window:?} is the spin G8 forbids"
+        );
+        assert_eq!(
+            after.status,
+            ProcStatus::Online,
+            "a third spawn would exhaust the script and error the dog"
+        );
+    }
+
+    /// fails if an operator running an older `shep` has a dog restarted under
+    /// them. The CLI cannot name a dog, so a refusal carrying no name must
+    /// leave the flock exactly as it was.
+    #[tokio::test]
+    async fn a_refused_client_that_is_not_a_dog_touches_nothing() {
+        let h = harness(vec![ProcScript::never_exits()]);
+        let started = start_dog(&h.ctx, "metrics").await;
+
+        for _ in 0..3 {
+            refuse_as(&h.ctx, None).await;
+        }
+
+        assert!(h.ctx.dog_refusals.stale().is_empty());
+        let after = dog_row(&h.ctx, "metrics").await;
+        assert_eq!(
+            after.pid, started.pid,
+            "a nameless refusal must not restart anything"
+        );
+        assert_eq!(after.status, ProcStatus::Online);
     }
 }
