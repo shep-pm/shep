@@ -57,7 +57,7 @@ impl CloseDialog {
             // `value` renders the pane's own map as JSON and `instances`
             // is a plain `u32` every `AppConfig` carries, so the parse
             // cannot fail for a sheep. The only target without the field
-            // is a dog, and `close_offer` refuses a dog before it builds
+            // is a dog, and `verb_commit::close_offer` refuses a dog before it builds
             // one of these. A fallback that ever fired would understate
             // how many processes the reload row is describing, which is
             // the one number that row exists to give.
@@ -337,7 +337,7 @@ mod tests {
     }
 
     /// The reopened door into the same bug: the refused session's own
-    /// write still goes out (per `answer_close`'s own doc, edits are never
+    /// write still goes out (per `verb_commit::answer_close`'s own doc, edits are never
     /// held back), and its reply must not count toward the held session's
     /// batch just because it is the only thing held at the time. A bare
     /// counter cannot tell the two apart; a ticket can.
@@ -518,7 +518,7 @@ mod tests {
     #[test]
     fn esc_over_parked_fields_alone_still_asks() {
         // `app_in_sheep_pane` is read-only by default, and a closed gate
-        // is a separate reason for no dialog (`read_only_is_never_asked`).
+        // is a separate reason for no dialog (`verb_commit::read_only_is_never_asked`).
         // This test is about the parked half alone, so it needs the gate
         // open and nothing filed.
         let mut app = fixtures::app_in_sheep_pane_with_a_parked_field();
