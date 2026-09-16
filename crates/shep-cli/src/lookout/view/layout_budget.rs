@@ -6,7 +6,7 @@ use ratatui::layout::Rect;
 /// The banner is not in this count: it is one row only when the link is
 /// not live, and callers that need the worst case add it separately.
 ///
-/// `#[cfg(test)]`: `draw` lays these out one `y += 1` at a time rather than
+/// `#[cfg(test)]`: `paint_frame::draw` lays these out one `y += 1` at a time rather than
 /// summing them, so this constant has no production call site.
 #[cfg(test)]
 const CHROME_ROWS: u16 = 4;
@@ -97,7 +97,7 @@ pub fn panes_for(height: u16) -> Panes {
 /// never scrolls rather than an underflowed height.
 ///
 /// `run_ui` calls this before each draw, so [`App::note_body_rows`](crate::lookout::app::App::note_body_rows) always
-/// reflects the terminal about to be drawn to. `draw` builds the same four
+/// reflects the terminal about to be drawn to. `paint_frame::draw` builds the same four
 /// full-screen panes' own `Rect`s off [`title_gap_rows`], so a body that did
 /// not know about the rows spent there would get a `Rect` taller than the
 /// space actually left before the status bar, and its last row would be
@@ -112,11 +112,11 @@ pub fn body_rows(area: Rect) -> u16 {
     area.height - 1 - title_gap_rows(area.height)
 }
 
-/// Rows `draw` spends between the top of the frame and a full-screen pane's
+/// Rows `paint_frame::draw` spends between the top of the frame and a full-screen pane's
 /// body: the title band, plus a blank row under it on a roomy terminal
 /// ([`ROOMY_HEIGHT`]).
 ///
-/// The one function both `draw` and [`body_rows`] call for this, so the two
+/// The one function both `paint_frame::draw` and [`body_rows`] call for this, so the two
 /// can't drift the way they once did: a row added here reaches both without
 /// a second edit.
 #[must_use]
@@ -135,7 +135,7 @@ impl Panes {
 
     /// How many rows these panes take together.
     ///
-    /// `#[cfg(test)]`: `draw` claims each pane's rows off `floor` one
+    /// `#[cfg(test)]`: `paint_frame::draw` claims each pane's rows off `floor` one
     /// constant at a time, so only
     /// `every_pane_tier_fits_the_height_it_claims` needs the sum.
     #[cfg(test)]
@@ -409,9 +409,9 @@ mod tests {
                     let panes = panes_for(height);
 
                     // The table's own row band, recomputed independently of
-                    // `draw`: title (1) + banner (1, both fixtures carry one) +
+                    // `paint_frame::draw`: title (1) + banner (1, both fixtures carry one) +
                     // host strip if up + header/rule (2) is where it starts;
-                    // `floor`, walked the same way `draw` does, is where it ends.
+                    // `floor`, walked the same way `paint_frame::draw` does, is where it ends.
                     let table_body_start = 2 + if panes.host { HOST_ROWS } else { 0 } + 2;
                     let mut floor = height - 1;
                     if frozen {
@@ -446,7 +446,7 @@ mod tests {
 
                     // Not `lines.len() == height`: `frames::render_text` maps
                     // `(0..area.height)` by construction, so that holds even for
-                    // a `draw` that drew nothing. It is a property of the
+                    // a `paint_frame::draw` that drew nothing. It is a property of the
                     // renderer, not of this layout.
                     let last = lines.last().unwrap();
                     let mark = if frozen {

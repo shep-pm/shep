@@ -135,7 +135,7 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
     } else if let Some(key) = secrets_armed(app) {
         // Ranked with the dashboard's own confirm above, for the same
         // reason: an armed delete is a question awaiting an answer, and it
-        // must outrank `secrets_hint`, which still reads `enter sets a
+        // must outrank `key_hint::secrets_hint`, which still reads `enter sets a
         // value` while an arm is live.
         (
             format!("delete {key}? enter confirms, any other key cancels"),
@@ -205,7 +205,7 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // (docs/lookout/design-files/README.md:274) names every key here
         // but the minimum-level axis's own `m`: that line lists no key for
         // it at all, so it is appended rather than inserted, the same rule
-        // `hint_for`'s own doc gives for its dashboard forms.
+        // `key_hint::hint_for`'s own doc gives for its dashboard forms.
         (BLEATS_HINT.to_string(), palette.attention())
     } else if matches!(app.body(), Body::Secrets(_)) {
         // The pane owns the keyboard here too, same reasoning as the config
@@ -232,7 +232,7 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
     } else if matches!(app.link(), Link::Lost { .. }) {
         // Only this branch, not the pane hints above: a pane opened before
         // the freeze keeps naming its own keys, and this line is the flock
-        // table's. Every action key `hint_for` would name is refused once
+        // table's. Every action key `key_hint::hint_for` would name is refused once
         // the link is gone, so naming them would teach the operator three
         // keys that do nothing.
         (FROZEN_HINT.to_string(), palette.attention())

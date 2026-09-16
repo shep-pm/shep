@@ -17,8 +17,8 @@ pub(super) fn byte_count(len: usize) -> String {
     }
 }
 
-/// The last `width` columns of `text`, `\u{2026}` standing in for whatever it
-/// dropped off the front, padded to `width` the way [`fit`] pads.
+/// The last `column_tiers::width` columns of `text`, `\u{2026}` standing in for whatever it
+/// dropped off the front, padded to `column_tiers::width` the way [`fit`] pads.
 ///
 /// [`fit`]'s own truncation keeps the head, which is right for a stored
 /// value and wrong for one being typed: the cursor sits at the end, so the
@@ -56,7 +56,7 @@ pub(super) fn tail(text: &str, width: u16) -> String {
 }
 
 /// A buffer being typed, with the block cursor after it, in a cell one
-/// column short of `width` so the cursor never touches the next column's
+/// column short of `column_tiers::width` so the cursor never touches the next column's
 /// own text. [`tail`], not [`fit`], for the reason [`tail`] gives.
 pub(super) fn typed_cell(buffer: &str, width: u16) -> String {
     tail(&format!("{buffer}\u{2588}"), width.saturating_sub(1))
@@ -66,7 +66,7 @@ pub(super) fn typed_cell(buffer: &str, width: u16) -> String {
 ///
 /// A run proportional to the value's length rather than equal to it: the
 /// column is 30 cells against `MAX_VALUE_BYTES`'s 4096, so an equal run
-/// cannot be drawn. It stops one cell short of `width` so it never touches
+/// cannot be drawn. It stops one cell short of `column_tiers::width` so it never touches
 /// `IN FORCE`'s own text.
 ///
 /// `typing` wins over a reveal: the operator is looking at what they are
@@ -174,7 +174,7 @@ fn row_cell(
 }
 
 /// One row's [`Line`], every column packed against the next with no gap
-/// (see the module doc): [`GUTTER`](crate::lookout::view::flock::GUTTER) plus `columns` is exactly what `cell`
+/// (see the module doc): [`GUTTER`](crate::lookout::view::flock::GUTTER) plus `columns` is exactly what `draw_layout::cell`
 /// reads back.
 pub(super) fn row_line(
     pane: &SecretsPane,
@@ -214,7 +214,7 @@ pub(super) fn row_line(
     Line::from(spans)
 }
 
-/// Pads `spans` out to `width` with blank cells, the way a data row's
+/// Pads `spans` out to `column_tiers::width` with blank cells, the way a data row's
 /// trailing slack past its last column still has to be blanked. Mirrors
 /// `flock::pad_ground`, private there.
 pub(super) fn pad(spans: &mut Vec<Span<'static>>, used: u16, width: u16, style: Style) {

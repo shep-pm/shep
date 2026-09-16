@@ -280,7 +280,7 @@ mod tests {
         );
     }
 
-    /// `.min(len)` in `value_cell` is what a 4096-byte value never binds:
+    /// `.min(len)` in `row_cells::value_cell` is what a 4096-byte value never binds:
     /// the run is already capped by the column's own width there. A short
     /// value is the case that pins it: with no cap the run would fill the
     /// column regardless of the value behind it, implying a length nowhere
@@ -299,7 +299,7 @@ mod tests {
         );
     }
 
-    /// `draw` passes `columns_for` the full row width, gutter included:
+    /// `draw_layout::draw` passes `columns_for` the full row width, gutter included:
     /// `columns_for(table_width)` fits one column short of what
     /// [`SECRET_TIERS`] calibrated for, and drops `LANDS` at 160 columns
     /// with no other test catching it.

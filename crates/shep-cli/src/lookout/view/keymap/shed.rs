@@ -448,7 +448,7 @@ mod tests {
     ///
     /// The last two assert the clamp rather than a boundary, and no caller
     /// can reach it. `draw_borderless` runs below the box floor, and the
-    /// widest width below that floor fits `COLUMN_COUNT` columns exactly,
+    /// widest width below that floor fits `keymap_rows::COLUMN_COUNT` columns exactly,
     /// for any constants [`the_columns_sum_to_the_interior`] accepts:
     ///
     /// ```text
@@ -459,7 +459,7 @@ mod tests {
     ///
     /// So a mutation raising the clamp's threshold survived the whole
     /// suite, and it would have survived a narrower `KEY_CELL` too, because
-    /// narrowing a cell narrows `INTERIOR` and lowers the floor with it.
+    /// narrowing a cell narrows `keymap_rows::INTERIOR` and lowers the floor with it.
     /// The arm is the second net under that identity rather than a guard
     /// against any width a terminal can have: it fires only once the
     /// identity is broken, which is the one thing that test exists to stop.
@@ -467,7 +467,7 @@ mod tests {
     /// here since nothing else can reach it.
     ///
     /// `u16::MAX - GUTTER` rather than `u16::MAX`: `columns_for` adds
-    /// `GUTTER` before dividing, so the maximum is one `GUTTER` under the
+    /// `keymap_rows::GUTTER` before dividing, so the maximum is one `keymap_rows::GUTTER` under the
     /// type's. A real `area.width` is nowhere near either.
     #[test]
     fn the_column_ladder_has_a_boundary_on_each_side() {

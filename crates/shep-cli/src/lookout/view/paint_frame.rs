@@ -78,7 +78,7 @@ fn draw_body(app: &App, frame: &mut Frame<'_>) {
     // band rather than blank chrome, so it is checked here, ahead of the
     // roomy blank row the others are paid in: a tall terminal must not
     // push the band down to row 2 the way it pushes their body down. Its
-    // own row, `y + 1`, rather than `title_gap_rows`, which is exactly the
+    // own row, `y + 1`, rather than `layout_budget::title_gap_rows`, which is exactly the
     // gap it is skipping.
     if let Body::Sheep(pane) = app.body() {
         let top = y + 1;
@@ -98,10 +98,10 @@ fn draw_body(app: &App, frame: &mut Frame<'_>) {
         return;
     }
 
-    // `title_gap_rows` also covers the blank row under the title on a
+    // `layout_budget::title_gap_rows` also covers the blank row under the title on a
     // roomy terminal; the rule further down spends a second one of its
     // own, both from the design's own row allocation. One function, read
-    // by `body_rows` too, so the two cannot drift.
+    // by `layout_budget::body_rows` too, so the two cannot drift.
     y += title_gap_rows(height);
     let roomy = height >= ROOMY_HEIGHT;
     // Read four times below: the column header's own wording, and the three

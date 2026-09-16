@@ -78,7 +78,7 @@ pub(super) fn roll_status_line(pane: &SecretsPane, palette: Palette) -> Line<'st
 /// (`[production]`) in addition to whatever the palette paints, since a
 /// signal carried by colour alone says nothing under `NO_COLOR`.
 ///
-/// Right-aligned within `width`: design rule 2, every measurement states
+/// Right-aligned within `column_tiers::width`: design rule 2, every measurement states
 /// its denominator, and this one is the count of tabs drawn above it,
 /// `all` included, so the number is checkable against the row it sits under.
 pub(super) fn tab_line(pane: &SecretsPane, palette: Palette, width: u16) -> Line<'static> {

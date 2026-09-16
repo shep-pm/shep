@@ -1,4 +1,4 @@
-//! `draw`: one `App`, one `Frame`, six regions of arithmetic.
+//! `paint_frame::draw`: one `App`, one `Frame`, six regions of arithmetic.
 //!
 //! No `Layout`, no `Constraint`, no widget. The upstream surface this whole
 //! module touches is six items wide: `Frame::area`, `Frame::buffer_mut`,

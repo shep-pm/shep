@@ -134,7 +134,7 @@ pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
         return;
     }
     let table_width = width.saturating_sub(GUTTER);
-    // `width`, not `table_width`: [`SECRET_TIERS`]' thresholds are the
+    // `column_tiers::width`, not `table_width`: [`SECRET_TIERS`]' thresholds are the
     // design's own row width, gutter included.
     let columns = columns_for(width);
     let bottom = area.y + area.height;

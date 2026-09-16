@@ -13,7 +13,7 @@ use ratatui::backend::TestBackend;
 use shep_core::protocol::ProcessInfo;
 use shep_core::status::ProcStatus;
 
-/// The boxed form's own top border row: the top-left corner, `INTERIOR`
+/// The boxed form's own top border row: the top-left corner, `keymap_rows::INTERIOR`
 /// copies of the top glyph, and the top-right corner, run together with
 /// no gap. A full-width run, not a single glyph: five of the eight
 /// border glyphs (`▛ ▜ ▙ ▟ ▀`) also appear in the sheep's own art

@@ -157,7 +157,7 @@ fn entry_cell(
             // column while the key column and the headings beside it sat
             // on whatever `blank_row` had filled the rest of the row
             // with instead. The interior's own paper-2 ground comes from
-            // `draw`'s call into `overlay::draw_boxed`, one background
+            // `shed::draw`'s call into `overlay::draw_boxed`, one background
             // for the whole row, not per span: `Buffer::set_line` patches
             // a span's own style onto that rather than replacing it, so
             // this foreground-only span leaves the ground under it alone.

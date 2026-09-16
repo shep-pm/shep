@@ -7,7 +7,7 @@ use crate::lookout::view::fixtures;
 use ratatui::buffer::Buffer;
 use std::collections::HashSet;
 
-/// The first data row `draw` places, fixed regardless of which source
+/// The first data row `draw_layout::draw` places, fixed regardless of which source
 /// the first group is.
 /// `160x48`: the width and height every test in this module renders
 /// at, and so the exact chrome above the first data row: the title
@@ -31,7 +31,7 @@ pub(super) fn row_of(buffer: &Buffer, needle: &str) -> u16 {
         .unwrap_or_else(|| panic!("{needle:?} is not drawn anywhere"))
 }
 
-/// The heading row `draw` places, fixed like [`first_row`] for the same
+/// The heading row `draw_layout::draw` places, fixed like [`first_row`] for the same
 /// reason: it is the row right above the hairline, one above
 /// [`first_row`]'s own chrome count.
 pub(super) fn heading_row() -> u16 {
