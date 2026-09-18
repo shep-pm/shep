@@ -136,7 +136,8 @@ mod tests {
         // carries one, and that section is the operator's too.
         std::fs::write(&paths.daemon_config, "[dog.otel]\ndebounce = \"30s\"\n").unwrap();
         ShepToml::edit(&paths.daemon_config, |seed| {
-            seed.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"));
+            seed.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"))
+                .unwrap();
         })
         .unwrap();
         std::fs::write(
@@ -187,7 +188,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = ShepPaths::resolve(&|_| None, dir.path());
         ShepToml::edit(&paths.daemon_config, |seed| {
-            seed.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"));
+            seed.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"))
+                .unwrap();
         })
         .unwrap();
 
@@ -237,7 +239,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = ShepPaths::resolve(&|_| None, dir.path());
         ShepToml::edit(&paths.daemon_config, |seed| {
-            seed.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"));
+            seed.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"))
+                .unwrap();
         })
         .unwrap();
 

@@ -13,7 +13,7 @@ fn enabling_a_dog_leaves_the_rest_of_the_file_exactly_as_it_was() {
         "# the shepherd's own knobs\n[daemon]\nlog_level = \"info\"  # chatty\nlog_json = false\n";
     std::fs::write(&path, original).unwrap();
 
-    ShepToml::edit(&path, |doc| doc.enable_dog("metrics")).unwrap();
+    ShepToml::try_edit(&path, |doc| doc.enable_dog("metrics")).unwrap();
 
     let written = std::fs::read_to_string(&path).unwrap();
     assert!(written.contains("# the shepherd's own knobs"));
@@ -38,8 +38,8 @@ fn enable_is_idempotent_and_disable_keeps_the_config_it_did_not_write() {
     std::fs::write(&path, "[dog.bark]\ndebounce = \"30s\"\n").unwrap();
 
     ShepToml::edit(&path, |doc| {
-        doc.enable_dog("bark");
-        doc.enable_dog("bark");
+        doc.enable_dog("bark").unwrap();
+        doc.enable_dog("bark").unwrap();
     })
     .unwrap();
     let cfg =
@@ -66,7 +66,8 @@ fn rehoming_a_dog_forgets_its_adoption_and_keeps_its_settings() {
     // but an un-migrated file carries one.
     std::fs::write(&path, "[dog.otel]\ndebounce = \"30s\"\n").unwrap();
     ShepToml::edit(&path, |doc| {
-        doc.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"));
+        doc.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"))
+            .unwrap();
     })
     .unwrap();
     let written = std::fs::read_to_string(&path).unwrap();
@@ -96,8 +97,9 @@ fn adopted_dog_path_reads_what_adopt_dog_wrote_and_nothing_else() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("shep.toml");
     ShepToml::edit(&path, |doc| {
-        doc.enable_dog("metrics"); // built-in: no `adopted_dogs` entry at all
-        doc.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"));
+        doc.enable_dog("metrics").unwrap(); // built-in: no `adopted_dogs` entry at all
+        doc.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"))
+            .unwrap();
 
         assert_eq!(
             doc.adopted_dog_path("otel"),
@@ -230,5 +232,83 @@ fn taking_dog_sections_keeps_an_inline_table_dog() {
         taken["metrics"]["bind"].as_str(),
         Some("127.0.0.1:9615"),
         "an inline-table dog under [dog] must not be dropped"
+    );
+}
+
+/// Three keys under `[daemon]` are written by the dog verbs and hand-edited
+/// by operators, and all three used to `.expect()` on a shape they did not
+/// write. `shep dog enable` on a file holding `daemon = "loud"` panicked,
+/// while `shep set daemon.log_json` refused the same file politely, because
+/// the scalar setters went through `section_table_mut` and these did not.
+///
+/// One case each, and each asserts the file is left alone: a refusal that
+/// half-writes is worse than the panic it replaced.
+#[test]
+fn a_hand_edited_daemon_key_is_refused_rather_than_panicked_on() {
+    let cases = [
+        ("daemon = \"loud\"\n", "daemon", "a table"),
+        (
+            "[daemon]\nenabled_dogs = \"metrics\"\n",
+            "enabled_dogs",
+            "an array",
+        ),
+        (
+            "[daemon]\nadopted_dogs = \"nope\"\n",
+            "adopted_dogs",
+            "a table",
+        ),
+    ];
+    for (original, expected_key, expected_shape) in cases {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shep.toml");
+        std::fs::write(&path, original).unwrap();
+
+        // `adopt_dog` reaches all three keys: `[daemon]`, then
+        // `adopted_dogs`, then `enabled_dogs` through `enable_dog`.
+        let refusal = ShepToml::try_edit(&path, |cfg| {
+            cfg.adopt_dog("metrics", Path::new("/usr/local/bin/shep-metrics"))
+        });
+
+        match refusal {
+            Err(ref err @ ShepTomlError::WrongShape { key, found, .. }) => {
+                assert_eq!(key, expected_key, "names the key an operator has to fix");
+                assert!(!found.is_empty(), "says what it found instead");
+                // `enabled_dogs` is an array and the other two are tables, so
+                // a fixed word here would tell an operator to write the wrong
+                // thing before refusing the edit.
+                assert!(
+                    err.to_string().contains(expected_shape),
+                    "{key} must be {expected_shape}: {err}"
+                );
+            }
+            other => panic!("expected WrongShape on {original:?}, got {other:?}"),
+        }
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            original,
+            "a refusal writes nothing at all"
+        );
+    }
+}
+
+/// The refusal is the unhappy path, so pin that the happy one still writes.
+/// A `section_table_mut` that refused everything would pass the test above.
+#[test]
+fn a_daemon_table_shep_wrote_itself_still_takes_a_dog() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("shep.toml");
+    std::fs::write(&path, "[daemon]\nlog_level = \"info\"\n").unwrap();
+
+    ShepToml::try_edit(&path, |cfg| {
+        cfg.adopt_dog("metrics", Path::new("/usr/local/bin/shep-metrics"))
+    })
+    .unwrap();
+
+    let written = std::fs::read_to_string(&path).unwrap();
+    let cfg = DaemonConfig::load(Some(&written), &|_| None).unwrap();
+    assert_eq!(cfg.daemon.enabled_dogs, vec!["metrics"]);
+    assert!(
+        written.contains("shep-metrics"),
+        "the binary landed: {written}"
     );
 }

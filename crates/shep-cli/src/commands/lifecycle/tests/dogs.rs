@@ -287,7 +287,7 @@ mod slow {
         let dir = tempfile::tempdir().unwrap();
         let paths = adopted_dog(dir.path(), "log-rotate", &below_floor_answer());
         crate::commands::shep_toml::ShepToml::edit(&paths.daemon_config, |cfg| {
-            cfg.enable_dog("metrics");
+            cfg.enable_dog("metrics").unwrap();
         })
         .unwrap();
         let sock = shep_client::testing::control_address(dir.path());
