@@ -67,6 +67,21 @@ import ShortVersion from "../../components/docs/ShortVersion.astro";
     </Callout>
 
     <h2 id="other-installs">Other ways to install</h2>
+    <p>Homebrew:</p>
+    <div class="terminal">
+      <div><span class="prompt">$</span> brew install shep-pm/shep/shep</div>
+    </div>
+    <p>Scoop:</p>
+    <div class="terminal">
+      <div><span class="prompt">&gt;</span> scoop bucket add shep https://github.com/shep-pm/scoop-shep</div>
+      <div><span class="prompt">&gt;</span> scoop install shep</div>
+    </div>
+    <p class="fine">
+      If <code>shep.exe</code> will not start, it wants the Visual C++
+      redistributable: <code>scoop bucket add extras</code>, then
+      <code>scoop install extras/vcredist2022</code>.
+    </p>
+    <p>Or build it yourself:</p>
     <div class="terminal">
       <div><span class="prompt">$</span> git clone https://github.com/shep-pm/shep.git</div>
       <div><span class="prompt">$</span> cd shep</div>
