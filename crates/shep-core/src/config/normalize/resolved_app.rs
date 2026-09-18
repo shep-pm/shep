@@ -359,14 +359,43 @@ mod tests {
         assert!(normalize(AppConfig::minimal("web-2", "./srv")).is_ok());
     }
 
+    /// Each reserved variable is refused with advice that fits it (#284):
+    /// the `{{instance}}` and `{{name}}` templates for the two identity
+    /// variables, and the `environment` field for the one that is not a
+    /// template token at all. Nothing carries another variable's advice.
     #[test]
     fn the_reserved_env_vars_are_refused_rather_than_overwritten() {
-        for var in ["SHEP_INSTANCE", "SHEP_NAME", "SHEP_ENVIRONMENT"] {
+        // Every advice string the Display arm can produce, so each case can
+        // assert the absence of all the others. Naming one counterpart each
+        // left the environment advice unexcluded on both identity variables.
+        let advice = [
+            ("SHEP_INSTANCE", "or `{{instance}}` in your own variable"),
+            ("SHEP_NAME", "or `{{name}}` in your own variable"),
+            ("SHEP_ENVIRONMENT", "or set `environment` on the app"),
+        ];
+        for (var, fitting) in advice {
             let mut app = AppConfig::minimal("web", "./srv");
             app.env.insert(var.to_string(), "mine".to_string());
             let err = normalize(app).unwrap_err();
             let rendered = err.to_string();
             assert!(rendered.contains(var), "names the variable: {rendered}");
+            assert!(
+                rendered.contains(fitting),
+                "{var} gets advice that fits it: {rendered}"
+            );
+            for (owner, unrelated) in advice {
+                assert!(
+                    owner == var || !rendered.contains(unrelated),
+                    "{var} carries {owner}'s advice: {rendered}"
+                );
+            }
+            // The environment is not a template token, so its advice offers
+            // no template and the message must not grow one from elsewhere.
+            assert_eq!(
+                rendered.contains("{{"),
+                fitting.contains("{{"),
+                "{var} offers a template only if its own advice does: {rendered}"
+            );
             assert!(
                 !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
                 "no em or en dash in copy a user reads: {rendered}"
