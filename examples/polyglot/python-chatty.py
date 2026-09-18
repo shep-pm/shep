@@ -120,10 +120,11 @@ def send(channel, message):
         # from the three other examples byte for byte while decoding to the
         # same message.
         rest = memoryview(wire(message).encode() + b"\n")
-        # An unbuffered binary write is one write(2): it returns short
-        # rather than failing, and the next frame would then start mid-line.
-        # The other three never see this, since Go, libuv and Rust all loop
-        # for you.
+        # One write(2), so it can report fewer bytes than it was given and
+        # the next frame would start mid-line. A blocking descriptor mostly
+        # will not: a full socketpair blocks instead, so a short write here
+        # means EINTR or a non-blocking descriptor. Go, libuv and Rust all
+        # loop for you.
         while rest:
             written = channel.write(rest)
             if not written:
