@@ -118,7 +118,16 @@ def send(channel, message):
         # Not bare json.dumps: its defaults put a space after every colon and
         # comma and escape non-ASCII, so Python's line differed from the three
         # other examples byte for byte while decoding to the same message.
-        channel.write(wire(message).encode() + b"\n")
+        # An unbuffered binary write is one write(2): it returns short
+        # rather than failing when the pipe fills, and the next frame would
+        # then start mid-line. The other three never see this, since Go,
+        # libuv and Rust all loop for you.
+        rest = memoryview(wire(message).encode() + b"\n")
+        while rest:
+            written = channel.write(rest)
+            if not written:
+                raise OSError("wrote no bytes to the shepherd")
+            rest = rest[written:]
     except OSError as err:
         if not _shepherd_gone:
             _shepherd_gone = True
@@ -259,8 +268,15 @@ def main():
         # Every action carries both, so one that does not is not something
         # this app can answer, and carries nowhere to send the answer.
         name, ident = message.get("name"), message.get("id")
-        if not isinstance(name, str) or ident is None:
-            warn("python-chatty: ignoring an action with no name or no id")
+        if not isinstance(name, str):
+            warn("python-chatty: ignoring an action with no name")
+            continue
+        # The wire types declare id as a u64, so the reply has to carry one
+        # back. A typed example gets this free; here it is written out. bool
+        # is excluded on purpose, since True is an int in Python and would
+        # otherwise reply to action 1.
+        if not isinstance(ident, int) or isinstance(ident, bool) or not 0 <= ident < 2**64:
+            warn(f"python-chatty: ignoring {name}, its id is not a u64")
             continue
 
         # params is a string or it is absent. A typed language gets this

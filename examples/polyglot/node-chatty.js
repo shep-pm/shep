@@ -170,11 +170,19 @@ function handle(message) {
   // Every action carries both, so one that does not is not something this
   // app can answer, and carries nowhere to send the answer.
   const { name, params, id } = message;
-  // `== null` on purpose: it catches both undefined and null, and a reply
-  // carrying "id": null is one shep cannot match to anything. The typed
-  // examples refuse it without asking, since null is not a number there.
-  if (typeof name !== "string" || id == null) {
-    console.error("node-chatty: ignoring an action with no name or no id");
+  // The wire types declare id as a u64, so the reply has to carry one back.
+  // The typed examples get this free, since serde and encoding/json refuse
+  // anything else and drop the whole frame. Here it is written out: null,
+  // a string, a fraction and a negative all reach this far, and echoing one
+  // costs the operator the whole action_timeout rather than a reply.
+  // Safe-integer, not u64's real ceiling, because JSON.parse has already
+  // rounded anything above it and the reply would name a different action.
+  if (typeof name !== "string") {
+    console.error("node-chatty: ignoring an action with no name");
+    return;
+  }
+  if (!Number.isSafeInteger(id) || id < 0) {
+    console.error(`node-chatty: ignoring ${name}, its id is not a u64`);
     return;
   }
   // params is a string or it is absent. A typed language gets this free:
