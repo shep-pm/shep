@@ -246,11 +246,19 @@ fn taking_dog_sections_keeps_an_inline_table_dog() {
 #[test]
 fn a_hand_edited_daemon_key_is_refused_rather_than_panicked_on() {
     let cases = [
-        ("daemon = \"loud\"\n", "daemon"),
-        ("[daemon]\nenabled_dogs = \"metrics\"\n", "enabled_dogs"),
-        ("[daemon]\nadopted_dogs = \"nope\"\n", "adopted_dogs"),
+        ("daemon = \"loud\"\n", "daemon", "a table"),
+        (
+            "[daemon]\nenabled_dogs = \"metrics\"\n",
+            "enabled_dogs",
+            "an array",
+        ),
+        (
+            "[daemon]\nadopted_dogs = \"nope\"\n",
+            "adopted_dogs",
+            "a table",
+        ),
     ];
-    for (original, expected_key) in cases {
+    for (original, expected_key, expected_shape) in cases {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("shep.toml");
         std::fs::write(&path, original).unwrap();
@@ -262,9 +270,16 @@ fn a_hand_edited_daemon_key_is_refused_rather_than_panicked_on() {
         });
 
         match refusal {
-            Err(ShepTomlError::WrongShape { key, found, .. }) => {
+            Err(ref err @ ShepTomlError::WrongShape { key, found, .. }) => {
                 assert_eq!(key, expected_key, "names the key an operator has to fix");
                 assert!(!found.is_empty(), "says what it found instead");
+                // `enabled_dogs` is an array and the other two are tables, so
+                // a fixed word here would tell an operator to write the wrong
+                // thing before refusing the edit.
+                assert!(
+                    err.to_string().contains(expected_shape),
+                    "{key} must be {expected_shape}: {err}"
+                );
             }
             other => panic!("expected WrongShape on {original:?}, got {other:?}"),
         }

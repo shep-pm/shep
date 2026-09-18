@@ -205,12 +205,13 @@ mod tests {
         let wrong_shape = EnableRefusal::Config(ShepTomlError::WrongShape {
             path: path.clone(),
             key: "style",
+            expected: "a table",
             found: "string",
         });
         assert_eq!(
             format!("{wrong_shape:?}"),
             "Config(WrongShape { path: \"/home/ada/.shep/shep.toml\", key: \"style\", \
-             found: \"string\" })"
+             expected: \"a table\", found: \"string\" })"
         );
 
         let parse = EnableRefusal::Config(ShepTomlError::Parse { path, source });

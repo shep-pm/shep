@@ -231,6 +231,7 @@ impl ShepToml {
         let enabled_dogs = item.as_array_mut().ok_or(ShepTomlError::WrongShape {
             path,
             key: "enabled_dogs",
+            expected: "an array",
             found,
         })?;
         if !enabled_dogs.iter().any(|v| v.as_str() == Some(name)) {
@@ -278,6 +279,7 @@ impl ShepToml {
         let adopted_dogs = item.as_table_mut().ok_or(ShepTomlError::WrongShape {
             path,
             key: "adopted_dogs",
+            expected: "a table",
             found,
         })?;
         adopted_dogs.insert(
@@ -416,6 +418,7 @@ impl ShepToml {
             return Err(ShepTomlError::WrongShape {
                 path: self.path.clone(),
                 key: "style",
+                expected: "a table",
                 found: item.type_name(),
             });
         };
@@ -640,6 +643,7 @@ impl ShepToml {
         item.as_table_mut().ok_or(ShepTomlError::WrongShape {
             path: self.path.clone(),
             key: section,
+            expected: "a table",
             found,
         })
     }
@@ -647,10 +651,6 @@ impl ShepToml {
     /// `[daemon]`, creating it (empty) if this document has none yet, and
     /// refusing with [`ShepTomlError::WrongShape`] when `daemon` is already
     /// occupied by something else.
-    ///
-    /// Delegates to [`Self::section_table_mut`] rather than restating it.
-    /// This used to `.expect()`, so `shep dog enable` panicked on a
-    /// `daemon = "loud"` that every scalar setter refused politely.
     fn daemon_table_mut(&mut self) -> Result<&mut Table, ShepTomlError> {
         self.section_table_mut("daemon")
     }
@@ -703,16 +703,20 @@ pub enum ShepTomlError {
         /// The parser's own complaint.
         source: toml_edit::TomlError,
     },
-    /// `path` parses, but `key` is already there as something other than a
-    /// table, e.g. `style = "full"` at the top level instead of `[style]`.
-    /// Legal TOML, but forcing it to a table would discard what the operator
-    /// wrote there.
+    /// `path` parses, but `key` is already there as something other than the
+    /// shape shep writes, e.g. `style = "full"` at the top level instead of
+    /// `[style]`. Legal TOML, but forcing the shape would discard what the
+    /// operator wrote there.
     WrongShape {
         /// The file that holds the wrongly-shaped value.
         path: PathBuf,
-        /// The table key that was expected.
+        /// The key that was expected.
         key: &'static str,
-        /// What TOML found there ([`Item::type_name`]); never `"table"`.
+        /// The shape shep writes there, worded to follow "must be". Most
+        /// keys are tables, `[daemon] enabled_dogs` is an array, and a fixed
+        /// word here would hand an operator the wrong repair.
+        expected: &'static str,
+        /// What TOML found there ([`Item::type_name`]).
         found: &'static str,
     },
 }
@@ -735,10 +739,16 @@ impl std::fmt::Debug for ShepTomlError {
                 .field("path", path)
                 .field("message", &source.message())
                 .finish(),
-            Self::WrongShape { path, key, found } => f
+            Self::WrongShape {
+                path,
+                key,
+                expected,
+                found,
+            } => f
                 .debug_struct("WrongShape")
                 .field("path", path)
                 .field("key", key)
+                .field("expected", expected)
                 .field("found", found)
                 .finish(),
         }
@@ -750,9 +760,14 @@ impl std::fmt::Display for ShepTomlError {
         match self {
             Self::Io { path, source } => write!(f, "{}: {source}", path.display()),
             Self::Parse { path, source } => write!(f, "{}: {source}", path.display()),
-            Self::WrongShape { path, key, found } => write!(
+            Self::WrongShape {
+                path,
+                key,
+                expected,
+                found,
+            } => write!(
                 f,
-                "{}: [{key}] must be a table, found a {found}",
+                "{}: [{key}] must be {expected}, found a {found}",
                 path.display()
             ),
         }
