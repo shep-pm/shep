@@ -266,7 +266,7 @@ mod tests {
         std::os::unix::fs::PermissionsExt::set_mode(&mut mode, 0o755);
         std::fs::set_permissions(&script, mode).unwrap();
         ShepToml::edit(&home.join("shep.toml"), |cfg| {
-            cfg.adopt_dog("mydog", &script);
+            cfg.adopt_dog("mydog", &script).unwrap();
         })
         .unwrap();
 

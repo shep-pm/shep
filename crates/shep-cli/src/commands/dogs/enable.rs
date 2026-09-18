@@ -62,7 +62,7 @@ pub(crate) fn enable_in_config(path: &Path, name: &str) -> Result<DogSource, Ena
                 adopted: cfg.adopted_dog_names(),
             });
         }
-        cfg.enable_dog(name);
+        cfg.enable_dog(name)?;
         Ok(source)
     })
 }
@@ -298,7 +298,8 @@ mod tests {
         let paths = ShepPaths::resolve(&|_| None, dir.path());
         std::fs::create_dir_all(&paths.run).unwrap();
         ShepToml::edit(&paths.daemon_config, |seed| {
-            seed.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"));
+            seed.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"))
+                .unwrap();
         })
         .unwrap();
         let handle = serve_one_request(
@@ -440,7 +441,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = ShepPaths::resolve(&|_| None, dir.path());
         ShepToml::edit(&paths.daemon_config, |cfg| {
-            cfg.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"));
+            cfg.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"))
+                .unwrap();
         })
         .unwrap();
 
@@ -463,7 +465,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = ShepPaths::resolve(&|_| None, dir.path());
         ShepToml::edit(&paths.daemon_config, |cfg| {
-            cfg.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"));
+            cfg.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"))
+                .unwrap();
         })
         .unwrap();
 

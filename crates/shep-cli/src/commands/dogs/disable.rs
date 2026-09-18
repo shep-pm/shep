@@ -197,7 +197,7 @@ mod tests {
     async fn disable_with_no_shepherd_writes_the_config_and_exits_zero() {
         let dir = tempfile::tempdir().unwrap();
         let paths = ShepPaths::resolve(&|_| None, dir.path());
-        ShepToml::edit(&paths.daemon_config, |seed| seed.enable_dog("bark")).unwrap();
+        ShepToml::try_edit(&paths.daemon_config, |seed| seed.enable_dog("bark")).unwrap();
         let mut out = Vec::new();
         let mut err = Vec::new();
         let code = disable(&mut streams(&mut out, &mut err), &paths, "bark").await;
