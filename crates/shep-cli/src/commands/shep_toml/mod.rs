@@ -215,16 +215,29 @@ impl ShepToml {
     /// lives in `dogs.toml`, and `commands::dog_migration` refuses to boot
     /// when one name holds values in both files. An enabled dog with no
     /// section runs on its defaults, so there is nothing to scaffold.
-    pub fn enable_dog(&mut self, name: &str) {
-        let daemon = self.daemon_table_mut();
-        let enabled_dogs = daemon
+    ///
+    /// # Errors
+    ///
+    /// [`ShepTomlError::WrongShape`] when the file an operator hand-edited
+    /// holds `daemon` or `enabled_dogs` as something other than a table and
+    /// an array.
+    pub fn enable_dog(&mut self, name: &str) -> Result<(), ShepTomlError> {
+        let path = self.path.clone();
+        let item = self
+            .daemon_table_mut()?
             .entry("enabled_dogs")
-            .or_insert_with(|| Item::Value(Value::Array(Array::new())))
-            .as_array_mut()
-            .expect("enabled_dogs is only ever written as an array");
+            .or_insert_with(|| Item::Value(Value::Array(Array::new())));
+        let found = item.type_name();
+        let enabled_dogs = item.as_array_mut().ok_or(ShepTomlError::WrongShape {
+            path,
+            key: "enabled_dogs",
+            expected: "an array",
+            found,
+        })?;
         if !enabled_dogs.iter().any(|v| v.as_str() == Some(name)) {
             enabled_dogs.push(name);
         }
+        Ok(())
     }
 
     /// Removes `name` from `[daemon] enabled_dogs` and touches nothing
@@ -250,18 +263,30 @@ impl ShepToml {
     ///
     /// Does no vetting of `exec` itself: `commands::dogs::adopt` has already
     /// run `vet_binary`.
-    pub fn adopt_dog(&mut self, name: &str, exec: &Path) {
-        let daemon = self.daemon_table_mut();
-        let adopted_dogs = daemon
+    ///
+    /// # Errors
+    ///
+    /// [`ShepTomlError::WrongShape`] when the file an operator hand-edited
+    /// holds `daemon`, `adopted_dogs` or `enabled_dogs` as something other
+    /// than the shape shep writes.
+    pub fn adopt_dog(&mut self, name: &str, exec: &Path) -> Result<(), ShepTomlError> {
+        let path = self.path.clone();
+        let item = self
+            .daemon_table_mut()?
             .entry("adopted_dogs")
-            .or_insert_with(|| Item::Table(Table::new()))
-            .as_table_mut()
-            .expect("adopted_dogs is only ever written as a table");
+            .or_insert_with(|| Item::Table(Table::new()));
+        let found = item.type_name();
+        let adopted_dogs = item.as_table_mut().ok_or(ShepTomlError::WrongShape {
+            path,
+            key: "adopted_dogs",
+            expected: "a table",
+            found,
+        })?;
         adopted_dogs.insert(
             name,
             Item::Value(exec.to_string_lossy().into_owned().into()),
         );
-        self.enable_dog(name);
+        self.enable_dog(name)
     }
 
     /// Removes the whole `[dog]` table and hands back what was under it,
@@ -393,6 +418,7 @@ impl ShepToml {
             return Err(ShepTomlError::WrongShape {
                 path: self.path.clone(),
                 key: "style",
+                expected: "a table",
                 found: item.type_name(),
             });
         };
@@ -617,17 +643,16 @@ impl ShepToml {
         item.as_table_mut().ok_or(ShepTomlError::WrongShape {
             path: self.path.clone(),
             key: section,
+            expected: "a table",
             found,
         })
     }
 
-    /// `[daemon]`, creating it (empty) if this document has none yet.
-    fn daemon_table_mut(&mut self) -> &mut Table {
-        self.doc
-            .entry("daemon")
-            .or_insert_with(|| Item::Table(Table::new()))
-            .as_table_mut()
-            .expect("daemon is only ever written as a table")
+    /// `[daemon]`, creating it (empty) if this document has none yet, and
+    /// refusing with [`ShepTomlError::WrongShape`] when `daemon` is already
+    /// occupied by something else.
+    fn daemon_table_mut(&mut self) -> Result<&mut Table, ShepTomlError> {
+        self.section_table_mut("daemon")
     }
 }
 
@@ -678,16 +703,20 @@ pub enum ShepTomlError {
         /// The parser's own complaint.
         source: toml_edit::TomlError,
     },
-    /// `path` parses, but `key` is already there as something other than a
-    /// table, e.g. `style = "full"` at the top level instead of `[style]`.
-    /// Legal TOML, but forcing it to a table would discard what the operator
-    /// wrote there.
+    /// `path` parses, but `key` is already there as something other than the
+    /// shape shep writes, e.g. `style = "full"` at the top level instead of
+    /// `[style]`. Legal TOML, but forcing the shape would discard what the
+    /// operator wrote there.
     WrongShape {
         /// The file that holds the wrongly-shaped value.
         path: PathBuf,
-        /// The table key that was expected.
+        /// The key that was expected.
         key: &'static str,
-        /// What TOML found there ([`Item::type_name`]); never `"table"`.
+        /// The shape shep writes there, worded to follow "must be". Most
+        /// keys are tables, `[daemon] enabled_dogs` is an array, and a fixed
+        /// word here would hand an operator the wrong repair.
+        expected: &'static str,
+        /// What TOML found there ([`Item::type_name`]).
         found: &'static str,
     },
 }
@@ -710,10 +739,16 @@ impl std::fmt::Debug for ShepTomlError {
                 .field("path", path)
                 .field("message", &source.message())
                 .finish(),
-            Self::WrongShape { path, key, found } => f
+            Self::WrongShape {
+                path,
+                key,
+                expected,
+                found,
+            } => f
                 .debug_struct("WrongShape")
                 .field("path", path)
                 .field("key", key)
+                .field("expected", expected)
                 .field("found", found)
                 .finish(),
         }
@@ -725,9 +760,14 @@ impl std::fmt::Display for ShepTomlError {
         match self {
             Self::Io { path, source } => write!(f, "{}: {source}", path.display()),
             Self::Parse { path, source } => write!(f, "{}: {source}", path.display()),
-            Self::WrongShape { path, key, found } => write!(
+            Self::WrongShape {
+                path,
+                key,
+                expected,
+                found,
+            } => write!(
                 f,
-                "{}: [{key}] must be a table, found a {found}",
+                "{}: [{key}] must be {expected}, found a {found}",
                 path.display()
             ),
         }

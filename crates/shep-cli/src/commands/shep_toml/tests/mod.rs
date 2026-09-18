@@ -18,7 +18,7 @@ fn a_file_that_will_not_parse_is_refused_rather_than_replaced() {
     let path = dir.path().join("shep.toml");
     std::fs::write(&path, "[daemon\nlog_json = true\n").unwrap();
     assert!(matches!(
-        ShepToml::edit(&path, |doc| doc.enable_dog("metrics")),
+        ShepToml::try_edit(&path, |doc| doc.enable_dog("metrics")),
         Err(ShepTomlError::Parse { .. })
     ));
     assert_eq!(
@@ -30,7 +30,7 @@ fn a_file_that_will_not_parse_is_refused_rather_than_replaced() {
 fn a_missing_file_opens_empty_and_edit_creates_it() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("nested").join("shep.toml");
-    ShepToml::edit(&path, |doc| doc.enable_dog("metrics")).unwrap();
+    ShepToml::try_edit(&path, |doc| doc.enable_dog("metrics")).unwrap();
     assert!(path.exists());
 }
 #[test]
@@ -51,7 +51,7 @@ fn a_first_edit_creates_the_home_and_the_file_owner_only() {
     let home = dir.path().join("cold");
     let path = home.join("shep.toml");
 
-    ShepToml::edit(&path, |doc| doc.enable_dog("bark")).unwrap();
+    ShepToml::try_edit(&path, |doc| doc.enable_dog("bark")).unwrap();
 
     assert_eq!(
         mode_of(&home),
@@ -73,7 +73,7 @@ fn editing_a_world_readable_config_leaves_it_owner_only() {
     std::fs::write(&path, "[daemon]\n").unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
 
-    ShepToml::edit(&path, |doc| doc.enable_dog("bark")).unwrap();
+    ShepToml::try_edit(&path, |doc| doc.enable_dog("bark")).unwrap();
 
     assert_eq!(mode_of(&path), 0o600);
 }
@@ -137,9 +137,10 @@ fn config_race_child() {
         let name = format!("{tag}-{i}");
         ShepToml::edit(&path, |doc| {
             if tag == ADOPTING_TAG {
-                doc.adopt_dog(&name, Path::new("/usr/local/bin/shep-otel"));
+                doc.adopt_dog(&name, Path::new("/usr/local/bin/shep-otel"))
+                    .unwrap();
             } else {
-                doc.enable_dog(&name);
+                doc.enable_dog(&name).unwrap();
             }
         })
         .expect("child edit");

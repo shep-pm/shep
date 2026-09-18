@@ -56,9 +56,7 @@ pub async fn adopt(streams: &mut Streams<'_>, paths: &ShepPaths, args: &AdoptArg
     if vetted.schema == DogSchema::Unreadable {
         warn_unreadable_schema(streams, &name);
     }
-    if let Err(err) = ShepToml::edit(&paths.daemon_config, |cfg| {
-        cfg.adopt_dog(&name, &path);
-    }) {
+    if let Err(err) = ShepToml::try_edit(&paths.daemon_config, |cfg| cfg.adopt_dog(&name, &path)) {
         return fail_config(streams, &err);
     }
     let client = match connect_or_absent(paths, streams).await {
