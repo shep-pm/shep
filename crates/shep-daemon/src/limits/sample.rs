@@ -606,14 +606,19 @@ mod tests {
         /// How long [`name_when`] keeps walking before giving up and
         /// reporting whatever it last saw.
         ///
-        /// Generous on purpose: a walk costs single-digit milliseconds on an
-        /// idle machine, so this is margin against a stalled CI runner, not
-        /// an estimate of the work. A real regression pays it twice and
-        /// still finishes well inside the harness timeout.
+        /// 10s = 10,000ms, against 5.7ms to 12.0ms for one `identify` walk
+        /// over 787 processes, ten samples on an idle arm64 macOS host, so
+        /// roughly a thousand walks' worth. Margin against a stalled runner
+        /// rather than an estimate of the work: a real regression pays it
+        /// twice and still finishes inside the harness timeout.
         #[cfg(unix)]
         const GIVE_UP_AFTER: Duration = Duration::from_secs(10);
 
         /// The gap between walks in [`name_when`].
+        ///
+        /// 10ms is about what the walk it follows costs, 5.7ms to 12.0ms
+        /// measured as above, so the loop alternates walking and waiting
+        /// instead of spinning on the process table.
         #[cfg(unix)]
         const BETWEEN_WALKS: Duration = Duration::from_millis(10);
 
